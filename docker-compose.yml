@@ -29,6 +29,7 @@ services:
     environment:
       - DATABASE_URL=postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-jobhunter}
       - CORS_ORIGINS=http://localhost:5173,http://localhost:80
+      - ENVIRONMENT=${ENVIRONMENT:-development}
     ports:
       - "8000:8000"
     command: >

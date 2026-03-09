@@ -44,14 +44,20 @@ class Settings(BaseSettings):
             return [i.strip() for i in v.split(",") if i.strip()]
         return v
 
+    ENVIRONMENT: str = "development"  # development | production
+
     @field_validator("SECRET_KEY")
     @classmethod
     def validate_secret_key(cls, v: str) -> str:
-        import os
-        if v == "changeme" and not os.getenv("TESTING"):
-            import logging
-            logging.critical("CRITICAL: Default SECRET_KEY is in use! Set SECRET_KEY in .env for production.")
-            raise ValueError("Insecure default SECRET_KEY in use. Set SECRET_KEY in your environment.")
+        import os, logging
+        if v in ("changeme", ""):
+            if os.getenv("ENVIRONMENT", "development").lower() == "production":
+                raise ValueError(
+                    "Insecure default SECRET_KEY in use. Set SECRET_KEY in your environment."
+                )
+            logging.critical(
+                "CRITICAL: Default SECRET_KEY is in use! Set SECRET_KEY in .env for production."
+            )
         return v
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 15  # 15 minutes
