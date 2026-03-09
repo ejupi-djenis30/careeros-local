@@ -18,7 +18,9 @@ export function HistoryPage() {
   };
 
   const handleUseAsTemplate = (profile) => {
-    navigate('/new', { state: { prefillProfile: profile } });
+    // Strip id and metadata so a fresh profile is created on submit
+    const { id, created_at, last_scheduled_run, ...templateData } = profile;
+    navigate('/new', { state: { prefillProfile: templateData } });
   };
 
   const handleSaveAsSchedule = async (profile) => {

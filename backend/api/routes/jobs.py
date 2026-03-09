@@ -2,7 +2,7 @@ from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
 from backend.api.deps import get_current_user_id, get_job_service
 from backend.services.job_service import JobService
-from backend.schemas import Job, JobUpdate, JobPaginationResponse
+from backend.schemas import Job, JobCreate, JobUpdate, JobPaginationResponse
 
 router = APIRouter()
 
@@ -43,7 +43,7 @@ def read_jobs(
 
 @router.post("/", response_model=Job)
 def create_job(
-    job_in: dict,
+    job_in: JobCreate,
     user_id: int = Depends(get_current_user_id),
     job_service: JobService = Depends(get_job_service),
 ):

@@ -1,8 +1,15 @@
 export const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:8000/api/v1";
 
 export class ApiClient {
+    static accessToken = null;
+    static _suppressUnauthorized = false;
+
+    static setToken(token) {
+        this.accessToken = token;
+    }
+
     static getToken() {
-        return localStorage.getItem("jh_token");
+        return this.accessToken;
     }
 
     static getHeaders() {
@@ -19,6 +26,7 @@ export class ApiClient {
     static async request(endpoint, options = {}) {
         const url = `${API_BASE}${endpoint}`;
         const config = {
+            credentials: 'include',
             ...options,
             headers: {
                 ...this.getHeaders(),
@@ -29,7 +37,9 @@ export class ApiClient {
         const response = await fetch(url, config);
 
         if (response.status === 401) {
-            window.dispatchEvent(new Event("jh_unauthorized"));
+            if (!this._suppressUnauthorized) {
+                window.dispatchEvent(new Event("jh_unauthorized"));
+            }
             throw new Error("UNAUTHORIZED");
         }
 
@@ -86,6 +96,7 @@ export class ApiClient {
         const url = `${API_BASE}${endpoint}`;
         const config = {
             method: "POST",
+            credentials: 'include',
             headers,
             body: formData,
         };

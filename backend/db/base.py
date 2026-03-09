@@ -14,6 +14,7 @@ else:
         pool_size=getattr(settings, "DB_POOL_SIZE", 5),
         max_overflow=getattr(settings, "DB_MAX_OVERFLOW", 10),
         pool_pre_ping=True,
+        pool_recycle=1800,
     )
 from backend.models.base_model import Base
 

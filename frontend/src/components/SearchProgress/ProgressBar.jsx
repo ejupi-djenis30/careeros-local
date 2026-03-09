@@ -5,6 +5,14 @@ export function ProgressBar({ state, isDone, isError, isRunning, progressPct, an
 
     return (
         <div className="mb-4">
+            {isRunning && (
+                <div className="mb-2 text-center animate-slide-up">
+                    <span className="badge bg-primary-10 text-primary border border-primary-20 rounded-pill fw-normal px-3 py-1 font-monospace small">
+                        <i className="bi bi-crosshair me-2"></i>
+                        {state === "analyzing" ? analyzingText : (current_query ? `TARGET: "${current_query}"` : 'ACQUIRING STRATEGY...')}
+                    </span>
+                </div>
+            )}
             <div className="d-flex justify-content-between text-secondary x-small fw-bold text-uppercase tracking-wider mb-2">
                 <span>Mission Progress</span>
                 <span className="text-white">{isDone ? '100%' : `${progressPct}%`}</span>
@@ -15,14 +23,6 @@ export function ProgressBar({ state, isDone, isError, isRunning, progressPct, an
                     style={{ width: `${isDone || isError ? 100 : progressPct}%`, borderRadius: "8px", transition: "width 0.5s cubic-bezier(0.4, 0, 0.2, 1)" }}
                 />
             </div>
-            {isRunning && (
-                <div className="mt-2 text-center animate-slide-up">
-                    <span className="badge bg-primary-10 text-primary border border-primary-20 rounded-pill fw-normal px-3 py-1 font-monospace small">
-                        <i className="bi bi-crosshair me-2"></i>
-                        {state === "analyzing" ? analyzingText : (current_query ? `TARGET: "${current_query}"` : 'ACQUIRING STRATEGY...')}
-                    </span>
-                </div>
-            )}
         </div>
     );
 }

@@ -49,7 +49,17 @@ class ProfileService:
         if schedule.interval_hours:
             update_data["schedule_interval_hours"] = schedule.interval_hours
             
-        return self.repo.update(profile, update_data)
+        updated_profile = self.repo.update(profile, update_data)
+        
+        # Actually add/remove the APScheduler job
+        from backend.services.scheduler import add_schedule, remove_schedule
+        if schedule.enabled:
+            interval = schedule.interval_hours or updated_profile.schedule_interval_hours or 24
+            add_schedule(profile_id, interval)
+        else:
+            remove_schedule(profile_id)
+        
+        return updated_profile
 
 def get_profile_service(db: Session) -> ProfileService:
     return ProfileService(db)

@@ -2,7 +2,7 @@ from typing import Dict, Any
 from sqlalchemy.orm import Session
 from fastapi import HTTPException
 from backend.repositories.job_repository import JobRepository
-from backend.schemas import JobUpdate
+from backend.schemas import JobCreate, JobUpdate
 
 class JobService:
     def __init__(self, db: Session):
@@ -35,21 +35,23 @@ class JobService:
             "avg_score": stats["avg_score"]
         }
 
-    def create_job(self, user_id: int, job_in: dict):
+    def create_job(self, user_id: int, job_in: JobCreate):
         from backend.models import ScrapedJob
+        
+        job_dict = job_in.model_dump()
         
         # Split fields: scraped-job fields vs user-relationship fields
         scraped_fields = {
-            "title": job_in.get("title", ""),
-            "company": job_in.get("company", ""),
-            "platform": job_in.get("platform", "manual"),
-            "platform_job_id": job_in.get("platform_job_id", None) or str(hash(
-                str(job_in.get("title", "")) + str(job_in.get("company", ""))
+            "title": job_dict.get("title", ""),
+            "company": job_dict.get("company", ""),
+            "platform": job_dict.get("platform", "manual"),
+            "platform_job_id": job_dict.get("platform_job_id", None) or str(hash(
+                str(job_dict.get("title", "")) + str(job_dict.get("company", ""))
             )),
-            "external_url": job_in.get("external_url", None),
-            "description": job_in.get("description", None),
-            "location": job_in.get("location", None),
-            "workload": job_in.get("workload", None),
+            "external_url": job_dict.get("external_url", None),
+            "description": job_dict.get("description", None),
+            "location": job_dict.get("location", None),
+            "workload": job_dict.get("workload", None),
         }
         
         # Upsert or create ScrapedJob
@@ -72,10 +74,10 @@ class JobService:
         job_data = {
             "user_id": user_id,
             "scraped_job_id": scraped_job.id,
-            "applied": job_in.get("applied", False),
-            "is_scraped": job_in.get("is_scraped", False),
-            "affinity_score": job_in.get("affinity_score", None),
-            "search_profile_id": job_in.get("search_profile_id", None),
+            "applied": job_dict.get("applied", False),
+            "is_scraped": job_dict.get("is_scraped", False),
+            "affinity_score": job_dict.get("affinity_score", None),
+            "search_profile_id": job_dict.get("search_profile_id", None),
         }
         return self.repo.create(job_data)
 

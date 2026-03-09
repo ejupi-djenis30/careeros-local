@@ -14,7 +14,6 @@ from backend.core.exceptions import CoreException
 from backend.api.deps import limiter
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
-from slowapi.errors import RateLimitExceeded
 
 # ─── Logging ───
 logging.basicConfig(
@@ -63,7 +62,7 @@ async def add_security_headers(request, call_next):
 
 # ─── Basic Production Middlewares ───
 app.add_middleware(GZipMiddleware, minimum_size=1000)
-app.add_middleware(TrustedHostMiddleware, allowed_hosts=["*"])
+app.add_middleware(TrustedHostMiddleware, allowed_hosts=settings.ALLOWED_HOSTS)
 
 # ─── CORS ───
 if settings.cors_origins_list:
@@ -116,5 +115,5 @@ def health():
 def root():
     return {
         "message": "Job Hunter AI API",
-        "database": settings.DATABASE_URL.split("://")[0] if settings.DATABASE_URL else "unknown",
+        "status": "online",
     }

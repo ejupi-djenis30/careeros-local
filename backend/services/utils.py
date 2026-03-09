@@ -1,5 +1,6 @@
 import math
 import re
+import asyncio
 import fitz  # PyMuPDF
 from fastapi import UploadFile, HTTPException
 
@@ -20,12 +21,15 @@ async def extract_text_from_file(file: UploadFile) -> str:
     
     try:
         if filename.endswith(".pdf"):
-            return _extract_from_pdf(await file.read())
+            content = await file.read()
+            return await asyncio.to_thread(_extract_from_pdf, content)
         elif filename.endswith(".txt") or filename.endswith(".md"):
             content = await file.read()
             return content.decode("utf-8")
         else:
             raise HTTPException(status_code=400, detail="Unsupported file type. Please upload PDF, TXT, or MD.")
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Failed to process file: {str(e)}")
 

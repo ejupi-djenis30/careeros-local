@@ -1,9 +1,10 @@
-from fastapi import APIRouter, Depends, HTTPException, status, Request
+from fastapi import APIRouter, Depends, HTTPException, status, Request, Response, Cookie
 from sqlalchemy.orm import Session
 from fastapi.security import OAuth2PasswordRequestForm
 
 from backend.db.base import get_db
-from backend.services.auth import create_access_token, verify_password, get_password_hash
+from backend.services.auth import create_access_token, create_refresh_token, decode_refresh_token, verify_password, get_password_hash
+from backend.core.config import settings
 from backend.models import User
 from backend.schemas import Token, UserCreate
 from backend.api.deps import limiter
@@ -13,7 +14,7 @@ router = APIRouter()
 
 @router.post("/register", response_model=Token)
 @limiter.limit("5/minute")
-def register(request: Request, user_in: UserCreate, db: Session = Depends(get_db)):
+def register(request: Request, response: Response, user_in: UserCreate, db: Session = Depends(get_db)):
     user = db.query(User).filter(User.username == user_in.username).first()
     if user:
         raise HTTPException(
@@ -28,12 +29,20 @@ def register(request: Request, user_in: UserCreate, db: Session = Depends(get_db
     db.refresh(db_user)
 
     access_token = create_access_token(data={"sub": user_in.username})
+    refresh_token = create_refresh_token(data={"sub": user_in.username})
+    response.set_cookie(
+        key="jh_refresh_token",
+        value=refresh_token,
+        httponly=True,
+        max_age=settings.REFRESH_TOKEN_EXPIRE_DAYS * 24 * 60 * 60,
+        samesite="lax",
+    )
     return {"access_token": access_token, "token_type": "bearer", "username": user_in.username}
 
 
 @router.post("/login", response_model=Token)
 @limiter.limit("10/minute")
-def login(request: Request, form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
+def login(request: Request, response: Response, form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
     user = db.query(User).filter(User.username == form_data.username).first()
     if not user or not verify_password(form_data.password, user.hashed_password):
         raise HTTPException(
@@ -43,4 +52,45 @@ def login(request: Request, form_data: OAuth2PasswordRequestForm = Depends(), db
         )
 
     access_token = create_access_token(data={"sub": user.username})
+    refresh_token = create_refresh_token(data={"sub": user.username})
+    response.set_cookie(
+        key="jh_refresh_token",
+        value=refresh_token,
+        httponly=True,
+        max_age=settings.REFRESH_TOKEN_EXPIRE_DAYS * 24 * 60 * 60,
+        samesite="lax",
+    )
     return {"access_token": access_token, "token_type": "bearer", "username": user.username}
+
+
+@router.post("/refresh", response_model=Token)
+@limiter.limit("20/minute")
+def refresh(request: Request, response: Response, jh_refresh_token: str | None = Cookie(None), db: Session = Depends(get_db)):
+    if not jh_refresh_token:
+        raise HTTPException(status_code=401, detail="Refresh token missing")
+    payload = decode_refresh_token(jh_refresh_token)
+    if not payload or "sub" not in payload:
+        raise HTTPException(status_code=401, detail="Invalid refresh token")
+        
+    username = payload["sub"]
+    user = db.query(User).filter(User.username == username).first()
+    if not user:
+        raise HTTPException(status_code=401, detail="User vanished")
+        
+    access_token = create_access_token(data={"sub": username})
+    new_refresh_token = create_refresh_token(data={"sub": username})
+    
+    response.set_cookie(
+        key="jh_refresh_token",
+        value=new_refresh_token,
+        httponly=True,
+        max_age=settings.REFRESH_TOKEN_EXPIRE_DAYS * 24 * 60 * 60,
+        samesite="lax",
+    )
+    return {"access_token": access_token, "token_type": "bearer", "username": username}
+
+
+@router.post("/logout")
+def logout(response: Response):
+    response.delete_cookie("jh_refresh_token", httponly=True, samesite="lax")
+    return {"message": "Logged out successfully"}

@@ -14,8 +14,9 @@ from backend.providers.jobs.models import JobSearchRequest, SortOrder, RadiusSea
 from backend.models import Job
 from backend.core.config import settings
 from backend.services.search_status import (
-    init_status, add_log, update_status, clear_status,
+    init_status, add_log, update_status, clear_status, get_status,
 )
+from backend.db.base import SessionLocal
 
 logger = logging.getLogger(__name__)
 
@@ -69,9 +70,9 @@ class SearchService:
                 "latitude": profile.latitude,
                 "longitude": profile.longitude,
             }
+            user_id = profile.user_id
 
-            # Initialize status tracker immediately so frontend sees progress
-            init_status(profile_id)
+            # We don't initialize status here anymore, wait until we have the search plan
 
             # Map available providers and their infos
             available_providers = {
@@ -118,7 +119,7 @@ class SearchService:
                 compatible = get_compatible_providers(domain, available_providers, provider_infos)
                 total_provider_calls += len(compatible)
 
-            init_status(profile_id, total_searches=total_provider_calls, searches=unique_searches)
+            init_status(profile_id, total_searches=total_provider_calls, searches=unique_searches, user_id=user_id)
             add_log(profile_id, f"Generated {len(searches)} queries → {len(unique_searches)} unique → {total_provider_calls} provider calls")
             
             searches = unique_searches
@@ -153,7 +154,7 @@ class SearchService:
                 request = build_search_request(profile, query)
 
                 # Execute on all compatible providers in parallel
-                async def search_provider(provider_name: str, req: JobSearchRequest, q: str):
+                async def search_provider(provider_name: str, req: JobSearchRequest):
                     provider = available_providers[provider_name]
                     try:
                         result = await provider.search(req)
@@ -162,7 +163,7 @@ class SearchService:
                         return provider_name, [], e
 
                 tasks = [
-                    search_provider(p_name, request, query)
+                    search_provider(p_name, request)
                     for p_name in compatible
                 ]
 
@@ -234,18 +235,22 @@ class SearchService:
 
             async def process_with_limit(job, idx, total):
                 async with semaphore:
-                    current_profile = self.profile_repo.get(profile_id)
-                    if current_profile and current_profile.is_stopped:
-                        logger.info(f"Skipping job analysis for {job.id} as search was stopped.")
-                        return False
-                        
-                    add_log(profile_id, f"Analyzing {idx + 1}/{total}: {job.title}")
+                    db_session = SessionLocal()
                     try:
-                        return await process_job_listing(job, profile_dict, self.job_repo.db)
-                    except Exception as e:
-                        logger.warning(f"Failed to process job {job.id}: {e}")
-                        add_log(profile_id, f"⚠ Failed: {job.title} – {e}")
-                        return False
+                        status_data = get_status(profile_id)
+                        if status_data.get("state") in ["stopped", "cancelled", "finished", "failed"]:
+                            logger.info(f"Skipping job analysis for {job.id} as search was stopped.")
+                            return False
+                            
+                        add_log(profile_id, f"Analyzing {idx + 1}/{total}: {job.title}")
+                        try:
+                            return await process_job_listing(job, profile_dict, db_session)
+                        except Exception as e:
+                            logger.warning(f"Failed to process job {job.id}: {e}")
+                            add_log(profile_id, f"⚠ Failed: {job.title} – {e}")
+                            return False
+                    finally:
+                        db_session.close()
 
             tasks = [
                 process_with_limit(job, idx, len(unique_jobs))
@@ -265,7 +270,22 @@ class SearchService:
                 jobs_duplicates=duplicates,
                 jobs_skipped=skipped_count
             )
+        except Exception as e:
+            logger.error(f"Unexpected error in run_search for profile {profile_id}: {e}", exc_info=True)
+            update_status(profile_id, state="error", error=f"Unexpected error: {e}")
         finally:
+            # Close provider sessions to prevent connection leaks
+            try:
+                for provider in available_providers.values():
+                    try:
+                        if hasattr(provider, 'close'):
+                            await provider.close()
+                        elif hasattr(provider, '_session') and provider._session:
+                            await provider._session.aclose()
+                    except Exception:
+                        pass
+            except NameError:
+                pass  # available_providers not yet defined
             unregister_task(profile_id)
 
 

@@ -158,7 +158,6 @@ class JobRoomProvider(BaseJobProvider):
 
         payload = build_search_payload(request, self._mapper)
 
-        await self._init_session()
         assert self._session is not None
         url = build_search_url(request)
 

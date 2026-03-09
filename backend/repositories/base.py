@@ -49,7 +49,7 @@ class BaseRepository(Generic[ModelType]):
         return db_obj
 
     def delete(self, id: Any) -> Optional[ModelType]:
-        obj = self.db.query(self.model).get(id)
+        obj = self.db.get(self.model, id)
         if obj:
             self.db.delete(obj)
             self.db.commit()

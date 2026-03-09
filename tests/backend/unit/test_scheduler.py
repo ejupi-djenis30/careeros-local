@@ -49,8 +49,12 @@ def test_get_all_schedules():
     mock_job.trigger = "trigger1"
     mock_scheduler.get_jobs.return_value = [mock_job]
     
+    # Provide a mock db session so SessionLocal() is not called (avoids real PG connection)
+    mock_db = MagicMock()
+    mock_db.query.return_value.filter.return_value.filter.return_value.all.return_value = []
+
     with patch("backend.services.scheduler.get_scheduler", return_value=mock_scheduler):
-        schedules = get_all_schedules()
+        schedules = get_all_schedules(db=mock_db)
         assert len(schedules) == 1
         assert schedules[0]["id"] == "job1"
 

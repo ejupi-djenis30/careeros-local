@@ -1,7 +1,7 @@
 import pytest
 from unittest.mock import MagicMock
 from backend.services.job_service import JobService
-from backend.schemas import JobUpdate
+from backend.schemas import JobUpdate, JobCreate
 
 @pytest.fixture
 def mock_repo():
@@ -26,7 +26,7 @@ def test_get_jobs_by_user(job_service, mock_repo):
     mock_repo.get_by_user_filtered.assert_called_once()
 
 def test_create_job(job_service, mock_repo):
-    job_in = {"title": "New Job"}
+    job_in = JobCreate(title="New Job", company="Test Corp", external_url="https://test.com")
     job_service.create_job(1, job_in)
     mock_repo.create.assert_called_once()
     args = mock_repo.create.call_args[0][0]

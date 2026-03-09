@@ -29,17 +29,33 @@ class Settings(BaseSettings):
     
     # Security
     SECRET_KEY: str = "changeme"
+    ALLOWED_HOSTS: List[str] = ["localhost", "127.0.0.1", "testserver"]
+
+    @field_validator("ALLOWED_HOSTS", mode="before")
+    @classmethod
+    def parse_allowed_hosts(cls, v: Any) -> List[str]:
+        if isinstance(v, str):
+            if v.startswith("["):
+                import json
+                try:
+                    return json.loads(v)
+                except Exception:
+                    pass
+            return [i.strip() for i in v.split(",") if i.strip()]
+        return v
 
     @field_validator("SECRET_KEY")
     @classmethod
-    def warn_default_secret_key(cls, v: str) -> str:
-        if v == "changeme":
+    def validate_secret_key(cls, v: str) -> str:
+        import os
+        if v == "changeme" and not os.getenv("TESTING"):
             import logging
-            logging.warning("⚠️ USING DEFAULT INSECURE SECRET_KEY! Set SECRET_KEY in .env for production.")
+            logging.critical("CRITICAL: Default SECRET_KEY is in use! Set SECRET_KEY in .env for production.")
+            raise ValueError("Insecure default SECRET_KEY in use. Set SECRET_KEY in your environment.")
         return v
     ALGORITHM: str = "HS256"
-    ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24 * 8  # 8 days
-    
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 15  # 15 minutes
+    REFRESH_TOKEN_EXPIRE_DAYS: int = 7     # 7 days
     # ─── Global LLM (used as fallback for all steps) ───────────────────────────
     LLM_PROVIDER: str = "groq"
     LLM_API_KEY: str = ""

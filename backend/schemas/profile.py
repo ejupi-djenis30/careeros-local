@@ -1,4 +1,4 @@
-from pydantic import BaseModel, ConfigDict, field_validator
+from pydantic import BaseModel, ConfigDict, field_validator, Field
 from typing import Optional, Any
 from datetime import datetime
 
@@ -25,7 +25,7 @@ class SearchProfileBase(BaseModel):
     
     # Schedule
     schedule_enabled: Optional[bool] = False
-    schedule_interval_hours: Optional[int] = 24
+    schedule_interval_hours: Optional[int] = Field(default=24, ge=1)
     
     @field_validator("max_queries", mode="before")
     @classmethod
