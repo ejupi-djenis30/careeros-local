@@ -112,8 +112,22 @@ def health():
 
 
 @app.get("/")
-def root():
+async def root():
+    from backend.db.base import SessionLocal
+    from sqlalchemy import text
+    db_status = "unavailable"
+    try:
+        db = SessionLocal()
+        try:
+            db.execute(text("SELECT 1"))
+            db_status = "connected"
+        finally:
+            db.close()
+    except Exception:
+        db_status = "unavailable"
+
     return {
         "message": "Job Hunter AI API",
         "status": "online",
+        "database": db_status,
     }
