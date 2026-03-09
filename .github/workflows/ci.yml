@@ -53,7 +53,7 @@ jobs:
 
       - name: Run tests (SQLite)
         env:
-          JWT_SECRET_KEY: ci-test-secret-key-not-for-production
+          SECRET_KEY: ci-test-secret-key-not-for-production
           LLM_PROVIDER: groq
           DATABASE_URL: sqlite:///./test.db
         run: |
@@ -61,7 +61,7 @@ jobs:
 
       - name: Run tests (PostgreSQL)
         env:
-          JWT_SECRET_KEY: ci-test-secret-key-not-for-production
+          SECRET_KEY: ci-test-secret-key-not-for-production
           LLM_PROVIDER: groq
           DATABASE_URL: postgresql://testuser:testpass@localhost:5432/testdb
         run: |
