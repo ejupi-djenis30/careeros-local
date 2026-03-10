@@ -213,7 +213,7 @@ class SearchService:
                 
                 profession_codes = []
                 if query_type == "occupation":
-                    profession_codes = avam_mapper.resolve(query)
+                    profession_codes = await avam_mapper.resolve(query)
 
                 compatible = get_compatible_providers(domain, available_providers, provider_infos)
                 if not compatible:
