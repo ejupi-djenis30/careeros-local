@@ -1,73 +1,16 @@
-...........................................F............................ [ 67%]
-...................................                                      [100%]
+........................................................................ [ 69%]
+...........F...................                                          [100%]
 ================================== FAILURES ===================================
-_______________________ test_generate_search_plan_error _______________________
-backend\venv\Lib\site-packages\tenacity\__init__.py:473: in __call__
-    result = fn(*args, **kwargs)
-             ^^^^^^^^^^^^^^^^^^^
-backend\services\llm_service.py:74: in generate_search_plan
-    result = provider.generate_json(system_prompt, user_prompt)
-             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-..\..\..\AppData\Local\Python\pythoncore-3.14-64\Lib\unittest\mock.py:1175: in __call__
-    return self._mock_call(*args, **kwargs)
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-..\..\..\AppData\Local\Python\pythoncore-3.14-64\Lib\unittest\mock.py:1179: in _mock_call
-    return self._execute_mock_call(*args, **kwargs)
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-..\..\..\AppData\Local\Python\pythoncore-3.14-64\Lib\unittest\mock.py:1234: in _execute_mock_call
-    raise effect
-backend\venv\Lib\site-packages\tenacity\__init__.py:473: in __call__
-    result = fn(*args, **kwargs)
-             ^^^^^^^^^^^^^^^^^^^
-backend\services\llm_service.py:74: in generate_search_plan
-    result = provider.generate_json(system_prompt, user_prompt)
-             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-..\..\..\AppData\Local\Python\pythoncore-3.14-64\Lib\unittest\mock.py:1175: in __call__
-    return self._mock_call(*args, **kwargs)
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-..\..\..\AppData\Local\Python\pythoncore-3.14-64\Lib\unittest\mock.py:1179: in _mock_call
-    return self._execute_mock_call(*args, **kwargs)
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-..\..\..\AppData\Local\Python\pythoncore-3.14-64\Lib\unittest\mock.py:1234: in _execute_mock_call
-    raise effect
-backend\venv\Lib\site-packages\tenacity\__init__.py:473: in __call__
-    result = fn(*args, **kwargs)
-             ^^^^^^^^^^^^^^^^^^^
-backend\services\llm_service.py:74: in generate_search_plan
-    result = provider.generate_json(system_prompt, user_prompt)
-             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-..\..\..\AppData\Local\Python\pythoncore-3.14-64\Lib\unittest\mock.py:1175: in __call__
-    return self._mock_call(*args, **kwargs)
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-..\..\..\AppData\Local\Python\pythoncore-3.14-64\Lib\unittest\mock.py:1179: in _mock_call
-    return self._execute_mock_call(*args, **kwargs)
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-..\..\..\AppData\Local\Python\pythoncore-3.14-64\Lib\unittest\mock.py:1234: in _execute_mock_call
-    raise effect
-E   Exception: LLM Error
-
-The above exception was the direct cause of the following exception:
-tests\backend\unit\test_llm_service.py:43: in test_generate_search_plan_error
-    plan = service.generate_search_plan({}, [])
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-backend\venv\Lib\site-packages\tenacity\__init__.py:331: in wrapped_f
-    return copy(f, *args, **kw)
-           ^^^^^^^^^^^^^^^^^^^^
-backend\venv\Lib\site-packages\tenacity\__init__.py:470: in __call__
-    do = self.iter(retry_state=retry_state)
-         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-backend\venv\Lib\site-packages\tenacity\__init__.py:371: in iter
-    result = action(retry_state)
-             ^^^^^^^^^^^^^^^^^^^
-backend\venv\Lib\site-packages\tenacity\__init__.py:414: in exc_check
-    raise retry_exc from fut.exception()
-E   tenacity.RetryError: RetryError[<Future at 0x235c010ce90 state=finished raised Exception>]
----------------------------- Captured stderr call -----------------------------
-02:26:29 \u2502 INFO     \u2502 backend.services.llm_service \u2502 [PLAN] Using groq/test-model\n02:26:31 \u2502 INFO     \u2502 backend.services.llm_service \u2502 [PLAN] Using groq/test-model\n02:26:33 \u2502 INFO     \u2502 backend.services.llm_service \u2502 [PLAN] Using groq/test-model
------------------------------- Captured log call ------------------------------
-INFO     backend.services.llm_service:llm_service.py:27 [PLAN] Using groq/test-model
-INFO     backend.services.llm_service:llm_service.py:27 [PLAN] Using groq/test-model
-INFO     backend.services.llm_service:llm_service.py:27 [PLAN] Using groq/test-model
+___________________________ test_run_search_success ___________________________
+tests\backend\unit\test_search_service.py:87: in test_run_search_success
+    patch("backend.services.search_service.process_job_listing", return_value=True):
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+..\..\..\AppData\Local\Python\pythoncore-3.14-64\Lib\unittest\mock.py:1503: in __enter__
+    original, local = self.get_original()
+                      ^^^^^^^^^^^^^^^^^^^
+..\..\..\AppData\Local\Python\pythoncore-3.14-64\Lib\unittest\mock.py:1473: in get_original
+    raise AttributeError(
+E   AttributeError: <module 'backend.services.search_service' from 'C:\\Users\\ejupi\\Documents\\Projects\\job-hunter-ai\\backend\\services\\search_service.py'> does not have the attribute 'process_job_listing'
 ============================== warnings summary ===============================
 backend\venv\Lib\site-packages\slowapi\extension.py:717
 backend\venv\Lib\site-packages\slowapi\extension.py:717
@@ -79,5 +22,5 @@ backend\venv\Lib\site-packages\slowapi\extension.py:717
 
 -- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
 =========================== short test summary info ===========================
-FAILED tests/backend/unit/test_llm_service.py::test_generate_search_plan_error
-1 failed, 106 passed, 5 warnings in 132.58s (0:02:12)
+FAILED tests/backend/unit/test_search_service.py::test_run_search_success - A...
+1 failed, 102 passed, 5 warnings in 145.12s (0:02:25)

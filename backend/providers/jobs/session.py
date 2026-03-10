@@ -2,6 +2,7 @@ import logging
 import httpx
 from enum import Enum
 from typing import Optional, Any, Dict
+from tenacity import retry, stop_after_attempt, wait_exponential
 
 logger = logging.getLogger(__name__)
 
@@ -52,6 +53,7 @@ class ScraperSession:
                 logger.info("CSRF Token refreshed")
                 break
 
+    @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=10))
     async def with_retry_csrf(self, method: str, url: str, csrf_refresh_url: str, json: Optional[Dict] = None):
         if not self.client:
             await self.start()

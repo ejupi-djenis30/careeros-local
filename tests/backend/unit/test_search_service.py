@@ -83,8 +83,7 @@ async def test_run_search_success(search_service, mock_profile_repo, mock_job_re
          patch("backend.services.search_service.update_status"), \
          patch("backend.services.search_service.JobRoomProvider", return_value=mock_provider), \
          patch("backend.services.search_service.SwissDevJobsProvider", return_value=mock_provider), \
-         patch("backend.services.search_service.LocalDbProvider", return_value=mock_provider), \
-         patch("backend.services.search_service.process_job_listing", return_value=True):
+         patch("backend.services.search_service.LocalDbProvider", return_value=mock_provider):
         
         # New format: domain instead of provider
         mock_llm.generate_search_plan.return_value = [

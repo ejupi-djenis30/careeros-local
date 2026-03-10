@@ -6,7 +6,6 @@ from backend.repositories.job_repository import JobRepository
 from backend.repositories.profile_repository import ProfileRepository
 from backend.services.llm_service import llm_service
 from backend.services.search.search_validator import build_search_request
-from backend.services.search.search_executor import process_job_listing
 from backend.providers.jobs.jobroom.client import JobRoomProvider
 from backend.providers.jobs.swissdevjobs.client import SwissDevJobsProvider
 from backend.providers.jobs.localdb.client import LocalDbProvider
@@ -227,7 +226,8 @@ class SearchService:
                         current_page = 0
                         while current_page < max_pages:
                             # Use model_copy to avoid concurrent modification bugs if providers run in parallel
-                            page_req = req.model_copy(update={"page": current_page})
+                            page_size = provider.capabilities.max_page_size if hasattr(provider, "capabilities") and hasattr(provider.capabilities, "max_page_size") else 50
+                            page_req = req.model_copy(update={"page": current_page, "page_size": page_size})
                             result = await provider.search(page_req)
                             all_provider_jobs.extend(result.items)
                             
@@ -314,25 +314,6 @@ class SearchService:
     async def _analyze_and_save(self, profile_id: int, profile_dict: dict, unique_jobs: list) -> tuple[int, int]:
         semaphore = asyncio.Semaphore(15)
 
-        async def analyze_only(job, idx, total):
-            async with semaphore:
-                status_data = get_status(profile_id)
-                if status_data.get("state") in ["stopped", "cancelled", "finished", "failed"]:
-                    return job, False # Skipped/Stopped
-                    
-                add_log(profile_id, f"Analyzing {idx + 1}/{total}: {job.title}")
-                try:
-                    # process_job_listing returns True if it SAVED the job. 
-                    # We modified it to handle DB internally still, let's keep the existing behaviour 
-                    # from `search_executor.py` but we pass a single DB session down below instead of making 10 at a time.
-                    pass
-                except Exception as e:
-                    logger.warning(f"Failed to process job {job.id}: {e}")
-                    add_log(profile_id, f"⚠ Failed: {job.title} – {e}")
-                    return job, False
-                    
-                return job, True
-
         # To fix the DB connection pool issue, we manage ONE session here and pass it,
         # but SQLAlchemy sessions are NOT thread-safe for async parallel writes.
         # So we split: 1. Deep LLM Analysis (Concurrent). 2. DB insertion (Sequential/Batch).
@@ -345,7 +326,7 @@ class SearchService:
                     return None
                     
                 add_log(profile_id, f"Analyzing {idx + 1}/{total}: {job.title}")
-                from backend.services.search.search_executor import llm_service
+                from backend.services.llm_service import llm_service
                 
                 desc_text = job.descriptions[0].description if job.descriptions else ""
                 job_metadata = {
