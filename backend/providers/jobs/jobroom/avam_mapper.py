@@ -55,6 +55,103 @@ AVAM_MAPPING: Dict[str, List[str]] = {
     ],
     "61002": [
         "marketing manager", "marketing", "digital marketing"
+    ],
+
+    # Retail & Sales
+    "52202": [
+        "cashier", "kassierer", "caissier", "cassiere", "kasse"
+    ],
+    "52201": [
+        "shop assistant", "sales assistant", "verkäufer", "detailhandelsfachmann", "vendeur", "commesso", "retail"
+    ],
+    "52203": [
+        "store manager", "filialleiter", "gérant de magasin", "direttore di negozio"
+    ],
+
+    # Hospitality & Gastronomy
+    "51202": [
+        "waiter", "waitress", "kellner", "servicemitarbeiter", "serveur", "cameriere", "service"
+    ],
+    "51201": [
+        "chef", "cook", "koch", "cuisinier", "cuoco", "küchenhilfe", "commis de cuisine"
+    ],
+    "51101": [
+        "receptionist", "rezeptionist", "réceptionniste", "reception"
+    ],
+    "51301": [
+        "bartender", "barkeeper", "barista", "barman"
+    ],
+
+    # Construction & Manual Labor
+    "71101": [
+        "bricklayer", "mason", "maurer", "maçon", "muratore"
+    ],
+    "71201": [
+        "carpenter", "zimmermann", "schreiner", "charpentier", "falegname"
+    ],
+    "71301": [
+        "electrician", "elektriker", "électricien", "elettricista"
+    ],
+    "71401": [
+        "painter", "maler", "peintre", "pittore"
+    ],
+    "71302": [
+        "plumber", "sanitärinstallateur", "plombier", "idraulico"
+    ],
+    "93101": [
+        "unskilled worker", "laborer", "hilfsarbeiter", "bauarbeiter", "manoeuvre", "operaio edile", "construction worker"
+    ],
+
+    # Logistics & Transport
+    "83201": [
+        "warehouse worker", "lagerist", "logistiker", "magasinier", "magazziniere", "warehouse"
+    ],
+    "83301": [
+        "driver", "chauffeur", "fahrer", "conducteur", "autista", "delivery driver", "kurier"
+    ],
+    "83302": [
+        "forklift driver", "staplerfahrer", "cariste", "carrellista"
+    ],
+
+    # Cleaning & Facility Management
+    "91102": [
+        "cleaner", "reinigungspersonal", "reinigungsmitarbeiter", "nettoyeur", "femme de ménage", "addetto alle pulizie", "cleaning"
+    ],
+    "91101": [
+        "janitor", "hauswart", "concierge", "custode", "facility manager"
+    ],
+
+    # Healthcare & Nursing
+    "32201": [
+        "nurse", "pflegefachfrau", "pflegefachkrankenschwester", "infirmière", "infermiere", "registered nurse"
+    ],
+    "53201": [
+        "care assistant", "pflegehelfer", "aide-soignant", "operatore socio-sanitario", "caregiver"
+    ],
+    "32101": [
+        "medical assistant", "medizinischer praxisassistent", "mpa", "assistante médicale", "assistente medico"
+    ],
+
+    # Manufacturing & Production
+    "81001": [
+        "production worker", "produktionsmitarbeiter", "ouvrier de production", "operaio di produzione", "factory worker", "assembler"
+    ],
+    "81002": [
+        "machine operator", "maschinenführer", "opérateur de machine", "operatore di macchina"
+    ],
+    "72101": [
+        "mechanic", "mechaniker", "mechanicien", "meccanico"
+    ],
+
+    # Administration & Clerical
+    "41101": [
+        "clerk", "administrative assistant", "kaufmännischer angestellter", "employé de commerce", "impiegato di commercio", "admin assistant"
+    ],
+    "41201": [
+        "secretary", "sekretär", "secrétaire", "segretario"
+    ],
+    "42201": [
+        "customer service", "kundendienst", "service client", "servizio clienti", "call center"
     ]
 }
 
