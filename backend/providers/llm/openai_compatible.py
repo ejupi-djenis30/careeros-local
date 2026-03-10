@@ -1,7 +1,7 @@
 import json
 import logging
 from typing import Dict, Any, Optional
-from openai import OpenAI
+from openai import OpenAI, AsyncOpenAI
 from backend.providers.llm.base import LLMProvider
 
 logger = logging.getLogger(__name__)
@@ -27,6 +27,7 @@ class OpenAICompatibleProvider(LLMProvider):
         provider_name: str = "openai",
     ):
         self.client = OpenAI(api_key=api_key, base_url=base_url)
+        self.async_client = AsyncOpenAI(api_key=api_key, base_url=base_url)
         self.model = model
         self.temperature = temperature
         self.top_p = top_p
@@ -136,4 +137,62 @@ class OpenAICompatibleProvider(LLMProvider):
                 raise parse_err
         except Exception as e:
             logger.error(f"LLM JSON Error ({self.model_id}): {e}")
+            raise
+
+    async def generate_text_async(self, system_prompt: str, user_prompt: str, max_tokens: Optional[int] = None) -> str:
+        params = {
+            "model": self.model,
+            "messages": [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt},
+            ],
+            "max_tokens": max_tokens or self.max_tokens,
+            "temperature": self.temperature,
+            "top_p": self.top_p,
+        }
+        
+        if self.provider_name == "deepseek" and self.thinking:
+            params.pop("temperature", None)
+            params.pop("top_p", None)
+
+        try:
+            completion = await self.async_client.chat.completions.create(**params)
+            message = completion.choices[0].message
+            content = message.content or ""
+            
+            if getattr(message, "reasoning_content", None):
+                logger.debug(f"DeepSeek Reasoning Trace: {message.reasoning_content[:200]}...")
+            
+            return content
+        except Exception as e:
+            logger.error(f"Async LLM Error ({self.model_id}): {e}")
+            raise
+
+    async def generate_json_async(self, system_prompt: str, user_prompt: str, max_tokens: Optional[int] = None) -> Dict[str, Any]:
+        params = {
+            "model": self.model,
+            "messages": [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt},
+            ],
+            "max_tokens": max_tokens or self.max_tokens,
+            "temperature": self.temperature,
+            "top_p": self.top_p,
+        }
+
+        if not (self.provider_name == "deepseek" and self.thinking):
+             params["response_format"] = {"type": "json_object"}
+
+        try:
+            completion = await self.async_client.chat.completions.create(**params)
+            content = completion.choices[0].message.content or "{}"
+            clean_text = self._clean_json(content)
+            try:
+                import json
+                return json.loads(clean_text)
+            except Exception as parse_err:
+                logger.error(f"Failed to parse JSON from {self.model_id}. Raw output:\n{content}\nCleaned:\n{clean_text}")
+                raise parse_err
+        except Exception as e:
+            logger.error(f"Async LLM JSON Error ({self.model_id}): {e}")
             raise

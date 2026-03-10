@@ -30,26 +30,30 @@ class JobRepository(BaseRepository[Job]):
             .all()
         )
 
-    def get_user_job_identifiers(self, user_id: int) -> List[Tuple[str, str, str]]:
-        """Returns lightweight tuples of (platform, platform_job_id, external_url) for all user jobs."""
+    def get_user_job_identifiers(self, user_id: int) -> List[Tuple[str, str, str, str, str]]:
+        """Returns lightweight tuples of (platform, platform_job_id, external_url, title, company) for all user jobs."""
         return (
             self.db.query(
                 ScrapedJob.platform,
                 ScrapedJob.platform_job_id,
-                ScrapedJob.external_url
+                ScrapedJob.external_url,
+                ScrapedJob.title,
+                ScrapedJob.company
             )
             .join(self.model.scraped_job)
             .filter(self.model.user_id == user_id)
             .all()
         )
 
-    def get_profile_job_identifiers(self, profile_id: int) -> List[Tuple[str, str, str]]:
-        """Returns lightweight tuples of (platform, platform_job_id, external_url) for jobs in a specific profile."""
+    def get_profile_job_identifiers(self, profile_id: int) -> List[Tuple[str, str, str, str, str]]:
+        """Returns lightweight tuples of (platform, platform_job_id, external_url, title, company) for jobs in a specific profile."""
         return (
             self.db.query(
                 ScrapedJob.platform,
                 ScrapedJob.platform_job_id,
-                ScrapedJob.external_url
+                ScrapedJob.external_url,
+                ScrapedJob.title,
+                ScrapedJob.company
             )
             .join(self.model.scraped_job)
             .filter(self.model.search_profile_id == profile_id)

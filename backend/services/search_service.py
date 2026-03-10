@@ -91,6 +91,16 @@ class SearchService:
             if not searches:
                 return
 
+            cv_summary = ""
+            if profile_dict.get("cv_content"):
+                try:
+                    cv_summary = await llm_service.summarize_cv(profile_dict["cv_content"])
+                    add_log(profile_id, "CV summary generated for efficient analysis")
+                except Exception as e:
+                    logger.warning(f"CV summarization failed: {e}")
+                    cv_summary = profile_dict["cv_content"]
+            profile_dict["cv_summary"] = cv_summary
+
             # ── Step 2: Execute searches with domain routing ──
             update_status(profile_id, state="searching")
             all_jobs = await self._execute_searches(profile_id, profile, searches, available_providers, provider_infos)
@@ -100,12 +110,21 @@ class SearchService:
             # ── Step 3: Deduplicate ──
             unique_jobs, duplicates = self._deduplicate(profile, all_jobs)
             add_log(profile_id, f"After dedup: {len(unique_jobs)} new, {duplicates} duplicates")
+
+            # ── Step 3.5: Relevance Pre-Filter (cheap LLM check) ──
+            filtered_jobs = await self._relevance_filter(profile_id, profile_dict, unique_jobs)
+            add_log(profile_id, f"Relevance filter: {len(filtered_jobs)} relevant out of {len(unique_jobs)}")
+            
+            skipped_by_relevance = len(unique_jobs) - len(filtered_jobs)
+            unique_jobs = filtered_jobs
+
             update_status(
                 profile_id,
                 state="analyzing",
                 jobs_found=len(all_jobs),
                 jobs_new=len(unique_jobs),
                 jobs_duplicates=duplicates,
+                jobs_skipped=skipped_by_relevance,
             )
 
             # ── Step 4: Analyze & save each unique job (Parallel) ──
@@ -142,8 +161,8 @@ class SearchService:
 
     async def _generate_plan(self, profile_id: int, profile_dict: dict, profile, available_providers, provider_infos) -> list:
         try:
-            searches = await asyncio.to_thread(
-                llm_service.generate_search_plan, profile_dict, list(provider_infos.values()), profile.max_queries
+            searches = await llm_service.generate_search_plan(
+                profile_dict, list(provider_infos.values()), profile.max_queries
             )
         except Exception as e:
             logger.error(f"LLM keyword generation failed: {e}")
@@ -197,7 +216,7 @@ class SearchService:
         call_index = 0
 
         # Limit the number of parallel query executions to avoid overwhelming providers
-        semaphore = asyncio.Semaphore(3)
+        semaphore = asyncio.Semaphore(settings.SEARCH_CONCURRENCY)
 
         async def execute_single_search(idx: int, search: dict):
             nonlocal call_index
@@ -285,16 +304,28 @@ class SearchService:
         return all_jobs
 
     def _deduplicate(self, profile, all_jobs: list) -> tuple[list, int]:
+        import re
+        
+        def get_fuzzy_key(title: str, company: str) -> str:
+            t = re.sub(r'[^\w\s]', '', (title or "").lower()).strip()
+            c = re.sub(r'[^\w\s]', '', (company or "").lower()).strip()
+            return f"{t}::{c}"
+            
         seen_keys: set = set()
+        seen_fuzzy_keys: set = set()
         unique_jobs: list = []
         
-        # Use profile-specific identifiers instead of user-wide to allow re-analysis for different searches
         existing_identifiers = self.job_repo.get_profile_job_identifiers(profile.id)
+        
         existing_keys = {
             f"{row.platform}:{row.platform_job_id}" for row in existing_identifiers
             if row.platform and row.platform_job_id
         }
         existing_urls = {row.external_url for row in existing_identifiers if row.external_url}
+        existing_fuzzy_keys = {
+            get_fuzzy_key(row.title, row.company) for row in existing_identifiers
+            if getattr(row, "title", None) and getattr(row, "company", None)
+        }
 
         for listing in all_jobs:
             platform = getattr(listing, "source", "unknown")
@@ -303,92 +334,162 @@ class SearchService:
             key = f"{platform}:{platform_id}"
             url = getattr(listing, "external_url", None) or getattr(listing, "url", None) or platform_id
             
+            title = getattr(listing, "title", "Unknown")
+            company = getattr(listing, "company").name if getattr(listing, "company", None) else "Unknown"
+            fuzzy_key = get_fuzzy_key(title, company)
+            
+            # Match strictly by ID or URL
             if (platform and platform_id and (key in seen_keys or key in existing_keys)) or \
                (url and (url in existing_urls and key not in existing_keys)):
                    continue
+            
+            # Match fuzzily (same core title and same core company)
+            if fuzzy_key and fuzzy_key != "::" and (fuzzy_key in existing_fuzzy_keys or fuzzy_key in seen_fuzzy_keys):
+                continue
                    
             if platform and platform_id:
                 seen_keys.add(key)
             if url:
                 existing_urls.add(url)
+            if fuzzy_key and fuzzy_key != "::":
+                seen_fuzzy_keys.add(fuzzy_key)
                 
             unique_jobs.append(listing)
 
         duplicates = len(all_jobs) - len(unique_jobs)
         return unique_jobs, duplicates
 
+    async def _relevance_filter(self, profile_id: int, profile_dict: dict, jobs: list, batch_size: int = 20) -> list:
+        """Use cheap RELEVANCE LLM to filter obviously irrelevant jobs."""
+        from backend.services.llm_service import llm_service
+        
+        relevant_jobs = []
+        for i in range(0, len(jobs), batch_size):
+            batch = jobs[i:i + batch_size]
+            job_data = [
+                {"title": getattr(j, "title", "Unknown"), "company": getattr(j, "company").name if getattr(j, "company", None) else "Unknown"}
+                for j in batch
+            ]
+            try:
+                results = await llm_service.check_relevance_batch(
+                    job_data,
+                    profile_dict.get("role_description", ""),
+                )
+                for j, is_relevant in zip(batch, results):
+                    if is_relevant:
+                        relevant_jobs.append(j)
+                    else:
+                        add_log(profile_id, f"  ✗ Filtered: {getattr(j, 'title', 'Unknown')}")
+            except Exception as e:
+                logger.warning(f"Relevance filter batch failed: {e}, keeping all jobs")
+                relevant_jobs.extend(batch)
+        
+        return relevant_jobs
+
     async def _analyze_and_save(self, profile_id: int, profile_dict: dict, unique_jobs: list) -> tuple[int, int]:
-        semaphore = asyncio.Semaphore(15)
+        semaphore = asyncio.Semaphore(settings.ANALYSIS_CONCURRENCY)
+        batch_size = settings.ANALYSIS_BATCH_SIZE
 
-        # To fix the DB connection pool issue, we manage ONE session here and pass it,
-        # but SQLAlchemy sessions are NOT thread-safe for async parallel writes.
-        # So we split: 1. Deep LLM Analysis (Concurrent). 2. DB insertion (Sequential/Batch).
+        # First, run the pure LLM analysis (batched)
+        batches = [unique_jobs[i:i+batch_size] for i in range(0, len(unique_jobs), batch_size)]
 
-        # First, run the pure LLM analysis for all the jobs
-        async def analyze_job_data(job, idx, total):
+        async def analyze_batch(batch, batch_idx, total_batches):
             async with semaphore:
                 status_data = get_status(profile_id)
                 if status_data.get("state") in ["stopped", "cancelled", "finished", "failed"]:
-                    return None
+                    return []
                     
-                add_log(profile_id, f"Analyzing {idx + 1}/{total}: {job.title}")
+                add_log(profile_id, f"Analyzing batch {batch_idx+1}/{total_batches} ({len(batch)} jobs)")
                 from backend.services.llm_service import llm_service
                 
-                desc_text = job.descriptions[0].description if job.descriptions else ""
-                job_metadata = {
-                    "title": job.title,
-                    "description": desc_text, 
-                    "location": job.location.city if job.location else "Unknown",
-                    "workload": f"{job.employment.workload_min}-{job.employment.workload_max}%" if job.employment else "Unknown",
-                    "languages": [f"{s.language_code} ({s.spoken_level})" for s in job.language_skills] if getattr(job, "language_skills", None) else [],
-                    "company": job.company.name if job.company else "Unknown",
-                }
+                jobs_metadata = []
+                for job in batch:
+                    desc_text = job.descriptions[0].description if getattr(job, "descriptions", []) else ""
+                    if len(desc_text) > settings.MAX_DESCRIPTION_CHARS:
+                        desc_text = desc_text[:settings.MAX_DESCRIPTION_CHARS] + "…"
+
+                    jobs_metadata.append({
+                        "title": getattr(job, "title", "Unknown"),
+                        "description": desc_text, 
+                        "location": job.location.city if getattr(job, "location", None) else "Unknown",
+                        "workload": f"{job.employment.workload_min}-{job.employment.workload_max}%" if getattr(job, "employment", None) else "Unknown",
+                        "languages": [f"{s.language_code} ({s.spoken_level})" for s in getattr(job, "language_skills", [])] if getattr(job, "language_skills", None) else [],
+                        "company": job.company.name if getattr(job, "company", None) else "Unknown",
+                        "_original_desc": desc_text,
+                    })
                 
                 try:
-                    analysis = await asyncio.to_thread(llm_service.analyze_job_match, job_metadata, profile_dict)
-                    if not analysis.get("relevant", True):
-                        return None
-                    return (job, analysis, desc_text)
+                    results = await llm_service.analyze_job_batch(
+                        jobs_metadata, profile_dict
+                    )
+                    
+                    valid = []
+                    if len(results) != len(batch):
+                        add_log(profile_id, f"⚠ Batch {batch_idx+1} result length mismatch (expect {len(batch)}, got {len(results)})")
+                        return valid
+                        
+                    for job, meta, analysis in zip(batch, jobs_metadata, results):
+                        if analysis.get("relevant", True):
+                            valid.append((job, analysis, meta["_original_desc"]))
+                    return valid
                 except Exception as e:
-                    add_log(profile_id, f"⚠ Failed analyzing: {job.title} – {e}")
-                    return None
+                    add_log(profile_id, f"⚠ Failed analyzing batch {batch_idx+1}: {e}")
+                    return []
 
-        tasks = [analyze_job_data(job, idx, len(unique_jobs)) for idx, job in enumerate(unique_jobs)]
-        analysis_results = await asyncio.gather(*tasks)
+        tasks = [analyze_batch(batch, i, len(batches)) for i, batch in enumerate(batches)]
+        batch_results = await asyncio.gather(*tasks)
         
-        # Now do the DB saving sequentially using ONE connection
+        # Flatten results and calculate jobs_analyzed progress
+        analysis_results = []
+        jobs_analyzed_count = 0
+        for b_res in batch_results:
+            analysis_results.extend(b_res)
+            jobs_analyzed_count += settings.ANALYSIS_BATCH_SIZE
+            update_status(profile_id, jobs_analyzed=min(jobs_analyzed_count, len(unique_jobs)), jobs_analyze_total=len(unique_jobs))
+        
+        # Now do the DB saving
         saved_count = 0
-        skipped_count = len(unique_jobs)
+        skipped_count = len(unique_jobs) - len(analysis_results)
         
-        valid_results = [r for r in analysis_results if r is not None]
-        skipped_count -= len(valid_results) # those skipped due to LLM irrelevance
-        
-        if valid_results:
+        if analysis_results:
             from backend.models import ScrapedJob, Job
             from backend.services.utils import haversine_distance, clean_html_tags
             import datetime
             
             db_session = SessionLocal()
             try:
-                for job, analysis, desc_text in valid_results:
+                # Pre-fetch existing ScrapedJobs
+                job_ids = [str(job.id) for job, _, _ in analysis_results]
+                sources = [job.source for job, _, _ in analysis_results]
+                
+                existing_scraped = db_session.query(ScrapedJob).filter(
+                    ScrapedJob.platform.in_(sources),
+                    ScrapedJob.platform_job_id.in_(job_ids)
+                ).all()
+                scraped_map = {(sj.platform, sj.platform_job_id): sj for sj in existing_scraped}
+
+                new_scraped_jobs = []
+                job_records = []
+
+                for job, analysis, desc_text in analysis_results:
                     company = job.company.name if job.company else "Unknown"
-                    location_str = job.location.city if job.location else ""
+                    location_str = job.location.city if getattr(job, "location", None) else ""
                     
                     workload_str = ""
-                    if job.employment:
+                    if getattr(job, "employment", None):
                         wmin = job.employment.workload_min
                         wmax = job.employment.workload_max
                         workload_str = f"{wmin}-{wmax}%" if wmin != wmax else f"{wmin}%"
 
-                    app_url = job.application.form_url if job.application else None
-                    app_email = job.application.email if job.application else None
+                    app_url = job.application.form_url if getattr(job, "application", None) else None
+                    app_email = job.application.email if getattr(job, "application", None) else None
 
-                    final_external_url = job.external_url
+                    final_external_url = getattr(job, "external_url", None)
                     if not final_external_url and job.source == "job_room":
                         final_external_url = f"https://www.job-room.ch/job-search/{job.id}"
 
                     pub_date = None
-                    if job.publication and job.publication.start_date:
+                    if getattr(job, "publication", None) and job.publication.start_date:
                         try:
                             date_raw = job.publication.start_date
                             if "T" in date_raw:
@@ -401,7 +502,7 @@ class SearchService:
 
                     distance_km = None
                     if (profile_dict.get("latitude") is not None and profile_dict.get("longitude") is not None and 
-                        job.location and job.location.coordinates):
+                        getattr(job, "location", None) and job.location.coordinates):
                         distance_km = round(
                             haversine_distance(
                                 profile_dict["latitude"],
@@ -412,16 +513,14 @@ class SearchService:
                             1,
                         )
 
-                    scraped_job = db_session.query(ScrapedJob).filter(
-                        ScrapedJob.platform == job.source,
-                        ScrapedJob.platform_job_id == str(job.id)
-                    ).first()
+                    key = (job.source, str(job.id))
+                    scraped_job = scraped_map.get(key)
 
                     if not scraped_job:
                         scraped_job = ScrapedJob(
                             platform=job.source,
                             platform_job_id=str(job.id),
-                            title=clean_html_tags(job.title),
+                            title=clean_html_tags(getattr(job, "title", "Unknown")),
                             company=company,
                             description=clean_html_tags(desc_text) if desc_text else None,
                             location=location_str,
@@ -430,27 +529,37 @@ class SearchService:
                             application_email=app_email or None,
                             workload=workload_str or None,
                             publication_date=pub_date,
-                            raw_metadata=job.raw_data,
-                            source_query=job.title,
+                            raw_metadata=getattr(job, "raw_data", None) or {},
+                            source_query=getattr(job, "title", "Unknown"),
                         )
-                        db_session.add(scraped_job)
-                        db_session.flush()
+                        new_scraped_jobs.append(scraped_job)
+                        scraped_map[key] = scraped_job
 
                     db_job = Job(
                         user_id=profile_dict["user_id"],
                         search_profile_id=profile_dict["id"],
-                        scraped_job_id=scraped_job.id,
+                        scraped_job_id=None, # Will set after flush
                         is_scraped=True,
                         affinity_score=analysis.get("affinity_score", 0),
                         affinity_analysis=analysis.get("affinity_analysis", "") if analysis.get("affinity_analysis", "") else None,
                         worth_applying=analysis.get("worth_applying", False),
                         distance_km=distance_km,
                     )
+                    # Use Python attribute so we can link it later
+                    db_job._scraped_job_ref = scraped_job
+                    job_records.append(db_job)
 
-                    db_session.add(db_job)
-                    saved_count += 1
-                
+                if new_scraped_jobs:
+                    db_session.add_all(new_scraped_jobs)
+                    db_session.flush()
+
+                for db_job in job_records:
+                    db_job.scraped_job_id = db_job._scraped_job_ref.id
+                    delattr(db_job, "_scraped_job_ref") # Cleanup
+
+                db_session.add_all(job_records)
                 db_session.commit()
+                saved_count = len(job_records)
             except Exception as e:
                 logger.error(f"Bulk DB save failed: {e}")
                 db_session.rollback()

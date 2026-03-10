@@ -14,16 +14,73 @@ class LLMService:
     so that different steps can transparently use different models/providers.
     """
 
+    def __init__(self):
+        self._provider_cache: Dict[str, Any] = {}
+
+    def _get_provider(self, step: str):
+        if step not in self._provider_cache:
+            self._provider_cache[step] = get_provider_for_step(step)
+        return self._provider_cache[step]
+
+    # ─── New Phase 2 Helpers: CV Summary & Relevance Pre-filter ────────
+
+    @retry(stop=stop_after_attempt(2), wait=wait_exponential(multiplier=1, min=2, max=5))
+    async def summarize_cv(self, cv_content: str) -> str:
+        """Produce a compact CV summary for downstream MATCH calls."""
+        provider = self._get_provider("plan")
+        
+        system_prompt = "You are a CV summarizer. Distill a CV into key skills, experience, and qualifications."
+        user_prompt = f"""Summarize this CV into a compact bullet-point format (max 200 words).
+Focus on: job titles held, years of experience, core technical skills, languages spoken, education level.
+
+CV:
+{cv_content}
+
+Return plain text, NOT JSON."""
+        
+        return await provider.generate_text_async(system_prompt, user_prompt)
+
+    @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=10))
+    async def check_relevance_batch(
+        self,
+        jobs: List[Dict[str, str]],
+        role_description: str,
+    ) -> List[bool]:
+        """Quick binary relevance check for a batch of job titles."""
+        provider = self._get_provider("relevance")
+        
+        system_prompt = (
+            "You are a job title relevance filter. Determine if each job title "
+            "is relevant to the candidate's target role. Be inclusive — if there's "
+            "a reasonable match, mark it relevant."
+        )
+        
+        jobs_text = "\n".join(
+            f'{i+1}. "{j["title"]}" at {j.get("company", "Unknown")}'
+            for i, j in enumerate(jobs)
+        )
+        
+        user_prompt = f"""TARGET ROLE: {role_description}
+
+JOB TITLES:
+{jobs_text}
+
+Return ONLY JSON: {{"results": [true, false, true]}}
+One boolean per job, in order. true = relevant, false = irrelevant."""
+
+        result = await provider.generate_json_async(system_prompt, user_prompt)
+        return result.get("results", [True] * len(jobs))
+
     # ─── Step 1: Search Plan Generation ───────────────────────────────────
 
     @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=10))
-    def generate_search_plan(
+    async def generate_search_plan(
         self,
         profile: Dict[str, Any],
         providers_info: List[Any],
         max_queries: int | None = None,
     ) -> List[Dict[str, Any]]:
-        provider = get_provider_for_step("plan")
+        provider = self._get_provider("plan")
         logger.info(f"[PLAN] Using {provider.model_id}")
 
         system_prompt = (
@@ -71,7 +128,7 @@ Return ONLY pure JSON with a 'searches' list. Example:
     ]
 }}"""
 
-        result = provider.generate_json(system_prompt, user_prompt)
+        result = await provider.generate_json_async(system_prompt, user_prompt)
         searches = result.get("searches", [])
 
         # Application-side enforcement of the limit just in case LLM goes over
@@ -83,12 +140,12 @@ Return ONLY pure JSON with a 'searches' list. Example:
     # ─── Step 3: Combined Title Relevance & Job Match Analysis ──────────────
 
     @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=10))
-    def analyze_job_match(
+    async def analyze_job_match(
         self,
         job_metadata: Dict[str, Any],
         profile: Dict[str, Any],
     ) -> Dict[str, Any]:
-        provider = get_provider_for_step("match")
+        provider = self._get_provider("match")
 
         system_prompt = (
             "You are a strict and precise Career Coach AI. "
@@ -96,13 +153,13 @@ Return ONLY pure JSON with a 'searches' list. Example:
             "and a specific job listing. Be realistic and data-driven."
         )
 
-        user_prompt = f"""Analyze the match between this profile and job.
+        user_prompt = f"""Analyze the match between this profile and job description.
 
 PROFILE:
 - Expected Role: {profile.get('role_description')}
-- Experience Context: {profile.get('cv_content')}
+- Experience Context: {profile.get('cv_summary') or profile.get('cv_content')}
 
-JOB METADATA:
+JOB:
 {job_metadata}
 
 SCORING RULES:
@@ -119,7 +176,56 @@ Return ONLY JSON:
     "worth_applying": true/false
 }}"""
 
-        return provider.generate_json(system_prompt, user_prompt)
+        return await provider.generate_json_async(system_prompt, user_prompt)
+
+    @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=10))
+    async def analyze_job_batch(
+        self,
+        jobs_metadata: List[Dict[str, Any]],
+        profile: Dict[str, Any],
+    ) -> List[Dict[str, Any]]:
+        provider = self._get_provider("match")
+
+        system_prompt = (
+            "You are a strict and precise Career Coach AI. "
+            "Your goal is to evaluate the match between a candidate's profile "
+            "and MULTIPLE job listings. Be realistic and data-driven. "
+            "Return results in the EXACT SAME ORDER as the jobs were given."
+        )
+
+        jobs_text = ""
+        for i, job in enumerate(jobs_metadata):
+            jobs_text += f"\n--- JOB {i+1} ---\n"
+            jobs_text += f"Title: {job.get('title')}\n"
+            jobs_text += f"Company: {job.get('company')}\n"
+            jobs_text += f"Location: {job.get('location')}\n"
+            jobs_text += f"Workload: {job.get('workload')}\n"
+            jobs_text += f"Description: {job.get('description')}\n"
+
+        user_prompt = f"""Analyze the match between this profile and each job below.
+
+PROFILE:
+- Expected Role: {profile.get('role_description')}
+- Experience Context: {profile.get('cv_summary') or profile.get('cv_content')}
+
+{jobs_text}
+
+SCORING RULES:
+1. RELEVANCE CHECK FIRST: Check title and description. If altogether irrelevant, set "relevant" to false.
+2. SENIORITY MISMATCH: Junior→Senior = cap at 50; Senior→Junior = cap at 70.
+3. Score 0-100 realistically. Don't give 90+ unless it's a perfect match.
+4. "worth_applying" should only be true if score >= 60 and relevant=true.
+
+Return ONLY JSON with a "results" array, one entry per job, IN ORDER:
+{{
+    "results": [
+        {{"relevant": true, "affinity_score": 85, "affinity_analysis": "...", "worth_applying": true}},
+        {{"relevant": false, "affinity_score": 10, "affinity_analysis": "...", "worth_applying": false}}
+    ]
+}}"""
+
+        result = await provider.generate_json_async(system_prompt, user_prompt)
+        return result.get("results", [])
 
 
 llm_service = LLMService()

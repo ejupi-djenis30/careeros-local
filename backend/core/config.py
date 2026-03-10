@@ -111,6 +111,12 @@ class Settings(BaseSettings):
     # Scraping
     JOB_ROOM_USER_AGENT: str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
 
+    # Analysis Pipeline Tuning
+    MAX_DESCRIPTION_CHARS: int = 6000
+    SEARCH_CONCURRENCY: int = 3
+    ANALYSIS_CONCURRENCY: int = 15
+    ANALYSIS_BATCH_SIZE: int = 5
+
     # Logging
     LOG_LEVEL: str = "INFO"
 

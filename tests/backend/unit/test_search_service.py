@@ -86,9 +86,9 @@ async def test_run_search_success(search_service, mock_profile_repo, mock_job_re
          patch("backend.services.search_service.LocalDbProvider", return_value=mock_provider):
         
         # New format: domain instead of provider
-        mock_llm.generate_search_plan.return_value = [
+        mock_llm.generate_search_plan = AsyncMock(return_value=[
             {"domain": "it", "query": "Software Engineer", "type": "occupation", "language": "en"}
-        ]
+        ])
         
         await search_service.run_search(1)
         
@@ -115,6 +115,6 @@ async def test_run_search_no_plan(search_service, mock_profile_repo):
          patch("backend.services.search_service.init_status"), \
          patch("backend.services.search_service.add_log"), \
          patch("backend.services.search_service.update_status") as mock_update:
-        mock_llm.generate_search_plan.return_value = []
+        mock_llm.generate_search_plan = AsyncMock(return_value=[])
         await search_service.run_search(1)
         mock_update.assert_any_call(1, state="done", jobs_found=0, jobs_new=0)
