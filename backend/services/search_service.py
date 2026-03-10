@@ -393,20 +393,30 @@ class SearchService:
         # First, run the pure LLM analysis (batched)
         batches = [unique_jobs[i:i+batch_size] for i in range(0, len(unique_jobs), batch_size)]
 
-        async def analyze_batch(batch, batch_idx, total_batches):
+        async def analyze_batch(batch, batch_idx, total_batches, start_idx):
             async with semaphore:
                 status_data = get_status(profile_id)
                 if status_data.get("state") in ["stopped", "cancelled", "finished", "failed"]:
                     return []
                     
-                add_log(profile_id, f"Analyzing batch {batch_idx+1}/{total_batches} ({len(batch)} jobs)")
                 from backend.services.llm_service import llm_service
                 
                 jobs_metadata = []
-                for job in batch:
+                for i, job in enumerate(batch):
+                    title = getattr(job, "title", "Unknown")
+                    add_log(profile_id, f"Analyzing {start_idx + i + 1}/{len(unique_jobs)}: {title}")
+                    
                     desc_text = job.descriptions[0].description if getattr(job, "descriptions", []) else ""
                     if len(desc_text) > settings.MAX_DESCRIPTION_CHARS:
                         desc_text = desc_text[:settings.MAX_DESCRIPTION_CHARS] + "…"
+
+                    education_info = []
+                    for occ in getattr(job, "occupations", []):
+                        if getattr(occ, "education_code", None):
+                            education_info.append(f"Edu: {occ.education_code}")
+                        if getattr(occ, "qualification_code", None):
+                            education_info.append(f"Qual: {occ.qualification_code}")
+                    education_str = ", ".join(education_info) if education_info else "None specified"
 
                     jobs_metadata.append({
                         "title": getattr(job, "title", "Unknown"),
@@ -414,6 +424,7 @@ class SearchService:
                         "location": job.location.city if getattr(job, "location", None) else "Unknown",
                         "workload": f"{job.employment.workload_min}-{job.employment.workload_max}%" if getattr(job, "employment", None) else "Unknown",
                         "languages": [f"{s.language_code} ({s.spoken_level})" for s in getattr(job, "language_skills", [])] if getattr(job, "language_skills", None) else [],
+                        "education": education_str,
                         "company": job.company.name if getattr(job, "company", None) else "Unknown",
                         "_original_desc": desc_text,
                     })
@@ -436,7 +447,7 @@ class SearchService:
                     add_log(profile_id, f"⚠ Failed analyzing batch {batch_idx+1}: {e}")
                     return []
 
-        tasks = [analyze_batch(batch, i, len(batches)) for i, batch in enumerate(batches)]
+        tasks = [analyze_batch(batch, i, len(batches), i * batch_size) for i, batch in enumerate(batches)]
         batch_results = await asyncio.gather(*tasks)
         
         # Flatten results and calculate jobs_analyzed progress

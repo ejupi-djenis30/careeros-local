@@ -29,14 +29,19 @@ class LLMService:
         """Produce a compact CV summary for downstream MATCH calls."""
         provider = self._get_provider("plan")
         
-        system_prompt = "You are a CV summarizer. Distill a CV into key skills, experience, and qualifications."
-        user_prompt = f"""Summarize this CV into a compact bullet-point format (max 200 words).
-Focus on: job titles held, years of experience, core technical skills, languages spoken, education level.
+        system_prompt = "You are an expert HR Analyst. Extract key information from a CV into a structured summary that downstream AI matchers will use to assess job fit."
+        user_prompt = f"""Summarize this CV into a compact, clearly structured text (max 250 words).
+CRITICAL: You MUST explicitly list the following details:
+1. Highest Education Level (e.g., No Degree, Bachelor's, Master's, PhD)
+2. Languages Spoken (with proficiency levels)
+3. Total Years of Experience & Seniority Level (Junior, Mid, Senior, Lead)
+4. Core Technical Skills & Tools
+5. Past Job Titles Held
 
 CV:
 {cv_content}
 
-Return plain text, NOT JSON."""
+Return plain text, NOT JSON. Use bullet points for readability."""
         
         return await provider.generate_text_async(system_prompt, user_prompt)
 
@@ -45,14 +50,14 @@ Return plain text, NOT JSON."""
         self,
         jobs: List[Dict[str, str]],
         role_description: str,
+        search_strategy: str = "",
     ) -> List[bool]:
         """Quick binary relevance check for a batch of job titles."""
         provider = self._get_provider("relevance")
         
         system_prompt = (
-            "You are a job title relevance filter. Determine if each job title "
-            "is relevant to the candidate's target role. Be inclusive — if there's "
-            "a reasonable match, mark it relevant."
+            "You are a strict job title relevance filter. Determine if each job title "
+            "is relevant to the candidate's target role."
         )
         
         jobs_text = "\n".join(
@@ -60,7 +65,9 @@ Return plain text, NOT JSON."""
             for i, j in enumerate(jobs)
         )
         
-        user_prompt = f"""TARGET ROLE: {role_description}
+        strategy_block = f"\nEXTRA INSTRUCTIONS/PREFERENCES: {search_strategy}" if search_strategy else ""
+        
+        user_prompt = f"""TARGET ROLE: {role_description}{strategy_block}
 
 JOB TITLES:
 {jobs_text}
@@ -148,31 +155,36 @@ Return ONLY pure JSON with a 'searches' list. Example:
         provider = self._get_provider("match")
 
         system_prompt = (
-            "You are a strict and precise Career Coach AI. "
+            "You are a strict, precise, and highly analytical Career Coach AI. "
             "Your goal is to evaluate the match between a candidate's profile "
-            "and a specific job listing. Be realistic and data-driven."
+            "and a specific job listing using data-driven hard constraints."
         )
+
+        strategy = profile.get('search_strategy')
+        strategy_block = f"\n- Extra AI Instructions / Preferences: {strategy}" if strategy else ""
 
         user_prompt = f"""Analyze the match between this profile and job description.
 
 PROFILE:
-- Expected Role: {profile.get('role_description')}
+- Expected Role: {profile.get('role_description')}{strategy_block}
 - Experience Context: {profile.get('cv_summary') or profile.get('cv_content')}
 
 JOB:
 {job_metadata}
 
-SCORING RULES:
-1. RELEVANCE CHECK FIRST: Determine if the job title and general description are relevant to the requested role. If completely irrelevant, set "relevant" to false and you can skip detailed analysis.
-2. SENIORITY MISMATCH: If the candidate is Junior/Entry-level and the job requires Senior/Lead/Staff/Principal (5+ years), the affinity_score MUST NOT exceed 50. You may still mark worth_applying as true if the candidate has most required skills.
-3. MULTI-FACTOR: Consider title, full description, and all metadata (language requirements, workload) together.
-4. STRICTNESS: Be realistic. Score 100 only for a perfect resume-to-job match.
+SCORING RULES (STRICT CONSTRAINTS):
+1. RELEVANCE CHECK: Determine if the job title and description are relevant to the requested role. Check Extra AI Instructions. If completely irrelevant or violating strict user instructions, set "relevant" to false.
+2. LANGUAGE MISMATCH PENALTY: If the job EXPLICITLY requires a language (e.g., German, French) that the candidate DOES NOT speak, cap `affinity_score` at 30 and set `worth_applying` to false.
+3. EDUCATION MISMATCH PENALTY: If the job explicitly requires a University Degree (Bachelor/Master/PhD) and the candidate has no degree, cap `affinity_score` at 40 and set `worth_applying` to false. 
+4. SENIORITY MISMATCH: If the candidate is Junior/Entry-level and the job requires Senior/Lead (5+ years), cap `affinity_score` at 35. (Senior applying to Junior cap at 70).
+5. BASE SCORING: For remaining cases, score 0-100 realistically. Score 90-100 ONLY for a virtually perfect resume-to-job match.
+6. "worth_applying" MUST ONLY be true if `affinity_score` >= 65 and `relevant` is true.
 
 Return ONLY JSON:
 {{
     "relevant": true/false,
     "affinity_score": 0-100,
-    "affinity_analysis": "Concise 2-3 sentence explanation focusing on why the score was given, mentioning seniority if applicable.",
+    "affinity_analysis": "Concise 2-3 sentence explanation focusing on WHY the score was given, explicitly addressing language, education, and seniority matches/mismatches.",
     "worth_applying": true/false
 }}"""
 
@@ -187,9 +199,9 @@ Return ONLY JSON:
         provider = self._get_provider("match")
 
         system_prompt = (
-            "You are a strict and precise Career Coach AI. "
+            "You are a strict, precise, and highly analytical Career Coach AI. "
             "Your goal is to evaluate the match between a candidate's profile "
-            "and MULTIPLE job listings. Be realistic and data-driven. "
+            "and MULTIPLE job listings using data-driven hard constraints. "
             "Return results in the EXACT SAME ORDER as the jobs were given."
         )
 
@@ -200,21 +212,28 @@ Return ONLY JSON:
             jobs_text += f"Company: {job.get('company')}\n"
             jobs_text += f"Location: {job.get('location')}\n"
             jobs_text += f"Workload: {job.get('workload')}\n"
+            jobs_text += f"Languages Required: {job.get('languages')}\n"
+            jobs_text += f"Education Required: {job.get('education')}\n"
             jobs_text += f"Description: {job.get('description')}\n"
+
+        strategy = profile.get('search_strategy')
+        strategy_block = f"\n- Extra AI Instructions / Preferences: {strategy}" if strategy else ""
 
         user_prompt = f"""Analyze the match between this profile and each job below.
 
 PROFILE:
-- Expected Role: {profile.get('role_description')}
+- Expected Role: {profile.get('role_description')}{strategy_block}
 - Experience Context: {profile.get('cv_summary') or profile.get('cv_content')}
 
 {jobs_text}
 
-SCORING RULES:
-1. RELEVANCE CHECK FIRST: Check title and description. If altogether irrelevant, set "relevant" to false.
-2. SENIORITY MISMATCH: Junior→Senior = cap at 50; Senior→Junior = cap at 70.
-3. Score 0-100 realistically. Don't give 90+ unless it's a perfect match.
-4. "worth_applying" should only be true if score >= 60 and relevant=true.
+SCORING RULES (STRICT CONSTRAINTS):
+1. RELEVANCE CHECK: Determine if the job title and description are relevant to the requested role. Check Extra AI Instructions. If completely irrelevant or violating strict user instructions, set "relevant" to false.
+2. LANGUAGE MISMATCH PENALTY: If the job EXPLICITLY requires a language (e.g., German, French) that the candidate DOES NOT speak, cap `affinity_score` at 30 and set `worth_applying` to false.
+3. EDUCATION MISMATCH PENALTY: If the job explicitly requires a University Degree (Bachelor/Master/PhD) and the candidate has no degree, cap `affinity_score` at 40 and set `worth_applying` to false. 
+4. SENIORITY MISMATCH: If the candidate is Junior/Entry-level and the job requires Senior/Lead (5+ years), cap `affinity_score` at 35. (Senior applying to Junior cap at 70).
+5. BASE SCORING: For remaining cases, score 0-100 realistically. Score 90-100 ONLY for a virtually perfect resume-to-job match.
+6. "worth_applying" MUST ONLY be true if `affinity_score` >= 65 and `relevant` is true.
 
 Return ONLY JSON with a "results" array, one entry per job, IN ORDER:
 {{

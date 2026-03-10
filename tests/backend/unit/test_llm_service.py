@@ -55,9 +55,15 @@ async def test_analyze_job_match(mock_provider):
 
     with patch("backend.services.llm_service.get_provider_for_step", return_value=mock_provider):
         service = LLMService()
-        res = await service.analyze_job_match({"title": "Dev"}, {"role_description": "Dev"})
+        res = await service.analyze_job_match({"title": "Dev"}, {"role_description": "Dev", "search_strategy": "Remote only"})
         assert res["affinity_score"] == 90
         assert res["worth_applying"] is True
+        
+        # Verify search_strategy was injected into the prompt
+        call_args = mock_provider.generate_json_async.call_args[0]
+        user_prompt = call_args[1]
+        assert "Remote only" in user_prompt
+        assert "LANGUAGE MISMATCH PENALTY" in user_prompt
 
 @pytest.mark.asyncio
 async def test_each_method_calls_correct_step(mock_provider):
