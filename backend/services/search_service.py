@@ -12,6 +12,7 @@ from backend.providers.jobs.localdb.client import LocalDbProvider
 from backend.providers.jobs.models import JobSearchRequest, SortOrder, RadiusSearchRequest, Coordinates
 from backend.models import Job
 from backend.core.config import settings
+from backend.providers.jobs.jobroom.avam_mapper import avam_mapper
 from backend.services.search_status import (
     init_status, add_log, update_status, clear_status, get_status,
 )
@@ -208,6 +209,11 @@ class SearchService:
                     
                 query = search.get("query", "")
                 domain = search.get("domain", "general")
+                query_type = search.get("type", "keyword")
+                
+                profession_codes = []
+                if query_type == "occupation":
+                    profession_codes = avam_mapper.resolve(query)
 
                 compatible = get_compatible_providers(domain, available_providers, provider_infos)
                 if not compatible:
@@ -216,7 +222,7 @@ class SearchService:
 
                 add_log(profile_id, f"[{idx+1}/{len(searches)}] «{query}» (domain={domain}) → {', '.join(compatible)}")
 
-                request = build_search_request(profile, query)
+                request = build_search_request(profile, query, profession_codes)
 
                 async def search_provider(provider_name: str, req: JobSearchRequest):
                     provider = available_providers[provider_name]

@@ -3,7 +3,7 @@ from backend.providers.jobs.models import JobSearchRequest, SortOrder, RadiusSea
 
 logger = logging.getLogger(__name__)
 
-def build_search_request(profile, query: str) -> JobSearchRequest:
+def build_search_request(profile, query: str, profession_codes: list[str] = None) -> JobSearchRequest:
     """Create a JobSearchRequest from profile settings and a keyword query."""
     workload_min, workload_max = 0, 100
     if profile.workload_filter:
@@ -49,5 +49,6 @@ def build_search_request(profile, query: str) -> JobSearchRequest:
         page_size=50,
         sort=SortOrder.DATE_DESC,
         radius_search=radius_request,
-        communal_codes=[] # Clear communal codes if using radius to avoid conflict? usually they can coexist or radius overrides.
+        communal_codes=[], # Clear communal codes if using radius to avoid conflict? usually they can coexist or radius overrides.
+        profession_codes=profession_codes or []
     )
