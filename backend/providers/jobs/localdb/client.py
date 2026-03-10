@@ -30,7 +30,7 @@ class LocalDbProvider(JobProvider):
             name="local_db",
             description="Searches the local application database for previously scraped jobs.",
             domain="internal",
-            accepted_domains=["*"],
+            accepted_domains=["local", "db-only"],
         )
 
     def _db_job_to_listing(self, db_job: ScrapedJob, distance_km: float = None) -> JobListing:

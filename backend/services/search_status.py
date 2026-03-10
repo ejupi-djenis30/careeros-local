@@ -7,6 +7,7 @@ from typing import Dict, List, Any
 import threading
 import json
 import os
+import time
 
 _lock = threading.Lock()
 _DATA_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "data")
@@ -31,10 +32,19 @@ def _load_statuses() -> Dict[int, Dict[str, Any]]:
             pass
     return {}
 
-def _save_statuses():
+_last_save_time = 0.0
+_SAVE_DEBOUNCE_INTERVAL = 1.5
+
+def _save_statuses(force=False):
+    global _last_save_time
+    now = time.time()
+    if not force and (now - _last_save_time) < _SAVE_DEBOUNCE_INTERVAL:
+        return
+        
     try:
         with open(_STATUS_FILE, "w") as f:
             json.dump(_statuses, f)
+        _last_save_time = now
     except Exception:
         pass
 
@@ -61,7 +71,7 @@ def init_status(profile_id: int, total_searches: int = 0, searches: List[Dict] =
             "started_at": datetime.now(timezone.utc).isoformat(),
             "finished_at": None,
         }
-        _save_statuses()
+        _save_statuses(force=True)
 
 
 def add_log(profile_id: int, message: str):
@@ -90,9 +100,10 @@ def update_status(profile_id: int, **kwargs):
         if s:
             s.update({k: v for k, v in kwargs.items() if k in _VALID_STATUS_KEYS})
             # Auto-set finished_at on terminal states
-            if s.get("state") in _TERMINAL_STATES and not s.get("finished_at"):
+            is_terminal = s.get("state") in _TERMINAL_STATES
+            if is_terminal and not s.get("finished_at"):
                 s["finished_at"] = datetime.now(timezone.utc).isoformat()
-            _save_statuses()
+            _save_statuses(force=is_terminal)
 
 
 def get_status(profile_id: int) -> Dict[str, Any]:
@@ -115,7 +126,7 @@ def clear_status(profile_id: int):
     with _lock:
         if profile_id in _statuses:
             _statuses.pop(profile_id, None)
-            _save_statuses()
+            _save_statuses(force=True)
 
 def register_task(profile_id: int, task: Any):
     """Register an active search task."""

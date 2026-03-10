@@ -1,5 +1,6 @@
 import pytest
 from unittest.mock import MagicMock, patch
+from tenacity import RetryError
 from backend.services.llm_service import LLMService
 
 
@@ -40,8 +41,8 @@ def test_generate_search_plan_error(mock_provider):
 
     with patch("backend.services.llm_service.get_provider_for_step", return_value=mock_provider):
         service = LLMService()
-        plan = service.generate_search_plan({}, [])
-        assert plan == []
+        with pytest.raises(RetryError):
+            service.generate_search_plan({}, [])
 
 
 def test_analyze_job_match(mock_provider):

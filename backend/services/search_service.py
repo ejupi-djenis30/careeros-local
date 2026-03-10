@@ -155,14 +155,25 @@ class SearchService:
             update_status(profile_id, state="done", jobs_found=0, jobs_new=0)
             return []
 
-        # Deduplicate searches based on query string (domain-agnostic dedup)
+        def get_query_fingerprint(q: str) -> str:
+            import re
+            q = q.lower()
+            noise_words = r'\b(m/w/d|f/m/d|m/f/d|100%|80%|80-100%)\b'
+            q = re.sub(noise_words, ' ', q)
+            q = re.sub(r'[^\w\s+C#]', ' ', q) # keep +, # for C++, C#
+            tokens = [t.strip() for t in q.split() if t.strip()]
+            return " ".join(sorted(tokens))
+
         unique_searches = []
         seen_queries = set()
         for s in searches:
-            q_str = s.get("query", "").lower().strip()
-            key = q_str
-            if q_str and key not in seen_queries:
-                seen_queries.add(key)
+            q_str = s.get("query", "").strip()
+            if not q_str:
+                continue
+                
+            fingerprint = get_query_fingerprint(q_str)
+            if fingerprint not in seen_queries:
+                seen_queries.add(fingerprint)
                 unique_searches.append(s)
 
         # Count total provider calls for progress tracking
@@ -185,48 +196,79 @@ class SearchService:
         all_jobs: list = []
         call_index = 0
 
-        # We execute queries sequentially, but providers for a query concurrently
-        for idx, search in enumerate(searches):
-            query = search.get("query", "")
-            domain = search.get("domain", "general")
-            
-            # Check if stopped
-            p = self.profile_repo.get(profile_id)
-            if p and p.is_stopped:
-                logger.info(f"Search profile {profile_id} was stopped by user.")
-                update_status(profile_id, state="stopped", error="Search stopped by user.")
-                break
+        # Limit the number of parallel query executions to avoid overwhelming providers
+        semaphore = asyncio.Semaphore(3)
 
-            compatible = get_compatible_providers(domain, available_providers, provider_infos)
-            if not compatible:
-                add_log(profile_id, f"⚠ No providers accept domain '{domain}' for «{query}»")
-                continue
+        async def execute_single_search(idx: int, search: dict):
+            nonlocal call_index
+            async with semaphore:
+                # Real-time stop check using memory cache rather than DB reads
+                status_data = get_status(profile_id)
+                if status_data.get("state") in ["stopped", "cancelled", "finished", "failed"]:
+                    return []
+                    
+                query = search.get("query", "")
+                domain = search.get("domain", "general")
 
-            add_log(profile_id, f"[{idx+1}/{len(searches)}] «{query}» (domain={domain}) → {', '.join(compatible)}")
+                compatible = get_compatible_providers(domain, available_providers, provider_infos)
+                if not compatible:
+                    add_log(profile_id, f"⚠ No providers accept domain '{domain}' for «{query}»")
+                    return []
 
-            request = build_search_request(profile, query)
+                add_log(profile_id, f"[{idx+1}/{len(searches)}] «{query}» (domain={domain}) → {', '.join(compatible)}")
 
-            async def search_provider(provider_name: str, req: JobSearchRequest):
-                provider = available_providers[provider_name]
-                try:
-                    result = await provider.search(req)
-                    return provider_name, result.items, None
-                except Exception as e:
-                    return provider_name, [], e
+                request = build_search_request(profile, query)
 
-            tasks = [search_provider(p_name, request) for p_name in compatible]
-            results = await asyncio.gather(*tasks)
+                async def search_provider(provider_name: str, req: JobSearchRequest):
+                    provider = available_providers[provider_name]
+                    all_provider_jobs = []
+                    max_pages = 3  # Cap to 3 pages (max 60-150 jobs) per provider per query to prevent indefinite crawling
+                    try:
+                        current_page = 0
+                        while current_page < max_pages:
+                            # Use model_copy to avoid concurrent modification bugs if providers run in parallel
+                            page_req = req.model_copy(update={"page": current_page})
+                            result = await provider.search(page_req)
+                            all_provider_jobs.extend(result.items)
+                            
+                            total_pages = getattr(result, "total_pages", 1)
+                            if current_page >= total_pages - 1:
+                                break
+                                
+                            current_page += 1
+                            
+                            # Real-time abort check in between pages
+                            status_data = get_status(profile_id)
+                            if status_data.get("state") in ["stopped", "cancelled", "finished", "failed"]:
+                                break
+                                
+                        return provider_name, all_provider_jobs, None
+                    except Exception as e:
+                        return provider_name, all_provider_jobs, e
 
-            for p_name, items, error in results:
-                call_index += 1
-                update_status(profile_id, current_search_index=call_index)
+                p_tasks = [search_provider(p_name, request) for p_name in compatible]
+                p_results = await asyncio.gather(*p_tasks)
+
+                found_jobs = []
+                for p_name, items, error in p_results:
+                    call_index += 1
+                    update_status(profile_id, current_search_index=call_index)
+                    
+                    if error:
+                        logger.warning(f"Search «{query}» on {p_name} failed: {error}")
+                        add_log(profile_id, f"⚠ Search «{query}» on {p_name} failed: {error}")
+                    else:
+                        found_jobs.extend(items)
+                        add_log(profile_id, f"  ↳ {p_name}: {len(items)} jobs  («{query}»)")
                 
-                if error:
-                    logger.warning(f"Search «{query}» on {p_name} failed: {error}")
-                    add_log(profile_id, f"⚠ Search «{query}» on {p_name} failed: {error}")
-                else:
-                    all_jobs.extend(items)
-                    add_log(profile_id, f"  ↳ {p_name}: {len(items)} jobs")
+                return found_jobs
+
+        # Execute all queries concurrently (bounded by semaphore)
+        tasks = [execute_single_search(idx, search) for idx, search in enumerate(searches)]
+        results = await asyncio.gather(*tasks)
+        
+        for batch in results:
+            all_jobs.extend(batch)
 
         if not all_jobs:
             add_log(profile_id, "No jobs found across all queries")

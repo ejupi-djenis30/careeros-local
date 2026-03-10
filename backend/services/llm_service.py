@@ -1,5 +1,6 @@
 import logging
 from typing import Dict, Any, List
+from tenacity import retry, stop_after_attempt, wait_exponential
 from backend.providers.llm.factory import get_provider_for_step
 from backend.core.config import settings
 
@@ -15,6 +16,7 @@ class LLMService:
 
     # ─── Step 1: Search Plan Generation ───────────────────────────────────
 
+    @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=10))
     def generate_search_plan(
         self,
         profile: Dict[str, Any],
@@ -69,21 +71,18 @@ Return ONLY pure JSON with a 'searches' list. Example:
     ]
 }}"""
 
-        try:
-            result = provider.generate_json(system_prompt, user_prompt)
-            searches = result.get("searches", [])
+        result = provider.generate_json(system_prompt, user_prompt)
+        searches = result.get("searches", [])
 
-            # Application-side enforcement of the limit just in case LLM goes over
-            if max_queries is not None:
-                searches = searches[:max_queries]
+        # Application-side enforcement of the limit just in case LLM goes over
+        if max_queries is not None:
+            searches = searches[:max_queries]
 
-            return searches
-        except Exception as e:
-            logger.error(f"Error generating keywords: {e}")
-            return []
+        return searches
 
     # ─── Step 3: Combined Title Relevance & Job Match Analysis ──────────────
 
+    @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=10))
     def analyze_job_match(
         self,
         job_metadata: Dict[str, Any],
@@ -120,16 +119,7 @@ Return ONLY JSON:
     "worth_applying": true/false
 }}"""
 
-        try:
-            return provider.generate_json(system_prompt, user_prompt)
-        except Exception as e:
-            logger.error(f"Error analyzing affinity: {e}")
-            return {
-                "relevant": True, 
-                "affinity_score": 0, 
-                "affinity_analysis": "Error during analysis", 
-                "worth_applying": False
-            }
+        return provider.generate_json(system_prompt, user_prompt)
 
 
 llm_service = LLMService()

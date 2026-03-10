@@ -160,11 +160,14 @@ export function LocationInput({
             <div className="position-relative">
                 <input
                     type="text"
+                    id="location-search"
+                    name="location-search"
                     className="form-control bg-black-20 border-white-10 text-white"
                     placeholder="Search city (e.g. Zurich)..."
                     value={query}
                     onChange={(e) => setQuery(e.target.value)}
                     onFocus={() => query.length >= 3 && setShowSuggestions(true)}
+                    autoComplete="off"
                     style={{ paddingRight: '3rem' }}
                 />
 
