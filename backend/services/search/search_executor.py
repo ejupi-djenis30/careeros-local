@@ -9,14 +9,6 @@ logger = logging.getLogger(__name__)
 
 async def process_job_listing(listing, profile_dict: dict, db_session) -> bool:
     """Analyse a single job listing via LLM and save it to DB."""
-    # Step A: Title Relevance Check First (User Request)
-    relevance = await asyncio.to_thread(
-        llm_service.check_title_relevance, listing.title, profile_dict.get("role_description", "")
-    )
-    if not relevance.get("relevant", True):
-        logger.info(f"Skipping job due to title irrelevance: {listing.title}")
-        return False
-
     # Extract description text
     desc_text = ""
     if listing.descriptions:
@@ -32,10 +24,15 @@ async def process_job_listing(listing, profile_dict: dict, db_session) -> bool:
         "company": listing.company.name if listing.company else "Unknown",
     }
 
-    # LLM affinity analysis (Deep)
+    # Combined LLM relevance & affinity analysis
     analysis = await asyncio.to_thread(
         llm_service.analyze_job_match, job_metadata, profile_dict
     )
+
+    # Fast fail if LLM determines title/description are fundamentally irrelevant
+    if not analysis.get("relevant", True):
+        logger.info(f"Skipping job due to LLM irrelevance determination: {listing.title}")
+        return False
 
     score = analysis.get("affinity_score", 0)
     reasoning = analysis.get("affinity_analysis", "")

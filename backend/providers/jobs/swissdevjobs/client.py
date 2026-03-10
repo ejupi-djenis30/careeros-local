@@ -46,6 +46,8 @@ class SwissDevJobsProvider(BaseJobProvider):
     def __init__(self, include_raw_data: bool = False):
         self._include_raw_data = include_raw_data
         self._client: httpx.AsyncClient | None = None
+        self._light_jobs_cache: Any = None
+        self._cache_time: float = 0
 
     @property
     def name(self) -> str:
@@ -101,11 +103,14 @@ class SwissDevJobsProvider(BaseJobProvider):
             should_close = True
 
         try:
-            # Step 1: Fetch the bulk list
-            response = await self._client.get(f"{API_BASE_URL}/jobsLight")
-            response.raise_for_status()
-            
-            all_jobs_light = response.json()
+            # Step 1: Fetch the bulk list (with simple 1-hour cache across the session)
+            if self._light_jobs_cache is None or time.time() - self._cache_time > 3600:
+                response = await self._client.get(f"{API_BASE_URL}/jobsLight")
+                response.raise_for_status()
+                self._light_jobs_cache = response.json()
+                self._cache_time = time.time()
+                
+            all_jobs_light = self._light_jobs_cache
             if not isinstance(all_jobs_light, list):
                  raise ResponseParseError(self.name, "Expected a list from jobsLight API")
 
@@ -121,31 +126,42 @@ class SwissDevJobsProvider(BaseJobProvider):
             
             page_items = filtered_jobs[start_idx:end_idx]
             
-            # Step 4: Fetch details for the paginated items and transform
+            # Step 4: Fetch details for the paginated items and transform (Parallelized with sem)
             hydrated_jobs = []
-            for light_job in page_items:
+            sem = asyncio.Semaphore(15) # Concurrent fetching limit
+            
+            async def fetch_job_details(light_job):
                  job_url_slug = light_job.get("jobUrl")
                  if not job_url_slug:
-                     continue
+                     return None
                      
-                 try:
-                     detail_res = await self._client.get(f"{API_BASE_URL}/jobWithUrl/{job_url_slug}")
-                     if detail_res.status_code == 200:
-                         detail_data = detail_res.json()
-                         
-                         if isinstance(detail_data, list) and len(detail_data) > 0:
-                             detail_data = detail_data[0]
+                 async with sem:
+                     try:
+                         detail_res = await self._client.get(f"{API_BASE_URL}/jobWithUrl/{job_url_slug}")
+                         if detail_res.status_code == 200:
+                             detail_data = detail_res.json()
                              
-                         job_listing = transform_job_data(
-                             detail_data, 
-                             light_job, 
-                             self.name, 
-                             self._include_raw_data
-                         )
-                         if job_listing:
-                             hydrated_jobs.append(job_listing)
-                 except Exception as e:
-                     logger.warning(f"Failed to fetch details for {job_url_slug} on {self.name}: {e}")
+                             if isinstance(detail_data, list) and len(detail_data) > 0:
+                                 detail_data = detail_data[0]
+                                 
+                             job_listing = transform_job_data(
+                                 detail_data, 
+                                 light_job, 
+                                 self.name, 
+                                 self._include_raw_data
+                             )
+                             return job_listing
+                     except Exception as e:
+                         logger.warning(f"Failed to fetch details for {job_url_slug} on {self.name}: {e}")
+                 return None
+
+            import asyncio
+            tasks = [fetch_job_details(job) for job in page_items]
+            results = await asyncio.gather(*tasks)
+            
+            for job_listing in results:
+                if job_listing:
+                    hydrated_jobs.append(job_listing)
 
             elapsed_ms = int((time.time() - start_time) * 1000)
 

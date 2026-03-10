@@ -55,6 +55,13 @@ class SearchService:
         from backend.services.search_status import register_task, unregister_task
         register_task(profile_id, asyncio.current_task())
 
+        # Map available providers and their infos
+        available_providers = {
+            "job_room": JobRoomProvider(),
+            "swissdevjobs": SwissDevJobsProvider(),
+            "local_db": LocalDbProvider(self.job_repo.db)
+        }
+
         try:
             profile = self.profile_repo.get(profile_id)
             if not profile:
@@ -72,156 +79,27 @@ class SearchService:
             }
             user_id = profile.user_id
 
-            # We don't initialize status here anymore, wait until we have the search plan
+            # ── Step 1: Initialize status immediately ──
+            init_status(profile_id, user_id=user_id)
+            add_log(profile_id, "Generating search plan with AI…")
 
-            # Map available providers and their infos
-            available_providers = {
-                "job_room": JobRoomProvider(),
-                "swissdevjobs": SwissDevJobsProvider(),
-                "local_db": LocalDbProvider(self.job_repo.db)
-            }
-            
             provider_infos = {
                 name: p.get_provider_info() for name, p in available_providers.items()
             }
 
-            # ── Step 1: Generate search plan using LLM ──
-            add_log(profile_id, "Generating search plan with AI…")
-
-            try:
-                searches = await asyncio.to_thread(
-                    llm_service.generate_search_plan, profile_dict, list(provider_infos.values()), profile.max_queries
-                )
-            except Exception as e:
-                logger.error(f"LLM keyword generation failed: {e}")
-                update_status(profile_id, state="error", error=str(e))
-                return
-
+            searches = await self._generate_plan(profile_id, profile_dict, profile, available_providers, provider_infos)
             if not searches:
-                add_log(profile_id, "No search keywords generated")
-                update_status(profile_id, state="done", jobs_found=0, jobs_new=0)
                 return
-
-            # Deduplicate searches based on query string (domain-agnostic dedup)
-            unique_searches = []
-            seen_queries = set()
-            for s in searches:
-                q_str = s.get("query", "").lower().strip()
-                key = q_str
-                if q_str and key not in seen_queries:
-                    seen_queries.add(key)
-                    unique_searches.append(s)
-
-            # Count total provider calls for progress tracking
-            total_provider_calls = 0
-            for s in unique_searches:
-                domain = s.get("domain", "general")
-                compatible = get_compatible_providers(domain, available_providers, provider_infos)
-                total_provider_calls += len(compatible)
-
-            init_status(profile_id, total_searches=total_provider_calls, searches=unique_searches, user_id=user_id)
-            add_log(profile_id, f"Generated {len(searches)} queries → {len(unique_searches)} unique → {total_provider_calls} provider calls")
-            
-            searches = unique_searches
 
             # ── Step 2: Execute searches with domain routing ──
             update_status(profile_id, state="searching")
-            
-            all_jobs: list = []
-            call_index = 0
-
-            for idx, search in enumerate(searches):
-                query = search.get("query", "")
-                domain = search.get("domain", "general")
-                
-                # Check if stopped
-                profile = self.profile_repo.get(profile_id)
-                if profile and profile.is_stopped:
-                    logger.info(f"Search profile {profile_id} was stopped by user.")
-                    update_status(profile_id, state="stopped", error="Search stopped by user.")
-                    break
-
-                # Find compatible providers for this query's domain
-                compatible = get_compatible_providers(domain, available_providers, provider_infos)
-                
-                if not compatible:
-                    add_log(profile_id, f"⚠ No providers accept domain '{domain}' for «{query}»")
-                    continue
-
-                add_log(profile_id, f"[{idx+1}/{len(searches)}] «{query}» (domain={domain}) → {', '.join(compatible)}")
-
-                # Build search request once, reuse for all providers
-                request = build_search_request(profile, query)
-
-                # Execute on all compatible providers in parallel
-                async def search_provider(provider_name: str, req: JobSearchRequest):
-                    provider = available_providers[provider_name]
-                    try:
-                        result = await provider.search(req)
-                        return provider_name, result.items, None
-                    except Exception as e:
-                        return provider_name, [], e
-
-                tasks = [
-                    search_provider(p_name, request)
-                    for p_name in compatible
-                ]
-
-                results = await asyncio.gather(*tasks)
-
-                for p_name, items, error in results:
-                    call_index += 1
-                    update_status(profile_id, current_search_index=call_index)
-                    
-                    if error:
-                        logger.warning(f"Search «{query}» on {p_name} failed: {error}")
-                        add_log(profile_id, f"⚠ Search «{query}» on {p_name} failed: {error}")
-                    else:
-                        all_jobs.extend(items)
-                        add_log(profile_id, f"  ↳ {p_name}: {len(items)} jobs")
-
+            all_jobs = await self._execute_searches(profile_id, profile, searches, available_providers, provider_infos)
             if not all_jobs:
-                add_log(profile_id, "No jobs found across all queries")
-                update_status(profile_id, state="done", jobs_found=0, jobs_new=0)
                 return
 
-            add_log(profile_id, f"Total raw results: {len(all_jobs)}")
-
             # ── Step 3: Deduplicate ──
-            seen_keys: set = set()
-            unique_jobs: list = []
-            
-            # Use profile-specific identifiers instead of user-wide to allow re-analysis for different searches
-            existing_identifiers = self.job_repo.get_profile_job_identifiers(profile.id)
-            existing_keys = {
-                f"{row.platform}:{row.platform_job_id}" for row in existing_identifiers
-                if row.platform and row.platform_job_id
-            }
-            existing_urls = {row.external_url for row in existing_identifiers if row.external_url}
-
-            for listing in all_jobs:
-                platform = getattr(listing, "source", "unknown")
-                platform_id = str(getattr(listing, "id", ""))
-                
-                key = f"{platform}:{platform_id}"
-                url = getattr(listing, "external_url", None) or getattr(listing, "url", None) or platform_id
-                
-                if (platform and platform_id and (key in seen_keys or key in existing_keys)) or \
-                   (url and (url in existing_urls and key not in existing_keys)):
-                       continue
-                       
-                if platform and platform_id:
-                    seen_keys.add(key)
-                if url:
-                    existing_urls.add(url)
-                    
-                unique_jobs.append(listing)
-
-            duplicates = len(all_jobs) - len(unique_jobs)
-            add_log(
-                profile_id,
-                f"After dedup: {len(unique_jobs)} new, {duplicates} duplicates",
-            )
+            unique_jobs, duplicates = self._deduplicate(profile, all_jobs)
+            add_log(profile_id, f"After dedup: {len(unique_jobs)} new, {duplicates} duplicates")
             update_status(
                 profile_id,
                 state="analyzing",
@@ -231,35 +109,7 @@ class SearchService:
             )
 
             # ── Step 4: Analyze & save each unique job (Parallel) ──
-            semaphore = asyncio.Semaphore(10)
-
-            async def process_with_limit(job, idx, total):
-                async with semaphore:
-                    db_session = SessionLocal()
-                    try:
-                        status_data = get_status(profile_id)
-                        if status_data.get("state") in ["stopped", "cancelled", "finished", "failed"]:
-                            logger.info(f"Skipping job analysis for {job.id} as search was stopped.")
-                            return False
-                            
-                        add_log(profile_id, f"Analyzing {idx + 1}/{total}: {job.title}")
-                        try:
-                            return await process_job_listing(job, profile_dict, db_session)
-                        except Exception as e:
-                            logger.warning(f"Failed to process job {job.id}: {e}")
-                            add_log(profile_id, f"⚠ Failed: {job.title} – {e}")
-                            return False
-                    finally:
-                        db_session.close()
-
-            tasks = [
-                process_with_limit(job, idx, len(unique_jobs))
-                for idx, job in enumerate(unique_jobs)
-            ]
-            
-            results = await asyncio.gather(*tasks)
-            saved_count = sum(1 for r in results if r is True)
-            skipped_count = sum(1 for r in results if r is False)
+            saved_count, skipped_count = await self._analyze_and_save(profile_id, profile_dict, unique_jobs)
 
             add_log(profile_id, f"✓ Search complete – {saved_count} jobs saved, {skipped_count} skipped")
             update_status(
@@ -287,6 +137,300 @@ class SearchService:
             except NameError:
                 pass  # available_providers not yet defined
             unregister_task(profile_id)
+
+    # ───────────────────────── helper methods ─────────────────────────
+
+    async def _generate_plan(self, profile_id: int, profile_dict: dict, profile, available_providers, provider_infos) -> list:
+        try:
+            searches = await asyncio.to_thread(
+                llm_service.generate_search_plan, profile_dict, list(provider_infos.values()), profile.max_queries
+            )
+        except Exception as e:
+            logger.error(f"LLM keyword generation failed: {e}")
+            update_status(profile_id, state="error", error=str(e))
+            return []
+
+        if not searches:
+            add_log(profile_id, "No search keywords generated")
+            update_status(profile_id, state="done", jobs_found=0, jobs_new=0)
+            return []
+
+        # Deduplicate searches based on query string (domain-agnostic dedup)
+        unique_searches = []
+        seen_queries = set()
+        for s in searches:
+            q_str = s.get("query", "").lower().strip()
+            key = q_str
+            if q_str and key not in seen_queries:
+                seen_queries.add(key)
+                unique_searches.append(s)
+
+        # Count total provider calls for progress tracking
+        total_provider_calls = 0
+        for s in unique_searches:
+            domain = s.get("domain", "general")
+            compatible = get_compatible_providers(domain, available_providers, provider_infos)
+            total_provider_calls += len(compatible)
+
+        # Update status with the actual plan details
+        update_status(
+            profile_id, 
+            total_searches=total_provider_calls, 
+            searches_generated=unique_searches
+        )
+        add_log(profile_id, f"Generated {len(searches)} queries → {len(unique_searches)} unique → {total_provider_calls} provider calls")
+        return unique_searches
+
+    async def _execute_searches(self, profile_id: int, profile, searches: list, available_providers, provider_infos) -> list:
+        all_jobs: list = []
+        call_index = 0
+
+        # We execute queries sequentially, but providers for a query concurrently
+        for idx, search in enumerate(searches):
+            query = search.get("query", "")
+            domain = search.get("domain", "general")
+            
+            # Check if stopped
+            p = self.profile_repo.get(profile_id)
+            if p and p.is_stopped:
+                logger.info(f"Search profile {profile_id} was stopped by user.")
+                update_status(profile_id, state="stopped", error="Search stopped by user.")
+                break
+
+            compatible = get_compatible_providers(domain, available_providers, provider_infos)
+            if not compatible:
+                add_log(profile_id, f"⚠ No providers accept domain '{domain}' for «{query}»")
+                continue
+
+            add_log(profile_id, f"[{idx+1}/{len(searches)}] «{query}» (domain={domain}) → {', '.join(compatible)}")
+
+            request = build_search_request(profile, query)
+
+            async def search_provider(provider_name: str, req: JobSearchRequest):
+                provider = available_providers[provider_name]
+                try:
+                    result = await provider.search(req)
+                    return provider_name, result.items, None
+                except Exception as e:
+                    return provider_name, [], e
+
+            tasks = [search_provider(p_name, request) for p_name in compatible]
+            results = await asyncio.gather(*tasks)
+
+            for p_name, items, error in results:
+                call_index += 1
+                update_status(profile_id, current_search_index=call_index)
+                
+                if error:
+                    logger.warning(f"Search «{query}» on {p_name} failed: {error}")
+                    add_log(profile_id, f"⚠ Search «{query}» on {p_name} failed: {error}")
+                else:
+                    all_jobs.extend(items)
+                    add_log(profile_id, f"  ↳ {p_name}: {len(items)} jobs")
+
+        if not all_jobs:
+            add_log(profile_id, "No jobs found across all queries")
+            update_status(profile_id, state="done", jobs_found=0, jobs_new=0)
+            return []
+
+        add_log(profile_id, f"Total raw results: {len(all_jobs)}")
+        return all_jobs
+
+    def _deduplicate(self, profile, all_jobs: list) -> tuple[list, int]:
+        seen_keys: set = set()
+        unique_jobs: list = []
+        
+        # Use profile-specific identifiers instead of user-wide to allow re-analysis for different searches
+        existing_identifiers = self.job_repo.get_profile_job_identifiers(profile.id)
+        existing_keys = {
+            f"{row.platform}:{row.platform_job_id}" for row in existing_identifiers
+            if row.platform and row.platform_job_id
+        }
+        existing_urls = {row.external_url for row in existing_identifiers if row.external_url}
+
+        for listing in all_jobs:
+            platform = getattr(listing, "source", "unknown")
+            platform_id = str(getattr(listing, "id", ""))
+            
+            key = f"{platform}:{platform_id}"
+            url = getattr(listing, "external_url", None) or getattr(listing, "url", None) or platform_id
+            
+            if (platform and platform_id and (key in seen_keys or key in existing_keys)) or \
+               (url and (url in existing_urls and key not in existing_keys)):
+                   continue
+                   
+            if platform and platform_id:
+                seen_keys.add(key)
+            if url:
+                existing_urls.add(url)
+                
+            unique_jobs.append(listing)
+
+        duplicates = len(all_jobs) - len(unique_jobs)
+        return unique_jobs, duplicates
+
+    async def _analyze_and_save(self, profile_id: int, profile_dict: dict, unique_jobs: list) -> tuple[int, int]:
+        semaphore = asyncio.Semaphore(15)
+
+        async def analyze_only(job, idx, total):
+            async with semaphore:
+                status_data = get_status(profile_id)
+                if status_data.get("state") in ["stopped", "cancelled", "finished", "failed"]:
+                    return job, False # Skipped/Stopped
+                    
+                add_log(profile_id, f"Analyzing {idx + 1}/{total}: {job.title}")
+                try:
+                    # process_job_listing returns True if it SAVED the job. 
+                    # We modified it to handle DB internally still, let's keep the existing behaviour 
+                    # from `search_executor.py` but we pass a single DB session down below instead of making 10 at a time.
+                    pass
+                except Exception as e:
+                    logger.warning(f"Failed to process job {job.id}: {e}")
+                    add_log(profile_id, f"⚠ Failed: {job.title} – {e}")
+                    return job, False
+                    
+                return job, True
+
+        # To fix the DB connection pool issue, we manage ONE session here and pass it,
+        # but SQLAlchemy sessions are NOT thread-safe for async parallel writes.
+        # So we split: 1. Deep LLM Analysis (Concurrent). 2. DB insertion (Sequential/Batch).
+
+        # First, run the pure LLM analysis for all the jobs
+        async def analyze_job_data(job, idx, total):
+            async with semaphore:
+                status_data = get_status(profile_id)
+                if status_data.get("state") in ["stopped", "cancelled", "finished", "failed"]:
+                    return None
+                    
+                add_log(profile_id, f"Analyzing {idx + 1}/{total}: {job.title}")
+                from backend.services.search.search_executor import llm_service
+                
+                desc_text = job.descriptions[0].description if job.descriptions else ""
+                job_metadata = {
+                    "title": job.title,
+                    "description": desc_text, 
+                    "location": job.location.city if job.location else "Unknown",
+                    "workload": f"{job.employment.workload_min}-{job.employment.workload_max}%" if job.employment else "Unknown",
+                    "languages": [f"{s.language_code} ({s.spoken_level})" for s in job.language_skills] if getattr(job, "language_skills", None) else [],
+                    "company": job.company.name if job.company else "Unknown",
+                }
+                
+                try:
+                    analysis = await asyncio.to_thread(llm_service.analyze_job_match, job_metadata, profile_dict)
+                    if not analysis.get("relevant", True):
+                        return None
+                    return (job, analysis, desc_text)
+                except Exception as e:
+                    add_log(profile_id, f"⚠ Failed analyzing: {job.title} – {e}")
+                    return None
+
+        tasks = [analyze_job_data(job, idx, len(unique_jobs)) for idx, job in enumerate(unique_jobs)]
+        analysis_results = await asyncio.gather(*tasks)
+        
+        # Now do the DB saving sequentially using ONE connection
+        saved_count = 0
+        skipped_count = len(unique_jobs)
+        
+        valid_results = [r for r in analysis_results if r is not None]
+        skipped_count -= len(valid_results) # those skipped due to LLM irrelevance
+        
+        if valid_results:
+            from backend.models import ScrapedJob, Job
+            from backend.services.utils import haversine_distance, clean_html_tags
+            import datetime
+            
+            db_session = SessionLocal()
+            try:
+                for job, analysis, desc_text in valid_results:
+                    company = job.company.name if job.company else "Unknown"
+                    location_str = job.location.city if job.location else ""
+                    
+                    workload_str = ""
+                    if job.employment:
+                        wmin = job.employment.workload_min
+                        wmax = job.employment.workload_max
+                        workload_str = f"{wmin}-{wmax}%" if wmin != wmax else f"{wmin}%"
+
+                    app_url = job.application.form_url if job.application else None
+                    app_email = job.application.email if job.application else None
+
+                    final_external_url = job.external_url
+                    if not final_external_url and job.source == "job_room":
+                        final_external_url = f"https://www.job-room.ch/job-search/{job.id}"
+
+                    pub_date = None
+                    if job.publication and job.publication.start_date:
+                        try:
+                            date_raw = job.publication.start_date
+                            if "T" in date_raw:
+                                date_str = date_raw.replace('Z', '+00:00')
+                                pub_date = datetime.datetime.fromisoformat(date_str)
+                            else:
+                                pub_date = datetime.datetime.strptime(date_raw, "%Y-%m-%d")
+                        except (ValueError, TypeError):
+                            pass
+
+                    distance_km = None
+                    if (profile_dict.get("latitude") is not None and profile_dict.get("longitude") is not None and 
+                        job.location and job.location.coordinates):
+                        distance_km = round(
+                            haversine_distance(
+                                profile_dict["latitude"],
+                                profile_dict["longitude"],
+                                job.location.coordinates.lat,
+                                job.location.coordinates.lon,
+                            ),
+                            1,
+                        )
+
+                    scraped_job = db_session.query(ScrapedJob).filter(
+                        ScrapedJob.platform == job.source,
+                        ScrapedJob.platform_job_id == str(job.id)
+                    ).first()
+
+                    if not scraped_job:
+                        scraped_job = ScrapedJob(
+                            platform=job.source,
+                            platform_job_id=str(job.id),
+                            title=clean_html_tags(job.title),
+                            company=company,
+                            description=clean_html_tags(desc_text) if desc_text else None,
+                            location=location_str,
+                            external_url=final_external_url or str(job.id),
+                            application_url=app_url or None,
+                            application_email=app_email or None,
+                            workload=workload_str or None,
+                            publication_date=pub_date,
+                            raw_metadata=job.raw_data,
+                            source_query=job.title,
+                        )
+                        db_session.add(scraped_job)
+                        db_session.flush()
+
+                    db_job = Job(
+                        user_id=profile_dict["user_id"],
+                        search_profile_id=profile_dict["id"],
+                        scraped_job_id=scraped_job.id,
+                        is_scraped=True,
+                        affinity_score=analysis.get("affinity_score", 0),
+                        affinity_analysis=analysis.get("affinity_analysis", "") if analysis.get("affinity_analysis", "") else None,
+                        worth_applying=analysis.get("worth_applying", False),
+                        distance_km=distance_km,
+                    )
+
+                    db_session.add(db_job)
+                    saved_count += 1
+                
+                db_session.commit()
+            except Exception as e:
+                logger.error(f"Bulk DB save failed: {e}")
+                db_session.rollback()
+                skipped_count += saved_count
+                saved_count = 0
+            finally:
+                db_session.close()
+                
+        return saved_count, skipped_count
 
 
 

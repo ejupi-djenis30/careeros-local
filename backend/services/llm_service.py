@@ -82,27 +82,7 @@ Return ONLY pure JSON with a 'searches' list. Example:
             logger.error(f"Error generating keywords: {e}")
             return []
 
-    # ─── Step 2: Title Relevance Check ────────────────────────────────────
-
-    def check_title_relevance(self, title: str, role_description: str) -> Dict[str, Any]:
-        provider = get_provider_for_step("relevance")
-
-        system_prompt = (
-            "You are a concise classification assistant that outputs JSON. "
-            "Determine whether a job title is relevant to the user's target role."
-        )
-        user_prompt = (
-            f'Is the job title "{title}" relevant to a candidate looking for "{role_description}"?\n\n'
-            f'Return JSON: {{ "relevant": true/false, "reason": "one-sentence explanation" }}'
-        )
-
-        try:
-            return provider.generate_json(system_prompt, user_prompt)
-        except Exception as e:
-            logger.error(f"Error checking relevance: {e}")
-            return {"relevant": True, "reason": "Error checking relevance"}
-
-    # ─── Step 3: Job Match Analysis ───────────────────────────────────────
+    # ─── Step 3: Combined Title Relevance & Job Match Analysis ──────────────
 
     def analyze_job_match(
         self,
@@ -127,12 +107,14 @@ JOB METADATA:
 {job_metadata}
 
 SCORING RULES:
-1. SENIORITY MISMATCH: If the candidate is Junior/Entry-level and the job requires Senior/Lead/Staff/Principal (5+ years), the affinity_score MUST NOT exceed 50. You may still mark worth_applying as true if the candidate has most required skills.
-2. MULTI-FACTOR: Consider title, full description, and all metadata (language requirements, workload) together.
-3. STRICTNESS: Be realistic. Score 100 only for a perfect resume-to-job match.
+1. RELEVANCE CHECK FIRST: Determine if the job title and general description are relevant to the requested role. If completely irrelevant, set "relevant" to false and you can skip detailed analysis.
+2. SENIORITY MISMATCH: If the candidate is Junior/Entry-level and the job requires Senior/Lead/Staff/Principal (5+ years), the affinity_score MUST NOT exceed 50. You may still mark worth_applying as true if the candidate has most required skills.
+3. MULTI-FACTOR: Consider title, full description, and all metadata (language requirements, workload) together.
+4. STRICTNESS: Be realistic. Score 100 only for a perfect resume-to-job match.
 
 Return ONLY JSON:
 {{
+    "relevant": true/false,
     "affinity_score": 0-100,
     "affinity_analysis": "Concise 2-3 sentence explanation focusing on why the score was given, mentioning seniority if applicable.",
     "worth_applying": true/false
@@ -142,7 +124,12 @@ Return ONLY JSON:
             return provider.generate_json(system_prompt, user_prompt)
         except Exception as e:
             logger.error(f"Error analyzing affinity: {e}")
-            return {"affinity_score": 0, "affinity_analysis": "Error during analysis", "worth_applying": False}
+            return {
+                "relevant": True, 
+                "affinity_score": 0, 
+                "affinity_analysis": "Error during analysis", 
+                "worth_applying": False
+            }
 
 
 llm_service = LLMService()

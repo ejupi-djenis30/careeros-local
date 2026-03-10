@@ -44,16 +44,6 @@ def test_generate_search_plan_error(mock_provider):
         assert plan == []
 
 
-def test_check_title_relevance(mock_provider):
-    mock_provider.generate_json.return_value = {"relevant": True, "reason": "Good match"}
-
-    with patch("backend.services.llm_service.get_provider_for_step", return_value=mock_provider):
-        service = LLMService()
-        res = service.check_title_relevance("Chef", "Cook")
-        assert res["relevant"] is True
-        mock_provider.generate_json.assert_called_once()
-
-
 def test_analyze_job_match(mock_provider):
     mock_provider.generate_json.return_value = {
         "affinity_score": 90,
@@ -80,12 +70,7 @@ def test_each_method_calls_correct_step(mock_provider):
         mock_factory.assert_called_with("plan")
 
         mock_factory.reset_mock()
-        mock_provider.generate_json.return_value = {"relevant": True, "reason": "ok"}
-        service.check_title_relevance("Dev", "Dev")
-        mock_factory.assert_called_with("relevance")
-
-        mock_factory.reset_mock()
-        mock_provider.generate_json.return_value = {"affinity_score": 50, "affinity_analysis": "", "worth_applying": False}
+        mock_provider.generate_json.return_value = {"relevant": True, "affinity_score": 50, "affinity_analysis": "", "worth_applying": False}
         service.analyze_job_match({}, {})
         mock_factory.assert_called_with("match")
 
