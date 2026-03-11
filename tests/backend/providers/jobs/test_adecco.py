@@ -1,0 +1,198 @@
+import pytest
+from unittest.mock import AsyncMock, MagicMock, patch
+
+from backend.providers.jobs.adecco import AdeccoProvider
+from backend.providers.jobs.adecco.filters import build_query_string
+from backend.providers.jobs.adecco.transformer import transform_job_data
+from backend.providers.jobs.models import JobSearchRequest, ProviderStatus, ContractType, WorkForm
+
+# Setup sample data from what we reverse-engineered
+SAMPLE_SUMMARIZED_RESPONSE = {
+    "jobs": [
+        {
+            "jobTitle": "Software Engineer",
+            "jobId": "TEST-123",
+            "contractTypeId": "PERM",
+            "cityName": "Zurich",
+            "stateName": "Zh",
+            "countryId": "CHE",
+            "isRemote": True,
+            "postedDate": "2026-03-11T10:00:00Z",
+            "language": "en-US"
+        }
+    ],
+    "pagination": {
+        "total": 1,
+        "pageCount": 1
+    }
+}
+
+SAMPLE_DETAIL_RESPONSE = {
+    "jobName": "Software Engineer Detail",
+    "jobDescription": "<p>My Job Description</p>",
+    "recruiterName": "John Doe",
+    "applyUri": "https://apply.adecco/123",
+    "companyName": "Tech Corp"
+}
+
+@pytest.fixture
+def adept_provider():
+    return AdeccoProvider(include_raw_data=False)
+
+@pytest.mark.asyncio
+async def test_adecco_health_check_success(adept_provider):
+    with patch("httpx.AsyncClient.post", new_callable=AsyncMock) as mock_post:
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_post.return_value = mock_resp
+
+        health = await adept_provider.health_check()
+        assert health.status == ProviderStatus.HEALTHY
+        assert health.provider == "adecco"
+
+
+@pytest.mark.asyncio
+async def test_adecco_health_check_failure(adept_provider):
+    with patch("httpx.AsyncClient.post", new_callable=AsyncMock) as mock_post:
+        mock_resp = MagicMock()
+        mock_resp.status_code = 500
+        mock_post.return_value = mock_resp
+
+        health = await adept_provider.health_check()
+        assert health.status == ProviderStatus.DEGRADED
+
+@pytest.mark.asyncio
+async def test_adecco_search_success(adept_provider):
+    with patch("httpx.AsyncClient.post", new_callable=AsyncMock) as mock_post, patch("httpx.AsyncClient.get", new_callable=AsyncMock) as mock_get:
+        # Mock Summarized POST
+        mock_post_resp = MagicMock()
+        mock_post_resp.status_code = 200
+        mock_post_resp.json.return_value = SAMPLE_SUMMARIZED_RESPONSE
+        mock_post.return_value = mock_post_resp
+
+        # Mock Detail GET
+        mock_get_resp = MagicMock()
+        mock_get_resp.status_code = 200
+        mock_get_resp.json.return_value = SAMPLE_DETAIL_RESPONSE
+        mock_get.return_value = mock_get_resp
+
+        request = JobSearchRequest(query="Software", location="Zurich", page=0)
+        response = await adept_provider.search(request)
+
+        assert response.total_count == 1
+        assert len(response.items) == 1
+        
+        job = response.items[0]
+        assert job.id == "TEST-123"
+        assert job.title == "Software Engineer Detail"
+        # Since isRemote went into work_forms
+        assert "remote" in job.employment.work_forms
+        assert job.location.city == "Zurich"
+        assert job.location.canton_code == "Zh"
+        assert job.descriptions[0].description == "<p>My Job Description</p>"
+        assert job.contact.first_name == "John"
+        assert job.contact.last_name == "Doe"
+        assert job.external_url == "https://apply.adecco/123"
+
+@pytest.mark.asyncio
+async def test_adecco_search_without_details(adept_provider):
+    # Tests that it falls back to summary data gracefully if detail fails (e.g. 404)
+    with patch("httpx.AsyncClient.post", new_callable=AsyncMock) as mock_post, patch("httpx.AsyncClient.get", new_callable=AsyncMock) as mock_get:
+        mock_post_resp = MagicMock()
+        mock_post_resp.status_code = 200
+        mock_post_resp.json.return_value = SAMPLE_SUMMARIZED_RESPONSE
+        mock_post.return_value = mock_post_resp
+
+        mock_get_resp = MagicMock()
+        mock_get_resp.status_code = 404
+        mock_get_resp.raise_for_status.side_effect = Exception("Not Found")
+        mock_get.return_value = mock_get_resp
+
+        request = JobSearchRequest(query="Software", location="Zurich", page=0)
+        response = await adept_provider.search(request)
+
+        assert response.total_count == 1
+        assert len(response.items) == 1
+        
+        job = response.items[0]
+        # Should fallback to light title
+        assert job.title == "Software Engineer"
+        assert job.id == "TEST-123"
+        assert not job.descriptions # No description since detail failed
+
+@pytest.mark.asyncio
+async def test_adecco_search_empty_results(adept_provider):
+    with patch("httpx.AsyncClient.post", new_callable=AsyncMock) as mock_post:
+        mock_post_resp = MagicMock()
+        mock_post_resp.status_code = 200
+        mock_post_resp.json.return_value = {"jobs": [], "pagination": {"total": 0, "pageCount": 0}}
+        mock_post.return_value = mock_post_resp
+
+        request = JobSearchRequest(query="Nobody", location="Nowhere")
+        response = await adept_provider.search(request)
+
+        assert response.total_count == 0
+        assert len(response.items) == 0
+
+@pytest.mark.asyncio
+async def test_adecco_search_pagination_page_2(adept_provider):
+    with patch("httpx.AsyncClient.post", new_callable=AsyncMock) as mock_post, patch("httpx.AsyncClient.get", new_callable=AsyncMock) as mock_get:
+        mock_post_resp = MagicMock()
+        mock_post_resp.status_code = 200
+        mock_post_resp.json.return_value = SAMPLE_SUMMARIZED_RESPONSE
+        mock_post.return_value = mock_post_resp
+
+        mock_get_resp = MagicMock()
+        mock_get_resp.status_code = 200
+        mock_get_resp.json.return_value = SAMPLE_DETAIL_RESPONSE
+        mock_get.return_value = mock_get_resp
+
+        request = JobSearchRequest(query="Software", page=1)  # Page 1 = second page (0-indexed)
+        response = await adept_provider.search(request)
+
+        # Check the payload sent to POST
+        call_args = mock_post.call_args[1].get('json')
+        assert call_args is not None
+        assert call_args["range"] == 10  # 1 * 10
+
+def test_build_query_string_basic():
+    req = JobSearchRequest(query="Developer", location="Bern")
+    qs = build_query_string(req)
+    assert "&location:Bern" in qs
+    assert "&q=Developer" in qs
+    assert "&sort=date desc" in qs
+
+def test_build_query_string_contract_type():
+    req = JobSearchRequest(query="Dev", contract_type=ContractType.TEMPORARY)
+    qs = build_query_string(req)
+    assert "&contractType=TEMP" in qs
+    
+    req_remote = JobSearchRequest(query="Dev", work_forms=[WorkForm.HOME_OFFICE])
+    qs_remote = build_query_string(req_remote)
+    assert "&workType=remote" in qs_remote
+
+def test_transform_job_data_workload_mapping():
+    light_job_ft = {"jobId": "1", "employmentTypeId": "FULLTIME"}
+    job_ft = transform_job_data(light_job_ft, None, "adecco")
+    assert job_ft.employment.workload_min == 80
+    assert job_ft.employment.workload_max == 100
+    
+    light_job_pt = {"jobId": "2", "employmentTypeId": "PARTTIME"}
+    job_pt = transform_job_data(light_job_pt, None, "adecco")
+    assert job_pt.employment.workload_min == 20
+    assert job_pt.employment.workload_max == 80
+    
+    light_job_hours = {"jobId": "3", "employmentTypeId": "PARTTIME", "workMinHours": 40, "workMaxHours": 60}
+    job_hours = transform_job_data(light_job_hours, None, "adecco")
+    assert job_hours.employment.workload_min == 40
+    assert job_hours.employment.workload_max == 60
+
+def test_transform_country_code_normalization():
+    light_job_ch = {"jobId": "1", "countryId": "CHE"}
+    job_ch = transform_job_data(light_job_ch, None, "adecco")
+    assert job_ch.location.country_code == "CH"
+    
+    light_job_de = {"jobId": "2", "countryId": "DEU"}
+    job_de = transform_job_data(light_job_de, None, "adecco")
+    assert job_de.location.country_code == "DE"
+

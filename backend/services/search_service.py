@@ -8,6 +8,7 @@ from backend.services.llm_service import llm_service
 from backend.services.search.search_validator import build_search_request
 from backend.providers.jobs.jobroom.client import JobRoomProvider
 from backend.providers.jobs.swissdevjobs.client import SwissDevJobsProvider
+from backend.providers.jobs.adecco.client import AdeccoProvider
 from backend.providers.jobs.localdb.client import LocalDbProvider
 from backend.providers.jobs.models import JobSearchRequest, SortOrder, RadiusSearchRequest, Coordinates
 from backend.models import Job
@@ -59,6 +60,7 @@ class SearchService:
         available_providers = {
             "job_room": JobRoomProvider(),
             "swissdevjobs": SwissDevJobsProvider(),
+            "adecco": AdeccoProvider(),
             "local_db": LocalDbProvider(self.job_repo.db)
         }
 
