@@ -50,6 +50,7 @@ class JobSearchRequest(BaseModel):
     company_name: Optional[str] = None
     posted_within_days: Optional[int] = 30
     display_restricted: bool = False
+    radius: Optional[int] = None
     radius_search: Optional[RadiusSearchRequest] = None
     work_forms: List[WorkForm] = []
     language_skills: List[LanguageSkillRequest] = []

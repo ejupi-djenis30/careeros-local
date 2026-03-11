@@ -235,3 +235,28 @@ def test_transform_country_code_normalization():
     job_de = transform_job_data(light_job_de, None, "adecco")
     assert job_de.location.country_code == "DE"
 
+@pytest.mark.asyncio
+async def test_adecco_search_with_radius(adept_provider):
+    """Test Adecco search with location and radius filter."""
+    with patch("httpx.AsyncClient.post", new_callable=AsyncMock) as mock_post:
+        request = JobSearchRequest(
+            query="Developer",
+            location="Zurich",
+            radius=20
+        )
+        
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.json.return_value = {"jobs": [], "pagination": {"total": 0}}
+        mock_post.return_value = mock_resp
+        
+        await adept_provider.search(request)
+        
+        # Verify the payload contains &location:Zurich and &d=20
+        args, kwargs = mock_post.call_args
+        payload = kwargs.get("json", {})
+        query_string = payload.get("queryString", "")
+        
+        assert "&location:Zurich" in query_string
+        assert "&d=20" in query_string
+        assert "&q=Developer" in query_string

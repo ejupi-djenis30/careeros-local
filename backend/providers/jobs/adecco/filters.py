@@ -12,9 +12,12 @@ def build_query_string(request: JobSearchRequest) -> str:
 
     # Location
     if request.location:
-        # Simplistic mapping. If user passed "Zurich", append ", Switzerland" to narrow down if desired,
-        # but Adecco's Solr engine is fairly smart.
         parts.append(f"&location:{request.location}")
+        
+    # Radius (Distance)
+    if request.radius and request.radius > 0:
+        # Adecco uses &d=XX for radius in km
+        parts.append(f"&d={request.radius}")
 
     # Query / Keyword
     if request.query:

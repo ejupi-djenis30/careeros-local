@@ -94,7 +94,7 @@ class AdeccoProvider(BaseJobProvider):
     @property
     def capabilities(self) -> ProviderCapabilities:
         return ProviderCapabilities(
-            supports_radius_search=False,
+            supports_radius_search=True,
             supports_canton_filter=False,
             supports_profession_codes=False,
             supports_language_skills=False,
@@ -126,7 +126,7 @@ class AdeccoProvider(BaseJobProvider):
             self._client = httpx.AsyncClient(timeout=30.0, headers=self._headers)
         return self._client
 
-    async def _execute_with_retry(self, func: Callable, *args, max_retries: int = 3, **kwargs) -> httpx.Response:
+    async def _execute_with_retry(self, func: Callable, *args, max_retries: int = 10, **kwargs) -> httpx.Response:
         """Execute HTTP request with 429-aware retry logic and exponential backoff.
         This completely replaces the generic @retry from tenacity for Adecco's specifics."""
         for attempt in range(max_retries):
@@ -198,7 +198,7 @@ class AdeccoProvider(BaseJobProvider):
                     client.post,
                     f"{API_BASE_URL}/summarized",
                     json=payload,
-                    max_retries=3
+                    max_retries=10
                 )
             summary_data = resp.json()
             
@@ -232,7 +232,7 @@ class AdeccoProvider(BaseJobProvider):
                             detail_res = await self._execute_with_retry(
                                 client.get,
                                 detail_url,
-                                max_retries=3
+                                max_retries=10
                             )
                             if detail_res.status_code == 200:
                                 detail_data = detail_res.json()
