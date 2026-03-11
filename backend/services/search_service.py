@@ -248,7 +248,7 @@ class SearchService:
                 async def search_provider(provider_name: str, req: JobSearchRequest):
                     provider = available_providers[provider_name]
                     all_provider_jobs = []
-                    max_pages = 3  # Cap to 3 pages (max 60-150 jobs) per provider per query to prevent indefinite crawling
+                    max_pages = 100 if provider_name == "adecco" else 3  # Adecco is 10 jobs/page, others are 50-100
                     try:
                         current_page = 0
                         while current_page < max_pages:
