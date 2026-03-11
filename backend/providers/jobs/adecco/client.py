@@ -6,9 +6,11 @@ Client for adecco.com/api/data/jobs fetching summarized jobs and detailed descri
 
 import logging
 import time
-from typing import Any
+from typing import Any, Callable
 import asyncio
-from tenacity import retry, stop_after_attempt, wait_exponential
+import random
+import email.utils
+from datetime import datetime, timezone
 
 import httpx
 
@@ -41,15 +43,35 @@ class AdeccoProvider(BaseJobProvider):
     """
     Adecco Switzerland HTTP API Provider.
     """
+    
+    # Class-level global semaphore to throttle all concurrent Adecco requests
+    # regardless of how many parallel searches (queries) are running.
+    # This prevents SEARCH_CONCURRENCY=3 from spawning 6+ detail requests.
+    _global_sem = asyncio.Semaphore(2)
 
     def __init__(self, include_raw_data: bool = False):
         self._include_raw_data = include_raw_data
         self._client: httpx.AsyncClient | None = None
+        
+        user_agents = [
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36",
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:125.0) Gecko/20100101 Firefox/125.0",
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:124.0) Gecko/20100101 Firefox/124.0",
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Safari/605.1.15",
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36 Edg/124.0.0.0"
+        ]
+        
         self._headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+            "User-Agent": random.choice(user_agents),
             "Accept": "application/json, text/plain, */*",
+            "Accept-Language": "en-US,en;q=0.9,de-CH;q=0.8,de;q=0.7",
             "Origin": "https://www.adecco.com",
             "Referer": "https://www.adecco.com/en-ch/job-search",
+            "Sec-Fetch-Dest": "empty",
+            "Sec-Fetch-Mode": "cors",
+            "Sec-Fetch-Site": "same-origin",
+            "Connection": "keep-alive"
         }
 
     @property
@@ -96,6 +118,55 @@ class AdeccoProvider(BaseJobProvider):
             await self._client.aclose()
             self._client = None
 
+    async def _execute_with_retry(self, func: Callable, *args, max_retries: int = 3, **kwargs) -> httpx.Response:
+        """Execute HTTP request with 429-aware retry logic and exponential backoff.
+        This completely replaces the generic @retry from tenacity for Adecco's specifics."""
+        for attempt in range(max_retries):
+            try:
+                response = await func(*args, **kwargs)
+                if response.status_code == 429:
+                    raise httpx.HTTPStatusError("429 Too Many Requests", request=response.request, response=response)
+                response.raise_for_status()
+                return response
+            except httpx.HTTPStatusError as e:
+                status = e.response.status_code
+                if status == 429 and attempt < max_retries - 1:
+                    retry_after = e.response.headers.get("Retry-After")
+                    sleep_time = None
+                    if retry_after:
+                        if retry_after.isdigit():
+                            sleep_time = int(retry_after)
+                        else:
+                            try:
+                                dt = email.utils.parsedate_to_datetime(retry_after)
+                                sleep_time = max(0, (dt - datetime.now(timezone.utc)).total_seconds())
+                            except (TypeError, ValueError):
+                                pass
+                    
+                    if sleep_time is None:
+                        # Stricter backoff for 429 than other errors: 4s, then 8s
+                        sleep_time = random.uniform(4.0, 7.0) * (attempt + 1)
+                    
+                    logger.warning(f"Adecco 429 Too Many Requests. Retrying in {sleep_time:.1f}s (Attempt {attempt + 1}/{max_retries})")
+                    await asyncio.sleep(sleep_time)
+                    continue
+                # Retry on transient server errors
+                elif status in (500, 502, 503, 504) and attempt < max_retries - 1:
+                    sleep_time = random.uniform(2.0, 5.0) * (attempt + 1)
+                    logger.warning(f"Adecco {status} Error. Retrying in {sleep_time:.1f}s (Attempt {attempt + 1}/{max_retries})")
+                    await asyncio.sleep(sleep_time)
+                    continue
+                raise
+            except (httpx.RequestError, asyncio.TimeoutError) as e:
+                if attempt < max_retries - 1:
+                    sleep_time = random.uniform(2.0, 5.0) * (attempt + 1)
+                    logger.warning(f"Adecco transient error {type(e).__name__}. Retrying in {sleep_time:.1f}s (Attempt {attempt + 1}/{max_retries})")
+                    await asyncio.sleep(sleep_time)
+                    continue
+                raise
+        # Fallback to raising the ProviderError if loop somehow finishes without raising
+        raise ProviderError(self.name, "Max retries exceeded")
+
     async def search(self, request: JobSearchRequest) -> JobSearchResponse:
         """Search for jobs on Adecco."""
         start_time = time.time()
@@ -118,13 +189,14 @@ class AdeccoProvider(BaseJobProvider):
             }
 
             # 2. Fetch Summarized Jobs
-            @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=10))
-            async def fetch_jobs():
-                resp = await self._client.post(f"{API_BASE_URL}/summarized", json=payload)
-                resp.raise_for_status()
-                return resp.json()
-
-            summary_data = await fetch_jobs()
+            async with self._global_sem:
+                resp = await self._execute_with_retry(
+                    self._client.post,
+                    f"{API_BASE_URL}/summarized",
+                    json=payload,
+                    max_retries=3
+                )
+            summary_data = resp.json()
             
             if not isinstance(summary_data, dict) or "jobs" not in summary_data:
                 raise ResponseParseError(self.name, "Unexpected response format from summarized API")
@@ -134,18 +206,6 @@ class AdeccoProvider(BaseJobProvider):
 
             # 3. Fetch Full Details
             hydrated_jobs = []
-            sem = asyncio.Semaphore(5)
-
-            @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=1, max=5))
-            async def fetch_job_details_with_retry(job_id: str, lang_code: str):
-                detail_url = f"{API_BASE_URL}/job-description-details/{job_id}/adecco/CH/{lang_code}/job-details"
-                detail_res = await self._client.get(detail_url)
-                if detail_res.status_code == 200:
-                    return detail_res.json()
-                elif detail_res.status_code == 204:
-                    # No detailed content available
-                    return None
-                detail_res.raise_for_status()
 
             async def process_job(light_job):
                 job_id = light_job.get("jobId")
@@ -153,9 +213,33 @@ class AdeccoProvider(BaseJobProvider):
                     return None
                 
                 lang_code = payload["languageCode"]
-                async with sem:
+                
+                # Random delay BEFORE fetching details to spread out requests
+                # without wasting a concurrency slot in the global semaphore
+                await asyncio.sleep(random.uniform(1.0, 2.5))
+                
+                async with self._global_sem:
                     try:
-                        detail_data = await fetch_job_details_with_retry(job_id, lang_code)
+                        detail_url = f"{API_BASE_URL}/job-description-details/{job_id}/adecco/CH/{lang_code}/job-details"
+                        
+                        detail_data = None
+                        try:
+                            # Use custom retry executing routine
+                            detail_res = await self._execute_with_retry(
+                                self._client.get,
+                                detail_url,
+                                max_retries=3
+                            )
+                            if detail_res.status_code == 200:
+                                detail_data = detail_res.json()
+                            elif detail_res.status_code == 204:
+                                detail_data = None
+                        except httpx.HTTPStatusError as he:
+                            if he.response.status_code == 404:
+                                detail_data = None
+                            else:
+                                raise
+
                         job_listing = transform_job_data(
                             light_job,
                             detail_data,
@@ -193,8 +277,10 @@ class AdeccoProvider(BaseJobProvider):
             )
 
         except Exception as e:
-            logger.error(f"Search failed: {e}")
-            raise ProviderError(self.name, f"Search failed: {e}") from e
+            from backend.providers.jobs.exceptions import format_provider_error
+            err_msg = format_provider_error(e)
+            logger.error(f"Search failed: {err_msg}")
+            raise ProviderError(self.name, err_msg) from e
         finally:
             if should_close and self._client:
                 await self.close()
@@ -219,7 +305,10 @@ class AdeccoProvider(BaseJobProvider):
                 "countryCode": "CH",
                 "languageCode": "en-CH",
             }
-            response = await self._client.post(f"{API_BASE_URL}/summarized", json=payload)
+            
+            async with self._global_sem:
+                response = await self._client.post(f"{API_BASE_URL}/summarized", json=payload)
+                
             latency_ms = int((time.time() - start_time) * 1000)
             
             if response.status_code == 200:

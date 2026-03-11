@@ -155,6 +155,45 @@ async def test_adecco_search_pagination_page_2(adept_provider):
         assert call_args is not None
         assert call_args["range"] == 10  # 1 * 10
 
+@pytest.mark.asyncio
+async def test_adecco_search_429_retry(adept_provider):
+    import httpx
+    with patch("httpx.AsyncClient.post", new_callable=AsyncMock) as mock_post, \
+         patch("httpx.AsyncClient.get", new_callable=AsyncMock) as mock_get, \
+         patch("backend.providers.jobs.adecco.client.asyncio.sleep", new_callable=AsyncMock) as mock_sleep:
+        
+        # Simulate 429 Too Many Requests on the first try, then 200 on the second try
+        error_resp = MagicMock()
+        error_resp.status_code = 429
+        error_resp.headers = {"Retry-After": "2"}
+        error_resp.request = MagicMock()
+        error_resp.raise_for_status.side_effect = httpx.HTTPStatusError(
+            "429 Too Many Requests", request=error_resp.request, response=error_resp
+        )
+        
+        success_resp = MagicMock()
+        success_resp.status_code = 200
+        success_resp.json.return_value = SAMPLE_SUMMARIZED_RESPONSE
+        
+        mock_post.side_effect = [error_resp, success_resp]
+
+        mock_get_resp = MagicMock()
+        mock_get_resp.status_code = 200
+        mock_get_resp.json.return_value = SAMPLE_DETAIL_RESPONSE
+        mock_get.return_value = mock_get_resp
+
+        request = JobSearchRequest(query="Software", page=0)
+        response = await adept_provider.search(request)
+
+        # It should have called POST twice (once failed, once success)
+        assert mock_post.call_count == 2
+        # It should have called sleep for Retry-After = 2 seconds
+        # Actually it might call sleep(2) for 429, plus random.uniform(1.0, 2.5) for the detail request delay
+        sleep_calls = [call.args[0] for call in mock_sleep.call_args_list]
+        assert 2.0 in sleep_calls
+        assert response.total_count == 1
+        assert len(response.items) == 1
+
 def test_build_query_string_basic():
     req = JobSearchRequest(query="Developer", location="Bern")
     qs = build_query_string(req)

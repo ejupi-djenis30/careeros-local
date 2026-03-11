@@ -200,8 +200,10 @@ class JobRoomProvider(BaseJobProvider):
             )
 
         except Exception as e:
-            logger.error(f"Search failed: {e}")
-            raise ProviderError(self.name, f"Search failed: {e}") from e
+            from backend.providers.jobs.exceptions import format_provider_error
+            err_msg = format_provider_error(e)
+            logger.error(f"Search failed: {err_msg}")
+            raise ProviderError(self.name, err_msg) from e
 
     # =========================================================================
     # Job Details Implementation
@@ -226,8 +228,10 @@ class JobRoomProvider(BaseJobProvider):
             return transform_job_data({"jobAdvertisement": data}, self.name, self._include_raw_data)
 
         except Exception as e:
-            logger.error(f"Failed to get job details: {e}")
-            raise ProviderError(self.name, f"Failed to get job details: {e}") from e
+            from backend.providers.jobs.exceptions import format_provider_error
+            err_msg = format_provider_error(e)
+            logger.error(f"Failed to get job details: {err_msg}")
+            raise ProviderError(self.name, err_msg) from e
 
     # =========================================================================
     # Health Check

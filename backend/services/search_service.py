@@ -264,6 +264,9 @@ class SearchService:
                                 
                             current_page += 1
                             
+                            if provider_name == "adecco":
+                                await asyncio.sleep(2.0)
+                            
                             # Real-time abort check in between pages
                             status_data = get_status(profile_id)
                             if status_data.get("state") in ["stopped", "cancelled", "finished", "failed"]:
