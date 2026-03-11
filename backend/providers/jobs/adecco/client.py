@@ -118,6 +118,14 @@ class AdeccoProvider(BaseJobProvider):
             await self._client.aclose()
             self._client = None
 
+    def _ensure_client(self) -> httpx.AsyncClient:
+        """Lazily create and return the shared HTTP client.
+        The client is kept alive for the provider's lifetime to avoid
+        race conditions when multiple concurrent searches share this instance."""
+        if self._client is None or self._client.is_closed:
+            self._client = httpx.AsyncClient(timeout=30.0, headers=self._headers)
+        return self._client
+
     async def _execute_with_retry(self, func: Callable, *args, max_retries: int = 3, **kwargs) -> httpx.Response:
         """Execute HTTP request with 429-aware retry logic and exponential backoff.
         This completely replaces the generic @retry from tenacity for Adecco's specifics."""
@@ -170,11 +178,7 @@ class AdeccoProvider(BaseJobProvider):
     async def search(self, request: JobSearchRequest) -> JobSearchResponse:
         """Search for jobs on Adecco."""
         start_time = time.time()
-        
-        should_close = False
-        if not self._client:
-            self._client = httpx.AsyncClient(timeout=30.0, headers=self._headers)
-            should_close = True
+        client = self._ensure_client()
 
         try:
             # 1. Build Query Payload
@@ -191,7 +195,7 @@ class AdeccoProvider(BaseJobProvider):
             # 2. Fetch Summarized Jobs
             async with self._global_sem:
                 resp = await self._execute_with_retry(
-                    self._client.post,
+                    client.post,
                     f"{API_BASE_URL}/summarized",
                     json=payload,
                     max_retries=3
@@ -226,7 +230,7 @@ class AdeccoProvider(BaseJobProvider):
                         try:
                             # Use custom retry executing routine
                             detail_res = await self._execute_with_retry(
-                                self._client.get,
+                                client.get,
                                 detail_url,
                                 max_retries=3
                             )
@@ -281,18 +285,11 @@ class AdeccoProvider(BaseJobProvider):
             err_msg = format_provider_error(e)
             logger.error(f"Search failed: {err_msg}")
             raise ProviderError(self.name, err_msg) from e
-        finally:
-            if should_close and self._client:
-                await self.close()
 
     async def health_check(self) -> ProviderHealth:
         """Check if Adecco API is accessible."""
         start_time = time.time()
-        should_close = False
-        
-        if not self._client:
-            self._client = httpx.AsyncClient(timeout=10.0, headers=self._headers)
-            should_close = True
+        client = self._ensure_client()
 
         try:
             # Send a minimal valid search to check health
@@ -307,7 +304,7 @@ class AdeccoProvider(BaseJobProvider):
             }
             
             async with self._global_sem:
-                response = await self._client.post(f"{API_BASE_URL}/summarized", json=payload)
+                response = await client.post(f"{API_BASE_URL}/summarized", json=payload)
                 
             latency_ms = int((time.time() - start_time) * 1000)
             
@@ -333,6 +330,3 @@ class AdeccoProvider(BaseJobProvider):
                 latency_ms=latency_ms,
                 message=str(e),
             )
-        finally:
-            if should_close:
-                await self.close()
