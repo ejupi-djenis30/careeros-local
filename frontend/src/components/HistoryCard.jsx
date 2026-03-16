@@ -12,8 +12,8 @@ export function HistoryCard({ profile, onStartSearch, onUseAsTemplate, onSaveAsS
                 </div>
 
                 {/* Main Info */}
-                <div className="flex-grow-1 min-w-0 d-flex flex-column justify-content-center">
-                    <h6 className="mb-0 fw-bold text-white text-truncate lh-sm">{profile.role_description}</h6>
+                <div className="flex-grow-1 min-w-0 d-flex flex-column justify-content-center" style={{ overflow: 'hidden' }}>
+                    <h6 className="mb-0 fw-bold text-white text-truncate lh-sm" title={profile.role_description}>{profile.role_description}</h6>
                     <div className="d-flex flex-wrap gap-3 small text-white-50 mt-1 lh-sm">
                         <span className="d-flex align-items-center" title="Location">
                             <i className="bi bi-geo-alt me-1 text-primary"></i>

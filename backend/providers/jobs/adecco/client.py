@@ -27,7 +27,7 @@ from backend.providers.jobs.models import (
 )
 from backend.providers.jobs.base import JobProvider as BaseJobProvider
 
-from backend.providers.jobs.adecco.filters import build_query_string
+from backend.providers.jobs.adecco.filters import build_query_string, filter_jobs
 from backend.providers.jobs.adecco.transformer import transform_job_data
 
 logger = logging.getLogger(__name__)
@@ -266,6 +266,15 @@ class AdeccoProvider(BaseJobProvider):
                 if job_listing:
                     job_listing.source = self.name
                     hydrated_jobs.append(job_listing)
+
+            # 4. Apply In-Memory Filters (Contract Type, Workload, etc.)
+            successfully_hydrated_count = len(hydrated_jobs)
+            hydrated_jobs = filter_jobs(hydrated_jobs, request)
+            
+            # Update total_count based on how many valid jobs were filtered out
+            if len(hydrated_jobs) < successfully_hydrated_count:
+                diff = successfully_hydrated_count - len(hydrated_jobs)
+                total_count = max(0, total_count - diff)
 
             elapsed_ms = int((time.time() - start_time) * 1000)
 

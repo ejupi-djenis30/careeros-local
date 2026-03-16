@@ -97,3 +97,25 @@ async def test_generate_search_plan_respects_max_queries(mock_provider):
         service = LLMService()
         plan = await service.generate_search_plan({}, [], max_queries=3)
         assert len(plan) == 3
+
+@pytest.mark.asyncio
+async def test_check_relevance_batch_is_permissive(mock_provider):
+    """Verify the relevance prompt is permissive and includes strategy/description."""
+    mock_provider.generate_json_async.return_value = {"results": [True]}
+    
+    with patch("backend.services.llm_service.get_provider_for_step", return_value=mock_provider):
+        service = LLMService()
+        jobs = [{"title": "Dev", "company": "Anticorp", "description_snippet": "Software engineering role"}]
+        strategy = "Focus on Python"
+        
+        await service.check_relevance_batch(jobs, "Developer", search_strategy=strategy)
+        
+        call_args = mock_provider.generate_json_async.call_args[0]
+        sys_prompt = call_args[0]
+        user_prompt = call_args[1]
+        
+        assert "permissive" in sys_prompt.lower()
+        assert "strict" not in sys_prompt.lower()
+        assert strategy in user_prompt
+        assert "Software engineering role" in user_prompt
+        assert "FILTERING RULES" in user_prompt

@@ -52,16 +52,19 @@ Return plain text, NOT JSON. Use bullet points for readability."""
         role_description: str,
         search_strategy: str = "",
     ) -> List[bool]:
-        """Quick binary relevance check for a batch of job titles."""
+        """Quick binary relevance check for a batch of jobs."""
         provider = self._get_provider("relevance")
         
         system_prompt = (
-            "You are a strict job title relevance filter. Determine if each job title "
-            "is relevant to the candidate's target role."
+            "You are a permissive job relevance pre-filter. Your goal is to KEEP jobs "
+            "that could potentially be relevant and ONLY discard jobs that are clearly "
+            "and obviously unrelated to the candidate's target role. When in doubt, "
+            "mark as relevant (true)."
         )
         
         jobs_text = "\n".join(
             f'{i+1}. "{j["title"]}" at {j.get("company", "Unknown")}'
+            + (f' — {j["description_snippet"]}' if j.get("description_snippet") else '')
             for i, j in enumerate(jobs)
         )
         
@@ -71,6 +74,12 @@ Return plain text, NOT JSON. Use bullet points for readability."""
 
 JOB TITLES:
 {jobs_text}
+
+FILTERING RULES:
+- Mark as TRUE (relevant) if the job title is the same role, a synonym, a translation (DE/FR/IT/EN), or a closely related role.
+- Mark as TRUE if the job is in a related field and could reasonably match the candidate's skills.
+- Mark as FALSE ONLY if the job is clearly in a completely different field (e.g., "Nurse" for a "Software Developer").
+- When in doubt, ALWAYS mark as TRUE — the next analysis step will do a deeper evaluation with the full description.
 
 Return ONLY JSON: {{"results": [true, false, true]}}
 One boolean per job, in order. true = relevant, false = irrelevant."""

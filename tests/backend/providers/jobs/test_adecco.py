@@ -204,11 +204,53 @@ def test_build_query_string_basic():
 def test_build_query_string_contract_type():
     req = JobSearchRequest(query="Dev", contract_type=ContractType.TEMPORARY)
     qs = build_query_string(req)
-    assert "&contractType=TEMP" in qs
+    # contractType should NOT be in query string anymore
+    assert "&contractType=" not in qs
     
     req_remote = JobSearchRequest(query="Dev", work_forms=[WorkForm.HOME_OFFICE])
     qs_remote = build_query_string(req_remote)
-    assert "&workType=remote" in qs_remote
+    # workType should NOT be in query string anymore
+    assert "&workType=" not in qs_remote
+
+def test_filter_jobs_contract_type():
+    from backend.providers.jobs.adecco.filters import filter_jobs
+    from backend.providers.jobs.models import EmploymentDetails, JobListing
+    
+    jobs = [
+        JobListing(id="1", title="Perm", source="adecco", employment=EmploymentDetails(is_permanent=True)),
+        JobListing(id="2", title="Temp", source="adecco", employment=EmploymentDetails(is_permanent=False)),
+    ]
+    
+    req_perm = JobSearchRequest(contract_type=ContractType.PERMANENT)
+    filtered_perm = filter_jobs(jobs, req_perm)
+    assert len(filtered_perm) == 1
+    assert filtered_perm[0].id == "1"
+    
+    req_temp = JobSearchRequest(contract_type=ContractType.TEMPORARY)
+    filtered_temp = filter_jobs(jobs, req_temp)
+    assert len(filtered_temp) == 1
+    assert filtered_temp[0].id == "2"
+
+def test_filter_jobs_workload():
+    from backend.providers.jobs.adecco.filters import filter_jobs
+    from backend.providers.jobs.models import EmploymentDetails, JobListing
+    
+    jobs = [
+        JobListing(id="1", title="FT", source="adecco", employment=EmploymentDetails(workload_min=80, workload_max=100)),
+        JobListing(id="2", title="PT", source="adecco", employment=EmploymentDetails(workload_min=20, workload_max=50)),
+    ]
+    
+    # Looking for FT (min 90)
+    req_ft = JobSearchRequest(workload_min=90)
+    filtered_ft = filter_jobs(jobs, req_ft)
+    assert len(filtered_ft) == 1
+    assert filtered_ft[0].id == "1"
+    
+    # Looking for PT (max 60)
+    req_pt = JobSearchRequest(workload_max=60)
+    filtered_pt = filter_jobs(jobs, req_pt)
+    assert len(filtered_pt) == 1
+    assert filtered_pt[0].id == "2"
 
 def test_transform_job_data_workload_mapping():
     light_job_ft = {"jobId": "1", "employmentTypeId": "FULLTIME"}

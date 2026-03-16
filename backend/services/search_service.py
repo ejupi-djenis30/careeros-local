@@ -233,8 +233,12 @@ class SearchService:
                 query_type = search.get("type", "keyword")
                 
                 profession_codes = []
+                avam_fallback_keyword = False
                 if query_type == "occupation":
                     profession_codes = await avam_mapper.resolve(query)
+                    if not profession_codes:
+                        avam_fallback_keyword = True
+                        add_log(profile_id, f"  ℹ AVAM found no codes for «{query}», JobRoom will use keyword fallback")
 
                 compatible = get_compatible_providers(domain, available_providers, provider_infos)
                 if not compatible:
@@ -248,7 +252,7 @@ class SearchService:
                 async def search_provider(provider_name: str, req: JobSearchRequest):
                     provider = available_providers[provider_name]
                     all_provider_jobs = []
-                    max_pages = 100 if provider_name == "adecco" else 3  # Adecco is 10 jobs/page, others are 50-100
+                    max_pages = 100
                     try:
                         current_page = 0
                         while current_page < max_pages:
@@ -276,7 +280,16 @@ class SearchService:
                     except Exception as e:
                         return provider_name, all_provider_jobs, e
 
-                p_tasks = [search_provider(p_name, request) for p_name in compatible]
+                p_tasks = []
+                for p_name in compatible:
+                    if p_name == "job_room" and avam_fallback_keyword:
+                        # JobRoom specifically: if occupation lookup failed, send keyword search
+                        req_fallback = build_search_request(profile, query, [])
+                        p_tasks.append(search_provider(p_name, req_fallback))
+                    else:
+                        # Standard request (with AVAM codes if they exist)
+                        p_tasks.append(search_provider(p_name, request))
+
                 p_results = await asyncio.gather(*p_tasks)
 
                 found_jobs = []
@@ -366,19 +379,23 @@ class SearchService:
 
     async def _relevance_filter(self, profile_id: int, profile_dict: dict, jobs: list, batch_size: int = 20) -> list:
         """Use cheap RELEVANCE LLM to filter obviously irrelevant jobs."""
-        from backend.services.llm_service import llm_service
         
         relevant_jobs = []
         for i in range(0, len(jobs), batch_size):
             batch = jobs[i:i + batch_size]
             job_data = [
-                {"title": getattr(j, "title", "Unknown"), "company": getattr(j, "company").name if getattr(j, "company", None) else "Unknown"}
+                {
+                    "title": getattr(j, "title", "Unknown"),
+                    "company": getattr(j, "company").name if getattr(j, "company", None) else "Unknown",
+                    "description_snippet": (j.descriptions[0].description[:150] if getattr(j, "descriptions", []) and j.descriptions else ""),
+                }
                 for j in batch
             ]
             try:
                 results = await llm_service.check_relevance_batch(
                     job_data,
                     profile_dict.get("role_description", ""),
+                    search_strategy=profile_dict.get("search_strategy", ""),
                 )
                 for j, is_relevant in zip(batch, results):
                     if is_relevant:
@@ -404,8 +421,6 @@ class SearchService:
                 if status_data.get("state") in ["stopped", "cancelled", "finished", "failed"]:
                     return []
                     
-                from backend.services.llm_service import llm_service
-                
                 jobs_metadata = []
                 for i, job in enumerate(batch):
                     title = getattr(job, "title", "Unknown")
@@ -518,16 +533,25 @@ class SearchService:
 
                     distance_km = None
                     if (profile_dict.get("latitude") is not None and profile_dict.get("longitude") is not None and 
-                        getattr(job, "location", None) and job.location.coordinates):
-                        distance_km = round(
-                            haversine_distance(
-                                profile_dict["latitude"],
-                                profile_dict["longitude"],
-                                job.location.coordinates.lat,
-                                job.location.coordinates.lon,
-                            ),
-                            1,
-                        )
+                        getattr(job, "location", None)):
+                        
+                        coords = job.location.coordinates
+                        if not coords and job.location.city:
+                            from backend.services.utils import geocode_location
+                            coords = await geocode_location(job.location.city)
+                            # Temporarily attach to object for haversine calculation
+                            job.location.coordinates = coords
+
+                        if coords:
+                            distance_km = round(
+                                haversine_distance(
+                                    profile_dict["latitude"],
+                                    profile_dict["longitude"],
+                                    coords.lat,
+                                    coords.lon,
+                                ),
+                                1,
+                            )
 
                     key = (job.source, str(job.id))
                     scraped_job = scraped_map.get(key)

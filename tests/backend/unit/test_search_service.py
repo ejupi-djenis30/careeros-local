@@ -83,12 +83,15 @@ async def test_run_search_success(search_service, mock_profile_repo, mock_job_re
          patch("backend.services.search_service.update_status"), \
          patch("backend.services.search_service.JobRoomProvider", return_value=mock_provider), \
          patch("backend.services.search_service.SwissDevJobsProvider", return_value=mock_provider), \
+         patch("backend.services.search_service.AdeccoProvider", return_value=mock_provider), \
          patch("backend.services.search_service.LocalDbProvider", return_value=mock_provider):
         
         # New format: domain instead of provider
         mock_llm.generate_search_plan = AsyncMock(return_value=[
             {"domain": "it", "query": "Software Engineer", "type": "occupation", "language": "en"}
         ])
+        mock_llm.check_relevance_batch = AsyncMock(return_value=[True])
+        mock_llm.analyze_job_batch = AsyncMock(return_value=[MagicMock(relevant=True, affinity_score=80)])
         
         await search_service.run_search(1)
         
@@ -104,6 +107,10 @@ async def test_run_search_stopped_by_user(search_service, mock_profile_repo):
     
     with patch("backend.services.search_service.init_status"), \
          patch("backend.services.search_service.add_log"), \
+         patch("backend.services.search_service.JobRoomProvider"), \
+         patch("backend.services.search_service.SwissDevJobsProvider"), \
+         patch("backend.services.search_service.AdeccoProvider"), \
+         patch("backend.services.search_service.LocalDbProvider"), \
          patch("backend.services.search_service.update_status") as mock_update:
         
         await search_service.run_search(1)
@@ -114,7 +121,41 @@ async def test_run_search_no_plan(search_service, mock_profile_repo):
     with patch("backend.services.search_service.llm_service") as mock_llm, \
          patch("backend.services.search_service.init_status"), \
          patch("backend.services.search_service.add_log"), \
+         patch("backend.services.search_service.JobRoomProvider"), \
+         patch("backend.services.search_service.SwissDevJobsProvider"), \
+         patch("backend.services.search_service.AdeccoProvider"), \
+         patch("backend.services.search_service.LocalDbProvider"), \
          patch("backend.services.search_service.update_status") as mock_update:
         mock_llm.generate_search_plan = AsyncMock(return_value=[])
         await search_service.run_search(1)
         mock_update.assert_any_call(1, state="done", jobs_found=0, jobs_new=0)
+
+@pytest.mark.asyncio
+async def test_relevance_filter_passes_correct_data(search_service):
+    """Verify _relevance_filter prepares job_data correctly and passes search_strategy."""
+    mock_job = MagicMock()
+    mock_job.title = "Software Engineer"
+    mock_job.company.name = "Google"
+    mock_job.descriptions = [MagicMock(description="Developing cool stuff at Google")]
+    
+    profile_dict = {
+        "role_description": "Dev",
+        "search_strategy": "Remote only"
+    }
+    
+    with patch("backend.services.search_service.llm_service") as mock_llm:
+        mock_llm.check_relevance_batch = AsyncMock(return_value=[True])
+        
+        await search_service._relevance_filter(123, profile_dict, [mock_job])
+        
+        mock_llm.check_relevance_batch.assert_called_once()
+        args, kwargs = mock_llm.check_relevance_batch.call_args
+        
+        job_data = args[0]
+        assert len(job_data) == 1
+        assert job_data[0]["title"] == "Software Engineer"
+        assert job_data[0]["company"] == "Google"
+        assert job_data[0]["description_snippet"] == "Developing cool stuff at Google"
+        
+        assert args[1] == "Dev"
+        assert kwargs["search_strategy"] == "Remote only"
