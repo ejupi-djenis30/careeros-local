@@ -2,6 +2,7 @@ import math
 import re
 import asyncio
 import fitz  # PyMuPDF
+from typing import Optional
 from fastapi import UploadFile, HTTPException
 
 def clean_html_tags(text: str) -> str:
