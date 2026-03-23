@@ -41,7 +41,7 @@ from backend.providers.jobs.base import (
     JobProvider as BaseJobProvider,
 )
 # ProviderCapabilities, ProviderHealth, ProviderStatus are now in models.py
-from backend.providers.jobs.session import ExecutionMode, ProxyPool, ScraperSession
+from backend.providers.jobs.session import ExecutionMode, ScraperSession
 from backend.providers.jobs.jobroom.constants import (
     API_BASE,
     BASE_URL,
@@ -78,11 +78,9 @@ class JobRoomProvider(BaseJobProvider):
     def __init__(
         self,
         mode: ExecutionMode = ExecutionMode.STEALTH,
-        proxy_pool: ProxyPool | None = None,
         include_raw_data: bool = False,
     ):
         self._mode = mode
-        self._proxy_pool = proxy_pool
         self._include_raw_data = include_raw_data
         self._session: ScraperSession | None = None
         self._mapper = BFSLocationMapper()
@@ -131,7 +129,6 @@ class JobRoomProvider(BaseJobProvider):
         if self._session is None:
             self._session = ScraperSession(
                 mode=self._mode,
-                proxy_pool=self._proxy_pool,
                 base_url=BASE_URL,
             )
             await self._session.start()

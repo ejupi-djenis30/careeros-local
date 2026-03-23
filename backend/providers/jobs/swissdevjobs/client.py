@@ -99,10 +99,8 @@ class SwissDevJobsProvider(BaseJobProvider):
         """Search for jobs on swissdevjobs.ch."""
         start_time = time.time()
         
-        should_close = False
         if not self._client:
             self._client = httpx.AsyncClient(timeout=30.0)
-            should_close = True
 
         try:
             # Step 1: Fetch the bulk list (with simple 1-hour cache across the session)
@@ -188,8 +186,7 @@ class SwissDevJobsProvider(BaseJobProvider):
             logger.error(f"Search failed: {e}")
             raise ProviderError(self.name, f"Search failed: {e}") from e
         finally:
-            if should_close and self._client:
-                await self.close()
+            pass
 
     async def health_check(self) -> ProviderHealth:
         """Check if swissdevjobs.ch API is accessible."""

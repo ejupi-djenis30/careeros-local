@@ -95,8 +95,7 @@ class EmploymentDetails(BaseModel):
     workload_max: int = 100
     work_forms: List[str] = []
 
-class DateModel(BaseModel): # Placeholder for Occupation
-    pass
+
 
 class Occupation(BaseModel):
     avam_code: str

@@ -10,11 +10,10 @@ class ExecutionMode(str, Enum):
     STEALTH = "stealth"
     FAST = "fast"
 
-class ProxyPool:
-    pass
+
 
 class ScraperSession:
-    def __init__(self, mode: ExecutionMode = ExecutionMode.FAST, proxy_pool: Optional[ProxyPool] = None, base_url: Optional[str] = None):
+    def __init__(self, mode: ExecutionMode = ExecutionMode.FAST, base_url: Optional[str] = None):
         self.mode = mode
         self.base_url = base_url
         self.client: Optional[httpx.AsyncClient] = None
@@ -25,7 +24,7 @@ class ScraperSession:
         self.csrf_token: Optional[str] = None
 
     async def start(self):
-        self.client = httpx.AsyncClient(headers=self.headers, verify=False, follow_redirects=True, timeout=30.0)
+        self.client = httpx.AsyncClient(headers=self.headers, verify=True, follow_redirects=True, timeout=30.0)
 
     async def close(self):
         if self.client:

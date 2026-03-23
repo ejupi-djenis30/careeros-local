@@ -5,6 +5,8 @@ import fitz  # PyMuPDF
 from typing import Optional
 from fastapi import UploadFile, HTTPException
 
+_geocode_cache: dict = {}
+
 def clean_html_tags(text: str) -> str:
     """Remove HTML tags like <em>, &nbsp;, etc. from text."""
     if not text:
@@ -61,7 +63,7 @@ def haversine_distance(lat1: float, lon1: float, lat2: float, lon2: float) -> fl
 async def geocode_location(city: str) -> Optional["Coordinates"]:
     """
     Resolve a city name to Coordinates (lat, lon).
-    Uses a local cache for major Swiss cities and falls back to Nominatim API.
+    Uses a local cache for major Swiss cities, an in-memory dynamic cache, and falls back to Nominatim API.
     """
     from backend.providers.jobs.models import Coordinates
     
@@ -108,6 +110,10 @@ async def geocode_location(city: str) -> Optional["Coordinates"]:
         lat, lon = SWISS_CITIES_COORDS[normalized]
         return Coordinates(lat=lat, lon=lon)
         
+    global _geocode_cache
+    if normalized in _geocode_cache:
+        return _geocode_cache[normalized]
+        
     # 2. Nominatim Fallback
     import httpx
     try:
@@ -125,10 +131,12 @@ async def geocode_location(city: str) -> Optional["Coordinates"]:
             if resp.status_code == 200:
                 data = resp.json()
                 if data and len(data) > 0:
-                    return Coordinates(
+                    coords = Coordinates(
                         lat=float(data[0]["lat"]),
                         lon=float(data[0]["lon"])
                     )
+                    _geocode_cache[normalized] = coords
+                    return coords
     except Exception as e:
         import logging
         logging.getLogger(__name__).warning(f"Geocoding failed for {city}: {e}")
