@@ -117,13 +117,13 @@ def get_all_schedules(user_id: int = None, db: Session = None) -> list[dict]:
                     continue
             except ValueError:
                 continue
-                
-        jobs.append({
-            "id": job.id,
-            "name": job.name,
-            "next_run": job.next_run_time.isoformat() if job.next_run_time else None,
-            "trigger": str(job.trigger),
-        })
+
+            jobs.append({
+                "id": job.id,
+                "name": job.name,
+                "next_run": job.next_run_time.isoformat() if job.next_run_time else None,
+                "trigger": str(job.trigger),
+            })
     return jobs
 
 

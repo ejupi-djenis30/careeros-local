@@ -43,7 +43,7 @@ def test_remove_schedule():
 def test_get_all_schedules():
     mock_scheduler = MagicMock()
     mock_job = MagicMock()
-    mock_job.id = "job1"
+    mock_job.id = "search_profile_1"
     mock_job.name = "name1"
     mock_job.next_run_time = datetime(2025, 1, 1, tzinfo=timezone.utc)
     mock_job.trigger = "trigger1"
@@ -51,12 +51,14 @@ def test_get_all_schedules():
     
     # Provide a mock db session so SessionLocal() is not called (avoids real PG connection)
     mock_db = MagicMock()
-    mock_db.query.return_value.filter.return_value.filter.return_value.all.return_value = []
+    mock_profile = MagicMock()
+    mock_profile.id = 1
+    mock_db.query.return_value.filter.return_value.all.return_value = [mock_profile]
 
     with patch("backend.services.scheduler.get_scheduler", return_value=mock_scheduler):
         schedules = get_all_schedules(db=mock_db)
         assert len(schedules) == 1
-        assert schedules[0]["id"] == "job1"
+        assert schedules[0]["id"] == "search_profile_1"
 
 @pytest.mark.asyncio
 async def test_run_scheduled_search_success():

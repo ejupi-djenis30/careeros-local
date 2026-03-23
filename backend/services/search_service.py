@@ -215,13 +215,11 @@ class SearchService:
 
     async def _execute_searches(self, profile_id: int, profile, searches: list, available_providers, provider_infos) -> list:
         all_jobs: list = []
-        call_index = 0
 
         # Limit the number of parallel query executions to avoid overwhelming providers
         semaphore = asyncio.Semaphore(settings.SEARCH_CONCURRENCY)
 
         async def execute_single_search(idx: int, search: dict):
-            nonlocal call_index
             async with semaphore:
                 # Real-time stop check using memory cache rather than DB reads
                 status_data = get_status(profile_id)
@@ -294,9 +292,6 @@ class SearchService:
 
                 found_jobs = []
                 for p_name, items, error in p_results:
-                    call_index += 1
-                    update_status(profile_id, current_search_index=call_index)
-                    
                     if error:
                         logger.warning(f"Search «{query}» on {p_name} failed: {error}")
                         add_log(profile_id, f"⚠ Search «{query}» on {p_name} failed: {error}")
@@ -310,8 +305,11 @@ class SearchService:
         tasks = [execute_single_search(idx, search) for idx, search in enumerate(searches)]
         results = await asyncio.gather(*tasks)
         
+        completed_calls = 0
         for batch in results:
             all_jobs.extend(batch)
+            completed_calls += 1
+            update_status(profile_id, current_search_index=completed_calls)
 
         if not all_jobs:
             add_log(profile_id, "No jobs found across all queries")
@@ -482,6 +480,25 @@ class SearchService:
         saved_count = 0
         skipped_count = len(unique_jobs) - len(analysis_results)
         
+        # Pre-resolve geocoding for all valid jobs before entering synchronous DB block
+        if profile_dict.get("latitude") is not None and profile_dict.get("longitude") is not None:
+            from backend.services.utils import geocode_location
+            
+            cities_to_resolve = set()
+            for job, analysis, desc_text in analysis_results:
+                loc = getattr(job, "location", None)
+                if loc and not loc.coordinates and loc.city:
+                    cities_to_resolve.add(loc.city)
+            
+            if cities_to_resolve:
+                resolved_coords = await asyncio.gather(*[geocode_location(c) for c in cities_to_resolve])
+                city_coords = dict(zip(cities_to_resolve, resolved_coords))
+                
+                for job, analysis, desc_text in analysis_results:
+                    loc = getattr(job, "location", None)
+                    if loc and not loc.coordinates and loc.city:
+                        loc.coordinates = city_coords.get(loc.city)
+
         if analysis_results:
             from backend.models import ScrapedJob, Job
             from backend.services.utils import haversine_distance, clean_html_tags
@@ -536,12 +553,6 @@ class SearchService:
                         getattr(job, "location", None)):
                         
                         coords = job.location.coordinates
-                        if not coords and job.location.city:
-                            from backend.services.utils import geocode_location
-                            coords = await geocode_location(job.location.city)
-                            # Temporarily attach to object for haversine calculation
-                            job.location.coordinates = coords
-
                         if coords:
                             distance_km = round(
                                 haversine_distance(
