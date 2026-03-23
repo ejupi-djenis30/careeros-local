@@ -128,9 +128,9 @@ QUERY GENERATION RULES:
 3. ONE OCCUPATION PER QUERY: Each query must contain ONLY ONE specific job title/occupation.
 4. QUERY TYPES:
    - "occupation": Exactly ONE occupation title, translated. No keywords in this type.
-   - "keyword": A single specific skill or technology.
+   - "keyword": A single specific skill, tool, action verb, or core competency (e.g. for IT: "React", for non-IT/general: "pulire", "trasportare", "customer service").
 5. DIVERSITY & ACCURACY:
-   - Use synonyms and different languages (DE, FR, EN) to maximize coverage.
+   - Use synonyms and different languages (DE, FR, EN, IT) to maximize coverage.
    - Ensure queries are distinct and high-quality.
 
 {limit_instruction}
@@ -140,7 +140,8 @@ Return ONLY pure JSON with a 'searches' list. Example:
     "searches": [
         {{"domain": "it", "language": "en", "type": "occupation", "query": "Software Engineer"}},
         {{"domain": "it", "language": "de", "type": "keyword", "query": "React"}},
-        {{"domain": "finance", "language": "en", "type": "occupation", "query": "Financial Analyst"}}
+        {{"domain": "finance", "language": "en", "type": "occupation", "query": "Financial Analyst"}},
+        {{"domain": "general", "language": "it", "type": "keyword", "query": "pulire"}}
     ]
 }}"""
 

@@ -323,7 +323,8 @@ The entire behavior of Job Hunter AI is dictated by environment variables. Copy 
 | `API_V1_STR` | Optional | `/api/v1` | Base routing path for the REST API. |
 | `LOG_LEVEL` | Optional | `INFO` | Affects server stdout. Options: `DEBUG`, `INFO`, `WARNING`, `ERROR`. |
 | `SECRET_KEY` | **Required** | `changeme` | Used to cryptographically sign JSON Web Tokens. Change this in production! |
-| `ACCESS_TOKEN_EXPIRE_MINUTES` | Optional | `11520` | Duration of authentication sessions (in minutes). 11520 minutes equals precisely 8 days. |
+| `ACCESS_TOKEN_EXPIRE_MINUTES` | Optional | `15` | Short-lived access token expiry (in minutes). |
+| `REFRESH_TOKEN_EXPIRE_DAYS` | Optional | `7` | Long-lived refresh token expiry (in days). |
 | `CORS_ORIGINS` | Optional | `http://localhost:5173,http://localhost:8000` | Critical for browser security. If running on a remote proxy, add the domain here. |
 | `DATABASE_URL` | Optional | `sqlite:///./job_hunter.db` | The connection string. Docker: `postgresql://user:password@db:5432/jobhunter`. Local: `sqlite:///./job_hunter.db`. |
 

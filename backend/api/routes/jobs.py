@@ -59,3 +59,10 @@ def update_job(
 ):
     return job_service.update_job(user_id, job_id, updates)
 
+@router.delete("/{job_id}", status_code=204)
+def delete_job(
+    job_id: int,
+    user_id: int = Depends(get_current_user_id),
+    job_service: JobService = Depends(get_job_service),
+):
+    job_service.delete_job(user_id, job_id)
