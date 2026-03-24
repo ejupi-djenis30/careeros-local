@@ -36,6 +36,7 @@ def register(request: Request, response: Response, user_in: UserCreate, db: Sess
         httponly=True,
         max_age=settings.REFRESH_TOKEN_EXPIRE_DAYS * 24 * 60 * 60,
         samesite="lax",
+        secure=settings.ENVIRONMENT == "production",
     )
     return {"access_token": access_token, "token_type": "bearer", "username": user_in.username}
 
@@ -59,6 +60,7 @@ def login(request: Request, response: Response, form_data: OAuth2PasswordRequest
         httponly=True,
         max_age=settings.REFRESH_TOKEN_EXPIRE_DAYS * 24 * 60 * 60,
         samesite="lax",
+        secure=settings.ENVIRONMENT == "production",
     )
     return {"access_token": access_token, "token_type": "bearer", "username": user.username}
 
@@ -86,11 +88,12 @@ def refresh(request: Request, response: Response, jh_refresh_token: str | None =
         httponly=True,
         max_age=settings.REFRESH_TOKEN_EXPIRE_DAYS * 24 * 60 * 60,
         samesite="lax",
+        secure=settings.ENVIRONMENT == "production",
     )
     return {"access_token": access_token, "token_type": "bearer", "username": username}
 
 
 @router.post("/logout")
 def logout(response: Response):
-    response.delete_cookie("jh_refresh_token", httponly=True, samesite="lax")
+    response.delete_cookie("jh_refresh_token", httponly=True, samesite="lax", secure=settings.ENVIRONMENT == "production")
     return {"message": "Logged out successfully"}

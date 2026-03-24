@@ -125,3 +125,86 @@ def test_stop_scheduler():
     
     stop_scheduler()
     mock_scheduler.shutdown.assert_called_once()
+
+@pytest.mark.asyncio
+async def test_run_scheduled_search_exception():
+    mock_db = MagicMock()
+    mock_profile = MagicMock()
+    mock_profile.id = 1
+    mock_profile.schedule_enabled = True
+    mock_db.query.return_value.filter.return_value.first.return_value = mock_profile
+    
+    with patch("backend.services.scheduler.SessionLocal", return_value=mock_db), \
+         patch("backend.services.scheduler.get_search_service", side_effect=Exception("DB Failure")):
+        await _run_scheduled_search(1)
+        mock_db.close.assert_called_once()
+        
+def test_get_all_schedules_no_db_and_specific_user():
+    mock_scheduler = MagicMock()
+    mock_job = MagicMock()
+    mock_job.id = "search_profile_1"
+    mock_job.name = "name1"
+    mock_job.next_run_time = datetime(2025, 1, 1, tzinfo=timezone.utc)
+    mock_job.trigger = "trigger1"
+    mock_scheduler.get_jobs.return_value = [mock_job]
+    
+    mock_db = MagicMock()
+    mock_profile = MagicMock()
+    mock_profile.id = 1
+    # Needs two .filter() calls for schedule_enabled and user_id
+    mock_db.query.return_value.filter.return_value.filter.return_value.all.return_value = [mock_profile]
+    
+    with patch("backend.services.scheduler.get_scheduler", return_value=mock_scheduler), \
+         patch("backend.services.scheduler.SessionLocal", return_value=mock_db):
+        schedules = get_all_schedules(user_id=99)
+        assert len(schedules) == 1
+        mock_db.close.assert_called_once()
+        
+def test_get_all_schedules_value_error():
+    mock_scheduler = MagicMock()
+    mock_job = MagicMock()
+    mock_job.id = "search_profile_invalid"
+    mock_scheduler.get_jobs.return_value = [mock_job]
+    
+    mock_db = MagicMock()
+    mock_db.query.return_value.filter.return_value.all.return_value = []
+    
+    # We must mock get_scheduler to return a scheduler with these jobs
+    with patch("backend.services.scheduler.get_scheduler", return_value=mock_scheduler), \
+         patch("backend.services.scheduler.SessionLocal", return_value=mock_db):
+        schedules = get_all_schedules()
+        assert len(schedules) == 0
+        
+def test_start_scheduler_already_running():
+    mock_scheduler = MagicMock()
+    mock_scheduler.running = True
+    with patch("backend.services.scheduler.get_scheduler", return_value=mock_scheduler):
+        start_scheduler()
+        mock_scheduler.start.assert_not_called()
+        
+def test_start_scheduler_exception():
+    mock_scheduler = MagicMock()
+    mock_scheduler.running = False
+    mock_db = MagicMock()
+    mock_db.query.side_effect = Exception("DB Query Error")
+    
+    with patch("backend.services.scheduler.get_scheduler", return_value=mock_scheduler), \
+         patch("backend.services.scheduler.SessionLocal", return_value=mock_db):
+        start_scheduler()
+
+def test_get_all_schedules_pid_not_in_valid():
+    # hits line 117
+    mock_scheduler = MagicMock()
+    mock_job = MagicMock()
+    mock_job.id = "search_profile_2"
+    mock_scheduler.get_jobs.return_value = [mock_job]
+    
+    mock_db = MagicMock()
+    mock_profile = MagicMock()
+    mock_profile.id = 1
+    mock_db.query.return_value.filter.return_value.filter.return_value.all.return_value = [mock_profile]
+    
+    with patch("backend.services.scheduler.get_scheduler", return_value=mock_scheduler), \
+         patch("backend.services.scheduler.SessionLocal", return_value=mock_db):
+        schedules = get_all_schedules(user_id=1)
+        assert len(schedules) == 0

@@ -1,10 +1,13 @@
-from sqlalchemy import Column, String, Boolean, Float, Text, DateTime, ForeignKey, JSON, Integer
+from sqlalchemy import Column, String, Boolean, Float, Text, DateTime, ForeignKey, JSON, Integer, UniqueConstraint
 from sqlalchemy.orm import relationship
 from backend.models.base_model import BaseModel, TimestampMixin
 
 
 class ScrapedJob(BaseModel, TimestampMixin):
     __tablename__ = "scraped_jobs"
+    __table_args__ = (
+        UniqueConstraint('platform', 'platform_job_id', name='uq_scraped_job_platform_id'),
+    )
 
     platform = Column(String, index=True, nullable=False)
     platform_job_id = Column(String, index=True, nullable=False)

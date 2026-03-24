@@ -16,11 +16,10 @@ def build_search_request(profile, query: str, profession_codes: list[str] = None
 
     radius_request = None
     if profile.latitude and profile.longitude:
-        # Default to 30km if not specified, or use profile preference if available
-        # Assuming profile has no explicit distance pref, defaulting to 50 as per user payload example
+        # Default to 50km if not specified, or use profile preference if available
         dist = 50 
-        if hasattr(profile, 'search_radius') and profile.search_radius:
-             dist = int(profile.search_radius)
+        if hasattr(profile, 'max_distance') and profile.max_distance:
+             dist = int(profile.max_distance)
         
         radius_request = RadiusSearchRequest(
             geo_point=Coordinates(lat=profile.latitude, lon=profile.longitude),

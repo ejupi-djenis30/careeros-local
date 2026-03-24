@@ -93,3 +93,11 @@ class GeminiProvider(LLMProvider):
         except Exception as e:
              logger.error(f"Gemini JSON Error ({self.model_id}): {e}")
              raise
+
+    async def generate_text_async(self, system_prompt: str, user_prompt: str, max_tokens: Optional[int] = None) -> str:
+        import asyncio
+        return await asyncio.to_thread(self.generate_text, system_prompt, user_prompt, max_tokens)
+
+    async def generate_json_async(self, system_prompt: str, user_prompt: str, max_tokens: Optional[int] = None) -> Dict[str, Any]:
+        import asyncio
+        return await asyncio.to_thread(self.generate_json, system_prompt, user_prompt, max_tokens)

@@ -22,11 +22,14 @@ describe('ScheduleCard', () => {
         expect(screen.getByText('ID: 10')).toBeInTheDocument();
     });
 
-    it('renders default name when profile missing a name', () => {
-        const profileWithoutName = { ...mockProfile, name: '' };
-        render(<ScheduleCard profile={profileWithoutName} onToggle={vi.fn()} onChangeInterval={vi.fn()} onDelete={vi.fn()} />);
+    it('renders default name and falsy fallbacks when profile is missing info', () => {
+        const profileMissingInfo = { ...mockProfile, name: '', location_filter: '', schedule_interval_hours: null };
+        render(<ScheduleCard profile={profileMissingInfo} onToggle={vi.fn()} onChangeInterval={vi.fn()} onDelete={vi.fn()} />);
         
         expect(screen.getByText('Campaign #10')).toBeInTheDocument();
+        expect(screen.getByText('Any Location')).toBeInTheDocument();
+        const select = screen.getByRole('combobox');
+        expect(select.value).toBe("24"); // Checks the fallback
     });
 
     it('calls onToggle when schedule switch is clicked', () => {
@@ -63,5 +66,12 @@ describe('ScheduleCard', () => {
         fireEvent.click(deleteBtn);
         
         expect(onDelete).toHaveBeenCalledWith(mockProfile.id);
+    });
+
+    it('handles disabled schedule state', () => {
+        const disabledProfile = { ...mockProfile, schedule_enabled: false };
+        render(<ScheduleCard profile={disabledProfile} onToggle={vi.fn()} onChangeInterval={vi.fn()} onDelete={vi.fn()} />);
+        const toggleSwitch = screen.getByRole('checkbox');
+        expect(toggleSwitch).not.toBeChecked();
     });
 });

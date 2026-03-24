@@ -119,3 +119,66 @@ async def test_check_relevance_batch_is_permissive(mock_provider):
         assert strategy in user_prompt
         assert "Software engineering role" in user_prompt
         assert "FILTERING RULES" in user_prompt
+
+@pytest.mark.asyncio
+async def test_summarize_cv_success(mock_provider):
+    mock_provider.generate_text_async.return_value = "- Experience: 5 years\n- Skills: Python"
+    
+    with patch("backend.services.llm_service.get_provider_for_step", return_value=mock_provider):
+        service = LLMService()
+        summary = await service.summarize_cv("Lorem ipsum CV content...")
+        
+        assert summary == "- Experience: 5 years\n- Skills: Python"
+        
+        call_args = mock_provider.generate_text_async.call_args[0]
+        sys_prompt = call_args[0]
+        user_prompt = call_args[1]
+        
+        assert "HR Analyst" in sys_prompt
+        assert "Lorem ipsum" in user_prompt
+        assert "Highest Education Level" in user_prompt
+
+@pytest.mark.asyncio
+async def test_analyze_job_batch_success(mock_provider):
+    mock_provider.generate_json_async.return_value = {
+        "results": [
+            {"relevant": True, "affinity_score": 85, "worth_applying": True},
+            {"relevant": False, "affinity_score": 10, "worth_applying": False}
+        ]
+    }
+    
+    with patch("backend.services.llm_service.get_provider_for_step", return_value=mock_provider):
+        service = LLMService()
+        jobs = [
+            {"title": "Dev", "company": "A", "location": "Remote", "description": "Good job"},
+            {"title": "Chef", "company": "B", "location": "Paris", "description": "Cooking"}
+        ]
+        profile = {
+            "role_description": "Developer",
+            "search_strategy": "Only remote",
+            "cv_summary": "5 years dev"
+        }
+        
+        results = await service.analyze_job_batch(jobs, profile)
+        
+        assert len(results) == 2
+        assert results[0]["affinity_score"] == 85
+        assert results[1]["relevant"] is False
+        
+        call_args = mock_provider.generate_json_async.call_args[0]
+        sys_prompt = call_args[0]
+        user_prompt = call_args[1]
+        
+        assert "Career Coach AI" in sys_prompt
+        assert "Only remote" in user_prompt
+        assert "Good job" in user_prompt
+        assert "Cooking" in user_prompt
+
+@pytest.mark.asyncio
+async def test_analyze_job_batch_fallback_empty_dict(mock_provider):
+    mock_provider.generate_json_async.return_value = {} # Malformed response
+    
+    with patch("backend.services.llm_service.get_provider_for_step", return_value=mock_provider):
+        service = LLMService()
+        results = await service.analyze_job_batch([{"title": "T"}], {"role_description": "R"})
+        assert results == []

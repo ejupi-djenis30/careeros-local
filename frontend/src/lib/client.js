@@ -38,6 +38,33 @@ export class ApiClient {
 
         if (response.status === 401) {
             if (!this._suppressUnauthorized) {
+                this._suppressUnauthorized = true;
+                try {
+                    const refreshRes = await fetch(`${API_BASE}/auth/refresh`, {
+                        method: 'POST',
+                        credentials: 'include'
+                    });
+                    if (refreshRes.ok) {
+                        const refreshData = await refreshRes.json();
+                        if (refreshData.access_token) {
+                            this.setToken(refreshData.access_token);
+                            this._suppressUnauthorized = false;
+                            
+                            // Retry the original request
+                            const newHeaders = {
+                                ...config.headers,
+                                "Authorization": `Bearer ${refreshData.access_token}`
+                            };
+                            const retryRes = await fetch(url, { ...config, headers: newHeaders });
+                            if (!retryRes.ok) throw new Error("Retry failed");
+                            return retryRes.json();
+                        }
+                    }
+                } catch (e) {
+                    // fall through
+                } finally {
+                    this._suppressUnauthorized = false;
+                }
                 window.dispatchEvent(new Event("jh_unauthorized"));
             }
             throw new Error("UNAUTHORIZED");
@@ -104,7 +131,36 @@ export class ApiClient {
         const response = await fetch(url, config);
 
         if (response.status === 401) {
-            window.dispatchEvent(new Event("jh_unauthorized"));
+            if (!this._suppressUnauthorized) {
+                this._suppressUnauthorized = true;
+                try {
+                    const refreshRes = await fetch(`${API_BASE}/auth/refresh`, {
+                        method: 'POST',
+                        credentials: 'include'
+                    });
+                    if (refreshRes.ok) {
+                        const refreshData = await refreshRes.json();
+                        if (refreshData.access_token) {
+                            this.setToken(refreshData.access_token);
+                            this._suppressUnauthorized = false;
+                            
+                            // Retry original request
+                            const newHeaders = {
+                                ...config.headers,
+                                "Authorization": `Bearer ${refreshData.access_token}`
+                            };
+                            const retryRes = await fetch(url, { ...config, headers: newHeaders });
+                            if (!retryRes.ok) throw new Error("Retry failed");
+                            return retryRes.json();
+                        }
+                    }
+                } catch (e) {
+                    // fall through
+                } finally {
+                    this._suppressUnauthorized = false;
+                }
+                window.dispatchEvent(new Event("jh_unauthorized"));
+            }
             throw new Error("UNAUTHORIZED");
         }
 

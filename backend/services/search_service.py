@@ -491,7 +491,9 @@ class SearchService:
                     cities_to_resolve.add(loc.city)
             
             if cities_to_resolve:
-                resolved_coords = await asyncio.gather(*[geocode_location(c) for c in cities_to_resolve])
+                import httpx
+                async with httpx.AsyncClient() as shared_client:
+                    resolved_coords = await asyncio.gather(*[geocode_location(c, shared_client) for c in cities_to_resolve])
                 city_coords = dict(zip(cities_to_resolve, resolved_coords))
                 
                 for job, analysis, desc_text in analysis_results:
@@ -614,7 +616,7 @@ class SearchService:
             except Exception as e:
                 logger.error(f"Bulk DB save failed: {e}")
                 db_session.rollback()
-                skipped_count += saved_count
+                skipped_count += len(analysis_results)
                 saved_count = 0
             finally:
                 db_session.close()

@@ -95,7 +95,7 @@ class JobService:
             raise HTTPException(status_code=404, detail="Job not found")
         if job.user_id != user_id:
             raise HTTPException(status_code=403, detail="Not authorized")
-        self.repo.delete(job)
+        self.repo.delete(job.id)
 
 
 def get_job_service(db: Session) -> JobService:

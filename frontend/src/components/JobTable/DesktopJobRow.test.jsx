@@ -102,4 +102,30 @@ describe('DesktopJobRow', () => {
         
         expect(onViewAnalysis).toHaveBeenCalledWith(mockJob);
     });
+
+    it('calls onToggleApplied when applied switch is clicked', () => {
+        render(
+            <table>
+                <tbody>
+                    <DesktopJobRow {...defaultProps} />
+                </tbody>
+            </table>
+        );
+        const switchInput = screen.getByRole('checkbox');
+        fireEvent.click(switchInput);
+        expect(defaultProps.onToggleApplied).toHaveBeenCalledWith(mockJob);
+    });
+
+    it('renders top pick badge and workload when present', () => {
+        const specializedJob = { ...mockJob, worth_applying: true, workload: 80 };
+        render(
+            <table>
+                <tbody>
+                    <DesktopJobRow {...defaultProps} job={specializedJob} />
+                </tbody>
+            </table>
+        );
+        expect(screen.getByTitle('Top Pick')).toBeInTheDocument();
+        expect(screen.getByText('80%')).toBeInTheDocument();
+    });
 });

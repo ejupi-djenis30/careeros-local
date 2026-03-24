@@ -17,15 +17,21 @@ export function SearchProvider({ children }) {
             setActiveProfileIds([]);
             return;
         }
+        let timeoutId;
+        let pollingInterval = 1500;
 
         const pollStatuses = async () => {
             try {
                 const res = await SearchService.getAllStatuses();
                 setSearchStatuses(res);
 
-                // Auto-hydrate activeProfileIds with any that are actually running (useful on page reload)
+                let hasRunning = false;
                 const runningIds = Object.entries(res)
-                    .filter(([, status]) => status && ['generating', 'searching', 'analyzing'].includes(status.state))
+                    .filter(([, status]) => {
+                        const isRunning = status && ['generating', 'searching', 'analyzing'].includes(status.state);
+                        if (isRunning) hasRunning = true;
+                        return isRunning;
+                    })
                     .map(([id]) => String(id));
                 
                 if (runningIds.length > 0) {
@@ -41,14 +47,18 @@ export function SearchProvider({ children }) {
                         return changed ? next : prev;
                     });
                 }
+                
+                pollingInterval = hasRunning ? 1500 : 15000;
             } catch (e) {
                 console.error("Failed to poll statuses:", e);
+                pollingInterval = 15000;
+            } finally {
+                timeoutId = setTimeout(pollStatuses, pollingInterval);
             }
         };
 
         pollStatuses();
-        const interval = setInterval(pollStatuses, 1500);
-        return () => clearInterval(interval);
+        return () => clearTimeout(timeoutId);
     }, [isLoggedIn]);
 
     const addProfileId = (pid) => {

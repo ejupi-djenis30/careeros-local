@@ -17,7 +17,8 @@ describe('MobileJobCard', () => {
         created_at: '2024-02-21T10:00:00Z',
         application_url: 'http://apply.com',
         external_url: 'http://source.com',
-        application_email: 'jobs@techcorp.com'
+        application_email: 'jobs@techcorp.com',
+        affinity_analysis: 'Analysis text'
     };
 
     const mockHandlers = {
@@ -32,6 +33,12 @@ describe('MobileJobCard', () => {
         expect(screen.getByText('Zürich')).toBeInTheDocument();
         expect(screen.getByText('10km')).toBeInTheDocument();
         expect(screen.getByText('100%')).toBeInTheDocument();
+    });
+
+    it('renders publication date if present in job payload', () => {
+        const publishedJob = { ...mockJob, publication_date: '2024-03-01T12:00:00Z' };
+        render(<MobileJobCard job={publishedJob} {...mockHandlers} />);
+        expect(screen.getByText(new Date('2024-03-01T12:00:00Z').toLocaleDateString())).toBeInTheDocument();
     });
 
     it('renders ScoreBadge when not in global view', () => {
@@ -80,5 +87,13 @@ describe('MobileJobCard', () => {
         render(<MobileJobCard job={mockJob} {...mockHandlers} />);
         const emailLink = screen.getByTitle('Email');
         expect(emailLink).toHaveAttribute('href', `mailto:${mockJob.application_email}`);
+    });
+
+    it('calls onViewAnalysis when analysis button clicked', () => {
+        const onViewAnalysis = vi.fn();
+        render(<MobileJobCard job={mockJob} onViewAnalysis={onViewAnalysis} {...mockHandlers} />);
+        const analysisBtn = screen.getByTitle('View Analysis');
+        fireEvent.click(analysisBtn);
+        expect(onViewAnalysis).toHaveBeenCalledWith(mockJob);
     });
 });

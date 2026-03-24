@@ -158,7 +158,7 @@ class JobRepository(BaseRepository[Job]):
             applied=applied,
             search_profile_id=search_profile_id,
         )
-        return q.count()
+        return q.with_entities(func.count(self.model.id)).scalar()
 
     def get_stats_by_user_filtered(
         self,

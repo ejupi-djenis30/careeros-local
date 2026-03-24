@@ -60,10 +60,11 @@ def haversine_distance(lat1: float, lon1: float, lat2: float, lon2: float) -> fl
     )
     return R * 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
 
-async def geocode_location(city: str) -> Optional["Coordinates"]:
+async def geocode_location(city: str, client: Optional["httpx.AsyncClient"] = None) -> Optional["Coordinates"]:
     """
     Resolve a city name to Coordinates (lat, lon).
     Uses a local cache for major Swiss cities, an in-memory dynamic cache, and falls back to Nominatim API.
+    Can accept a shared httpx.AsyncClient for connection pooling.
     """
     from backend.providers.jobs.models import Coordinates
     
@@ -126,8 +127,9 @@ async def geocode_location(city: str) -> Optional["Coordinates"]:
         headers = {
             "User-Agent": "JobHunterAI/1.0 (contact: info@jobhunterai.ch)"
         }
-        async with httpx.AsyncClient() as client:
-            resp = await client.get(url, params=params, headers=headers, timeout=5.0)
+        
+        async def fetch(c):
+            resp = await c.get(url, params=params, headers=headers, timeout=5.0)
             if resp.status_code == 200:
                 data = resp.json()
                 if data and len(data) > 0:
@@ -137,6 +139,13 @@ async def geocode_location(city: str) -> Optional["Coordinates"]:
                     )
                     _geocode_cache[normalized] = coords
                     return coords
+            return None
+
+        if client:
+            return await fetch(client)
+        else:
+            async with httpx.AsyncClient() as c:
+                return await fetch(c)
     except Exception as e:
         import logging
         logging.getLogger(__name__).warning(f"Geocoding failed for {city}: {e}")

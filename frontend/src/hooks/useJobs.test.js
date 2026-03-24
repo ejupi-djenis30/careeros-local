@@ -96,4 +96,86 @@ describe('useJobs', () => {
 
     expect(JobService.getAll).toHaveBeenCalled();
   });
+
+  it('calls logout on UNAUTHORIZED error in fetchJobs', async () => {
+    const logout = vi.fn();
+    JobService.getAll.mockRejectedValue(new Error('UNAUTHORIZED'));
+    
+    renderHook(() => useJobs(logout));
+
+    await waitFor(() => {
+      expect(logout).toHaveBeenCalled();
+    });
+  });
+
+  it('logs error on generic fetchJobs failure', async () => {
+    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    JobService.getAll.mockRejectedValue(new Error('API ERROR'));
+    
+    renderHook(() => useJobs());
+
+    await waitFor(() => {
+      expect(consoleSpy).toHaveBeenCalledWith('Fetch jobs error:', expect.any(Error));
+    });
+    consoleSpy.mockRestore();
+  });
+
+  it('calls logout on UNAUTHORIZED error in toggleApplied', async () => {
+    const logout = vi.fn();
+    const { result } = renderHook(() => useJobs(logout));
+    await waitFor(() => expect(result.current.isInitialLoad).toBe(false));
+
+    JobService.toggleApplied.mockRejectedValue(new Error('UNAUTHORIZED'));
+
+    await act(async () => {
+      await result.current.toggleApplied({ id: 1 });
+    });
+
+    expect(logout).toHaveBeenCalled();
+  });
+
+  it('logs error on generic toggleApplied failure', async () => {
+    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const { result } = renderHook(() => useJobs());
+    await waitFor(() => expect(result.current.isInitialLoad).toBe(false));
+
+    JobService.toggleApplied.mockRejectedValue(new Error('FAIL'));
+
+    await act(async () => {
+      await result.current.toggleApplied({ id: 1 });
+    });
+
+    expect(consoleSpy).toHaveBeenCalledWith('Failed to update job', expect.any(Error));
+    consoleSpy.mockRestore();
+  });
+
+  it('logs error on getProfiles failure', async () => {
+    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    SearchService.getProfiles.mockRejectedValue(new Error('PROFILE ERROR'));
+    
+    renderHook(() => useJobs());
+
+    await waitFor(() => {
+      expect(consoleSpy).toHaveBeenCalledWith('Failed to load search profiles', expect.any(Error));
+    });
+    consoleSpy.mockRestore();
+  });
+
+  it('polls fetchJobs periodically', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+        renderHook(() => useJobs());
+        await waitFor(() => expect(JobService.getAll).toHaveBeenCalledTimes(1));
+        
+        JobService.getAll.mockClear();
+        
+        await act(async () => {
+            vi.advanceTimersByTime(11000);
+        });
+        
+        await waitFor(() => expect(JobService.getAll).toHaveBeenCalledTimes(1));
+    } finally {
+        vi.useRealTimers();
+    }
+  });
 });
