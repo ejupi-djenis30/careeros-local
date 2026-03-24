@@ -19,6 +19,7 @@ class SearchProfile(Base):
     # Filters
     location_filter = Column(String)
     workload_filter = Column(String)
+    contract_type = Column(String, default="any")  # Added
     posted_within_days = Column(Integer, default=30)
     max_distance = Column(Integer, default=50)
     latitude = Column(Float, nullable=True)
@@ -32,6 +33,17 @@ class SearchProfile(Base):
     schedule_enabled = Column(Boolean, default=False)
     schedule_interval_hours = Column(Integer, default=24)
     last_scheduled_run = Column(DateTime(timezone=True), nullable=True)
+    
+    # Advanced / Extensible preferences
+    advanced_preferences = Column(Text, nullable=True)  # Store as JSON string if needed
+
+    # Query generation control (Feature 4)
+    max_occupation_queries = Column(Integer, nullable=True)
+    max_keyword_queries = Column(Integer, nullable=True)
+
+    # Caching layer (Feature 3): saves CV summary and generated queries between runs
+    cached_cv_summary = Column(Text, nullable=True)
+    cached_queries = Column(Text, nullable=True)  # Store as JSON string
     
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 

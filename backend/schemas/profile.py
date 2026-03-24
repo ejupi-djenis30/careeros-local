@@ -13,6 +13,7 @@ class SearchProfileBase(BaseModel):
     search_strategy: Optional[str] = None
     location_filter: Optional[str] = None
     workload_filter: Optional[str] = None
+    contract_type: Optional[str] = "any"
     posted_within_days: Optional[int] = 30
     max_distance: Optional[int] = 50
     latitude: Optional[float] = None
@@ -21,6 +22,10 @@ class SearchProfileBase(BaseModel):
     max_queries: Optional[int] = None
     is_history: Optional[bool] = False
     is_stopped: Optional[bool] = False
+    
+    # Query generation control (Feature 4)
+    max_occupation_queries: Optional[int] = None
+    max_keyword_queries: Optional[int] = None
     
     # Schedule
     schedule_enabled: Optional[bool] = False
@@ -40,6 +45,11 @@ class SearchProfile(SearchProfileBase):
 
     id: int
     last_scheduled_run: Optional[datetime] = None
+    
+    # Caching layer (Feature 3)
+    cached_cv_summary: Optional[str] = None
+    cached_queries: Optional[str] = None  # JSON string
+    
     created_at: datetime
 
 

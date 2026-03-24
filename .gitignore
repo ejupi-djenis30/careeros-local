@@ -30,6 +30,8 @@ secrets/
 # ─── Database ───
 *.db
 *.sqlite3
+*.db.bak
+data/
 
 # ─── IDE ───
 .vscode/
@@ -57,6 +59,8 @@ htmlcov/
 .pytest_cache/
 .mypy_cache/
 coverage.xml
+frontend/coverage/
+coverage/
 
 # ─── Logs & Temp ───
 logs/

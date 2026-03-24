@@ -1,16 +1,25 @@
-from typing import List, Optional
+from typing import List, Optional, Tuple
 from sqlalchemy.orm import Session
-from sqlalchemy import asc, desc
+from sqlalchemy import asc, desc, case, func
 from backend.repositories.base import BaseRepository
-from backend.models import Job
+from backend.models import Job, ScrapedJob
 
 
 class JobRepository(BaseRepository[Job]):
     def __init__(self, db: Session):
         super().__init__(Job, db)
 
-    def get_by_url(self, url: str) -> Optional[Job]:
-        return self.db.query(self.model).filter(self.model.url == url).first()
+    def get_by_external_url(self, url: str) -> Optional[Job]:
+        return self.db.query(self.model).join(self.model.scraped_job).filter(ScrapedJob.external_url == url).first()
+
+    def get_by_platform_id(self, platform: str, platform_job_id: str) -> Optional[Job]:
+        return (
+            self.db.query(self.model)
+            .join(self.model.scraped_job)
+            .filter(ScrapedJob.platform == platform)
+            .filter(ScrapedJob.platform_job_id == platform_job_id)
+            .first()
+        )
 
     def get_by_user(self, user_id: int, skip: int = 0, limit: int = 100) -> List[Job]:
         return (
@@ -21,17 +30,47 @@ class JobRepository(BaseRepository[Job]):
             .all()
         )
 
-    def get_user_job_identifiers(self, user_id: int):
-        """Returns lightweight tuples of (platform, platform_job_id, url) for all user jobs."""
+    def get_user_job_identifiers(self, user_id: int) -> List[Tuple[str, str, str, str, str]]:
+        """Returns lightweight tuples of (platform, platform_job_id, external_url, title, company) for all user jobs."""
         return (
             self.db.query(
-                self.model.platform,
-                self.model.platform_job_id,
-                self.model.url
+                ScrapedJob.platform,
+                ScrapedJob.platform_job_id,
+                ScrapedJob.external_url,
+                ScrapedJob.title,
+                ScrapedJob.company
             )
+            .join(self.model.scraped_job)
             .filter(self.model.user_id == user_id)
             .all()
         )
+
+    def get_profile_job_identifiers(self, profile_id: int) -> List[Tuple[str, str, str, str, str]]:
+        """Returns lightweight tuples of (platform, platform_job_id, external_url, title, company) for jobs in a specific profile."""
+        return (
+            self.db.query(
+                ScrapedJob.platform,
+                ScrapedJob.platform_job_id,
+                ScrapedJob.external_url,
+                ScrapedJob.title,
+                ScrapedJob.company
+            )
+            .join(self.model.scraped_job)
+            .filter(self.model.search_profile_id == profile_id)
+            .all()
+        )
+
+    def get_applied_scraped_job_ids(self, user_id: int) -> set:
+        """Return a set of scraped_job_id values where user has applied=True."""
+        rows = (
+            self.db.query(self.model.scraped_job_id)
+            .filter(
+                self.model.user_id == user_id,
+                self.model.applied == True,
+            )
+            .all()
+        )
+        return {row[0] for row in rows}
 
     def _build_filter_query(
         self,
@@ -96,10 +135,14 @@ class JobRepository(BaseRepository[Job]):
             "created_at": self.model.created_at,
             "affinity_score": self.model.affinity_score,
             "distance_km": self.model.distance_km,
-            "title": self.model.title,
-            "publication_date": self.model.publication_date,
         }
+        
         col = allowed_sort.get(sort_by, self.model.created_at)
+        
+        if sort_by in ["title", "publication_date"]:
+            q = q.join(self.model.scraped_job)
+            col = getattr(ScrapedJob, sort_by)
+
         order_fn = desc if sort_order == "desc" else asc
         q = q.order_by(order_fn(col))
 
@@ -127,7 +170,7 @@ class JobRepository(BaseRepository[Job]):
             applied=applied,
             search_profile_id=search_profile_id,
         )
-        return q.count()
+        return q.with_entities(func.count(self.model.id)).scalar()
 
     def get_stats_by_user_filtered(
         self,
@@ -142,7 +185,6 @@ class JobRepository(BaseRepository[Job]):
         search_profile_id: Optional[int] = None,
     ) -> dict:
         """Get aggregate stats for filtered jobs."""
-        from sqlalchemy import func, case
         
         q = self._build_filter_query(
             user_id,
@@ -155,7 +197,6 @@ class JobRepository(BaseRepository[Job]):
             search_profile_id=search_profile_id,
         )
         
-        # Use case() to count applied jobs, which is universally supported by SQLAlchemy dialects
         stats = q.with_entities(
             func.sum(case((self.model.applied == True, 1), else_=0)),
             func.avg(self.model.affinity_score)

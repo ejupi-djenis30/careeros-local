@@ -1,5 +1,5 @@
 from pydantic import BaseModel, ConfigDict
-from typing import Optional, List
+from typing import Optional, List, Any
 from datetime import datetime
 
 # ═══════════════════════════════════════
@@ -12,16 +12,20 @@ class JobBase(BaseModel):
     description: Optional[str] = None
     location: Optional[str] = None
     url: str
-    jobroom_url: Optional[str] = None
+    external_url: Optional[str] = None
+    application_url: Optional[str] = None
     application_email: Optional[str] = None
     workload: Optional[str] = None
     publication_date: Optional[datetime] = None
+    platform: Optional[str] = None
+    platform_job_id: Optional[str] = None
 
 
 class JobCreate(JobBase):
     is_scraped: bool = False
     source_query: Optional[str] = None
     search_profile_id: Optional[int] = None
+    scraped_job_id: Optional[int] = None
     affinity_score: Optional[float] = None
     affinity_analysis: Optional[str] = None
     worth_applying: Optional[bool] = False
@@ -29,11 +33,10 @@ class JobCreate(JobBase):
 
 
 class JobUpdate(BaseModel):
-    """Partial update schema — all fields optional."""
+    """Update schema — only allows updating user-specific interaction flags."""
     applied: Optional[bool] = None
     title: Optional[str] = None
     company: Optional[str] = None
-    description: Optional[str] = None
 
 
 class Job(JobBase):
@@ -43,6 +46,7 @@ class Job(JobBase):
     is_scraped: bool
     source_query: Optional[str] = None
     search_profile_id: Optional[int] = None
+    scraped_job_id: int
     affinity_score: Optional[float] = None
     affinity_analysis: Optional[str] = None
     worth_applying: Optional[bool] = False
