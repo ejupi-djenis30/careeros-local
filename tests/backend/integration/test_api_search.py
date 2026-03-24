@@ -1,5 +1,6 @@
 import pytest
 from unittest.mock import patch
+from fastapi.testclient import TestClient
 
 class TestAdvancedSearchAPI:
     def test_get_search_status_all(self, client, auth_headers):
