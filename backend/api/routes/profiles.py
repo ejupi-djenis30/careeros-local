@@ -23,14 +23,6 @@ def create_profile(
 ):
     return profile_service.create_profile(user_id, profile_in)
 
-@router.delete("/{profile_id}")
-def delete_profile(
-    profile_id: int,
-    user_id: int = Depends(get_current_user_id),
-    profile_service: ProfileService = Depends(get_profile_service)
-):
-    return profile_service.delete_profile(user_id, profile_id)
-
 @router.patch("/{profile_id}/schedule", response_model=SearchProfile)
 def toggle_schedule(
     profile_id: int,

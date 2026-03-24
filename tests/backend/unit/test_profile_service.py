@@ -35,18 +35,6 @@ def test_update_profile_success(profile_service, mock_repo):
     profile_service.update_profile(1, 10, updates)
     mock_repo.update.assert_called_once_with(mock_profile, updates)
 
-from fastapi import HTTPException
-
-def test_delete_profile_blocked(profile_service, mock_repo):
-    mock_profile = MagicMock()
-    mock_profile.user_id = 1
-    mock_repo.get.return_value = mock_profile
-    
-    with pytest.raises(HTTPException) as exc:
-        profile_service.delete_profile(1, 10)
-    assert exc.value.status_code == 400
-    assert "not allowed" in exc.value.detail.lower()
-
 def test_update_profile_forbidden(profile_service, mock_repo):
     mock_profile = MagicMock()
     mock_profile.user_id = 2

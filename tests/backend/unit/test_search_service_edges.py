@@ -274,7 +274,7 @@ async def test_execute_searches_flow(mock_service):
         
         # Test pagination and sleep
         mock_adecco.search = AsyncMock()
-        mock_adecco.search.return_value = MagicMock(items=[1,2], total_pages=1)
+        mock_adecco.search.return_value = MagicMock(items=[MagicMock(), MagicMock()], total_pages=1)
         
         # We need to just call _execute_searches, which calls execute_single_search internally
         with patch.object(mock_service, "_execute_searches") as mock_exec: # Wait! I'm trying to test _execute_searches!
@@ -289,7 +289,7 @@ async def test_execute_searches_aborts_and_pagination(mock_service):
     # Mock search so it produces 2 pages, giving the loop a chance to sleep and break
     mock_adecco.search = AsyncMock()
     # First call page 0, second page 1
-    mock_adecco.search.return_value = MagicMock(items=[1], total_pages=2)
+    mock_adecco.search.return_value = MagicMock(items=[MagicMock()], total_pages=2)
     av_prov = {"adecco": mock_adecco}
     
     with patch("backend.services.search_service.get_compatible_providers", return_value=["adecco"]), \

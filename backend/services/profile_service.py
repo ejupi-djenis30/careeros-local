@@ -16,19 +16,6 @@ class ProfileService:
         data["user_id"] = user_id
         return self.repo.create(data)
 
-    def delete_profile(self, user_id: int, profile_id: int):
-        profile = self.repo.get(profile_id)
-        if not profile:
-            raise HTTPException(status_code=404, detail="Profile not found")
-        if profile.user_id != user_id:
-            raise HTTPException(status_code=403, detail="Not authorized")
-        
-        # Block deletion as per user requirement: history must be permanent.
-        raise HTTPException(
-            status_code=400, 
-            detail="Deletion of search history is not allowed. You can only disable schedules."
-        )
-
     def update_profile(self, user_id: int, profile_id: int, profile_in: "SearchProfileUpdate"):
         profile = self.repo.get(profile_id)
         if not profile:

@@ -60,7 +60,4 @@ def test_profiles_crud_flow(client, auth_headers: dict):
     assert response.status_code == 200
     assert response.json()["schedule_enabled"] is True
 
-    # 4. Delete profile (should fail now)
-    response = client.delete(f"/api/v1/profiles/{profile_id}", headers=auth_headers)
-    assert response.status_code == 400
-    assert "not allowed" in response.json()["detail"].lower()
+    assert response.json()["schedule_enabled"] is True

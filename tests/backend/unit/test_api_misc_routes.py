@@ -73,9 +73,7 @@ def test_profiles_routes_full():
     # 2. create_profile
     client.post("/api/v1/profiles/", json={"role_description": "dev", "location_filter": "us", "name": "hi"})
     mock_profile_service.create_profile.assert_called_once()
-    # 3. delete_profile
-    client.delete("/api/v1/profiles/1")
-    mock_profile_service.delete_profile.assert_called_once()
+
     
     # 4. toggle_schedule
     client.patch("/api/v1/profiles/1/schedule", json={"enabled": True, "interval_hours": 12})

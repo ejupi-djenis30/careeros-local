@@ -291,6 +291,11 @@ class SearchService:
                             page_size = provider.capabilities.max_page_size if hasattr(provider, "capabilities") and hasattr(provider.capabilities, "max_page_size") else 50
                             page_req = req.model_copy(update={"page": current_page, "page_size": page_size})
                             result = await provider.search(page_req)
+                            
+                            # Attach the query so _analyze_and_save can record it correctly
+                            for item in result.items:
+                                item._source_query = query
+                            
                             all_provider_jobs.extend(result.items)
                             
                             total_pages = getattr(result, "total_pages", 1)
@@ -720,7 +725,7 @@ class SearchService:
                             workload=workload_str or None,
                             publication_date=pub_date,
                             raw_metadata=getattr(job, "raw_data", None) or {},
-                            source_query=getattr(job, "title", "Unknown"),
+                            source_query=getattr(job, "_source_query", "Unknown"),
                             # Persist the summary generated in Step 3.5 if available
                             summary=getattr(job, "_summary", None),
                         )

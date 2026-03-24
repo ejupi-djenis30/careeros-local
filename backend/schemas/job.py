@@ -34,11 +34,6 @@ class JobCreate(JobBase):
 class JobUpdate(BaseModel):
     """Partial update schema — all fields optional."""
     applied: Optional[bool] = None
-    title: Optional[str] = None
-    company: Optional[str] = None
-    description: Optional[str] = None
-    external_url: Optional[str] = None
-    application_url: Optional[str] = None
 
 
 class Job(JobBase):
