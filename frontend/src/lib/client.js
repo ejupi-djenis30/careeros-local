@@ -23,6 +23,37 @@ export class ApiClient {
         return headers;
     }
 
+    static async _handleUnauthorized(originalUrl, originalConfig) {
+        if (this._suppressUnauthorized) return null;
+        this._suppressUnauthorized = true;
+        try {
+            const refreshRes = await fetch(`${API_BASE}/auth/refresh`, {
+                method: 'POST',
+                credentials: 'include'
+            });
+            if (refreshRes.ok) {
+                const refreshData = await refreshRes.json();
+                if (refreshData.access_token) {
+                    this.setToken(refreshData.access_token);
+                    this._suppressUnauthorized = false;
+                    
+                    // Retry original request
+                    const newHeaders = {
+                        ...originalConfig.headers,
+                        "Authorization": `Bearer ${refreshData.access_token}`
+                    };
+                    return await fetch(originalUrl, { ...originalConfig, headers: newHeaders });
+                }
+            }
+        } catch (e) {
+            // fall through
+        } finally {
+            this._suppressUnauthorized = false;
+        }
+        window.dispatchEvent(new Event("jh_unauthorized"));
+        return null;
+    }
+
     static async request(endpoint, options = {}) {
         const url = `${API_BASE}${endpoint}`;
         const config = {
@@ -34,40 +65,12 @@ export class ApiClient {
             },
         };
 
-        const response = await fetch(url, config);
+        let response = await fetch(url, config);
 
         if (response.status === 401) {
-            if (!this._suppressUnauthorized) {
-                this._suppressUnauthorized = true;
-                try {
-                    const refreshRes = await fetch(`${API_BASE}/auth/refresh`, {
-                        method: 'POST',
-                        credentials: 'include'
-                    });
-                    if (refreshRes.ok) {
-                        const refreshData = await refreshRes.json();
-                        if (refreshData.access_token) {
-                            this.setToken(refreshData.access_token);
-                            this._suppressUnauthorized = false;
-                            
-                            // Retry the original request
-                            const newHeaders = {
-                                ...config.headers,
-                                "Authorization": `Bearer ${refreshData.access_token}`
-                            };
-                            const retryRes = await fetch(url, { ...config, headers: newHeaders });
-                            if (!retryRes.ok) throw new Error("Retry failed");
-                            return retryRes.json();
-                        }
-                    }
-                } catch (e) {
-                    // fall through
-                } finally {
-                    this._suppressUnauthorized = false;
-                }
-                window.dispatchEvent(new Event("jh_unauthorized"));
-            }
-            throw new Error("UNAUTHORIZED");
+            const retryRes = await this._handleUnauthorized(url, config);
+            if (retryRes) response = retryRes;
+            else throw new Error("UNAUTHORIZED");
         }
 
         if (!response.ok) {
@@ -83,6 +86,7 @@ export class ApiClient {
             throw new Error(errMsg);
         }
 
+        if (response.status === 204) return null;
         return response.json();
     }
 
@@ -112,56 +116,23 @@ export class ApiClient {
     }
 
     static async postMultipart(endpoint, formData) {
-        const token = this.getToken();
-        const headers = {};
-        if (token) {
-            headers["Authorization"] = `Bearer ${token}`;
-        }
-        // NOTE: We do NOT set Content-Type for multipart/form-data, 
-        // the browser needs to set the boundary.
-
         const url = `${API_BASE}${endpoint}`;
         const config = {
             method: "POST",
             credentials: 'include',
-            headers,
+            headers: {
+                // Manual token for multipart since we don't want JSON Content-Type
+                "Authorization": this.getToken() ? `Bearer ${this.getToken()}` : undefined
+            },
             body: formData,
         };
 
-        const response = await fetch(url, config);
+        let response = await fetch(url, config);
 
         if (response.status === 401) {
-            if (!this._suppressUnauthorized) {
-                this._suppressUnauthorized = true;
-                try {
-                    const refreshRes = await fetch(`${API_BASE}/auth/refresh`, {
-                        method: 'POST',
-                        credentials: 'include'
-                    });
-                    if (refreshRes.ok) {
-                        const refreshData = await refreshRes.json();
-                        if (refreshData.access_token) {
-                            this.setToken(refreshData.access_token);
-                            this._suppressUnauthorized = false;
-                            
-                            // Retry original request
-                            const newHeaders = {
-                                ...config.headers,
-                                "Authorization": `Bearer ${refreshData.access_token}`
-                            };
-                            const retryRes = await fetch(url, { ...config, headers: newHeaders });
-                            if (!retryRes.ok) throw new Error("Retry failed");
-                            return retryRes.json();
-                        }
-                    }
-                } catch (e) {
-                    // fall through
-                } finally {
-                    this._suppressUnauthorized = false;
-                }
-                window.dispatchEvent(new Event("jh_unauthorized"));
-            }
-            throw new Error("UNAUTHORIZED");
+            const retryRes = await this._handleUnauthorized(url, config);
+            if (retryRes) response = retryRes;
+            else throw new Error("UNAUTHORIZED");
         }
 
         if (!response.ok) {
@@ -171,6 +142,7 @@ export class ApiClient {
             throw new Error(errMsg);
         }
 
+        if (response.status === 204) return null;
         return response.json();
     }
 

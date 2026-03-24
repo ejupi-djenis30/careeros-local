@@ -25,30 +25,31 @@ export function SearchProvider({ children }) {
                 const res = await SearchService.getAllStatuses();
                 setSearchStatuses(res);
 
-                let hasRunning = false;
                 const runningIds = Object.entries(res)
-                    .filter(([, status]) => {
-                        const isRunning = status && ['generating', 'searching', 'analyzing'].includes(status.state);
-                        if (isRunning) hasRunning = true;
-                        return isRunning;
-                    })
+                    .filter(([, status]) => status && ['generating', 'searching', 'analyzing'].includes(status.state))
                     .map(([id]) => String(id));
                 
-                if (runningIds.length > 0) {
-                    setActiveProfileIds(prev => {
-                        const next = [...prev];
-                        let changed = false;
-                        for (const id of runningIds) {
-                            if (!next.includes(id)) {
-                                next.push(id);
-                                changed = true;
-                            }
+                // HALF-3: Synchronize activeProfileIds with runningIds
+                // Any ID that was in activeProfileIds but is now in res in a terminal state should be removed.
+                setActiveProfileIds(prev => {
+                    // Start with those currently running
+                    let next = [...runningIds];
+                    
+                    // Add any manually added IDs that haven't appeared in res yet
+                    for (const id of prev) {
+                        if (!res[id] && !next.includes(id)) {
+                            next.push(id);
                         }
-                        return changed ? next : prev;
-                    });
-                }
+                    }
+                    
+                    // Sort to prevent unnecessary re-renders if the order changed but set is the same
+                    next.sort();
+                    const prevSorted = [...prev].sort();
+                    if (JSON.stringify(next) === JSON.stringify(prevSorted)) return prev;
+                    return next;
+                });
                 
-                pollingInterval = hasRunning ? 1500 : 15000;
+                pollingInterval = runningIds.length > 0 ? 1500 : 15000;
             } catch (e) {
                 console.error("Failed to poll statuses:", e);
                 pollingInterval = 15000;
@@ -59,7 +60,7 @@ export function SearchProvider({ children }) {
 
         pollStatuses();
         return () => clearTimeout(timeoutId);
-    }, [isLoggedIn]);
+    }, [isLoggedIn, searchStatuses]);
 
     const addProfileId = (pid) => {
         setActiveProfileIds(prev => {

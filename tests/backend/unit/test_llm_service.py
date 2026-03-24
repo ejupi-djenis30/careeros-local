@@ -44,25 +44,6 @@ async def test_generate_search_plan_error(mock_provider):
         with pytest.raises(RetryError):
             await service._call_generate_search_plan({}, [])
 
-@pytest.mark.asyncio
-async def test_analyze_job_match(mock_provider):
-    mock_provider.generate_json_async.return_value = {
-        "affinity_score": 90,
-        "affinity_analysis": "Perfect match",
-        "worth_applying": True,
-    }
-
-    with patch("backend.services.llm_service.get_provider_for_step", return_value=mock_provider):
-        service = LLMService()
-        res = await service.analyze_job_match({"title": "Dev"}, {"role_description": "Dev", "search_strategy": "Remote only"})
-        assert res["affinity_score"] == 90
-        assert res["worth_applying"] is True
-        
-        # Verify search_strategy was injected into the prompt
-        call_args = mock_provider.generate_json_async.call_args[0]
-        user_prompt = call_args[1]
-        assert "Remote only" in user_prompt
-        assert "LANGUAGE MISMATCH PENALTY" in user_prompt
 
 @pytest.mark.asyncio
 async def test_each_method_calls_correct_step(mock_provider):
@@ -76,8 +57,8 @@ async def test_each_method_calls_correct_step(mock_provider):
         mock_factory.assert_called_with("plan")
 
         mock_factory.reset_mock()
-        mock_provider.generate_json_async.return_value = {"relevant": True, "affinity_score": 50, "affinity_analysis": "", "worth_applying": False}
-        await service.analyze_job_match({}, {})
+        mock_provider.generate_json_async.return_value = {"results": [{"relevant": True, "affinity_score": 50, "affinity_analysis": "", "worth_applying": False}]}
+        await service.analyze_job_batch([{}], {})
         mock_factory.assert_called_with("match")
 
 @pytest.mark.asyncio

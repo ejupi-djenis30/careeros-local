@@ -324,49 +324,6 @@ Return ONLY pure JSON with a 'searches' list. Example:
 
     # ─── Step 3: Combined Title Relevance & Job Match Analysis ──────────────
 
-    @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=10))
-    async def analyze_job_match(
-        self,
-        job_metadata: Dict[str, Any],
-        profile: Dict[str, Any],
-    ) -> Dict[str, Any]:
-        provider = self._get_provider("match")
-
-        system_prompt = (
-            "You are a strict, precise, and highly analytical Career Coach AI. "
-            "Your goal is to evaluate the match between a candidate's profile "
-            "and a specific job listing using data-driven hard constraints."
-        )
-
-        strategy = profile.get('search_strategy')
-        strategy_block = f"\n- Extra AI Instructions / Preferences: {strategy}" if strategy else ""
-
-        user_prompt = f"""Analyze the match between this profile and job description.
-
-PROFILE:
-- Expected Role: {profile.get('role_description')}{strategy_block}
-- Experience Context: {profile.get('cv_summary') or profile.get('cv_content')}
-
-JOB:
-{job_metadata}
-
-SCORING RULES (STRICT CONSTRAINTS):
-1. RELEVANCE CHECK: Determine if the job title and description are relevant to the requested role. Check Extra AI Instructions. If completely irrelevant or violating strict user instructions, set "relevant" to false.
-2. LANGUAGE MISMATCH PENALTY: If the job EXPLICITLY requires a language (e.g., German, French) that the candidate DOES NOT speak, cap `affinity_score` at 30 and set `worth_applying` to false.
-3. EDUCATION MISMATCH PENALTY: If the job explicitly requires a University Degree (Bachelor/Master/PhD) and the candidate has no degree, cap `affinity_score` at 40 and set `worth_applying` to false. 
-4. SENIORITY MISMATCH: If the candidate is Junior/Entry-level and the job requires Senior/Lead (5+ years), cap `affinity_score` at 35. (Senior applying to Junior cap at 70).
-5. BASE SCORING: For remaining cases, score 0-100 realistically. Score 90-100 ONLY for a virtually perfect resume-to-job match.
-6. "worth_applying" MUST ONLY be true if `affinity_score` >= 65 and `relevant` is true.
-
-Return ONLY JSON:
-{{
-    "relevant": true/false,
-    "affinity_score": 0-100,
-    "affinity_analysis": "Concise 2-3 sentence explanation focusing on WHY the score was given, explicitly addressing language, education, and seniority matches/mismatches.",
-    "worth_applying": true/false
-}}"""
-
-        return await provider.generate_json_async(system_prompt, user_prompt)
 
     @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=10))
     async def analyze_job_batch(
