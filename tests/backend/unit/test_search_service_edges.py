@@ -336,17 +336,16 @@ async def test_execute_searches_flow(mock_service):
 async def test_execute_searches_aborts_and_pagination(mock_service):
     searches = [{"query": "dev", "domain": "IT", "type": "keyword"}]
     mock_adecco = AsyncMock()
-    # Mock search so it produces 2 pages, giving the loop a chance to sleep and break
+    # Mock search so it produces 3 pages, giving the loop a chance to stop mid-run
     mock_adecco.search = AsyncMock()
-    # First call page 0, second page 1
-    mock_adecco.search.return_value = MagicMock(items=[MagicMock()], total_pages=2)
+    mock_adecco.search.return_value = MagicMock(items=[MagicMock()], total_pages=3, total_count=3)
     av_prov = {"adecco": mock_adecco}
     
     with patch("backend.services.search_service.get_compatible_providers", return_value=["adecco"]), \
          patch("backend.services.search_service.get_status") as mock_status:
          
-         # 1. Start searching... 2. second page loop checks status again and aborts
-         mock_status.side_effect = [{"state": "searching"}, {"state": "stopped"}]
+         # Start searching, allow one pagination step, then abort before the third page
+         mock_status.side_effect = [{"state": "searching"}, {"state": "searching"}, {"state": "stopped"}]
          
          from types import SimpleNamespace
          profile = SimpleNamespace(location_filter="", posted_within_days=10, max_distance=10, workload_filter="", latitude=None, longitude=None, contract_type="")
@@ -354,8 +353,28 @@ async def test_execute_searches_aborts_and_pagination(mock_service):
          mock_service.providers = av_prov
 
          res = await mock_service._execute_searches(1, profile, searches, {"adecco": {}})
-         # Because it stopped early, it just returns items from the first page
+         # Because it stopped early, it still returns jobs collected before the abort
          assert len(res) > 0
+
+async def test_execute_searches_continues_beyond_five_pages(mock_service):
+    searches = [{"query": "dev", "domain": "IT", "type": "keyword"}]
+    mock_provider = AsyncMock()
+    mock_provider.search = AsyncMock(side_effect=[
+        MagicMock(items=[MagicMock(id=f"job-{idx}", external_url=f"http://example.com/{idx}")], total_pages=6, total_count=6)
+        for idx in range(6)
+    ])
+    mock_service.providers = {"adecco": mock_provider}
+
+    with patch("backend.services.search_service.get_compatible_providers", return_value=["adecco"]), \
+         patch("backend.services.search_service.get_status", return_value={"state": "searching"}), \
+         patch("backend.services.search_service.settings.SEARCH_EXECUTION_MODE", "sequential"):
+        from types import SimpleNamespace
+        profile = SimpleNamespace(location_filter="", posted_within_days=10, max_distance=10, workload_filter="", latitude=None, longitude=None, contract_type="")
+
+        res = await mock_service._execute_searches(1, profile, searches, {"adecco": {}})
+
+    assert len(res) == 6
+    assert mock_provider.search.await_count == 6
 
 async def test_execute_searches_incompatible_or_stopped(mock_service):
     # Stopped immediately

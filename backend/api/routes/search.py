@@ -47,7 +47,9 @@ async def start_search(
     # create a new History entry.
     # Otherwise if it has an ID, use that (re-run).
     # Sanitize profile_data: convert empty strings to None for numeric fields
-    profile_data = profile_request.model_dump(exclude_unset=True)
+    # Exclude transient flags that don't map to DB columns
+    _TRANSIENT_FIELDS = {"force_regenerate_cv_summary", "force_regenerate_queries"}
+    profile_data = {k: v for k, v in profile_request.model_dump(exclude_unset=True).items() if k not in _TRANSIENT_FIELDS}
     numeric_fields = ["max_queries", "posted_within_days", "max_distance", "schedule_interval_hours"]
     for field in numeric_fields:
         val = getattr(profile_request, field, None)

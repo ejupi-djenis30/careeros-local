@@ -77,6 +77,73 @@ async def test_generate_search_plan_respects_max_queries(mock_provider):
         assert len(plan) == 3
 
 @pytest.mark.asyncio
+async def test_generate_search_plan_batches_to_reach_target(mock_provider):
+    mock_provider.generate_json_async.side_effect = [
+        {
+            "searches": [
+                {"domain": "it", "language": "en", "type": "occupation", "query": "Backend Engineer"},
+                {"domain": "it", "language": "en", "type": "keyword", "query": "Python"},
+            ]
+        },
+        {
+            "searches": [
+                {"domain": "it", "language": "de", "type": "occupation", "query": "Softwareentwickler"},
+                {"domain": "it", "language": "fr", "type": "keyword", "query": "Docker"},
+            ]
+        },
+    ]
+
+    with patch("backend.services.llm_service.get_provider_for_step", return_value=mock_provider), \
+         patch("backend.services.llm_service.settings") as mock_settings:
+        mock_settings.LLM_SUMMARY_PROVIDER = ""
+        mock_settings.LLM_SUMMARY_API_KEY = ""
+        mock_settings.LLM_SUMMARY_MODEL = ""
+        mock_settings.SEARCH_PLAN_BATCH_SIZE = 2
+        service = LLMService()
+
+        plan = await service.generate_search_plan(
+            {"role_description": "Python developer", "search_strategy": "", "cv_content": "Python"},
+            [],
+            max_queries=4,
+        )
+
+        assert len(plan) == 4
+        assert mock_provider.generate_json_async.call_count == 2
+
+@pytest.mark.asyncio
+async def test_generate_search_plan_retries_underfilled_batch(mock_provider):
+    mock_provider.generate_json_async.side_effect = [
+        {
+            "searches": [
+                {"domain": "it", "language": "en", "type": "occupation", "query": "Backend Engineer"},
+            ]
+        },
+        {
+            "searches": [
+                {"domain": "it", "language": "en", "type": "occupation", "query": "Backend Engineer"},
+                {"domain": "it", "language": "en", "type": "keyword", "query": "Python"},
+            ]
+        },
+    ]
+
+    with patch("backend.services.llm_service.get_provider_for_step", return_value=mock_provider), \
+         patch("backend.services.llm_service.settings") as mock_settings:
+        mock_settings.LLM_SUMMARY_PROVIDER = ""
+        mock_settings.LLM_SUMMARY_API_KEY = ""
+        mock_settings.LLM_SUMMARY_MODEL = ""
+        mock_settings.SEARCH_PLAN_BATCH_SIZE = 2
+        service = LLMService()
+
+        plan = await service.generate_search_plan(
+            {"role_description": "Python developer", "search_strategy": "", "cv_content": "Python"},
+            [],
+            max_queries=2,
+        )
+
+        assert len(plan) == 2
+        assert mock_provider.generate_json_async.call_count == 2
+
+@pytest.mark.asyncio
 async def test_check_relevance_batch_is_permissive(mock_provider):
     """Verify the relevance prompt is permissive and includes strategy/description."""
     mock_provider.generate_json_async.return_value = {"results": [True]}
@@ -112,9 +179,9 @@ async def test_summarize_cv_success(mock_provider):
         sys_prompt = call_args[0]
         user_prompt = call_args[1]
         
-        assert "HR Analyst" in sys_prompt
+        assert "HR analyst" in sys_prompt
         assert "Lorem ipsum" in user_prompt
-        assert "Highest Education Level" in user_prompt
+        assert "Education" in user_prompt
 
 @pytest.mark.asyncio
 async def test_analyze_job_batch_success(mock_provider):
@@ -147,7 +214,7 @@ async def test_analyze_job_batch_success(mock_provider):
         sys_prompt = call_args[0]
         user_prompt = call_args[1]
         
-        assert "Career Coach AI" in sys_prompt
+        assert "career coach AI" in sys_prompt
         assert "Only remote" in user_prompt
         assert "Good job" in user_prompt
         assert "Cooking" in user_prompt

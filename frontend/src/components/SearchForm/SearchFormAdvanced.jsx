@@ -5,7 +5,7 @@ export function SearchFormAdvanced({ profile, handleChange, setProfile }) {
     const isRerun = Boolean(profile.id);
     
     return (
-        <div className="col-lg-4 d-flex flex-column gap-4">
+        <div className="col-lg-4 d-flex flex-column gap-3">
             <div className="p-3 bg-white-5 rounded-3 border border-white-5">
                 <div className="form-check form-switch d-flex align-items-center justify-content-between ps-0 mb-3">
                     <div>
@@ -41,7 +41,7 @@ export function SearchFormAdvanced({ profile, handleChange, setProfile }) {
                 )}
             </div>
 
-            <div className="mb-2">
+            <div>
                 <label className="form-label text-white small fw-bold text-uppercase x-small mb-2">Search Title</label>
                 <input
                     type="text"
@@ -108,63 +108,39 @@ export function SearchFormAdvanced({ profile, handleChange, setProfile }) {
                 </div>
             </div>
 
-            {/* Scrape Mode */}
-            <div className="row g-3">
-                <div className="col-12">
-                    <label className="form-label text-white small fw-bold text-uppercase x-small mb-2">Scrape Speed</label>
-                    <select
-                        name="scrape_mode"
-                        value={profile.scrape_mode}
-                        onChange={handleChange}
-                        className="form-select form-select-sm bg-black-20 border-white-10 text-white"
-                    >
-                        <option value="sequential">Sequential</option>
-                        <option value="immediate">Fast (Risky)</option>
-                    </select>
-                </div>
-            </div>
-
             {/* Feature 3: Force Regeneration Buttons (only on re-run) */}
             {isRerun && (
                 <div className="p-3 bg-warning bg-opacity-10 rounded-3 border border-warning border-opacity-20">
                     <div className="x-small text-warning fw-bold text-uppercase mb-2">
                         <i className="bi bi-lightning-charge-fill me-1"></i>Re-run Options
                     </div>
-                    <div className="d-flex flex-column gap-2">
+                    <div className="row g-2">
+                        <div className="col-12 col-sm-6 col-lg-12 col-xl-6">
                         <button
                             type="button"
                             onClick={() => setProfile(prev => ({ ...prev, force_regenerate_cv_summary: !prev.force_regenerate_cv_summary }))}
-                            className={`btn btn-sm d-flex align-items-center gap-2 ${profile.force_regenerate_cv_summary ? 'btn-warning text-dark fw-bold' : 'btn-outline-secondary'}`}
+                            className={`btn btn-sm w-100 d-flex align-items-center justify-content-center gap-2 ${profile.force_regenerate_cv_summary ? 'btn-warning text-dark fw-bold' : 'btn-outline-secondary'}`}
                         >
                             <i className={`bi ${profile.force_regenerate_cv_summary ? 'bi-check-circle-fill' : 'bi-arrow-clockwise'}`}></i>
-                            Regenerate CV Summary
+                            Refresh CV Summary
                         </button>
+                        </div>
+                        <div className="col-12 col-sm-6 col-lg-12 col-xl-6">
                         <button
                             type="button"
                             onClick={() => setProfile(prev => ({ ...prev, force_regenerate_queries: !prev.force_regenerate_queries }))}
-                            className={`btn btn-sm d-flex align-items-center gap-2 ${profile.force_regenerate_queries ? 'btn-warning text-dark fw-bold' : 'btn-outline-secondary'}`}
+                            className={`btn btn-sm w-100 d-flex align-items-center justify-content-center gap-2 ${profile.force_regenerate_queries ? 'btn-warning text-dark fw-bold' : 'btn-outline-secondary'}`}
                         >
                             <i className={`bi ${profile.force_regenerate_queries ? 'bi-check-circle-fill' : 'bi-arrow-clockwise'}`}></i>
-                            Regenerate Queries
+                            Refresh Queries
                         </button>
+                        </div>
                     </div>
                     <div className="x-small text-warning opacity-75 mt-2">
                         By default, cached results from the last run are reused.
                     </div>
                 </div>
             )}
-
-            <div className="mt-auto p-3 rounded-3 bg-info bg-opacity-10 border border-info border-opacity-20">
-                <div className="d-flex gap-2">
-                    <i className="bi bi-info-circle-fill text-info mt-1"></i>
-                    <div>
-                        <div className="fw-bold text-white small">Pro Tip</div>
-                        <div className="x-small text-info opacity-90">
-                            The more specific your role description, the better the AI matching score will be.
-                        </div>
-                    </div>
-                </div>
-            </div>
         </div>
     );
 }

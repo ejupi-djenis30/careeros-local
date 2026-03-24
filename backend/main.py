@@ -70,6 +70,7 @@ if settings.cors_origins_list:
     app.add_middleware(
         CORSMiddleware,
         allow_origins=[str(origin) for origin in settings.cors_origins_list],
+        allow_origin_regex=settings.CORS_ALLOW_ORIGIN_REGEX,
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
@@ -79,27 +80,58 @@ else:
 
 
 # ─── Exception Handlers ───
+def _cors_headers_for(request) -> dict:
+    """Return CORS headers for the request origin, if it is an allowed origin.
+    Exception handlers bypass CORSMiddleware, so we must add headers manually."""
+    origin = request.headers.get("origin", "")
+    if not origin or not settings.cors_origins_list:
+        return {}
+    allowed = [str(o) for o in settings.cors_origins_list]
+    if origin in allowed or "*" in allowed:
+        return {
+            "Access-Control-Allow-Origin": origin,
+            "Access-Control-Allow-Credentials": "true",
+        }
+    return {}
+
+
 @app.exception_handler(StarletteHTTPException)
 async def http_exception_handler(request, exc):
-    return JSONResponse(status_code=exc.status_code, content={"detail": exc.detail})
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={"detail": exc.detail},
+        headers=_cors_headers_for(request),
+    )
 
 
 @app.exception_handler(RequestValidationError)
 async def validation_exception_handler(request, exc):
     from fastapi.encoders import jsonable_encoder
     logger.error(f"Validation error: {exc.errors()}")
-    return JSONResponse(status_code=422, content={"detail": jsonable_encoder(exc.errors()), "message": "Validation Error"})
+    return JSONResponse(
+        status_code=422,
+        content={"detail": jsonable_encoder(exc.errors()), "message": "Validation Error"},
+        headers=_cors_headers_for(request),
+    )
 
 
 @app.exception_handler(CoreException)
 async def core_exception_handler(request, exc):
-    return JSONResponse(status_code=400, content={"detail": str(exc), "message": "Application Error"})
+    return JSONResponse(
+        status_code=400,
+        content={"detail": str(exc), "message": "Application Error"},
+        headers=_cors_headers_for(request),
+    )
 
 
 @app.exception_handler(Exception)
 async def generic_exception_handler(request, exc):
     logger.error(f"Unhandled exception: {exc}", exc_info=True)
-    return JSONResponse(status_code=500, content={"detail": "Internal Server Error"})
+    return JSONResponse(
+        status_code=500,
+        content={"detail": "Internal Server Error"},
+        headers=_cors_headers_for(request),
+    )
 
 
 # ─── Routes ───

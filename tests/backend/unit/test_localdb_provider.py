@@ -23,6 +23,7 @@ async def test_search_builds_query_correctly(local_db_provider, mock_db_session)
     mock_query = MagicMock()
     mock_db_session.query.return_value = mock_query
     mock_query.filter.return_value = mock_query
+    mock_query.offset.return_value = mock_query
     mock_query.limit.return_value = mock_query
     mock_query.count.return_value = 1
     
@@ -41,6 +42,7 @@ async def test_search_builds_query_correctly(local_db_provider, mock_db_session)
     req = JobSearchRequest(
         query="Software Engineer",
         location="Zurich",
+        page=1,
         page_size=10,
     )
 
@@ -65,6 +67,7 @@ async def test_search_builds_query_correctly(local_db_provider, mock_db_session)
     # Verify db calls
     mock_db_session.query.assert_called_once()
     assert mock_query.filter.call_count >= 1 # Keyword filter and Location filter
+    mock_query.offset.assert_called_once_with(10)
     mock_query.limit.assert_called_once_with(10)
     mock_query.all.assert_called_once()
 

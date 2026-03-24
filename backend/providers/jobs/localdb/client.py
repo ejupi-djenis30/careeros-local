@@ -98,7 +98,7 @@ class LocalDbProvider(JobProvider):
         total_count = q.count()
 
         # 3. Pagination (Local limit)
-        q = q.limit(request.page_size)
+        q = q.offset(request.page * request.page_size).limit(request.page_size)
 
         scraped_jobs = q.all()
 

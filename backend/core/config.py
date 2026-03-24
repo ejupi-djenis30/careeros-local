@@ -12,6 +12,7 @@ class Settings(BaseSettings):
     
     # CORS
     CORS_ORIGINS: Optional[str] = "http://localhost:5173,http://127.0.0.1:5173,http://localhost:8000"
+    CORS_ALLOW_ORIGIN_REGEX: str = r"^https?://(localhost|127\.0\.0\.1)(:\d+)?$"
 
     @property
     def cors_origins_list(self) -> List[str]:
@@ -127,7 +128,9 @@ class Settings(BaseSettings):
 
     # Analysis Pipeline Tuning
     MAX_DESCRIPTION_CHARS: int = 6000
+    SEARCH_EXECUTION_MODE: str = "sequential"
     SEARCH_CONCURRENCY: int = 3
+    SEARCH_PLAN_BATCH_SIZE: int = 40
     ANALYSIS_CONCURRENCY: int = 15
     ANALYSIS_BATCH_SIZE: int = 5
 

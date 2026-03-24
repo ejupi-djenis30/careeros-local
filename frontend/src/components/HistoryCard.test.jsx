@@ -46,6 +46,23 @@ describe('HistoryCard', () => {
         expect(onStartSearch).toHaveBeenCalledWith(mockProfile);
     });
 
+    it('calls rerun handlers with regeneration options', () => {
+        const onStartSearchWithOptions = vi.fn();
+        render(<HistoryCard profile={mockProfile} onStartSearchWithOptions={onStartSearchWithOptions} />);
+
+        fireEvent.click(screen.getByTitle('Rerun with fresh queries'));
+        expect(onStartSearchWithOptions).toHaveBeenCalledWith(mockProfile, { force_regenerate_queries: true });
+
+        fireEvent.click(screen.getByTitle('Rerun with fresh CV summary'));
+        expect(onStartSearchWithOptions).toHaveBeenCalledWith(mockProfile, { force_regenerate_cv_summary: true });
+
+        fireEvent.click(screen.getByTitle('Rerun with fresh CV summary and queries'));
+        expect(onStartSearchWithOptions).toHaveBeenCalledWith(mockProfile, {
+            force_regenerate_cv_summary: true,
+            force_regenerate_queries: true,
+        });
+    });
+
 
 
     it('calls onSaveAsSchedule when Add to Schedule button is clicked', () => {

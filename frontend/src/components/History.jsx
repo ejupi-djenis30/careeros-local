@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import { SearchService } from "../services/search";
 import { HistoryCard } from "./HistoryCard";
 
-export function History({ onStartSearch, onUseAsTemplate, onSaveAsSchedule }) {
+export function History({ onStartSearch, onStartSearchWithOptions, onUseAsTemplate, onSaveAsSchedule }) {
     const [profiles, setProfiles] = useState([]);
     const [loading, setLoading] = useState(true);
 
@@ -62,6 +62,7 @@ export function History({ onStartSearch, onUseAsTemplate, onSaveAsSchedule }) {
                         key={p.id}
                         profile={p}
                         onStartSearch={onStartSearch}
+                        onStartSearchWithOptions={onStartSearchWithOptions}
                         onUseAsTemplate={onUseAsTemplate}
                         onSaveAsSchedule={onSaveAsSchedule}
                     />

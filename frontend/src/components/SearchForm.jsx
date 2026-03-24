@@ -16,7 +16,6 @@ export function SearchForm({ onStartSearch, isLoading, prefill }) {
         latitude: null,
         longitude: null,
         cv_content: "",
-        scrape_mode: "sequential",
         schedule_enabled: false,
         schedule_interval_hours: 24,
         max_queries: "",             // Empty means unlimited
@@ -82,8 +81,9 @@ export function SearchForm({ onStartSearch, isLoading, prefill }) {
             return;
         }
 
+        const { scrape_mode: _legacyScrapeMode, ...profilePayload } = profile;
         const searchProfile = {
-            ...profile,
+            ...profilePayload,
             max_queries: profile.max_queries === "" ? -1 : profile.max_queries,
             max_occupation_queries: profile.max_occupation_queries === "" ? -1 : profile.max_occupation_queries,
             max_keyword_queries: profile.max_keyword_queries === "" ? -1 : profile.max_keyword_queries,

@@ -1,4 +1,5 @@
 import logging
+import re
 import threading
 from typing import Dict, Any, List, Optional
 from tenacity import retry, stop_after_attempt, wait_exponential
@@ -6,6 +7,17 @@ from backend.providers.llm.factory import get_provider_for_step
 from backend.core.config import settings
 
 logger = logging.getLogger(__name__)
+
+
+def _query_fingerprint(search: Dict[str, Any]) -> str:
+    query = str(search.get("query", "")).lower()
+    query = re.sub(r"\b(m/w/d|f/m/d|m/f/d|100%|80%|80-100%)\b", " ", query)
+    query = re.sub(r"[^\w\s+C#]", " ", query)
+    query = " ".join(sorted(token.strip() for token in query.split() if token.strip()))
+    query_type = str(search.get("type", "")).strip().lower()
+    language = str(search.get("language", "")).strip().lower()
+    domain = str(search.get("domain", "")).strip().lower()
+    return f"{query_type}|{language}|{domain}|{query}"
 
 
 class LLMService:
@@ -50,19 +62,30 @@ class LLMService:
         """Produce a compact CV summary for downstream MATCH calls."""
         provider = self._get_provider("plan")
         
-        system_prompt = "You are an expert HR Analyst. Extract key information from a CV into a structured summary that downstream AI matchers will use to assess job fit."
-        user_prompt = f"""Summarize this CV into a compact, clearly structured text (max 250 words).
-CRITICAL: You MUST explicitly list the following details:
-1. Highest Education Level (e.g., No Degree, Bachelor's, Master's, PhD)
-2. Languages Spoken (with proficiency levels)
-3. Total Years of Experience & Seniority Level (Junior, Mid, Senior, Lead)
-4. Core Technical Skills & Tools
-5. Past Job Titles Held
+        system_prompt = (
+            "You are an expert HR analyst producing factual candidate summaries for job matching. "
+            "Extract only information supported by the CV. Never invent skills, degrees, or languages."
+        )
+        user_prompt = f"""Summarize this CV into a compact, clearly structured profile for downstream job matching.
+
+Output requirements:
+- Maximum 220 words.
+- Use short bullet points.
+- If a detail is missing, write "Unknown" instead of guessing.
+- Focus on facts that help match jobs accurately.
+
+You MUST include these sections in this order:
+1. Education
+2. Languages
+3. Experience & Seniority
+4. Core Skills & Tools
+5. Roles Held
+6. Industries / Domains
 
 CV:
 {cv_content}
 
-Return plain text, NOT JSON. Use bullet points for readability."""
+Return plain text, NOT JSON."""
         
         return await provider.generate_text_async(system_prompt, user_prompt)
 
@@ -131,10 +154,9 @@ Return ONLY JSON with a "summaries" array, one string per job, in the same order
         provider = self._get_provider("relevance")
         
         system_prompt = (
-            "You are a permissive job relevance pre-filter. Your goal is to KEEP jobs "
-            "that could potentially be relevant and ONLY discard jobs that are clearly "
-            "and obviously unrelated to the candidate's target role. When in doubt, "
-            "mark as relevant (true)."
+            "You are a permissive relevance gate for job discovery. "
+            "Keep borderline matches, translations, adjacent roles, and likely career moves. "
+            "Reject only roles that are clearly in a different profession."
         )
         
         jobs_text = "\n".join(
@@ -152,7 +174,7 @@ JOB TITLES:
 
 FILTERING RULES:
 - Mark as TRUE (relevant) if the job title is the same role, a synonym, a translation (DE/FR/IT/EN), or a closely related role.
-- Mark as TRUE if the job is in a related field and could reasonably match the candidate's skills.
+- Mark as TRUE if the job is in a related field, specialization, or seniority band that could still fit the candidate.
 - Mark as FALSE ONLY if the job is clearly in a completely different field (e.g., "Nurse" for a "Software Developer").
 - When in doubt, ALWAYS mark as TRUE — the next analysis step will do a deeper evaluation with the full description.
 
@@ -176,14 +198,39 @@ One boolean per job, in order. true = relevant, false = irrelevant."""
         max_occupation_queries: Optional[int] = None,
         max_keyword_queries: Optional[int] = None,
     ) -> List[Dict[str, Any]]:
-        """Generate the search plan with optional strict occupation/keyword count enforcement.
-        
-        When max_occupation_queries or max_keyword_queries are specified, the LLM
-        is prompted to generate EXACTLY those counts. The result is validated and
-        the LLM is called again up to 3 times if counts don't match. On 4th attempt
-        (after 3 failures) the result is accepted as-is.
-        """
-        # Determine if we need strict type enforcement
+        """Generate the search plan with exact-count enforcement and batched retries."""
+        if max_queries is not None and max_queries <= 0:
+            max_queries = None
+        if max_occupation_queries is not None and max_occupation_queries < 0:
+            max_occupation_queries = None
+        if max_keyword_queries is not None and max_keyword_queries < 0:
+            max_keyword_queries = None
+
+        if max_queries is not None:
+            if max_occupation_queries is not None and max_occupation_queries > max_queries:
+                raise ValueError("max_occupation_queries cannot exceed max_queries")
+            if max_keyword_queries is not None and max_keyword_queries > max_queries:
+                raise ValueError("max_keyword_queries cannot exceed max_queries")
+            if (
+                max_occupation_queries is not None
+                and max_keyword_queries is not None
+                and (max_occupation_queries + max_keyword_queries) > max_queries
+            ):
+                raise ValueError("The sum of occupation and keyword query limits cannot exceed max_queries")
+
+        total_target = max_queries
+        if total_target is None and max_occupation_queries is not None and max_keyword_queries is not None:
+            total_target = max_occupation_queries + max_keyword_queries
+
+        if total_target is not None:
+            return await self._generate_search_plan_in_batches(
+                profile,
+                providers_info,
+                total_target=total_target,
+                max_occupation_queries=max_occupation_queries,
+                max_keyword_queries=max_keyword_queries,
+            )
+
         strict_types = (max_occupation_queries is not None) or (max_keyword_queries is not None)
         
         MAX_RETRIES = 3
@@ -225,6 +272,182 @@ One boolean per job, in order. true = relevant, false = irrelevant."""
         
         return searches
 
+    async def _generate_search_plan_in_batches(
+        self,
+        profile: Dict[str, Any],
+        providers_info: List[Any],
+        total_target: int,
+        max_occupation_queries: Optional[int] = None,
+        max_keyword_queries: Optional[int] = None,
+    ) -> List[Dict[str, Any]]:
+        collected: List[Dict[str, Any]] = []
+        seen_fingerprints = set()
+        remaining_occupations = max_occupation_queries
+        remaining_keywords = max_keyword_queries
+        batch_size_limit = max(1, settings.SEARCH_PLAN_BATCH_SIZE)
+        stall_count = 0
+
+        while len(collected) < total_target:
+            remaining_total = total_target - len(collected)
+            batch_size = min(batch_size_limit, remaining_total)
+            batch_occ, batch_kw = self._plan_batch_targets(
+                batch_size,
+                remaining_total,
+                remaining_occupations,
+                remaining_keywords,
+            )
+
+            best_batch: List[Dict[str, Any]] = []
+            MAX_RETRIES = 3
+            for attempt in range(MAX_RETRIES + 1):
+                feedback = (
+                    f"This batch must contribute EXACTLY {batch_size} NEW UNIQUE queries. "
+                    f"Remaining total target after this batch: {remaining_total - batch_size}."
+                )
+                batch_searches = await self._call_generate_search_plan(
+                    profile,
+                    providers_info,
+                    max_queries=batch_size,
+                    max_occupation_queries=batch_occ,
+                    max_keyword_queries=batch_kw,
+                    attempt=attempt,
+                    existing_queries=[item.get("query", "") for item in collected[-120:]],
+                    feedback=feedback,
+                )
+
+                unique_batch = self._normalize_searches(batch_searches, seen_fingerprints)
+                if len(unique_batch) > len(best_batch):
+                    best_batch = unique_batch
+
+                occupation_count = sum(1 for item in unique_batch if item.get("type") == "occupation")
+                keyword_count = sum(1 for item in unique_batch if item.get("type") == "keyword")
+                counts_ok = (
+                    len(unique_batch) == batch_size
+                    and (batch_occ is None or occupation_count == batch_occ)
+                    and (batch_kw is None or keyword_count == batch_kw)
+                )
+
+                if counts_ok:
+                    best_batch = unique_batch
+                    break
+
+                logger.warning(
+                    "[PLAN] Batch retry %s/%s returned %s unique queries (%s occupations, %s keywords) for target %s",
+                    attempt + 1,
+                    MAX_RETRIES + 1,
+                    len(unique_batch),
+                    occupation_count,
+                    keyword_count,
+                    batch_size,
+                )
+
+            if not best_batch:
+                stall_count += 1
+                logger.warning("[PLAN] Batch generation stalled with no new unique queries")
+                if stall_count >= 2:
+                    break
+                continue
+
+            stall_count = 0
+            batch_to_add = best_batch[:batch_size]
+            for item in batch_to_add:
+                fingerprint = _query_fingerprint(item)
+                if fingerprint in seen_fingerprints:
+                    continue
+                seen_fingerprints.add(fingerprint)
+                collected.append(item)
+
+            if remaining_occupations is not None:
+                remaining_occupations = max(0, remaining_occupations - sum(1 for item in batch_to_add if item.get("type") == "occupation"))
+            if remaining_keywords is not None:
+                remaining_keywords = max(0, remaining_keywords - sum(1 for item in batch_to_add if item.get("type") == "keyword"))
+
+            logger.info("[PLAN] Collected %s/%s search queries", len(collected), total_target)
+
+            if len(batch_to_add) < batch_size and len(collected) < total_target:
+                logger.warning(
+                    "[PLAN] Batch under-filled after retries (%s/%s unique queries); continuing with another batch",
+                    len(batch_to_add),
+                    batch_size,
+                )
+
+        return collected[:total_target]
+
+    def _normalize_searches(
+        self,
+        searches: List[Dict[str, Any]],
+        seen_fingerprints: Optional[set] = None,
+    ) -> List[Dict[str, Any]]:
+        normalized: List[Dict[str, Any]] = []
+        local_seen = set(seen_fingerprints or set())
+
+        for search in searches:
+            if not isinstance(search, dict):
+                continue
+            query = str(search.get("query", "")).strip()
+            search_type = str(search.get("type", "keyword")).strip().lower() or "keyword"
+            domain = str(search.get("domain", "general")).strip().lower() or "general"
+            language = str(search.get("language", "en")).strip().lower() or "en"
+            if not query:
+                continue
+
+            candidate = {
+                "query": query,
+                "type": search_type,
+                "domain": domain,
+                "language": language,
+            }
+            fingerprint = _query_fingerprint(candidate)
+            if fingerprint in local_seen:
+                continue
+
+            local_seen.add(fingerprint)
+            normalized.append(candidate)
+
+        return normalized
+
+    def _plan_batch_targets(
+        self,
+        batch_size: int,
+        remaining_total: int,
+        remaining_occupations: Optional[int],
+        remaining_keywords: Optional[int],
+    ) -> tuple[int, int]:
+        if remaining_occupations is not None and remaining_keywords is not None:
+            strict_total = remaining_occupations + remaining_keywords
+            if strict_total <= 0:
+                return batch_size, 0
+            occupation_target = round(batch_size * (remaining_occupations / strict_total))
+            occupation_target = min(remaining_occupations, max(0, occupation_target))
+            keyword_target = batch_size - occupation_target
+            if keyword_target > remaining_keywords:
+                keyword_target = remaining_keywords
+                occupation_target = batch_size - keyword_target
+            if occupation_target > remaining_occupations:
+                occupation_target = remaining_occupations
+                keyword_target = batch_size - occupation_target
+            return occupation_target, keyword_target
+
+        if remaining_occupations is not None:
+            occupation_target = min(batch_size, remaining_occupations)
+            keyword_target = batch_size - occupation_target
+            return occupation_target, keyword_target
+
+        if remaining_keywords is not None:
+            keyword_target = min(batch_size, remaining_keywords)
+            occupation_target = batch_size - keyword_target
+            return occupation_target, keyword_target
+
+        if batch_size == 1:
+            return 1, 0
+
+        occupation_target = max(1, int(round(batch_size * 0.6)))
+        keyword_target = batch_size - occupation_target
+        if keyword_target == 0:
+            keyword_target = 1
+            occupation_target = batch_size - 1
+        return occupation_target, keyword_target
+
     @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=10))
     async def _call_generate_search_plan(
         self,
@@ -234,6 +457,8 @@ One boolean per job, in order. true = relevant, false = irrelevant."""
         max_occupation_queries: Optional[int] = None,
         max_keyword_queries: Optional[int] = None,
         attempt: int = 0,
+        existing_queries: Optional[List[str]] = None,
+        feedback: str = "",
     ) -> List[Dict[str, Any]]:
         """Internal method: single LLM call to generate the search plan."""
         provider = self._get_provider("plan")
@@ -242,9 +467,20 @@ One boolean per job, in order. true = relevant, false = irrelevant."""
         system_prompt = (
             "You are an expert Job Hunter AI specialized in the Swiss job market. "
             "You are fluent in English, German, French, and Italian. "
-            "Your task is to generate HIGHLY DETAILED and COMPREHENSIVE search queries "
-            "to find the best possible job matches for the user."
+            "Your task is to generate HIGH-QUALITY, DIVERSE, and EXECUTABLE search queries "
+            "that maximize recall without wasting slots on near-duplicates."
         )
+
+        provider_lines = []
+        for info in providers_info:
+            name = getattr(info, "name", None) if not isinstance(info, dict) else info.get("name")
+            description = getattr(info, "description", None) if not isinstance(info, dict) else info.get("description")
+            accepted_domains = getattr(info, "accepted_domains", None) if not isinstance(info, dict) else info.get("accepted_domains")
+            if name:
+                domains = ", ".join(accepted_domains or ["*"])
+                provider_lines.append(f"- {name}: domains [{domains}] | {description or 'No description'}")
+
+        providers_block = "\n".join(provider_lines) if provider_lines else "- General routing handles provider selection automatically."
 
         # Build count instructions
         if max_occupation_queries is not None and max_keyword_queries is not None:
@@ -274,8 +510,9 @@ One boolean per job, in order. true = relevant, false = irrelevant."""
             )
         else:
             limit_instruction = (
-                f"Generate at most {max_queries} queries total. "
-                "Prioritize the most relevant occupation queries first."
+                f"You MUST generate EXACTLY {max_queries} queries total. "
+                "Use a strong mix of occupation and keyword queries. "
+                "Every query must be materially different from the others."
             )
 
         retry_note = ""
@@ -286,6 +523,17 @@ One boolean per job, in order. true = relevant, false = irrelevant."""
                 "You MUST strictly adhere to the count requirements this time."
             )
 
+        exclusion_block = ""
+        if existing_queries:
+            formatted_queries = "\n".join(f"- {query}" for query in existing_queries if query)
+            exclusion_block = (
+                "\nEXISTING QUERIES TO AVOID REPEATING:\n"
+                f"{formatted_queries}\n"
+                "Do NOT repeat or trivially rephrase the existing queries above."
+            )
+
+        feedback_block = f"\nADDITIONAL BATCH FEEDBACK:\n{feedback}\n" if feedback else ""
+
         user_prompt = f"""Analyze the user's profile and generate an optimal search plan.
 You do NOT need to assign queries to specific job boards — the system routes them automatically.
 
@@ -293,6 +541,9 @@ PROFILE:
 - Role / What they are looking for: {profile.get('role_description')}
 - Strategy / AI Instructions: {profile.get('search_strategy')}
 - CV Summary: {profile.get('cv_content')}
+
+AVAILABLE PROVIDERS:
+{providers_block}
 
 QUERY GENERATION RULES:
 1. DOMAIN TAGGING: For each query, specify its professional domain (e.g. "it", "finance", "medical", "engineering", "hospitality", "general"). The system uses this to route queries to the right job boards.
@@ -303,9 +554,11 @@ QUERY GENERATION RULES:
    - "keyword": A single specific skill, tool, action verb, or core competency (e.g. for IT: "React", for non-IT/general: "pulire", "trasportare", "customer service").
 5. DIVERSITY & ACCURACY:
    - Use synonyms and different languages (DE, FR, EN, IT) to maximize coverage.
-   - Ensure queries are distinct and high-quality.
+    - Ensure queries are distinct, high-quality, and not cosmetic variants of each other.
+    - Prefer concrete, searchable terms actually used in job titles and skill filters.
+    - Cover nearby seniority labels, role variants, and stack-specific wording when relevant.
 
-{limit_instruction}{retry_note}
+{limit_instruction}{retry_note}{feedback_block}{exclusion_block}
 
 Return ONLY pure JSON with a 'searches' list. Example:
 {{
@@ -318,7 +571,7 @@ Return ONLY pure JSON with a 'searches' list. Example:
 }}"""
 
         result = await provider.generate_json_async(system_prompt, user_prompt)
-        searches = result.get("searches", [])
+        searches = result.get("searches", []) if isinstance(result, dict) else []
 
         # Application-side cap just in case the LLM produces too many total queries
         if max_queries is not None:
@@ -338,9 +591,8 @@ Return ONLY pure JSON with a 'searches' list. Example:
         provider = self._get_provider("match")
 
         system_prompt = (
-            "You are a strict, precise, and highly analytical Career Coach AI. "
-            "Your goal is to evaluate the match between a candidate's profile "
-            "and MULTIPLE job listings using data-driven hard constraints. "
+            "You are a strict, evidence-driven career coach AI. "
+            "Evaluate candidate-job fit conservatively, cite the main reasons, and never invent qualifications. "
             "Return results in the EXACT SAME ORDER as the jobs were given."
         )
 
@@ -373,6 +625,7 @@ SCORING RULES (STRICT CONSTRAINTS):
 4. SENIORITY MISMATCH: If the candidate is Junior/Entry-level and the job requires Senior/Lead (5+ years), cap `affinity_score` at 35. (Senior applying to Junior cap at 70).
 5. BASE SCORING: For remaining cases, score 0-100 realistically. Score 90-100 ONLY for a virtually perfect resume-to-job match.
 6. "worth_applying" MUST ONLY be true if `affinity_score` >= 65 and `relevant` is true.
+7. `affinity_analysis` must be concise and factual: mention the top fit factors, the top gaps, and any hard blockers.
 
 Return ONLY JSON with a "results" array, one entry per job, IN ORDER:
 {{

@@ -29,6 +29,20 @@ from backend.services.search_status import (
 logger = logging.getLogger(__name__)
 
 
+STOP_STATES = {"stopped", "cancelled", "finished", "failed"}
+
+
+def get_query_fingerprint(query: str) -> str:
+    import re
+
+    query = query.lower()
+    noise_words = r'\b(m/w/d|f/m/d|m/f/d|100%|80%|80-100%)\b'
+    query = re.sub(noise_words, ' ', query)
+    query = re.sub(r'[^\w\s+C#]', ' ', query)
+    tokens = [token.strip() for token in query.split() if token.strip()]
+    return " ".join(sorted(tokens))
+
+
 # ─────────────────────── Domain Router ───────────────────────
 
 def get_compatible_providers(
@@ -255,15 +269,6 @@ class SearchService:
             except Exception as e:
                 logger.warning(f"Failed to cache queries: {e}")
 
-        def get_query_fingerprint(q: str) -> str:
-            import re
-            q = q.lower()
-            noise_words = r'\b(m/w/d|f/m/d|m/f/d|100%|80%|80-100%)\b'
-            q = re.sub(noise_words, ' ', q)
-            q = re.sub(r'[^\w\s+C#]', ' ', q) # keep +, # for C++, C#
-            tokens = [t.strip() for t in q.split() if t.strip()]
-            return " ".join(sorted(tokens))
-
         unique_searches = []
         seen_queries = set()
         for s in searches:
@@ -283,17 +288,26 @@ class SearchService:
             searches_generated=unique_searches
         )
         add_log(profile_id, f"Generated {len(searches)} queries → {len(unique_searches)} unique")
+        if profile.max_queries and len(unique_searches) < profile.max_queries:
+            add_log(
+                profile_id,
+                f"⚠ Requested {profile.max_queries} queries but only {len(unique_searches)} unique queries were available after validation/deduplication",
+            )
         return unique_searches
 
     async def _execute_searches(self, profile_id: int, profile, searches: list, provider_infos) -> list:
         all_jobs: list = []
-        semaphore = asyncio.Semaphore(settings.SEARCH_CONCURRENCY)
+        execution_mode = (settings.SEARCH_EXECUTION_MODE or "sequential").strip().lower()
+        query_concurrency = settings.SEARCH_CONCURRENCY if execution_mode == "immediate" else 1
+        semaphore = asyncio.Semaphore(max(1, query_concurrency))
+        provider_parallel = execution_mode == "immediate"
+        add_log(profile_id, f"Execution mode: {execution_mode}")
 
         async def execute_single_search(idx: int, search: dict):
             async with semaphore:
                 # Real-time stop check
                 status_data = get_status(profile_id)
-                if status_data.get("state") in ["stopped", "cancelled", "finished", "failed"]:
+                if status_data.get("state") in STOP_STATES:
                     return []
                     
                 query = search.get("query", "")
@@ -324,28 +338,34 @@ class SearchService:
                     if not provider: return provider_name, [], None
                     
                     provider_jobs = []
-                    max_pages = 5 # Limit pages to avoid long runs
                     try:
                         current_page = 0
-                        while current_page < max_pages:
+                        while True:
                             page_size = 50
                             if hasattr(provider, "capabilities") and hasattr(provider.capabilities, "max_page_size"):
                                 page_size = provider.capabilities.max_page_size
                                 
                             page_req = req.model_copy(update={"page": current_page, "page_size": page_size})
                             result = await provider.search(page_req)
+                            page_items = list(getattr(result, "items", []) or [])
                             
-                            for item in result.items:
+                            for item in page_items:
                                 # Mark the source query for tracking
                                 if hasattr(item, "_source_query"):
                                     item._source_query = query
                                 else:
                                     setattr(item, "_source_query", query)
                             
-                            provider_jobs.extend(result.items)
+                            provider_jobs.extend(page_items)
+
+                            if not page_items:
+                                break
                             
                             total_pages = getattr(result, "total_pages", 1)
-                            if current_page >= total_pages - 1:
+                            total_count = getattr(result, "total_count", None)
+                            if total_pages and current_page >= total_pages - 1:
+                                break
+                            if total_count is not None and total_count >= 0 and len(provider_jobs) >= total_count:
                                 break
                                 
                             current_page += 1
@@ -355,7 +375,7 @@ class SearchService:
                                 
                             # Abort check
                             status_data = get_status(profile_id)
-                            if status_data.get("state") in ["stopped", "cancelled", "finished", "failed"]:
+                            if status_data.get("state") in STOP_STATES:
                                 break
                                 
                         return provider_name, provider_jobs, None
@@ -370,7 +390,12 @@ class SearchService:
                     else:
                         p_tasks.append(search_provider(p_name, request))
 
-                p_results = await asyncio.gather(*p_tasks)
+                if provider_parallel:
+                    p_results = await asyncio.gather(*p_tasks)
+                else:
+                    p_results = []
+                    for task in p_tasks:
+                        p_results.append(await task)
 
                 found_jobs = []
                 for p_name, items, error in p_results:

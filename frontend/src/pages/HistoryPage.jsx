@@ -6,9 +6,9 @@ import { SearchService } from '../services/search';
 export function HistoryPage() {
   const navigate = useNavigate();
 
-  const handleStartSearch = async (profile) => {
+  const handleStartSearch = async (profile, overrides = {}) => {
     try {
-      const result = await SearchService.start(profile);
+      const result = await SearchService.start({ ...profile, ...overrides });
       const pid = result.profile_id;
       navigate(`/progress?pid=${pid}`);
     } catch (error) {
@@ -36,6 +36,7 @@ export function HistoryPage() {
     <div className="animate-slide-up">
       <History
         onStartSearch={handleStartSearch}
+        onStartSearchWithOptions={handleStartSearch}
         onUseAsTemplate={handleUseAsTemplate}
         onSaveAsSchedule={handleSaveAsSchedule}
       />

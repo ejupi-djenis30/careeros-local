@@ -1,6 +1,6 @@
 import React from 'react';
 
-export function HistoryCard({ profile, onStartSearch, onUseAsTemplate, onSaveAsSchedule }) {
+export function HistoryCard({ profile, onStartSearch, onStartSearchWithOptions, onUseAsTemplate, onSaveAsSchedule }) {
     return (
         <div className="glass-panel p-3 px-md-4 py-md-3 hover-bg-white-5 transition-colors group">
             <div className="d-flex flex-column flex-md-row align-items-md-center gap-3">
@@ -34,13 +34,37 @@ export function HistoryCard({ profile, onStartSearch, onUseAsTemplate, onSaveAsS
 
                 {/* Actions */}
                 <div className="flex-shrink-0 d-flex align-items-center justify-content-end mt-2 mt-md-0">
-                    <div className="d-flex align-items-center gap-2 opacity-75 group-hover-opacity-100 transition-opacity">
+                    <div className="d-flex align-items-center gap-2 opacity-75 group-hover-opacity-100 transition-opacity flex-wrap justify-content-end">
                         <button
                             className="btn btn-sm btn-primary px-3 rounded-pill fw-medium shadow-glow d-flex align-items-center justify-content-center"
                             onClick={() => onStartSearch?.(profile)}
                             title="Rerun Search"
                         >
                             <i className="bi bi-play-fill me-1"></i> Run
+                        </button>
+
+                        <button
+                            className="btn btn-sm btn-icon btn-secondary rounded-circle d-flex align-items-center justify-content-center"
+                            onClick={() => onStartSearchWithOptions?.(profile, { force_regenerate_queries: true })}
+                            title="Rerun with fresh queries"
+                        >
+                            <i className="bi bi-diagram-3"></i>
+                        </button>
+
+                        <button
+                            className="btn btn-sm btn-icon btn-secondary rounded-circle d-flex align-items-center justify-content-center"
+                            onClick={() => onStartSearchWithOptions?.(profile, { force_regenerate_cv_summary: true })}
+                            title="Rerun with fresh CV summary"
+                        >
+                            <i className="bi bi-file-earmark-arrow-up"></i>
+                        </button>
+
+                        <button
+                            className="btn btn-sm btn-icon btn-secondary rounded-circle d-flex align-items-center justify-content-center"
+                            onClick={() => onStartSearchWithOptions?.(profile, { force_regenerate_cv_summary: true, force_regenerate_queries: true })}
+                            title="Rerun with fresh CV summary and queries"
+                        >
+                            <i className="bi bi-arrow-repeat"></i>
                         </button>
 
                         <button
