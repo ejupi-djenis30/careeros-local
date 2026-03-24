@@ -31,12 +31,12 @@ export function Schedules() {
     };
 
     const handleDelete = async (profileId) => {
-        if (!window.confirm("Delete this profile and its schedule?")) return;
+        if (!window.confirm("Remove this schedule? The history will be preserved.")) return;
         try {
-            await SearchService.deleteProfile(profileId);
+            await SearchService.toggleSchedule(profileId, false);
             loadProfiles();
         } catch (e) {
-            alert("Failed to delete profile: " + e.message);
+            alert("Failed to remove schedule: " + e.message);
         }
     };
 
@@ -75,11 +75,7 @@ export function Schedules() {
 
     return (
         <div className="animate-fade-in h-100 d-flex flex-column">
-            <div className="d-flex justify-content-between align-items-center mb-4">
-                <div>
-                    <h3 className="mb-1 text-white fw-bold tracking-tight">Active Schedules</h3>
-                    <p className="text-secondary small mb-0 opacity-75">Automated hunting campaigns currently running</p>
-                </div>
+            <div className="d-flex justify-content-end align-items-center mb-4">
                 <button 
                     onClick={loadProfiles} 
                     className="btn btn-icon btn-secondary rounded-circle shadow-sm"

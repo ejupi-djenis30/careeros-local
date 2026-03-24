@@ -16,15 +16,14 @@ class ProfileService:
         data["user_id"] = user_id
         return self.repo.create(data)
 
-    def delete_profile(self, user_id: int, profile_id: int):
+    def update_profile(self, user_id: int, profile_id: int, profile_in: "SearchProfileUpdate"):
         profile = self.repo.get(profile_id)
         if not profile:
             raise HTTPException(status_code=404, detail="Profile not found")
         if profile.user_id != user_id:
             raise HTTPException(status_code=403, detail="Not authorized")
         
-        self.repo.delete(profile_id)
-        return {"message": "Profile deleted"}
+        return self.repo.update(profile, profile_in)
 
     def toggle_schedule(self, user_id: int, profile_id: int, schedule: ScheduleToggle):
         profile = self.repo.get(profile_id)
@@ -37,7 +36,29 @@ class ProfileService:
         if schedule.interval_hours:
             update_data["schedule_interval_hours"] = schedule.interval_hours
             
-        return self.repo.update(profile, update_data)
+        updated_profile = self.repo.update(profile, update_data)
+        
+        # Actually add/remove the APScheduler job
+        from backend.services.scheduler import add_schedule, remove_schedule
+        if schedule.enabled:
+            interval = schedule.interval_hours or updated_profile.schedule_interval_hours or 24
+            add_schedule(profile_id, interval)
+        else:
+            remove_schedule(profile_id)
+        
+        return updated_profile
+
+    def delete_profile(self, user_id: int, profile_id: int):
+        profile = self.repo.get(profile_id)
+        if not profile:
+            raise HTTPException(status_code=404, detail="Profile not found")
+        if profile.user_id != user_id:
+            raise HTTPException(status_code=403, detail="Not authorized")
+        
+        from backend.services.scheduler import remove_schedule
+        remove_schedule(profile_id)
+        
+        self.repo.delete(profile_id)
 
 def get_profile_service(db: Session) -> ProfileService:
     return ProfileService(db)

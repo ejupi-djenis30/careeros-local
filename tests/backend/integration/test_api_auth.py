@@ -7,7 +7,7 @@ class TestAdvancedAuthenticationAPI:
             "/api/v1/auth/register",
             json={"username": "new_auth_user", "password": "Securepassword1"}
         )
-        assert response.status_code == 200
+        assert response.status_code == 200, response.text
         data = response.json()
         assert data["username"] == "new_auth_user"
         assert "access_token" in data

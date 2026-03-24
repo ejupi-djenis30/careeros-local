@@ -74,11 +74,14 @@ export function Login() {
                             </span>
                             <input
                                 type="text"
+                                id="username"
+                                name="username"
                                 className="form-control"
                                 value={username}
                                 onChange={(e) => setUsername(e.target.value)}
                                 required
                                 autoFocus
+                                autoComplete={mode === "register" ? "username" : "username"}
                                 placeholder="Enter your username"
                                 style={{ paddingLeft: '2.8rem', height: '3.2rem' }}
                             />
@@ -93,10 +96,13 @@ export function Login() {
                             </span>
                             <input
                                 type="password"
+                                id="password"
+                                name="password"
                                 className="form-control"
                                 value={password}
                                 onChange={(e) => setPassword(e.target.value)}
                                 required
+                                autoComplete={mode === "register" ? "new-password" : "current-password"}
                                 placeholder="••••••••"
                                 style={{ paddingLeft: '2.8rem', height: '3.2rem' }}
                             />

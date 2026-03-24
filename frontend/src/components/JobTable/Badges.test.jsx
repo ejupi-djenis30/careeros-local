@@ -53,4 +53,10 @@ describe('DistanceBadge', () => {
         const badge = screen.getByText('25km').closest('span');
         expect(badge).toHaveClass('text-info');
     });
+
+    it('renders text-secondary for distance > 40', () => {
+        render(<DistanceBadge km={50} />);
+        const badge = screen.getByText('50km').closest('span');
+        expect(badge).toHaveClass('text-secondary');
+    });
 });

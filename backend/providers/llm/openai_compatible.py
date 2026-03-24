@@ -3,7 +3,6 @@ import logging
 from typing import Dict, Any, Optional
 from openai import OpenAI, AsyncOpenAI
 from backend.providers.llm.base import LLMProvider
-from backend.core.config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -12,33 +11,31 @@ class OpenAICompatibleProvider(LLMProvider):
     """Provider for any OpenAI-compatible API (Groq, DeepSeek, OpenAI, etc.).
 
     All settings are injected via the constructor — this class never reads
-    from ``backend.core.config.settings`` directly.  Parameter resolution is
-    handled by the **factory** layer (``get_provider_for_step``).
+    from ``backend.core.config.settings`` directly.
     """
 
     def __init__(
         self,
         *,
-        api_key: Optional[str] = None,
-        base_url: Optional[str] = None,
-        model: Optional[str] = None,
+        api_key: str,
+        base_url: str,
+        model: str,
         temperature: float = 0.7,
         top_p: float = 0.95,
         max_tokens: int = 16384,
         thinking: bool = False,
         provider_name: str = "openai",
     ):
-        api_key = api_key or settings.LLM_API_KEY
-        base_url = base_url or settings.LLM_BASE_URL
-        self.model = model or settings.LLM_MODEL
-        
         self.client = OpenAI(api_key=api_key, base_url=base_url)
         self.async_client = AsyncOpenAI(api_key=api_key, base_url=base_url)
+        self.model = model
         self.temperature = temperature
         self.top_p = top_p
         self.max_tokens = max_tokens
         self.thinking = thinking
         self.provider_name = provider_name
+
+    # ── helpers ────────────────────────────────────────────────────────────
 
     @property
     def model_id(self) -> str:
@@ -80,6 +77,8 @@ class OpenAICompatibleProvider(LLMProvider):
             
         return text.strip()
 
+    # ── public API ─────────────────────────────────────────────────────────
+
     def generate_text(self, system_prompt: str, user_prompt: str, max_tokens: Optional[int] = None) -> str:
         params = {
             "model": self.model,
@@ -92,6 +91,7 @@ class OpenAICompatibleProvider(LLMProvider):
             "top_p": self.top_p,
         }
         
+        # Deepseek thinking mode specific adjustments
         if self.provider_name == "deepseek" and self.thinking:
             params.pop("temperature", None)
             params.pop("top_p", None)
@@ -121,6 +121,7 @@ class OpenAICompatibleProvider(LLMProvider):
             "top_p": self.top_p,
         }
 
+        # JSON Mode — skip for deepseek thinking where it's not supported
         if not (self.provider_name == "deepseek" and self.thinking):
              params["response_format"] = {"type": "json_object"}
 

@@ -51,6 +51,7 @@ $RECYCLE.BIN/
 # ─── Node.js ───
 node_modules/
 frontend/dist/
+frontend/coverage/
 
 # ─── Testing & Coverage ───
 htmlcov/
@@ -61,6 +62,7 @@ htmlcov/
 coverage.xml
 frontend/coverage/
 coverage/
+test_*.txt
 
 # ─── Logs & Temp ───
 logs/
@@ -68,6 +70,10 @@ logs/
 tmp/
 *.tmp
 cmd_outputs/
+
+# ─── Runtime Data ───
+data/
+job_hunter_statuses.json
 
 # ─── Poetry / packaging ───
 poetry.lock

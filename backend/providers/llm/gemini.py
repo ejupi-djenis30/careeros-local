@@ -38,6 +38,8 @@ class GeminiProvider(LLMProvider):
         self.max_tokens = max_tokens
         self.thinking_level = thinking_level
 
+    # ── helpers ────────────────────────────────────────────────────────────
+
     @property
     def model_id(self) -> str:
         return f"gemini/{self.model}"
@@ -59,6 +61,8 @@ class GeminiProvider(LLMProvider):
             gen_config_kwargs["response_mime_type"] = "application/json"
             
         return self.types.GenerateContentConfig(**gen_config_kwargs)
+
+    # ── public API ─────────────────────────────────────────────────────────
 
     def generate_text(self, system_prompt: str, user_prompt: str, max_tokens: Optional[int] = None) -> str:
         config = self._get_config(json_mode=False, max_tokens=max_tokens)

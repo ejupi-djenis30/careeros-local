@@ -53,7 +53,7 @@ jobs:
 
       - name: Run tests (SQLite)
         env:
-          JWT_SECRET_KEY: ci-test-secret-key-not-for-production
+          SECRET_KEY: ci-test-secret-key-not-for-production
           LLM_PROVIDER: groq
           DATABASE_URL: sqlite:///./test.db
         run: |
@@ -61,7 +61,7 @@ jobs:
 
       - name: Run tests (PostgreSQL)
         env:
-          JWT_SECRET_KEY: ci-test-secret-key-not-for-production
+          SECRET_KEY: ci-test-secret-key-not-for-production
           LLM_PROVIDER: groq
           DATABASE_URL: postgresql://testuser:testpass@localhost:5432/testdb
         run: |
@@ -75,7 +75,7 @@ jobs:
           path: coverage.xml
 
   frontend:
-    name: Frontend Build
+    name: Frontend Verification & Build
     runs-on: ubuntu-latest
 
     steps:
@@ -95,7 +95,13 @@ jobs:
 
       - name: Run frontend tests
         working-directory: frontend
-        run: npm run test -- --run
+        run: npm run test -- --run --coverage
+
+      - name: Upload frontend coverage
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-coverage
+          path: frontend/coverage/
 
       - name: Build frontend
         working-directory: frontend

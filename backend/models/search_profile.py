@@ -1,15 +1,13 @@
-from sqlalchemy import Column, Integer, String, Boolean, Float, Text, DateTime, ForeignKey
-from sqlalchemy.sql import func
+from sqlalchemy import Column, String, Boolean, Float, Text, Integer, ForeignKey, JSON, DateTime
 from sqlalchemy.orm import relationship
-from backend.db.base import Base
+from backend.models.base_model import BaseModel, TimestampMixin
 
 
-class SearchProfile(Base):
+class SearchProfile(BaseModel, TimestampMixin):
     __tablename__ = "search_profiles"
 
-    id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
-    name = Column(String, default="Default Profile")
+    name = Column(String, default="")
     cv_content = Column(Text)
     
     # Preferences
@@ -19,7 +17,7 @@ class SearchProfile(Base):
     # Filters
     location_filter = Column(String)
     workload_filter = Column(String)
-    contract_type = Column(String, default="any")  # Added
+    contract_type = Column(String, default="any")
     posted_within_days = Column(Integer, default=30)
     max_distance = Column(Integer, default=50)
     latitude = Column(Float, nullable=True)
@@ -35,7 +33,7 @@ class SearchProfile(Base):
     last_scheduled_run = Column(DateTime(timezone=True), nullable=True)
     
     # Advanced / Extensible preferences
-    advanced_preferences = Column(Text, nullable=True)  # Store as JSON string if needed
+    advanced_preferences = Column(JSON, nullable=True)
 
     # Query generation control (Feature 4)
     max_occupation_queries = Column(Integer, nullable=True)
@@ -43,9 +41,7 @@ class SearchProfile(Base):
 
     # Caching layer (Feature 3): saves CV summary and generated queries between runs
     cached_cv_summary = Column(Text, nullable=True)
-    cached_queries = Column(Text, nullable=True)  # Store as JSON string
-    
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    cached_queries = Column(JSON, nullable=True)
 
     user = relationship("User", back_populates="profiles")
     jobs = relationship("Job", back_populates="search_profile", cascade="all, delete-orphan")

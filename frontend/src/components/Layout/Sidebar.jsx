@@ -30,17 +30,22 @@ const NavItem = ({ to, label, icon, badge, specialClass = '', onClick, isCollaps
 );
 
 export function Sidebar({ username, onLogout, isOpen, onClose, isCollapsed, onToggleCollapse }) {
-  const { searchStatuses } = useSearchContext();
+  const { searchStatuses, activeProfileIds } = useSearchContext();
   
-  // Compute global dynamic search state
-  const isRunning = Object.values(searchStatuses).some(s => s && ['generating', 'searching', 'analyzing'].includes(s.state));
-  const hasDone = Object.values(searchStatuses).some(s => s && s.state === 'done');
-  const hasError = Object.values(searchStatuses).some(s => s && (s.state === 'error' || s.state === 'stopped'));
+  // Compute global dynamic search state based ONLY on tracked active searches
+  const activeStatuses = activeProfileIds.map(id => searchStatuses[id]).filter(Boolean);
+
+  const isRunning = activeStatuses.some(s => s && ['generating', 'searching', 'analyzing'].includes(s.state));
+  const hasDone = activeStatuses.some(s => s && s.state === 'done');
+  const hasError = activeStatuses.some(s => s && (s.state === 'error' || s.state === 'stopped'));
   
   let searchState = null;
-  if (isRunning) searchState = 'running';
-  else if (hasError) searchState = 'error';
-  else if (hasDone) searchState = 'done';
+  if (activeProfileIds.length > 0) {
+    if (isRunning) searchState = 'running';
+    else if (hasError) searchState = 'error';
+    else if (hasDone) searchState = 'done';
+    else searchState = 'process';
+  }
 
   const handleNavClick = () => {
     if (window.innerWidth < 992) onClose(); // Auto-close on mobile

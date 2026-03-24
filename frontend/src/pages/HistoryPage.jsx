@@ -17,8 +17,10 @@ export function HistoryPage() {
     }
   };
 
-  const handleEditHistory = (profile) => {
-    navigate('/new', { state: { prefillProfile: profile } });
+  const handleUseAsTemplate = (profile) => {
+    // Strip id and metadata so a fresh profile is created on submit
+    const { id, created_at, last_scheduled_run, ...templateData } = profile;
+    navigate('/new', { state: { prefillProfile: templateData } });
   };
 
   const handleSaveAsSchedule = async (profile) => {
@@ -32,10 +34,10 @@ export function HistoryPage() {
 
   return (
     <div className="animate-slide-up">
-      <History 
-        onStartSearch={handleStartSearch} 
-        onEdit={handleEditHistory} 
-        onSaveAsSchedule={handleSaveAsSchedule} 
+      <History
+        onStartSearch={handleStartSearch}
+        onUseAsTemplate={handleUseAsTemplate}
+        onSaveAsSchedule={handleSaveAsSchedule}
       />
     </div>
   );

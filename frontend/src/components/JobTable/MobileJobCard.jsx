@@ -1,81 +1,95 @@
 import React from "react";
-import { ScoreBadge, DistanceBadge } from "./Badges";
+import { ScoreBadge } from "./Badges";
 
-export function MobileJobCard({ job, isGlobalView, onToggleApplied, onCopy }) {
-    const isJobRoomOnly = job.jobroom_url && (!job.url || job.url === job.jobroom_url);
-    const applyUrl = isJobRoomOnly ? null : job.url;
+export function MobileJobCard({ job, isGlobalView, onToggleApplied, onCopy, onViewAnalysis }) {
+    const applyUrl = job.application_url || job.external_url;
+    const sourceUrl = job.external_url;
+    const mailtoUrl = job.application_email ? `mailto:${job.application_email}` : null;
 
     return (
-        <div className="glass-panel p-3 mb-3 position-relative hover-card">
-            <div className="d-flex justify-content-between align-items-start mb-2">
-                <div className="pe-2">
-                    <h6 className="fw-bold mb-1 text-white text-break">{job.title}</h6>
-                    <div className="text-secondary x-small d-flex align-items-center flex-wrap gap-2 mt-1">
-                        <span className="text-white-50"><i className="bi bi-building me-1"></i>{job.company}</span>
+        <div className="glass-panel p-3 mb-3 border border-white-5 hover-elevation" style={{ transition: 'transform 0.2s' }}>
+            <div className="d-flex justify-content-between align-items-start mb-3">
+                <div className="flex-grow-1 min-w-0 me-2">
+                    <h6 className="text-white mb-1 fw-bold text-truncate">{job.title}</h6>
+                    <div className="d-flex align-items-center gap-2 text-secondary small">
+                        <span className="text-truncate fw-medium" style={{ maxWidth: '120px' }}>{job.company}</span>
+                        <span className="opacity-25">|</span>
+                        <span>{job.location || "Remote"}</span>
                     </div>
                 </div>
                 <div className="d-flex flex-column align-items-end gap-2">
                     {!isGlobalView && job.affinity_score != null && (
                         <ScoreBadge score={Math.round(job.affinity_score)} />
                     )}
-                    <span className="badge-pill bg-white-10 text-secondary border border-white-10">
-                         {new Date(job.created_at).toLocaleDateString()}
-                    </span>
+                    {!isGlobalView && job.worth_applying && (
+                        <span className="bg-success rounded-circle d-inline-flex align-items-center justify-content-center" 
+                              style={{width: '18px', height: '18px'}} title="Top Pick">
+                            <i className="bi bi-check-lg text-white" style={{fontSize: '0.7rem'}}></i>
+                        </span>
+                    )}
+
+                    {!isGlobalView && job.affinity_analysis && (
+                        <button 
+                            className="btn btn-sm btn-icon btn-secondary rounded-circle d-flex align-items-center justify-content-center border-0 bg-white-5"
+                            onClick={() => onViewAnalysis(job)}
+                            style={{ width: '24px', height: '24px' }}
+                            title="View Analysis"
+                        >
+                            <i className="bi bi-robot" style={{fontSize: '0.8rem'}}></i>
+                        </button>
+                    )}
                 </div>
             </div>
 
-            <div className="d-flex flex-wrap gap-2 mb-3 bg-black-20 p-2 rounded">
-                <div className="d-flex align-items-center text-secondary x-small">
-                    <i className="bi bi-geo-alt me-1 text-info"></i>
-                    {job.location || "Remote"} 
-                    {job.distance_km != null && <span className="text-white-50 ms-1">({job.distance_km}km)</span>}
-                </div>
-                
-                {!isGlobalView && job.worth_applying && (
-                    <span className="badge-pill badge-success">
-                        <i className="bi bi-star-fill me-1"></i>Top Pick
-                    </span>
-                )}
-                {job.workload && (
-                    <span className="badge-pill badge-info">
-                        {job.workload}%
-                    </span>
-                )}
+            <div className="x-small text-secondary mb-3 d-flex flex-wrap gap-x-3 gap-y-1 opacity-75">
+                <div><i className="bi bi-clock me-1"></i> {new Date(job.created_at).toLocaleDateString()}</div>
+                {job.publication_date && <div><i className="bi bi-megaphone me-1"></i> {new Date(job.publication_date).toLocaleDateString()}</div>}
+                {job.distance_km != null && <div><i className="bi bi-geo-alt me-1"></i> {job.distance_km}km</div>}
+                {job.workload != null && <div className="text-info fw-bold">{job.workload}%</div>}
             </div>
 
             <div className="d-flex justify-content-between align-items-center pt-3 border-top border-white-10">
                 <div className="d-flex gap-2">
                     {applyUrl && (
-                        <a href={applyUrl} target="_blank" rel="noopener noreferrer" className="btn btn-sm btn-primary rounded-pill px-3 fw-medium" style={{ minHeight: '32px' }}>
-                            Apply <i className="bi bi-box-arrow-up-right ms-1"></i>
+                        <a href={applyUrl} target="_blank" rel="noopener noreferrer" className="btn btn-sm btn-primary px-3 rounded-md fw-bold">
+                            Apply
                         </a>
                     )}
-                    <button onClick={() => onCopy(job)} className="btn btn-sm btn-secondary rounded-circle btn-icon" title="Copy Details">
-                        <i className="bi bi-clipboard"></i>
+                    <button onClick={() => onCopy(job)} className="btn btn-sm btn-secondary rounded-circle btn-icon" title="Copy Info">
+                        <i className="bi bi-clipboard" style={{fontSize: '0.8rem'}}></i>
                     </button>
-                    {job.application_email && (
-                        <a href={`mailto:${job.application_email}`} className="btn btn-sm btn-secondary rounded-circle btn-icon" title="Email">
-                            <i className="bi bi-envelope"></i>
+                    {mailtoUrl && (
+                        <a href={mailtoUrl} className="btn btn-sm btn-secondary rounded-circle btn-icon" title="Email">
+                            <i className="bi bi-envelope" style={{fontSize: '0.8rem'}}></i>
                         </a>
                     )}
-                    {(job.jobroom_url) && (
-                        <a href={job.jobroom_url} target="_blank" rel="noopener noreferrer" className="btn btn-sm btn-secondary rounded-circle btn-icon" title="View on Job Room">
-                            <i className="bi bi-link-45deg fs-5"></i>
+                    {sourceUrl && (
+                        <a href={sourceUrl} target="_blank" rel="noopener noreferrer" className="btn btn-sm btn-secondary rounded-circle btn-icon" title="Source">
+                            <i className="bi bi-link-45deg" style={{fontSize: '1rem'}}></i>
                         </a>
                     )}
                 </div>
-
-                <div className={`form-check form-switch d-flex align-items-center gap-2 px-3 py-1 rounded-pill border ${job.applied ? 'border-success border-opacity-25 bg-success bg-opacity-10' : 'border-secondary border-opacity-10 bg-white-5'}`}>
-                    <label className={`form-check-label small fw-bold mb-0 ${job.applied ? 'text-success' : 'text-secondary'}`} style={{ cursor: 'pointer' }}>
-                        {job.applied ? 'Applied' : 'Mark Applied'}
-                    </label>
-                    <input
-                        className="form-check-input mt-0"
-                        type="checkbox"
-                        checked={job.applied}
-                        onChange={() => onToggleApplied(job)}
-                        style={{ cursor: 'pointer' }}
-                    />
+                
+                <div className="d-flex flex-column align-items-end gap-1">
+                    <div className="form-check form-switch m-0">
+                        <input
+                            className="form-check-input ms-0"
+                            type="checkbox"
+                            checked={job.applied}
+                            onChange={() => onToggleApplied(job)}
+                            style={{ width: '2rem', height: '1rem' }}
+                        />
+                    </div>
+                    {job.applied_elsewhere && !job.applied && (
+                        <span
+                            className="d-flex align-items-center gap-1"
+                            style={{ fontSize: '0.6rem', color: '#ffc107' }}
+                            title="Applied in another search"
+                        >
+                            <i className="bi bi-check2-circle"></i>
+                            elsewhere
+                        </span>
+                    )}
                 </div>
             </div>
         </div>

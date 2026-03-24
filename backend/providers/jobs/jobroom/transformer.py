@@ -156,17 +156,18 @@ def transform_job_data(raw: dict[str, Any], source_name: str, include_raw_data: 
             addr_parts.append(post_address["countryIsoCode"])
         post_address = ", ".join(addr_parts) if addr_parts else None
 
-    application = (
-        ApplicationChannel(
+    form_url = apply_data.get("formUrl") or content.get("externalUrl")
+
+    if apply_data or form_url:
+        application = ApplicationChannel(
             email=apply_data.get("emailAddress"),
             phone=apply_data.get("phoneNumber"),
-            form_url=apply_data.get("formUrl"),
+            form_url=form_url,
             post_address=post_address,
             additional_info=apply_data.get("additionalInfo"),
         )
-        if apply_data
-        else None
-    )
+    else:
+        application = None
 
     # Extract publication info
     pub_data = job.get("publication", {})
@@ -210,7 +211,7 @@ def transform_job_data(raw: dict[str, Any], source_name: str, include_raw_data: 
         stellennummer_avam=job.get("stellennummerAvam"),
         title=title,
         descriptions=descriptions,
-        external_url=content.get("externalUrl"),
+        external_url=f"https://www.job-room.ch/job-search/{job.get('id')}" if job.get("id") else None,
         company=company,
         location=location,
         number_of_positions=safe_int(content.get("numberOfJobs"), 1),

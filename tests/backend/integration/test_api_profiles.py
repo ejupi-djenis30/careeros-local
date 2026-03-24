@@ -1,4 +1,5 @@
 import pytest
+from unittest.mock import patch, AsyncMock
 
 class TestAdvancedProfilesAPI:
     def test_get_profiles_empty_or_populated(self, client, auth_headers):
@@ -18,7 +19,12 @@ class TestAdvancedProfilesAPI:
             "max_queries": 5,
             "scrape_mode": "sequential"
         }
-        response = client.post("/api/v1/search/start", json=payload, headers=auth_headers)
+        # Patch out the background search so it doesn't attempt a real DB/LLM call
+        with patch(
+            "backend.services.search_service.SearchService.run_search",
+            new_callable=AsyncMock,
+        ):
+            response = client.post("/api/v1/search/start", json=payload, headers=auth_headers)
         assert response.status_code == 200
         assert "profile_id" in response.json()
     
@@ -74,3 +80,24 @@ class TestAdvancedProfilesAPI:
         assert db_session.query(Job).get(job_id) is None
         assert db_session.query(ScrapedJob).get(scraped_id) is not None
         print("[TEST] Success!")
+
+
+def test_profiles_crud_flow(client, auth_headers: dict):
+    # 1. Create profile
+    profile_data = {
+        "name": "Test Profile",
+        "role_description": "DevOps",
+        "search_strategy": "Aggressive"
+    }
+    response = client.post("/api/v1/profiles/", json=profile_data, headers=auth_headers)
+    assert response.status_code == 200
+    profile_id = response.json()["id"]
+
+    # 2. Get profiles
+    response = client.get("/api/v1/profiles/", headers=auth_headers)
+    assert len(response.json()) >= 1
+
+    # 3. Toggle schedule
+    response = client.patch(f"/api/v1/profiles/{profile_id}/schedule", json={"enabled": True, "interval_hours": 24}, headers=auth_headers)
+    assert response.status_code == 200
+    assert response.json()["schedule_enabled"] is True

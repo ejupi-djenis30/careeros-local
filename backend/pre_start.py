@@ -27,10 +27,10 @@ def init() -> None:
             db.execute(text("SELECT 1"))
         logger.info("Database is ready.")
         
-        # Create tables
-        logger.info("Creating database tables...")
-        Base.metadata.create_all(bind=engine)
-        logger.info("Database tables created successfully.")
+        # Create tables (Handled by Alembic)
+        # logger.info("Creating database tables...")
+        # Base.metadata.create_all(bind=engine)
+        # logger.info("Database tables created successfully.")
         
     except Exception as e:
         logger.error(e)

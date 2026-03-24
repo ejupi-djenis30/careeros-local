@@ -62,9 +62,11 @@ def haversine_distance(lat1: float, lon1: float, lat2: float, lon2: float) -> fl
     )
     return R * 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
 
+
 def calculate_distance(coords1: tuple, coords2: tuple) -> float:
     """Wrapper for haversine_distance taking tuples (lat, lon)."""
     return haversine_distance(coords1[0], coords1[1], coords2[0], coords2[1])
+
 
 async def geocode_location(city: str, client: Optional["httpx.AsyncClient"] = None) -> Optional["Coordinates"]:
     """
@@ -76,16 +78,16 @@ async def geocode_location(city: str, client: Optional["httpx.AsyncClient"] = No
     
     if not city:
         return None
-        
+    
     normalized = city.lower().strip()
     
     # 1. Local Cache for major Swiss cities (to avoid external API calls)
     SWISS_CITIES_COORDS = {
         "zurich": (47.3769, 8.5417),
-        "z\u00fcrich": (47.3769, 8.5417),
+        "zürich": (47.3769, 8.5417),
         "bern": (46.9480, 7.4474),
         "geneva": (46.2044, 6.1432),
-        "gen\u00e8ve": (46.2044, 6.1432),
+        "genève": (46.2044, 6.1432),
         "genf": (46.2044, 6.1432),
         "basel": (47.5596, 7.5886),
         "lausanne": (46.5197, 6.6323),
@@ -99,18 +101,18 @@ async def geocode_location(city: str, client: Optional["httpx.AsyncClient"] = No
         "bienne": (47.1367, 7.2467),
         "thun": (46.7512, 7.6217),
         "koniz": (46.9242, 7.4202),
-        "k\u00f6niz": (46.9242, 7.4202),
+        "köniz": (46.9242, 7.4202),
         "fribourg": (46.8064, 7.1619),
         "freiburg": (46.8064, 7.1619),
         "schaffhausen": (47.6973, 8.6349),
         "chur": (46.8507, 9.5307),
         "neuchatel": (46.9899, 6.9290),
-        "neuch\u00e2tel": (46.9899, 6.9290),
+        "neuchâtel": (46.9899, 6.9290),
         "verniere": (46.2167, 6.0833),
         "uetikon": (47.2667, 8.6833),
         "dietikon": (47.4051, 8.4036),
         "dubendorf": (47.3969, 8.6153),
-        "d\u00fcbendorf": (47.3969, 8.6153),
+        "dübendorf": (47.3969, 8.6153),
     }
     
     if normalized in SWISS_CITIES_COORDS:

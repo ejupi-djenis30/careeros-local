@@ -2,6 +2,7 @@ import logging
 import httpx
 from enum import Enum
 from typing import Optional, Any, Dict
+from tenacity import retry, stop_after_attempt, wait_exponential
 
 logger = logging.getLogger(__name__)
 
@@ -9,11 +10,10 @@ class ExecutionMode(str, Enum):
     STEALTH = "stealth"
     FAST = "fast"
 
-class ProxyPool:
-    pass
+
 
 class ScraperSession:
-    def __init__(self, mode: ExecutionMode = ExecutionMode.FAST, proxy_pool: Optional[ProxyPool] = None, base_url: Optional[str] = None):
+    def __init__(self, mode: ExecutionMode = ExecutionMode.FAST, base_url: Optional[str] = None):
         self.mode = mode
         self.base_url = base_url
         self.client: Optional[httpx.AsyncClient] = None
@@ -24,7 +24,7 @@ class ScraperSession:
         self.csrf_token: Optional[str] = None
 
     async def start(self):
-        self.client = httpx.AsyncClient(headers=self.headers, verify=False, follow_redirects=True, timeout=30.0)
+        self.client = httpx.AsyncClient(headers=self.headers, verify=True, follow_redirects=True, timeout=30.0)
 
     async def close(self):
         if self.client:
@@ -52,6 +52,7 @@ class ScraperSession:
                 logger.info("CSRF Token refreshed")
                 break
 
+    @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=10))
     async def with_retry_csrf(self, method: str, url: str, csrf_refresh_url: str, json: Optional[Dict] = None):
         if not self.client:
             await self.start()

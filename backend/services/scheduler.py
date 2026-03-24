@@ -90,17 +90,40 @@ def remove_schedule(profile_id: int):
         logger.info(f"[Scheduler] Removed schedule for profile {profile_id}")
 
 
-def get_all_schedules() -> list[dict]:
+def get_all_schedules(user_id: int = None, db: Session = None) -> list[dict]:
     """Get info about all scheduled jobs."""
     scheduler = get_scheduler()
     jobs = []
+    
+    close_db = False
+    if db is None:
+        db = SessionLocal()
+        close_db = True
+        
+    try:
+        query = db.query(SearchProfile).filter(SearchProfile.schedule_enabled == True)
+        if user_id is not None:
+            query = query.filter(SearchProfile.user_id == user_id)
+        valid_profile_ids = {p.id for p in query.all()}
+    finally:
+        if close_db:
+            db.close()
+        
     for job in scheduler.get_jobs():
-        jobs.append({
-            "id": job.id,
-            "name": job.name,
-            "next_run": job.next_run_time.isoformat() if job.next_run_time else None,
-            "trigger": str(job.trigger),
-        })
+        if job.id.startswith("search_profile_"):
+            try:
+                pid = int(job.id.split("_")[-1])
+                if pid not in valid_profile_ids:
+                    continue
+            except ValueError:
+                continue
+
+            jobs.append({
+                "id": job.id,
+                "name": job.name,
+                "next_run": job.next_run_time.isoformat() if job.next_run_time else None,
+                "trigger": str(job.trigger),
+            })
     return jobs
 
 

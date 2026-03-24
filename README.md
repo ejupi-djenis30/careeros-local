@@ -109,17 +109,23 @@ This project is built to be **100% self-hosted**. Your CV, your career goals, an
 
 ## 3. The AI Brain: Strategy & Models
 
-Job Hunter AI is LLM-agnostic, meaning it is designed to hot-swap the underlying "brain" of the application based on your needs, API costs, or privacy concerns.
+Job Hunter AI is **LLM-agnostic** and supports a **flexible per-step architecture** — you can use a different provider, model, and tuning parameters for each stage of the pipeline. This lets you balance cost, speed, and quality: use a cheap/fast model for simple tasks and a powerful one for deep reasoning.
 
 ### Supported Providers
 - **Groq (Recommended)**: Utilizes models like `llama3-70b-8192`. Groq is heavily recommended because job analysis requires processing hundreds of listings. Groq's specialized LPU hardware provides instantaneous inference, reducing search times from minutes to seconds.
-- **DeepSeek**: Excellent for highly technical software engineering searches. DeepSeek's models have profound reasoning capabilities regarding complex technical stacks.
-- **Google Gemini**: Useful for its massive context windows, particularly if your CV is incredibly lengthy or if you are analyzing massive conglomerate job descriptions.
+- **OpenAI**: Direct access to GPT-4o, GPT-4o-mini, and other OpenAI models.
+- **DeepSeek**: Excellent for highly technical software engineering searches. DeepSeek's models have profound reasoning capabilities regarding complex technical stacks. Supports thinking/reasoning mode.
+- **Google Gemini**: Useful for its massive context windows, particularly if your CV is incredibly lengthy or if you are analyzing massive conglomerate job descriptions. Supports configurable thinking levels.
 - **Ollama (Full Privacy)**: Allows you to run models like `llama3` safely and completely offline on your local hardware.
+- **Any OpenAI-compatible API**: Any provider offering an OpenAI-compatible endpoint (e.g., Together AI, Fireworks, local vLLM) works out of the box.
 
-### The Two-Pass Brain Architecture
-1. **The Generation Pass**: The AI reads your Profile and outputs strictly formatted JSON containing an array of Search Queries. The prompt is heavily constrained to avoid boolean logic nightmares and force the model to explore linguistic variations.
-2. **The Evaluation Pass**: The AI acts as a "Career Coach". It takes exactly one job listing and exactly one CV, evaluating them against strict rules (e.g., "If the user is a Junior and the job says Principal, cap the score at 50% max").
+### The Three-Pass Brain Architecture
+
+Each pass can independently use a different LLM provider/model via `LLM_{STEP}_*` environment variables (see [Configuration](#8-comprehensive-configuration-guide)).
+
+1. **PLAN — The Generation Pass**: The AI reads your Profile and outputs strictly formatted JSON containing an array of Search Queries. The prompt is heavily constrained to avoid boolean logic nightmares and force the model to explore linguistic variations. *Typically benefits from a creative, large model.*
+2. **RELEVANCE — The Filter Pass**: A quick binary yes/no check on whether a job title is relevant to the user's target role. *A small, cheap model is sufficient here.*
+3. **MATCH — The Evaluation Pass**: The AI acts as a "Career Coach". It takes exactly one job listing and exactly one CV, evaluating them against strict rules (e.g., "If the user is a Junior and the job says Principal, cap the score at 50% max"). *Benefits from a powerful reasoning model.*
 
 ---
 
@@ -307,22 +313,80 @@ If you are actively developing and modifying the codebase, you may prefer runnin
 
 ## 8. Comprehensive Configuration Guide
 
-The entire behavior of Job Hunter AI is dictated by environment variables. A robust `.env` file is required.
+The entire behavior of Job Hunter AI is dictated by environment variables. Copy `.env.example` to `.env` and configure your values.
 
-### Environment Variables Detail
+### Core Environment Variables
 
 | Variable Name | Status | Default Value | Description |
 | :--- | :---: | :--- | :--- |
 | `PROJECT_NAME` | Optional | Job Hunter AI | Displayed in OpenAPI Swagger documentation headers. |
 | `API_V1_STR` | Optional | `/api/v1` | Base routing path for the REST API. |
 | `LOG_LEVEL` | Optional | `INFO` | Affects server stdout. Options: `DEBUG`, `INFO`, `WARNING`, `ERROR`. |
-| `SECRET_KEY` | **Required** | `change_this_to_a_random_secure_string` | Used to cryptographically sign JSON Web Tokens. If this is leaked, your session data is compromised. |
-| `ACCESS_TOKEN_EXPIRE_MINUTES` | Optional | `11520` | Duration of authentication sessions (in minutes). 11520 minutes equals precisely 8 days. |
-| `CORS_ORIGINS` | Optional | `http://localhost:5173,http://localhost:8000` | Critical for browser security. If running on a remote proxy, add the domain here (e.g. `https://jobhunter.mydomain.com`). |
-| `DATABASE_URL` | Optional | `postgresql://user:password@db:5432/jobhunter` | The connection string. If deploying via Docker, use the PostgreSQL string. If local, use `sqlite:///./job_hunter.db`. |
-| `LLM_PROVIDER` | **Required** | `groq` | Options: `groq`, `deepseek`, `gemini`. |
-| `LLM_API_KEY` | **Required** | N/A | The cryptographic API authorization key corresponding to the selected provider. |
-| `LLM_MODEL` | Optional | *(Provider defaults)* | Overrides systemic defaults. E.g., setting to `llama3-8b-8192` if you want a faster/cheaper Groq run. |
+| `SECRET_KEY` | **Required** | `changeme` | Used to cryptographically sign JSON Web Tokens. Change this in production! |
+| `ACCESS_TOKEN_EXPIRE_MINUTES` | Optional | `15` | Short-lived access token expiry (in minutes). |
+| `REFRESH_TOKEN_EXPIRE_DAYS` | Optional | `7` | Long-lived refresh token expiry (in days). |
+| `CORS_ORIGINS` | Optional | `http://localhost:5173,http://localhost:8000` | Critical for browser security. If running on a remote proxy, add the domain here. |
+| `DATABASE_URL` | Optional | `sqlite:///./job_hunter.db` | The connection string. Docker: `postgresql://user:password@db:5432/jobhunter`. Local: `sqlite:///./job_hunter.db`. |
+
+### Global LLM Settings
+
+These are used as the **default for all pipeline steps** (PLAN, RELEVANCE, MATCH).
+
+| Variable | Status | Default | Description |
+| :--- | :---: | :--- | :--- |
+| `LLM_PROVIDER` | **Required** | `groq` | Options: `groq`, `deepseek`, `openai`, `gemini`, `ollama` |
+| `LLM_API_KEY` | **Required** | — | Your provider's API authorization key |
+| `LLM_BASE_URL` | Optional | — | Provider API endpoint (e.g. `https://api.groq.com/openai/v1`) |
+| `LLM_MODEL` | Optional | `moonshotai/kimi-k2-instruct-0905` | Model name/ID |
+| `LLM_TEMPERATURE` | Optional | `0.7` | Creativity (0.0 = deterministic, 1.0 = very creative) |
+| `LLM_TOP_P` | Optional | `0.95` | Nucleus sampling threshold (0.0–1.0) |
+| `LLM_MAX_TOKENS` | Optional | `16384` | Maximum output tokens |
+| `LLM_THINKING` | Optional | `false` | Enable thinking/reasoning mode (DeepSeek) |
+| `LLM_THINKING_LEVEL` | Optional | `OFF` | Gemini thinking level: `OFF`, `LOW`, `MEDIUM`, `HIGH` |
+| `OLLAMA_BASE_URL` | Optional | `http://localhost:11434/v1` | Ollama API endpoint (used when provider=ollama) |
+| `OLLAMA_MODEL` | Optional | `llama3` | Default Ollama model |
+
+### Per-Step LLM Overrides
+
+You can override **any** global LLM setting for a specific pipeline step.
+Leave empty (or `0` for numeric values) to inherit the global value.
+
+Replace `{STEP}` with `PLAN`, `RELEVANCE`, or `MATCH`:
+
+| Variable Pattern | Type | Description |
+| :--- | :---: | :--- |
+| `LLM_{STEP}_PROVIDER` | string | Provider override for this step |
+| `LLM_{STEP}_MODEL` | string | Model override |
+| `LLM_{STEP}_API_KEY` | string | API key override (useful for different accounts) |
+| `LLM_{STEP}_BASE_URL` | string | Base URL override |
+| `LLM_{STEP}_TEMPERATURE` | float | Temperature override |
+| `LLM_{STEP}_TOP_P` | float | Top-p override |
+| `LLM_{STEP}_MAX_TOKENS` | int | Max tokens override |
+| `LLM_{STEP}_THINKING` | bool | Thinking mode override |
+| `LLM_{STEP}_THINKING_LEVEL` | string | Thinking level override |
+
+#### Example: Cost-Optimized Mixed Setup
+
+```env
+# Global — powerful model for the PLAN step (default)
+LLM_PROVIDER=groq
+LLM_MODEL=moonshotai/kimi-k2-instruct-0905
+LLM_API_KEY=gsk_...
+LLM_BASE_URL=https://api.groq.com/openai/v1
+
+# RELEVANCE — small cheap model (binary yes/no task)
+LLM_RELEVANCE_MODEL=llama-3.1-8b-instant
+LLM_RELEVANCE_TEMPERATURE=0.1
+LLM_RELEVANCE_MAX_TOKENS=1024
+
+# MATCH — different provider entirely for deep analysis
+LLM_MATCH_PROVIDER=deepseek
+LLM_MATCH_MODEL=deepseek-chat
+LLM_MATCH_API_KEY=sk-...
+LLM_MATCH_BASE_URL=https://api.deepseek.com
+LLM_MATCH_TEMPERATURE=0.3
+LLM_MATCH_THINKING=true
+```
 
 ---
 

@@ -19,6 +19,22 @@ export function SearchFormParameters({ profile, handleChange }) {
                     </select>
                 </div>
                 <div className="col-6">
+                    <label className="form-label text-white small fw-bold text-uppercase x-small mb-2">Contract</label>
+                    <select
+                        name="contract_type"
+                        value={profile.contract_type || "any"}
+                        onChange={handleChange}
+                        className="form-select form-select-sm bg-black-20 border-white-10 text-white"
+                    >
+                        <option value="any">Any</option>
+                        <option value="permanent">Permanent</option>
+                        <option value="temporary">Temporary / Freelance</option>
+                    </select>
+                </div>
+            </div>
+            
+            <div className="row g-3">
+                <div className="col-12">
                     <label className="form-label text-white small fw-bold text-uppercase x-small mb-2">Posted</label>
                     <select
                         name="posted_within_days"

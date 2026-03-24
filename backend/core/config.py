@@ -2,6 +2,7 @@ from typing import List, Union, Any, Optional
 from pydantic import AnyHttpUrl, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+
 class Settings(BaseSettings):
     API_V1_STR: str = "/api/v1"
     PROJECT_NAME: str = "Job Hunter AI"
@@ -28,19 +29,40 @@ class Settings(BaseSettings):
     
     # Security
     SECRET_KEY: str = "changeme"
+    ALLOWED_HOSTS: List[str] = ["localhost", "127.0.0.1", "testserver"]
+
+    @field_validator("ALLOWED_HOSTS", mode="before")
+    @classmethod
+    def parse_allowed_hosts(cls, v: Any) -> List[str]:
+        if isinstance(v, str):
+            if v.startswith("["):
+                import json
+                try:
+                    return json.loads(v)
+                except Exception:
+                    pass
+            return [i.strip() for i in v.split(",") if i.strip()]
+        return v
+
+    ENVIRONMENT: str = "development"  # development | production
 
     @field_validator("SECRET_KEY")
     @classmethod
-    def warn_default_secret_key(cls, v: str) -> str:
-        if v == "changeme":
-            import logging
-            logging.warning("⚠️ USING DEFAULT INSECURE SECRET_KEY! Set SECRET_KEY in .env for production.")
+    def validate_secret_key(cls, v: str) -> str:
+        import os, logging
+        if v in ("changeme", ""):
+            if os.getenv("ENVIRONMENT", "development").lower() == "production":
+                raise ValueError(
+                    "Insecure default SECRET_KEY in use. Set SECRET_KEY in your environment."
+                )
+            logging.critical(
+                "CRITICAL: Default SECRET_KEY is in use! Set SECRET_KEY in .env for production."
+            )
         return v
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 15  # 15 minutes
     REFRESH_TOKEN_EXPIRE_DAYS: int = 7     # 7 days
-
-    # --- Global LLM (used as fallback for all steps) ---
+    # ─── Global LLM (used as fallback for all steps) ───────────────────────────
     LLM_PROVIDER: str = "groq"
     LLM_API_KEY: str = ""
     LLM_BASE_URL: str = ""
@@ -51,7 +73,7 @@ class Settings(BaseSettings):
     LLM_THINKING: bool = False
     LLM_THINKING_LEVEL: str = "OFF"
 
-    # --- Per-step LLM overrides (all optional — empty/zero = use global) ---
+    # ─── Per-step LLM overrides (all optional — empty/zero = use global) ───────
     #
     # Step: PLAN  (generate_search_plan)
     LLM_PLAN_PROVIDER: str = ""

@@ -46,41 +46,31 @@ describe('HistoryCard', () => {
         expect(onStartSearch).toHaveBeenCalledWith(mockProfile);
     });
 
-    it('calls onEdit when Edit button is clicked', () => {
-        const onEdit = vi.fn();
-        render(<HistoryCard profile={mockProfile} onEdit={onEdit} />);
-        
-        const editButton = screen.getByTitle('Edit Parameters');
-        fireEvent.click(editButton);
-        
-        expect(onEdit).toHaveBeenCalledWith(mockProfile);
-    });
 
-    it('calls onDelete when Delete button is clicked', () => {
-        const onDelete = vi.fn();
-        render(<HistoryCard profile={mockProfile} onDelete={onDelete} />);
-        
-        const deleteButton = screen.getByTitle('Delete');
-        fireEvent.click(deleteButton);
-        
-        expect(onDelete).toHaveBeenCalledWith(mockProfile.id);
-    });
 
-    it('shows Add to Schedule button only if schedule is disabled', () => {
+    it('calls onSaveAsSchedule when Add to Schedule button is clicked', () => {
         const onSaveAsSchedule = vi.fn();
-
-        // Enabled schedule shouldn't show the button
-        const { rerender } = render(<HistoryCard profile={mockProfile} onSaveAsSchedule={onSaveAsSchedule} />);
-        expect(screen.queryByTitle('Add to Schedule')).not.toBeInTheDocument();
-
-        // Disabled schedule should show the button
         const profileUnscheduled = { ...mockProfile, schedule_enabled: false };
-        rerender(<HistoryCard profile={profileUnscheduled} onSaveAsSchedule={onSaveAsSchedule} />);
+        render(<HistoryCard profile={profileUnscheduled} onSaveAsSchedule={onSaveAsSchedule} />);
         
         const scheduleButton = screen.getByTitle('Add to Schedule');
-        expect(scheduleButton).toBeInTheDocument();
-        
         fireEvent.click(scheduleButton);
         expect(onSaveAsSchedule).toHaveBeenCalledWith(profileUnscheduled);
+    });
+
+    it('safely handles missing handlers', () => {
+        render(<HistoryCard profile={mockProfile} />);
+        const runButton = screen.getByTitle('Rerun Search');
+        fireEvent.click(runButton);
+
+        const templateButton = screen.getByTitle('New Search from this');
+        fireEvent.click(templateButton);
+
+        const profileUnscheduled = { ...mockProfile, schedule_enabled: false };
+        const { getByTitle: getByTitleUnsched } = render(<HistoryCard profile={profileUnscheduled} />);
+        
+        const scheduleButton = getByTitleUnsched('Add to Schedule');
+        fireEvent.click(scheduleButton);
+        // Should not crash
     });
 });

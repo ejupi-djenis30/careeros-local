@@ -33,7 +33,13 @@ export function LocationInput({
         setIsLoading(true);
         try {
             const response = await fetch(
-                `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(searchTerm)}&countrycodes=ch&addressdetails=1&limit=5`
+                `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(searchTerm)}&countrycodes=ch&addressdetails=1&limit=5`,
+                {
+                    headers: {
+                        "Accept-Language": "en",
+                        "User-Agent": "JobHunterAI/1.0"
+                    }
+                }
             );
             const data = await response.json();
 
@@ -85,7 +91,7 @@ export function LocationInput({
                 });
                 handleSearch(query);
             }
-        }, 500);
+        }, 1000);
         return () => clearTimeout(timer);
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [query]);
@@ -112,7 +118,13 @@ export function LocationInput({
                 const { latitude, longitude } = position.coords;
                 try {
                     const response = await fetch(
-                        `https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}`
+                        `https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}`,
+                        {
+                            headers: {
+                                "Accept-Language": "en",
+                                "User-Agent": "JobHunterAI/1.0"
+                            }
+                        }
                     );
                     const data = await response.json();
                     const displayName = data.display_name || `Lat: ${latitude.toFixed(4)}, Lon: ${longitude.toFixed(4)}`;
@@ -148,11 +160,14 @@ export function LocationInput({
             <div className="position-relative">
                 <input
                     type="text"
+                    id="location-search"
+                    name="location-search"
                     className="form-control bg-black-20 border-white-10 text-white"
                     placeholder="Search city (e.g. Zurich)..."
                     value={query}
                     onChange={(e) => setQuery(e.target.value)}
                     onFocus={() => query.length >= 3 && setShowSuggestions(true)}
+                    autoComplete="off"
                     style={{ paddingRight: '3rem' }}
                 />
 

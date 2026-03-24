@@ -1,16 +1,23 @@
-import logging
+"""LLM provider factory with per-step resolution.
 
+Resolution order for each field (provider, model, api_key, base_url, …):
+  1. ``LLM_{STEP}_{FIELD}`` env var  →  use if non-empty / non-zero
+  2. Global ``LLM_{FIELD}``          →  fallback
+
+When ``step`` is not supplied (or is ``"default"``), global settings are used
+directly — this is functionally identical to the old ``get_llm_provider()``.
+"""
+
+import logging
 from backend.core.config import settings
 from backend.providers.llm.base import LLMProvider
 from backend.providers.llm.openai_compatible import OpenAICompatibleProvider
 from backend.providers.llm.gemini import GeminiProvider
-
 from backend.providers.llm.ollama import OllamaProvider
 
 logger = logging.getLogger(__name__)
 
-
-# --- recognised step names (used as env-var prefixes) ---
+# ─── recognised step names (used as env-var prefixes) ────────────────────────
 _KNOWN_STEPS = {"plan", "relevance", "match", "summary"}
 
 
@@ -48,7 +55,7 @@ def _resolve_step_config(step: str) -> dict:
         "model":          step_model or settings.LLM_MODEL,
         "api_key":        step_api_key or settings.LLM_API_KEY,
         "base_url":       step_base_url or settings.LLM_BASE_URL,
-        # Sentinel: -1.0/-1 means "not set for this step" — use global default
+        # Sentinel: -1.0/-1 means "not set for this step" → use global default
         "temperature":    step_temp if step_temp >= 0 else settings.LLM_TEMPERATURE,
         "top_p":          step_top_p if step_top_p >= 0 else settings.LLM_TOP_P,
         "max_tokens":     step_max_tok if step_max_tok >= 0 else settings.LLM_MAX_TOKENS,
@@ -97,7 +104,7 @@ def _build_provider(cfg: dict) -> LLMProvider:
     )
 
 
-# --- public API ---
+# ─── public API ──────────────────────────────────────────────────────────────
 
 def get_provider_for_step(step: str = "default") -> LLMProvider:
     """Resolve and instantiate the LLM provider for a pipeline *step*.
@@ -114,5 +121,6 @@ def get_provider_for_step(step: str = "default") -> LLMProvider:
     return provider
 
 
-# Alias for backward compatibility with tests
-get_llm_provider = get_provider_for_step
+def get_llm_provider() -> LLMProvider:
+    """Backward-compatible alias — returns the global default provider."""
+    return get_provider_for_step("default")

@@ -15,7 +15,7 @@ class JobProvider(ABC):
         pass
 
     @abstractmethod
-    async def search(self, request: JobSearchRequest) -> List[JobListing]:
+    async def search(self, request: JobSearchRequest) -> "JobSearchResponse":
         """Search for jobs."""
         pass
 

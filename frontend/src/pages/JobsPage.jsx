@@ -4,6 +4,19 @@ import { JobTable } from '../components/JobTable';
 import { FilterBar } from '../components/FilterBar';
 import { useJobs } from '../hooks/useJobs';
 
+const StatCard = ({ label, value, color, icon }) => (
+  <div className="glass-panel p-4 d-flex align-items-center hover-card h-100">
+    <div className={`rounded-circle d-flex align-items-center justify-content-center me-3 bg-${color}-10 text-${color}`} 
+         style={{ width: 48, height: 48 }}>
+      <i className={`bi ${icon} fs-4`}></i>
+    </div>
+    <div>
+      <div className="h3 fw-bold mb-0 text-white">{value}</div>
+      <div className="text-secondary small fw-medium text-uppercase tracking-wide">{label}</div>
+    </div>
+  </div>
+);
+
 export function JobsPage() {
   const { logout } = useAuth();
   
@@ -24,18 +37,6 @@ export function JobsPage() {
   const appliedCount = pagination.total_applied;
   const avgScore = Math.round(pagination.avg_score || 0);
 
-  const StatCard = ({ label, value, color, icon }) => (
-    <div className="glass-panel p-4 d-flex align-items-center hover-card h-100">
-      <div className={`rounded-circle d-flex align-items-center justify-content-center me-3 bg-${color}-10 text-${color}`} 
-           style={{ width: 48, height: 48 }}>
-        <i className={`bi ${icon} fs-4`}></i>
-      </div>
-      <div>
-        <div className="h3 fw-bold mb-0 text-white">{value}</div>
-        <div className="text-secondary small fw-medium text-uppercase tracking-wide">{label}</div>
-      </div>
-    </div>
-  );
 
   return (
     <div className="animate-slide-up">

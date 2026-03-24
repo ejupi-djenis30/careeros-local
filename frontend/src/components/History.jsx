@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import { SearchService } from "../services/search";
 import { HistoryCard } from "./HistoryCard";
 
-export function History({ onStartSearch, onEdit, onSaveAsSchedule }) {
+export function History({ onStartSearch, onUseAsTemplate, onSaveAsSchedule }) {
     const [profiles, setProfiles] = useState([]);
     const [loading, setLoading] = useState(true);
 
@@ -19,16 +19,6 @@ export function History({ onStartSearch, onEdit, onSaveAsSchedule }) {
             console.error("Failed to load profiles:", e);
         } finally {
             setLoading(false);
-        }
-    };
-
-    const handleDelete = async (profileId) => {
-        if (!window.confirm("Delete this history entry?")) return;
-        try {
-            await SearchService.deleteProfile(profileId);
-            loadProfiles();
-        } catch (e) {
-            alert("Failed to delete: " + e.message);
         }
     };
 
@@ -56,11 +46,7 @@ export function History({ onStartSearch, onEdit, onSaveAsSchedule }) {
 
     return (
         <div className="animate-fade-in h-100 d-flex flex-column">
-            <div className="d-flex justify-content-between align-items-center mb-4">
-                <div>
-                    <h3 className="mb-1 text-white fw-bold tracking-tight">Recent Activity</h3>
-                    <p className="text-secondary small mb-0 opacity-75">Manage your past search configurations</p>
-                </div>
+            <div className="d-flex justify-content-end align-items-center mb-4">
                 <button 
                     onClick={loadProfiles} 
                     className="btn btn-icon btn-secondary rounded-circle shadow-sm"
@@ -76,9 +62,8 @@ export function History({ onStartSearch, onEdit, onSaveAsSchedule }) {
                         key={p.id}
                         profile={p}
                         onStartSearch={onStartSearch}
-                        onEdit={onEdit}
+                        onUseAsTemplate={onUseAsTemplate}
                         onSaveAsSchedule={onSaveAsSchedule}
-                        onDelete={handleDelete}
                     />
                 ))}
             </div>

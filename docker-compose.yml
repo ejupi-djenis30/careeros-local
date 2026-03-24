@@ -29,13 +29,16 @@ services:
     environment:
       - DATABASE_URL=postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-jobhunter}
       - CORS_ORIGINS=http://localhost:5173,http://localhost:80
+      - ENVIRONMENT=${ENVIRONMENT:-development}
     ports:
       - "8000:8000"
     command: >
       sh -c "python -m backend.pre_start &&
+             alembic upgrade head &&
              gunicorn backend.main:app --worker-class uvicorn.workers.UvicornWorker --bind 0.0.0.0:8000 --workers 1 --timeout 120"
     volumes:
       - app_data:/app/data
+      - ./tests:/app/tests
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/health"]
       interval: 10s

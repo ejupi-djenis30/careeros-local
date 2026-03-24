@@ -18,19 +18,9 @@ export const SearchService = {
     },
 
     uploadCV(file) {
-        // We use raw fetch here because we need to send FormData, not JSON
         const formData = new FormData();
         formData.append("file", file);
-        return fetch(`${API_BASE}/search/upload-cv`, {
-            method: "POST",
-            headers: {
-                "Authorization": `Bearer ${localStorage.getItem("jh_token")}`
-            },
-            body: formData
-        }).then(res => {
-            if (!res.ok) throw new Error("Failed to upload CV");
-            return res.json();
-        });
+        return ApiClient.postMultipart("/search/upload-cv", formData);
     },
 
     toggleSchedule(profileId, enabled, intervalHours = null) {

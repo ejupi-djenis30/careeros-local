@@ -1,16 +1,14 @@
 from sqlalchemy import Column, Integer, String, Boolean, Float, Text, DateTime, ForeignKey, JSON, UniqueConstraint
-from sqlalchemy.sql import func
 from sqlalchemy.orm import relationship
-from backend.db.base import Base
+from backend.models.base_model import BaseModel, TimestampMixin
 
 
-class ScrapedJob(Base):
+class ScrapedJob(BaseModel, TimestampMixin):
     __tablename__ = "scraped_jobs"
     __table_args__ = (
         UniqueConstraint('platform', 'platform_job_id', name='uq_scraped_job_platform_id'),
     )
 
-    id = Column(Integer, primary_key=True, index=True)
     platform = Column(String, index=True, nullable=False)
     platform_job_id = Column(String, index=True, nullable=False)
     
@@ -35,17 +33,14 @@ class ScrapedJob(Base):
     
     # Keep track of where it originally came from (optional but useful)
     source_query = Column(String, nullable=True)
-    
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     # Relationships
     user_jobs = relationship("Job", back_populates="scraped_job", cascade="all, delete-orphan")
 
 
-class Job(Base):
+class Job(BaseModel, TimestampMixin):
     __tablename__ = "jobs"
 
-    id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
     search_profile_id = Column(Integer, ForeignKey("search_profiles.id"), nullable=True, index=True)
     scraped_job_id = Column(Integer, ForeignKey("scraped_jobs.id"), nullable=False, index=True)
@@ -64,12 +59,24 @@ class Job(Base):
     # User Action
     applied = Column(Boolean, default=False)
     
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
-    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
-
+    # Relationships
     user = relationship("User", back_populates="jobs")
     search_profile = relationship("SearchProfile", back_populates="jobs")
     scraped_job = relationship("ScrapedJob", back_populates="user_jobs", lazy="joined")
+
+    # Feature 2: Track if same ScrapedJob was applied elsewhere
+    @property
+    def applied_elsewhere(self) -> bool:
+        """Returns True if the underlying scraped job has been marked as 'applied' in ANY other Job entry for the same user."""
+        if hasattr(self, "_applied_elsewhere_transient"):
+            return self._applied_elsewhere_transient
+        if not self.scraped_job:
+            return False
+        return any(uj.applied for uj in self.scraped_job.user_jobs if uj.id != self.id and uj.user_id == self.user_id)
+
+    @applied_elsewhere.setter
+    def applied_elsewhere(self, value: bool):
+        self._applied_elsewhere_transient = value
 
     def __init__(self, **kwargs):
         scraped_fields = {
@@ -87,10 +94,6 @@ class Job(Base):
             else:
                 user_kwargs[k] = v
         
-        # Special case: 'url' in scraped_kwargs might have been set by the loop above
-        if "url" in scraped_kwargs:
-            scraped_kwargs["external_url"] = scraped_kwargs.pop("url")
-
         # If we have scraped info but no linked object, create it (compatibility mode)
         if scraped_kwargs and "scraped_job_id" not in user_kwargs and "scraped_job" not in user_kwargs:
             import uuid

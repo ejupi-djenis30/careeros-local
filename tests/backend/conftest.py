@@ -1,22 +1,15 @@
+import os
+os.environ["TESTING"] = "1"
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
-from sqlalchemy.pool import StaticPool
 
 from backend.main import app
-from backend.db.base import Base, get_db
+from backend.db.base import Base, get_db, SessionLocal, engine
 from backend.models import User
 from backend.services.auth import get_password_hash
 
-# Setup Testing Database (In-Memory SQLite)
-SQLALCHEMY_DATABASE_URL = "sqlite:///:memory:"
-engine = create_engine(
-    SQLALCHEMY_DATABASE_URL,
-    connect_args={"check_same_thread": False},
-    poolclass=StaticPool,
-)
-TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+# Use the centralized Testing session from backend.db.base (triggered by TESTING=1)
+TestingSessionLocal = SessionLocal
 
 def override_get_db():
     try:
@@ -27,24 +20,24 @@ def override_get_db():
 
 app.dependency_overrides[get_db] = override_get_db
 
-@pytest.fixture(scope="session")
+@pytest.fixture(scope="function")
 def setup_database():
     Base.metadata.create_all(bind=engine)
     yield
     Base.metadata.drop_all(bind=engine)
 
-@pytest.fixture(scope="session")
+@pytest.fixture(scope="function")
 def client(setup_database):
     with TestClient(app) as c:
         yield c
 
-@pytest.fixture(scope="session")
+@pytest.fixture(scope="function")
 def db_session(setup_database):
     session = TestingSessionLocal()
     yield session
     session.close()
 
-@pytest.fixture(scope="session")
+@pytest.fixture(scope="function")
 def test_user(db_session):
     user = User(
         username="globaladmin",
@@ -55,7 +48,7 @@ def test_user(db_session):
     db_session.refresh(user)
     yield user
 
-@pytest.fixture(scope="session")
+@pytest.fixture(scope="function")
 def auth_headers(client, test_user):
     response = client.post(
         "/api/v1/auth/login",

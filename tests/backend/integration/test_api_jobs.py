@@ -1,6 +1,20 @@
 import pytest
-from backend.models import Job
+from backend.models import Job, ScrapedJob
 from backend.models import SearchProfile
+
+
+def _make_scraped_job(db_session, platform_job_id, title, company, external_url, platform="test"):
+    """Helper to create a ScrapedJob and flush it to get an id."""
+    sj = ScrapedJob(
+        platform=platform,
+        platform_job_id=platform_job_id,
+        title=title,
+        company=company,
+        external_url=external_url,
+    )
+    db_session.add(sj)
+    db_session.flush()
+    return sj
 
 
 @pytest.fixture
@@ -10,10 +24,15 @@ def setup_job_data(db_session, test_user):
     db_session.add(profile)
     db_session.flush()
 
-    # Create dummy jobs
-    job1 = Job(user_id=test_user.id, search_profile_id=profile.id, title="Backend Dev", company="A", affinity_score=100, is_scraped=True, url="http://a")
-    job2 = Job(user_id=test_user.id, search_profile_id=profile.id, title="Frontend Dev", company="B", affinity_score=40, worth_applying=True, is_scraped=True, url="http://b")
-    job3 = Job(user_id=test_user.id, search_profile_id=profile.id, title="QA Auto", company="C", affinity_score=0, applied=True, is_scraped=True, url="http://c")
+    # Create ScrapedJobs first
+    sj1 = _make_scraped_job(db_session, "pj1", "Backend Dev", "A", "http://a")
+    sj2 = _make_scraped_job(db_session, "pj2", "Frontend Dev", "B", "http://b")
+    sj3 = _make_scraped_job(db_session, "pj3", "QA Auto", "C", "http://c")
+
+    # Create dummy jobs linking to ScrapedJobs
+    job1 = Job(user_id=test_user.id, search_profile_id=profile.id, scraped_job_id=sj1.id, affinity_score=100, is_scraped=True)
+    job2 = Job(user_id=test_user.id, search_profile_id=profile.id, scraped_job_id=sj2.id, affinity_score=40, worth_applying=True, is_scraped=True)
+    job3 = Job(user_id=test_user.id, search_profile_id=profile.id, scraped_job_id=sj3.id, affinity_score=0, applied=True, is_scraped=True)
     
     db_session.add_all([job1, job2, job3])
     db_session.commit()
@@ -78,3 +97,29 @@ class TestAdvancedJobsAPI:
         response = client.patch("/api/v1/jobs/999999", json={"applied": True}, headers=auth_headers)
         assert response.status_code == 404
         assert response.json()["detail"] == "Job not found"
+def test_jobs_crud_flow(client, auth_headers: dict):
+    # 1. List jobs (empty)
+    response = client.get("/api/v1/jobs/", headers=auth_headers)
+    assert response.status_code == 200
+    assert response.json()["total"] == 0
+
+    # 2. Create a job
+    job_data = {
+        "title": "Integration Test Job",
+        "company": "Test Co",
+        "platform": "test",
+        "platform_job_id": "tp1",
+        "external_url": "http://test.com/job1"
+    }
+    response = client.post("/api/v1/jobs/", json=job_data, headers=auth_headers)
+    assert response.status_code == 200
+    job_id = response.json()["id"]
+
+    # 3. Update job
+    response = client.patch(f"/api/v1/jobs/{job_id}", json={"applied": True}, headers=auth_headers)
+    assert response.status_code == 200
+    assert response.json()["applied"] is True
+
+    # 4. List jobs (1 item)
+    response = client.get("/api/v1/jobs/", headers=auth_headers)
+    assert response.json()["total"] == 1

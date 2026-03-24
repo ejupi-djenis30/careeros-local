@@ -8,13 +8,13 @@ def test_job_create_schema_valid():
     payload = {
         "title": "Software Engineer",
         "company": "Tech Corp",
-        "url": "https://example.com/job",
+        "external_url": "https://example.com/job",
         "is_scraped": True
     }
     job = JobCreate(**payload)
     assert job.title == "Software Engineer"
     assert job.company == "Tech Corp"
-    assert job.url == "https://example.com/job"
+    assert job.external_url == "https://example.com/job"
     assert job.is_scraped is True
     # Default fields
     assert job.worth_applying is False
@@ -25,11 +25,11 @@ def test_job_create_schema_missing_required():
         JobCreate(title="No Company or URL")
 
 def test_job_update_schema():
-    payload = {"applied": True, "affinity_score": 90}
-    # affinity_score is not in JobUpdate, Pydantic might ignore it or we test explicitly
     update = JobUpdate(applied=True)
     assert update.applied is True
-    assert update.title is None
+    
+    update = JobUpdate()
+    assert update.applied is None
 
 def test_profile_create_defaults():
     profile = SearchProfileCreate()

@@ -39,7 +39,7 @@ class LLMService:
             or settings.LLM_SUMMARY_MODEL
         )
 
-    # --- Phase 2 Helpers: CV Summary & Relevance Pre-filter ---
+    # ─── New Phase 2 Helpers: CV Summary & Relevance Pre-filter ────────
 
     @retry(stop=stop_after_attempt(2), wait=wait_exponential(multiplier=1, min=2, max=5))
     async def summarize_cv(self, cv_content: str) -> str:
@@ -62,7 +62,7 @@ Return plain text, NOT JSON. Use bullet points for readability."""
         
         return await provider.generate_text_async(system_prompt, user_prompt)
 
-    # --- Feature 1: Job Summary Step ---
+    # ─── Feature 1: Job Summary Step ──────────────────────────────────
 
     @retry(stop=stop_after_attempt(2), wait=wait_exponential(multiplier=1, min=2, max=5))
     async def summarize_job_batch(
@@ -162,7 +162,7 @@ One boolean per job, in order. true = relevant, false = irrelevant."""
             results.append(True)  # Default: keep when in doubt
         return results[:len(jobs)]
 
-    # --- Step 1: Search Plan Generation ---
+    # ─── Step 1: Search Plan Generation ───────────────────────────────────
 
     async def generate_search_plan(
         self,
@@ -322,7 +322,7 @@ Return ONLY pure JSON with a 'searches' list. Example:
 
         return searches
 
-    # --- Step 3: Combined Title Relevance & Job Match Analysis ---
+    # ─── Step 3: Combined Title Relevance & Job Match Analysis ──────────────
 
 
     @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=10))

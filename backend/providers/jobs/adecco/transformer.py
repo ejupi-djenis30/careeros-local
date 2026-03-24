@@ -21,6 +21,7 @@ def parse_date(date_str: str | None) -> Optional[datetime]:
     if not date_str:
         return None
     try:
+        # e.g., 2025-12-30T14:19:33Z
         clean_str = date_str.replace("Z", "+00:00")
         return datetime.fromisoformat(clean_str)
     except ValueError:
@@ -36,7 +37,9 @@ def transform_job_data(
     Transforms Adecco API JSON dictionaries into a standardized JobListing.
     """
     try:
+        # Detail data is the primary truth for description, but light_job has list metadata
         primary_source = detail_job if detail_job else light_job
+        
         job_id = light_job.get("jobId", "unknown")
         
         # 1. Basic Info
@@ -44,10 +47,11 @@ def transform_job_data(
         external_ref = light_job.get("externalReference")
         
         # 2. Company Info
+        # Adecco often hides the company or acts as the agency.
         company_name = primary_source.get("companyName")
         company = CompanyInfo(
             name=company_name,
-            is_agency=True
+            is_agency=True  # Adecco is an agency
         ) if company_name else CompanyInfo(name="Adecco", is_agency=True)
         
         # 3. Location
@@ -69,6 +73,8 @@ def transform_job_data(
         if light_job.get("isRemote"):
             work_forms.append("remote")
             
+        start_date = primary_source.get("startDate")
+        
         # Workload mapping
         emp_type_id = light_job.get("employmentTypeId", "")
         if emp_type_id == "FULLTIME":
@@ -78,6 +84,7 @@ def transform_job_data(
         else:
             wmin, wmax = 0, 100
             
+        # Override with exact hours if provided and sensible
         min_hours = light_job.get("workMinHours", 0)
         max_hours = light_job.get("workMaxHours", 0)
         if min_hours > 0 and max_hours > 0 and max_hours <= 100:
@@ -85,7 +92,7 @@ def transform_job_data(
         
         employment = EmploymentDetails(
             is_permanent=is_permanent,
-            start_date=primary_source.get("startDate"),
+            start_date=start_date,
             work_forms=work_forms,
             workload_min=wmin,
             workload_max=wmax
@@ -97,6 +104,7 @@ def transform_job_data(
         if desc_html:
             lang_code_str = light_job.get("language", "en-US")
             lang = lang_code_str.split("-")[0] if "-" in lang_code_str else "en"
+            
             descriptions.append(
                 JobDescription(
                     language_code=lang,
@@ -110,9 +118,12 @@ def transform_job_data(
         recruiter = primary_source.get("recruiterName") or light_job.get("recruiterName")
         if recruiter:
             parts = recruiter.split(" ", 1)
+            first = parts[0]
+            last = parts[1] if len(parts) > 1 else None
+            
             contact = ContactInfo(
-                first_name=parts[0],
-                last_name=parts[1] if len(parts) > 1 else None,
+                first_name=first,
+                last_name=last,
                 email=primary_source.get("recruiterEmail")
             )
             
@@ -126,7 +137,10 @@ def transform_job_data(
         
         raw_data = None
         if include_raw_data:
-            raw_data = {"light": light_job, "detail": detail_job}
+            raw_data = {
+                "light": light_job,
+                "detail": detail_job
+            }
 
         return JobListing(
             id=job_id,
@@ -143,6 +157,9 @@ def transform_job_data(
             created_at=created_at,
             raw_data=raw_data
         )
+    except ValidationError as e:
+        logger.warning(f"Validation error transforming Adecco job {job_id}: {e}")
+        return None
     except Exception as e:
-        logger.warning(f"Error transforming Adecco job: {e}")
+        logger.warning(f"Unexpected error transforming Adecco job {job_id}: {e}")
         return None

@@ -170,6 +170,7 @@ h6 {
   color: var(--text-primary);
   border-radius: var(--radius-md);
   padding: 0 1rem; /* Vertical padding handled by height/flex */
+  padding-right: 2.5rem !important; /* Ensure space for chevron */
   display: flex;
   align-items: center;
 }
@@ -184,6 +185,7 @@ textarea.form-control {
 .form-select-sm {
   height: var(--input-height-sm);
   padding: 0 0.75rem;
+  padding-right: 2rem !important;
   font-size: 0.875rem;
 }
 
@@ -497,6 +499,12 @@ textarea.form-control {
   position: relative;
 }
 
-.shadow-glow { box-shadow: var(--glow-primary) !important; }
-.hover-scale { transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1); }
-.hover-scale:hover { transform: scale(1.02); }
+.shadow-glow {
+  box-shadow: var(--glow-primary) !important;
+}
+.hover-scale {
+  transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.hover-scale:hover {
+  transform: scale(1.02);
+}

@@ -1,7 +1,7 @@
 import logging
 from typing import Any
 
-from backend.providers.jobs.models import JobSearchRequest
+from backend.providers.jobs.models import JobSearchRequest, ContractType
 from backend.services.utils import haversine_distance
 
 logger = logging.getLogger(__name__)
@@ -80,6 +80,17 @@ def filter_jobs(all_jobs: list[dict[str, Any]], request: JobSearchRequest) -> li
             if "home_office" in wf_values:
                 if job_workplace not in ["remote", "hybrid"]:
                     continue
+
+        # 8. Filter by Contract Type
+        if request.contract_type != ContractType.ANY:
+            # SwissDevJobs exposes temporary vs permanent info mostly in jobType or tags
+            tags_lower = [t.lower() for t in job.get("filterTags", [])]
+            is_temp = "freelance" in job_type or "freelance" in tags_lower or "temporary" in job_type or "consulting" in job_type or "contractor" in tags_lower
+            
+            if request.contract_type == ContractType.PERMANENT and is_temp:
+                continue
+            if request.contract_type == ContractType.TEMPORARY and not is_temp:
+                 continue
 
         filtered_jobs.append(job)
 

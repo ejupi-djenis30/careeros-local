@@ -1,6 +1,7 @@
 from abc import ABC, abstractmethod
 from typing import List, Dict, Any, Optional
 
+
 class LLMProvider(ABC):
     """Abstract base for all LLM providers.
 

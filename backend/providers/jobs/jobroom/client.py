@@ -41,7 +41,7 @@ from backend.providers.jobs.base import (
     JobProvider as BaseJobProvider,
 )
 # ProviderCapabilities, ProviderHealth, ProviderStatus are now in models.py
-from backend.providers.jobs.session import ExecutionMode, ProxyPool, ScraperSession
+from backend.providers.jobs.session import ExecutionMode, ScraperSession
 from backend.providers.jobs.jobroom.constants import (
     API_BASE,
     BASE_URL,
@@ -78,11 +78,9 @@ class JobRoomProvider(BaseJobProvider):
     def __init__(
         self,
         mode: ExecutionMode = ExecutionMode.STEALTH,
-        proxy_pool: ProxyPool | None = None,
         include_raw_data: bool = False,
     ):
         self._mode = mode
-        self._proxy_pool = proxy_pool
         self._include_raw_data = include_raw_data
         self._session: ScraperSession | None = None
         self._mapper = BFSLocationMapper()
@@ -101,7 +99,8 @@ class JobRoomProvider(BaseJobProvider):
         return ProviderInfo(
             name=self.name,
             description="Generalist Swiss federal job portal. Contains jobs across all industries and professions (IT, construction, hospitality, medical, etc.). Good default choice.",
-            domain="job-room.ch"
+            domain="job-room.ch",
+            accepted_domains=["*"],
         )
 
     @property
@@ -130,7 +129,6 @@ class JobRoomProvider(BaseJobProvider):
         if self._session is None:
             self._session = ScraperSession(
                 mode=self._mode,
-                proxy_pool=self._proxy_pool,
                 base_url=BASE_URL,
             )
             await self._session.start()
@@ -157,7 +155,6 @@ class JobRoomProvider(BaseJobProvider):
 
         payload = build_search_payload(request, self._mapper)
 
-        await self._init_session()
         assert self._session is not None
         url = build_search_url(request)
 
@@ -200,8 +197,10 @@ class JobRoomProvider(BaseJobProvider):
             )
 
         except Exception as e:
-            logger.error(f"Search failed: {e}")
-            raise ProviderError(self.name, f"Search failed: {e}") from e
+            from backend.providers.jobs.exceptions import format_provider_error
+            err_msg = format_provider_error(e)
+            logger.error(f"Search failed: {err_msg}")
+            raise ProviderError(self.name, err_msg) from e
 
     # =========================================================================
     # Job Details Implementation
@@ -226,8 +225,10 @@ class JobRoomProvider(BaseJobProvider):
             return transform_job_data({"jobAdvertisement": data}, self.name, self._include_raw_data)
 
         except Exception as e:
-            logger.error(f"Failed to get job details: {e}")
-            raise ProviderError(self.name, f"Failed to get job details: {e}") from e
+            from backend.providers.jobs.exceptions import format_provider_error
+            err_msg = format_provider_error(e)
+            logger.error(f"Failed to get job details: {err_msg}")
+            raise ProviderError(self.name, err_msg) from e
 
     # =========================================================================
     # Health Check
