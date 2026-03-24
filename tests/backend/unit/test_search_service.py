@@ -137,6 +137,7 @@ async def test_relevance_filter_passes_correct_data(search_service):
     mock_job.title = "Software Engineer"
     mock_job.company.name = "Google"
     mock_job.descriptions = [MagicMock(description="Developing cool stuff at Google")]
+    mock_job._summary = None  # Ensure it falls back to description in test
     
     profile_dict = {
         "role_description": "Dev",

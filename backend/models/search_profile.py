@@ -35,4 +35,12 @@ class SearchProfile(BaseModel, TimestampMixin):
     # Advanced / Extensible preferences
     advanced_preferences = Column(JSON, nullable=True)
 
+    # Query generation control (Feature 4)
+    max_occupation_queries = Column(Integer, nullable=True)
+    max_keyword_queries = Column(Integer, nullable=True)
+
+    # Caching layer (Feature 3): saves CV summary and generated queries between runs
+    cached_cv_summary = Column(Text, nullable=True)
+    cached_queries = Column(JSON, nullable=True)
+
     user = relationship("User", back_populates="profiles")

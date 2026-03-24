@@ -132,11 +132,14 @@ async def test_search_start_with_empty_fields_and_default_name():
         role_description = "dev"
         location_filter = "zurich"
         search_strategy = "broad"
+        force_regenerate_cv_summary = False
+        force_regenerate_queries = False
         def model_dump(self, exclude_unset=True):
             return {
                 "name": self.name, "role_description": self.role_description,
                 "location_filter": self.location_filter, "search_strategy": self.search_strategy,
-                "max_queries": "", "posted_within_days": "", "max_distance": "", "schedule_interval_hours": ""
+                "max_queries": "", "posted_within_days": "", "max_distance": "", "schedule_interval_hours": "",
+                "force_regenerate_cv_summary": False, "force_regenerate_queries": False
             }
 
     with patch("backend.api.routes.search.ProfileRepository", return_value=mock_repo), \

@@ -60,6 +60,23 @@ class JobRepository(BaseRepository[Job]):
             .all()
         )
 
+    def get_applied_scraped_job_ids(self, user_id: int) -> set:
+        """Return a set of scrapped_job_id values where user has applied=True.
+        
+        Used by Feature 2 to populate the `applied_elsewhere` badge:
+        any job whose ScrapedJob is in this set but whose own `applied` flag
+        is False was applied in a different search profile.
+        """
+        rows = (
+            self.db.query(self.model.scraped_job_id)
+            .filter(
+                self.model.user_id == user_id,
+                self.model.applied == True,
+            )
+            .all()
+        )
+        return {row[0] for row in rows}
+
     def _build_filter_query(
         self,
         user_id: int,

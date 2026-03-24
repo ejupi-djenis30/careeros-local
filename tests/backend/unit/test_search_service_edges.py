@@ -195,7 +195,8 @@ async def test_generate_plan_exception(mock_service):
 
 async def test_generate_plan_empty_query(mock_service):
     with patch("backend.services.search_service.llm_service.generate_search_plan", return_value=[{"query": ""}, {"query": "dev"}]):
-        res = await mock_service._generate_plan(1, {}, MagicMock(max_queries=5), {}, {})
+        profile = MagicMock(max_queries=5, cached_queries=None)
+        res = await mock_service._generate_plan(1, {}, profile, {}, {})
         assert len(res) == 1
         assert res[0]["query"] == "dev"
 
@@ -205,6 +206,7 @@ async def test_relevance_filter_exception(mock_service):
     job.company = MagicMock()
     job.company.name = "test"
     job.descriptions = [MagicMock(description="desc")]
+    job._summary = None
     with patch("backend.services.search_service.llm_service.check_relevance_batch", side_effect=Exception("relevance fail")):
         res = await mock_service._relevance_filter(1, {}, [job])
         assert len(res) == 1

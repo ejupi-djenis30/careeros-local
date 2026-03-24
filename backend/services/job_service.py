@@ -18,6 +18,17 @@ class JobService:
             user_id, skip=skip, limit=page_size, **filters
         )
         
+        # Feature 2: populate applied_elsewhere badge
+        # Get all ScrapedJob IDs where this user has applied=True (across all profiles)
+        applied_scraped_ids = self.repo.get_applied_scraped_job_ids(user_id)
+        
+        # Attach applied_elsewhere as a Python attribute so Pydantic can read it
+        for item in items:
+            item.applied_elsewhere = (
+                not item.applied
+                and item.scraped_job_id in applied_scraped_ids
+            )
+        
         # Remove pagination/sorting params before passing to count/stats
         stats_filters = filters.copy()
         stats_filters.pop("sort_by", None)
@@ -34,6 +45,7 @@ class JobService:
             "total_applied": stats["total_applied"],
             "avg_score": stats["avg_score"]
         }
+
 
     def create_job(self, user_id: int, job_in: JobCreate):
         from backend.models import ScrapedJob

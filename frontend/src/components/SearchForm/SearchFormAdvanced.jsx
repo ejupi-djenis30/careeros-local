@@ -1,6 +1,9 @@
 import React from "react";
 
 export function SearchFormAdvanced({ profile, handleChange, setProfile }) {
+    // A profile is considered "existing" (re-run) when it has an id
+    const isRerun = Boolean(profile.id);
+    
     return (
         <div className="col-lg-4 d-flex flex-column gap-4">
             <div className="p-3 bg-white-5 rounded-3 border border-white-5">
@@ -51,8 +54,63 @@ export function SearchFormAdvanced({ profile, handleChange, setProfile }) {
                 <div className="x-small text-secondary mt-1 opacity-75">Leave empty for auto-naming</div>
             </div>
 
+            {/* Query Controls */}
+            <div className="p-3 bg-white-5 rounded-3 border border-white-5">
+                <div className="x-small text-secondary fw-bold text-uppercase mb-3">Query Generation</div>
+                
+                <div className="row g-2 mb-2">
+                    <div className="col-12">
+                        <label className="form-label text-white x-small fw-semibold mb-1">Max Queries (Total)</label>
+                        <input
+                            type="number"
+                            name="max_queries"
+                            value={profile.max_queries}
+                            onChange={handleChange}
+                            placeholder="No Limit"
+                            min="1"
+                            className="form-control form-control-sm bg-black-20 border-white-10 text-white"
+                        />
+                    </div>
+                </div>
+                
+                <div className="row g-2">
+                    <div className="col-6">
+                        <label className="form-label text-secondary x-small mb-1">
+                            <i className="bi bi-briefcase-fill me-1 opacity-50"></i>Occupations
+                        </label>
+                        <input
+                            type="number"
+                            name="max_occupation_queries"
+                            value={profile.max_occupation_queries}
+                            onChange={handleChange}
+                            placeholder="AI decides"
+                            min="0"
+                            className="form-control form-control-sm bg-black-20 border-white-10 text-white"
+                        />
+                    </div>
+                    <div className="col-6">
+                        <label className="form-label text-secondary x-small mb-1">
+                            <i className="bi bi-key-fill me-1 opacity-50"></i>Keywords
+                        </label>
+                        <input
+                            type="number"
+                            name="max_keyword_queries"
+                            value={profile.max_keyword_queries}
+                            onChange={handleChange}
+                            placeholder="AI decides"
+                            min="0"
+                            className="form-control form-control-sm bg-black-20 border-white-10 text-white"
+                        />
+                    </div>
+                </div>
+                <div className="x-small text-secondary mt-2 opacity-60">
+                    Set occupation/keyword counts for strict AI enforcement (up to 3 retries).
+                </div>
+            </div>
+
+            {/* Scrape Mode */}
             <div className="row g-3">
-                <div className="col-6">
+                <div className="col-12">
                     <label className="form-label text-white small fw-bold text-uppercase x-small mb-2">Scrape Speed</label>
                     <select
                         name="scrape_mode"
@@ -64,18 +122,37 @@ export function SearchFormAdvanced({ profile, handleChange, setProfile }) {
                         <option value="immediate">Fast (Risky)</option>
                     </select>
                 </div>
-                <div className="col-6">
-                    <label className="form-label text-white small fw-bold text-uppercase x-small mb-2">Max Queries</label>
-                    <input
-                        type="number"
-                        name="max_queries"
-                        value={profile.max_queries}
-                        onChange={handleChange}
-                        placeholder="No Limit"
-                        className="form-control form-control-sm bg-black-20 border-white-10 text-white"
-                    />
-                </div>
             </div>
+
+            {/* Feature 3: Force Regeneration Buttons (only on re-run) */}
+            {isRerun && (
+                <div className="p-3 bg-warning bg-opacity-10 rounded-3 border border-warning border-opacity-20">
+                    <div className="x-small text-warning fw-bold text-uppercase mb-2">
+                        <i className="bi bi-lightning-charge-fill me-1"></i>Re-run Options
+                    </div>
+                    <div className="d-flex flex-column gap-2">
+                        <button
+                            type="button"
+                            onClick={() => setProfile(prev => ({ ...prev, force_regenerate_cv_summary: !prev.force_regenerate_cv_summary }))}
+                            className={`btn btn-sm d-flex align-items-center gap-2 ${profile.force_regenerate_cv_summary ? 'btn-warning text-dark fw-bold' : 'btn-outline-secondary'}`}
+                        >
+                            <i className={`bi ${profile.force_regenerate_cv_summary ? 'bi-check-circle-fill' : 'bi-arrow-clockwise'}`}></i>
+                            Regenerate CV Summary
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => setProfile(prev => ({ ...prev, force_regenerate_queries: !prev.force_regenerate_queries }))}
+                            className={`btn btn-sm d-flex align-items-center gap-2 ${profile.force_regenerate_queries ? 'btn-warning text-dark fw-bold' : 'btn-outline-secondary'}`}
+                        >
+                            <i className={`bi ${profile.force_regenerate_queries ? 'bi-check-circle-fill' : 'bi-arrow-clockwise'}`}></i>
+                            Regenerate Queries
+                        </button>
+                    </div>
+                    <div className="x-small text-warning opacity-75 mt-2">
+                        By default, cached results from the last run are reused.
+                    </div>
+                </div>
+            )}
 
             <div className="mt-auto p-3 rounded-3 bg-info bg-opacity-10 border border-info border-opacity-20">
                 <div className="d-flex gap-2">

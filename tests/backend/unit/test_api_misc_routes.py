@@ -155,12 +155,23 @@ def test_run_search_background_wrapper():
     # We will invoke start_search directly to capture the internal async wrapper
     class FakeStartReq:
         id = None
-        name = "test"
-        role_description = "dev"
-        location_filter = "us"
-        search_strategy = "broad"
+        name: str = "test"
+        role_description: str = "dev"
+        location_filter: str = "us"
+        search_strategy: str = "broad"
+        max_queries: int = 5
+        posted_within_days: int = 7
+        max_distance: int = 50
+        schedule_interval_hours: int = 24
+        force_regenerate_cv_summary = False
+        force_regenerate_queries = False
         def model_dump(self, exclude_unset=True):
-            return {"name": "test", "role_description": "dev", "location_filter": "us", "search_strategy": "broad"}
+            return {
+                "id": self.id, "name": self.name, "role_description": self.role_description,
+                "location_filter": self.location_filter, "search_strategy": self.search_strategy,
+                "max_queries": self.max_queries, "posted_within_days": self.posted_within_days, "max_distance": self.max_distance, "schedule_interval_hours": self.schedule_interval_hours,
+                "force_regenerate_cv_summary": False, "force_regenerate_queries": False
+            }
             
     with patch("backend.api.routes.search.ProfileRepository") as MockRepo, \
          patch("backend.api.routes.search.cancel_task"), \
@@ -186,7 +197,8 @@ def test_run_search_background_wrapper():
         arg_id = bg_tasks.add_task.call_args[0][1]
         
         # Execute the wrapper manually
-        asyncio.run(bg_func(arg_id))
+        bg_args = bg_tasks.add_task.call_args[0]
+        asyncio.run(bg_func(*bg_args[1:]))
         
         mock_session_local.assert_called()
         mock_fresh_db.close.assert_called()

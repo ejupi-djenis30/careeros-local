@@ -19,7 +19,12 @@ export function SearchForm({ onStartSearch, isLoading, prefill }) {
         scrape_mode: "sequential",
         schedule_enabled: false,
         schedule_interval_hours: 24,
-        max_queries: "", // Empty means unlimited
+        max_queries: "",             // Empty means unlimited
+        max_occupation_queries: "",  // Empty means AI decides
+        max_keyword_queries: "",     // Empty means AI decides
+        // Feature 3: force-regeneration flags (only used on re-run)
+        force_regenerate_cv_summary: false,
+        force_regenerate_queries: false,
     });
 
     useEffect(() => {
@@ -79,7 +84,9 @@ export function SearchForm({ onStartSearch, isLoading, prefill }) {
 
         const searchProfile = {
             ...profile,
-            max_queries: profile.max_queries === "" ? -1 : profile.max_queries
+            max_queries: profile.max_queries === "" ? -1 : profile.max_queries,
+            max_occupation_queries: profile.max_occupation_queries === "" ? -1 : profile.max_occupation_queries,
+            max_keyword_queries: profile.max_keyword_queries === "" ? -1 : profile.max_keyword_queries,
         };
 
         onStartSearch(searchProfile);

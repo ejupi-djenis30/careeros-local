@@ -70,15 +70,27 @@ export function DesktopJobRow({ job, isGlobalView, onToggleApplied, onCopy, onVi
             )}
 
             <td className="border-0">
-                <div className="form-check form-switch ms-1">
-                    <input
-                        className="form-check-input"
-                        type="checkbox"
-                        checked={job.applied}
-                        onChange={() => onToggleApplied(job)}
-                        style={{ cursor: 'pointer' }}
-                        title="Toggle Applied Status"
-                    />
+                <div className="d-flex flex-column gap-1 align-items-start">
+                    <div className="form-check form-switch ms-1 mb-0">
+                        <input
+                            className="form-check-input"
+                            type="checkbox"
+                            checked={job.applied}
+                            onChange={() => onToggleApplied(job)}
+                            style={{ cursor: 'pointer' }}
+                            title="Toggle Applied Status"
+                        />
+                    </div>
+                    {job.applied_elsewhere && !job.applied && (
+                        <span
+                            className="badge d-flex align-items-center gap-1"
+                            style={{ fontSize: '0.6rem', backgroundColor: 'rgba(255,193,7,0.15)', color: '#ffc107', border: '1px solid rgba(255,193,7,0.3)', borderRadius: '4px', padding: '2px 5px' }}
+                            title="You applied to this job in another search"
+                        >
+                            <i className="bi bi-check2-circle"></i>
+                            Elsewhere
+                        </span>
+                    )}
                 </div>
             </td>
             <td className="pe-4 text-end border-0">

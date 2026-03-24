@@ -28,6 +28,9 @@ class ScrapedJob(BaseModel, TimestampMixin):
     # For provider-specific details (JobRoom, SwissDevJobs, etc)
     raw_metadata = Column(JSON, nullable=True)
     
+    # LLM-generated summary used by the relevance filter step (opt-in)
+    summary = Column(Text, nullable=True)
+    
     # Keep track of where it originally came from (optional but useful)
     source_query = Column(String)
     

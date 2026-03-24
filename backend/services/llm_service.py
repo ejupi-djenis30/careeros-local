@@ -1,5 +1,5 @@
 import logging
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 from tenacity import retry, stop_after_attempt, wait_exponential
 from backend.providers.llm.factory import get_provider_for_step
 from backend.core.config import settings
@@ -21,6 +21,19 @@ class LLMService:
         if step not in self._provider_cache:
             self._provider_cache[step] = get_provider_for_step(step)
         return self._provider_cache[step]
+
+    def is_summary_step_configured(self) -> bool:
+        """Return True only if LLM_SUMMARY_* env vars are explicitly configured.
+        
+        If not configured the job-summary step is skipped entirely (opt-in behavior).
+        The step is considered configured when either a dedicated provider OR a
+        dedicated API key is set for the 'summary' step.
+        """
+        return bool(
+            settings.LLM_SUMMARY_PROVIDER
+            or settings.LLM_SUMMARY_API_KEY
+            or settings.LLM_SUMMARY_MODEL
+        )
 
     # ─── New Phase 2 Helpers: CV Summary & Relevance Pre-filter ────────
 
@@ -44,6 +57,60 @@ CV:
 Return plain text, NOT JSON. Use bullet points for readability."""
         
         return await provider.generate_text_async(system_prompt, user_prompt)
+
+    # ─── Feature 1: Job Summary Step ──────────────────────────────────
+
+    @retry(stop=stop_after_attempt(2), wait=wait_exponential(multiplier=1, min=2, max=5))
+    async def summarize_job_batch(
+        self,
+        jobs: List[Dict[str, str]],
+    ) -> List[str]:
+        """Generate concise summaries for a batch of jobs.
+        
+        Each summary (~80 words) captures: required skills, responsibilities,
+        seniority, and language requirements. Used by the relevance filter step.
+        
+        Args:
+            jobs: List of {title, company, description} dicts.
+            
+        Returns:
+            List of summary strings, one per job, in the same order.
+        """
+        provider = self._get_provider("summary")
+        
+        jobs_text = ""
+        for i, job in enumerate(jobs):
+            desc = (job.get("description") or "")[:800]  # limit per-job input
+            jobs_text += f"\n--- JOB {i+1} ---\n"
+            jobs_text += f"Title: {job.get('title', 'Unknown')}\n"
+            jobs_text += f"Company: {job.get('company', 'Unknown')}\n"
+            jobs_text += f"Description: {desc}\n"
+
+        system_prompt = (
+            "You are a job description analyst. For each job, extract a compact factual summary "
+            "that highlights: required skills, main responsibilities, seniority level, and any "
+            "explicit language requirements. Be objective. Do NOT invent information."
+        )
+        user_prompt = f"""Summarize each job below in ~80 words each. Focus on: required skills, main tasks, seniority, and language requirements.
+
+{jobs_text}
+
+Return ONLY JSON with a "summaries" array, one string per job, in the same order as the input:
+{{
+    "summaries": [
+        "Summary for job 1...",
+        "Summary for job 2..."
+    ]
+}}"""
+
+        result = await provider.generate_json_async(system_prompt, user_prompt)
+        summaries = result.get("summaries", [])
+        
+        # Safety: if LLM returns wrong count, pad with empty strings
+        while len(summaries) < len(jobs):
+            summaries.append("")
+            
+        return summaries[:len(jobs)]
 
     @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=10))
     async def check_relevance_batch(
@@ -89,15 +156,76 @@ One boolean per job, in order. true = relevant, false = irrelevant."""
 
     # ─── Step 1: Search Plan Generation ───────────────────────────────────
 
-    @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=10))
     async def generate_search_plan(
         self,
         profile: Dict[str, Any],
         providers_info: List[Any],
-        max_queries: int | None = None,
+        max_queries: Optional[int] = None,
+        max_occupation_queries: Optional[int] = None,
+        max_keyword_queries: Optional[int] = None,
     ) -> List[Dict[str, Any]]:
+        """Generate the search plan with optional strict occupation/keyword count enforcement.
+        
+        When max_occupation_queries or max_keyword_queries are specified, the LLM
+        is prompted to generate EXACTLY those counts. The result is validated and
+        the LLM is called again up to 3 times if counts don't match. On 4th attempt
+        (after 3 failures) the result is accepted as-is.
+        """
+        # Determine if we need strict type enforcement
+        strict_types = (max_occupation_queries is not None) or (max_keyword_queries is not None)
+        
+        MAX_RETRIES = 3
+        for attempt in range(MAX_RETRIES + 1):
+            searches = await self._call_generate_search_plan(
+                profile,
+                providers_info,
+                max_queries=max_queries,
+                max_occupation_queries=max_occupation_queries,
+                max_keyword_queries=max_keyword_queries,
+                attempt=attempt,
+            )
+            
+            if not strict_types:
+                break  # No enforcement needed
+            
+            # Validate counts
+            occupation_count = sum(1 for s in searches if s.get("type") == "occupation")
+            keyword_count = sum(1 for s in searches if s.get("type") == "keyword")
+            
+            occ_ok = (max_occupation_queries is None) or (occupation_count == max_occupation_queries)
+            kw_ok = (max_keyword_queries is None) or (keyword_count == max_keyword_queries)
+            
+            if occ_ok and kw_ok:
+                logger.info(f"[PLAN] Query counts validated on attempt {attempt + 1}: {occupation_count} occupations, {keyword_count} keywords")
+                break
+            
+            if attempt < MAX_RETRIES:
+                logger.warning(
+                    f"[PLAN] Attempt {attempt + 1}/{MAX_RETRIES}: "
+                    f"got {occupation_count} occupations (wanted {max_occupation_queries}), "
+                    f"{keyword_count} keywords (wanted {max_keyword_queries}). Retrying..."
+                )
+            else:
+                logger.warning(
+                    f"[PLAN] Max retries ({MAX_RETRIES}) reached. "
+                    f"Accepting {occupation_count} occupations, {keyword_count} keywords as-is."
+                )
+        
+        return searches
+
+    @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=10))
+    async def _call_generate_search_plan(
+        self,
+        profile: Dict[str, Any],
+        providers_info: List[Any],
+        max_queries: Optional[int] = None,
+        max_occupation_queries: Optional[int] = None,
+        max_keyword_queries: Optional[int] = None,
+        attempt: int = 0,
+    ) -> List[Dict[str, Any]]:
+        """Internal method: single LLM call to generate the search plan."""
         provider = self._get_provider("plan")
-        logger.info(f"[PLAN] Using {provider.model_id}")
+        logger.info(f"[PLAN] Using {provider.model_id} (attempt {attempt + 1})")
 
         system_prompt = (
             "You are an expert Job Hunter AI specialized in the Swiss job market. "
@@ -106,13 +234,45 @@ One boolean per job, in order. true = relevant, false = irrelevant."""
             "to find the best possible job matches for the user."
         )
 
-        limit_instruction = (
-            "Generate as MANY queries as needed to ensure comprehensive coverage. "
-            "There is NO limit on the total number of queries."
-            if max_queries is None
-            else f"Generate at most {max_queries} queries total. "
-                 "Prioritize the most relevant occupation queries first."
-        )
+        # Build count instructions
+        if max_occupation_queries is not None and max_keyword_queries is not None:
+            limit_instruction = (
+                f"You MUST generate EXACTLY {max_occupation_queries} queries of type \"occupation\" "
+                f"and EXACTLY {max_keyword_queries} queries of type \"keyword\". "
+                f"Total: {max_occupation_queries + max_keyword_queries} queries. "
+                "Each query MUST be unique. Do NOT generate more or fewer of either type. "
+                "This requirement is MANDATORY and non-negotiable."
+            )
+        elif max_occupation_queries is not None:
+            total_info = f" (total: at most {max_queries})" if max_queries else ""
+            limit_instruction = (
+                f"You MUST generate EXACTLY {max_occupation_queries} queries of type \"occupation\"{total_info}. "
+                "Keywords can be generated freely. Each query MUST be unique."
+            )
+        elif max_keyword_queries is not None:
+            total_info = f" (total: at most {max_queries})" if max_queries else ""
+            limit_instruction = (
+                f"You MUST generate EXACTLY {max_keyword_queries} queries of type \"keyword\"{total_info}. "
+                "Occupations can be generated freely. Each query MUST be unique."
+            )
+        elif max_queries is None:
+            limit_instruction = (
+                "Generate as MANY queries as needed to ensure comprehensive coverage. "
+                "There is NO limit on the total number of queries."
+            )
+        else:
+            limit_instruction = (
+                f"Generate at most {max_queries} queries total. "
+                "Prioritize the most relevant occupation queries first."
+            )
+
+        retry_note = ""
+        if attempt > 0:
+            retry_note = (
+                f"\n\nCRITICAL: This is retry attempt {attempt + 1}. "
+                "Your previous response did NOT match the required query counts. "
+                "You MUST strictly adhere to the count requirements this time."
+            )
 
         user_prompt = f"""Analyze the user's profile and generate an optimal search plan.
 You do NOT need to assign queries to specific job boards — the system routes them automatically.
@@ -133,7 +293,7 @@ QUERY GENERATION RULES:
    - Use synonyms and different languages (DE, FR, EN, IT) to maximize coverage.
    - Ensure queries are distinct and high-quality.
 
-{limit_instruction}
+{limit_instruction}{retry_note}
 
 Return ONLY pure JSON with a 'searches' list. Example:
 {{
@@ -148,7 +308,7 @@ Return ONLY pure JSON with a 'searches' list. Example:
         result = await provider.generate_json_async(system_prompt, user_prompt)
         searches = result.get("searches", [])
 
-        # Application-side enforcement of the limit just in case LLM goes over
+        # Application-side cap just in case the LLM produces too many total queries
         if max_queries is not None:
             searches = searches[:max_queries]
 

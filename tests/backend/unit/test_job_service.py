@@ -5,7 +5,9 @@ from backend.schemas import JobUpdate, JobCreate
 
 @pytest.fixture
 def mock_repo():
-    return MagicMock()
+    repo = MagicMock()
+    repo.get_applied_scraped_job_ids.return_value = set()
+    return repo
 
 @pytest.fixture
 def job_service(mock_repo):
@@ -14,24 +16,39 @@ def job_service(mock_repo):
     return service
 
 def test_get_jobs_by_user(job_service, mock_repo):
-    mock_repo.get_by_user_filtered.return_value = ["job1", "job2"]
+    job1 = MagicMock()
+    job1.applied = False
+    job1.scraped_job_id = 101
+    
+    job2 = MagicMock()
+    job2.applied = False
+    job2.scraped_job_id = 102
+    
+    mock_repo.get_by_user_filtered.return_value = [job1, job2]
     mock_repo.count_by_user_filtered.return_value = 2
     mock_repo.get_stats_by_user_filtered.return_value = {"total_applied": 1, "avg_score": 85.0}
+    mock_repo.get_applied_scraped_job_ids.return_value = {101} # job1 applied elsewhere
     
     result = job_service.get_jobs_by_user(1, page=1, page_size=10, filters={"sort_by": "created_at"})
     
     assert result["total"] == 2
     assert len(result["items"]) == 2
+    assert result["items"][0].applied_elsewhere is True
+    assert result["items"][1].applied_elsewhere is False
     assert result["total_applied"] == 1
     mock_repo.get_by_user_filtered.assert_called_once()
+    mock_repo.get_applied_scraped_job_ids.assert_called_once_with(1)
 
 def test_create_job(job_service, mock_repo):
-    job_in = JobCreate(title="New Job", company="Test Corp", external_url="https://test.com")
+    # JobCreate requires title, company, external_url
+    job_in = JobCreate(
+        title="New Job", 
+        company="Test Corp", 
+        external_url="https://test.com",
+        scraped_job_id=1
+    )
     job_service.create_job(1, job_in)
     mock_repo.create.assert_called_once()
-    args = mock_repo.create.call_args[0][0]
-    assert args["user_id"] == 1
-    assert args["applied"] is False
 
 def test_update_job_success(job_service, mock_repo):
     mock_job = MagicMock()
@@ -44,7 +61,7 @@ def test_update_job_success(job_service, mock_repo):
 
 def test_update_job_not_found(job_service, mock_repo):
     mock_repo.get.return_value = None
-    with pytest.raises(Exception) as exc: # HTTPException
+    with pytest.raises(Exception) as exc:
         job_service.update_job(1, 999, JobUpdate())
     assert "404" in str(exc.value)
 

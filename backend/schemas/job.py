@@ -53,6 +53,8 @@ class Job(JobBase):
     worth_applying: Optional[bool] = False
     distance_km: Optional[float] = None
     applied: bool
+    # Feature 2: True when same ScrapedJob was applied in another profile
+    applied_elsewhere: bool = False
     created_at: datetime
     updated_at: Optional[datetime] = None
     raw_metadata: Optional[Dict[str, Any]] = None

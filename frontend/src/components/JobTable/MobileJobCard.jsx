@@ -70,14 +70,26 @@ export function MobileJobCard({ job, isGlobalView, onToggleApplied, onCopy, onVi
                     )}
                 </div>
                 
-                <div className="form-check form-switch m-0">
-                    <input
-                        className="form-check-input ms-0"
-                        type="checkbox"
-                        checked={job.applied}
-                        onChange={() => onToggleApplied(job)}
-                        style={{ width: '2rem', height: '1rem' }}
-                    />
+                <div className="d-flex flex-column align-items-end gap-1">
+                    <div className="form-check form-switch m-0">
+                        <input
+                            className="form-check-input ms-0"
+                            type="checkbox"
+                            checked={job.applied}
+                            onChange={() => onToggleApplied(job)}
+                            style={{ width: '2rem', height: '1rem' }}
+                        />
+                    </div>
+                    {job.applied_elsewhere && !job.applied && (
+                        <span
+                            className="d-flex align-items-center gap-1"
+                            style={{ fontSize: '0.6rem', color: '#ffc107' }}
+                            title="Applied in another search"
+                        >
+                            <i className="bi bi-check2-circle"></i>
+                            elsewhere
+                        </span>
+                    )}
                 </div>
             </div>
         </div>

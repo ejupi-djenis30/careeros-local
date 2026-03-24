@@ -108,6 +108,17 @@ class Settings(BaseSettings):
     LLM_MATCH_THINKING: bool = False
     LLM_MATCH_THINKING_LEVEL: str = ""
 
+    # Step: SUMMARY  (summarize_job_batch — opt-in, only active when configured)
+    LLM_SUMMARY_PROVIDER: str = ""
+    LLM_SUMMARY_MODEL: str = ""
+    LLM_SUMMARY_API_KEY: str = ""
+    LLM_SUMMARY_BASE_URL: str = ""
+    LLM_SUMMARY_TEMPERATURE: float = 0.0
+    LLM_SUMMARY_TOP_P: float = 0.0
+    LLM_SUMMARY_MAX_TOKENS: int = 0
+    LLM_SUMMARY_THINKING: bool = False
+    LLM_SUMMARY_THINKING_LEVEL: str = ""
+
     # Scraping
     JOB_ROOM_USER_AGENT: str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
 

@@ -78,6 +78,9 @@ class SearchService:
                 "search_strategy": profile.search_strategy or "",
                 "latitude": profile.latitude,
                 "longitude": profile.longitude,
+                # Feature 3: force-regeneration flags (propagated from the HTTP request)
+                "force_regenerate_cv_summary": getattr(profile, "_force_regenerate_cv_summary", False),
+                "force_regenerate_queries": getattr(profile, "_force_regenerate_queries", False),
             }
             user_id = profile.user_id
 
@@ -93,14 +96,22 @@ class SearchService:
             if not searches:
                 return
 
+            # ── CV Summary (with caching) ──
             cv_summary = ""
             if profile_dict.get("cv_content"):
-                try:
-                    cv_summary = await llm_service.summarize_cv(profile_dict["cv_content"])
-                    add_log(profile_id, "CV summary generated for efficient analysis")
-                except Exception as e:
-                    logger.warning(f"CV summarization failed: {e}")
-                    cv_summary = profile_dict["cv_content"]
+                force_regen_cv = profile_dict.get("force_regenerate_cv_summary", False)
+                if profile.cached_cv_summary and not force_regen_cv:
+                    cv_summary = profile.cached_cv_summary
+                    add_log(profile_id, "✓ Using cached CV summary")
+                else:
+                    try:
+                        cv_summary = await llm_service.summarize_cv(profile_dict["cv_content"])
+                        add_log(profile_id, "CV summary generated for efficient analysis")
+                        # Save to cache
+                        self.profile_repo.update(profile, {"cached_cv_summary": cv_summary})
+                    except Exception as e:
+                        logger.warning(f"CV summarization failed: {e}")
+                        cv_summary = profile_dict["cv_content"]
             profile_dict["cv_summary"] = cv_summary
 
             # ── Step 2: Execute searches with domain routing ──
@@ -113,7 +124,11 @@ class SearchService:
             unique_jobs, duplicates = self._deduplicate(profile, all_jobs)
             add_log(profile_id, f"After dedup: {len(unique_jobs)} new, {duplicates} duplicates")
 
-            # ── Step 3.5: Relevance Pre-Filter (cheap LLM check) ──
+            # ── Step 3.5: Job Summary Generation (Feature 1 — opt-in) ──
+            if llm_service.is_summary_step_configured():
+                unique_jobs = await self._summarize_jobs(profile_id, unique_jobs)
+            
+            # ── Step 3.6: Relevance Pre-Filter (cheap LLM check) ──
             filtered_jobs = await self._relevance_filter(profile_id, profile_dict, unique_jobs)
             add_log(profile_id, f"Relevance filter: {len(filtered_jobs)} relevant out of {len(unique_jobs)}")
             
@@ -162,24 +177,40 @@ class SearchService:
     # ───────────────────────── helper methods ─────────────────────────
 
     async def _generate_plan(self, profile_id: int, profile_dict: dict, profile, available_providers, provider_infos) -> list:
-        try:
-            searches = await llm_service.generate_search_plan(
-                profile_dict, list(provider_infos.values()), profile.max_queries
-            )
-        except Exception as e:
-            logger.error(f"LLM keyword generation failed: {e}")
-            update_status(profile_id, state="error", error=str(e))
-            return []
-
-        if not searches:
-            add_log(profile_id, "No search keywords generated")
-            update_status(profile_id, state="done", jobs_found=0, jobs_new=0)
-            return []
+        # Feature 3: check cached queries
+        force_regen_q = profile_dict.get("force_regenerate_queries", False)
+        
+        if profile.cached_queries and not force_regen_q:
+            searches = profile.cached_queries
+            add_log(profile_id, f"✓ Using {len(searches)} cached queries")
+        else:
+            try:
+                searches = await llm_service.generate_search_plan(
+                    profile_dict, list(provider_infos.values()),
+                    max_queries=profile.max_queries,
+                    max_occupation_queries=getattr(profile, "max_occupation_queries", None),
+                    max_keyword_queries=getattr(profile, "max_keyword_queries", None),
+                )
+            except Exception as e:
+                logger.error(f"LLM keyword generation failed: {e}")
+                update_status(profile_id, state="error", error=str(e))
+                return []
+            
+            if not searches:
+                add_log(profile_id, "No search keywords generated")
+                update_status(profile_id, state="done", jobs_found=0, jobs_new=0)
+                return []
+            
+            # Save queries to cache (Feature 3)
+            try:
+                self.profile_repo.update(profile, {"cached_queries": searches})
+            except Exception as e:
+                logger.warning(f"Failed to cache queries: {e}")
 
         def get_query_fingerprint(q: str) -> str:
             import re
             q = q.lower()
-            noise_words = r'\b(m/w/d|f/m/d|m/f/d|100%|80%|80-100%)\b'
+            noise_words = r'\b(m/w/d|f/m/d|m/f/d|100%|80%|80-100%)\\b'
             q = re.sub(noise_words, ' ', q)
             q = re.sub(r'[^\w\s+C#]', ' ', q) # keep +, # for C++, C#
             tokens = [t.strip() for t in q.split() if t.strip()]
@@ -375,20 +406,123 @@ class SearchService:
         duplicates = len(all_jobs) - len(unique_jobs)
         return unique_jobs, duplicates
 
+    async def _summarize_jobs(self, profile_id: int, jobs: list, batch_size: int = 10) -> list:
+        """Feature 1: Generate and cache LLM summaries for jobs (opt-in step).
+        
+        Checks the DB for existing summaries on ScrapedJob. Only calls LLM for
+        jobs without a cached summary. Saves new summaries back to ScrapedJob.
+        Attaches the summary as a transient `_summary` attribute for downstream use.
+        """
+        add_log(profile_id, f"Summarizing job descriptions for {len(jobs)} jobs…")
+        
+        # Separate jobs that already have summaries from those that need generation
+        jobs_needing_summary = []
+        
+        # Try to look up existing ScrapedJob summaries from DB
+        from backend.models import ScrapedJob
+        db_session = SessionLocal()
+        try:
+            job_ids = [str(getattr(job, "id", "")) for job in jobs]
+            sources = [getattr(job, "source", "") for job in jobs]
+            
+            existing_scraped = db_session.query(ScrapedJob).filter(
+                ScrapedJob.platform.in_(sources),
+                ScrapedJob.platform_job_id.in_(job_ids)
+            ).all()
+            scraped_summary_map = {
+                (sj.platform, sj.platform_job_id): sj.summary
+                for sj in existing_scraped
+                if sj.summary  # only those with summaries
+            }
+        except Exception as e:
+            logger.warning(f"Could not load existing summaries: {e}")
+            scraped_summary_map = {}
+        finally:
+            db_session.close()
+        
+        for job in jobs:
+            source = getattr(job, "source", "")
+            job_id = str(getattr(job, "id", ""))
+            existing_summary = scraped_summary_map.get((source, job_id))
+            if existing_summary:
+                job._summary = existing_summary
+            else:
+                jobs_needing_summary.append(job)
+        
+        cached_count = len(jobs) - len(jobs_needing_summary)
+        if cached_count > 0:
+            add_log(profile_id, f"  ✓ {cached_count} jobs have cached summaries, generating {len(jobs_needing_summary)} new…")
+        
+        if not jobs_needing_summary:
+            return jobs
+        
+        # Generate summaries for jobs that don't have them yet
+        new_summaries: Dict[tuple, str] = {}
+        
+        for i in range(0, len(jobs_needing_summary), batch_size):
+            batch = jobs_needing_summary[i:i + batch_size]
+            job_data = []
+            for j in batch:
+                desc = ""
+                if getattr(j, "descriptions", []):
+                    desc = j.descriptions[0].description[:2000]
+                job_data.append({
+                    "title": getattr(j, "title", "Unknown"),
+                    "company": getattr(j, "company").name if getattr(j, "company", None) else "Unknown",
+                    "description": desc,
+                })
+            
+            try:
+                summaries = await llm_service.summarize_job_batch(job_data)
+                for j, summary_text in zip(batch, summaries):
+                    j._summary = summary_text
+                    source = getattr(j, "source", "")
+                    job_id = str(getattr(j, "id", ""))
+                    new_summaries[(source, job_id)] = summary_text
+            except Exception as e:
+                logger.warning(f"Job summary batch failed: {e}. Using description snippets as fallback.")
+                for j in batch:
+                    desc = ""
+                    if getattr(j, "descriptions", []):
+                        desc = j.descriptions[0].description[:200]
+                    j._summary = desc
+        
+        # Persist new summaries to DB
+        if new_summaries:
+            db_session = SessionLocal()
+            try:
+                for (source, job_id), summary_text in new_summaries.items():
+                    db_session.query(ScrapedJob).filter(
+                        ScrapedJob.platform == source,
+                        ScrapedJob.platform_job_id == job_id,
+                    ).update({"summary": summary_text}, synchronize_session=False)
+                db_session.commit()
+                add_log(profile_id, f"  ✓ Saved {len(new_summaries)} new job summaries to cache")
+            except Exception as e:
+                logger.warning(f"Failed to save job summaries to DB: {e}")
+                db_session.rollback()
+            finally:
+                db_session.close()
+        
+        return jobs
+
     async def _relevance_filter(self, profile_id: int, profile_dict: dict, jobs: list, batch_size: int = 20) -> list:
         """Use cheap RELEVANCE LLM to filter obviously irrelevant jobs."""
         
         relevant_jobs = []
         for i in range(0, len(jobs), batch_size):
             batch = jobs[i:i + batch_size]
-            job_data = [
-                {
+            job_data = []
+            for j in batch:
+                # Use job summary if available (Feature 1), otherwise fall back to 150-char snippet
+                summary = getattr(j, "_summary", None)
+                if not summary and getattr(j, "descriptions", []) and j.descriptions:
+                    summary = j.descriptions[0].description[:150]
+                job_data.append({
                     "title": getattr(j, "title", "Unknown"),
                     "company": getattr(j, "company").name if getattr(j, "company", None) else "Unknown",
-                    "description_snippet": (j.descriptions[0].description[:150] if getattr(j, "descriptions", []) and j.descriptions else ""),
-                }
-                for j in batch
-            ]
+                    "description_snippet": summary or "",
+                })
             try:
                 results = await llm_service.check_relevance_batch(
                     job_data,
@@ -424,6 +558,7 @@ class SearchService:
                     title = getattr(job, "title", "Unknown")
                     add_log(profile_id, f"Analyzing {start_idx + i + 1}/{len(unique_jobs)}: {title}")
                     
+                    # Always use the full description for analysis (not the summary)
                     desc_text = job.descriptions[0].description if getattr(job, "descriptions", []) else ""
                     if len(desc_text) > settings.MAX_DESCRIPTION_CHARS:
                         desc_text = desc_text[:settings.MAX_DESCRIPTION_CHARS] + "…"
@@ -438,7 +573,7 @@ class SearchService:
 
                     jobs_metadata.append({
                         "title": getattr(job, "title", "Unknown"),
-                        "description": desc_text, 
+                        "description": desc_text,  # Full description for deep analysis
                         "location": job.location.city if getattr(job, "location", None) else "Unknown",
                         "workload": f"{job.employment.workload_min}-{job.employment.workload_max}%" if getattr(job, "employment", None) else "Unknown",
                         "languages": [f"{s.language_code} ({s.spoken_level})" for s in getattr(job, "language_skills", [])] if getattr(job, "language_skills", None) else [],
@@ -584,9 +719,14 @@ class SearchService:
                             publication_date=pub_date,
                             raw_metadata=getattr(job, "raw_data", None) or {},
                             source_query=getattr(job, "title", "Unknown"),
+                            # Persist the summary generated in Step 3.5 if available
+                            summary=getattr(job, "_summary", None),
                         )
                         new_scraped_jobs.append(scraped_job)
                         scraped_map[key] = scraped_job
+                    elif getattr(job, "_summary", None) and not scraped_job.summary:
+                        # Update summary on existing record if we just generated one
+                        scraped_job.summary = job._summary
 
                     db_job = Job(
                         user_id=profile_dict["user_id"],

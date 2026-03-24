@@ -79,17 +79,27 @@ async def start_search(
     # Cancel any existing task for this profile before starting a new one
     cancel_task(profile.id)
     
+    # Extract force-regeneration flags from the original request (not stored in DB)
+    force_regen_cv = profile_request.force_regenerate_cv_summary
+    force_regen_q = profile_request.force_regenerate_queries
+    
     # The FastAPI dependency session `db` is closed as soon as this HTTP route returns,
     # so the background task needs its own fresh session to avoid DetachedInstanceError.
-    async def run_search_background(_profile_id: int):
+    async def run_search_background(_profile_id: int, _force_cv: bool, _force_q: bool):
         fresh_db = SessionLocal()
         try:
             svc = get_search_service(fresh_db)
+            # Load profile and attach transient flags so SearchService can read them
+            from backend.repositories.profile_repository import ProfileRepository as PR
+            fresh_profile = PR(fresh_db).get(_profile_id)
+            if fresh_profile:
+                fresh_profile._force_regenerate_cv_summary = _force_cv
+                fresh_profile._force_regenerate_queries = _force_q
             await svc.run_search(_profile_id)
         finally:
             fresh_db.close()
             
-    background_tasks.add_task(run_search_background, profile.id)
+    background_tasks.add_task(run_search_background, profile.id, force_regen_cv, force_regen_q)
 
     return {"message": "Search started", "profile_id": profile.id}
 
