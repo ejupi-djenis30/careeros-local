@@ -1,9 +1,20 @@
+import os
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, declarative_base
+from sqlalchemy.pool import StaticPool
 from backend.core.config import settings
 
 # Configure connection pooling appropriately based on the database type
-if "sqlite" in settings.DATABASE_URL:
+if os.environ.get("TESTING") == "1":
+    # Use a shared in-memory database for testing to ensure background tasks
+    # and the main thread see the same data.
+    SQLALCHEMY_DATABASE_URL = "sqlite:///:memory:"
+    engine = create_engine(
+        SQLALCHEMY_DATABASE_URL,
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+elif "sqlite" in settings.DATABASE_URL:
     engine = create_engine(
         settings.DATABASE_URL,
         connect_args={"check_same_thread": False}

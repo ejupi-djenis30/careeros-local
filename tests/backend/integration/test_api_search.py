@@ -1,4 +1,5 @@
 import pytest
+from datetime import datetime
 from unittest.mock import patch
 from fastapi.testclient import TestClient
 
@@ -56,11 +57,21 @@ def test_stop_search_authorized(client: TestClient, auth_headers: dict, test_pro
     assert response.json()["message"] == "Search stopped successfully"
 
 def test_search_unauthorized_access(client, auth_headers, db_session):
-    # 1. Create a profile belonging to another user (we only have one test user in conftest)
-    # We can just manually insert a profile with a different user_id
+    # 1. Create another user to satisfy foreign key constraints
+    from backend.models import User
+    from backend.services.auth import get_password_hash
+    other_user = User(
+        username="otheruser_" + str(datetime.now().timestamp()), # Avoid collisions
+        hashed_password=get_password_hash("OtherPass123!")
+    )
+    db_session.add(other_user)
+    db_session.commit()
+    db_session.refresh(other_user)
+
+    # 2. Create a profile belonging to that user
     from backend.models import SearchProfile
     other_profile = SearchProfile(
-        user_id=999,
+        user_id=other_user.id,
         name="Other User Profile",
         role_description="Hacker",
         cv_content="None"
