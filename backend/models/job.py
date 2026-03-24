@@ -68,7 +68,7 @@ class Job(Base):
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
     user = relationship("User", back_populates="jobs")
-    search_profile = relationship("SearchProfile", backref="jobs")
+    search_profile = relationship("SearchProfile", back_populates="jobs")
     scraped_job = relationship("ScrapedJob", back_populates="user_jobs", lazy="joined")
 
     def __init__(self, **kwargs):

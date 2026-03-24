@@ -48,3 +48,4 @@ class SearchProfile(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     user = relationship("User", back_populates="profiles")
+    jobs = relationship("Job", back_populates="search_profile", cascade="all, delete-orphan")
