@@ -59,3 +59,24 @@ def test_transform_job_data_invalid_coords_and_dates():
     assert listing.created_at is None
     assert listing.location.coordinates is None
     assert listing.employment.workload_min == 100 # default
+
+
+def test_transform_job_data_logs_invalid_values(caplog):
+    caplog.set_level("WARNING")
+    raw = {
+        "id": "5",
+        "createdTime": "invalid-created",
+        "updatedTime": "invalid-updated",
+        "jobContent": {
+            "location": {"coordinates": {"lat": "x", "lon": "y"}},
+        },
+    }
+
+    listing = transform_job_data(raw, "job_room")
+
+    assert listing.created_at is None
+    assert listing.updated_at is None
+    assert listing.location.coordinates is None
+    assert 'Invalid job-room coordinates' in caplog.text
+    assert 'Invalid job-room createdTime' in caplog.text
+    assert 'Invalid job-room updatedTime' in caplog.text

@@ -13,7 +13,7 @@ def mock_service():
     service = SearchService(job_repo=mock_job_repo, profile_repo=mock_profile_repo)
     return service
 
-def test_get_search_service():
+async def test_get_search_service():
     mock_db = MagicMock()
     service = get_search_service(mock_db)
     assert isinstance(service, SearchService)
@@ -111,7 +111,7 @@ async def test_analyze_and_save_success(mock_service):
             {"relevant": False}
         ]
         
-        with patch("backend.services.utils.geocode_location") as mock_geocode, \
+        with patch("backend.services.search_service.geocode_location") as mock_geocode, \
              patch("backend.services.search_service.get_status", return_value={"state": "searching"}):
             mock_geocode.return_value = MagicMock(lat=46.9, lon=7.4)
             
@@ -122,7 +122,7 @@ async def test_analyze_and_save_success(mock_service):
             
             assert saved == 1
             assert skipped == 1
-            mock_session.add_all.assert_called()
+            assert mock_session.add.called
             mock_session.commit.assert_called()
 
 async def test_analyze_and_save_db_error(mock_service):
@@ -233,7 +233,7 @@ async def test_analyze_and_save_stopped_and_truncation(mock_service):
     with patch("backend.services.search_service.settings.MAX_DESCRIPTION_CHARS", 100), \
          patch("backend.services.search_service.get_status", return_value={"state": "searching"}), \
          patch("backend.services.search_service.llm_service.analyze_job_batch", return_value=[{"relevant": True, "affinity_score": 50, "worth_applying": False}]), \
-         patch("backend.services.utils.geocode_location", return_value=MagicMock(lat=46.9, lon=7.4)):
+         patch("backend.services.search_service.geocode_location", return_value=MagicMock(lat=46.9, lon=7.4)):
          
          mock_session = mock_service.job_repo.db
          mock_session.query.return_value.filter.return_value.all.return_value = []
@@ -248,6 +248,60 @@ async def test_analyze_and_save_length_mismatch(mock_service):
         saved, skipped = await mock_service._analyze_and_save(1, {}, [MagicMock(descriptions=[MagicMock(description="x")])])
         assert saved == 0
         assert skipped == 1
+
+async def test_save_single_job_invalid_publication_date_logs_warning(mock_service):
+    listing = MagicMock()
+    listing.source = "job_room"
+    listing.id = "broken-date"
+    listing.title = "Broken Date Role"
+    listing.descriptions = [MagicMock(description="desc")]
+    listing.company = MagicMock(name="ACME")
+    listing.location = MagicMock(city="Zurich", coordinates=MagicMock(lat=47.37, lon=8.54))
+    listing.employment = MagicMock(workload_min=80, workload_max=100)
+    listing.publication = MagicMock(start_date="not-a-date")
+    listing.application = None
+    listing.external_url = "https://example.com/job"
+
+    mock_session = mock_service.job_repo.db
+    mock_session.query.return_value.filter.return_value.first.return_value = None
+
+    with patch("backend.services.search_service.logger") as mock_logger:
+        await mock_service._save_single_job(
+            listing,
+            {"affinity_score": 80, "affinity_analysis": "ok", "worth_applying": True},
+            {"id": 1, "user_id": 99},
+            None,
+        )
+
+    mock_logger.warning.assert_called_once()
+    mock_session.commit.assert_called_once()
+
+async def test_save_single_job_geocodes_missing_coordinates(mock_service):
+    listing = MagicMock()
+    listing.source = "job_room"
+    listing.id = "missing-coords"
+    listing.title = "No Coordinates Role"
+    listing.descriptions = [MagicMock(description="desc")]
+    listing.company = MagicMock(name="ACME")
+    listing.location = MagicMock(city="Bern", coordinates=None)
+    listing.employment = MagicMock(workload_min=100, workload_max=100)
+    listing.publication = None
+    listing.application = None
+    listing.external_url = "https://example.com/job"
+
+    mock_session = mock_service.job_repo.db
+    mock_session.query.return_value.filter.return_value.first.return_value = None
+
+    with patch("backend.services.search_service.geocode_location", new=AsyncMock(return_value=MagicMock(lat=46.948, lon=7.447))):
+        await mock_service._save_single_job(
+            listing,
+            {"affinity_score": 60, "affinity_analysis": "ok", "worth_applying": False},
+            {"id": 1, "user_id": 99},
+            (47.3769, 8.5417),
+        )
+
+    saved_job = mock_session.add.call_args_list[-1].args[0]
+    assert saved_job.distance_km is not None
 
 async def test_analyze_and_save_stopped(mock_service):
     with patch("backend.services.search_service.get_status", return_value={"state": "stopped"}):
@@ -273,12 +327,10 @@ async def test_execute_searches_flow(mock_service):
         # Test pagination and sleep
         mock_adecco.search = AsyncMock()
         mock_adecco.search.return_value = MagicMock(items=[MagicMock(), MagicMock()], total_pages=1)
-        
-        # We need to just call _execute_searches, which calls execute_single_search internally
-        with patch.object(mock_service, "_execute_searches") as mock_exec: # Wait! I'm trying to test _execute_searches!
-            pass # We don't patch it, we execute it!
-            
-        res = await mock_service._execute_searches(1, profile, searches, av_prov, p_info)
+
+        mock_service.providers = av_prov
+
+        res = await mock_service._execute_searches(1, profile, searches, p_info)
         assert len(res) >= 0
 
 async def test_execute_searches_aborts_and_pagination(mock_service):
@@ -298,8 +350,10 @@ async def test_execute_searches_aborts_and_pagination(mock_service):
          
          from types import SimpleNamespace
          profile = SimpleNamespace(location_filter="", posted_within_days=10, max_distance=10, workload_filter="", latitude=None, longitude=None, contract_type="")
-         
-         res = await mock_service._execute_searches(1, profile, searches, av_prov, {"adecco": {}})
+
+         mock_service.providers = av_prov
+
+         res = await mock_service._execute_searches(1, profile, searches, {"adecco": {}})
          # Because it stopped early, it just returns items from the first page
          assert len(res) > 0
 
@@ -330,7 +384,7 @@ async def test_run_search_finally_nameerror(mock_service):
 
 async def test_run_search_cleanup_close(mock_service):
     # Setup mock to reach finally block with populated available_providers
-    profile = MagicMock(id=1, cv_content=None)
+    profile = MagicMock(id=1, cv_content=None, user_id=1, role_description="", search_strategy="", latitude=None, longitude=None)
     mock_service.profile_repo.get = MagicMock(return_value=profile)
     
     provider1 = AsyncMock()
@@ -341,12 +395,11 @@ async def test_run_search_cleanup_close(mock_service):
     provider2._session = AsyncMock()
     provider2._session.aclose = AsyncMock()
     
-    # We patch the provider initializations directly
+    mock_service.providers = {"job_room": provider1, "adecco": provider2}
+
     with patch("backend.services.search_service.get_compatible_providers", return_value=["job_room", "adecco"]), \
-         patch("backend.services.search_service.JobRoomProvider", return_value=provider1), \
-         patch("backend.services.search_service.AdeccoProvider", return_value=provider2), \
          patch.object(mock_service, "_generate_plan", side_effect=Exception("fast fail")): # fast exit to run finally
-         await mock_service.run_search(1)
+        await mock_service.run_search(1)
          
     provider1.close.assert_called_once()
     provider2._session.aclose.assert_called_once()

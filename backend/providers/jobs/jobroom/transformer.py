@@ -1,4 +1,5 @@
 from datetime import datetime
+import logging
 from typing import Any
 
 from backend.providers.jobs.models import (
@@ -14,6 +15,8 @@ from backend.providers.jobs.models import (
     Occupation,
     PublicationInfo,
 )
+
+logger = logging.getLogger(__name__)
 
 
 def safe_int(value: Any, default: int = 0) -> int:
@@ -71,8 +74,8 @@ def transform_job_data(raw: dict[str, Any], source_name: str, include_raw_data: 
                 lat=float(coords_data["lat"]),
                 lon=float(coords_data["lon"]),
             )
-        except (ValueError, TypeError):
-            pass
+        except (ValueError, TypeError) as exc:
+            logger.warning("Invalid job-room coordinates %r: %s", coords_data, exc)
 
     location = JobLocation(
         city=location_data.get("city", ""),
@@ -191,8 +194,8 @@ def transform_job_data(raw: dict[str, Any], source_name: str, include_raw_data: 
             created_at = datetime.fromisoformat(
                 job["createdTime"].replace("Z", "+00:00")
             )
-        except (ValueError, TypeError):
-            pass
+        except (ValueError, TypeError) as exc:
+            logger.warning("Invalid job-room createdTime %r: %s", job.get("createdTime"), exc)
 
     updated_at = None
     if job.get("updatedTime"):
@@ -200,8 +203,8 @@ def transform_job_data(raw: dict[str, Any], source_name: str, include_raw_data: 
             updated_at = datetime.fromisoformat(
                 job["updatedTime"].replace("Z", "+00:00")
             )
-        except (ValueError, TypeError):
-            pass
+        except (ValueError, TypeError) as exc:
+            logger.warning("Invalid job-room updatedTime %r: %s", job.get("updatedTime"), exc)
 
     return JobListing(
         id=job.get("id", ""),

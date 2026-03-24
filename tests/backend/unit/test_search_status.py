@@ -1,5 +1,5 @@
 import pytest
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 from backend.services.search_status import (
     init_status, add_log, update_status, get_status, 
     get_all_statuses, clear_status, register_task, 
@@ -78,3 +78,9 @@ def test_task_lifecycle():
 
 def test_cancel_task_non_existent():
     assert cancel_task(999) is False
+
+def test_save_statuses_logs_warning_on_write_failure(caplog):
+    caplog.set_level("WARNING")
+    with patch("backend.services.search_status.open", side_effect=OSError("disk full")):
+        init_status(1)
+    assert "Failed to persist search statuses" in caplog.text

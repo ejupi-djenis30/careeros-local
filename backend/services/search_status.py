@@ -9,6 +9,10 @@ import json
 import os
 import time
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 _lock = threading.Lock()
 _DATA_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "data")
 os.makedirs(_DATA_DIR, exist_ok=True)
@@ -29,8 +33,8 @@ def _load_statuses() -> Dict[int, Dict[str, Any]]:
             with open(_STATUS_FILE, "r") as f:
                 data = json.load(f)
                 return {int(k): v for k, v in data.items()}
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.warning("Failed to load search statuses from %s: %s", _STATUS_FILE, exc)
     return {}
 
 _last_save_time = 0.0
@@ -43,11 +47,13 @@ def _save_statuses(force=False):
         return
         
     try:
-        with open(_STATUS_FILE, "w") as f:
+        temp_file = f"{_STATUS_FILE}.tmp"
+        with open(temp_file, "w") as f:
             json.dump(_statuses, f)
+        os.replace(temp_file, _STATUS_FILE)
         _last_save_time = now
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.warning("Failed to persist search statuses to %s: %s", _STATUS_FILE, exc)
 
 _statuses: Dict[int, Dict[str, Any]] = _load_statuses()
 _active_tasks: Dict[int, Any] = {} # profile_id -> asyncio.Task

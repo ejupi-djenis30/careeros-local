@@ -194,6 +194,70 @@ async def test_adecco_search_429_retry(adept_provider):
         assert response.total_count == 1
         assert len(response.items) == 1
 
+
+@pytest.mark.asyncio
+async def test_adecco_search_429_invalid_retry_after_logs_warning(adept_provider, caplog):
+    import httpx
+
+    caplog.set_level("WARNING")
+
+    with patch("httpx.AsyncClient.post", new_callable=AsyncMock) as mock_post, \
+         patch("httpx.AsyncClient.get", new_callable=AsyncMock) as mock_get, \
+         patch("backend.providers.jobs.adecco.client.asyncio.sleep", new_callable=AsyncMock), \
+         patch("backend.providers.jobs.adecco.client.random.uniform", return_value=4.5):
+
+        error_resp = MagicMock()
+        error_resp.status_code = 429
+        error_resp.headers = {"Retry-After": "not-a-date"}
+        error_resp.request = MagicMock()
+        error_resp.raise_for_status.side_effect = httpx.HTTPStatusError(
+            "429 Too Many Requests", request=error_resp.request, response=error_resp
+        )
+
+        success_resp = MagicMock()
+        success_resp.status_code = 200
+        success_resp.json.return_value = SAMPLE_SUMMARIZED_RESPONSE
+
+        mock_post.side_effect = [error_resp, success_resp]
+
+        mock_get_resp = MagicMock()
+        mock_get_resp.status_code = 200
+        mock_get_resp.json.return_value = SAMPLE_DETAIL_RESPONSE
+        mock_get.return_value = mock_get_resp
+
+        response = await adept_provider.search(JobSearchRequest(query="Software", page=0))
+
+        assert response.total_count == 1
+        assert "Adecco Retry-After header 'not-a-date' is invalid" in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_adecco_search_logs_when_fallback_transform_fails(adept_provider, caplog):
+    caplog.set_level("WARNING")
+
+    with patch("httpx.AsyncClient.post", new_callable=AsyncMock) as mock_post, \
+         patch("httpx.AsyncClient.get", new_callable=AsyncMock) as mock_get, \
+         patch("backend.providers.jobs.adecco.client.transform_job_data") as mock_transform, \
+         patch("backend.providers.jobs.adecco.client.asyncio.sleep", new_callable=AsyncMock):
+
+        mock_post_resp = MagicMock()
+        mock_post_resp.status_code = 200
+        mock_post_resp.json.return_value = SAMPLE_SUMMARIZED_RESPONSE
+        mock_post.return_value = mock_post_resp
+
+        mock_get_resp = MagicMock()
+        mock_get_resp.status_code = 500
+        mock_get_resp.raise_for_status.side_effect = Exception("detail failed")
+        mock_get.return_value = mock_get_resp
+
+        mock_transform.side_effect = [Exception("primary transform failed"), Exception("fallback transform failed")]
+
+        response = await adept_provider.search(JobSearchRequest(query="Software", page=0))
+
+        assert response.total_count == 1
+        assert len(response.items) == 0
+        assert "Failed to transform Adecco job TEST-123 without details" in caplog.text
+
 def test_build_query_string_basic():
     req = JobSearchRequest(query="Developer", location="Bern")
     qs = build_query_string(req)

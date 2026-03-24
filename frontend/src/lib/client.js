@@ -4,6 +4,22 @@ export class ApiClient {
     static accessToken = null;
     static _suppressUnauthorized = false;
 
+    static _dispatchApiError(message) {
+        window.dispatchEvent(new CustomEvent("jh_api_error", { detail: { message } }));
+    }
+
+    static _extractErrorMessage(errorData, fallbackMessage) {
+        let errMsg = fallbackMessage;
+        if (errorData.detail) {
+            if (typeof errorData.detail === 'string') errMsg = errorData.detail;
+            else if (Array.isArray(errorData.detail)) errMsg = errorData.detail.map(e => e.msg).join(", ");
+            else errMsg = JSON.stringify(errorData.detail);
+        } else if (errorData.message) {
+            errMsg = errorData.message;
+        }
+        return errMsg;
+    }
+
     static setToken(token) {
         this.accessToken = token;
     }
@@ -75,14 +91,8 @@ export class ApiClient {
 
         if (!response.ok) {
             const errorData = await response.json().catch(() => ({}));
-            let errMsg = "API Request Failed";
-            if (errorData.detail) {
-                if (typeof errorData.detail === 'string') errMsg = errorData.detail;
-                else if (Array.isArray(errorData.detail)) errMsg = errorData.detail.map(e => e.msg).join(", ");
-                else errMsg = JSON.stringify(errorData.detail);
-            } else if (errorData.message) {
-                errMsg = errorData.message;
-            }
+            const errMsg = this._extractErrorMessage(errorData, "API Request Failed");
+            this._dispatchApiError(errMsg);
             throw new Error(errMsg);
         }
 
@@ -120,12 +130,13 @@ export class ApiClient {
         const config = {
             method: "POST",
             credentials: 'include',
-            headers: {
-                // Manual token for multipart since we don't want JSON Content-Type
-                "Authorization": this.getToken() ? `Bearer ${this.getToken()}` : undefined
-            },
+            headers: {},
             body: formData,
         };
+
+        if (this.getToken()) {
+            config.headers.Authorization = `Bearer ${this.getToken()}`;
+        }
 
         let response = await fetch(url, config);
 
@@ -137,8 +148,8 @@ export class ApiClient {
 
         if (!response.ok) {
             const errorData = await response.json().catch(() => ({}));
-            let errMsg = "Upload Failed";
-            if (errorData.detail) errMsg = typeof errorData.detail === 'string' ? errorData.detail : JSON.stringify(errorData.detail);
+            const errMsg = this._extractErrorMessage(errorData, "Upload Failed");
+            this._dispatchApiError(errMsg);
             throw new Error(errMsg);
         }
 

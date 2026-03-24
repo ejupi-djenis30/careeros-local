@@ -55,7 +55,12 @@ class SearchService:
     """Orchestrates the entire multi-step job search pipeline (Feature 1 & 4)."""
 
     def __init__(self, db: Session = None, job_repo=None, profile_repo=None):
-        self.db = db
+        if db is not None and not isinstance(db, Session) and job_repo is not None and profile_repo is None:
+            profile_repo = job_repo
+            job_repo = db
+            db = None
+
+        self.db = db or getattr(job_repo, "db", None) or getattr(profile_repo, "db", None)
         self.job_repo = job_repo or (JobRepository(db) if db else None)
         self.profile_repo = profile_repo or (ProfileRepository(db) if db else None)
         # Providers (registered by domain)
@@ -188,6 +193,25 @@ class SearchService:
             logger.error(f"Unexpected error in run_search for profile {profile_id}: {e}", exc_info=True)
             update_status(profile_id, state="error", error=f"Unexpected error: {e}")
         finally:
+            for provider_name, provider in self.providers.items():
+                if not provider:
+                    continue
+
+                try:
+                    if hasattr(provider, "close"):
+                        close_result = provider.close()
+                        if asyncio.iscoroutine(close_result):
+                            await close_result
+                        continue
+
+                    session = getattr(provider, "_session", None)
+                    if session and hasattr(session, "aclose"):
+                        close_result = session.aclose()
+                        if asyncio.iscoroutine(close_result):
+                            await close_result
+                except Exception as close_error:
+                    logger.warning("Failed to close provider %s cleanly: %s", provider_name, close_error)
+
             unregister_task(profile_id)
 
     # ───────────────────────── helper methods ─────────────────────────
@@ -372,6 +396,8 @@ class SearchService:
 
     def _deduplicate(self, profile, all_jobs: list) -> tuple[list, int]:
         import re
+
+        profile_id = getattr(profile, "id", profile)
         
         def get_fuzzy_key(title: str, company: str) -> str:
             t = re.sub(r'[^\w\s]', '', (title or "").lower()).strip()
@@ -382,8 +408,13 @@ class SearchService:
         seen_fuzzy_keys: set = set()
         unique_jobs: list = []
         
-        existing_identifiers = self.job_repo.get_profile_job_identifiers(profile.id)
-        applied_scraped_ids = self.job_repo.get_applied_scraped_job_ids(profile.user_id)
+        existing_identifiers = self.job_repo.get_profile_job_identifiers(profile_id)
+        profile_user_id = getattr(profile, "user_id", None)
+        applied_scraped_ids = (
+            self.job_repo.get_applied_scraped_job_ids(profile_user_id)
+            if profile_user_id is not None
+            else set()
+        )
         
         existing_keys = {
             f"{row.platform}:{row.platform_job_id}" for row in existing_identifiers
@@ -533,7 +564,7 @@ class SearchService:
             async with semaphore:
                 status_data = get_status(profile_id)
                 if status_data.get("state") in ["stopped", "cancelled", "finished", "failed"]:
-                    return []
+                    return 0
                     
                 jobs_metadata = []
                 for job in batch:
@@ -566,7 +597,7 @@ class SearchService:
                     saved = 0
                     for job, analysis in zip(batch, results):
                         if analysis.get("relevant", True):
-                            self._save_single_job(job, analysis, profile_dict, origin_coords)
+                            await self._save_single_job(job, analysis, profile_dict, origin_coords)
                             saved += 1
                     return saved
                 except Exception as e:
@@ -580,7 +611,7 @@ class SearchService:
         skipped_count = len(unique_jobs) - saved_count
         return saved_count, skipped_count
 
-    def _save_single_job(self, listing, analysis, profile_dict, origin_coords):
+    async def _save_single_job(self, listing, analysis, profile_dict, origin_coords):
         platform = getattr(listing, "source", None) or getattr(listing, "platform", "unknown")
         platform_id = str(getattr(listing, "id", "") or getattr(listing, "platform_job_id", ""))
         
@@ -613,7 +644,14 @@ class SearchService:
                     pub_date = datetime.fromisoformat(date_raw.replace('Z', '+00:00'))
                 else:
                     pub_date = datetime.strptime(date_raw, "%Y-%m-%d")
-            except: pass
+            except (TypeError, ValueError) as exc:
+                logger.warning(
+                    "Failed to parse publication date %r for %s/%s: %s",
+                    listing.publication.start_date,
+                    platform,
+                    platform_id,
+                    exc,
+                )
 
         if not existing_sj:
             existing_sj = ScrapedJob(
@@ -642,8 +680,16 @@ class SearchService:
             # Try to geocode if no coords
             coords = getattr(listing.location, "coordinates", None)
             if not coords and location_str:
-                # Synchronous geocode fallback (ideally would be pre-resolved)
-                pass 
+                coords = await geocode_location(location_str)
+                if coords:
+                    logger.info("Resolved missing coordinates for %s via geocoding fallback", location_str)
+                else:
+                    logger.warning(
+                        "Could not resolve coordinates for %s/%s with location %r",
+                        platform,
+                        platform_id,
+                        location_str,
+                    )
             
             if coords:
                 distance_km = haversine_distance(
@@ -666,8 +712,16 @@ class SearchService:
         self.db.add(new_job)
         try:
             self.db.commit()
-        except:
+        except Exception as exc:
             self.db.rollback()
+            logger.error(
+                "Failed to persist job %s/%s for profile %s: %s",
+                platform,
+                platform_id,
+                profile_dict.get("id"),
+                exc,
+            )
+            raise
 
 
 def get_search_service(db: Session) -> SearchService:

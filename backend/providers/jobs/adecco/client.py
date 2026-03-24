@@ -149,8 +149,12 @@ class AdeccoProvider(BaseJobProvider):
                             try:
                                 dt = email.utils.parsedate_to_datetime(retry_after)
                                 sleep_time = max(0, (dt - datetime.now(timezone.utc)).total_seconds())
-                            except (TypeError, ValueError):
-                                pass
+                            except (TypeError, ValueError) as parse_error:
+                                logger.warning(
+                                    "Adecco Retry-After header %r is invalid: %s",
+                                    retry_after,
+                                    parse_error,
+                                )
                     
                     if sleep_time is None:
                         # Stricter backoff for 429 than other errors: 4s, then 8s
@@ -257,7 +261,12 @@ class AdeccoProvider(BaseJobProvider):
                         # Fallback to transform without details if detail fetch fails
                         try:
                             return transform_job_data(light_job, None, self.name, self._include_raw_data)
-                        except Exception:
+                        except Exception as fallback_error:
+                            logger.warning(
+                                "Failed to transform Adecco job %s without details: %s",
+                                job_id,
+                                fallback_error,
+                            )
                             return None
 
             tasks = [process_job(job) for job in jobs_light]

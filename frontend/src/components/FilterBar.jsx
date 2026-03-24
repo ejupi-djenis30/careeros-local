@@ -1,11 +1,23 @@
 import React from "react";
 
-export function FilterBar({ filters, onChange, searchProfiles = [], onClear, onRefresh }) {
+const DEFAULT_FILTERS = {
+    search_profile_id: "",
+    min_score: "",
+    max_distance: "",
+    worth_applying: "",
+    sort_by: "created_at",
+    sort_order: "desc",
+};
+
+export function FilterBar({ filters = DEFAULT_FILTERS, onChange, searchProfiles = [], onClear, onRefresh }) {
+    const safeFilters = { ...DEFAULT_FILTERS, ...filters };
+    const availableProfiles = Array.isArray(searchProfiles) ? searchProfiles : [];
+
     const handleChange = (key, value) => {
-        onChange({ ...filters, [key]: value });
+        onChange({ ...safeFilters, [key]: value });
     };
 
-    const isGlobal = !filters.search_profile_id;
+    const isGlobal = !safeFilters.search_profile_id;
 
     return (
         <div className="d-flex flex-wrap gap-3 align-items-center">
@@ -14,12 +26,12 @@ export function FilterBar({ filters, onChange, searchProfiles = [], onClear, onR
                 <i className="bi bi-radar text-primary ms-1 me-2 text-primary"></i>
                 <select
                     className="form-select form-select-sm border-0 bg-transparent text-primary fw-bold py-0 shadow-none ps-0"
-                    value={filters.search_profile_id || ""}
+                    value={safeFilters.search_profile_id || ""}
                     onChange={(e) => handleChange("search_profile_id", e.target.value ? Number(e.target.value) : "")}
                     style={{ width: 'auto', minWidth: '150px' }}
                 >
                     <option value="" className="bg-dark text-white">Global Dashboard</option>
-                    {searchProfiles.map(p => (
+                    {availableProfiles.map(p => (
                         <option key={p.id} value={p.id} className="bg-dark text-white">
                             Search: {p.name || p.role_description || 'Unknown'}
                         </option>
@@ -34,7 +46,7 @@ export function FilterBar({ filters, onChange, searchProfiles = [], onClear, onR
                         <i className="bi bi-bar-chart-line text-secondary px-2"></i>
                         <select
                             className="form-select form-select-sm border-0 bg-transparent text-white py-0 shadow-none"
-                            value={filters.min_score || ""}
+                            value={safeFilters.min_score || ""}
                             onChange={(e) => handleChange("min_score", e.target.value ? Number(e.target.value) : "")}
                             style={{ width: 'auto', minWidth: '85px' }}
                         >
@@ -50,7 +62,7 @@ export function FilterBar({ filters, onChange, searchProfiles = [], onClear, onR
                         <i className="bi bi-geo-alt text-secondary px-2"></i>
                         <select
                             className="form-select form-select-sm border-0 bg-transparent text-white py-0 shadow-none"
-                            value={filters.max_distance || ""}
+                            value={safeFilters.max_distance || ""}
                             onChange={(e) => handleChange("max_distance", e.target.value ? Number(e.target.value) : "")}
                             style={{ width: 'auto', minWidth: '85px' }}
                         >
@@ -65,10 +77,10 @@ export function FilterBar({ filters, onChange, searchProfiles = [], onClear, onR
                     {/* Filter Toggle: Top Picks */}
                     <button 
                         type="button"
-                        className={`btn btn-sm rounded-pill px-3 d-flex align-items-center gap-2 border transition-all ${filters.worth_applying ? 'bg-primary-10 border-primary text-primary' : 'bg-white-5 border-white-5 text-secondary hover-bg-white-10'}`}
-                        onClick={() => handleChange("worth_applying", !filters.worth_applying)}
+                        className={`btn btn-sm rounded-pill px-3 d-flex align-items-center gap-2 border transition-all ${safeFilters.worth_applying ? 'bg-primary-10 border-primary text-primary' : 'bg-white-5 border-white-5 text-secondary hover-bg-white-10'}`}
+                        onClick={() => handleChange("worth_applying", !safeFilters.worth_applying)}
                     >
-                        <i className={`bi ${filters.worth_applying ? 'bi-star-fill' : 'bi-star'}`}></i>
+                        <i className={`bi ${safeFilters.worth_applying ? 'bi-star-fill' : 'bi-star'}`}></i>
                         <span className="fw-medium">Top Picks</span>
                     </button>
                 </>
@@ -79,10 +91,10 @@ export function FilterBar({ filters, onChange, searchProfiles = [], onClear, onR
             <div className="d-flex align-items-center ms-auto">
                 <select
                     className="form-select form-select-sm bg-white-5 text-white border-white-5 rounded-pill ps-3"
-                    value={`${filters.sort_by}:${filters.sort_order}`}
+                    value={`${safeFilters.sort_by}:${safeFilters.sort_order}`}
                     onChange={(e) => {
                         const [by, order] = e.target.value.split(":");
-                        onChange({ ...filters, sort_by: by, sort_order: order });
+                        onChange({ ...safeFilters, sort_by: by, sort_order: order });
                     }}
                     style={{ width: 'auto', minWidth: '120px' }}
                 >

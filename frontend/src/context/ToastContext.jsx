@@ -1,19 +1,44 @@
 /* eslint-disable react-refresh/only-export-components */
-import React, { createContext, useContext, useState, useCallback } from 'react';
+import React, { createContext, useContext, useState, useCallback, useEffect, useRef } from 'react';
 
 const ToastContext = createContext(null);
 
 export function ToastProvider({ children }) {
     const [toast, setToast] = useState(null);
+    const hideTimeoutRef = useRef(null);
 
     const showToast = useCallback((message, type = 'danger') => {
         setToast({ message, type });
-        setTimeout(() => setToast(null), 5000);
+        if (hideTimeoutRef.current) {
+            clearTimeout(hideTimeoutRef.current);
+        }
+        hideTimeoutRef.current = setTimeout(() => setToast(null), 5000);
     }, []);
 
     const clearToast = useCallback(() => {
+        if (hideTimeoutRef.current) {
+            clearTimeout(hideTimeoutRef.current);
+            hideTimeoutRef.current = null;
+        }
         setToast(null);
     }, []);
+
+    useEffect(() => {
+        const handleApiError = (event) => {
+            const message = event?.detail?.message;
+            if (message) {
+                showToast(message);
+            }
+        };
+
+        window.addEventListener('jh_api_error', handleApiError);
+        return () => {
+            window.removeEventListener('jh_api_error', handleApiError);
+            if (hideTimeoutRef.current) {
+                clearTimeout(hideTimeoutRef.current);
+            }
+        };
+    }, [showToast]);
 
     return (
         <ToastContext.Provider value={{ toast, showToast, clearToast }}>

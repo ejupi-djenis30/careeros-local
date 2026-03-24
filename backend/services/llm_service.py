@@ -1,4 +1,5 @@
 import logging
+import threading
 from typing import Dict, Any, List, Optional
 from tenacity import retry, stop_after_attempt, wait_exponential
 from backend.providers.llm.factory import get_provider_for_step
@@ -16,15 +17,18 @@ class LLMService:
 
     def __init__(self):
         self._provider_cache: Dict[str, Any] = {}
+        self._provider_cache_lock = threading.RLock()
 
     def _get_provider(self, step: str):
-        if step not in self._provider_cache:
-            self._provider_cache[step] = get_provider_for_step(step)
-        return self._provider_cache[step]
+        with self._provider_cache_lock:
+            if step not in self._provider_cache:
+                self._provider_cache[step] = get_provider_for_step(step)
+            return self._provider_cache[step]
 
     def clear_provider_cache(self):
         """Force reload of all LLM providers (e.g. if config changes)."""
-        self._provider_cache.clear()
+        with self._provider_cache_lock:
+            self._provider_cache.clear()
 
     def is_summary_step_configured(self) -> bool:
         """Return True only if LLM_SUMMARY_* env vars are explicitly configured.

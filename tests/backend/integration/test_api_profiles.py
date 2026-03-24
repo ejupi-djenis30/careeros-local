@@ -76,9 +76,9 @@ class TestAdvancedProfilesAPI:
         # 5. Verify Job is gone, but ScrapedJob remains
         print("[TEST] Verifying cascade...")
         db_session.expire_all()
-        assert db_session.query(SearchProfile).get(profile_id) is None
-        assert db_session.query(Job).get(job_id) is None
-        assert db_session.query(ScrapedJob).get(scraped_id) is not None
+        assert db_session.get(SearchProfile, profile_id) is None
+        assert db_session.get(Job, job_id) is None
+        assert db_session.get(ScrapedJob, scraped_id) is not None
         print("[TEST] Success!")
 
 

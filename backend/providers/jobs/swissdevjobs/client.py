@@ -185,8 +185,6 @@ class SwissDevJobsProvider(BaseJobProvider):
         except Exception as e:
             logger.error(f"Search failed: {e}")
             raise ProviderError(self.name, f"Search failed: {e}") from e
-        finally:
-            pass
 
     async def health_check(self) -> ProviderHealth:
         """Check if swissdevjobs.ch API is accessible."""

@@ -1,6 +1,9 @@
+import logging
 from typing import List, Union, Any, Optional
 from pydantic import AnyHttpUrl, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+logger = logging.getLogger(__name__)
 
 
 class Settings(BaseSettings):
@@ -18,8 +21,8 @@ class Settings(BaseSettings):
             import json
             try:
                 return json.loads(self.CORS_ORIGINS)
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.warning("Invalid CORS_ORIGINS JSON %r: %s", self.CORS_ORIGINS, exc)
         return [i.strip() for i in self.CORS_ORIGINS.split(",") if i.strip()]
 
     # Database
@@ -39,8 +42,8 @@ class Settings(BaseSettings):
                 import json
                 try:
                     return json.loads(v)
-                except Exception:
-                    pass
+                except Exception as exc:
+                    logger.warning("Invalid ALLOWED_HOSTS JSON %r: %s", v, exc)
             return [i.strip() for i in v.split(",") if i.strip()]
         return v
 

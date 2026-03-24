@@ -1,5 +1,5 @@
 /* eslint-disable react-refresh/only-export-components */
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useRef, useCallback } from 'react';
 import { SearchService } from '../services/search';
 import { useAuth } from './AuthContext';
 
@@ -9,6 +9,11 @@ export function SearchProvider({ children }) {
     const { isLoggedIn } = useAuth();
     const [searchStatuses, setSearchStatuses] = useState({});
     const [activeProfileIds, setActiveProfileIds] = useState([]);
+    const activeProfileIdsRef = useRef(activeProfileIds);
+
+    useEffect(() => {
+        activeProfileIdsRef.current = activeProfileIds;
+    }, [activeProfileIds]);
 
     useEffect(() => {
         if (!isLoggedIn) {
@@ -17,12 +22,19 @@ export function SearchProvider({ children }) {
             setActiveProfileIds([]);
             return;
         }
+        let isDisposed = false;
         let timeoutId;
         let pollingInterval = 1500;
+
+        const scheduleNextPoll = () => {
+            if (isDisposed) return;
+            timeoutId = window.setTimeout(pollStatuses, pollingInterval);
+        };
 
         const pollStatuses = async () => {
             try {
                 const res = await SearchService.getAllStatuses();
+                if (isDisposed) return;
                 setSearchStatuses(res);
 
                 const runningIds = Object.entries(res)
@@ -36,7 +48,7 @@ export function SearchProvider({ children }) {
                     let next = [...runningIds];
                     
                     // Add any manually added IDs that haven't appeared in res yet
-                    for (const id of prev) {
+                    for (const id of activeProfileIdsRef.current) {
                         if (!res[id] && !next.includes(id)) {
                             next.push(id);
                         }
@@ -54,25 +66,28 @@ export function SearchProvider({ children }) {
                 console.error("Failed to poll statuses:", e);
                 pollingInterval = 15000;
             } finally {
-                timeoutId = setTimeout(pollStatuses, pollingInterval);
+                scheduleNextPoll();
             }
         };
 
         pollStatuses();
-        return () => clearTimeout(timeoutId);
-    }, [isLoggedIn, searchStatuses]);
+        return () => {
+            isDisposed = true;
+            window.clearTimeout(timeoutId);
+        };
+    }, [isLoggedIn]);
 
-    const addProfileId = (pid) => {
+    const addProfileId = useCallback((pid) => {
         setActiveProfileIds(prev => {
             const pidStr = String(pid);
             if (prev.includes(pidStr)) return prev;
             return [...prev, pidStr];
         });
-    };
+    }, []);
 
-    const removeProfileId = (pid) => {
+    const removeProfileId = useCallback((pid) => {
         setActiveProfileIds(prev => prev.filter(id => id !== String(pid)));
-    };
+    }, []);
 
     return (
         <SearchContext.Provider value={{

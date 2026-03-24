@@ -80,8 +80,8 @@ def transform_job_data(
         if active_from:
             try:
                 created_at = datetime.fromisoformat(active_from.replace("Z", "+00:00"))
-            except (ValueError, TypeError):
-                pass
+            except (ValueError, TypeError) as e:
+                logger.warning(f"Invalid activeFrom for SwissDevJobs job {light.get('jobUrl')}: {e}")
                 
         return JobListing(
             id=str(job_id),

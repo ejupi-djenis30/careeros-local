@@ -4,11 +4,17 @@ import { useJobs } from './useJobs';
 import { JobService } from '../services/jobs';
 import { SearchService } from '../services/search';
 
+let mockActiveProfileIds = [];
+
 vi.mock('../services/jobs', () => ({
   JobService: {
     getAll: vi.fn(),
     toggleApplied: vi.fn(),
   }
+}));
+
+vi.mock('../context/SearchContext', () => ({
+  useSearchContext: () => ({ activeProfileIds: mockActiveProfileIds })
 }));
 
 vi.mock('../services/search', () => ({
@@ -36,6 +42,7 @@ describe('useJobs', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    mockActiveProfileIds = [];
     JobService.getAll.mockResolvedValue(mockPagination);
     SearchService.getProfiles.mockResolvedValue(mockProfiles);
   });
@@ -89,12 +96,13 @@ describe('useJobs', () => {
     
     JobService.getAll.mockClear();
     
-    act(() => {
+    await act(async () => {
       Object.defineProperty(document, 'visibilityState', { value: 'visible', configurable: true });
       document.dispatchEvent(new Event('visibilitychange'));
+      await Promise.resolve();
     });
 
-    expect(JobService.getAll).toHaveBeenCalled();
+    await waitFor(() => expect(JobService.getAll).toHaveBeenCalled());
   });
 
   it('calls logout on UNAUTHORIZED error in fetchJobs', async () => {
@@ -161,21 +169,46 @@ describe('useJobs', () => {
     consoleSpy.mockRestore();
   });
 
-  it('polls fetchJobs periodically', async () => {
+  it('polls fetchJobs periodically while a search is active', async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     try {
+        mockActiveProfileIds = ['1'];
         renderHook(() => useJobs());
         await waitFor(() => expect(JobService.getAll).toHaveBeenCalledTimes(1));
         
         JobService.getAll.mockClear();
         
         await act(async () => {
-            vi.advanceTimersByTime(11000);
+            vi.advanceTimersByTime(5500);
         });
         
         await waitFor(() => expect(JobService.getAll).toHaveBeenCalledTimes(1));
     } finally {
         vi.useRealTimers();
+    }
+  });
+
+  it('uses the idle polling interval when no searches are active', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      renderHook(() => useJobs());
+      await waitFor(() => expect(JobService.getAll).toHaveBeenCalledTimes(1));
+
+      JobService.getAll.mockClear();
+
+      await act(async () => {
+        vi.advanceTimersByTime(29000);
+      });
+
+      expect(JobService.getAll).not.toHaveBeenCalled();
+
+      await act(async () => {
+        vi.advanceTimersByTime(1500);
+      });
+
+      await waitFor(() => expect(JobService.getAll).toHaveBeenCalledTimes(1));
+    } finally {
+      vi.useRealTimers();
     }
   });
 });
