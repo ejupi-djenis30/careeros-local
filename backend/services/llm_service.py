@@ -22,6 +22,10 @@ class LLMService:
             self._provider_cache[step] = get_provider_for_step(step)
         return self._provider_cache[step]
 
+    def clear_provider_cache(self):
+        """Force reload of all LLM providers (e.g. if config changes)."""
+        self._provider_cache.clear()
+
     def is_summary_step_configured(self) -> bool:
         """Return True only if LLM_SUMMARY_* env vars are explicitly configured.
         

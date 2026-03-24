@@ -20,7 +20,9 @@ class JobService:
         
         # Feature 2: populate applied_elsewhere badge
         # Get all ScrapedJob IDs where this user has applied=True (across all profiles)
-        applied_scraped_ids = self.repo.get_applied_scraped_job_ids(user_id)
+        applied_scraped_ids = set()
+        if items:
+            applied_scraped_ids = self.repo.get_applied_scraped_job_ids(user_id)
         
         # Attach applied_elsewhere as a Python attribute so Pydantic can read it
         for item in items:

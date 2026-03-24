@@ -25,18 +25,15 @@ async def test_analyze_and_save_db_failure(db_session):
     with patch("backend.services.llm_service.llm_service.analyze_job_batch", new_callable=AsyncMock) as mock_analyze:
         mock_analyze.return_value = [{"relevant": True, "affinity_score": 90, "affinity_analysis": "OK", "worth_applying": True}]
         
-        # Mock SessionLocal to raise error on commit
-        with patch("backend.services.search_service.SessionLocal") as mock_session_factory:
-            mock_session = MagicMock()
-            mock_session_factory.return_value = mock_session
-            mock_session.commit.side_effect = Exception("DB Crash")
-            
-            saved, skipped = await service._analyze_and_save(1, profile_dict, unique_jobs)
-            
-            assert saved == 0
-            assert skipped == 1
-            mock_session.rollback.assert_called_once()
-            mock_session.close.assert_called_once()
+        # Use the repository's DB session (mocked)
+        mock_session = mock_job_repo.db
+        mock_session.commit.side_effect = Exception("DB Crash")
+        
+        saved, skipped = await service._analyze_and_save(1, profile_dict, unique_jobs)
+        
+        assert saved == 0
+        assert skipped == 1
+        mock_session.rollback.assert_called_once()
 
 @pytest.mark.asyncio
 async def test_relevance_filter_exception_handling():

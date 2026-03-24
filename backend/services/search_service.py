@@ -17,7 +17,7 @@ from backend.providers.jobs.jobroom.avam_mapper import avam_mapper
 from backend.services.search_status import (
     init_status, add_log, update_status, clear_status, get_status,
 )
-from backend.db.base import SessionLocal
+
 
 logger = logging.getLogger(__name__)
 
@@ -55,6 +55,9 @@ class SearchService:
         """Run the full search workflow for a saved profile."""
         from backend.services.search_status import register_task, unregister_task
         register_task(profile_id, asyncio.current_task())
+        
+        # Ensure fresh LLM providers (reload config)
+        llm_service.clear_provider_cache()
 
         # Map available providers and their infos
         available_providers = {
@@ -427,7 +430,7 @@ class SearchService:
         
         # Try to look up existing ScrapedJob summaries from DB
         from backend.models import ScrapedJob
-        db_session = SessionLocal()
+        db_session = self.job_repo.db
         try:
             job_ids = [str(getattr(job, "id", "")) for job in jobs]
             sources = [getattr(job, "source", "") for job in jobs]
@@ -444,8 +447,6 @@ class SearchService:
         except Exception as e:
             logger.warning(f"Could not load existing summaries: {e}")
             scraped_summary_map = {}
-        finally:
-            db_session.close()
         
         for job in jobs:
             source = getattr(job, "source", "")
@@ -496,7 +497,7 @@ class SearchService:
         
         # Persist new summaries to DB
         if new_summaries:
-            db_session = SessionLocal()
+            db_session = self.job_repo.db
             try:
                 for (source, job_id), summary_text in new_summaries.items():
                     db_session.query(ScrapedJob).filter(
@@ -508,8 +509,6 @@ class SearchService:
             except Exception as e:
                 logger.warning(f"Failed to save job summaries to DB: {e}")
                 db_session.rollback()
-            finally:
-                db_session.close()
         
         return jobs
 
@@ -648,7 +647,7 @@ class SearchService:
             from backend.services.utils import haversine_distance, clean_html_tags
             import datetime
             
-            db_session = SessionLocal()
+            db_session = self.job_repo.db
             try:
                 # Pre-fetch existing ScrapedJobs
                 job_ids = [str(job.id) for job, _, _ in analysis_results]
@@ -765,8 +764,6 @@ class SearchService:
                 db_session.rollback()
                 skipped_count += len(analysis_results)
                 saved_count = 0
-            finally:
-                db_session.close()
                 
         return saved_count, skipped_count
 

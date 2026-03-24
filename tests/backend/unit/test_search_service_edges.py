@@ -114,17 +114,15 @@ async def test_analyze_and_save_success(mock_service):
         with patch("backend.services.utils.geocode_location") as mock_geocode:
             mock_geocode.return_value = MagicMock(lat=46.9, lon=7.4)
             
-            with patch("backend.services.search_service.SessionLocal") as mock_session_local:
-                mock_session = MagicMock()
-                mock_session_local.return_value = mock_session
-                mock_session.query.return_value.filter.return_value.all.return_value = []
-                
-                saved, skipped = await mock_service._analyze_and_save(1, profile_dict, [job1, job2])
-                
-                assert saved == 1
-                assert skipped == 1
-                mock_session.add_all.assert_called()
-                mock_session.commit.assert_called()
+            mock_session = mock_service.job_repo.db
+            mock_session.query.return_value.filter.return_value.all.return_value = []
+            
+            saved, skipped = await mock_service._analyze_and_save(1, profile_dict, [job1, job2])
+            
+            assert saved == 1
+            assert skipped == 1
+            mock_session.add_all.assert_called()
+            mock_session.commit.assert_called()
 
 async def test_analyze_and_save_db_error(mock_service):
     profile_dict = {"id": 1, "user_id": 1}
@@ -134,17 +132,15 @@ async def test_analyze_and_save_db_error(mock_service):
     with patch("backend.services.search_service.llm_service.analyze_job_batch") as mock_analyze:
         mock_analyze.return_value = [{"relevant": True}]
         
-        with patch("backend.services.search_service.SessionLocal") as mock_session_local:
-            mock_session = MagicMock()
-            mock_session_local.return_value = mock_session
-            mock_session.query.return_value.filter.return_value.all.return_value = []
-            
-            mock_session.commit.side_effect = Exception("DB Fail")
-            
-            saved, skipped = await mock_service._analyze_and_save(1, profile_dict, [job1])
-            assert saved == 0
-            assert skipped == 1
-            mock_session.rollback.assert_called_once()
+        mock_session = mock_service.job_repo.db
+        mock_session.query.return_value.filter.return_value.all.return_value = []
+        
+        mock_session.commit.side_effect = Exception("DB Fail")
+        
+        saved, skipped = await mock_service._analyze_and_save(1, profile_dict, [job1])
+        assert saved == 0
+        assert skipped == 1
+        mock_session.rollback.assert_called_once()
 
 async def test_analyze_and_save_batch_exception(mock_service):
     profile_dict = {"id": 1, "user_id": 1}
@@ -233,12 +229,10 @@ async def test_analyze_and_save_stopped_and_truncation(mock_service):
     with patch("backend.services.search_service.settings.MAX_DESCRIPTION_CHARS", 100), \
          patch("backend.services.search_service.get_status", return_value={"state": "searching"}), \
          patch("backend.services.search_service.llm_service.analyze_job_batch", return_value=[{"relevant": True, "affinity_score": 50, "worth_applying": False}]), \
-         patch("backend.services.utils.geocode_location", return_value=MagicMock(lat=46.9, lon=7.4)), \
-         patch("backend.services.search_service.SessionLocal") as mock_session_local:
+         patch("backend.services.utils.geocode_location", return_value=MagicMock(lat=46.9, lon=7.4)):
          
-         mock_session = MagicMock()
+         mock_session = mock_service.job_repo.db
          mock_session.query.return_value.filter.return_value.all.return_value = []
-         mock_session_local.return_value = mock_session
          
          saved, skipped = await mock_service._analyze_and_save(1, profile_dict, [job1])
          assert saved == 1
