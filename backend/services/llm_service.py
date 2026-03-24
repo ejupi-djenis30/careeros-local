@@ -152,7 +152,11 @@ Return ONLY JSON: {{"results": [true, false, true]}}
 One boolean per job, in order. true = relevant, false = irrelevant."""
 
         result = await provider.generate_json_async(system_prompt, user_prompt)
-        return result.get("results", [True] * len(jobs))
+        results = result.get("results", [])
+        # Safety: pad if LLM returned too few, truncate if too many
+        while len(results) < len(jobs):
+            results.append(True)  # Default: keep when in doubt
+        return results[:len(jobs)]
 
     # ─── Step 1: Search Plan Generation ───────────────────────────────────
 

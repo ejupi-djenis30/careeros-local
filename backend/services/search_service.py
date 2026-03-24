@@ -210,7 +210,7 @@ class SearchService:
         def get_query_fingerprint(q: str) -> str:
             import re
             q = q.lower()
-            noise_words = r'\b(m/w/d|f/m/d|m/f/d|100%|80%|80-100%)\\b'
+            noise_words = r'\b(m/w/d|f/m/d|m/f/d|100%|80%|80-100%)\b'
             q = re.sub(noise_words, ' ', q)
             q = re.sub(r'[^\w\s+C#]', ' ', q) # keep +, # for C++, C#
             tokens = [t.strip() for t in q.split() if t.strip()]
@@ -236,9 +236,11 @@ class SearchService:
             total_provider_calls += len(compatible)
 
         # Update status with the actual plan details
+        # Use len(unique_searches) so that total_searches and current_search_index
+        # use the same unit (one query = one tick), giving accurate progress %.
         update_status(
-            profile_id, 
-            total_searches=total_provider_calls, 
+            profile_id,
+            total_searches=len(unique_searches),
             searches_generated=unique_searches
         )
         add_log(profile_id, f"Generated {len(searches)} queries → {len(unique_searches)} unique → {total_provider_calls} provider calls")

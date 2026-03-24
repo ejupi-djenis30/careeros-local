@@ -55,9 +55,10 @@ def _resolve_step_config(step: str) -> dict:
         "model":          step_model or settings.LLM_MODEL,
         "api_key":        step_api_key or settings.LLM_API_KEY,
         "base_url":       step_base_url or settings.LLM_BASE_URL,
-        "temperature":    step_temp if step_temp > 0 else settings.LLM_TEMPERATURE,
-        "top_p":          step_top_p if step_top_p > 0 else settings.LLM_TOP_P,
-        "max_tokens":     step_max_tok if step_max_tok > 0 else settings.LLM_MAX_TOKENS,
+        # Sentinel: -1.0/-1 means "not set for this step" → use global default
+        "temperature":    step_temp if step_temp >= 0 else settings.LLM_TEMPERATURE,
+        "top_p":          step_top_p if step_top_p >= 0 else settings.LLM_TOP_P,
+        "max_tokens":     step_max_tok if step_max_tok >= 0 else settings.LLM_MAX_TOKENS,
         "thinking":       step_thinking if step_thinking else settings.LLM_THINKING,
         "thinking_level": step_thinking_level or settings.LLM_THINKING_LEVEL,
     }

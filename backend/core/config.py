@@ -80,9 +80,9 @@ class Settings(BaseSettings):
     LLM_PLAN_MODEL: str = ""
     LLM_PLAN_API_KEY: str = ""
     LLM_PLAN_BASE_URL: str = ""
-    LLM_PLAN_TEMPERATURE: float = 0.0
-    LLM_PLAN_TOP_P: float = 0.0
-    LLM_PLAN_MAX_TOKENS: int = 0
+    LLM_PLAN_TEMPERATURE: float = -1.0
+    LLM_PLAN_TOP_P: float = -1.0
+    LLM_PLAN_MAX_TOKENS: int = -1
     LLM_PLAN_THINKING: bool = False
     LLM_PLAN_THINKING_LEVEL: str = ""
 
@@ -91,9 +91,9 @@ class Settings(BaseSettings):
     LLM_RELEVANCE_MODEL: str = ""
     LLM_RELEVANCE_API_KEY: str = ""
     LLM_RELEVANCE_BASE_URL: str = ""
-    LLM_RELEVANCE_TEMPERATURE: float = 0.0
-    LLM_RELEVANCE_TOP_P: float = 0.0
-    LLM_RELEVANCE_MAX_TOKENS: int = 0
+    LLM_RELEVANCE_TEMPERATURE: float = -1.0
+    LLM_RELEVANCE_TOP_P: float = -1.0
+    LLM_RELEVANCE_MAX_TOKENS: int = -1
     LLM_RELEVANCE_THINKING: bool = False
     LLM_RELEVANCE_THINKING_LEVEL: str = ""
 
@@ -102,9 +102,9 @@ class Settings(BaseSettings):
     LLM_MATCH_MODEL: str = ""
     LLM_MATCH_API_KEY: str = ""
     LLM_MATCH_BASE_URL: str = ""
-    LLM_MATCH_TEMPERATURE: float = 0.0
-    LLM_MATCH_TOP_P: float = 0.0
-    LLM_MATCH_MAX_TOKENS: int = 0
+    LLM_MATCH_TEMPERATURE: float = -1.0
+    LLM_MATCH_TOP_P: float = -1.0
+    LLM_MATCH_MAX_TOKENS: int = -1
     LLM_MATCH_THINKING: bool = False
     LLM_MATCH_THINKING_LEVEL: str = ""
 
@@ -113,9 +113,9 @@ class Settings(BaseSettings):
     LLM_SUMMARY_MODEL: str = ""
     LLM_SUMMARY_API_KEY: str = ""
     LLM_SUMMARY_BASE_URL: str = ""
-    LLM_SUMMARY_TEMPERATURE: float = 0.0
-    LLM_SUMMARY_TOP_P: float = 0.0
-    LLM_SUMMARY_MAX_TOKENS: int = 0
+    LLM_SUMMARY_TEMPERATURE: float = -1.0
+    LLM_SUMMARY_TOP_P: float = -1.0
+    LLM_SUMMARY_MAX_TOKENS: int = -1
     LLM_SUMMARY_THINKING: bool = False
     LLM_SUMMARY_THINKING_LEVEL: str = ""
 

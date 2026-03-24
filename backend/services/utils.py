@@ -1,11 +1,13 @@
 import math
 import re
 import asyncio
+import threading
 import fitz  # PyMuPDF
 from typing import Optional
 from fastapi import UploadFile, HTTPException
 
 _geocode_cache: dict = {}
+_geocode_cache_lock = threading.Lock()
 
 def clean_html_tags(text: str) -> str:
     """Remove HTML tags like <em>, &nbsp;, etc. from text."""
@@ -112,8 +114,9 @@ async def geocode_location(city: str, client: Optional["httpx.AsyncClient"] = No
         return Coordinates(lat=lat, lon=lon)
         
     global _geocode_cache
-    if normalized in _geocode_cache:
-        return _geocode_cache[normalized]
+    with _geocode_cache_lock:
+        if normalized in _geocode_cache:
+            return _geocode_cache[normalized]
         
     # 2. Nominatim Fallback
     import httpx
@@ -137,7 +140,8 @@ async def geocode_location(city: str, client: Optional["httpx.AsyncClient"] = No
                         lat=float(data[0]["lat"]),
                         lon=float(data[0]["lon"])
                     )
-                    _geocode_cache[normalized] = coords
+                    with _geocode_cache_lock:
+                        _geocode_cache[normalized] = coords
                     return coords
             return None
 
