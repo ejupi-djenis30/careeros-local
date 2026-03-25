@@ -64,8 +64,17 @@ export function ProgressPage() {
 
   if (activeProfileIds.length === 0) {
     return (
-      <div className="d-flex justify-content-center align-items-center h-100 text-white-50">
-        No active searches in progress.
+      <div className="animate-slide-up d-flex justify-content-center align-items-center" style={{ minHeight: '60vh' }}>
+        <div className="glass-panel p-5 text-center" style={{ maxWidth: 480 }}>
+          <div className="rounded-circle bg-secondary bg-opacity-10 d-inline-flex align-items-center justify-content-center mb-4" style={{ width: 80, height: 80 }}>
+            <i className="bi bi-cpu fs-1 text-secondary opacity-50"></i>
+          </div>
+          <h4 className="text-white fw-bold mb-2">No Active Searches</h4>
+          <p className="text-secondary mb-4">No searches are currently running. Start a new search to find your next opportunity.</p>
+          <button className="btn btn-primary px-4" onClick={() => navigate('/new')}>
+            <i className="bi bi-search me-2"></i>Start a New Search
+          </button>
+        </div>
       </div>
     );
   }
@@ -76,16 +85,27 @@ export function ProgressPage() {
         <div className="d-flex gap-2 mb-4 overflow-auto pb-2 custom-scrollbar">
           {activeProfileIds.map(pid => {
             const s = searchStatuses[pid];
-            const isRunning = s && ['running', 'generating', 'searching', 'analyzing'].includes(s.state);
+            const isRunningTab = s && ['running', 'generating', 'searching', 'analyzing'].includes(s.state);
+            const isDoneTab = s && s.state === 'done';
+            const isErrorTab = s && (s.state === 'error' || s.state === 'stopped');
+            const tabIcon = isRunningTab
+              ? 'bi-cpu text-primary'
+              : isDoneTab
+                ? 'bi-check-circle-fill text-success'
+                : isErrorTab
+                  ? 'bi-exclamation-triangle-fill text-warning'
+                  : 'bi-clock text-secondary';
             const baseName = profiles[pid] || `Search #${pid}`;
-            const label = s ? (isRunning ? `${baseName} (Active)` : `${baseName} (${s.state})`) : baseName;
+            const isActive = String(visibleProfileId) === String(pid);
             return (
-              <button 
+              <button
                 key={pid}
-                className={`btn rounded-pill px-4 whitespace-nowrap ${String(visibleProfileId) === String(pid) ? 'btn-primary' : 'btn-outline-secondary bg-black-20 text-white'}`}
+                className={`btn rounded-pill px-4 d-flex align-items-center gap-2 text-nowrap ${isActive ? 'btn-primary' : 'btn-outline-secondary bg-black-20 text-white'}`}
                 onClick={() => setVisibleProfileId(pid)}
+                title={`State: ${s?.state || 'pending'}`}
               >
-                {label}
+                <i className={`bi ${tabIcon}`}></i>
+                {baseName}
               </button>
             );
           })}

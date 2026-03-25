@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { JobService } from '../services/jobs';
 import { SearchService } from '../services/search';
 import { useSearchContext } from '../context/SearchContext';
@@ -28,7 +28,9 @@ export function useJobs(logout) {
   const [filtersState, setFiltersState] = useState(DEFAULT_FILTERS);
   const [pagination, setPaginationState] = useState(DEFAULT_PAGINATION);
   const [searchProfiles, setSearchProfiles] = useState([]);
-  const [isInitialLoad, setIsInitialLoad] = useState(true);
+  const isFirstFetch = useRef(true);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const [pendingAppliedJobIds, setPendingAppliedJobIds] = useState([]);
   const filters = filtersState;
 
@@ -44,7 +46,14 @@ export function useJobs(logout) {
     setPaginationState((prev) => (prev.page === 1 ? prev : { ...prev, page: 1 }));
   }, []);
 
-  const fetchJobs = useCallback(async () => {
+  const fetchJobs = useCallback(async (isBackground = false) => {
+    if (!isBackground) {
+      if (isFirstFetch.current) {
+        setIsLoading(true);
+      } else {
+        setIsRefreshing(true);
+      }
+    }
     try {
       const response = await JobService.getAll({
         ...filters,
@@ -68,7 +77,9 @@ export function useJobs(logout) {
       }
       console.error('Fetch jobs error:', error);
     } finally {
-      setIsInitialLoad(false);
+      isFirstFetch.current = false;
+      setIsLoading(false);
+      setIsRefreshing(false);
     }
   }, [filters, pagination.page, logout]);
 
@@ -156,6 +167,7 @@ export function useJobs(logout) {
     toggleApplied,
     isAppliedPending,
     clearFilters,
-    isInitialLoad
+    isLoading,
+    isRefreshing
   };
 }

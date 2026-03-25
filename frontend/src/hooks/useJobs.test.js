@@ -53,14 +53,14 @@ describe('useJobs', () => {
     await waitFor(() => {
       expect(result.current.jobs).toEqual(mockJobs);
       expect(result.current.searchProfiles).toEqual(mockProfiles);
-      expect(result.current.isInitialLoad).toBe(false);
+      expect(result.current.isLoading).toBe(false);
     });
   });
 
   it('toggles applied status correctly', async () => {
     const { result } = renderHook(() => useJobs());
     
-    await waitFor(() => expect(result.current.isInitialLoad).toBe(false));
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
 
     const updatedJob = { ...mockJobs[0], applied: true };
     JobService.toggleApplied.mockResolvedValue(updatedJob);
@@ -75,7 +75,7 @@ describe('useJobs', () => {
 
   it('prevents overlapping applied toggles for the same job', async () => {
     const { result } = renderHook(() => useJobs());
-    await waitFor(() => expect(result.current.isInitialLoad).toBe(false));
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
 
     let resolveToggle;
     JobService.toggleApplied.mockReturnValue(
@@ -109,7 +109,7 @@ describe('useJobs', () => {
 
   it('clears filters to default values', async () => {
     const { result } = renderHook(() => useJobs());
-    await waitFor(() => expect(result.current.isInitialLoad).toBe(false));
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
 
     await act(async () => {
       result.current.setFilters({ ...result.current.filters, min_score: 50 });
@@ -165,7 +165,7 @@ describe('useJobs', () => {
   it('calls logout on UNAUTHORIZED error in toggleApplied', async () => {
     const logout = vi.fn();
     const { result } = renderHook(() => useJobs(logout));
-    await waitFor(() => expect(result.current.isInitialLoad).toBe(false));
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
 
     JobService.toggleApplied.mockRejectedValue(new Error('UNAUTHORIZED'));
 
@@ -179,7 +179,7 @@ describe('useJobs', () => {
   it('logs error on generic toggleApplied failure', async () => {
     const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
     const { result } = renderHook(() => useJobs());
-    await waitFor(() => expect(result.current.isInitialLoad).toBe(false));
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
 
     JobService.toggleApplied.mockRejectedValue(new Error('FAIL'));
 
@@ -193,7 +193,7 @@ describe('useJobs', () => {
 
   it('clears pending applied state after a failed update', async () => {
     const { result } = renderHook(() => useJobs());
-    await waitFor(() => expect(result.current.isInitialLoad).toBe(false));
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
 
     JobService.toggleApplied.mockRejectedValue(new Error('FAIL'));
 

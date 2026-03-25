@@ -61,7 +61,7 @@ export class ApiClient {
         let refreshedToken = null;
         try {
             refreshedToken = await this._refreshPromise;
-        } catch (e) {
+        } catch {
             refreshedToken = null;
         } finally {
             this._refreshPromise = null;

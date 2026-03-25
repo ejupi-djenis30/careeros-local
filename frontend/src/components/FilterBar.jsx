@@ -9,7 +9,7 @@ const DEFAULT_FILTERS = {
     sort_order: "desc",
 };
 
-export function FilterBar({ filters = DEFAULT_FILTERS, onChange, searchProfiles = [], onClear, onRefresh }) {
+export function FilterBar({ filters = DEFAULT_FILTERS, onChange, searchProfiles = [], onClear, onRefresh, isRefreshing = false }) {
     const safeFilters = { ...DEFAULT_FILTERS, ...filters };
     const availableProfiles = Array.isArray(searchProfiles) ? searchProfiles : [];
 
@@ -131,8 +131,12 @@ export function FilterBar({ filters = DEFAULT_FILTERS, onChange, searchProfiles 
                         className="btn btn-icon btn-secondary rounded-circle ms-2"
                         onClick={onRefresh}
                         title="Refresh Data"
+                        disabled={isRefreshing}
                     >
-                        <i className="bi bi-arrow-clockwise"></i>
+                        {isRefreshing
+                            ? <span className="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
+                            : <i className="bi bi-arrow-clockwise"></i>
+                        }
                     </button>
                 )}
 

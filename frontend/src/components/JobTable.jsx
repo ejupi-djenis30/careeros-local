@@ -4,7 +4,7 @@ import { MobileJobCard } from "./JobTable/MobileJobCard";
 import { DesktopJobRow } from "./JobTable/DesktopJobRow";
 import { ScoreBadge } from "./JobTable/Badges";
 
-export function JobTable({ jobs, isGlobalView, onToggleApplied, isAppliedPending = () => false, pagination, onPageChange }) {
+export function JobTable({ jobs, isGlobalView, onToggleApplied, isAppliedPending = () => false, pagination, onPageChange, isLoading = false }) {
     const [selectedJobForAnalysis, setSelectedJobForAnalysis] = useState(null);
     const handleCopy = (job) => {
         const text = JSON.stringify({
@@ -17,15 +17,25 @@ export function JobTable({ jobs, isGlobalView, onToggleApplied, isAppliedPending
         navigator.clipboard.writeText(text);
     };
     if (!jobs || jobs.length === 0) {
+        if (isLoading) {
+            return (
+                <div className="text-center py-5 d-flex flex-column align-items-center justify-content-center" style={{ minHeight: 240 }}>
+                    <div className="spinner-border text-primary mb-3" style={{ width: '2.5rem', height: '2.5rem' }} role="status">
+                        <span className="visually-hidden">Loading jobs...</span>
+                    </div>
+                    <p className="text-secondary mb-0">Loading jobs...</p>
+                </div>
+            );
+        }
         return (
-            <div className="glass-panel text-center py-5 animate-fade-in align-items-center d-flex flex-column justify-content-center h-100">
+            <div className="text-center py-5 animate-fade-in align-items-center d-flex flex-column justify-content-center" style={{ minHeight: 240 }}>
                 <div className="mb-4">
                     <div className="rounded-circle bg-secondary bg-opacity-10 d-inline-flex align-items-center justify-content-center" style={{ width: 80, height: 80 }}>
                         <i className="bi bi-search fs-1 text-secondary opacity-50"></i>
                     </div>
                 </div>
                 <h4 className="text-white fw-bold">No jobs found</h4>
-                <p className="text-secondary max-w-sm">Try adjusting your filters or starting a new search to find opportunities.</p>
+                <p className="text-secondary">Try adjusting your filters or starting a new search to find opportunities.</p>
             </div>
         );
     }

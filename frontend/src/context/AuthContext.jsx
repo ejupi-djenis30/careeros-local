@@ -20,7 +20,7 @@ export function AuthProvider({ children }) {
                 if (res && res.username) {
                     setUser(res.username);
                 }
-            } catch (err) {
+            } catch {
                 // No active session
             } finally {
                 setLoading(false);
@@ -55,7 +55,16 @@ export function AuthProvider({ children }) {
     };
 
     if (loading) {
-        return <div className="flex h-screen items-center justify-center font-medium text-zinc-500 dark:bg-zinc-950 dark:text-zinc-400">Loading session...</div>;
+        return (
+            <div className="min-vh-100 d-flex align-items-center justify-content-center" style={{ background: 'var(--bg-body)' }}>
+                <div className="text-center">
+                    <div className="spinner-border text-primary mb-3" style={{ width: '3rem', height: '3rem' }} role="status">
+                        <span className="visually-hidden">Loading...</span>
+                    </div>
+                    <p className="text-secondary fw-medium mb-0">Loading session...</p>
+                </div>
+            </div>
+        );
     }
 
     return (

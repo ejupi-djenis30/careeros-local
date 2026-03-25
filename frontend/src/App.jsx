@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { ToastProvider } from './context/ToastContext';
 import { SearchProvider } from './context/SearchContext';
@@ -17,6 +17,7 @@ import { ProgressPage } from './pages/ProgressPage';
 function DashboardLayout() {
   const { isLoggedIn, user, logout } = useAuth();
   const location = useLocation();
+  const navigate = useNavigate();
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isDesktopSidebarCollapsed, setIsDesktopSidebarCollapsed] = useState(false);
 
@@ -26,12 +27,38 @@ function DashboardLayout() {
 
   const getPageContext = (pathname) => {
     switch (pathname) {
-      case '/jobs': return { title: 'Dashboard', desc: 'Overview of your search activities' };
-      case '/new': return { title: 'New Search', desc: 'Configure and launch a new search' };
-      case '/schedules': return { title: 'Schedules', desc: 'Manage your automated searches' };
-      case '/history': return { title: 'Search History', desc: 'Review your search history' };
-      case '/progress': return { title: 'Search in Progress', desc: 'Real-time search status' };
-      default: return { title: 'JobHunter', desc: '' };
+      case '/jobs':
+        return {
+          title: 'Dashboard',
+          desc: 'Overview of your search activities',
+          primaryAction: { label: 'New Search', icon: 'bi-search', to: '/new' }
+        };
+      case '/new':
+        return {
+          title: 'New Search',
+          desc: 'Configure and launch a new search',
+          secondaryAction: { label: 'Back to Dashboard', icon: 'bi-arrow-left', to: '/jobs' }
+        };
+      case '/schedules':
+        return {
+          title: 'Schedules',
+          desc: 'Manage your automated searches',
+          primaryAction: { label: 'Create Search', icon: 'bi-plus-circle', to: '/new' }
+        };
+      case '/history':
+        return {
+          title: 'Search History',
+          desc: 'Review your search history',
+          primaryAction: { label: 'Run New Search', icon: 'bi-search', to: '/new' }
+        };
+      case '/progress':
+        return {
+          title: 'Search in Progress',
+          desc: 'Real-time search status',
+          secondaryAction: { label: 'Dashboard', icon: 'bi-grid', to: '/jobs' }
+        };
+      default:
+        return { title: 'JobHunter', desc: '' };
     }
   };
 
@@ -70,7 +97,51 @@ function DashboardLayout() {
                   <p className="text-secondary mb-0 d-none d-md-block">{currentContext.desc}</p>
                 </div>
               </div>
+
+              <div className="d-flex align-items-center gap-2 d-none d-md-flex">
+                {currentContext.secondaryAction && (
+                  <button
+                    className="btn btn-secondary btn-sm px-3"
+                    onClick={() => navigate(currentContext.secondaryAction.to)}
+                  >
+                    <i className={`bi ${currentContext.secondaryAction.icon} me-2`}></i>
+                    {currentContext.secondaryAction.label}
+                  </button>
+                )}
+                {currentContext.primaryAction && (
+                  <button
+                    className="btn btn-primary btn-sm px-3"
+                    onClick={() => navigate(currentContext.primaryAction.to)}
+                  >
+                    <i className={`bi ${currentContext.primaryAction.icon} me-2`}></i>
+                    {currentContext.primaryAction.label}
+                  </button>
+                )}
+              </div>
             </div>
+
+            {(currentContext.secondaryAction || currentContext.primaryAction) && (
+              <div className="d-flex d-md-none gap-2 mb-3">
+                {currentContext.secondaryAction && (
+                  <button
+                    className="btn btn-secondary btn-sm flex-fill"
+                    onClick={() => navigate(currentContext.secondaryAction.to)}
+                  >
+                    <i className={`bi ${currentContext.secondaryAction.icon} me-2`}></i>
+                    {currentContext.secondaryAction.label}
+                  </button>
+                )}
+                {currentContext.primaryAction && (
+                  <button
+                    className="btn btn-primary btn-sm flex-fill"
+                    onClick={() => navigate(currentContext.primaryAction.to)}
+                  >
+                    <i className={`bi ${currentContext.primaryAction.icon} me-2`}></i>
+                    {currentContext.primaryAction.label}
+                  </button>
+                )}
+              </div>
+            )}
 
             <Routes>
                 <Route path="/" element={<Navigate to="/jobs" replace />} />

@@ -47,6 +47,15 @@ export function Sidebar({ username, onLogout, isOpen, onClose, isCollapsed, onTo
     else searchState = 'process';
   }
 
+  const progressLabel =
+    searchState === 'running'
+      ? 'Searching...'
+      : searchState === 'error'
+        ? 'Search Issues'
+        : searchState === 'done'
+          ? 'Results Ready'
+          : 'Search Progress';
+
   const handleNavClick = () => {
     if (window.innerWidth < 992) onClose(); // Auto-close on mobile
   };
@@ -137,21 +146,23 @@ export function Sidebar({ username, onLogout, isOpen, onClose, isCollapsed, onTo
             </div>
         )}
 
-        {/* Dynamic Search Status */}
-        {searchState && (
-          <NavItem 
-            to="/progress" 
-            label={
-              searchState === 'running' ? 'Searching...' : 
-              searchState === 'done' ? 'Results Ready' : 'Process'
-            }
-            icon={searchState === 'running' ? 'bi-cpu' : 'bi-check-circle-fill'}
-            badge={searchState === 'done'}
-            specialClass={searchState === 'running' ? 'pulsing-border' : ''}
-            onClick={handleNavClick}
-            isCollapsed={isCollapsed}
-          />
-        )}
+        <NavItem
+          to="/progress"
+          label={progressLabel}
+          icon={
+            searchState === 'running'
+              ? 'bi-cpu'
+              : searchState === 'error'
+                ? 'bi-exclamation-triangle-fill'
+                : searchState === 'done'
+                  ? 'bi-check-circle-fill'
+                  : 'bi-activity'
+          }
+          badge={searchState === 'done'}
+          specialClass={searchState === 'running' ? 'pulsing-border' : ''}
+          onClick={handleNavClick}
+          isCollapsed={isCollapsed}
+        />
       </div>
 
       {/* User Footer */}

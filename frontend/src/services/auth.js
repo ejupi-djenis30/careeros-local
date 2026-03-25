@@ -37,7 +37,7 @@ export const AuthService = {
         ApiClient._suppressUnauthorized = true;
         try {
             await ApiClient.post("/auth/logout", {});
-        } catch (e) {
+        } catch {
             // Logout failure is non-critical
         } finally {
             ApiClient._suppressUnauthorized = false;

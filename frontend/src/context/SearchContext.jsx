@@ -17,7 +17,6 @@ export function SearchProvider({ children }) {
 
     useEffect(() => {
         if (!isLoggedIn) {
-            // eslint-disable-next-line react-hooks/set-state-in-effect
             setSearchStatuses({});
             setActiveProfileIds([]);
             return;
