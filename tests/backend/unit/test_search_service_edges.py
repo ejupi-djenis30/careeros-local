@@ -123,7 +123,7 @@ async def test_analyze_and_save_success(mock_service):
             assert saved == 1
             assert skipped == 1
             assert mock_session.add.called
-            mock_session.commit.assert_called()
+            mock_session.commit.assert_called_once()
 
 async def test_analyze_and_save_db_error(mock_service):
     profile_dict = {"id": 1, "user_id": 1}
@@ -143,6 +143,7 @@ async def test_analyze_and_save_db_error(mock_service):
             saved, skipped = await mock_service._analyze_and_save(1, profile_dict, [job1])
             assert saved == 0
             assert skipped == 1
+            mock_session.commit.assert_called_once()
             mock_session.rollback.assert_called_once()
 
 async def test_analyze_and_save_batch_exception(mock_service):
@@ -193,6 +194,21 @@ async def test_generate_plan_exception(mock_service):
         res = await mock_service._generate_plan(1, {}, MagicMock(max_queries=5), {})
         assert res == []
 
+
+async def test_generate_plan_rate_limit_sets_specific_terminal_reason(mock_service):
+    profile = MagicMock(max_queries=5, max_occupation_queries=None, max_keyword_queries=None, cached_queries=None)
+    profile_dict = {"role_description": "dev", "cv_content": "cv", "force_regenerate_queries": True}
+    with patch("backend.services.search_service.llm_service.generate_search_plan", side_effect=Exception("rate_limit_exceeded")), \
+         patch("backend.services.search_service.update_status") as mock_update:
+        res = await mock_service._generate_plan(1, profile_dict, profile, {})
+        assert res == []
+        mock_update.assert_called_with(
+            1,
+            state="error",
+            terminal_reason="llm_plan_rate_limited",
+            error="rate_limit_exceeded",
+        )
+
 async def test_generate_plan_empty_query(mock_service):
     with patch("backend.services.search_service.llm_service.generate_search_plan", return_value=[{"query": ""}, {"query": "dev"}]):
         profile = MagicMock(max_queries=5, cached_queries=None)
@@ -207,9 +223,43 @@ async def test_relevance_filter_exception(mock_service):
     job.company.name = "test"
     job.descriptions = [MagicMock(description="desc")]
     job._summary = None
-    with patch("backend.services.search_service.llm_service.check_relevance_batch", side_effect=Exception("relevance fail")):
+    with patch("backend.services.search_service.llm_service.check_relevance_batch", side_effect=Exception("relevance fail")), \
+         patch("backend.services.search_service.settings.SEARCH_RELEVANCE_FALLBACK_MODE", "conservative"):
+        res = await mock_service._relevance_filter(1, {}, [job])
+        assert len(res) == 0
+
+async def test_relevance_filter_exception_keep_mode(mock_service):
+    job = MagicMock()
+    job.title = "test"
+    job.company = MagicMock()
+    job.company.name = "test"
+    job.descriptions = [MagicMock(description="desc")]
+    job._summary = None
+    with patch("backend.services.search_service.llm_service.check_relevance_batch", side_effect=Exception("relevance fail")), \
+         patch("backend.services.search_service.settings.SEARCH_RELEVANCE_FALLBACK_MODE", "keep"):
         res = await mock_service._relevance_filter(1, {}, [job])
         assert len(res) == 1
+
+async def test_generate_plan_uses_cache_metadata_when_inputs_match(mock_service):
+    profile = MagicMock(max_queries=5, max_occupation_queries=None, max_keyword_queries=None)
+    profile.cached_queries = {
+        "version": 2,
+        "input_fingerprint": "abc",
+        "searches": [{"query": "dev", "type": "occupation", "domain": "it", "language": "en"}],
+    }
+    profile_dict = {
+        "role_description": "dev",
+        "cv_content": "cv",
+        "search_strategy": "",
+        "force_regenerate_queries": False,
+    }
+
+    with patch("backend.services.search_service.compute_plan_input_fingerprint", return_value="abc"), \
+         patch("backend.services.search_service.add_log"):
+        res = await mock_service._generate_plan(1, profile_dict, profile, {})
+
+    assert len(res) == 1
+    assert res[0]["query"] == "dev"
 
 async def test_analyze_and_save_stopped_and_truncation(mock_service):
     profile_dict = {"id": 1, "user_id": 1, "latitude": 47.0, "longitude": 8.0}
@@ -241,6 +291,7 @@ async def test_analyze_and_save_stopped_and_truncation(mock_service):
          saved, skipped = await mock_service._analyze_and_save(1, profile_dict, [job1])
          assert saved == 1
          assert skipped == 0
+         mock_session.commit.assert_called_once()
 
 async def test_analyze_and_save_length_mismatch(mock_service):
     with patch("backend.services.search_service.get_status", return_value={"state": "searching"}), \
@@ -302,6 +353,33 @@ async def test_save_single_job_geocodes_missing_coordinates(mock_service):
 
     saved_job = mock_session.add.call_args_list[-1].args[0]
     assert saved_job.distance_km is not None
+
+async def test_save_single_job_deferred_commit_does_not_commit(mock_service):
+    listing = MagicMock()
+    listing.source = "job_room"
+    listing.id = "deferred-commit"
+    listing.title = "Deferred Commit Role"
+    listing.descriptions = [MagicMock(description="desc")]
+    listing.company = MagicMock(name="ACME")
+    listing.location = MagicMock(city="Zurich", coordinates=MagicMock(lat=47.37, lon=8.54))
+    listing.employment = MagicMock(workload_min=80, workload_max=100)
+    listing.publication = None
+    listing.application = None
+    listing.external_url = "https://example.com/job/deferred"
+
+    mock_session = mock_service.job_repo.db
+    mock_session.query.return_value.filter.return_value.first.return_value = None
+
+    await mock_service._save_single_job(
+        listing,
+        {"affinity_score": 60, "affinity_analysis": "ok", "worth_applying": False},
+        {"id": 1, "user_id": 99},
+        None,
+        commit=False,
+    )
+
+    assert mock_session.add.call_count >= 2
+    mock_session.commit.assert_not_called()
 
 async def test_analyze_and_save_stopped(mock_service):
     with patch("backend.services.search_service.get_status", return_value={"state": "stopped"}):
@@ -376,6 +454,41 @@ async def test_execute_searches_continues_beyond_five_pages(mock_service):
     assert len(res) == 6
     assert mock_provider.search.await_count == 6
 
+async def test_execute_searches_deduplicates_fuzzy_matches(mock_service):
+    searches = [{"query": "software engineer", "domain": "IT", "type": "keyword"}]
+    mock_provider = AsyncMock()
+
+    from types import SimpleNamespace
+
+    job1 = SimpleNamespace(
+        source="adecco",
+        id="1",
+        title="Software Engineer",
+        company=SimpleNamespace(name="ACME GmbH"),
+        external_url="http://example.com/1",
+    )
+    job2 = SimpleNamespace(
+        source="adecco",
+        id="2",
+        title="software engineer",
+        company=SimpleNamespace(name="ACME GMBH"),
+        external_url="http://example.com/2",
+    )
+    mock_provider.search = AsyncMock(return_value=MagicMock(items=[job1, job2], total_pages=1, total_count=2))
+    mock_service.providers = {"adecco": mock_provider}
+
+    with patch("backend.services.search_service.get_compatible_providers", return_value=["adecco"]), \
+         patch("backend.services.search_service.route_provider_names", return_value=["adecco"]), \
+         patch("backend.services.search_service.get_status", return_value={"state": "searching"}), \
+         patch("backend.services.search_service.settings.SEARCH_EXECUTION_MODE", "sequential"), \
+         patch("backend.services.search_service.build_search_request", return_value=MagicMock(model_copy=lambda **kwargs: MagicMock())):
+        profile = SimpleNamespace(location_filter="", posted_within_days=10, max_distance=10, workload_filter="", latitude=None, longitude=None, contract_type="")
+
+        res = await mock_service._execute_searches(1, profile, searches, {"adecco": {}})
+
+    assert len(res) == 1
+    assert res[0].id == "1"
+
 async def test_execute_searches_incompatible_or_stopped(mock_service):
     # Stopped immediately
     with patch("backend.services.search_service.get_status", return_value={"state": "stopped"}):
@@ -384,7 +497,7 @@ async def test_execute_searches_incompatible_or_stopped(mock_service):
         
     # Incompatible domain
     with patch("backend.services.search_service.get_status", return_value={"state": "searching"}), \
-         patch("backend.services.search_service.get_compatible_providers", return_value=[]):
+            patch("backend.services.search_service.route_provider_names", return_value=[]):
         res = await mock_service._execute_searches(1, MagicMock(), [{"query":"t"}], {})
         assert res == []
 
@@ -422,3 +535,108 @@ async def test_run_search_cleanup_close(mock_service):
          
     provider1.close.assert_called_once()
     provider2._session.aclose.assert_called_once()
+
+
+async def test_run_search_force_regenerate_flags(mock_service):
+    profile = MagicMock(
+        id=1,
+        user_id=1,
+        cv_content="CV raw",
+        role_description="dev",
+        search_strategy="",
+        latitude=None,
+        longitude=None,
+        cached_cv_summary="cached summary",
+        cached_queries='[{"query":"cached dev"}]',
+        max_queries=5,
+        max_occupation_queries=None,
+        max_keyword_queries=None,
+    )
+    mock_service.profile_repo.get = MagicMock(return_value=profile)
+
+    with patch("backend.services.search_service.llm_service.generate_search_plan", new=AsyncMock(return_value=[{"query": "fresh dev"}])), \
+         patch("backend.services.search_service.llm_service.summarize_cv", new=AsyncMock(return_value="fresh summary")) as mock_summarize, \
+         patch.object(mock_service, "_execute_searches", new=AsyncMock(return_value=[])), \
+         patch("backend.services.search_service.update_status"):
+        await mock_service.run_search(
+            1,
+            force_regenerate_cv_summary=True,
+            force_regenerate_queries=True,
+        )
+
+    mock_summarize.assert_awaited_once()
+
+
+async def test_run_search_done_terminal_reason_no_results(mock_service):
+    profile = MagicMock(
+        id=1,
+        user_id=1,
+        cv_content=None,
+        role_description="dev",
+        search_strategy="",
+        latitude=None,
+        longitude=None,
+        cached_queries=None,
+        max_queries=5,
+        max_occupation_queries=None,
+        max_keyword_queries=None,
+    )
+    mock_service.profile_repo.get = MagicMock(return_value=profile)
+
+    with patch.object(mock_service, "_generate_plan", new=AsyncMock(return_value=[{"query": "dev"}])), \
+         patch.object(mock_service, "_execute_searches", new=AsyncMock(return_value=[])), \
+         patch("backend.services.search_service.update_status") as mock_update:
+        await mock_service.run_search(1)
+
+    mock_update.assert_any_call(1, state="done", terminal_reason="no_results")
+
+
+async def test_run_search_done_terminal_reason_all_duplicates(mock_service):
+    profile = MagicMock(
+        id=1,
+        user_id=1,
+        cv_content=None,
+        role_description="dev",
+        search_strategy="",
+        latitude=None,
+        longitude=None,
+        cached_queries=None,
+        max_queries=5,
+        max_occupation_queries=None,
+        max_keyword_queries=None,
+    )
+    mock_service.profile_repo.get = MagicMock(return_value=profile)
+
+    with patch.object(mock_service, "_generate_plan", new=AsyncMock(return_value=[{"query": "dev"}])), \
+         patch.object(mock_service, "_execute_searches", new=AsyncMock(return_value=[MagicMock()])), \
+         patch.object(mock_service, "_deduplicate", return_value=([], 1)), \
+         patch("backend.services.search_service.update_status") as mock_update:
+        await mock_service.run_search(1)
+
+    mock_update.assert_any_call(1, state="done", terminal_reason="all_duplicates")
+
+
+async def test_run_search_done_terminal_reason_no_relevant(mock_service):
+    profile = MagicMock(
+        id=1,
+        user_id=1,
+        cv_content=None,
+        role_description="dev",
+        search_strategy="",
+        latitude=None,
+        longitude=None,
+        cached_queries=None,
+        max_queries=5,
+        max_occupation_queries=None,
+        max_keyword_queries=None,
+    )
+    mock_service.profile_repo.get = MagicMock(return_value=profile)
+
+    with patch.object(mock_service, "_generate_plan", new=AsyncMock(return_value=[{"query": "dev"}])), \
+         patch.object(mock_service, "_execute_searches", new=AsyncMock(return_value=[MagicMock()])), \
+         patch.object(mock_service, "_deduplicate", return_value=([MagicMock()], 0)), \
+         patch.object(mock_service, "_relevance_filter", new=AsyncMock(return_value=[])), \
+         patch("backend.services.search_service.update_status") as mock_update:
+        await mock_service.run_search(1)
+
+    mock_update.assert_any_call(1, state="done", terminal_reason="no_relevant_jobs")

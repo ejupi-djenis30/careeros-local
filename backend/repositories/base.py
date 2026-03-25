@@ -25,8 +25,12 @@ class BaseRepository(Generic[ModelType]):
         
         db_obj = self.model(**obj_in_data)
         self.db.add(db_obj)
-        self.db.commit()
-        self.db.refresh(db_obj)
+        try:
+            self.db.commit()
+            self.db.refresh(db_obj)
+        except Exception:
+            self.db.rollback()
+            raise
         return db_obj
 
     def update(
@@ -44,13 +48,21 @@ class BaseRepository(Generic[ModelType]):
                 setattr(db_obj, field, value)
         
         self.db.add(db_obj)
-        self.db.commit()
-        self.db.refresh(db_obj)
+        try:
+            self.db.commit()
+            self.db.refresh(db_obj)
+        except Exception:
+            self.db.rollback()
+            raise
         return db_obj
 
     def delete(self, id: Any) -> Optional[ModelType]:
         obj = self.db.get(self.model, id)
         if obj:
             self.db.delete(obj)
-            self.db.commit()
+            try:
+                self.db.commit()
+            except Exception:
+                self.db.rollback()
+                raise
         return obj

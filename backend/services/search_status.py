@@ -23,7 +23,7 @@ _VALID_STATUS_KEYS = {
     "current_query", "searches_generated", "jobs_found", "jobs_new",
     "jobs_duplicates", "jobs_skipped", "errors", "log",
     "started_at", "finished_at", "error",
-    "jobs_analyzed", "jobs_analyze_total",
+    "jobs_analyzed", "jobs_analyze_total", "terminal_reason",
 }
 _TERMINAL_STATES = {"done", "error", "stopped", "cancelled"}
 
@@ -65,6 +65,7 @@ def init_status(profile_id: int, total_searches: int = 0, searches: List[Dict] =
         _statuses[profile_id] = {
             "user_id": user_id,
             "state": "generating",
+            "terminal_reason": None,
             "total_searches": total_searches,
             "current_search_index": 0,
             "current_query": "",

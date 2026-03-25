@@ -1,10 +1,12 @@
 import React, { useState, useEffect } from "react";
 import { SearchService } from "../services/search";
+import { useToast } from "../context/ToastContext";
 import { SearchFormCoreInputs } from "./SearchForm/SearchFormCoreInputs";
 import { SearchFormParameters } from "./SearchForm/SearchFormParameters";
 import { SearchFormAdvanced } from "./SearchForm/SearchFormAdvanced";
 
 export function SearchForm({ onStartSearch, isLoading, prefill }) {
+    const { showToast } = useToast();
     const [profile, setProfile] = useState({
         name: "",
         role_description: "",
@@ -57,7 +59,7 @@ export function SearchForm({ onStartSearch, isLoading, prefill }) {
             const { text } = await SearchService.uploadCV(file);
             setProfile(prev => ({ ...prev, cv_content: text }));
         } catch (err) {
-            alert("Failed to upload CV: " + err.message);
+            showToast("Failed to upload CV: " + err.message);
         }
     };
 
@@ -65,19 +67,19 @@ export function SearchForm({ onStartSearch, isLoading, prefill }) {
         e.preventDefault();
 
         if (!profile.cv_content) {
-            alert("⚠️ Please upload your CV first. It is required for AI-powered search.");
+            showToast("Please upload your CV first. It is required for AI-powered search.");
             return;
         }
         if (!profile.role_description.trim()) {
-            alert("⚠️ Please describe what you are looking for (Role Description).");
+            showToast("Please describe what you are looking for (Role Description).");
             return;
         }
         if (!profile.location_filter.trim()) {
-            alert("⚠️ Please enter a location.");
+            showToast("Please enter a location.");
             return;
         }
-        if (!profile.latitude || !profile.longitude) {
-            alert("⚠️ Invalid Location: Please select a valid location from the suggestions.");
+        if (profile.latitude == null || profile.longitude == null) {
+            showToast("Invalid location: please select a valid location from the suggestions.");
             return;
         }
 

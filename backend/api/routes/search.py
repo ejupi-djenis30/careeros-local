@@ -91,13 +91,11 @@ async def start_search(
         fresh_db = SessionLocal()
         try:
             svc = get_search_service(fresh_db)
-            # Load profile and attach transient flags so SearchService can read them
-            from backend.repositories.profile_repository import ProfileRepository as PR
-            fresh_profile = PR(fresh_db).get(_profile_id)
-            if fresh_profile:
-                fresh_profile._force_regenerate_cv_summary = _force_cv
-                fresh_profile._force_regenerate_queries = _force_q
-            await svc.run_search(_profile_id)
+            await svc.run_search(
+                _profile_id,
+                force_regenerate_cv_summary=_force_cv,
+                force_regenerate_queries=_force_q,
+            )
         finally:
             fresh_db.close()
             

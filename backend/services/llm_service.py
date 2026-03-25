@@ -1,23 +1,22 @@
 import logging
-import re
 import threading
 from typing import Dict, Any, List, Optional
 from tenacity import retry, stop_after_attempt, wait_exponential
 from backend.providers.llm.factory import get_provider_for_step
 from backend.core.config import settings
+from backend.services.search.query_contracts import (
+    canonicalize_query_text,
+    compute_plan_input_fingerprint,
+    exact_query_fingerprint,
+    normalize_search_item,
+    sanitize_prompt_text,
+)
 
 logger = logging.getLogger(__name__)
 
 
 def _query_fingerprint(search: Dict[str, Any]) -> str:
-    query = str(search.get("query", "")).lower()
-    query = re.sub(r"\b(m/w/d|f/m/d|m/f/d|100%|80%|80-100%)\b", " ", query)
-    query = re.sub(r"[^\w\s+C#]", " ", query)
-    query = " ".join(sorted(token.strip() for token in query.split() if token.strip()))
-    query_type = str(search.get("type", "")).strip().lower()
-    language = str(search.get("language", "")).strip().lower()
-    domain = str(search.get("domain", "")).strip().lower()
-    return f"{query_type}|{language}|{domain}|{query}"
+    return exact_query_fingerprint(search)
 
 
 class LLMService:
@@ -41,6 +40,29 @@ class LLMService:
         """Force reload of all LLM providers (e.g. if config changes)."""
         with self._provider_cache_lock:
             self._provider_cache.clear()
+
+    def _extract_searches_payload(self, result: Any) -> tuple[List[Dict[str, Any]], str]:
+        """Extract search list from variant LLM response shapes.
+
+        Supports canonical payload ``{"searches": [...]}`` and common aliases
+        returned by models under pressure (``queries`` / ``results`` or a root list).
+        """
+        if isinstance(result, dict):
+            for key in ("searches", "queries", "results"):
+                if key not in result:
+                    continue
+                value = result.get(key)
+                if isinstance(value, list):
+                    return value, key
+                if isinstance(value, dict):
+                    return [value], key
+                return [], f"invalid_{key}"
+            return [], "missing_keys"
+
+        if isinstance(result, list):
+            return result, "root_list"
+
+        return [], "invalid_root"
 
     def is_summary_step_configured(self) -> bool:
         """Return True only if LLM_SUMMARY_* env vars are explicitly configured.
@@ -182,11 +204,22 @@ Return ONLY JSON: {{"results": [true, false, true]}}
 One boolean per job, in order. true = relevant, false = irrelevant."""
 
         result = await provider.generate_json_async(system_prompt, user_prompt)
-        results = result.get("results", [])
-        # Safety: pad if LLM returned too few, truncate if too many
-        while len(results) < len(jobs):
-            results.append(True)  # Default: keep when in doubt
-        return results[:len(jobs)]
+        results = result.get("results", []) if isinstance(result, dict) else []
+        fallback_keep = (settings.SEARCH_RELEVANCE_FALLBACK_MODE or "conservative").strip().lower() == "keep"
+        normalized_results: List[bool] = []
+
+        for item in results[:len(jobs)]:
+            if isinstance(item, bool):
+                normalized_results.append(item)
+            elif isinstance(item, dict):
+                normalized_results.append(bool(item.get("relevant", fallback_keep)))
+            else:
+                normalized_results.append(fallback_keep)
+
+        while len(normalized_results) < len(jobs):
+            normalized_results.append(fallback_keep)
+
+        return normalized_results
 
     # ─── Step 1: Search Plan Generation ───────────────────────────────────
 
@@ -304,16 +337,40 @@ One boolean per job, in order. true = relevant, false = irrelevant."""
                     f"This batch must contribute EXACTLY {batch_size} NEW UNIQUE queries. "
                     f"Remaining total target after this batch: {remaining_total - batch_size}."
                 )
-                batch_searches = await self._call_generate_search_plan(
-                    profile,
-                    providers_info,
-                    max_queries=batch_size,
-                    max_occupation_queries=batch_occ,
-                    max_keyword_queries=batch_kw,
-                    attempt=attempt,
-                    existing_queries=[item.get("query", "") for item in collected[-120:]],
-                    feedback=feedback,
-                )
+                try:
+                    batch_searches = await self._call_generate_search_plan(
+                        profile,
+                        providers_info,
+                        max_queries=batch_size,
+                        max_occupation_queries=batch_occ,
+                        max_keyword_queries=batch_kw,
+                        attempt=attempt,
+                        existing_queries=[item.get("query", "") for item in collected[-120:]],
+                        feedback=feedback,
+                    )
+                except Exception as batch_error:
+                    logger.warning(
+                        "[PLAN] Batch call failed on attempt %s/%s: %s",
+                        attempt + 1,
+                        MAX_RETRIES + 1,
+                        batch_error,
+                    )
+                    if best_batch:
+                        logger.warning(
+                            "[PLAN] Using best partial batch (%s queries) after LLM failure",
+                            len(best_batch),
+                        )
+                        break
+
+                    if collected:
+                        logger.warning(
+                            "[PLAN] Returning partial collected plan %s/%s due to LLM failure",
+                            len(collected),
+                            total_target,
+                        )
+                        return collected[:total_target]
+
+                    raise
 
                 unique_batch = self._normalize_searches(batch_searches, seen_fingerprints)
                 if len(unique_batch) > len(best_batch):
@@ -345,7 +402,30 @@ One boolean per job, in order. true = relevant, false = irrelevant."""
                 stall_count += 1
                 logger.warning("[PLAN] Batch generation stalled with no new unique queries")
                 if stall_count >= 2:
-                    break
+                    if collected:
+                        logger.warning(
+                            "[PLAN] Stopping early after repeated stalls; returning partial plan %s/%s",
+                            len(collected),
+                            total_target,
+                        )
+                        break
+
+                    logger.warning(
+                        "[PLAN] No queries collected after repeated stalls; attempting rescue batch without strict type split"
+                    )
+                    rescue_searches = await self._call_generate_search_plan(
+                        profile,
+                        providers_info,
+                        max_queries=min(batch_size_limit, total_target),
+                        max_occupation_queries=None,
+                        max_keyword_queries=None,
+                        existing_queries=[item.get("query", "") for item in collected[-120:]],
+                        feedback="Recovery mode: produce any high-quality, unique executable queries.",
+                    )
+                    best_batch = self._normalize_searches(rescue_searches, seen_fingerprints)
+                    if not best_batch:
+                        break
+                    stall_count = 0
                 continue
 
             stall_count = 0
@@ -380,29 +460,46 @@ One boolean per job, in order. true = relevant, false = irrelevant."""
     ) -> List[Dict[str, Any]]:
         normalized: List[Dict[str, Any]] = []
         local_seen = set(seen_fingerprints or set())
+        dropped_non_dict = 0
+        dropped_empty_query = 0
+        dropped_duplicates = 0
+        normalized_type_count = 0
 
         for search in searches:
-            if not isinstance(search, dict):
+            candidate, reason = normalize_search_item(search)
+            if not candidate:
+                if reason == "non_dict":
+                    dropped_non_dict += 1
+                elif reason == "empty_query":
+                    dropped_empty_query += 1
                 continue
-            query = str(search.get("query", "")).strip()
-            search_type = str(search.get("type", "keyword")).strip().lower() or "keyword"
-            domain = str(search.get("domain", "general")).strip().lower() or "general"
-            language = str(search.get("language", "en")).strip().lower() or "en"
-            if not query:
-                continue
-
-            candidate = {
-                "query": query,
-                "type": search_type,
-                "domain": domain,
-                "language": language,
-            }
+            original_type = str(search.get("type", "")).strip().lower() if isinstance(search, dict) else ""
+            if original_type not in {"occupation", "keyword"}:
+                normalized_type_count += 1
             fingerprint = _query_fingerprint(candidate)
             if fingerprint in local_seen:
+                dropped_duplicates += 1
                 continue
 
             local_seen.add(fingerprint)
             normalized.append(candidate)
+
+        if searches and not normalized:
+            logger.warning(
+                "[PLAN] All candidate queries were filtered out (non_dict=%s empty_query=%s duplicates=%s)",
+                dropped_non_dict,
+                dropped_empty_query,
+                dropped_duplicates,
+            )
+        elif dropped_non_dict or dropped_empty_query or dropped_duplicates:
+            logger.info(
+                "[PLAN] Query normalization dropped entries (non_dict=%s empty_query=%s duplicates=%s type_inferred=%s kept=%s)",
+                dropped_non_dict,
+                dropped_empty_query,
+                dropped_duplicates,
+                normalized_type_count,
+                len(normalized),
+            )
 
         return normalized
 
@@ -464,11 +561,26 @@ One boolean per job, in order. true = relevant, false = irrelevant."""
         provider = self._get_provider("plan")
         logger.info(f"[PLAN] Using {provider.model_id} (attempt {attempt + 1})")
 
+        role_description = sanitize_prompt_text(profile.get("role_description"), max_chars=1200)
+        search_strategy = sanitize_prompt_text(profile.get("search_strategy"), max_chars=1200)
+        cv_content = sanitize_prompt_text(profile.get("cv_content"), max_chars=6000)
+        input_fingerprint = compute_plan_input_fingerprint(
+            {
+                "role_description": role_description,
+                "search_strategy": search_strategy,
+                "cv_content": cv_content,
+            },
+            max_queries=max_queries,
+            max_occupation_queries=max_occupation_queries,
+            max_keyword_queries=max_keyword_queries,
+        )
+
         system_prompt = (
             "You are an expert Job Hunter AI specialized in the Swiss job market. "
             "You are fluent in English, German, French, and Italian. "
             "Your task is to generate HIGH-QUALITY, DIVERSE, and EXECUTABLE search queries "
-            "that maximize recall without wasting slots on near-duplicates."
+            "that maximize precision first, then coverage, without wasting slots on duplicates or vague terms. "
+            "Return only concrete queries that a Swiss job board can execute directly."
         )
 
         provider_lines = []
@@ -538,9 +650,9 @@ One boolean per job, in order. true = relevant, false = irrelevant."""
 You do NOT need to assign queries to specific job boards — the system routes them automatically.
 
 PROFILE:
-- Role / What they are looking for: {profile.get('role_description')}
-- Strategy / AI Instructions: {profile.get('search_strategy')}
-- CV Summary: {profile.get('cv_content')}
+- Role / What they are looking for: {role_description or 'Unknown'}
+- Strategy / AI Instructions: {search_strategy or 'None'}
+- CV Evidence Extract: {cv_content or 'Unavailable'}
 
 AVAILABLE PROVIDERS:
 {providers_block}
@@ -557,8 +669,14 @@ QUERY GENERATION RULES:
     - Ensure queries are distinct, high-quality, and not cosmetic variants of each other.
     - Prefer concrete, searchable terms actually used in job titles and skill filters.
     - Cover nearby seniority labels, role variants, and stack-specific wording when relevant.
+6. DETERMINISM:
+    - Avoid commentary, uncertainty markers, or meta text.
+    - Prefer canonical Swiss/European job title wording over creative paraphrases.
+    - If type is unclear, choose the most executable form.
 
 {limit_instruction}{retry_note}{feedback_block}{exclusion_block}
+
+INTERNAL PLAN FINGERPRINT: {input_fingerprint}
 
 Return ONLY pure JSON with a 'searches' list. Example:
 {{
@@ -571,7 +689,18 @@ Return ONLY pure JSON with a 'searches' list. Example:
 }}"""
 
         result = await provider.generate_json_async(system_prompt, user_prompt)
-        searches = result.get("searches", []) if isinstance(result, dict) else []
+        searches, payload_source = self._extract_searches_payload(result)
+        if payload_source.startswith("invalid") or payload_source == "missing_keys":
+            if isinstance(result, dict):
+                result_keys = list(result.keys())
+            else:
+                result_keys = [type(result).__name__]
+            raise ValueError(
+                f"LLM plan payload missing valid query list (source={payload_source}, keys={result_keys})"
+            )
+
+        if payload_source != "searches":
+            logger.warning("[PLAN] Non-canonical plan payload key used by model: %s", payload_source)
 
         # Application-side cap just in case the LLM produces too many total queries
         if max_queries is not None:
@@ -636,7 +765,49 @@ Return ONLY JSON with a "results" array, one entry per job, IN ORDER:
 }}"""
 
         result = await provider.generate_json_async(system_prompt, user_prompt)
-        return result.get("results", [])
+        results = result.get("results", []) if isinstance(result, dict) else []
+        normalized_results: List[Dict[str, Any]] = []
+
+        for item in results[:len(jobs_metadata)]:
+            if not isinstance(item, dict):
+                normalized_results.append(
+                    {
+                        "relevant": False,
+                        "affinity_score": 0,
+                        "affinity_analysis": "Invalid analysis payload returned by model.",
+                        "worth_applying": False,
+                    }
+                )
+                continue
+
+            score = item.get("affinity_score", 0)
+            try:
+                score = max(0, min(100, int(score)))
+            except Exception:
+                score = 0
+
+            relevant = bool(item.get("relevant", False))
+            worth_applying = bool(item.get("worth_applying", False)) and relevant and score >= 65
+            normalized_results.append(
+                {
+                    "relevant": relevant,
+                    "affinity_score": score,
+                    "affinity_analysis": sanitize_prompt_text(item.get("affinity_analysis", ""), max_chars=600) or "No analysis returned.",
+                    "worth_applying": worth_applying,
+                }
+            )
+
+        while len(normalized_results) < len(jobs_metadata):
+            normalized_results.append(
+                {
+                    "relevant": False,
+                    "affinity_score": 0,
+                    "affinity_analysis": "Model returned too few analysis rows.",
+                    "worth_applying": False,
+                }
+            )
+
+        return normalized_results
 
 
 llm_service = LLMService()

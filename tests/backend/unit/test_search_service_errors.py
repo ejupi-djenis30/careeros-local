@@ -38,14 +38,29 @@ async def test_analyze_and_save_db_failure(db_session):
 
 @pytest.mark.asyncio
 async def test_relevance_filter_exception_handling():
-    """Test that relevance_filter falls back to keeping all jobs if LLM fails."""
+    """Test that relevance_filter defaults to conservative drop mode if LLM fails."""
     service = SearchService(MagicMock(), MagicMock())
     jobs = [MagicMock(), MagicMock()]
     
-    with patch("backend.services.llm_service.llm_service.check_relevance_batch", new_callable=AsyncMock) as mock_check:
+    with patch("backend.services.llm_service.llm_service.check_relevance_batch", new_callable=AsyncMock) as mock_check, \
+         patch("backend.services.search_service.settings.SEARCH_RELEVANCE_FALLBACK_MODE", "conservative"):
         mock_check.side_effect = Exception("LLM Down")
         
         filtered = await service._relevance_filter(1, {}, jobs)
         
+        assert filtered == []
+
+
+@pytest.mark.asyncio
+async def test_relevance_filter_exception_keep_mode():
+    service = SearchService(MagicMock(), MagicMock())
+    jobs = [MagicMock(), MagicMock()]
+
+    with patch("backend.services.llm_service.llm_service.check_relevance_batch", new_callable=AsyncMock) as mock_check, \
+         patch("backend.services.search_service.settings.SEARCH_RELEVANCE_FALLBACK_MODE", "keep"):
+        mock_check.side_effect = Exception("LLM Down")
+
+        filtered = await service._relevance_filter(1, {}, jobs)
+
         assert len(filtered) == 2
         assert filtered == jobs

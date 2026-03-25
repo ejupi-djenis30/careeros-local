@@ -1,9 +1,11 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { useToast } from '../context/ToastContext';
 
 export function LocationInput({
     location,
     onLocationChange
 }) {
+    const { showToast } = useToast();
     const [query, setQuery] = useState(location || "");
     const [suggestions, setSuggestions] = useState([]);
     const [isLoading, setIsLoading] = useState(false);
@@ -41,9 +43,13 @@ export function LocationInput({
                     }
                 }
             );
+            if (!response.ok) {
+                throw new Error(`Location search failed with status ${response.status}`);
+            }
             const data = await response.json();
+            const normalizedData = Array.isArray(data) ? data : [];
 
-            const formattedSuggestions = data.map((item) => {
+            const formattedSuggestions = normalizedData.map((item) => {
                 const address = item.address || {};
                 const parts = [];
                 
@@ -75,6 +81,7 @@ export function LocationInput({
             setShowSuggestions(true);
         } catch (error) {
             console.error("OSM Search Error:", error);
+            showToast("Failed to fetch location suggestions. Please try again.");
         } finally {
             setIsLoading(false);
         }
@@ -108,7 +115,7 @@ export function LocationInput({
 
     const handleCurrentLocation = () => {
         if (!navigator.geolocation) {
-            alert("Geolocation is not supported");
+            showToast("Geolocation is not supported by your browser.");
             return;
         }
 
@@ -126,6 +133,9 @@ export function LocationInput({
                             }
                         }
                     );
+                    if (!response.ok) {
+                        throw new Error(`Reverse geocoding failed with status ${response.status}`);
+                    }
                     const data = await response.json();
                     const displayName = data.display_name || `Lat: ${latitude.toFixed(4)}, Lon: ${longitude.toFixed(4)}`;
                     
@@ -137,6 +147,7 @@ export function LocationInput({
                     });
                 } catch (error) {
                     console.error("Reverse Geocoding Error:", error);
+                    showToast("Failed to resolve address from your current location.");
                     setQuery(`Lat: ${latitude.toFixed(4)}, Lon: ${longitude.toFixed(4)}`);
                     onLocationChange({
                         name: `Lat: ${latitude.toFixed(4)}, Lon: ${longitude.toFixed(4)}`,
@@ -149,7 +160,7 @@ export function LocationInput({
             },
             (error) => {
                 console.error("Geolocation Error:", error);
-                alert("Impossible to retrieve location");
+                showToast("Unable to retrieve your current location.");
                 setIsLoading(false);
             }
         );

@@ -1,6 +1,6 @@
 import asyncio
 import logging
-import json
+import re
 from typing import List, Dict, Any, Optional
 from datetime import datetime, timezone
 
@@ -22,6 +22,17 @@ except ImportError:
 from backend.providers.jobs.localdb.client import LocalDbProvider
 from backend.providers.jobs.models import JobSearchRequest, SortOrder, RadiusSearchRequest, Coordinates
 from backend.providers.jobs.jobroom.avam_mapper import avam_mapper
+from backend.services.search.query_contracts import (
+    build_plan_cache_payload,
+    compute_plan_input_fingerprint,
+    exact_query_fingerprint,
+    is_cached_plan_compatible,
+    loose_query_fingerprint,
+    normalize_search_item,
+    route_provider_names,
+    supported_request_language,
+    unpack_plan_cache_payload,
+)
 from backend.services.search_status import (
     init_status, add_log, update_status, clear_status, get_status, register_task, unregister_task
 )
@@ -33,14 +44,7 @@ STOP_STATES = {"stopped", "cancelled", "finished", "failed"}
 
 
 def get_query_fingerprint(query: str) -> str:
-    import re
-
-    query = query.lower()
-    noise_words = r'\b(m/w/d|f/m/d|m/f/d|100%|80%|80-100%)\b'
-    query = re.sub(noise_words, ' ', query)
-    query = re.sub(r'[^\w\s+C#]', ' ', query)
-    tokens = [token.strip() for token in query.split() if token.strip()]
-    return " ".join(sorted(tokens))
+    return loose_query_fingerprint(query)
 
 
 # ─────────────────────── Domain Router ───────────────────────
@@ -50,19 +54,7 @@ def get_compatible_providers(
     providers: Dict[str, Any],
     provider_infos: Dict[str, Any],
 ) -> List[str]:
-    """Return provider names whose accepted_domains match the query domain.
-    
-    Rules:
-    - "*" in accepted_domains → accepts everything (generalist)
-    - query_domain in accepted_domains → exact domain match
-    - query_domain == "general" → only generalist providers
-    """
-    compatible = []
-    for name, info in provider_infos.items():
-        domains = info.accepted_domains
-        if "*" in domains or query_domain in domains:
-            compatible.append(name)
-    return compatible
+    return route_provider_names({"domain": query_domain}, providers, provider_infos)
 
 
 class SearchService:
@@ -86,7 +78,44 @@ class SearchService:
         if AdeccoProvider:
             self.providers["adecco"] = AdeccoProvider()
 
-    async def run_search(self, profile_id: int):
+    def _normalized_text_token(self, value: str) -> str:
+        if not isinstance(value, str):
+            return ""
+        text = re.sub(r"[^\w\s]", " ", (value or "").lower())
+        return " ".join(text.split())
+
+    def _extract_company_name(self, listing) -> str:
+        company_obj = getattr(listing, "company", None)
+        if hasattr(company_obj, "name"):
+            return company_obj.name or ""
+        if isinstance(company_obj, str):
+            return company_obj
+        return ""
+
+    def _listing_identity_key(self, listing) -> Optional[str]:
+        platform = getattr(listing, "source", None) or getattr(listing, "platform", None)
+        platform_id = getattr(listing, "id", None) or getattr(listing, "platform_job_id", None)
+        if platform and platform_id:
+            return f"{platform}:{platform_id}"
+        return None
+
+    def _listing_url_token(self, listing) -> str:
+        url = getattr(listing, "external_url", None) or getattr(listing, "url", None) or ""
+        return (url or "").strip().lower()
+
+    def _listing_fuzzy_key(self, listing) -> str:
+        title = self._normalized_text_token(getattr(listing, "title", ""))
+        company = self._normalized_text_token(self._extract_company_name(listing))
+        if not title and not company:
+            return ""
+        return f"{title}::{company}"
+
+    async def run_search(
+        self,
+        profile_id: int,
+        force_regenerate_cv_summary: bool = False,
+        force_regenerate_queries: bool = False,
+    ):
         """Run the full search workflow for a saved profile."""
         register_task(profile_id, asyncio.current_task())
         
@@ -107,9 +136,9 @@ class SearchService:
                 "search_strategy": profile.search_strategy or "",
                 "latitude": profile.latitude,
                 "longitude": profile.longitude,
-                # Feature 3: force-regeneration flags (propagated from the HTTP request)
-                "force_regenerate_cv_summary": getattr(profile, "_force_regenerate_cv_summary", False),
-                "force_regenerate_queries": getattr(profile, "_force_regenerate_queries", False),
+                # Feature 3: force-regeneration flags (propagated from HTTP request)
+                "force_regenerate_cv_summary": force_regenerate_cv_summary,
+                "force_regenerate_queries": force_regenerate_queries,
             }
             user_id = profile.user_id
 
@@ -123,7 +152,24 @@ class SearchService:
 
             searches = await self._generate_plan(profile_id, profile_dict, profile, provider_infos)
             if not searches:
-                update_status(profile_id, state="done")
+                status_data = get_status(profile_id)
+                status_state = status_data.get("state")
+                status_reason = status_data.get("terminal_reason")
+
+                if status_state == "error":
+                    add_log(
+                        profile_id,
+                        f"[LLM_DEBUG] state=error terminal_reason={status_reason or 'llm_plan_error'} profile_id={profile_id}",
+                    )
+                    return
+
+                terminal_reason = status_reason or "no_queries"
+                if terminal_reason == "no_valid_queries_after_filter":
+                    add_log(profile_id, "LLM generated plan candidates, but all were filtered out as invalid/duplicates.")
+                else:
+                    add_log(profile_id, "No valid search queries were generated.")
+                add_log(profile_id, f"[LLM_DEBUG] state=done terminal_reason={terminal_reason} profile_id={profile_id}")
+                update_status(profile_id, state="done", terminal_reason=terminal_reason)
                 return
 
             # ── CV Summary (with caching Feature 3) ──
@@ -150,7 +196,8 @@ class SearchService:
             all_jobs = await self._execute_searches(profile_id, profile, searches, provider_infos)
             if not all_jobs:
                 add_log(profile_id, "No jobs found across all queries.")
-                update_status(profile_id, state="done")
+                add_log(profile_id, f"[LLM_DEBUG] state=done terminal_reason=no_results profile_id={profile_id}")
+                update_status(profile_id, state="done", terminal_reason="no_results")
                 return
 
             # ── Step 3: Deduplication & Feature 2 (Cross-Profile Applied) ──
@@ -160,7 +207,8 @@ class SearchService:
             
             if not unique_jobs:
                 add_log(profile_id, "All found jobs are already in profile history.")
-                update_status(profile_id, state="done")
+                add_log(profile_id, f"[LLM_DEBUG] state=done terminal_reason=all_duplicates profile_id={profile_id}")
+                update_status(profile_id, state="done", terminal_reason="all_duplicates")
                 return
 
             # ── Step 3.5: Job Summary Generation (Feature 1 — opt-in) ──
@@ -177,7 +225,8 @@ class SearchService:
 
             if not unique_jobs:
                 add_log(profile_id, "No relevant jobs passed Phase 1 filter.")
-                update_status(profile_id, state="done")
+                add_log(profile_id, f"[LLM_DEBUG] state=done terminal_reason=no_relevant_jobs profile_id={profile_id}")
+                update_status(profile_id, state="done", terminal_reason="no_relevant_jobs")
                 return
 
             update_status(
@@ -194,9 +243,11 @@ class SearchService:
             saved_count, skipped_count = await self._analyze_and_save(profile_id, profile_dict, unique_jobs)
 
             add_log(profile_id, f"✓ Search complete – {saved_count} jobs saved, {skipped_count} skipped")
+            add_log(profile_id, f"[LLM_DEBUG] state=done terminal_reason=completed profile_id={profile_id} jobs_saved={saved_count} jobs_skipped={skipped_count}")
             update_status(
                 profile_id,
                 state="done",
+                terminal_reason="completed",
                 finished_at=datetime.now(timezone.utc).isoformat(),
                 jobs_found=len(all_jobs),
                 jobs_new=saved_count,
@@ -233,14 +284,31 @@ class SearchService:
     async def _generate_plan(self, profile_id: int, profile_dict: dict, profile, provider_infos) -> list:
         # Feature 3: check cached queries
         force_regen_q = profile_dict.get("force_regenerate_queries", False)
+        add_log(
+            profile_id,
+            "[LLM_DEBUG] plan_input "
+            f"profile_id={profile_id} force_regenerate_queries={force_regen_q} "
+            f"max_queries={profile.max_queries} max_occupation_queries={profile.max_occupation_queries} "
+            f"max_keyword_queries={profile.max_keyword_queries} "
+            f"role_description_len={len(profile_dict.get('role_description') or '')} "
+            f"cv_content_len={len(profile_dict.get('cv_content') or '')}",
+        )
+        input_fingerprint = compute_plan_input_fingerprint(
+            profile_dict,
+            max_queries=profile.max_queries,
+            max_occupation_queries=profile.max_occupation_queries,
+            max_keyword_queries=profile.max_keyword_queries,
+        )
         
         if profile.cached_queries and not force_regen_q:
             try:
-                if isinstance(profile.cached_queries, str):
-                    searches = json.loads(profile.cached_queries)
+                cached_searches, cache_meta = unpack_plan_cache_payload(profile.cached_queries)
+                if is_cached_plan_compatible(cache_meta, input_fingerprint):
+                    searches = cached_searches
+                    add_log(profile_id, f"✓ Using {len(searches)} cached queries")
                 else:
-                    searches = profile.cached_queries
-                add_log(profile_id, f"✓ Using {len(searches)} cached queries")
+                    searches = []
+                    add_log(profile_id, "Cached queries ignored because planning inputs changed.")
             except Exception as e:
                 logger.error(f"Failed to parse cached queries: {e}")
                 searches = []
@@ -255,9 +323,14 @@ class SearchService:
                     max_occupation_queries=profile.max_occupation_queries,
                     max_keyword_queries=profile.max_keyword_queries,
                 )
+                add_log(profile_id, f"[LLM_DEBUG] plan_raw_output_count={len(searches) if searches else 0}")
             except Exception as e:
                 logger.error(f"LLM keyword generation failed: {e}")
-                update_status(profile_id, state="error", error=str(e))
+                error_text = str(e).lower()
+                terminal_reason = "llm_plan_error"
+                if "rate limit" in error_text or "rate_limit" in error_text:
+                    terminal_reason = "llm_plan_rate_limited"
+                update_status(profile_id, state="error", terminal_reason=terminal_reason, error=str(e))
                 return []
             
             if not searches:
@@ -265,21 +338,40 @@ class SearchService:
             
             # Save queries to cache (Feature 3)
             try:
-                self.profile_repo.update(profile, {"cached_queries": json.dumps(searches)})
+                cache_payload = build_plan_cache_payload(
+                    searches,
+                    input_fingerprint=input_fingerprint,
+                    stats={"count": len(searches)},
+                )
+                self.profile_repo.update(profile, {"cached_queries": cache_payload})
             except Exception as e:
                 logger.warning(f"Failed to cache queries: {e}")
 
         unique_searches = []
         seen_queries = set()
+        dropped_empty_queries = 0
+        dropped_duplicate_queries = 0
         for s in searches:
-            q_str = s.get("query", "").strip()
-            if not q_str:
+            normalized_search, reason = normalize_search_item(s)
+            if not normalized_search:
+                dropped_empty_queries += 1
                 continue
-                
-            fingerprint = get_query_fingerprint(q_str)
+
+            fingerprint = exact_query_fingerprint(normalized_search)
             if fingerprint not in seen_queries:
                 seen_queries.add(fingerprint)
-                unique_searches.append(s)
+                unique_searches.append(normalized_search)
+            else:
+                dropped_duplicate_queries += 1
+
+        add_log(
+            profile_id,
+            "[LLM_DEBUG] plan_filter_stats "
+            f"input={len(searches)} kept={len(unique_searches)} "
+            f"dropped_empty={dropped_empty_queries} dropped_duplicates={dropped_duplicate_queries}",
+        )
+        if searches and not unique_searches:
+            update_status(profile_id, terminal_reason="no_valid_queries_after_filter")
 
         # Update status with the actual plan details
         update_status(
@@ -310,9 +402,15 @@ class SearchService:
                 if status_data.get("state") in STOP_STATES:
                     return []
                     
-                query = search.get("query", "")
-                domain = search.get("domain", "general")
-                query_type = search.get("type", "keyword")
+                normalized_search, _ = normalize_search_item(search)
+                if not normalized_search:
+                    add_log(profile_id, f"⚠ Skipping invalid query payload at index {idx + 1}")
+                    return []
+
+                query = normalized_search.get("query", "")
+                domain = normalized_search.get("domain", "general")
+                query_type = normalized_search.get("type", "keyword")
+                query_language = normalized_search.get("language", "en")
                 
                 profession_codes = []
                 avam_fallback_keyword = False
@@ -322,7 +420,7 @@ class SearchService:
                         avam_fallback_keyword = True
                         add_log(profile_id, f"  ℹ AVAM found no codes for «{query}», JobRoom will use keyword fallback")
 
-                compatible = get_compatible_providers(domain, self.providers, provider_infos)
+                compatible = route_provider_names(normalized_search, self.providers, provider_infos)
                 if not compatible:
                     add_log(profile_id, f"⚠ No providers accept domain '{domain}' for «{query}»")
                     return []
@@ -330,8 +428,6 @@ class SearchService:
                 # Update status
                 update_status(profile_id, current_search_index=idx + 1, current_query=f"«{query}» ({domain})")
                 add_log(profile_id, f"Running query {idx+1}/{len(searches)}: «{query}» on {', '.join(compatible)}")
-
-                request = build_search_request(profile, query, profession_codes)
 
                 async def search_provider(provider_name: str, req: JobSearchRequest):
                     provider = self.providers[provider_name]
@@ -384,11 +480,31 @@ class SearchService:
 
                 p_tasks = []
                 for p_name in compatible:
+                    provider = self.providers[p_name]
+                    page_size = 50
+                    if hasattr(provider, "capabilities") and hasattr(provider.capabilities, "max_page_size"):
+                        page_size = provider.capabilities.max_page_size
+
                     if p_name == "job_room" and avam_fallback_keyword:
-                        req_fallback = build_search_request(profile, query, [])
+                        req_fallback = build_search_request(
+                            profile,
+                            query,
+                            [],
+                            language=supported_request_language(query_language, provider),
+                            page_size=page_size,
+                            provider=provider,
+                        )
                         p_tasks.append(search_provider(p_name, req_fallback))
                     else:
-                        p_tasks.append(search_provider(p_name, request))
+                        req = build_search_request(
+                            profile,
+                            query,
+                            profession_codes,
+                            language=supported_request_language(query_language, provider),
+                            page_size=page_size,
+                            provider=provider,
+                        )
+                        p_tasks.append(search_provider(p_name, req))
 
                 if provider_parallel:
                     p_results = await asyncio.gather(*p_tasks)
@@ -408,27 +524,36 @@ class SearchService:
                 return found_jobs
 
         results = await asyncio.gather(*(execute_single_search(i, q) for i, q in enumerate(searches)))
-        
-        seen_urls = set()
+
+        seen_identity_keys: set[str] = set()
+        seen_url_tokens: set[str] = set()
+        seen_fuzzy_keys: set[str] = set()
         for batch in results:
             for job in batch:
-                url = getattr(job, "external_url", None) or getattr(job, "url", None) or str(getattr(job, "id", ""))
-                if url and url not in seen_urls:
-                    all_jobs.append(job)
-                    seen_urls.add(url)
-                    
+                identity_key = self._listing_identity_key(job)
+                url_token = self._listing_url_token(job)
+                fuzzy_key = self._listing_fuzzy_key(job)
+
+                if identity_key and identity_key in seen_identity_keys:
+                    continue
+                if url_token and url_token in seen_url_tokens:
+                    continue
+                if fuzzy_key and fuzzy_key in seen_fuzzy_keys:
+                    continue
+
+                all_jobs.append(job)
+                if identity_key:
+                    seen_identity_keys.add(identity_key)
+                if url_token:
+                    seen_url_tokens.add(url_token)
+                if fuzzy_key:
+                    seen_fuzzy_keys.add(fuzzy_key)
+
         return all_jobs
 
     def _deduplicate(self, profile, all_jobs: list) -> tuple[list, int]:
-        import re
-
         profile_id = getattr(profile, "id", profile)
-        
-        def get_fuzzy_key(title: str, company: str) -> str:
-            t = re.sub(r'[^\w\s]', '', (title or "").lower()).strip()
-            c = re.sub(r'[^\w\s]', '', (company or "").lower()).strip()
-            return f"{t}::{c}"
-            
+
         seen_keys: set = set()
         seen_fuzzy_keys: set = set()
         unique_jobs: list = []
@@ -442,40 +567,38 @@ class SearchService:
         )
         
         existing_keys = {
-            f"{row.platform}:{row.platform_job_id}" for row in existing_identifiers
-            if row.platform and row.platform_job_id
+            self._listing_identity_key(row) for row in existing_identifiers
+            if self._listing_identity_key(row)
         }
-        existing_urls = {row.external_url for row in existing_identifiers if row.external_url}
+        existing_urls = {
+            self._listing_url_token(row) for row in existing_identifiers
+            if self._listing_url_token(row)
+        }
         existing_fuzzy_keys = {
-            get_fuzzy_key(row.title, row.company) for row in existing_identifiers
-            if getattr(row, "title", None) and getattr(row, "company", None)
+            self._listing_fuzzy_key(row) for row in existing_identifiers
+            if self._listing_fuzzy_key(row)
         }
 
         for listing in all_jobs:
             platform = getattr(listing, "source", None) or getattr(listing, "platform", "unknown")
             platform_id = str(getattr(listing, "id", "") or getattr(listing, "platform_job_id", ""))
-            
-            key = f"{platform}:{platform_id}"
-            url = getattr(listing, "external_url", None) or getattr(listing, "url", None) or platform_id
-            
-            title = getattr(listing, "title", "Unknown")
-            company_obj = getattr(listing, "company", None)
-            company_name = company_obj.name if hasattr(company_obj, "name") else (company_obj if isinstance(company_obj, str) else "Unknown")
-            
-            fuzzy_key = get_fuzzy_key(title, company_name)
-            
+
+            key = self._listing_identity_key(listing)
+            url = self._listing_url_token(listing)
+            fuzzy_key = self._listing_fuzzy_key(listing)
+
             if (platform and platform_id and (key in seen_keys or key in existing_keys)) or \
                (url and (url in existing_urls and key not in existing_keys)):
                    continue
-            
-            if fuzzy_key and fuzzy_key != "::" and (fuzzy_key in existing_fuzzy_keys or fuzzy_key in seen_fuzzy_keys):
+
+            if fuzzy_key and (fuzzy_key in existing_fuzzy_keys or fuzzy_key in seen_fuzzy_keys):
                 continue
-                   
-            if platform and platform_id:
+
+            if key:
                 seen_keys.add(key)
             if url:
                 existing_urls.add(url)
-            if fuzzy_key and fuzzy_key != "::":
+            if fuzzy_key:
                 seen_fuzzy_keys.add(fuzzy_key)
             
             # Feature 2 check: applied elsewhere
@@ -546,6 +669,8 @@ class SearchService:
 
     async def _relevance_filter(self, profile_id: int, profile_dict: dict, jobs: list, batch_size: int = 20) -> list:
         relevant_jobs = []
+        fallback_mode = (settings.SEARCH_RELEVANCE_FALLBACK_MODE or "conservative").strip().lower()
+        keep_on_failure = fallback_mode == "keep"
         for i in range(0, len(jobs), batch_size):
             batch = jobs[i:i + batch_size]
             batch_data = []
@@ -572,7 +697,12 @@ class SearchService:
                         relevant_jobs.append(j)
             except Exception as e:
                 logger.warning(f"Relevance filter failed: {e}")
-                relevant_jobs.extend(batch)
+                add_log(
+                    profile_id,
+                    f"[LLM_DEBUG] relevance_fallback mode={fallback_mode} batch_start={i} batch_size={len(batch)} error={type(e).__name__}",
+                )
+                if keep_on_failure:
+                    relevant_jobs.extend(batch)
         
         return relevant_jobs
 
@@ -589,7 +719,7 @@ class SearchService:
             async with semaphore:
                 status_data = get_status(profile_id)
                 if status_data.get("state") in ["stopped", "cancelled", "finished", "failed"]:
-                    return 0
+                    return []
                     
                 jobs_metadata = []
                 for job in batch:
@@ -618,25 +748,40 @@ class SearchService:
                 
                 try:
                     results = await llm_service.analyze_job_batch(jobs_metadata, profile_dict)
-                    
-                    saved = 0
+
+                    relevant_jobs = []
                     for job, analysis in zip(batch, results):
                         if analysis.get("relevant", True):
-                            await self._save_single_job(job, analysis, profile_dict, origin_coords)
-                            saved += 1
-                    return saved
+                            relevant_jobs.append((job, analysis))
+                    return relevant_jobs
                 except Exception as e:
                     logger.error(f"Analysis batch failed: {e}")
-                    return 0
+                    return []
 
         tasks = [analyze_batch(batch) for batch in batches]
         results = await asyncio.gather(*tasks)
-        
-        saved_count = sum(results)
+
+        jobs_to_persist = [item for batch_result in results for item in batch_result]
+
+        try:
+            for job, analysis in jobs_to_persist:
+                await self._save_single_job(job, analysis, profile_dict, origin_coords, commit=False)
+            if jobs_to_persist:
+                self.db.commit()
+        except Exception as exc:
+            self.db.rollback()
+            logger.error(
+                "Failed staged persistence for profile %s: %s",
+                profile_dict.get("id"),
+                exc,
+            )
+            return 0, len(unique_jobs)
+
+        saved_count = len(jobs_to_persist)
         skipped_count = len(unique_jobs) - saved_count
         return saved_count, skipped_count
 
-    async def _save_single_job(self, listing, analysis, profile_dict, origin_coords):
+    async def _save_single_job(self, listing, analysis, profile_dict, origin_coords, commit: bool = True):
         platform = getattr(listing, "source", None) or getattr(listing, "platform", "unknown")
         platform_id = str(getattr(listing, "id", "") or getattr(listing, "platform_job_id", ""))
         
@@ -735,18 +880,19 @@ class SearchService:
             applied=getattr(listing, "_applied_elsewhere", False)
         )
         self.db.add(new_job)
-        try:
-            self.db.commit()
-        except Exception as exc:
-            self.db.rollback()
-            logger.error(
-                "Failed to persist job %s/%s for profile %s: %s",
-                platform,
-                platform_id,
-                profile_dict.get("id"),
-                exc,
-            )
-            raise
+        if commit:
+            try:
+                self.db.commit()
+            except Exception as exc:
+                self.db.rollback()
+                logger.error(
+                    "Failed to persist job %s/%s for profile %s: %s",
+                    platform,
+                    platform_id,
+                    profile_dict.get("id"),
+                    exc,
+                )
+                raise
 
 
 def get_search_service(db: Session) -> SearchService:

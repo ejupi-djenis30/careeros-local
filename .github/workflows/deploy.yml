@@ -50,6 +50,7 @@ jobs:
                       type=sha,prefix=
 
             - name: Build and push Docker image
+              id: build-push
               uses: docker/build-push-action@v6
               with:
                   context: .

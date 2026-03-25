@@ -1,11 +1,13 @@
 import React from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { SearchForm } from '../components/SearchForm';
+import { useToast } from '../context/ToastContext';
 import { SearchService } from '../services/search';
 
 export function NewSearchPage() {
   const navigate = useNavigate();
   const location = useLocation();
+  const { showToast } = useToast();
   const prefillProfile = location.state?.prefillProfile || null;
   const [isSearching, setIsSearching] = React.useState(false);
 
@@ -21,7 +23,7 @@ export function NewSearchPage() {
          // AuthContext intercepts globally via event
          return; 
       }
-      alert("Failed to start search: " + error.message);
+      showToast("Failed to start search: " + error.message);
     } finally {
       setIsSearching(false);
     }

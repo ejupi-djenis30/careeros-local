@@ -44,11 +44,20 @@ def test_start_search_authorized(client, auth_headers: dict, test_profile):
     with patch("backend.services.search_service.SearchService.run_search") as mock_run:
         response = client.post(
             "/api/v1/search/start",
-            json={"id": profile_id, "name": "Test Search"},
+            json={
+                "id": profile_id,
+                "name": "Test Search",
+                "force_regenerate_cv_summary": True,
+                "force_regenerate_queries": True,
+            },
             headers=auth_headers
         )
         assert response.status_code == 200
         assert "profile_id" in response.json()
+        mock_run.assert_called_once()
+        _, kwargs = mock_run.call_args
+        assert kwargs["force_regenerate_cv_summary"] is True
+        assert kwargs["force_regenerate_queries"] is True
 
 def test_stop_search_authorized(client: TestClient, auth_headers: dict, test_profile):
     profile_id = test_profile["id"]

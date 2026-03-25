@@ -1,13 +1,45 @@
 import logging
 from backend.providers.jobs.models import JobSearchRequest, SortOrder, RadiusSearchRequest, Coordinates, ContractType
+from backend.services.search.query_contracts import canonicalize_query_text, supported_request_language
 
 logger = logging.getLogger(__name__)
 
-def build_search_request(profile, query: str, profession_codes: list[str] = None) -> JobSearchRequest:
+
+def _string_attr(value, default: str = "") -> str:
+    if isinstance(value, str):
+        return value
+    return default
+
+
+def _optional_int_attr(value, default=None):
+    if value is None or isinstance(value, bool):
+        return default
+    if isinstance(value, int):
+        return value
+    if isinstance(value, str):
+        value = value.strip()
+        if not value:
+            return default
+        try:
+            return int(value)
+        except ValueError:
+            return default
+    return default
+
+def build_search_request(
+    profile,
+    query: str,
+    profession_codes: list[str] = None,
+    *,
+    language: str = "en",
+    page_size: int = 50,
+    provider=None,
+) -> JobSearchRequest:
     """Create a JobSearchRequest from profile settings and a keyword query."""
     workload_min, workload_max = 0, 100
-    if profile.workload_filter:
-        parts = profile.workload_filter.replace("%", "").split("-")
+    workload_filter = _string_attr(getattr(profile, "workload_filter", ""), "")
+    if workload_filter:
+        parts = workload_filter.replace("%", "").split("-")
         try:
             workload_min = int(parts[0])
             workload_max = int(parts[1]) if len(parts) > 1 else int(parts[0])
@@ -15,14 +47,17 @@ def build_search_request(profile, query: str, profession_codes: list[str] = None
             pass
 
     radius_request = None
-    if profile.latitude and profile.longitude:
+    latitude = getattr(profile, "latitude", None)
+    longitude = getattr(profile, "longitude", None)
+    if isinstance(latitude, (int, float)) and isinstance(longitude, (int, float)):
         # Default to 50km if not specified, or use profile preference if available
         dist = 50 
-        if hasattr(profile, 'max_distance') and profile.max_distance:
-             dist = int(profile.max_distance)
+        max_distance = _optional_int_attr(getattr(profile, "max_distance", None), 50)
+        if max_distance:
+             dist = max_distance
         
         radius_request = RadiusSearchRequest(
-            geo_point=Coordinates(lat=profile.latitude, lon=profile.longitude),
+            geo_point=Coordinates(lat=latitude, lon=longitude),
             distance=dist
         )
 
@@ -32,22 +67,28 @@ def build_search_request(profile, query: str, profession_codes: list[str] = None
         "any": ContractType.ANY
     }
     
-    contract_val = getattr(profile, "contract_type", "any")
+    contract_val = _string_attr(getattr(profile, "contract_type", "any"), "any")
     if not contract_val:
         contract_val = "any"
         
     c_type = contract_type_mapping.get(contract_val.lower(), ContractType.ANY)
+    normalized_query = canonicalize_query_text(query)
+    request_language = supported_request_language(language, provider) if provider else language
+    location_filter = _string_attr(getattr(profile, "location_filter", ""), "")
+    posted_within_days = _optional_int_attr(getattr(profile, "posted_within_days", None), 30)
 
     return JobSearchRequest(
-        query=query,
-        location=profile.location_filter or "",
-        posted_within_days=profile.posted_within_days or 30,
+        query=normalized_query,
+        location=location_filter,
+        posted_within_days=posted_within_days,
         workload_min=workload_min,
         workload_max=workload_max,
         contract_type=c_type,
-        page_size=50,
+        page_size=page_size,
         sort=SortOrder.DATE_DESC,
         radius_search=radius_request,
         communal_codes=[], # Clear communal codes if using radius to avoid conflict? usually they can coexist or radius overrides.
-        profession_codes=profession_codes or []
+        profession_codes=profession_codes or [],
+        keywords=[normalized_query] if normalized_query else [],
+        language=request_language,
     )

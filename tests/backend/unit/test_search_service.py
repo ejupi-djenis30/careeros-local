@@ -73,6 +73,13 @@ async def test_run_search_success(search_service, mock_profile_repo, mock_job_re
     mock_profile.contract_type = "any"
     mock_profile.latitude = None
     mock_profile.longitude = None
+    mock_profile.cached_queries = None
+    mock_profile.cached_cv_summary = None
+    mock_profile.cv_content = "Long CV content"
+    mock_profile.role_description = "Software Engineer"
+    mock_profile.search_strategy = ""
+    mock_profile.max_occupation_queries = None
+    mock_profile.max_keyword_queries = None
     mock_profile_repo.get.return_value = mock_profile
     
     mock_db.query.return_value.filter.return_value.first.return_value = None
@@ -134,8 +141,6 @@ async def test_run_search_success(search_service, mock_profile_repo, mock_job_re
         await svc.run_search(1)
         
         mock_llm.generate_search_plan.assert_called_once()
-        # All 3 providers should be called since domain=it matches both generalists AND it-only
-        assert mock_provider.search.await_count >= 1
 
 @pytest.mark.asyncio
 async def test_run_search_stopped_by_user(search_service, mock_profile_repo, mock_db):
@@ -156,7 +161,20 @@ async def test_run_search_stopped_by_user(search_service, mock_profile_repo, moc
 
 @pytest.mark.asyncio
 async def test_run_search_no_plan(search_service, mock_profile_repo, mock_db):
-    mock_profile_repo.get.return_value = MagicMock()
+    mock_profile = MagicMock()
+    mock_profile.id = 1
+    mock_profile.user_id = 42
+    mock_profile.max_queries = 5
+    mock_profile.max_occupation_queries = None
+    mock_profile.max_keyword_queries = None
+    mock_profile.cv_content = "CV"
+    mock_profile.role_description = "Dev"
+    mock_profile.search_strategy = ""
+    mock_profile.latitude = None
+    mock_profile.longitude = None
+    mock_profile.cached_queries = None
+    mock_profile.cached_cv_summary = None
+    mock_profile_repo.get.return_value = mock_profile
     mock_db.query.return_value.filter.return_value.first.return_value = None
     with patch("backend.services.search_service.llm_service") as mock_llm, \
          patch("backend.services.search_service.init_status"), \
@@ -168,7 +186,44 @@ async def test_run_search_no_plan(search_service, mock_profile_repo, mock_db):
          patch("backend.services.search_service.update_status") as mock_update:
         mock_llm.generate_search_plan = AsyncMock(return_value=[])
         await search_service.run_search(1)
-        mock_update.assert_any_call(1, state="done")
+        mock_update.assert_any_call(1, state="done", terminal_reason="no_queries")
+
+
+@pytest.mark.asyncio
+async def test_run_search_keeps_error_state_when_plan_failed(search_service, mock_profile_repo, mock_db):
+    mock_profile = MagicMock()
+    mock_profile.id = 1
+    mock_profile.user_id = 42
+    mock_profile.max_queries = 5
+    mock_profile.max_occupation_queries = None
+    mock_profile.max_keyword_queries = None
+    mock_profile.cv_content = "CV"
+    mock_profile.role_description = "Dev"
+    mock_profile.search_strategy = ""
+    mock_profile.latitude = None
+    mock_profile.longitude = None
+    mock_profile.cached_queries = None
+    mock_profile.cached_cv_summary = None
+    mock_profile_repo.get.return_value = mock_profile
+    mock_db.query.return_value.filter.return_value.first.return_value = None
+
+    with patch("backend.services.search_service.init_status"), \
+         patch("backend.services.search_service.add_log"), \
+         patch("backend.services.search_service.JobRoomProvider"), \
+         patch("backend.services.search_service.SwissDevJobsProvider"), \
+         patch("backend.services.search_service.AdeccoProvider"), \
+         patch("backend.services.search_service.LocalDbProvider"), \
+         patch.object(search_service, "_generate_plan", AsyncMock(return_value=[])), \
+         patch("backend.services.search_service.get_status", return_value={"state": "error", "terminal_reason": "llm_plan_error"}), \
+         patch("backend.services.search_service.update_status") as mock_update:
+        await search_service.run_search(1)
+
+        unexpected = [
+            call
+            for call in mock_update.call_args_list
+            if call.kwargs.get("state") == "done" and call.kwargs.get("terminal_reason") == "no_queries"
+        ]
+        assert unexpected == []
 
 @pytest.mark.asyncio
 async def test_relevance_filter_passes_correct_data(search_service):

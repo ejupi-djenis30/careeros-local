@@ -50,13 +50,13 @@ describe('HistoryCard', () => {
         const onStartSearchWithOptions = vi.fn();
         render(<HistoryCard profile={mockProfile} onStartSearchWithOptions={onStartSearchWithOptions} />);
 
-        fireEvent.click(screen.getByTitle('Rerun with fresh queries'));
+        fireEvent.click(screen.getByTitle('Rerun with fresh queries only'));
         expect(onStartSearchWithOptions).toHaveBeenCalledWith(mockProfile, { force_regenerate_queries: true });
 
-        fireEvent.click(screen.getByTitle('Rerun with fresh CV summary'));
+        fireEvent.click(screen.getByTitle('Rerun with fresh CV summary only'));
         expect(onStartSearchWithOptions).toHaveBeenCalledWith(mockProfile, { force_regenerate_cv_summary: true });
 
-        fireEvent.click(screen.getByTitle('Rerun with fresh CV summary and queries'));
+        fireEvent.click(screen.getByTitle('Rerun with fresh CV summary and queries (full refresh)'));
         expect(onStartSearchWithOptions).toHaveBeenCalledWith(mockProfile, {
             force_regenerate_cv_summary: true,
             force_regenerate_queries: true,

@@ -131,6 +131,7 @@ class Settings(BaseSettings):
     SEARCH_EXECUTION_MODE: str = "sequential"
     SEARCH_CONCURRENCY: int = 3
     SEARCH_PLAN_BATCH_SIZE: int = 40
+    SEARCH_RELEVANCE_FALLBACK_MODE: str = "conservative"
     ANALYSIS_CONCURRENCY: int = 15
     ANALYSIS_BATCH_SIZE: int = 5
 

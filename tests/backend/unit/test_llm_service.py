@@ -166,6 +166,22 @@ async def test_check_relevance_batch_is_permissive(mock_provider):
         assert "FILTERING RULES" in user_prompt
 
 @pytest.mark.asyncio
+async def test_check_relevance_batch_uses_conservative_padding_by_default(mock_provider):
+    mock_provider.generate_json_async.return_value = {"results": [True]}
+
+    with patch("backend.services.llm_service.get_provider_for_step", return_value=mock_provider), \
+         patch("backend.services.llm_service.settings.SEARCH_RELEVANCE_FALLBACK_MODE", "conservative"):
+        service = LLMService()
+        jobs = [
+            {"title": "Dev", "company": "A", "description_snippet": "one"},
+            {"title": "Ops", "company": "B", "description_snippet": "two"},
+        ]
+
+        results = await service.check_relevance_batch(jobs, "Developer")
+
+        assert results == [True, False]
+
+@pytest.mark.asyncio
 async def test_summarize_cv_success(mock_provider):
     mock_provider.generate_text_async.return_value = "- Experience: 5 years\n- Skills: Python"
     
@@ -226,7 +242,9 @@ async def test_analyze_job_batch_fallback_empty_dict(mock_provider):
     with patch("backend.services.llm_service.get_provider_for_step", return_value=mock_provider):
         service = LLMService()
         results = await service.analyze_job_batch([{"title": "T"}], {"role_description": "R"})
-        assert results == []
+        assert len(results) == 1
+        assert results[0]["relevant"] is False
+        assert results[0]["affinity_score"] == 0
 
 # ─── Feature 1: Job Summary Tests ─────────────────────────────────────────────
 
@@ -394,3 +412,112 @@ async def test_generate_search_plan_succeeds_on_second_attempt(mock_provider):
         types = {s["type"] for s in plan}
         assert "occupation" in types
         assert "keyword" in types
+
+
+@pytest.mark.asyncio
+async def test_call_generate_search_plan_accepts_queries_alias(mock_provider):
+    """Accept non-canonical but common payload keys like 'queries'."""
+    mock_provider.generate_json_async.return_value = {
+        "queries": [
+            {"domain": "it", "type": "occupation", "query": "Software Engineer"},
+        ]
+    }
+
+    with patch("backend.services.llm_service.get_provider_for_step", return_value=mock_provider):
+        service = LLMService()
+        plan = await service._call_generate_search_plan(
+            {"role_description": "Dev", "search_strategy": "", "cv_content": ""},
+            [],
+            max_queries=1,
+        )
+        assert len(plan) == 1
+        assert plan[0]["query"] == "Software Engineer"
+
+
+@pytest.mark.asyncio
+async def test_call_generate_search_plan_raises_on_invalid_payload(mock_provider):
+    """Reject payloads that do not contain a list under searches/queries/results."""
+    mock_provider.generate_json_async.return_value = {"status": "ok"}
+
+    with patch("backend.services.llm_service.get_provider_for_step", return_value=mock_provider):
+        service = LLMService()
+        with pytest.raises(RetryError):
+            await service._call_generate_search_plan(
+                {"role_description": "Dev", "search_strategy": "", "cv_content": ""},
+                [],
+                max_queries=1,
+            )
+
+
+@pytest.mark.asyncio
+async def test_generate_search_plan_returns_partial_if_later_batch_fails(mock_provider):
+    """If a later batch fails (rate limit/error), return already collected queries instead of raising."""
+    with patch("backend.services.llm_service.get_provider_for_step", return_value=mock_provider), \
+         patch("backend.services.llm_service.settings") as mock_settings:
+        mock_settings.LLM_SUMMARY_PROVIDER = ""
+        mock_settings.LLM_SUMMARY_API_KEY = ""
+        mock_settings.LLM_SUMMARY_MODEL = ""
+        mock_settings.SEARCH_PLAN_BATCH_SIZE = 2
+
+        service = LLMService()
+        service._call_generate_search_plan = AsyncMock(side_effect=[
+            [
+                {"domain": "it", "language": "en", "type": "occupation", "query": "Backend Engineer"},
+                {"domain": "it", "language": "en", "type": "keyword", "query": "Python"},
+            ],
+            Exception("rate_limit_exceeded"),
+        ])
+
+        plan = await service.generate_search_plan(
+            {"role_description": "Python developer", "search_strategy": "", "cv_content": "Python"},
+            [],
+            max_queries=4,
+        )
+
+        assert len(plan) == 2
+        assert {item["query"] for item in plan} == {"Backend Engineer", "Python"}
+
+
+@pytest.mark.asyncio
+async def test_generate_search_plan_uses_best_partial_batch_on_error(mock_provider):
+    """If current batch has a best candidate set then a later retry fails, keep the best batch instead of raising."""
+    with patch("backend.services.llm_service.get_provider_for_step", return_value=mock_provider), \
+         patch("backend.services.llm_service.settings") as mock_settings:
+        mock_settings.LLM_SUMMARY_PROVIDER = ""
+        mock_settings.LLM_SUMMARY_API_KEY = ""
+        mock_settings.LLM_SUMMARY_MODEL = ""
+        mock_settings.SEARCH_PLAN_BATCH_SIZE = 2
+
+        service = LLMService()
+        service._call_generate_search_plan = AsyncMock(side_effect=[
+            [
+                {"domain": "it", "language": "en", "type": "occupation", "query": "Backend Engineer"},
+                {"domain": "it", "language": "en", "type": "keyword", "query": "Python"},
+            ],
+            Exception("rate_limit_exceeded"),
+        ])
+
+        plan = await service.generate_search_plan(
+            {"role_description": "Python developer", "search_strategy": "", "cv_content": "Python"},
+            [],
+            max_queries=2,
+            max_occupation_queries=2,
+            max_keyword_queries=0,
+        )
+
+        assert len(plan) == 2
+
+
+def test_normalize_searches_infers_type_and_normalizes_fields(llm_service):
+    searches = [
+        {"query": "  React  Developer 100% ", "type": "", "domain": "IT / Software", "language": "English"},
+        {"query": "React Developer", "type": "occupation", "domain": "it-software", "language": "en"},
+    ]
+
+    normalized = llm_service._normalize_searches(searches)
+
+    assert len(normalized) == 1
+    assert normalized[0]["query"] == "React Developer"
+    assert normalized[0]["type"] == "occupation"
+    assert normalized[0]["domain"] == "it-software"
+    assert normalized[0]["language"] == "en"

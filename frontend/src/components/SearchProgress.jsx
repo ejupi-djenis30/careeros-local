@@ -49,10 +49,20 @@ export function SearchProgress({ profileId, status, onStateChange, onClear }) {
         </div>
     );
 
-    const { state, total_searches, current_search_index, current_query, searches_generated, jobs_new, jobs_duplicates, jobs_skipped, errors, log } = displayStatus;
+    const { state, total_searches, current_search_index, current_query, searches_generated, jobs_new, jobs_duplicates, jobs_skipped, errors, log, terminal_reason } = displayStatus;
     const isRunning = state === "generating" || state === "searching" || state === "analyzing";
     const isDone = state === "done";
     const isError = state === "error" || state === "stopped";
+    const doneNoticeByReason = {
+        no_queries: "Search completed with notice: no valid queries were generated.",
+        no_results: "Search completed with notice: no jobs were found for the generated queries.",
+        all_duplicates: "Search completed with notice: all found jobs were already present in history.",
+        no_relevant_jobs: "Search completed with notice: no jobs passed relevance filtering.",
+    };
+    const doneNotice = isDone ? doneNoticeByReason[terminal_reason] : null;
+    const showDebugLabel = isDone || isError;
+    const debugTerminalReason = terminal_reason || "n/a";
+    const debugLabel = `LLM_DEBUG state=${state} terminal_reason=${debugTerminalReason} profile_id=${profileId}`;
 
     // Enhanced Progress calculation
     let progressPct = 0;
@@ -134,6 +144,24 @@ export function SearchProgress({ profileId, status, onStateChange, onClear }) {
                     analyzingText={analyzingText} 
                     current_query={current_query} 
                 />
+
+                {doneNotice && (
+                    <div className="alert alert-warning py-2 px-3 mb-3 small" role="status">
+                        {doneNotice}
+                    </div>
+                )}
+
+                {showDebugLabel && (
+                    <div className="mb-3 d-flex justify-content-end">
+                        <span
+                            className="badge bg-dark border border-warning text-warning small font-monospace"
+                            title="Technical debug label for automated diagnosis"
+                            data-testid="llm-debug-label"
+                        >
+                            {debugLabel}
+                        </span>
+                    </div>
+                )}
 
                 {/* Stats Grid */}
                 <div className="row g-3">

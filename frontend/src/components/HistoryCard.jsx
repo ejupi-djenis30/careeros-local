@@ -46,7 +46,8 @@ export function HistoryCard({ profile, onStartSearch, onStartSearchWithOptions, 
                         <button
                             className="btn btn-sm btn-icon btn-secondary rounded-circle d-flex align-items-center justify-content-center"
                             onClick={() => onStartSearchWithOptions?.(profile, { force_regenerate_queries: true })}
-                            title="Rerun with fresh queries"
+                            title="Rerun with fresh queries only"
+                            aria-label="Rerun with fresh queries only"
                         >
                             <i className="bi bi-diagram-3"></i>
                         </button>
@@ -54,15 +55,17 @@ export function HistoryCard({ profile, onStartSearch, onStartSearchWithOptions, 
                         <button
                             className="btn btn-sm btn-icon btn-secondary rounded-circle d-flex align-items-center justify-content-center"
                             onClick={() => onStartSearchWithOptions?.(profile, { force_regenerate_cv_summary: true })}
-                            title="Rerun with fresh CV summary"
+                            title="Rerun with fresh CV summary only"
+                            aria-label="Rerun with fresh CV summary only"
                         >
                             <i className="bi bi-file-earmark-arrow-up"></i>
                         </button>
 
                         <button
-                            className="btn btn-sm btn-icon btn-secondary rounded-circle d-flex align-items-center justify-content-center"
+                            className="btn btn-sm btn-icon btn-warning text-dark rounded-circle d-flex align-items-center justify-content-center"
                             onClick={() => onStartSearchWithOptions?.(profile, { force_regenerate_cv_summary: true, force_regenerate_queries: true })}
-                            title="Rerun with fresh CV summary and queries"
+                            title="Rerun with fresh CV summary and queries (full refresh)"
+                            aria-label="Rerun with fresh CV summary and queries"
                         >
                             <i className="bi bi-arrow-repeat"></i>
                         </button>

@@ -53,28 +53,37 @@ class OpenAICompatibleProvider(LLMProvider):
                 lines = [l for l in lines[1:] if not l.strip() == "```"]
                 text = "\n".join(lines)
                 
-        # Deepseek often wraps its thought process in <think> tags before the JSON.
-        # Find the first { or [ to locate the JSON payload.
+        # Deepseek and some OpenAI-compatible models often prepend reasoning text.
+        # Find first JSON opener and then extract the first decodable JSON fragment.
         start_idx_dict = text.find("{")
         start_idx_list = text.find("[")
-        
+
         start_idx = -1
         if start_idx_dict != -1 and start_idx_list != -1:
             start_idx = min(start_idx_dict, start_idx_list)
         else:
             start_idx = max(start_idx_dict, start_idx_list)
-            
+
         if start_idx > 0:
             text = text[start_idx:]
-            
-        # Clean up any trailing text after the JSON ends
+
+        decoder = json.JSONDecoder()
+        for idx, ch in enumerate(text):
+            if ch not in "[{":
+                continue
+            try:
+                _, end = decoder.raw_decode(text[idx:])
+                return text[idx:idx + end].strip()
+            except Exception:
+                continue
+
+        # Fallback to bracket trimming if raw decoding failed.
         end_idx_dict = text.rfind("}")
         end_idx_list = text.rfind("]")
-        
         end_idx = max(end_idx_dict, end_idx_list)
         if end_idx != -1 and end_idx < len(text) - 1:
             text = text[:end_idx + 1]
-            
+
         return text.strip()
 
     # ── public API ─────────────────────────────────────────────────────────

@@ -1,7 +1,9 @@
 import pytest
 from backend.repositories.profile_repository import ProfileRepository
 from backend.repositories.job_repository import JobRepository
+from backend.repositories.base import BaseRepository
 from backend.models import SearchProfile, Job, ScrapedJob
+from unittest.mock import MagicMock
 
 # We use the db_session fixture provided by our global conftest.py
 # If tests run in isolation from test_integration, we might need to rely on the db_session.
@@ -169,3 +171,47 @@ def test_job_repository_get_by_user_pagination(job_repo, test_user, db_session):
     
     jobs = job_repo.get_by_user(test_user.id, skip=1, limit=2)
     assert len(jobs) == 2
+
+
+class _DummyModel:
+    def __init__(self, **kwargs):
+        for key, value in kwargs.items():
+            setattr(self, key, value)
+
+
+def test_base_repository_create_rolls_back_on_commit_failure():
+    db = MagicMock()
+    db.commit.side_effect = RuntimeError("commit failed")
+    repo = BaseRepository(_DummyModel, db)
+
+    with pytest.raises(RuntimeError, match="commit failed"):
+        repo.create({"name": "will-fail"})
+
+    db.rollback.assert_called_once()
+    db.refresh.assert_not_called()
+
+
+def test_base_repository_update_rolls_back_on_commit_failure():
+    db = MagicMock()
+    db.commit.side_effect = RuntimeError("commit failed")
+    repo = BaseRepository(_DummyModel, db)
+    obj = _DummyModel(name="before")
+
+    with pytest.raises(RuntimeError, match="commit failed"):
+        repo.update(obj, {"name": "after"})
+
+    db.rollback.assert_called_once()
+    db.refresh.assert_not_called()
+
+
+def test_base_repository_delete_rolls_back_on_commit_failure():
+    db = MagicMock()
+    db.commit.side_effect = RuntimeError("commit failed")
+    obj = _DummyModel(id=123)
+    db.get.return_value = obj
+    repo = BaseRepository(_DummyModel, db)
+
+    with pytest.raises(RuntimeError, match="commit failed"):
+        repo.delete(123)
+
+    db.rollback.assert_called_once()

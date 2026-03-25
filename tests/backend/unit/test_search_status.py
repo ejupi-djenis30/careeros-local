@@ -19,6 +19,7 @@ def test_init_status():
     init_status(1, total_searches=5, searches=[{"q": "test"}])
     status = get_status(1)
     assert status["state"] == "generating"
+    assert status["terminal_reason"] is None
     assert status["total_searches"] == 5
     assert len(status["searches_generated"]) == 1
     assert "started_at" in status
@@ -42,10 +43,11 @@ def test_add_log_overflow():
 
 def test_update_status():
     init_status(1)
-    update_status(1, state="scraping", jobs_found=10)
+    update_status(1, state="scraping", jobs_found=10, terminal_reason="no_results")
     status = get_status(1)
     assert status["state"] == "scraping"
     assert status["jobs_found"] == 10
+    assert status["terminal_reason"] == "no_results"
 
 def test_get_status_unknown():
     status = get_status(999)

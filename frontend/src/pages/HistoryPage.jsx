@@ -1,10 +1,12 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { History } from '../components/History';
+import { useToast } from '../context/ToastContext';
 import { SearchService } from '../services/search';
 
 export function HistoryPage() {
   const navigate = useNavigate();
+  const { showToast } = useToast();
 
   const handleStartSearch = async (profile, overrides = {}) => {
     try {
@@ -26,9 +28,9 @@ export function HistoryPage() {
   const handleSaveAsSchedule = async (profile) => {
     try {
       await SearchService.toggleSchedule(profile.id, true, profile.schedule_interval_hours || 24);
-      alert("Search profile added to schedules!");
+      showToast("Search profile added to schedules!", "success");
     } catch (error) {
-      alert("Failed to save schedule: " + error.message);
+      showToast("Failed to save schedule: " + error.message);
     }
   };
 

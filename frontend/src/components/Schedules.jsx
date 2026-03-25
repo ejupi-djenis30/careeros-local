@@ -1,8 +1,10 @@
 import React, { useState, useEffect } from "react";
 import { SearchService } from "../services/search";
+import { useToast } from "../context/ToastContext";
 import { ScheduleCard } from "./ScheduleCard";
 
 export function Schedules() {
+    const { showToast } = useToast();
     const [profiles, setProfiles] = useState([]);
     const [loading, setLoading] = useState(true);
 
@@ -26,7 +28,7 @@ export function Schedules() {
             await SearchService.toggleSchedule(profileId, !currentEnabled, intervalHours);
             loadProfiles();
         } catch (e) {
-            alert("Failed to toggle schedule: " + e.message);
+            showToast("Failed to toggle schedule: " + e.message);
         }
     };
 
@@ -36,7 +38,7 @@ export function Schedules() {
             await SearchService.toggleSchedule(profileId, false);
             loadProfiles();
         } catch (e) {
-            alert("Failed to remove schedule: " + e.message);
+            showToast("Failed to remove schedule: " + e.message);
         }
     };
 
@@ -45,7 +47,7 @@ export function Schedules() {
             await SearchService.toggleSchedule(profileId, true, parseInt(newInterval));
             loadProfiles();
         } catch (e) {
-            alert("Failed to update interval: " + e.message);
+            showToast("Failed to update interval: " + e.message);
         }
     };
 

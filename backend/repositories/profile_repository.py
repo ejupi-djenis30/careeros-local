@@ -22,6 +22,10 @@ class ProfileRepository(BaseRepository[SearchProfile]):
             profile.cached_queries = queries_json
             
         self.db.add(profile)
-        self.db.commit()
-        self.db.refresh(profile)
+        try:
+            self.db.commit()
+            self.db.refresh(profile)
+        except Exception:
+            self.db.rollback()
+            raise
         return profile

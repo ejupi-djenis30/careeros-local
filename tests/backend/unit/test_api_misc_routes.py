@@ -184,7 +184,8 @@ def test_run_search_background_wrapper():
         mock_session_local.return_value = mock_fresh_db
         
         mock_svc = MagicMock()
-        async def mock_run(x): pass
+        async def mock_run(*args, **kwargs):
+            return None
         mock_svc.run_search = mock_run
         mock_get_svc.return_value = mock_svc
         

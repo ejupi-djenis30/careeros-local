@@ -1,5 +1,23 @@
 import React from "react";
 
+function parseLlmDebugMessage(message) {
+    if (typeof message !== "string" || !message.startsWith("[LLM_DEBUG]")) {
+        return null;
+    }
+
+    const payload = message.replace("[LLM_DEBUG]", "").trim();
+    const pairs = payload
+        .split(/\s+/)
+        .map((token) => token.split("="))
+        .filter((parts) => parts.length === 2 && parts[0] && parts[1])
+        .map(([key, value]) => ({ key, value }));
+
+    return {
+        payload,
+        pairs,
+    };
+}
+
 export function LiveLogs({ log, logEndRef }) {
     return (
         <div className="col-lg-7 d-flex flex-column h-100">
@@ -12,14 +30,39 @@ export function LiveLogs({ log, logEndRef }) {
                 </div>
                 <div className="flex-grow-1 overflow-auto bg-black p-3 custom-scrollbar" style={{ fontFamily: '"JetBrains Mono", monospace', fontSize: '0.8rem' }}>
                     {log && log.length > 0 ? (
-                        log.map((entry, i) => (
-                            <div key={i} className="mb-1 d-flex">
-                                <span className="text-secondary opacity-50 me-2 select-none" style={{ minWidth: '70px' }}>
-                                    [{new Date(entry.time).toLocaleTimeString([], { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' })}]
-                                </span>
-                                <span className="text-light text-break">{entry.message}</span>
-                            </div>
-                        ))
+                        log.map((entry, i) => {
+                            const debugInfo = parseLlmDebugMessage(entry.message);
+                            const isDebug = Boolean(debugInfo);
+
+                            return (
+                                <div key={i} className="mb-1 d-flex align-items-start">
+                                    <span className="text-secondary opacity-50 me-2 select-none" style={{ minWidth: '70px' }}>
+                                        [{new Date(entry.time).toLocaleTimeString([], { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' })}]
+                                    </span>
+
+                                    {isDebug ? (
+                                        <div className="text-break" data-testid="llm-debug-log-row">
+                                            <span className="badge bg-warning text-dark me-2">LLM_DEBUG</span>
+                                            {debugInfo.pairs.length > 0 ? (
+                                                debugInfo.pairs.map((pair) => (
+                                                    <span
+                                                        key={`${pair.key}-${pair.value}`}
+                                                        className="badge bg-black border border-warning text-warning me-1"
+                                                        data-testid="llm-debug-log-kv"
+                                                    >
+                                                        {pair.key}:{pair.value}
+                                                    </span>
+                                                ))
+                                            ) : (
+                                                <span className="text-warning">{debugInfo.payload}</span>
+                                            )}
+                                        </div>
+                                    ) : (
+                                        <span className="text-light text-break">{entry.message}</span>
+                                    )}
+                                </div>
+                            );
+                        })
                     ) : (
                         <div className="h-100 d-flex align-items-center justify-content-center text-secondary opacity-25">
                             <span>_waiting_for_stream</span>

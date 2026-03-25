@@ -2,6 +2,7 @@ import React, { useEffect } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { SearchProgress } from '../components/SearchProgress';
 import { useSearchContext } from '../context/SearchContext';
+import { useToast } from '../context/ToastContext';
 import { SearchService } from '../services/search';
 
 export function ProgressPage() {
@@ -10,6 +11,7 @@ export function ProgressPage() {
   const singlePid = searchParams.get('pid');
 
   const { searchStatuses, activeProfileIds, addProfileId, removeProfileId } = useSearchContext();
+  const { showToast } = useToast();
   const [visibleProfileId, setVisibleProfileId] = React.useState(singlePid);
   const [profiles, setProfiles] = React.useState({});
 
@@ -22,8 +24,11 @@ export function ProgressPage() {
         });
         setProfiles(mapping);
       })
-      .catch(console.error);
-  }, []);
+      .catch((error) => {
+        console.error('Failed to load profiles for progress labels:', error);
+        showToast('Failed to load profile names for active searches.');
+      });
+  }, [showToast]);
 
   useEffect(() => {
     // If we land here from an external route with a specific PID, ensure it's tracked
