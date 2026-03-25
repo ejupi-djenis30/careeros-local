@@ -116,6 +116,18 @@ describe('DesktopJobRow', () => {
         expect(defaultProps.onToggleApplied).toHaveBeenCalledWith(mockJob);
     });
 
+    it('disables the applied switch while an update is pending', () => {
+        render(
+            <table>
+                <tbody>
+                    <DesktopJobRow {...defaultProps} isAppliedPending={true} />
+                </tbody>
+            </table>
+        );
+
+        expect(screen.getByRole('checkbox')).toBeDisabled();
+    });
+
     it('renders top pick badge and workload when present', () => {
         const specializedJob = { ...mockJob, worth_applying: true, workload: 80 };
         render(

@@ -1,7 +1,7 @@
 import React from "react";
 import { ScoreBadge } from "./Badges";
 
-export function DesktopJobRow({ job, isGlobalView, onToggleApplied, onCopy, onViewAnalysis }) {
+export function DesktopJobRow({ job, isGlobalView, onToggleApplied, isAppliedPending = false, onCopy, onViewAnalysis }) {
     const applyUrl = job.application_url || job.external_url; // Use application_url falling back to external_url for 'Apply'
     const sourceUrl = job.external_url;   // Use external_url for 'Source'
     const mailtoUrl = job.application_email ? `mailto:${job.application_email}` : null;
@@ -76,9 +76,10 @@ export function DesktopJobRow({ job, isGlobalView, onToggleApplied, onCopy, onVi
                             className="form-check-input"
                             type="checkbox"
                             checked={job.applied}
+                            disabled={isAppliedPending}
                             onChange={() => onToggleApplied(job)}
                             style={{ cursor: 'pointer' }}
-                            title="Toggle Applied Status"
+                            title={isAppliedPending ? "Updating Applied Status" : "Toggle Applied Status"}
                         />
                     </div>
                     {job.applied_elsewhere && !job.applied && (

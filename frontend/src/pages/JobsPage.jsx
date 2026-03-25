@@ -30,6 +30,7 @@ export function JobsPage() {
     searchProfiles,
     fetchJobs,
     toggleApplied,
+    isAppliedPending,
     clearFilters
   } = useJobs(logout);
 
@@ -66,6 +67,7 @@ export function JobsPage() {
             jobs={jobs}
             isGlobalView={!filters.search_profile_id}
             onToggleApplied={toggleApplied}
+          isAppliedPending={isAppliedPending}
             pagination={pagination}
             onPageChange={(p) => setPagination(prev => ({ ...prev, page: p }))}
         />

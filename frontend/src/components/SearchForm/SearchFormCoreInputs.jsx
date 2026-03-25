@@ -3,18 +3,21 @@ import { LocationInput } from "../LocationInput";
 
 export function SearchFormCoreInputs({ profile, handleChange, handleLocationChange, handleCVUpload }) {
     return (
-        <div className="col-lg-4 d-flex flex-column gap-4 border-end border-white-5">
+        <div className="col-xl-5 col-lg-6 d-flex flex-column gap-4 border-end border-white-5">
             <div>
                 <label className="form-label text-white small fw-bold text-uppercase x-small mb-2">Role Description <span className="text-danger">*</span></label>
                 <textarea
                     name="role_description"
                     value={profile.role_description}
                     onChange={handleChange}
-                    placeholder="E.g. Senior Python Developer with AI experience..."
+                    placeholder="Describe the target role, seniority, preferred companies, exclusions, schedule constraints, remote expectations, salary intent, languages, and any non-negotiables..."
                     className="form-control bg-black-20 border-white-10 text-white"
-                    style={{ height: '140px', resize: 'none' }}
+                    style={{ height: '220px', resize: 'vertical' }}
                     required
                 />
+                <div className="x-small text-secondary mt-2 opacity-75">
+                    Put every important instruction here. There is no separate AI instructions field anymore.
+                </div>
             </div>
 
             <div>

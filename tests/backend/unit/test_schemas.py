@@ -1,7 +1,7 @@
 import pytest
 from pydantic import ValidationError
 from datetime import datetime
-from backend.schemas.job import JobCreate, JobUpdate, JobPaginationResponse, Job
+from backend.schemas.job import JobCreate, JobUpdate, JobPaginationResponse, JobResponse, NormalizedJobData
 from backend.schemas.profile import SearchProfileCreate, ScheduleToggle
 
 def test_job_create_schema_valid():
@@ -81,3 +81,12 @@ def test_schedule_toggle_schema():
 def test_profile_create_invalid_workload_range():
     with pytest.raises(ValidationError):
         SearchProfileCreate(workload_min=90, workload_max=50)
+
+
+def test_normalized_job_data_defaults():
+    normalized = NormalizedJobData()
+    assert normalized.required_languages == []
+    assert normalized.required_skills == []
+    assert normalized.education_levels == []
+    assert normalized.key_requirements == []
+    assert normalized.metadata == {}

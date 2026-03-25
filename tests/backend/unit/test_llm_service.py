@@ -300,6 +300,60 @@ async def test_summarize_job_batch_pads_on_short_response(mock_provider):
         assert summaries[1] == ""
         assert summaries[2] == ""
 
+
+@pytest.mark.asyncio
+async def test_normalize_job_batch_success(mock_provider):
+    mock_provider.generate_json_async.return_value = {
+        "results": [
+            {
+                "title": "Senior Backend Engineer",
+                "role_family": "Backend Engineer",
+                "domain": "tech",
+                "seniority": "senior",
+                "employment_mode": "hybrid",
+                "contract_type": "permanent",
+                "qualification_level": "bachelor",
+                "experience_min_years": 5,
+                "experience_max_years": 8,
+                "workload_min": 80,
+                "workload_max": 100,
+                "salary_max_chf": 140000,
+                "required_languages": [{"code": "DE", "level": "b2"}],
+                "required_skills": ["Python", "Python", "FastAPI"],
+                "education_levels": ["Bachelor"],
+                "key_requirements": ["Swiss permit"],
+                "confidence": 0.82,
+            }
+        ]
+    }
+
+    with patch("backend.services.llm_service.get_provider_for_step", return_value=mock_provider):
+        service = LLMService()
+        results = await service.normalize_job_batch([
+            {"title": "Senior Backend Engineer", "description": "Python FastAPI role"}
+        ])
+
+    assert len(results) == 1
+    assert results[0]["domain"] == "it"
+    assert results[0]["required_languages"] == [{"code": "de", "level": "B2"}]
+    assert results[0]["required_skills"] == ["Python", "FastAPI"]
+
+
+@pytest.mark.asyncio
+async def test_normalize_job_batch_pads_invalid_rows(mock_provider):
+    mock_provider.generate_json_async.return_value = {"results": [{}]}
+
+    with patch("backend.services.llm_service.get_provider_for_step", return_value=mock_provider):
+        service = LLMService()
+        results = await service.normalize_job_batch([
+            {"title": "A", "description": "x"},
+            {"title": "B", "description": "y"},
+        ])
+
+    assert len(results) == 2
+    assert results[0]["domain"] == "general"
+    assert results[1]["domain"] == "general"
+
 @pytest.mark.asyncio
 async def test_is_summary_step_configured_false_by_default():
     """Verify summary step is NOT configured when no LLM_SUMMARY_* vars are set."""

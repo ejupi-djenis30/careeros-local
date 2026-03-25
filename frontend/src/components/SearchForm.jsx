@@ -5,12 +5,50 @@ import { SearchFormCoreInputs } from "./SearchForm/SearchFormCoreInputs";
 import { SearchFormParameters } from "./SearchForm/SearchFormParameters";
 import { SearchFormAdvanced } from "./SearchForm/SearchFormAdvanced";
 
+function mergeRoleDescription(roleDescription, legacyStrategy) {
+    const baseDescription = String(roleDescription || "").trim();
+    const extraRequirements = String(legacyStrategy || "").trim();
+
+    if (!extraRequirements) {
+        return baseDescription;
+    }
+
+    if (!baseDescription) {
+        return extraRequirements;
+    }
+
+    if (baseDescription.toLowerCase().includes(extraRequirements.toLowerCase())) {
+        return baseDescription;
+    }
+
+    return `${baseDescription}\n\nAdditional search requirements:\n${extraRequirements}`;
+}
+
+function normalizePrefillProfile(prefill) {
+    if (!prefill) {
+        return null;
+    }
+
+    const {
+        search_strategy: legacyStrategy,
+        preferred_domains: _preferredDomains,
+        workload_min: _legacyWorkloadMin,
+        workload_max: _legacyWorkloadMax,
+        hard_max_distance_km: _legacyHardMaxDistance,
+        ...rest
+    } = prefill;
+
+    return {
+        ...rest,
+        role_description: mergeRoleDescription(rest.role_description, legacyStrategy),
+    };
+}
+
 export function SearchForm({ onStartSearch, isLoading, prefill }) {
     const { showToast } = useToast();
     const [profile, setProfile] = useState({
         name: "",
         role_description: "",
-        search_strategy: "",
         location_filter: "",
         workload_filter: "80-100",
         posted_within_days: 30,
@@ -26,14 +64,10 @@ export function SearchForm({ onStartSearch, isLoading, prefill }) {
         // Feature 3: force-regeneration flags (only used on re-run)
         force_regenerate_cv_summary: false,
         force_regenerate_queries: false,
-        // Precision filters (hard enforcement)
+        // Precision filters
         preferred_languages: [],
-        preferred_domains: [],
         remote_only: false,
         salary_min_chf: "",
-        workload_min: "",
-        workload_max: "",
-        hard_max_distance_km: "",
     });
 
     useEffect(() => {
@@ -41,7 +75,7 @@ export function SearchForm({ onStartSearch, isLoading, prefill }) {
             // eslint-disable-next-line react-hooks/set-state-in-effect
             setProfile(prev => ({
                 ...prev,
-                ...prefill,
+                ...normalizePrefillProfile(prefill),
             }));
         }
     }, [prefill]);
@@ -97,14 +131,9 @@ export function SearchForm({ onStartSearch, isLoading, prefill }) {
             max_queries: profile.max_queries === "" ? -1 : profile.max_queries,
             max_occupation_queries: profile.max_occupation_queries === "" ? -1 : profile.max_occupation_queries,
             max_keyword_queries: profile.max_keyword_queries === "" ? -1 : profile.max_keyword_queries,
-            // Precision filters: send only when user made a conscious selection
             preferred_languages: profile.preferred_languages?.length ? profile.preferred_languages : undefined,
-            preferred_domains: profile.preferred_domains?.length ? profile.preferred_domains : undefined,
             remote_only: profile.remote_only || undefined,
             salary_min_chf: profile.salary_min_chf !== "" && profile.salary_min_chf != null ? Number(profile.salary_min_chf) : undefined,
-            workload_min: profile.workload_min !== "" && profile.workload_min != null ? Number(profile.workload_min) : undefined,
-            workload_max: profile.workload_max !== "" && profile.workload_max != null ? Number(profile.workload_max) : undefined,
-            hard_max_distance_km: profile.hard_max_distance_km !== "" && profile.hard_max_distance_km != null ? Number(profile.hard_max_distance_km) : undefined,
         };
 
         onStartSearch(searchProfile);
@@ -122,8 +151,8 @@ export function SearchForm({ onStartSearch, isLoading, prefill }) {
                                 <i className="bi bi-rocket-takeoff-fill text-primary fs-5"></i>
                             </div>
                             <div>
-                                <h4 className="fw-bold mb-0 text-white leading-tight">New Search Consideration</h4>
-                                <div className="text-secondary x-small">Configure AI parameters</div>
+                                <h4 className="fw-bold mb-0 text-white leading-tight">Define Search Brief</h4>
+                                <div className="text-secondary x-small">Describe the role once, then tune only the essential constraints</div>
                             </div>
                         </div>
                         
@@ -144,7 +173,7 @@ export function SearchForm({ onStartSearch, isLoading, prefill }) {
                     </div>
 
                     {/* Main Grid content */}
-                    <div className="row g-4 flex-grow-1">
+                    <div className="row g-4 flex-grow-1 align-content-start">
                         
                         {/* Column 1: Core Inputs */}
                         <SearchFormCoreInputs 

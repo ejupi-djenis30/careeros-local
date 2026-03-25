@@ -1,9 +1,12 @@
+from datetime import datetime, timezone
+
 import pytest
 from backend.models import Job, ScrapedJob
-from backend.models import SearchProfile
+from backend.models import SearchProfile, User
+from backend.services.auth import get_password_hash
 
 
-def _make_scraped_job(db_session, platform_job_id, title, company, external_url, platform="test"):
+def _make_scraped_job(db_session, platform_job_id, title, company, external_url, platform="test", publication_date=None):
     """Helper to create a ScrapedJob and flush it to get an id."""
     sj = ScrapedJob(
         platform=platform,
@@ -11,6 +14,7 @@ def _make_scraped_job(db_session, platform_job_id, title, company, external_url,
         title=title,
         company=company,
         external_url=external_url,
+        publication_date=publication_date,
     )
     db_session.add(sj)
     db_session.flush()
@@ -97,6 +101,58 @@ class TestAdvancedJobsAPI:
         response = client.patch("/api/v1/jobs/999999", json={"applied": True}, headers=auth_headers)
         assert response.status_code == 404
         assert response.json()["detail"] == "Job not found"
+
+    def test_get_jobs_sort_by_title(self, client, auth_headers, db_session, test_user):
+        profile = SearchProfile(user_id=test_user.id, name="Sort By Title")
+        db_session.add(profile)
+        db_session.flush()
+
+        sj1 = _make_scraped_job(db_session, "sort-a", "Zeta Engineer", "A", "http://zeta")
+        sj2 = _make_scraped_job(db_session, "sort-b", "Alpha Engineer", "B", "http://alpha")
+        db_session.add_all([
+            Job(user_id=test_user.id, search_profile_id=profile.id, scraped_job_id=sj1.id, is_scraped=True),
+            Job(user_id=test_user.id, search_profile_id=profile.id, scraped_job_id=sj2.id, is_scraped=True),
+        ])
+        db_session.commit()
+
+        response = client.get("/api/v1/jobs/?sort_by=title&sort_order=asc", headers=auth_headers)
+        assert response.status_code == 200
+        titles = [item["title"] for item in response.json()["items"]]
+        assert titles[:2] == ["Alpha Engineer", "Zeta Engineer"]
+
+    def test_get_jobs_sort_by_publication_date(self, client, auth_headers, db_session, test_user):
+        profile = SearchProfile(user_id=test_user.id, name="Sort By Publication")
+        db_session.add(profile)
+        db_session.flush()
+
+        sj1 = _make_scraped_job(
+            db_session,
+            "pub-old",
+            "Older Posting",
+            "A",
+            "http://older",
+            publication_date=datetime(2024, 1, 10, tzinfo=timezone.utc),
+        )
+        sj2 = _make_scraped_job(
+            db_session,
+            "pub-new",
+            "Newer Posting",
+            "B",
+            "http://newer",
+            publication_date=datetime(2024, 2, 10, tzinfo=timezone.utc),
+        )
+        db_session.add_all([
+            Job(user_id=test_user.id, search_profile_id=profile.id, scraped_job_id=sj1.id, is_scraped=True),
+            Job(user_id=test_user.id, search_profile_id=profile.id, scraped_job_id=sj2.id, is_scraped=True),
+        ])
+        db_session.commit()
+
+        response = client.get("/api/v1/jobs/?sort_by=publication_date&sort_order=desc", headers=auth_headers)
+        assert response.status_code == 200
+        titles = [item["title"] for item in response.json()["items"]]
+        assert titles[:2] == ["Newer Posting", "Older Posting"]
+
+
 def test_jobs_crud_flow(client, auth_headers: dict):
     # 1. List jobs (empty)
     response = client.get("/api/v1/jobs/", headers=auth_headers)
@@ -123,3 +179,94 @@ def test_jobs_crud_flow(client, auth_headers: dict):
     # 4. List jobs (1 item)
     response = client.get("/api/v1/jobs/", headers=auth_headers)
     assert response.json()["total"] == 1
+
+    # 5. Delete job
+    response = client.delete(f"/api/v1/jobs/{job_id}", headers=auth_headers)
+    assert response.status_code == 204
+
+    # 6. Ensure job is gone
+    response = client.get("/api/v1/jobs/", headers=auth_headers)
+    assert response.status_code == 200
+    assert response.json()["total"] == 0
+
+
+def test_create_job_rejects_foreign_profile(client, auth_headers, db_session):
+    other_user = User(
+        username="job_foreign_profile_user",
+        hashed_password=get_password_hash("OtherPass123"),
+    )
+    db_session.add(other_user)
+    db_session.commit()
+    db_session.refresh(other_user)
+
+    other_profile = SearchProfile(user_id=other_user.id, name="Other User Profile")
+    db_session.add(other_profile)
+    db_session.commit()
+
+    response = client.post(
+        "/api/v1/jobs/",
+        json={
+            "title": "Unauthorized Link",
+            "company": "ACME",
+            "external_url": "https://example.com/unauthorized-link",
+            "search_profile_id": other_profile.id,
+        },
+        headers=auth_headers,
+    )
+
+    assert response.status_code == 403
+    assert response.json()["detail"] == "Unauthorized profile access"
+
+
+def test_create_job_without_platform_job_id_reuses_same_scraped_job(client, auth_headers, db_session):
+    payload = {
+        "title": "Stable Manual Job",
+        "company": "ACME",
+        "external_url": "https://example.com/stable-manual-job",
+    }
+
+    first = client.post("/api/v1/jobs/", json=payload, headers=auth_headers)
+    second = client.post("/api/v1/jobs/", json=payload, headers=auth_headers)
+
+    assert first.status_code == 200
+    assert second.status_code == 200
+    assert first.json()["scraped_job_id"] == second.json()["scraped_job_id"]
+
+    scraped_jobs = db_session.query(ScrapedJob).filter(ScrapedJob.title == "Stable Manual Job").all()
+    assert len(scraped_jobs) == 1
+    assert scraped_jobs[0].platform_job_id.startswith("manual-")
+
+
+def test_jobs_response_includes_normalized_job_data(client, auth_headers, db_session, test_user):
+    profile = SearchProfile(user_id=test_user.id, name="Normalized Response")
+    db_session.add(profile)
+    db_session.flush()
+
+    scraped = ScrapedJob(
+        platform="test",
+        platform_job_id="normalized-1",
+        title="Bus Driver",
+        company="Transit AG",
+        external_url="https://example.com/bus-driver",
+        normalization_status="normalized",
+        normalization_source="llm_normalizer",
+        normalized_title="Bus Driver",
+        normalized_role_family="Driver",
+        normalized_domain="transport",
+        normalized_employment_mode="on-site",
+        normalized_workload_min=100,
+        normalized_workload_max=100,
+        normalized_required_languages=[{"code": "de", "level": "B1"}],
+        normalized_metadata={"bootstrap": False},
+    )
+    db_session.add(scraped)
+    db_session.flush()
+    db_session.add(Job(user_id=test_user.id, search_profile_id=profile.id, scraped_job_id=scraped.id, is_scraped=True))
+    db_session.commit()
+
+    response = client.get("/api/v1/jobs/", headers=auth_headers)
+    assert response.status_code == 200
+    item = next(job for job in response.json()["items"] if job["title"] == "Bus Driver")
+    assert item["normalized_job"]["status"] == "normalized"
+    assert item["normalized_job"]["domain"] == "transport"
+    assert item["normalized_job"]["required_languages"] == [{"code": "de", "level": "B1"}]

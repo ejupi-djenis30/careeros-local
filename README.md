@@ -8,7 +8,7 @@
 [![Docker](https://img.shields.io/badge/Docker-Enabled-2496ED.svg)](https://www.docker.com/)
 [![Code Style: Black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
 
-**Job Hunter AI** is an advanced, self-hosted, agentic job search assistant designed to automate the repetitive and tedious aspects of finding a new job. By leveraging the power of Large Language Models (LLMs) and automated web scraping, it acts as a personal recruiter working 24/7 to find opportunities that match your specific profile, career goals, and technical background.
+**Job Hunter AI** is an advanced, self-hosted, agentic job search assistant designed to automate the repetitive and tedious aspects of finding a new job. By leveraging the power of Large Language Models (LLMs) and automated web scraping, it acts as a personal recruiter working 24/7 to find opportunities that match your specific profile and career goals.
 
 Unlike standard job boards that rely on simple, rigid keyword matching, Job Hunter AI uses **semantic understanding** of your curriculum vitae (CV) and career aspirations to identify highly relevant opportunities, even if the exact phrasing in the job description doesn't match your resume perfectly. It allows you to aggregate listings from multiple diverse sources into a single, unified, and aesthetically pleasing dashboard, score them based on complex organizational fit, and continuously track your application execution lifecycle.
 
@@ -65,7 +65,8 @@ The tool operates through a sophisticated pipeline:
 1. **Intelligent Ingestion**: It reads your CV in PDF or raw Text format. It doesn't just parse text; it understands your seniority, technical stack, soft skills, and past domains.
 2. **Dynamic Query Generation**: Instead of you typing "Python Developer", the AI looks at your CV and generates dozens of highly optimized search queries across multiple languages (English, German, French) to cast the widest, yet most precise, net possible.
 3. **Automated Extraction**: It connects to major job boards (starting with Swiss market leaders) to fetch raw listings automatically.
-4. **Deep Semantic Scoring**: It uses LLMs (like Llama 3, DeepSeek, or Gemini) to "read" every single job description outputted by the scrapers. It then scores the job against your specific profile, considering critical nuances like seniority mismatch, required languages, and workload percentages.
+4. **Normalization-First Persistence**: It persists unique fetched jobs into a shared catalog first, then normalizes each listing into deterministic fields (domain, role family, seniority, languages, salary/workload ranges, and more).
+5. **Structured Filtering + Deep Semantic Scoring**: It applies deterministic structured constraints (for example remote-only, salary minimums, language/workload limits) and only then performs deep LLM match scoring for eligible jobs.
 5. **Continuous Automation**: It runs silently in the background on a schedule, alerting you only when high-quality, actionable matches are discovered.
 
 This project is built to be **100% self-hosted**. Your CV, your career goals, and your application history remain entirely private on your local machine or personal VPS.
@@ -119,13 +120,13 @@ Job Hunter AI is **LLM-agnostic** and supports a **flexible per-step architectur
 - **Ollama (Full Privacy)**: Allows you to run models like `llama3` safely and completely offline on your local hardware.
 - **Any OpenAI-compatible API**: Any provider offering an OpenAI-compatible endpoint (e.g., Together AI, Fireworks, local vLLM) works out of the box.
 
-### The Three-Pass Brain Architecture
+### Multi-Step Brain Architecture
 
-Each pass can independently use a different LLM provider/model via `LLM_{STEP}_*` environment variables (see [Configuration](#8-comprehensive-configuration-guide)).
+Each step can independently use a different LLM provider/model via `LLM_{STEP}_*` environment variables (see [Configuration](#8-comprehensive-configuration-guide)).
 
-1. **PLAN — The Generation Pass**: The AI reads your Profile and outputs strictly formatted JSON containing an array of Search Queries. The prompt is heavily constrained to avoid boolean logic nightmares and force the model to explore linguistic variations. *Typically benefits from a creative, large model.*
-2. **RELEVANCE — The Filter Pass**: A quick binary yes/no check on whether a job title is relevant to the user's target role. *A small, cheap model is sufficient here.*
-3. **MATCH — The Evaluation Pass**: The AI acts as a "Career Coach". It takes exactly one job listing and exactly one CV, evaluating them against strict rules (e.g., "If the user is a Junior and the job says Principal, cap the score at 50% max"). *Benefits from a powerful reasoning model.*
+1. **PLAN — Query Generation**: The AI reads your profile and outputs strictly formatted JSON containing executable search queries.
+2. **NORMALIZE — Shared Job Normalization**: The AI upgrades provider bootstrap facts into consistent structured fields used across filtering and downstream analysis.
+3. **MATCH — Deep Evaluation**: The AI acts as a career coach and evaluates profile-vs-job fit for final scoring and recommendation.
 
 ---
 
@@ -175,10 +176,12 @@ The `frontend/` directory is a highly modern React 19 application.
 3. The `SearchService` wakes up in the background. It reads the Profile from `ProfileRepository`.
 4. It calls the `LLMService` to generate an execution plan.
 5. It iterates over the generated queries, calling the `JobRoomProvider`.
-6. Results are deduplicated against existing database indices.
-7. Unique jobs are chunked and evaluated in parallel via `asyncio.gather` through the `LLMService`.
-8. Fully scored jobs are persisted via the `JobRepository`.
-9. The frontend `SearchContext` polling detects the completion and gracefully ceases its refresh loops.
+6. Results are deduplicated against profile history.
+7. Unique jobs are persisted into shared `ScrapedJob` catalog entries before any relevance gating.
+8. Persisted jobs are normalized (`provider_bootstrap` then optional LLM normalization).
+9. Structured deterministic filters are applied.
+10. Eligible jobs are deeply analyzed/scored and persisted as user-specific `Job` rows.
+11. The frontend `SearchContext` polling detects completion and gracefully ceases refresh loops.
 
 ---
 
@@ -194,16 +197,21 @@ The system relies on a strictly relational schema, managed by SQLAlchemy ORM.
 
 2. **Search Profile (`search_profiles` table)**:
    - The central configuration entity.
-   - Fields: `name`, `role_description`, `cv_content`, `search_strategy`, `location_filter`, `workload_filter`, `max_queries`.
+   - Fields: `name`, `role_description`, `cv_content`, `location_filter`, `workload_filter`, `max_queries`.
    - Stores scheduling configurations (`schedule_interval_hours`, `is_active_schedule`).
 
-3. **Job (`jobs` table)**:
+3. **Scraped Job (`scraped_jobs` table)**:
+   - Shared catalog entry for fetched listings.
+   - Stores raw listing facts and normalized fields (`normalized_domain`, `normalized_role_family`, `normalized_required_languages`, salary/workload bounds, metadata).
+   - Normalization status tracks progression (`pending`, `provider_bootstrap`, `normalized`, etc.).
+
+4. **Job (`jobs` table)**:
    - The primary data asset.
    - Core Fields: `title`, `company`, `description`, `location`, `url`.
    - Advanced Fields: `affinity_score` (Integer), `affinity_analysis` (Text), `worth_applying` (Boolean).
-   - Relationship: Every job is linked to the User and strictly linked via Foreign Key (`search_profile_id`) to the specific search variation that spawned it, enabling granular UI filtering.
+   - Relationship: Every job is linked to the User and to a `scraped_job_id`, preserving shared catalog reuse across profiles.
 
-4. **Search History (`search_histories` table)**:
+5. **Search History (`search_histories` table)**:
    - Audit ledger recording every time a search execution occurs, how many jobs were queried, new uniquely discover jobs, and duplicates encountered.
 
 ---

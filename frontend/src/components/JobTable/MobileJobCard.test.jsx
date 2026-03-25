@@ -63,6 +63,11 @@ describe('MobileJobCard', () => {
         expect(mockHandlers.onToggleApplied).toHaveBeenCalledWith(mockJob);
     });
 
+    it('disables the applied switch while an update is pending', () => {
+        render(<MobileJobCard job={mockJob} isAppliedPending={true} {...mockHandlers} />);
+        expect(screen.getByRole('checkbox')).toBeDisabled();
+    });
+
     it('calls onCopy when copy button clicked', () => {
         render(<MobileJobCard job={mockJob} {...mockHandlers} />);
         const copyBtn = screen.getByTitle('Copy Info');

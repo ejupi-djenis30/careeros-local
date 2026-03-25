@@ -2,6 +2,7 @@ import pytest
 from datetime import datetime
 from unittest.mock import patch
 from fastapi.testclient import TestClient
+from backend.services.search_status import reserve_task, release_task
 
 class TestAdvancedSearchAPI:
     def test_get_search_status_all(self, client, auth_headers):
@@ -101,3 +102,20 @@ def test_get_search_status(client: TestClient, auth_headers: dict, test_profile)
     profile_id = test_profile["id"]
     response = client.get(f"/api/v1/search/status/{profile_id}", headers=auth_headers)
     assert response.status_code == 200
+
+
+def test_start_search_conflict_when_profile_already_reserved(client, auth_headers: dict, test_profile):
+    profile_id = test_profile["id"]
+    assert reserve_task(profile_id) is True
+
+    try:
+        response = client.post(
+            "/api/v1/search/start",
+            json={"id": profile_id, "name": "Conflicting Search"},
+            headers=auth_headers,
+        )
+    finally:
+        release_task(profile_id)
+
+    assert response.status_code == 409
+    assert response.json()["detail"] == "A search is already running for this profile"

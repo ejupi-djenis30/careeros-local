@@ -59,6 +59,7 @@ def _save_statuses(force=False):
 
 _statuses: Dict[int, Dict[str, Any]] = _load_statuses()
 _active_tasks: Dict[int, Any] = {} # profile_id -> asyncio.Task
+_reserved_tasks: set[int] = set()
 
 
 def init_status(profile_id: int, total_searches: int = 0, searches: List[Dict] = None, user_id: int = None):
@@ -151,19 +152,37 @@ def clear_status(profile_id: int):
 def register_task(profile_id: int, task: Any):
     """Register an active search task."""
     with _lock:
+        _reserved_tasks.discard(profile_id)
         _active_tasks[profile_id] = task
 
 
 def unregister_task(profile_id: int):
     """Remove a finished or cancelled task from registry."""
     with _lock:
+        _reserved_tasks.discard(profile_id)
         _active_tasks.pop(profile_id, None)
+
+
+def reserve_task(profile_id: int) -> bool:
+    """Reserve a profile before the background task is registered."""
+    with _lock:
+        if profile_id in _active_tasks or profile_id in _reserved_tasks:
+            return False
+        _reserved_tasks.add(profile_id)
+        return True
+
+
+def release_task(profile_id: int):
+    """Release a previously reserved profile slot."""
+    with _lock:
+        _reserved_tasks.discard(profile_id)
 
 
 def cancel_task(profile_id: int):
     """Explicitly cancel the background search task for a profile."""
     with _lock:
         task = _active_tasks.get(profile_id)
+        _reserved_tasks.discard(profile_id)
         if task:
             task.cancel()
             return True

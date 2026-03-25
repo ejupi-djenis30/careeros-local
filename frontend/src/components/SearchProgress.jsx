@@ -58,6 +58,7 @@ export function SearchProgress({ profileId, status, onStateChange, onClear }) {
         no_results: "Search completed with notice: no jobs were found for the generated queries.",
         all_duplicates: "Search completed with notice: all found jobs were already present in history.",
         no_relevant_jobs: "Search completed with notice: no jobs passed relevance filtering.",
+        no_jobs_after_structured_filters: "Search completed with notice: all fetched jobs were filtered out by structured constraints.",
     };
     const doneNotice = isDone ? doneNoticeByReason[terminal_reason] : null;
     const showDebugLabel = isDone || isError;

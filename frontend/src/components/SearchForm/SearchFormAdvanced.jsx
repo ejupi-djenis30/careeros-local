@@ -5,7 +5,7 @@ export function SearchFormAdvanced({ profile, handleChange, setProfile }) {
     const isRerun = Boolean(profile.id);
     
     return (
-        <div className="col-lg-4 d-flex flex-column gap-3">
+        <div className="col-xl-3 col-lg-12 d-flex flex-column gap-3">
             <div className="p-3 bg-white-5 rounded-3 border border-white-5">
                 <div className="form-check form-switch d-flex align-items-center justify-content-between ps-0 mb-3">
                     <div>
@@ -51,7 +51,7 @@ export function SearchFormAdvanced({ profile, handleChange, setProfile }) {
                     placeholder="E.g. Senior Python Remote"
                     className="form-control form-control-sm bg-black-20 border-white-10 text-white"
                 />
-                <div className="x-small text-secondary mt-1 opacity-75">Leave empty for auto-naming</div>
+                <div className="x-small text-secondary mt-1 opacity-75">Leave empty to auto-name from the role brief</div>
             </div>
 
             {/* Query Controls */}
@@ -104,7 +104,7 @@ export function SearchFormAdvanced({ profile, handleChange, setProfile }) {
                     </div>
                 </div>
                 <div className="x-small text-secondary mt-2 opacity-60">
-                    Set occupation/keyword counts for strict AI enforcement (up to 3 retries).
+                    Leave split fields empty unless you need strict control over query generation.
                 </div>
             </div>
 

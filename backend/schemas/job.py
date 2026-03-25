@@ -1,4 +1,4 @@
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 from typing import Optional, List, Any, Dict
 from datetime import datetime
 
@@ -44,7 +44,33 @@ class JobUpdate(BaseModel):
     company: Optional[str] = None
 
 
-class Job(JobBase):
+class NormalizedJobData(BaseModel):
+    status: Optional[str] = None
+    normalized_at: Optional[datetime] = None
+    version: Optional[int] = None
+    source: Optional[str] = None
+    confidence: Optional[float] = None
+    title: Optional[str] = None
+    role_family: Optional[str] = None
+    domain: Optional[str] = None
+    seniority: Optional[str] = None
+    employment_mode: Optional[str] = None
+    contract_type: Optional[str] = None
+    qualification_level: Optional[str] = None
+    experience_min_years: Optional[int] = None
+    experience_max_years: Optional[int] = None
+    workload_min: Optional[int] = None
+    workload_max: Optional[int] = None
+    salary_min_chf: Optional[int] = None
+    salary_max_chf: Optional[int] = None
+    required_languages: List[Dict[str, Any]] = Field(default_factory=list)
+    required_skills: List[str] = Field(default_factory=list)
+    education_levels: List[str] = Field(default_factory=list)
+    key_requirements: List[str] = Field(default_factory=list)
+    metadata: Dict[str, Any] = Field(default_factory=dict)
+
+
+class JobResponse(JobBase):
     model_config = ConfigDict(from_attributes=True)
 
     id: int
@@ -57,11 +83,14 @@ class Job(JobBase):
     worth_applying: Optional[bool] = False
     distance_km: Optional[float] = None
     applied: bool
-    # Feature 2: True when same ScrapedJob was applied in another profile
-    applied_elsewhere: bool = False
+    applied_elsewhere: bool = Field(
+        default=False,
+        description="Derived response field. True when the same scraped job is marked applied in another profile for the same user.",
+    )
     created_at: datetime
     updated_at: Optional[datetime] = None
     raw_metadata: Optional[Dict[str, Any]] = None
+    normalized_job: Optional[NormalizedJobData] = None
 
     @property
     def url(self):
@@ -70,7 +99,7 @@ class Job(JobBase):
 
 
 class JobPaginationResponse(BaseModel):
-    items: List[Job]
+    items: List[JobResponse]
     total: int
     page: int
     pages: int

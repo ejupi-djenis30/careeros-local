@@ -3,7 +3,7 @@ from unittest.mock import MagicMock, patch
 from backend.services.search_status import (
     init_status, add_log, update_status, get_status, 
     get_all_statuses, clear_status, register_task, 
-    unregister_task, cancel_task
+    unregister_task, cancel_task, reserve_task, release_task
 )
 import backend.services.search_status as ss
 
@@ -13,6 +13,7 @@ def reset_status_registry():
     with ss._lock:
         ss._statuses.clear()
         ss._active_tasks.clear()
+        ss._reserved_tasks.clear()
     yield
 
 def test_init_status():
@@ -80,6 +81,14 @@ def test_task_lifecycle():
 
 def test_cancel_task_non_existent():
     assert cancel_task(999) is False
+
+
+def test_task_reservation_lifecycle():
+    assert reserve_task(123) is True
+    assert reserve_task(123) is False
+
+    release_task(123)
+    assert reserve_task(123) is True
 
 def test_save_statuses_logs_warning_on_write_failure(caplog):
     caplog.set_level("WARNING")

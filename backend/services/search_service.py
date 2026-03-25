@@ -1,8 +1,9 @@
 import asyncio
+import inspect
 import logging
 import re
-from typing import List, Dict, Any, Optional
 from datetime import datetime, timezone
+from typing import List, Dict, Any, Optional
 
 from sqlalchemy.orm import Session
 from backend.models import ScrapedJob, Job, SearchProfile
@@ -223,6 +224,420 @@ class SearchService:
             except ValueError:
                 continue
         return max(values) if values else None
+
+    def _extract_listing_description_text(self, listing) -> str:
+        descs = getattr(listing, "descriptions", [])
+        if not descs:
+            return ""
+        first = descs[0]
+        return first.description if hasattr(first, "description") else (first.get("description", "") if isinstance(first, dict) else "")
+
+    def _extract_listing_location_string(self, listing) -> str:
+        location = getattr(listing, "location", None)
+        return getattr(location, "city", None) or getattr(listing, "location", "") or ""
+
+    def _extract_listing_workload_string(self, listing) -> str:
+        employment = getattr(listing, "employment", None)
+        if not employment:
+            return ""
+        workload_min = getattr(employment, "workload_min", None)
+        workload_max = getattr(employment, "workload_max", None)
+        if workload_min is None and workload_max is None:
+            return ""
+        if workload_min == workload_max:
+            return f"{workload_min}%"
+        return f"{workload_min}-{workload_max}%"
+
+    def _parse_listing_publication_date(self, listing, platform: str, platform_id: str):
+        publication = getattr(listing, "publication", None)
+        if not publication or not getattr(publication, "start_date", None):
+            return None
+
+        try:
+            date_raw = publication.start_date
+            if "T" in date_raw:
+                return datetime.fromisoformat(date_raw.replace('Z', '+00:00'))
+            return datetime.strptime(date_raw, "%Y-%m-%d")
+        except (TypeError, ValueError) as exc:
+            logger.warning(
+                "Failed to parse publication date %r for %s/%s: %s",
+                publication.start_date,
+                platform,
+                platform_id,
+                exc,
+            )
+            return None
+
+    def _bootstrap_normalized_job_data(self, listing, *, desc_text: str, company_name: str, location_str: str) -> Dict[str, Any]:
+        employment = getattr(listing, "employment", None)
+        workload_min = getattr(employment, "workload_min", None) if employment else None
+        workload_max = getattr(employment, "workload_max", None) if employment else None
+
+        language_requirements = []
+        for skill in getattr(listing, "language_skills", []) or []:
+            code = str(getattr(skill, "language_code", "") or "").strip().lower()
+            level = str(getattr(skill, "spoken_level", "") or "").strip().upper() or None
+            if not code:
+                continue
+            language_requirements.append({
+                "code": code,
+                "level": level,
+            })
+
+        education_levels = []
+        qualification_codes = []
+        for occupation in getattr(listing, "occupations", []) or []:
+            education_code = getattr(occupation, "education_code", None)
+            qualification_code = getattr(occupation, "qualification_code", None)
+            if education_code:
+                token = str(education_code).strip()
+                if token and token not in education_levels:
+                    education_levels.append(token)
+            if qualification_code:
+                token = str(qualification_code).strip()
+                if token and token not in qualification_codes:
+                    qualification_codes.append(token)
+
+        title = clean_html_tags(getattr(listing, "title", "Unknown"))
+        title_lower = title.lower()
+        seniority = None
+        for label, keywords in {
+            "junior": ["junior", "entry", "intern", "trainee", "apprentice"],
+            "mid": ["professional", "specialist", "associate"],
+            "senior": ["senior", "lead", "principal", "head", "director", "manager"],
+        }.items():
+            if any(keyword in title_lower for keyword in keywords):
+                seniority = label
+                break
+
+        experience_values = []
+        for match in re.findall(r"(?i)(\d{1,2})\s*\+?\s*(?:years|year|yrs|yr|anni|jahre|ans)", desc_text or ""):
+            try:
+                experience_values.append(int(match))
+            except ValueError:
+                continue
+
+        salary_max = self._extract_salary_max_chf(listing)
+        remote = self._listing_is_remote(listing)
+
+        return {
+            "normalization_status": "provider_bootstrap",
+            "normalized_at": datetime.now(timezone.utc),
+            "normalization_version": 1,
+            "normalization_source": "provider_bootstrap",
+            "normalization_confidence": 0.35,
+            "normalized_title": title,
+            "normalized_role_family": title,
+            "normalized_domain": "general",
+            "normalized_seniority": seniority,
+            "normalized_employment_mode": "remote" if remote else "on-site",
+            "normalized_contract_type": None,
+            "normalized_qualification_level": qualification_codes[0] if qualification_codes else None,
+            "normalized_experience_min_years": min(experience_values) if experience_values else None,
+            "normalized_experience_max_years": max(experience_values) if experience_values else None,
+            "normalized_workload_min": workload_min,
+            "normalized_workload_max": workload_max,
+            "normalized_salary_min_chf": None,
+            "normalized_salary_max_chf": salary_max,
+            "normalized_required_languages": language_requirements or None,
+            "normalized_required_skills": None,
+            "normalized_education_levels": education_levels or None,
+            "normalized_key_requirements": None,
+            "normalized_metadata": {
+                "bootstrap": True,
+                "provider": getattr(listing, "source", None) or getattr(listing, "platform", "unknown"),
+                "company": company_name,
+                "location": location_str,
+                "qualification_codes": qualification_codes,
+            },
+        }
+
+    def _upsert_scraped_job(self, listing) -> tuple[ScrapedJob, bool]:
+        platform = getattr(listing, "source", None) or getattr(listing, "platform", "unknown")
+        platform_id = str(getattr(listing, "id", "") or getattr(listing, "platform_job_id", ""))
+
+        existing_sj = self.db.query(ScrapedJob).filter(
+            ScrapedJob.platform == platform,
+            ScrapedJob.platform_job_id == platform_id,
+        ).first()
+
+        desc_text = self._extract_listing_description_text(listing)
+        company_name = self._extract_company_name(listing) or "Unknown"
+        location_str = self._extract_listing_location_string(listing)
+        workload_str = self._extract_listing_workload_string(listing)
+        pub_date = self._parse_listing_publication_date(listing, platform, platform_id)
+        normalized_bootstrap = self._bootstrap_normalized_job_data(
+            listing,
+            desc_text=desc_text,
+            company_name=company_name,
+            location_str=location_str,
+        )
+
+        created = False
+        if not existing_sj:
+            existing_sj = ScrapedJob(
+                platform=platform,
+                platform_job_id=platform_id,
+                title=clean_html_tags(getattr(listing, "title", "Unknown")),
+                company=company_name,
+                description=clean_html_tags(desc_text) if desc_text else None,
+                location=location_str,
+                external_url=getattr(listing, "external_url", None) or getattr(listing, "url", None) or platform_id,
+                application_url=getattr(listing, "application", None).form_url if getattr(listing, "application", None) else None,
+                application_email=getattr(listing, "application", None).email if getattr(listing, "application", None) else None,
+                workload=workload_str or None,
+                publication_date=pub_date,
+                source_query=getattr(listing, "_source_query", "Unknown"),
+                summary=getattr(listing, "_summary", None),
+                **normalized_bootstrap,
+            )
+            self.db.add(existing_sj)
+            self.db.flush()
+            created = True
+        else:
+            if getattr(listing, "_summary", None) and not existing_sj.summary:
+                existing_sj.summary = getattr(listing, "_summary", None)
+
+            refresh_fields = {
+                "description": clean_html_tags(desc_text) if desc_text else None,
+                "location": location_str or None,
+                "application_url": getattr(listing, "application", None).form_url if getattr(listing, "application", None) else None,
+                "application_email": getattr(listing, "application", None).email if getattr(listing, "application", None) else None,
+                "workload": workload_str or None,
+                "publication_date": pub_date,
+                "source_query": getattr(listing, "_source_query", None),
+            }
+            for field, value in refresh_fields.items():
+                if getattr(existing_sj, field, None) is None and value is not None:
+                    setattr(existing_sj, field, value)
+
+            for field, value in normalized_bootstrap.items():
+                if getattr(existing_sj, field, None) is None and value is not None:
+                    setattr(existing_sj, field, value)
+            if not existing_sj.normalization_status:
+                existing_sj.normalization_status = "provider_bootstrap"
+
+        setattr(listing, "_scraped_job_id", existing_sj.id)
+        setattr(listing, "_normalized_job_data", existing_sj.normalized_job_data)
+        return existing_sj, created
+
+    async def _persist_scraped_job_catalog(self, profile_id: int, jobs: list) -> tuple[int, int]:
+        if not jobs:
+            return 0, 0
+
+        created = 0
+        updated = 0
+        try:
+            for listing in jobs:
+                _, was_created = self._upsert_scraped_job(listing)
+                if was_created:
+                    created += 1
+                else:
+                    updated += 1
+            self.db.commit()
+        except Exception as exc:
+            self.db.rollback()
+            logger.error("Failed to persist scraped job catalog for profile %s: %s", profile_id, exc)
+            raise
+
+        add_log(profile_id, f"Persisted shared job catalog entries before filtering: {created} created, {updated} refreshed")
+        return created, updated
+
+    async def _normalize_persisted_jobs(self, profile_id: int, jobs: List[Any]) -> int:
+        if not jobs:
+            return 0
+
+        candidates: List[Dict[str, Any]] = []
+        candidate_records: List[ScrapedJob] = []
+
+        for listing in jobs:
+            scraped_job_id = getattr(listing, "_scraped_job_id", None)
+            if not scraped_job_id:
+                continue
+            scraped_job = self.db.query(ScrapedJob).filter(ScrapedJob.id == scraped_job_id).first()
+            if not scraped_job:
+                continue
+            if scraped_job.normalization_status not in {None, "", "pending", "provider_bootstrap"}:
+                setattr(listing, "_normalized_job_data", scraped_job.normalized_job_data)
+                continue
+
+            candidates.append(
+                {
+                    "title": scraped_job.title,
+                    "company": scraped_job.company,
+                    "location": scraped_job.location,
+                    "workload": scraped_job.workload,
+                    "description": scraped_job.description,
+                }
+            )
+            candidate_records.append(scraped_job)
+
+        if not candidates:
+            return 0
+
+        normalized_rows = await llm_service.normalize_job_batch(candidates)
+        upgraded = 0
+        for scraped_job, normalized in zip(candidate_records, normalized_rows):
+            scraped_job.normalization_status = "normalized"
+            scraped_job.normalized_at = datetime.now(timezone.utc)
+            scraped_job.normalization_source = "llm_normalizer"
+            scraped_job.normalization_confidence = normalized.get("confidence")
+            scraped_job.normalized_title = normalized.get("title")
+            scraped_job.normalized_role_family = normalized.get("role_family")
+            scraped_job.normalized_domain = normalized.get("domain")
+            scraped_job.normalized_seniority = normalized.get("seniority")
+            scraped_job.normalized_employment_mode = normalized.get("employment_mode")
+            scraped_job.normalized_contract_type = normalized.get("contract_type")
+            scraped_job.normalized_qualification_level = normalized.get("qualification_level")
+            scraped_job.normalized_experience_min_years = normalized.get("experience_min_years")
+            scraped_job.normalized_experience_max_years = normalized.get("experience_max_years")
+            scraped_job.normalized_workload_min = normalized.get("workload_min")
+            scraped_job.normalized_workload_max = normalized.get("workload_max")
+            scraped_job.normalized_salary_min_chf = normalized.get("salary_min_chf")
+            scraped_job.normalized_salary_max_chf = normalized.get("salary_max_chf")
+            scraped_job.normalized_required_languages = normalized.get("required_languages") or None
+            scraped_job.normalized_required_skills = normalized.get("required_skills") or None
+            scraped_job.normalized_education_levels = normalized.get("education_levels") or None
+            scraped_job.normalized_key_requirements = normalized.get("key_requirements") or None
+
+            metadata = scraped_job.normalized_metadata or {}
+            metadata.update({"llm_normalized": True, "source": "llm_normalizer"})
+            scraped_job.normalized_metadata = metadata
+            upgraded += 1
+
+        self.db.commit()
+
+        for listing in jobs:
+            scraped_job_id = getattr(listing, "_scraped_job_id", None)
+            if not scraped_job_id:
+                continue
+            refreshed = self.db.query(ScrapedJob).filter(ScrapedJob.id == scraped_job_id).first()
+            if refreshed:
+                setattr(listing, "_normalized_job_data", refreshed.normalized_job_data)
+
+        if upgraded > 0:
+            add_log(profile_id, f"Normalized {upgraded} persisted jobs with LLM structured extraction.")
+        return upgraded
+
+    def _apply_structured_filters(self, profile_id: int, profile_dict: Dict[str, Any], jobs: List[Any], preferences: Dict[str, Any]) -> List[Any]:
+        if not jobs:
+            return jobs
+
+        kept: List[Any] = []
+        dropped_reasons: Dict[str, int] = {}
+        for job in jobs:
+            ok, reason = self._passes_structured_filters(job, preferences, profile_dict)
+            if ok:
+                kept.append(job)
+                continue
+            dropped_reasons[reason] = dropped_reasons.get(reason, 0) + 1
+
+        dropped_total = len(jobs) - len(kept)
+        if dropped_total > 0:
+            reasons_text = ", ".join([f"{key}:{value}" for key, value in sorted(dropped_reasons.items())])
+            add_log(
+                profile_id,
+                f"Structured filtering dropped {dropped_total}/{len(jobs)} jobs. Reasons: {reasons_text}",
+            )
+        if kept:
+            add_log(profile_id, f"Structured filtering kept {len(kept)} / {len(jobs)} jobs using persisted job facts and deterministic constraints.")
+        return kept
+
+    def _passes_structured_filters(self, listing, preferences: Dict[str, Any], profile_dict: Dict[str, Any]) -> tuple[bool, str]:
+        normalized = getattr(listing, "_normalized_job_data", None)
+        if not isinstance(normalized, dict):
+            normalized = {}
+
+        if preferences.get("remote_only"):
+            mode_token = self._normalized_text_token(normalized.get("employment_mode", ""))
+            is_remote_like = mode_token in {"remote", "hybrid", "home office", "telework", "teletravail"}
+            if mode_token:
+                if not is_remote_like:
+                    return False, "remote_only"
+            elif not self._listing_is_remote(listing):
+                return False, "remote_only"
+
+        salary_min = preferences.get("salary_min_chf")
+        if salary_min is not None:
+            normalized_salary_max = self._coerce_int(normalized.get("salary_max_chf"), None)
+            if normalized_salary_max is None:
+                normalized_salary_max = self._extract_salary_max_chf(listing)
+            if normalized_salary_max is None or normalized_salary_max < salary_min:
+                return False, "salary_min_chf"
+
+        required_min, required_max = self._resolve_required_workload_range(profile_dict, preferences)
+        if required_min is not None or required_max is not None:
+            listing_min = self._coerce_int(normalized.get("workload_min"), None)
+            listing_max = self._coerce_int(normalized.get("workload_max"), None)
+            if listing_min is None or listing_max is None:
+                employment = getattr(listing, "employment", None)
+                listing_min = getattr(employment, "workload_min", None) if employment else None
+                listing_max = getattr(employment, "workload_max", None) if employment else None
+            if listing_min is None or listing_max is None:
+                return False, "workload_missing"
+
+            min_expected = required_min if required_min is not None else 0
+            max_expected = required_max if required_max is not None else 100
+            if listing_max < min_expected or listing_min > max_expected:
+                return False, "workload_range"
+
+        allowed_languages = set(preferences.get("preferred_languages") or [])
+        if allowed_languages:
+            required_languages = self._extract_required_language_codes(listing, normalized)
+            if required_languages and required_languages.isdisjoint(allowed_languages):
+                return False, "preferred_languages"
+
+        hard_max_distance = preferences.get("hard_max_distance_km")
+        if hard_max_distance is not None:
+            origin_lat = profile_dict.get("latitude")
+            origin_lon = profile_dict.get("longitude")
+            location = getattr(listing, "location", None)
+            coords = getattr(location, "coordinates", None) if location else None
+            if origin_lat is None or origin_lon is None or not coords:
+                return False, "distance_missing"
+            distance = haversine_distance(origin_lat, origin_lon, coords.lat, coords.lon)
+            if distance > hard_max_distance:
+                return False, "distance_limit"
+
+        return True, "ok"
+
+    def _resolve_required_workload_range(self, profile_dict: Dict[str, Any], preferences: Dict[str, Any]) -> tuple[Optional[int], Optional[int]]:
+        min_pref = preferences.get("workload_min")
+        max_pref = preferences.get("workload_max")
+        if min_pref is not None or max_pref is not None:
+            return min_pref, max_pref
+
+        workload_filter = str(profile_dict.get("workload_filter") or "").strip()
+        if not workload_filter:
+            return None, None
+        match = re.match(r"^\s*(\d{1,3})\s*-\s*(\d{1,3})\s*$", workload_filter)
+        if not match:
+            return None, None
+        try:
+            min_value = int(match.group(1))
+            max_value = int(match.group(2))
+        except ValueError:
+            return None, None
+        if min_value > max_value:
+            min_value, max_value = max_value, min_value
+        return min_value, max_value
+
+    def _extract_required_language_codes(self, listing, normalized: Dict[str, Any]) -> set[str]:
+        codes: set[str] = set()
+        for entry in normalized.get("required_languages") or []:
+            if not isinstance(entry, dict):
+                continue
+            code = normalize_language(entry.get("code", ""))
+            if code:
+                codes.add(code)
+        if codes:
+            return codes
+
+        for skill in getattr(listing, "language_skills", []) or []:
+            code = normalize_language(getattr(skill, "language_code", ""))
+            if code:
+                codes.add(code)
+        return codes
 
     def _passes_hard_filters(self, listing, preferences: Dict[str, Any], profile_dict: Dict[str, Any]) -> tuple[bool, str]:
         if preferences.get("remote_only") and not self._listing_is_remote(listing):
@@ -503,33 +918,26 @@ class SearchService:
                 update_status(profile_id, state="done", terminal_reason="all_duplicates")
                 return
 
-            # ── Step 3.5: Job Summary Generation (Feature 1 — opt-in) ──
-            if llm_service.is_summary_step_configured():
-                unique_jobs = await self._summarize_jobs(profile_id, unique_jobs)
+            # ── Step 4: Persist every unique scraped job before any gating ──
+            add_log(profile_id, f"Step 4: Persisting {len(unique_jobs)} unique fetched jobs into the shared catalog...")
+            await self._persist_scraped_job_catalog(profile_id, unique_jobs)
 
-            # ── Step 3.55: Hard filtering before LLM relevance ──
-            pre_hard_count = len(unique_jobs)
-            unique_jobs = self._apply_hard_filters(profile_id, profile_dict, unique_jobs, profile_preferences)
-            if not unique_jobs:
-                add_log(profile_id, "No jobs left after hard filters.")
-                add_log(profile_id, f"[LLM_DEBUG] state=done terminal_reason=no_jobs_after_hard_filters profile_id={profile_id}")
-                update_status(profile_id, state="done", terminal_reason="no_jobs_after_hard_filters")
-                return
-            if len(unique_jobs) != pre_hard_count:
-                add_log(profile_id, f"Hard filtering kept {len(unique_jobs)} / {pre_hard_count} jobs before relevance.")
-            
-            # ── Step 3.6: Relevance Pre-Filter (cheap LLM check Feature 1) ──
-            add_log(profile_id, f"Step 4: Phase 1 Relevance Filter ({len(unique_jobs)} jobs)...")
-            filtered_jobs = await self._relevance_filter(profile_id, profile_dict, unique_jobs)
-            add_log(profile_id, f"Relevance filter: {len(filtered_jobs)} relevant out of {len(unique_jobs)}")
-            
-            skipped_by_relevance = len(unique_jobs) - len(filtered_jobs)
-            unique_jobs = filtered_jobs
+            # ── Step 4.5: Upgrade provider bootstrap normalization with LLM normalization ──
+            try:
+                await self._normalize_persisted_jobs(profile_id, unique_jobs)
+            except Exception as normalize_error:
+                logger.warning("LLM normalization failed for profile %s: %s", profile_id, normalize_error)
+                add_log(profile_id, f"Normalization warning: {normalize_error}")
+
+            # ── Step 5: Structured filtering based on persisted job facts ──
+            pre_filter_count = len(unique_jobs)
+            unique_jobs = self._apply_structured_filters(profile_id, profile_dict, unique_jobs, profile_preferences)
+            filtered_out_count = pre_filter_count - len(unique_jobs)
 
             if not unique_jobs:
-                add_log(profile_id, "No relevant jobs passed Phase 1 filter.")
-                add_log(profile_id, f"[LLM_DEBUG] state=done terminal_reason=no_relevant_jobs profile_id={profile_id}")
-                update_status(profile_id, state="done", terminal_reason="no_relevant_jobs")
+                add_log(profile_id, "No jobs left after structured filtering.")
+                add_log(profile_id, f"[LLM_DEBUG] state=done terminal_reason=no_jobs_after_structured_filters profile_id={profile_id}")
+                update_status(profile_id, state="done", terminal_reason="no_jobs_after_structured_filters")
                 return
 
             update_status(
@@ -538,12 +946,13 @@ class SearchService:
                 jobs_found=len(all_jobs),
                 jobs_new=len(unique_jobs),
                 jobs_duplicates=duplicates,
-                jobs_skipped=skipped_by_relevance,
+                jobs_skipped=filtered_out_count,
             )
 
-            # ── Step 4: Analyze & save each unique job (Parallel) ──
-            add_log(profile_id, f"Step 5: Phase 2 Detailed Analysis and Match ({len(unique_jobs)} jobs)...")
+            # ── Step 6: Analyze & save each structurally eligible job (Parallel) ──
+            add_log(profile_id, f"Step 6: Detailed analysis and match scoring ({len(unique_jobs)} jobs)...")
             saved_count, skipped_count = await self._analyze_and_save(profile_id, profile_dict, unique_jobs)
+            total_skipped = filtered_out_count + skipped_count
 
             add_log(profile_id, f"✓ Search complete – {saved_count} jobs saved, {skipped_count} skipped")
             add_log(profile_id, f"[LLM_DEBUG] state=done terminal_reason=completed profile_id={profile_id} jobs_saved={saved_count} jobs_skipped={skipped_count}")
@@ -555,7 +964,7 @@ class SearchService:
                 jobs_found=len(all_jobs),
                 jobs_new=saved_count,
                 jobs_duplicates=duplicates,
-                jobs_skipped=skipped_count
+                jobs_skipped=total_skipped
             )
         except Exception as e:
             logger.error(f"Unexpected error in run_search for profile {profile_id}: {e}", exc_info=True)
@@ -566,14 +975,15 @@ class SearchService:
                     continue
 
                 try:
-                    if hasattr(provider, "close"):
+                    # Use static lookup to avoid triggering synthetic Mock attributes.
+                    if inspect.getattr_static(provider, "close", None) is not None:
                         close_result = provider.close()
                         if asyncio.iscoroutine(close_result):
                             await close_result
                         continue
 
                     session = getattr(provider, "_session", None)
-                    if session and hasattr(session, "aclose"):
+                    if session and inspect.getattr_static(session, "aclose", None) is not None:
                         close_result = session.aclose()
                         if asyncio.iscoroutine(close_result):
                             await close_result
@@ -1129,63 +1539,9 @@ class SearchService:
         platform_id = str(getattr(listing, "id", "") or getattr(listing, "platform_job_id", ""))
         
         # 1. ScrapedJob (or fetch existing)
-        existing_sj = self.db.query(ScrapedJob).filter(
-            ScrapedJob.platform == platform,
-            ScrapedJob.platform_job_id == platform_id
-        ).first()
+        existing_sj, _ = self._upsert_scraped_job(listing)
 
-        desc_text = ""
-        descs = getattr(listing, "descriptions", [])
-        if descs:
-            desc_text = descs[0].description if hasattr(descs[0], "description") else (descs[0].get("description", "") if isinstance(descs[0], dict) else "")
-
-        company_obj = getattr(listing, "company", None)
-        company_name = company_obj.name if hasattr(company_obj, "name") else "Unknown"
-        location_str = listing.location.city if getattr(listing, "location", None) else ""
-        
-        workload_str = ""
-        if getattr(listing, "employment", None):
-            wmin = listing.employment.workload_min
-            wmax = listing.employment.workload_max
-            workload_str = f"{wmin}-{wmax}%" if wmin != wmax else f"{wmin}%"
-
-        pub_date = None
-        if getattr(listing, "publication", None) and listing.publication.start_date:
-            try:
-                date_raw = listing.publication.start_date
-                if "T" in date_raw:
-                    pub_date = datetime.fromisoformat(date_raw.replace('Z', '+00:00'))
-                else:
-                    pub_date = datetime.strptime(date_raw, "%Y-%m-%d")
-            except (TypeError, ValueError) as exc:
-                logger.warning(
-                    "Failed to parse publication date %r for %s/%s: %s",
-                    listing.publication.start_date,
-                    platform,
-                    platform_id,
-                    exc,
-                )
-
-        if not existing_sj:
-            existing_sj = ScrapedJob(
-                platform=platform,
-                platform_job_id=platform_id,
-                title=clean_html_tags(getattr(listing, "title", "Unknown")),
-                company=company_name,
-                description=clean_html_tags(desc_text) if desc_text else None,
-                location=location_str,
-                external_url=getattr(listing, "external_url", None) or getattr(listing, "url", None) or platform_id,
-                application_url=getattr(listing, "application", None).form_url if getattr(listing, "application", None) else None,
-                application_email=getattr(listing, "application", None).email if getattr(listing, "application", None) else None,
-                workload=workload_str or None,
-                publication_date=pub_date,
-                source_query=getattr(listing, "_source_query", "Unknown"),
-                summary=getattr(listing, "_summary", None),
-            )
-            self.db.add(existing_sj)
-            self.db.flush()
-        elif getattr(listing, "_summary", None) and not existing_sj.summary:
-            existing_sj.summary = getattr(listing, "_summary", None)
+        location_str = self._extract_listing_location_string(listing)
 
         # 2. Distance
         distance_km = None
@@ -1220,7 +1576,7 @@ class SearchService:
             affinity_analysis=analysis.get("affinity_analysis", ""),
             worth_applying=analysis.get("worth_applying", False),
             distance_km=distance_km,
-            applied=getattr(listing, "_applied_elsewhere", False)
+            applied=False,
         )
         self.db.add(new_job)
         if commit:

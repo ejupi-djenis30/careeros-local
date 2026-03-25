@@ -1,7 +1,7 @@
 import React from "react";
 import { ScoreBadge } from "./Badges";
 
-export function MobileJobCard({ job, isGlobalView, onToggleApplied, onCopy, onViewAnalysis }) {
+export function MobileJobCard({ job, isGlobalView, onToggleApplied, isAppliedPending = false, onCopy, onViewAnalysis }) {
     const applyUrl = job.application_url || job.external_url;
     const sourceUrl = job.external_url;
     const mailtoUrl = job.application_email ? `mailto:${job.application_email}` : null;
@@ -76,7 +76,9 @@ export function MobileJobCard({ job, isGlobalView, onToggleApplied, onCopy, onVi
                             className="form-check-input ms-0"
                             type="checkbox"
                             checked={job.applied}
+                            disabled={isAppliedPending}
                             onChange={() => onToggleApplied(job)}
+                            title={isAppliedPending ? "Updating Applied Status" : "Toggle Applied Status"}
                             style={{ width: '2rem', height: '1rem' }}
                         />
                     </div>

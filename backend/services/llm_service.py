@@ -9,6 +9,7 @@ from backend.services.search.query_contracts import (
     compute_plan_input_fingerprint,
     exact_query_fingerprint,
     loose_query_fingerprint,
+    normalize_domain,
     normalize_search_item,
     sanitize_prompt_text,
 )
@@ -879,6 +880,173 @@ Return ONLY JSON with a "results" array, one entry per job, IN ORDER:
             )
 
         return normalized_results
+
+    # ─── Step 2.5: Shared Job Normalization ───────────────────────────────
+
+    @staticmethod
+    def _normalize_job_domain_token(value: Any) -> str:
+        token = str(value or "").strip().lower()
+        if token in {"tech", "software", "information technology", "it/tech"}:
+            token = "it"
+        return normalize_domain(token)
+
+    @staticmethod
+    def _coerce_nullable_int(value: Any) -> Optional[int]:
+        if value is None or isinstance(value, bool):
+            return None
+        if isinstance(value, int):
+            return value
+        if isinstance(value, float):
+            return int(value)
+        if isinstance(value, str):
+            text = value.strip()
+            if not text:
+                return None
+            try:
+                return int(float(text))
+            except ValueError:
+                return None
+        return None
+
+    @staticmethod
+    def _dedupe_string_list(values: Any) -> List[str]:
+        if not isinstance(values, list):
+            return []
+        out: List[str] = []
+        seen = set()
+        for item in values:
+            token = str(item or "").strip()
+            if not token:
+                continue
+            key = token.lower()
+            if key in seen:
+                continue
+            seen.add(key)
+            out.append(token)
+        return out
+
+    @staticmethod
+    def _normalize_required_languages(values: Any) -> List[Dict[str, str]]:
+        if not isinstance(values, list):
+            return []
+        out: List[Dict[str, str]] = []
+        seen = set()
+        for item in values:
+            if not isinstance(item, dict):
+                continue
+            code = str(item.get("code", "") or "").strip().lower()
+            level = str(item.get("level", "") or "").strip().upper()
+            if not code:
+                continue
+            key = f"{code}:{level}"
+            if key in seen:
+                continue
+            seen.add(key)
+            out.append({"code": code, "level": level or None})
+        return out
+
+    @retry(stop=stop_after_attempt(2), wait=wait_exponential(multiplier=1, min=2, max=5))
+    async def normalize_job_batch(self, jobs: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """Normalize unstructured job payloads into deterministic filtering fields."""
+        if not jobs:
+            return []
+
+        provider = self._get_provider("normalize")
+        jobs_text = ""
+        for i, job in enumerate(jobs):
+            jobs_text += f"\n--- JOB {i+1} ---\n"
+            jobs_text += f"Title: {sanitize_prompt_text(job.get('title'), max_chars=180)}\n"
+            jobs_text += f"Company: {sanitize_prompt_text(job.get('company'), max_chars=120)}\n"
+            jobs_text += f"Location: {sanitize_prompt_text(job.get('location'), max_chars=120)}\n"
+            jobs_text += f"Workload: {sanitize_prompt_text(job.get('workload'), max_chars=80)}\n"
+            jobs_text += f"Description: {sanitize_prompt_text(job.get('description'), max_chars=1200)}\n"
+
+        system_prompt = (
+            "You are a strict job-posting normalizer. "
+            "Extract only explicit evidence and return compact structured JSON in the same order. "
+            "Do not infer unsupported requirements."
+        )
+        user_prompt = f"""Normalize each job below.
+
+Output one object per job with keys:
+- title, role_family, domain, seniority, employment_mode, contract_type, qualification_level
+- experience_min_years, experience_max_years
+- workload_min, workload_max
+- salary_min_chf, salary_max_chf
+- required_languages (list of {{code, level}})
+- required_skills (list of strings)
+- education_levels (list of strings)
+- key_requirements (list of strings)
+- confidence (0.0-1.0)
+
+Domain must be one of: general, it, finance, medical, engineering, hospitality, sales, logistics, administration.
+Employment mode must be one of: remote, hybrid, on-site.
+
+{jobs_text}
+
+Return ONLY JSON:
+{{
+  "results": [
+    {{
+      "title": "...",
+      "role_family": "...",
+      "domain": "general",
+      "seniority": "mid",
+      "employment_mode": "on-site",
+      "contract_type": "permanent",
+      "qualification_level": "vocational",
+      "experience_min_years": 2,
+      "experience_max_years": 5,
+      "workload_min": 80,
+      "workload_max": 100,
+      "salary_min_chf": null,
+      "salary_max_chf": null,
+      "required_languages": [{{"code": "de", "level": "B2"}}],
+      "required_skills": ["Python"],
+      "education_levels": ["bachelor"],
+      "key_requirements": ["Swiss permit"],
+      "confidence": 0.75
+    }}
+  ]
+}}"""
+
+        result = await provider.generate_json_async(system_prompt, user_prompt)
+        rows = result.get("results", []) if isinstance(result, dict) else []
+        normalized_rows: List[Dict[str, Any]] = []
+
+        for idx in range(len(jobs)):
+            row = rows[idx] if idx < len(rows) and isinstance(rows[idx], dict) else {}
+            confidence = row.get("confidence", 0.0)
+            try:
+                confidence = float(confidence)
+            except (TypeError, ValueError):
+                confidence = 0.0
+            confidence = max(0.0, min(1.0, confidence))
+
+            normalized_rows.append(
+                {
+                    "title": str(row.get("title") or jobs[idx].get("title") or "").strip() or None,
+                    "role_family": str(row.get("role_family") or row.get("title") or jobs[idx].get("title") or "").strip() or None,
+                    "domain": self._normalize_job_domain_token(row.get("domain") or "general"),
+                    "seniority": str(row.get("seniority") or "").strip().lower() or None,
+                    "employment_mode": str(row.get("employment_mode") or "").strip().lower() or None,
+                    "contract_type": str(row.get("contract_type") or "").strip().lower() or None,
+                    "qualification_level": str(row.get("qualification_level") or "").strip().lower() or None,
+                    "experience_min_years": self._coerce_nullable_int(row.get("experience_min_years")),
+                    "experience_max_years": self._coerce_nullable_int(row.get("experience_max_years")),
+                    "workload_min": self._coerce_nullable_int(row.get("workload_min")),
+                    "workload_max": self._coerce_nullable_int(row.get("workload_max")),
+                    "salary_min_chf": self._coerce_nullable_int(row.get("salary_min_chf")),
+                    "salary_max_chf": self._coerce_nullable_int(row.get("salary_max_chf")),
+                    "required_languages": self._normalize_required_languages(row.get("required_languages")),
+                    "required_skills": self._dedupe_string_list(row.get("required_skills")),
+                    "education_levels": self._dedupe_string_list(row.get("education_levels")),
+                    "key_requirements": self._dedupe_string_list(row.get("key_requirements")),
+                    "confidence": confidence,
+                }
+            )
+
+        return normalized_rows
 
 
 llm_service = LLMService()

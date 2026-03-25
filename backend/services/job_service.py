@@ -1,12 +1,25 @@
+import hashlib
 from typing import Dict, Any
 from sqlalchemy.orm import Session
 from fastapi import HTTPException
+from backend.models import SearchProfile
 from backend.repositories.job_repository import JobRepository
 from backend.schemas import JobCreate, JobUpdate
 
 class JobService:
     def __init__(self, db: Session):
         self.repo = JobRepository(db)
+
+    @staticmethod
+    def _stable_manual_platform_job_id(job_dict: Dict[str, Any]) -> str:
+        fingerprint_parts = [
+            str(job_dict.get("platform") or "manual").strip().lower(),
+            str(job_dict.get("title") or "").strip().lower(),
+            str(job_dict.get("company") or "").strip().lower(),
+            str(job_dict.get("external_url") or "").strip().lower(),
+        ]
+        digest = hashlib.sha256("|".join(fingerprint_parts).encode("utf-8")).hexdigest()
+        return f"manual-{digest[:24]}"
 
     def get_jobs_by_user(
         self, user_id: int, page: int, page_size: int,
@@ -53,15 +66,22 @@ class JobService:
         from backend.models import ScrapedJob
         
         job_dict = job_in.model_dump()
+        profile_id = job_dict.get("search_profile_id")
+        if profile_id is not None:
+            profile = (
+                self.repo.db.query(SearchProfile)
+                .filter(SearchProfile.id == profile_id, SearchProfile.user_id == user_id)
+                .first()
+            )
+            if not profile:
+                raise HTTPException(status_code=403, detail="Unauthorized profile access")
         
         # Split fields: scraped-job fields vs user-relationship fields
         scraped_fields = {
             "title": job_dict.get("title", ""),
             "company": job_dict.get("company", ""),
-            "platform": job_dict.get("platform", "manual"),
-            "platform_job_id": job_dict.get("platform_job_id", None) or str(hash(
-                str(job_dict.get("title", "")) + str(job_dict.get("company", ""))
-            )),
+            "platform": job_dict.get("platform") or "manual",
+            "platform_job_id": job_dict.get("platform_job_id", None) or self._stable_manual_platform_job_id(job_dict),
             "external_url": job_dict.get("external_url", None),
             "description": job_dict.get("description", None),
             "location": job_dict.get("location", None),
@@ -91,7 +111,7 @@ class JobService:
             "applied": job_dict.get("applied", False),
             "is_scraped": job_dict.get("is_scraped", False),
             "affinity_score": job_dict.get("affinity_score", None),
-            "search_profile_id": job_dict.get("search_profile_id", None),
+            "search_profile_id": profile_id,
         }
         return self.repo.create(job_data)
 

@@ -107,6 +107,7 @@ async def test_run_search_success(search_service, mock_profile_repo, mock_job_re
 
     mock_provider = MagicMock()
     mock_provider.get_provider_info.return_value = MagicMock(accepted_domains=["*"])
+    mock_provider.close = MagicMock(return_value=None)
     mock_response = MagicMock(items=[make_mock_listing("job1", "url1")])
     mock_response.total_pages = 1
     mock_provider.search = AsyncMock(return_value=mock_response)
@@ -177,6 +178,7 @@ async def test_run_search_no_plan(search_service, mock_profile_repo, mock_db):
     mock_profile_repo.get.return_value = mock_profile
     mock_db.query.return_value.filter.return_value.first.return_value = None
     with patch("backend.services.search_service.llm_service") as mock_llm, \
+            patch("backend.services.search_service.settings.SEARCH_ENABLE_DEGRADED_PLAN_FALLBACK", False), \
          patch("backend.services.search_service.init_status"), \
          patch("backend.services.search_service.add_log"), \
          patch("backend.services.search_service.JobRoomProvider"), \
@@ -360,3 +362,75 @@ def test_apply_hard_filters_remote_only(search_service):
         kept = search_service._apply_hard_filters(1, {"latitude": None, "longitude": None}, [remote_job, onsite_job], preferences)
 
     assert kept == [remote_job]
+
+
+def test_apply_structured_filters_uses_normalized_languages(search_service):
+    german_job = MagicMock()
+    german_job._normalized_job_data = {
+        "required_languages": [{"code": "de", "level": "B2"}],
+    }
+    german_job.language_skills = []
+    german_job.employment = MagicMock(workload_min=80, workload_max=100)
+    german_job.location = MagicMock(coordinates=None)
+
+    french_job = MagicMock()
+    french_job._normalized_job_data = {
+        "required_languages": [{"code": "fr", "level": "B2"}],
+    }
+    french_job.language_skills = []
+    french_job.employment = MagicMock(workload_min=80, workload_max=100)
+    french_job.location = MagicMock(coordinates=None)
+
+    preferences = {
+        "preferred_languages": ["de"],
+        "preferred_domains": [],
+        "remote_only": False,
+        "salary_min_chf": None,
+        "workload_min": None,
+        "workload_max": None,
+        "hard_max_distance_km": None,
+    }
+
+    with patch("backend.services.search_service.add_log"):
+        kept = search_service._apply_structured_filters(
+            1,
+            {"latitude": None, "longitude": None, "workload_filter": "80-100"},
+            [german_job, french_job],
+            preferences,
+        )
+
+    assert kept == [german_job]
+
+
+def test_apply_structured_filters_uses_profile_workload_filter(search_service):
+    fitting_job = MagicMock()
+    fitting_job._normalized_job_data = {"workload_min": 80, "workload_max": 100}
+    fitting_job.language_skills = []
+    fitting_job.employment = MagicMock(workload_min=80, workload_max=100)
+    fitting_job.location = MagicMock(coordinates=None)
+
+    too_low_job = MagicMock()
+    too_low_job._normalized_job_data = {"workload_min": 40, "workload_max": 60}
+    too_low_job.language_skills = []
+    too_low_job.employment = MagicMock(workload_min=40, workload_max=60)
+    too_low_job.location = MagicMock(coordinates=None)
+
+    preferences = {
+        "preferred_languages": [],
+        "preferred_domains": [],
+        "remote_only": False,
+        "salary_min_chf": None,
+        "workload_min": None,
+        "workload_max": None,
+        "hard_max_distance_km": None,
+    }
+
+    with patch("backend.services.search_service.add_log"):
+        kept = search_service._apply_structured_filters(
+            1,
+            {"latitude": None, "longitude": None, "workload_filter": "80-100"},
+            [fitting_job, too_low_job],
+            preferences,
+        )
+
+    assert kept == [fitting_job]

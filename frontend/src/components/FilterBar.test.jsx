@@ -22,4 +22,26 @@ describe('FilterBar', () => {
 
     expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ sort_by: 'created_at', sort_order: 'asc' }));
   });
+
+  it('does not render deprecated tech-domain badges for scoped profiles', () => {
+    render(
+      <FilterBar
+        filters={{ search_profile_id: 7 }}
+        onChange={vi.fn()}
+        onClear={vi.fn()}
+        searchProfiles={[
+          {
+            id: 7,
+            preferred_languages: ['de'],
+            preferred_domains: ['backend'],
+            remote_only: true,
+          }
+        ]}
+      />
+    );
+
+    expect(screen.getByText('DE')).toBeInTheDocument();
+    expect(screen.getByText('Remote')).toBeInTheDocument();
+    expect(screen.queryByText('backend')).not.toBeInTheDocument();
+  });
 });

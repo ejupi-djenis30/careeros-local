@@ -29,6 +29,7 @@ export function useJobs(logout) {
   const [pagination, setPaginationState] = useState(DEFAULT_PAGINATION);
   const [searchProfiles, setSearchProfiles] = useState([]);
   const [isInitialLoad, setIsInitialLoad] = useState(true);
+  const [pendingAppliedJobIds, setPendingAppliedJobIds] = useState([]);
   const filters = filtersState;
 
   const setPagination = useCallback((next) => {
@@ -116,6 +117,12 @@ export function useJobs(logout) {
   }, [fetchJobs]);
 
   const toggleApplied = async (job) => {
+    const jobId = String(job.id);
+    if (pendingAppliedJobIds.includes(jobId)) {
+      return;
+    }
+
+    setPendingAppliedJobIds(prev => (prev.includes(jobId) ? prev : [...prev, jobId]));
     try {
       // HALF-8: Backend patch returns updated Job, ensure we use it
       const updated = await JobService.toggleApplied(job.id, !job.applied);
@@ -124,8 +131,15 @@ export function useJobs(logout) {
     } catch (error) {
       if (error.message === "UNAUTHORIZED" && logout) { logout(); return; }
       console.error("Failed to update job", error);
+    } finally {
+      setPendingAppliedJobIds(prev => prev.filter(id => id !== jobId));
     }
   };
+
+  const isAppliedPending = useCallback(
+    (jobId) => pendingAppliedJobIds.includes(String(jobId)),
+    [pendingAppliedJobIds]
+  );
 
   const clearFilters = () => {
     setFilters(DEFAULT_FILTERS);
@@ -140,6 +154,7 @@ export function useJobs(logout) {
     searchProfiles,
     fetchJobs,
     toggleApplied,
+    isAppliedPending,
     clearFilters,
     isInitialLoad
   };

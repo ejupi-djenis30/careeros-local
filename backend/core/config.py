@@ -123,6 +123,17 @@ class Settings(BaseSettings):
     LLM_SUMMARY_THINKING: bool = False
     LLM_SUMMARY_THINKING_LEVEL: str = ""
 
+    # Step: NORMALIZE  (normalize_job_batch)
+    LLM_NORMALIZE_PROVIDER: str = ""
+    LLM_NORMALIZE_MODEL: str = ""
+    LLM_NORMALIZE_API_KEY: str = ""
+    LLM_NORMALIZE_BASE_URL: str = ""
+    LLM_NORMALIZE_TEMPERATURE: float = -1.0
+    LLM_NORMALIZE_TOP_P: float = -1.0
+    LLM_NORMALIZE_MAX_TOKENS: int = -1
+    LLM_NORMALIZE_THINKING: bool = False
+    LLM_NORMALIZE_THINKING_LEVEL: str = ""
+
     # Scraping
     JOB_ROOM_USER_AGENT: str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
 
@@ -133,7 +144,7 @@ class Settings(BaseSettings):
     SEARCH_PLAN_BATCH_SIZE: int = 40
     SEARCH_PLAN_ENABLE_LOOSE_DEDUP: bool = True
     SEARCH_PLAN_STALL_MAX_BATCHES: int = 2
-    SEARCH_ENABLE_DEGRADED_PLAN_FALLBACK: bool = False
+    SEARCH_ENABLE_DEGRADED_PLAN_FALLBACK: bool = True
     SEARCH_DEGRADED_PLAN_MAX_QUERIES: int = 3
     SEARCH_DEGRADED_PLAN_MAX_KEYWORDS: int = 2
     SEARCH_RELEVANCE_FALLBACK_MODE: str = "conservative"

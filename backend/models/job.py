@@ -1,3 +1,5 @@
+from datetime import datetime, timezone
+
 from sqlalchemy import Column, Integer, String, Boolean, Float, Text, DateTime, ForeignKey, JSON, UniqueConstraint
 from sqlalchemy.orm import relationship
 from backend.models.base_model import BaseModel, TimestampMixin
@@ -30,12 +32,65 @@ class ScrapedJob(BaseModel, TimestampMixin):
     
     # LLM-generated summary used by the relevance filter step (opt-in)
     summary = Column(Text, nullable=True)
+
+    # Normalized shared job facts used for structured filtering and later analysis reuse.
+    normalization_status = Column(String, nullable=True, default="pending", index=True)
+    normalized_at = Column(DateTime(timezone=True), nullable=True, index=True)
+    normalization_version = Column(Integer, nullable=True, default=1)
+    normalization_source = Column(String, nullable=True)
+    normalization_confidence = Column(Float, nullable=True)
+    normalized_title = Column(String, nullable=True)
+    normalized_role_family = Column(String, nullable=True, index=True)
+    normalized_domain = Column(String, nullable=True, index=True)
+    normalized_seniority = Column(String, nullable=True, index=True)
+    normalized_employment_mode = Column(String, nullable=True, index=True)
+    normalized_contract_type = Column(String, nullable=True, index=True)
+    normalized_qualification_level = Column(String, nullable=True, index=True)
+    normalized_experience_min_years = Column(Integer, nullable=True)
+    normalized_experience_max_years = Column(Integer, nullable=True)
+    normalized_workload_min = Column(Integer, nullable=True)
+    normalized_workload_max = Column(Integer, nullable=True)
+    normalized_salary_min_chf = Column(Integer, nullable=True)
+    normalized_salary_max_chf = Column(Integer, nullable=True)
+    normalized_required_languages = Column(JSON, nullable=True)
+    normalized_required_skills = Column(JSON, nullable=True)
+    normalized_education_levels = Column(JSON, nullable=True)
+    normalized_key_requirements = Column(JSON, nullable=True)
+    normalized_metadata = Column(JSON, nullable=True)
     
     # Keep track of where it originally came from (optional but useful)
     source_query = Column(String, nullable=True)
 
     # Relationships
     user_jobs = relationship("Job", back_populates="scraped_job", cascade="all, delete-orphan")
+
+    @property
+    def normalized_job_data(self):
+        return {
+            "status": self.normalization_status,
+            "normalized_at": self.normalized_at,
+            "version": self.normalization_version,
+            "source": self.normalization_source,
+            "confidence": self.normalization_confidence,
+            "title": self.normalized_title,
+            "role_family": self.normalized_role_family,
+            "domain": self.normalized_domain,
+            "seniority": self.normalized_seniority,
+            "employment_mode": self.normalized_employment_mode,
+            "contract_type": self.normalized_contract_type,
+            "qualification_level": self.normalized_qualification_level,
+            "experience_min_years": self.normalized_experience_min_years,
+            "experience_max_years": self.normalized_experience_max_years,
+            "workload_min": self.normalized_workload_min,
+            "workload_max": self.normalized_workload_max,
+            "salary_min_chf": self.normalized_salary_min_chf,
+            "salary_max_chf": self.normalized_salary_max_chf,
+            "required_languages": self.normalized_required_languages or [],
+            "required_skills": self.normalized_required_skills or [],
+            "education_levels": self.normalized_education_levels or [],
+            "key_requirements": self.normalized_key_requirements or [],
+            "metadata": self.normalized_metadata or {},
+        }
 
 
 class Job(BaseModel, TimestampMixin):
@@ -83,7 +138,17 @@ class Job(BaseModel, TimestampMixin):
             "title", "company", "description", "location", "external_url", 
             "application_url", "application_email", "workload", 
             "publication_date", "platform", "platform_job_id", 
-            "raw_metadata", "source_query", "summary"
+            "raw_metadata", "source_query", "summary",
+            "normalization_status", "normalized_at", "normalization_version",
+            "normalization_source", "normalization_confidence", "normalized_title",
+            "normalized_role_family", "normalized_domain", "normalized_seniority",
+            "normalized_employment_mode", "normalized_contract_type",
+            "normalized_qualification_level", "normalized_experience_min_years",
+            "normalized_experience_max_years", "normalized_workload_min",
+            "normalized_workload_max", "normalized_salary_min_chf",
+            "normalized_salary_max_chf", "normalized_required_languages",
+            "normalized_required_skills", "normalized_education_levels",
+            "normalized_key_requirements", "normalized_metadata"
         }
         user_kwargs = {}
         scraped_kwargs = {}
@@ -229,3 +294,7 @@ class Job(BaseModel, TimestampMixin):
     def source_query(self, value):
         self._ensure_scraped_job()
         self.scraped_job.source_query = value
+
+    @property
+    def normalized_job(self):
+        return self.scraped_job.normalized_job_data if self.scraped_job else None

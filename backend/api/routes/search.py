@@ -7,7 +7,14 @@ from sqlalchemy.orm import Session
 from backend.db.base import get_db, SessionLocal
 from backend.repositories.profile_repository import ProfileRepository
 from backend.api.deps import get_current_user_id, limiter
-from backend.services.search_status import get_status, cancel_task, update_status, get_all_statuses
+from backend.services.search_status import (
+    get_status,
+    cancel_task,
+    update_status,
+    get_all_statuses,
+    reserve_task,
+    release_task,
+)
 from backend.services.utils import extract_text_from_file
 from backend.schemas.profile import StartSearchRequest
 from backend.services.search_service import get_search_service
@@ -99,8 +106,8 @@ async def start_search(
         profile_data["is_stopped"] = False
         profile = profile_repo.create(profile_data)
 
-    # Cancel any existing task for this profile before starting a new one
-    cancel_task(profile.id)
+    if not reserve_task(profile.id):
+        raise HTTPException(status_code=409, detail="A search is already running for this profile")
     
     # Extract force-regeneration flags from the original request (not stored in DB)
     force_regen_cv = profile_request.force_regenerate_cv_summary
@@ -120,7 +127,11 @@ async def start_search(
         finally:
             fresh_db.close()
             
-    background_tasks.add_task(run_search_background, profile.id, force_regen_cv, force_regen_q)
+    try:
+        background_tasks.add_task(run_search_background, profile.id, force_regen_cv, force_regen_q)
+    except Exception:
+        release_task(profile.id)
+        raise
 
     return {"message": "Search started", "profile_id": profile.id}
 

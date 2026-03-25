@@ -4,7 +4,7 @@ import { MobileJobCard } from "./JobTable/MobileJobCard";
 import { DesktopJobRow } from "./JobTable/DesktopJobRow";
 import { ScoreBadge } from "./JobTable/Badges";
 
-export function JobTable({ jobs, isGlobalView, onToggleApplied, pagination, onPageChange }) {
+export function JobTable({ jobs, isGlobalView, onToggleApplied, isAppliedPending = () => false, pagination, onPageChange }) {
     const [selectedJobForAnalysis, setSelectedJobForAnalysis] = useState(null);
     const handleCopy = (job) => {
         const text = JSON.stringify({
@@ -40,6 +40,7 @@ export function JobTable({ jobs, isGlobalView, onToggleApplied, pagination, onPa
                         job={job} 
                         isGlobalView={isGlobalView} 
                         onToggleApplied={onToggleApplied} 
+                        isAppliedPending={isAppliedPending(job.id)}
                         onCopy={handleCopy}
                         onViewAnalysis={(j) => setSelectedJobForAnalysis(j)}
                     />
@@ -69,6 +70,7 @@ export function JobTable({ jobs, isGlobalView, onToggleApplied, pagination, onPa
                                 job={job} 
                                 isGlobalView={isGlobalView} 
                                 onToggleApplied={onToggleApplied} 
+                                isAppliedPending={isAppliedPending(job.id)}
                                 onCopy={handleCopy} 
                                 onViewAnalysis={(j) => setSelectedJobForAnalysis(j)}
                             />

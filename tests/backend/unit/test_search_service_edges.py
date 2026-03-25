@@ -130,7 +130,8 @@ async def test_analyze_and_save_db_error(mock_service):
     job1 = MagicMock()
     job1.descriptions = [MagicMock(description="x")]
     
-    with patch("backend.services.search_service.llm_service.analyze_job_batch") as mock_analyze:
+    with patch("backend.services.search_service.llm_service.analyze_job_batch") as mock_analyze, \
+         patch.object(mock_service, "_save_single_job", new=AsyncMock(return_value=None)):
         mock_analyze.return_value = [{"relevant": True}]
         
         with patch("backend.services.search_service.get_status", return_value={"state": "searching"}):
@@ -428,6 +429,142 @@ async def test_save_single_job_deferred_commit_does_not_commit(mock_service):
     assert mock_session.add.call_count >= 2
     mock_session.commit.assert_not_called()
 
+
+async def test_save_single_job_initializes_applied_false(mock_service):
+    listing = MagicMock()
+    listing.source = "job_room"
+    listing.id = "applied-flag"
+    listing.title = "Applied Flag Role"
+    listing.descriptions = [MagicMock(description="desc")]
+    listing.company = MagicMock(name="ACME")
+    listing.location = MagicMock(city="Zurich", coordinates=MagicMock(lat=47.37, lon=8.54))
+    listing.employment = MagicMock(workload_min=80, workload_max=100)
+    listing.publication = None
+    listing.application = None
+    listing.external_url = "https://example.com/job/applied"
+    listing._applied_elsewhere = True
+
+    mock_session = mock_service.job_repo.db
+    mock_session.query.return_value.filter.return_value.first.return_value = None
+
+    await mock_service._save_single_job(
+        listing,
+        {"affinity_score": 60, "affinity_analysis": "ok", "worth_applying": False},
+        {"id": 1, "user_id": 99},
+        None,
+    )
+
+    saved_job = mock_session.add.call_args_list[-1].args[0]
+    assert saved_job.applied is False
+
+
+async def test_save_single_job_bootstraps_normalized_fields(mock_service):
+    listing = MagicMock()
+    listing.source = "job_room"
+    listing.id = "normalized-bootstrap"
+    listing.title = "Senior Warehouse Operator"
+    listing.descriptions = [MagicMock(description="Requires 3 years experience and German B2.")]
+    listing.company = MagicMock(name="ACME Logistics")
+    listing.location = MagicMock(city="Zurich", coordinates=MagicMock(lat=47.37, lon=8.54))
+    listing.employment = MagicMock(workload_min=80, workload_max=100)
+    listing.occupations = [MagicMock(education_code="vocational", qualification_code="skilled")]
+    listing.language_skills = [MagicMock(language_code="de", spoken_level="B2")]
+    listing.publication = None
+    listing.application = None
+    listing.external_url = "https://example.com/job/normalized-bootstrap"
+
+    mock_session = mock_service.job_repo.db
+    mock_session.query.return_value.filter.return_value.first.return_value = None
+
+    await mock_service._save_single_job(
+        listing,
+        {"affinity_score": 60, "affinity_analysis": "ok", "worth_applying": False},
+        {"id": 1, "user_id": 99},
+        None,
+    )
+
+    saved_scraped_job = mock_session.add.call_args_list[-2].args[0]
+    assert saved_scraped_job.normalization_status == "provider_bootstrap"
+    assert saved_scraped_job.normalized_seniority == "senior"
+    assert saved_scraped_job.normalized_workload_min == 80
+    assert saved_scraped_job.normalized_workload_max == 100
+    assert saved_scraped_job.normalized_required_languages == [{"code": "de", "level": "B2"}]
+    assert saved_scraped_job.normalized_education_levels == ["vocational"]
+
+
+async def test_persist_scraped_job_catalog_commits_before_analysis(mock_service):
+    listing = MagicMock()
+    listing.source = "job_room"
+    listing.id = "catalog-1"
+    listing.title = "Cleaner"
+    listing.descriptions = [MagicMock(description="Evening shift")]
+    listing.company = MagicMock(name="Clean AG")
+    listing.location = MagicMock(city="Zurich", coordinates=None)
+    listing.employment = MagicMock(workload_min=50, workload_max=80)
+    listing.occupations = []
+    listing.language_skills = []
+    listing.publication = None
+    listing.application = None
+    listing.external_url = "https://example.com/job/catalog-1"
+
+    mock_session = mock_service.job_repo.db
+    mock_session.query.return_value.filter.return_value.first.return_value = None
+    mock_session.flush.side_effect = lambda: setattr(mock_session.add.call_args.args[0], "id", 321)
+
+    created, updated = await mock_service._persist_scraped_job_catalog(1, [listing])
+
+    assert created == 1
+    assert updated == 0
+    mock_session.commit.assert_called_once()
+    assert getattr(listing, "_scraped_job_id", None) == 321
+    assert getattr(listing, "_normalized_job_data", {}).get("status") == "provider_bootstrap"
+async def test_normalize_persisted_jobs_upgrades_bootstrap_rows(mock_service):
+    listing = MagicMock()
+    listing._scraped_job_id = 555
+
+    scraped_job = MagicMock()
+    scraped_job.id = 555
+    scraped_job.title = "Backend Engineer"
+    scraped_job.company = "ACME"
+    scraped_job.location = "Zurich"
+    scraped_job.workload = "80-100%"
+    scraped_job.description = "Python role"
+    scraped_job.normalization_status = "provider_bootstrap"
+    scraped_job.normalized_metadata = {}
+    scraped_job.normalized_job_data = {"status": "normalized", "domain": "it"}
+
+    mock_session = mock_service.job_repo.db
+    mock_session.query.return_value.filter.return_value.first.return_value = scraped_job
+
+    with patch("backend.services.search_service.llm_service.normalize_job_batch", new=AsyncMock(return_value=[
+        {
+            "title": "Backend Engineer",
+            "role_family": "Backend Engineer",
+            "domain": "it",
+            "seniority": "senior",
+            "employment_mode": "hybrid",
+            "contract_type": "permanent",
+            "qualification_level": "bachelor",
+            "experience_min_years": 5,
+            "experience_max_years": 8,
+            "workload_min": 80,
+            "workload_max": 100,
+            "salary_min_chf": None,
+            "salary_max_chf": 140000,
+            "required_languages": [{"code": "de", "level": "B2"}],
+            "required_skills": ["Python"],
+            "education_levels": ["bachelor"],
+            "key_requirements": ["Swiss permit"],
+            "confidence": 0.9,
+        }
+    ])):
+        upgraded = await mock_service._normalize_persisted_jobs(1, [listing])
+
+    assert upgraded == 1
+    assert scraped_job.normalization_status == "normalized"
+    assert scraped_job.normalized_domain == "it"
+    mock_session.commit.assert_called_once()
+
 async def test_analyze_and_save_stopped(mock_service):
     with patch("backend.services.search_service.get_status", return_value={"state": "stopped"}):
         saved, skipped = await mock_service._analyze_and_save(1, {}, [MagicMock()])
@@ -566,7 +703,8 @@ async def test_run_search_cleanup_close(mock_service):
     profile = MagicMock(id=1, cv_content=None, user_id=1, role_description="", search_strategy="", latitude=None, longitude=None)
     mock_service.profile_repo.get = MagicMock(return_value=profile)
     
-    provider1 = AsyncMock()
+    provider1 = MagicMock()
+    provider1.get_provider_info.return_value = MagicMock(accepted_domains=["*"])
     provider1.close = AsyncMock()
     
     provider2 = MagicMock()
@@ -663,7 +801,7 @@ async def test_run_search_done_terminal_reason_all_duplicates(mock_service):
     mock_update.assert_any_call(1, state="done", terminal_reason="all_duplicates")
 
 
-async def test_run_search_done_terminal_reason_no_relevant(mock_service):
+async def test_run_search_done_terminal_reason_no_jobs_after_structured_filters(mock_service):
     profile = MagicMock(
         id=1,
         user_id=1,
@@ -682,8 +820,10 @@ async def test_run_search_done_terminal_reason_no_relevant(mock_service):
     with patch.object(mock_service, "_generate_plan", new=AsyncMock(return_value=[{"query": "dev"}])), \
          patch.object(mock_service, "_execute_searches", new=AsyncMock(return_value=[MagicMock()])), \
          patch.object(mock_service, "_deduplicate", return_value=([MagicMock()], 0)), \
-         patch.object(mock_service, "_relevance_filter", new=AsyncMock(return_value=[])), \
+            patch.object(mock_service, "_persist_scraped_job_catalog", new=AsyncMock(return_value=(1, 0))), \
+            patch.object(mock_service, "_apply_structured_filters", return_value=[]), \
          patch("backend.services.search_service.update_status") as mock_update:
         await mock_service.run_search(1)
 
-    mock_update.assert_any_call(1, state="done", terminal_reason="no_relevant_jobs")
+        mock_update.assert_any_call(1, state="done", terminal_reason="no_jobs_after_structured_filters")
+

@@ -73,6 +73,40 @@ describe('useJobs', () => {
     expect(JobService.toggleApplied).toHaveBeenCalledWith(1, true);
   });
 
+  it('prevents overlapping applied toggles for the same job', async () => {
+    const { result } = renderHook(() => useJobs());
+    await waitFor(() => expect(result.current.isInitialLoad).toBe(false));
+
+    let resolveToggle;
+    JobService.toggleApplied.mockReturnValue(
+      new Promise((resolve) => {
+        resolveToggle = resolve;
+      })
+    );
+
+    let firstCall;
+    await act(async () => {
+      firstCall = result.current.toggleApplied(mockJobs[0]);
+      await Promise.resolve();
+    });
+
+    expect(result.current.isAppliedPending(1)).toBe(true);
+
+    await act(async () => {
+      await result.current.toggleApplied(mockJobs[0]);
+    });
+
+    expect(JobService.toggleApplied).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      resolveToggle({ ...mockJobs[0], applied: true });
+      await firstCall;
+    });
+
+    expect(result.current.isAppliedPending(1)).toBe(false);
+    expect(result.current.jobs[0].applied).toBe(true);
+  });
+
   it('clears filters to default values', async () => {
     const { result } = renderHook(() => useJobs());
     await waitFor(() => expect(result.current.isInitialLoad).toBe(false));
@@ -155,6 +189,19 @@ describe('useJobs', () => {
 
     expect(consoleSpy).toHaveBeenCalledWith('Failed to update job', expect.any(Error));
     consoleSpy.mockRestore();
+  });
+
+  it('clears pending applied state after a failed update', async () => {
+    const { result } = renderHook(() => useJobs());
+    await waitFor(() => expect(result.current.isInitialLoad).toBe(false));
+
+    JobService.toggleApplied.mockRejectedValue(new Error('FAIL'));
+
+    await act(async () => {
+      await result.current.toggleApplied(mockJobs[0]);
+    });
+
+    expect(result.current.isAppliedPending(1)).toBe(false);
   });
 
   it('logs error on getProfiles failure', async () => {

@@ -7,6 +7,7 @@ from backend.main import app
 from backend.db.base import Base, get_db, SessionLocal, engine
 from backend.models import User
 from backend.services.auth import get_password_hash
+import backend.services.search_status as search_status
 
 # Use the centralized Testing session from backend.db.base (triggered by TESTING=1)
 TestingSessionLocal = SessionLocal
@@ -25,6 +26,19 @@ def setup_database():
     Base.metadata.create_all(bind=engine)
     yield
     Base.metadata.drop_all(bind=engine)
+
+
+@pytest.fixture(autouse=True)
+def reset_search_status_registry():
+    with search_status._lock:
+        search_status._statuses.clear()
+        search_status._active_tasks.clear()
+        search_status._reserved_tasks.clear()
+    yield
+    with search_status._lock:
+        search_status._statuses.clear()
+        search_status._active_tasks.clear()
+        search_status._reserved_tasks.clear()
 
 @pytest.fixture(scope="function")
 def client(setup_database):

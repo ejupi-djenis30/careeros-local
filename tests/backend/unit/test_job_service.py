@@ -1,5 +1,7 @@
 import pytest
 from unittest.mock import MagicMock
+from fastapi import HTTPException
+from backend.models import ScrapedJob
 from backend.services.job_service import JobService
 from backend.schemas import JobUpdate, JobCreate
 
@@ -47,8 +49,53 @@ def test_create_job(job_service, mock_repo):
         external_url="https://test.com",
         scraped_job_id=1
     )
+    mock_repo.db.query.return_value.filter.return_value.first.return_value = None
     job_service.create_job(1, job_in)
     mock_repo.create.assert_called_once()
+
+
+def test_create_job_uses_deterministic_manual_platform_job_id(job_service, mock_repo):
+    mock_repo.db.query.return_value.filter.return_value.first.return_value = None
+    mock_repo.db.add.reset_mock()
+
+    job_in = JobCreate(
+        title="Stable Job",
+        company="ACME",
+        external_url="https://example.com/stable-job",
+    )
+
+    job_service.create_job(1, job_in)
+    first_scraped = mock_repo.db.add.call_args_list[0].args[0]
+
+    mock_repo.db.add.reset_mock()
+    mock_repo.db.query.return_value.filter.return_value.first.return_value = None
+    job_service.create_job(1, job_in)
+    second_scraped = mock_repo.db.add.call_args_list[0].args[0]
+
+    assert isinstance(first_scraped, ScrapedJob)
+    assert first_scraped.platform_job_id == second_scraped.platform_job_id
+
+
+def test_create_job_rejects_foreign_profile(job_service, mock_repo):
+    query_result = mock_repo.db.query.return_value.filter.return_value
+    query_result.first.side_effect = [None]
+
+    profile_query = MagicMock()
+    profile_query.filter.return_value.first.return_value = None
+    mock_repo.db.query.side_effect = [profile_query]
+
+    with pytest.raises(HTTPException) as exc:
+        job_service.create_job(
+            1,
+            JobCreate(
+                title="Foreign Profile Job",
+                company="ACME",
+                external_url="https://example.com/foreign",
+                search_profile_id=999,
+            ),
+        )
+
+    assert exc.value.status_code == 403
 
 def test_update_job_success(job_service, mock_repo):
     mock_job = MagicMock()
