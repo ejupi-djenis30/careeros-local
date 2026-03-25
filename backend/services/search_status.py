@@ -41,17 +41,20 @@ def _load_statuses() -> Dict[int, Dict[str, Any]]:
 
 _last_save_time = 0.0
 _SAVE_DEBOUNCE_INTERVAL = 1.5
+_RESERVATION_TTL_SECONDS = 30.0
 
-def _save_statuses(force=False):
+def _save_statuses(force: bool = False, statuses_snapshot: Dict[int, Dict[str, Any]] | None = None):
     global _last_save_time
     now = time.time()
     if not force and (now - _last_save_time) < _SAVE_DEBOUNCE_INTERVAL:
         return
-        
+
+    payload = statuses_snapshot if statuses_snapshot is not None else _statuses
+
     try:
         temp_file = f"{_STATUS_FILE}.tmp"
         with open(temp_file, "w") as f:
-            json.dump(_statuses, f)
+            json.dump(payload, f)
         os.replace(temp_file, _STATUS_FILE)
         _last_save_time = now
     except Exception as exc:
@@ -59,7 +62,18 @@ def _save_statuses(force=False):
 
 _statuses: Dict[int, Dict[str, Any]] = _load_statuses()
 _active_tasks: Dict[int, Any] = {} # profile_id -> asyncio.Task
-_reserved_tasks: set[int] = set()
+_reserved_tasks: Dict[int, float] = {}
+
+
+def _cleanup_stale_reservations(now: float | None = None):
+    ts = now if now is not None else time.time()
+    stale = [
+        profile_id
+        for profile_id, reserved_at in _reserved_tasks.items()
+        if (ts - reserved_at) > _RESERVATION_TTL_SECONDS
+    ]
+    for profile_id in stale:
+        _reserved_tasks.pop(profile_id, None)
 
 
 def init_status(profile_id: int, total_searches: int = 0, searches: List[Dict] = None, user_id: int = None):
@@ -92,13 +106,15 @@ def init_status(profile_id: int, total_searches: int = 0, searches: List[Dict] =
             "started_at": datetime.now(timezone.utc).isoformat(),
             "finished_at": None,
         }
-        _save_statuses(force=True)
+        snapshot = dict(_statuses)
+    _save_statuses(force=True, statuses_snapshot=snapshot)
 
 
 def add_log(profile_id: int, message: str):
     """Append a log entry."""
     with _lock:
         s = _statuses.get(profile_id)
+        snapshot = None
         if s:
             s["log"].append({
                 "time": datetime.now(timezone.utc).isoformat(),
@@ -107,7 +123,9 @@ def add_log(profile_id: int, message: str):
             # Keep last 100 entries
             if len(s["log"]) > 100:
                 s["log"] = s["log"][-100:]
-            _save_statuses()
+            snapshot = dict(_statuses)
+    if snapshot is not None:
+        _save_statuses(statuses_snapshot=snapshot)
 
 
 def update_status(profile_id: int, **kwargs):
@@ -118,13 +136,18 @@ def update_status(profile_id: int, **kwargs):
         logging.getLogger(__name__).warning(f"update_status called with unknown keys: {invalid}")
     with _lock:
         s = _statuses.get(profile_id)
+        snapshot = None
+        should_force = False
         if s:
             s.update({k: v for k, v in kwargs.items() if k in _VALID_STATUS_KEYS})
             # Auto-set finished_at on terminal states
             is_terminal = s.get("state") in _TERMINAL_STATES
             if is_terminal and not s.get("finished_at"):
                 s["finished_at"] = datetime.now(timezone.utc).isoformat()
-            _save_statuses(force=is_terminal)
+            snapshot = dict(_statuses)
+            should_force = is_terminal
+    if snapshot is not None:
+        _save_statuses(force=should_force, statuses_snapshot=snapshot)
 
 
 def get_status(profile_id: int) -> Dict[str, Any]:
@@ -145,44 +168,48 @@ def get_all_statuses(user_id: int = None) -> Dict[int, Dict[str, Any]]:
 def clear_status(profile_id: int):
     """Remove status (optional cleanup)."""
     with _lock:
+        snapshot = None
         if profile_id in _statuses:
             _statuses.pop(profile_id, None)
-            _save_statuses(force=True)
+            snapshot = dict(_statuses)
+    if snapshot is not None:
+        _save_statuses(force=True, statuses_snapshot=snapshot)
 
 def register_task(profile_id: int, task: Any):
     """Register an active search task."""
     with _lock:
-        _reserved_tasks.discard(profile_id)
+        _reserved_tasks.pop(profile_id, None)
         _active_tasks[profile_id] = task
 
 
 def unregister_task(profile_id: int):
     """Remove a finished or cancelled task from registry."""
     with _lock:
-        _reserved_tasks.discard(profile_id)
+        _reserved_tasks.pop(profile_id, None)
         _active_tasks.pop(profile_id, None)
 
 
 def reserve_task(profile_id: int) -> bool:
     """Reserve a profile before the background task is registered."""
     with _lock:
+        _cleanup_stale_reservations()
         if profile_id in _active_tasks or profile_id in _reserved_tasks:
             return False
-        _reserved_tasks.add(profile_id)
+        _reserved_tasks[profile_id] = time.time()
         return True
 
 
 def release_task(profile_id: int):
     """Release a previously reserved profile slot."""
     with _lock:
-        _reserved_tasks.discard(profile_id)
+        _reserved_tasks.pop(profile_id, None)
 
 
 def cancel_task(profile_id: int):
     """Explicitly cancel the background search task for a profile."""
     with _lock:
         task = _active_tasks.get(profile_id)
-        _reserved_tasks.discard(profile_id)
+        _reserved_tasks.pop(profile_id, None)
         if task:
             task.cancel()
             return True

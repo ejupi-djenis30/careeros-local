@@ -15,6 +15,21 @@ _PREFERENCE_FIELDS = {
     "hard_max_distance_km",
 }
 
+_QUERY_CACHE_INVALIDATION_FIELDS = {
+    "role_description",
+    "search_strategy",
+    "location_filter",
+    "workload_filter",
+    "contract_type",
+    "posted_within_days",
+    "max_distance",
+    "latitude",
+    "longitude",
+    "max_queries",
+    "max_occupation_queries",
+    "max_keyword_queries",
+}
+
 
 def _extract_advanced_preferences(data: Dict[str, Any], existing: Dict[str, Any] | None = None) -> tuple[Dict[str, Any], Dict[str, Any] | None]:
     base = dict(existing or {})
@@ -56,6 +71,14 @@ class ProfileService:
         )
         if "advanced_preferences" in update_data or advanced_preferences is not None:
             update_data["advanced_preferences"] = advanced_preferences
+
+        if "cv_content" in update_data:
+            update_data["cached_cv_summary"] = None
+
+        if any(field in update_data for field in _QUERY_CACHE_INVALIDATION_FIELDS) or (
+            advanced_preferences is not None
+        ):
+            update_data["cached_queries"] = None
 
         return self.repo.update(profile, update_data)
 
