@@ -406,7 +406,8 @@ One boolean per job, in order. true = relevant, false = irrelevant."""
             )
 
         strict_types = (max_occupation_queries is not None) or (max_keyword_queries is not None)
-        
+        searches: List[Dict[str, Any]] = []
+
         MAX_RETRIES = 3
         for attempt in range(MAX_RETRIES + 1):
             searches = await self._call_generate_search_plan(
@@ -1042,10 +1043,10 @@ Return ONLY JSON with a "results" array, one entry per job, IN ORDER:
         return out
 
     @staticmethod
-    def _normalize_required_languages(values: Any) -> List[Dict[str, str]]:
+    def _normalize_required_languages(values: Any) -> List[Dict[str, Optional[str]]]:
         if not isinstance(values, list):
             return []
-        out: List[Dict[str, str]] = []
+        out: List[Dict[str, Optional[str]]] = []
         seen = set()
         for item in values:
             if not isinstance(item, dict):
