@@ -41,8 +41,7 @@ class ProfileRepository(BaseRepository[SearchProfile]):
 
         ``normalized_data`` is the dict returned by
         ``LLMService.normalize_user_profile()`` (keys: seniority, domain,
-        role_family, qualification_level, experience_years, languages, skills,
-        confidence).
+        role_family, qualification_level, experience_years, languages, skills).
         ``fingerprint`` is the cache-invalidation key so we can skip re-extraction
         on the next run when inputs have not changed.
         """

@@ -250,7 +250,6 @@ Return ONLY JSON — no markdown, no explanations:
             "experience_years": experience_years,
             "languages": languages,
             "skills": skills,
-            "confidence": confidence,
         }
 
     # ─── Feature 1: Job Summary Step ──────────────────────────────────

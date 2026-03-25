@@ -696,6 +696,17 @@ class SearchService:
         "phd": 4,
     }
 
+    _RELATED_DOMAINS: tuple[frozenset[str], ...] = (
+        frozenset({"it", "engineering"}),
+        frozenset({"finance", "administration"}),
+    )
+
+    def _domains_are_related(self, domain_a: str, domain_b: str) -> bool:
+        for group in self._RELATED_DOMAINS:
+            if domain_a in group and domain_b in group:
+                return True
+        return False
+
     def _passes_normalization_filters(
         self,
         job_norm: Dict[str, Any],
@@ -722,6 +733,7 @@ class SearchService:
             and user_domain != "general"
             and job_domain != "general"
             and user_domain != job_domain
+            and not self._domains_are_related(user_domain, job_domain)
         ):
             return False, "norm_domain_mismatch"
 
@@ -734,8 +746,10 @@ class SearchService:
                 job_exp_min = self._coerce_int(job_norm.get("experience_min_years"), None)
                 user_exp = self._coerce_int(profile_norm.get("experience_years"), None)
                 tolerance = int(getattr(settings, "SEARCH_NORMALIZATION_EXPERIENCE_TOLERANCE", 2))
-                if job_exp_min is not None and (
-                    user_exp is None or job_exp_min > user_exp + tolerance
+                if (
+                    job_exp_min is not None
+                    and user_exp is not None
+                    and job_exp_min > user_exp + tolerance
                 ):
                     return False, "norm_seniority_overqualified"
             # senior user → reject explicitly junior-only jobs
@@ -757,7 +771,7 @@ class SearchService:
             user_rank = self._QUALIFICATION_RANK.get(user_ql, -1)
             job_rank = self._QUALIFICATION_RANK.get(job_ql, -1)
             # Only reject when both ranks are known AND job clearly exceeds candidate
-            if user_rank >= 0 and job_rank >= 0 and job_rank > user_rank + 1:
+            if user_rank >= 0 and job_rank >= 0 and job_rank > user_rank + 2:
                 return False, "norm_qualification_mismatch"
 
         # ─── 4. Experience floor ─────────────────────────────────────────

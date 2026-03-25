@@ -82,6 +82,19 @@ class TestPassesNormalizationFilters:
         assert not ok
         assert reason == "norm_domain_mismatch"
 
+    def test_domain_related_domains_passes(self, service):
+        ok, _ = service._passes_normalization_filters(
+            {"domain": "engineering"}, {"domain": "it"}
+        )
+        assert ok
+
+    def test_domain_unrelated_domains_rejected(self, service):
+        ok, reason = service._passes_normalization_filters(
+            {"domain": "medical"}, {"domain": "it"}
+        )
+        assert not ok
+        assert reason == "norm_domain_mismatch"
+
     def test_domain_user_general_skips_check(self, service):
         """When the user is 'general', any job domain should pass."""
         ok, _ = service._passes_normalization_filters(
@@ -136,6 +149,13 @@ class TestPassesNormalizationFilters:
         ok, _ = service._passes_normalization_filters(job_norm, profile_norm)
         assert ok
 
+    def test_seniority_junior_vs_senior_user_exp_none_passes(self, service):
+        """If candidate experience is unknown, do not reject by seniority overqualification."""
+        job_norm = {"seniority": "senior", "experience_min_years": 8}
+        profile_norm = {"seniority": "junior", "experience_years": None}
+        ok, _ = service._passes_normalization_filters(job_norm, profile_norm)
+        assert ok
+
     def test_seniority_senior_vs_junior_underqualified(self, service):
         """senior user (10 yrs) + junior-capped job (max 2 yrs) → rejected."""
         job_norm = {"seniority": "junior", "experience_max_years": 2}
@@ -172,11 +192,19 @@ class TestPassesNormalizationFilters:
 
     # ── 3. Qualification level ────────────────────────────────────────────────
 
-    def test_qualification_job_requires_phd_user_has_bachelor_rejected(self, service):
-        """bachelor (rank 2) vs phd job (rank 4): 4 > 2+1=3 → rejected."""
-        ok, reason = service._passes_normalization_filters(
+    def test_qualification_job_requires_phd_user_has_bachelor_passes(self, service):
+        """bachelor (rank 2) vs phd job (rank 4): 4 == 2+2 → passes."""
+        ok, _ = service._passes_normalization_filters(
             {"qualification_level": "phd"},
             {"qualification_level": "bachelor"},
+        )
+        assert ok
+
+    def test_qualification_job_requires_phd_user_has_vocational_rejected(self, service):
+        """vocational (rank 1) vs phd job (rank 4): 4 > 1+2=3 → rejected."""
+        ok, reason = service._passes_normalization_filters(
+            {"qualification_level": "phd"},
+            {"qualification_level": "vocational"},
         )
         assert not ok
         assert reason == "norm_qualification_mismatch"
@@ -197,14 +225,13 @@ class TestPassesNormalizationFilters:
         )
         assert ok
 
-    def test_qualification_user_none_vs_bachelor_rejected(self, service):
-        """none (rank 0) vs bachelor (rank 2): 2 > 0+1=1 → rejected."""
-        ok, reason = service._passes_normalization_filters(
+    def test_qualification_user_none_vs_bachelor_passes(self, service):
+        """none (rank 0) vs bachelor (rank 2): 2 == 0+2 → passes."""
+        ok, _ = service._passes_normalization_filters(
             {"qualification_level": "bachelor"},
             {"qualification_level": "none"},
         )
-        assert not ok
-        assert reason == "norm_qualification_mismatch"
+        assert ok
 
     def test_qualification_missing_on_job_passes(self, service):
         ok, _ = service._passes_normalization_filters(
@@ -229,7 +256,7 @@ class TestPassesNormalizationFilters:
     # ── 4. Experience floor ───────────────────────────────────────────────────
 
     def test_experience_floor_exceeds_tolerance_rejected(self, service):
-        """job_exp_min=7, user_exp=2, tolerance=2 → 7 > 4 → rejected."""
+        """job_exp_min=7, user_exp=2, tolerance=3 → 7 > 5 → rejected."""
         ok, reason = service._passes_normalization_filters(
             {"experience_min_years": 7},
             {"experience_years": 2},
@@ -238,9 +265,9 @@ class TestPassesNormalizationFilters:
         assert reason == "norm_experience_floor"
 
     def test_experience_floor_exactly_at_tolerance_passes(self, service):
-        """job_exp_min=4, user_exp=2, tolerance=2 → 4 == 4 → passes."""
+        """job_exp_min=5, user_exp=2, tolerance=3 → 5 == 5 → passes."""
         ok, _ = service._passes_normalization_filters(
-            {"experience_min_years": 4},
+            {"experience_min_years": 5},
             {"experience_years": 2},
         )
         assert ok
@@ -335,7 +362,7 @@ class TestNormalizeUserProfile:
         normalized_result = {
             "seniority": "mid", "domain": "it", "role_family": "Backend Dev",
             "qualification_level": "bachelor", "experience_years": 4,
-            "languages": [], "skills": ["Python"], "confidence": 0.9,
+            "languages": [], "skills": ["Python"],
         }
 
         with patch("backend.services.search_service.llm_service") as mock_llm:
@@ -357,7 +384,7 @@ class TestNormalizeUserProfile:
         profile_dict = {"cv_content": cv, "role_description": role}
         normalized_result = {"seniority": "junior", "domain": "it", "role_family": "Dev",
                              "qualification_level": "none", "experience_years": 1,
-                             "languages": [], "skills": [], "confidence": 0.7}
+                             "languages": [], "skills": []}
 
         with patch("backend.services.search_service.llm_service") as mock_llm:
             mock_llm.normalize_user_profile = AsyncMock(return_value=normalized_result)
@@ -412,7 +439,6 @@ class TestLLMServiceNormalizeUserProfile:
         assert result["seniority"] == "mid"
         assert result["domain"] == "it"
         assert result["experience_years"] == 5
-        assert result["confidence"] == 0.9
 
     async def test_invalid_seniority_coerced_to_none(self, llm):
         """Unknown seniority value must be coerced to None."""
@@ -474,17 +500,3 @@ class TestLLMServiceNormalizeUserProfile:
 
         assert result["experience_years"] == 0
 
-    async def test_confidence_clamped_to_range(self, llm):
-        """Confidence outside [0, 1] must be clamped."""
-        llm_output = {
-            "seniority": "mid", "domain": "it", "role_family": "Dev",
-            "qualification_level": "bachelor", "experience_years": 3,
-            "languages": [], "skills": [], "confidence": 5.0,  # out of range
-        }
-        with patch.object(llm, "_get_provider") as mock_get_prov:
-            mock_provider = AsyncMock()
-            mock_provider.generate_json_async = AsyncMock(return_value=llm_output)
-            mock_get_prov.return_value = mock_provider
-            result = await llm.normalize_user_profile("cv", "developer", "")
-
-        assert result["confidence"] == 1.0

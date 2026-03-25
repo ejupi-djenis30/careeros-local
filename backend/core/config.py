@@ -169,7 +169,7 @@ class Settings(BaseSettings):
     SEARCH_ENABLE_NORMALIZATION_MATCHING: bool = True
     # Tolerance in years added to user experience for experience-floor matching.
     # E.g. user has 3 yrs → jobs requiring up to 3+2=5 yrs min still pass.
-    SEARCH_NORMALIZATION_EXPERIENCE_TOLERANCE: int = 2
+    SEARCH_NORMALIZATION_EXPERIENCE_TOLERANCE: int = 3
 
     # Logging
     LOG_LEVEL: str = "INFO"
