@@ -43,6 +43,20 @@ class SearchProfile(BaseModel, TimestampMixin):
     cached_cv_summary = Column(Text, nullable=True)
     cached_queries = Column(JSON, nullable=True)
 
+    # ── Normalized user / candidate profile (mirrors ScrapedJob normalization) ──
+    # Extracted once per profile (CV + role_description) via LLM, cached until inputs change.
+    # Used for deterministic field-vs-field matching against normalized ScrapedJob data.
+    profile_normalization_status = Column(String, nullable=True, default="pending")  # pending | normalized
+    profile_normalized_at = Column(DateTime(timezone=True), nullable=True)
+    profile_normalization_fingerprint = Column(String, nullable=True)  # cache invalidation key
+    profile_normalized_seniority = Column(String, nullable=True)        # junior | mid | senior
+    profile_normalized_domain = Column(String, nullable=True)           # general | it | finance | ...
+    profile_normalized_role_family = Column(String, nullable=True)      # normalised role name
+    profile_normalized_qualification_level = Column(String, nullable=True)  # none | vocational | bachelor | master | phd
+    profile_normalized_experience_years = Column(Integer, nullable=True)    # candidate's total years
+    profile_normalized_languages = Column(JSON, nullable=True)          # [{code, level}, ...]
+    profile_normalized_skills = Column(JSON, nullable=True)             # ["Python", "React", ...]
+
     user = relationship("User", back_populates="profiles")
     jobs = relationship("Job", back_populates="search_profile", cascade="all, delete-orphan")
 

@@ -136,6 +136,123 @@ Return plain text, NOT JSON."""
         
         return await provider.generate_text_async(system_prompt, user_prompt)
 
+    # ─── Step 1.5: User / Candidate Profile Normalization ─────────────
+
+    @retry(stop=stop_after_attempt(2), wait=wait_exponential(multiplier=1, min=2, max=5))
+    async def normalize_user_profile(
+        self,
+        cv_content: str,
+        role_description: str,
+        search_strategy: str = "",
+    ) -> Dict[str, Any]:
+        """Extract structured candidate facts from the CV cross-referenced with the role intent.
+
+        This is the user-side mirror of ``normalize_job_batch``: it produces a minimal
+        deterministic profile that can be compared field-for-field against normalized
+        ``ScrapedJob`` columns during structured filtering.
+
+        The extraction is *intent-aware* — it combines what the CV says the candidate IS
+        with what the ``role_description`` says the candidate WANTS.  For example, a senior
+        engineer explicitly targeting junior roles will get ``seniority="junior"`` so that
+        junior job listings are not filtered out.
+
+        Returns a dict with keys matching ``SearchProfile.profile_normalized_*`` columns.
+        """
+        provider = self._get_provider("normalize_profile")
+
+        strategy_block = (
+            f"\n\nSEARCH STRATEGY / EXTRA INSTRUCTIONS:\n{sanitize_prompt_text(search_strategy, max_chars=800)}"
+            if search_strategy.strip()
+            else ""
+        )
+
+        system_prompt = (
+            "You are a strict candidate-profile normalizer for job-matching. "
+            "Cross-reference the CV facts with the user's role-description intent to extract a "
+            "compact deterministic profile. "
+            "Use only information explicitly present in the inputs — do NOT invent. "
+            "The 'seniority', 'domain', and 'qualification_level' values MUST come from the "
+            "allowlists below. Return compact structured JSON."
+        )
+        user_prompt = f"""Extract the candidate's normalized profile from the CV and role intent below.
+
+OUTPUT — one JSON object with ALL keys:
+- seniority         : "junior" | "mid" | "senior"  (infer from CV experience + role intent)
+- domain            : one of EXACTLY: general, it, finance, medical, engineering, hospitality, sales, logistics, administration
+- role_family       : normalised job-title family (e.g. "Software Engineer", "Financial Analyst")
+- qualification_level: "none" | "vocational" | "bachelor" | "master" | "phd"
+- experience_years  : integer (total years of relevant professional experience; 0 if unknown/none)
+- languages         : list of {{code (ISO 639-1 2-letter), level (CEFR A1-C2 or "native")}}
+- skills            : list of concrete technical/domain skills (max 20 strings); exclude generic soft-skills
+- confidence        : 0.0–1.0
+
+SENIORITY RULE: if the role_description explicitly targets a seniority DIFFERENT from the CV,
+use the TARGETED seniority (the user knows what they want to apply for).
+
+DOMAIN RULE: pick the single best-fit domain from the allowlist.
+Use "general" only if the domain is genuinely unclear.
+
+CV (truncated to 5000 chars):
+{sanitize_prompt_text(cv_content, max_chars=5000)}
+
+ROLE DESCRIPTION (what the user is looking for):
+{sanitize_prompt_text(role_description, max_chars=800)}{strategy_block}
+
+Return ONLY JSON — no markdown, no explanations:
+{{
+  "seniority": "mid",
+  "domain": "it",
+  "role_family": "Software Engineer",
+  "qualification_level": "bachelor",
+  "experience_years": 4,
+  "languages": [{{"code": "en", "level": "C2"}}, {{"code": "de", "level": "B2"}}],
+  "skills": ["Python", "FastAPI", "React", "PostgreSQL"],
+  "confidence": 0.85
+}}"""
+
+        result = await provider.generate_json_async(system_prompt, user_prompt)
+
+        if not isinstance(result, dict):
+            return {}
+
+        # ── normalise / validate each field ──────────────────────────────
+        seniority_raw = str(result.get("seniority") or "").strip().lower()
+        seniority = seniority_raw if seniority_raw in {"junior", "mid", "senior"} else None
+
+        domain_raw = self._normalize_job_domain_token(result.get("domain") or "general")
+        domain = domain_raw or "general"
+
+        role_family = str(result.get("role_family") or "").strip() or None
+
+        ql_raw = str(result.get("qualification_level") or "").strip().lower()
+        ql_valid = {"none", "vocational", "bachelor", "master", "phd"}
+        qualification_level = ql_raw if ql_raw in ql_valid else None
+
+        experience_years = self._coerce_nullable_int(result.get("experience_years"))
+        if experience_years is not None:
+            experience_years = max(0, experience_years)
+
+        languages = self._normalize_required_languages(result.get("languages"))
+        skills = self._dedupe_string_list(result.get("skills"))
+
+        confidence = 0.0
+        try:
+            confidence = float(result.get("confidence", 0.0))
+        except (TypeError, ValueError):
+            pass
+        confidence = max(0.0, min(1.0, confidence))
+
+        return {
+            "seniority": seniority,
+            "domain": domain,
+            "role_family": role_family,
+            "qualification_level": qualification_level,
+            "experience_years": experience_years,
+            "languages": languages,
+            "skills": skills,
+            "confidence": confidence,
+        }
+
     # ─── Feature 1: Job Summary Step ──────────────────────────────────
 
     @retry(stop=stop_after_attempt(2), wait=wait_exponential(multiplier=1, min=2, max=5))

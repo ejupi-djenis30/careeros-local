@@ -1,5 +1,7 @@
 import asyncio
+import hashlib
 import inspect
+import json
 import logging
 import re
 from datetime import datetime, timezone
@@ -519,6 +521,80 @@ class SearchService:
             add_log(profile_id, f"Normalized {upgraded} persisted jobs with LLM structured extraction.")
         return upgraded
 
+    # ─── Step 1.5: User/Candidate Profile Normalization ──────────────
+
+    @staticmethod
+    def _compute_profile_norm_fingerprint(cv_content: str, role_description: str, search_strategy: str) -> str:
+        payload = {
+            "cv": str(cv_content or "")[:12000],
+            "role": str(role_description or "")[:4000],
+            "strategy": str(search_strategy or "")[:1200],
+        }
+        return hashlib.sha256(
+            json.dumps(payload, sort_keys=True, ensure_ascii=True).encode("utf-8")
+        ).hexdigest()
+
+    async def _normalize_user_profile(self, profile_id: int, profile: SearchProfile, profile_dict: dict, force: bool = False) -> dict:
+        """Extract/retrieve the normalized candidate profile for deterministic matching.
+
+        Uses a fingerprint-based cache stored on the SearchProfile row.
+        Re-runs LLM extraction only when the trigger inputs have changed or
+        ``force=True`` (honours the same force_regenerate_cv_summary flag).
+
+        Returns the normalized data dict (keys: seniority, domain, role_family,
+        qualification_level, experience_years, languages, skills) or ``{}`` on failure.
+        """
+        cv_content = str(profile_dict.get("cv_content") or "")
+        role_description = str(profile_dict.get("role_description") or "")
+        search_strategy = str(profile_dict.get("search_strategy") or "")
+
+        if not cv_content and not role_description:
+            return {}
+
+        current_fp = self._compute_profile_norm_fingerprint(cv_content, role_description, search_strategy)
+        cached_fp = getattr(profile, "profile_normalization_fingerprint", None)
+        already_normalized = (
+            getattr(profile, "profile_normalization_status", None) == "normalized"
+            and cached_fp == current_fp
+        )
+
+        if already_normalized and not force:
+            add_log(profile_id, "✓ Using cached candidate profile normalization")
+            return {
+                "seniority": profile.profile_normalized_seniority,
+                "domain": profile.profile_normalized_domain,
+                "role_family": profile.profile_normalized_role_family,
+                "qualification_level": profile.profile_normalized_qualification_level,
+                "experience_years": profile.profile_normalized_experience_years,
+                "languages": profile.profile_normalized_languages or [],
+                "skills": profile.profile_normalized_skills or [],
+            }
+
+        try:
+            normalized = await llm_service.normalize_user_profile(
+                cv_content=cv_content,
+                role_description=role_description,
+                search_strategy=search_strategy,
+            )
+            if normalized:
+                self.profile_repo.update_normalized_profile(
+                    profile_id,
+                    normalized_data=normalized,
+                    fingerprint=current_fp,
+                )
+                add_log(
+                    profile_id,
+                    f"Candidate profile normalized: seniority={normalized.get('seniority')!r}, "
+                    f"domain={normalized.get('domain')!r}, "
+                    f"experience={normalized.get('experience_years')} yrs, "
+                    f"qualification={normalized.get('qualification_level')!r}",
+                )
+            return normalized or {}
+        except Exception as exc:
+            logger.warning("Profile normalization failed for profile %s: %s", profile_id, exc)
+            add_log(profile_id, f"Profile normalization warning (non-fatal): {exc}")
+            return {}
+
     def _apply_structured_filters(self, profile_id: int, profile_dict: Dict[str, Any], jobs: List[Any], preferences: Dict[str, Any]) -> List[Any]:
         if not jobs:
             return jobs
@@ -599,6 +675,99 @@ class SearchService:
             if distance > hard_max_distance:
                 return False, "distance_limit"
 
+        # ── Normalization-based deterministic matching ──────────────────────
+        # Only active when the feature flag is enabled AND the candidate profile
+        # has been successfully normalized (non-empty profile_normalization dict).
+        if settings.SEARCH_ENABLE_NORMALIZATION_MATCHING:
+            profile_norm = profile_dict.get("profile_normalization") or {}
+            if profile_norm:
+                ok, reason = self._passes_normalization_filters(normalized, profile_norm)
+                if not ok:
+                    return False, reason
+
+        return True, "ok"
+
+    # ─── qualification hierarchy used by normalization filters ───────────────
+    _QUALIFICATION_RANK: Dict[str, int] = {
+        "none": 0,
+        "vocational": 1,
+        "bachelor": 2,
+        "master": 3,
+        "phd": 4,
+    }
+
+    def _passes_normalization_filters(
+        self,
+        job_norm: Dict[str, Any],
+        profile_norm: Dict[str, Any],
+    ) -> tuple[bool, str]:
+        """Deterministic field-vs-field match between normalized job and candidate profile.
+
+        All filters are *additive*: they only reject when BOTH sides have conclusive
+        non-None data AND the data is clearly incompatible.  Unknown/missing data on
+        either side always passes (benefit of the doubt).
+
+        Checks (in order):
+        1. Domain match          — rejects cross-domain mismatches (both sides non-"general")
+        2. Seniority match       — rejects clear over-/under-qualification
+        3. Qualification match   — rejects when job level exceeds candidate level
+        4. Experience floor      — rejects when job minimum >>> candidate experience
+        """
+        # ─── 1. Domain match ─────────────────────────────────────────────
+        user_domain = str(profile_norm.get("domain") or "general").strip().lower()
+        job_domain = str(job_norm.get("domain") or "general").strip().lower()
+        if (
+            user_domain
+            and job_domain
+            and user_domain != "general"
+            and job_domain != "general"
+            and user_domain != job_domain
+        ):
+            return False, "norm_domain_mismatch"
+
+        # ─── 2. Seniority match ───────────────────────────────────────────
+        user_seniority = str(profile_norm.get("seniority") or "").strip().lower()
+        job_seniority = str(job_norm.get("seniority") or "").strip().lower()
+        if user_seniority and job_seniority:
+            # junior user → reject explicit senior jobs with experience floor clearly above user
+            if user_seniority == "junior" and job_seniority == "senior":
+                job_exp_min = self._coerce_int(job_norm.get("experience_min_years"), None)
+                user_exp = self._coerce_int(profile_norm.get("experience_years"), None)
+                tolerance = int(getattr(settings, "SEARCH_NORMALIZATION_EXPERIENCE_TOLERANCE", 2))
+                if job_exp_min is not None and (
+                    user_exp is None or job_exp_min > user_exp + tolerance
+                ):
+                    return False, "norm_seniority_overqualified"
+            # senior user → reject explicitly junior-only jobs
+            # (only when job seniority is junior AND experience cap is low)
+            if user_seniority == "senior" and job_seniority == "junior":
+                job_exp_max = self._coerce_int(job_norm.get("experience_max_years"), None)
+                user_exp = self._coerce_int(profile_norm.get("experience_years"), None)
+                if (
+                    job_exp_max is not None
+                    and user_exp is not None
+                    and job_exp_max < user_exp - 3
+                ):
+                    return False, "norm_seniority_underqualified"
+
+        # ─── 3. Qualification level ───────────────────────────────────────
+        user_ql = str(profile_norm.get("qualification_level") or "").strip().lower()
+        job_ql = str(job_norm.get("qualification_level") or "").strip().lower()
+        if user_ql and job_ql:
+            user_rank = self._QUALIFICATION_RANK.get(user_ql, -1)
+            job_rank = self._QUALIFICATION_RANK.get(job_ql, -1)
+            # Only reject when both ranks are known AND job clearly exceeds candidate
+            if user_rank >= 0 and job_rank >= 0 and job_rank > user_rank + 1:
+                return False, "norm_qualification_mismatch"
+
+        # ─── 4. Experience floor ─────────────────────────────────────────
+        job_exp_min = self._coerce_int(job_norm.get("experience_min_years"), None)
+        user_exp = self._coerce_int(profile_norm.get("experience_years"), None)
+        if job_exp_min is not None and user_exp is not None:
+            tolerance = int(getattr(settings, "SEARCH_NORMALIZATION_EXPERIENCE_TOLERANCE", 2))
+            if job_exp_min > user_exp + tolerance:
+                return False, "norm_experience_floor"
+
         return True, "ok"
 
     def _resolve_required_workload_range(self, profile_dict: Dict[str, Any], preferences: Dict[str, Any]) -> tuple[Optional[int], Optional[int]]:
@@ -640,6 +809,7 @@ class SearchService:
         return codes
 
     def _passes_hard_filters(self, listing, preferences: Dict[str, Any], profile_dict: Dict[str, Any]) -> tuple[bool, str]:
+        """DEPRECATED: Superseded by _passes_structured_filters (no normalization data used)."""
         if preferences.get("remote_only") and not self._listing_is_remote(listing):
             return False, "remote_only"
 
@@ -679,6 +849,7 @@ class SearchService:
         return True, "ok"
 
     def _apply_hard_filters(self, profile_id: int, profile_dict: Dict[str, Any], jobs: List[Any], preferences: Dict[str, Any]) -> List[Any]:
+        """DEPRECATED: Superseded by _apply_structured_filters (no normalization data used)."""
         if not jobs:
             return jobs
 
@@ -896,6 +1067,16 @@ class SearchService:
                         logger.warning(f"CV summarization failed: {e}")
                         cv_summary = profile_dict["cv_content"]
             profile_dict["cv_summary"] = cv_summary
+
+            # ── Step 1.5: Normalize candidate profile for deterministic matching ──
+            # Runs once per unique (cv, role_description, search_strategy) triplet.
+            # Result is cached on the profile row; force_regenerate_cv_summary also forces
+            # a re-extraction of the profile normalization since CV content drives it.
+            force_regen_cv = profile_dict.get("force_regenerate_cv_summary", False)
+            profile_normalization = await self._normalize_user_profile(
+                profile_id, profile, profile_dict, force=force_regen_cv
+            )
+            profile_dict["profile_normalization"] = profile_normalization
 
             # ── Step 2: Execute searches with domain routing (Feature 4) ──
             update_status(profile_id, state="searching")
@@ -1372,6 +1553,10 @@ class SearchService:
         return unique_jobs, duplicates
 
     async def _summarize_jobs(self, profile_id: int, jobs: list, batch_size: int = 10) -> list:
+        """DEPRECATED: Job summaries are no longer used by the main pipeline.
+        The normalization step and direct LLM analysis replace this pre-screen.
+        Kept for compatibility only.
+        """
         add_log(profile_id, f"Summarizing job descriptions for {len(jobs)} jobs…")
         
         jobs_needing_summary = []
@@ -1421,6 +1606,10 @@ class SearchService:
         return jobs
 
     async def _relevance_filter(self, profile_id: int, profile_dict: dict, jobs: list, batch_size: int = 20) -> list:
+        """DEPRECATED: Title/summary-based LLM relevance filter, superseded by normalization-based
+        deterministic matching in _passes_normalization_filters.  This method is no longer called by
+        the main run_search pipeline.  Kept for compatibility only.
+        """
         relevant_jobs = []
         fallback_mode = (settings.SEARCH_RELEVANCE_FALLBACK_MODE or "conservative").strip().lower()
         keep_on_failure = fallback_mode == "keep"

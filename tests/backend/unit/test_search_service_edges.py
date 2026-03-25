@@ -163,13 +163,15 @@ async def test_run_search_cv_summarization_and_unexpected(mock_service):
     profile_dict = {"id": 1, "cv_content": "Long CV content " * 100}
     
     # 1. Test run_search exception wrapping
-    with patch.object(mock_service, "_execute_searches", side_effect=Exception("Critical")):
+    with patch.object(mock_service, "_execute_searches", side_effect=Exception("Critical")), \
+         patch.object(mock_service, "_normalize_user_profile", new=AsyncMock(return_value={})):
         await mock_service.run_search(1)
         # Should not raise, just catch and log
 
     # 2. Test CV summarization usage and deduplicate call
     with patch.object(mock_service, "_execute_searches") as mock_exec, \
          patch("backend.services.search_service.llm_service.summarize_cv", return_value="Short CV"), \
+         patch.object(mock_service, "_normalize_user_profile", new=AsyncMock(return_value={})), \
          patch.object(mock_service, "_deduplicate") as mock_dedup, \
          patch.object(mock_service, "_relevance_filter", return_value=[]), \
          patch.object(mock_service, "_analyze_and_save", return_value=(0,0)), \
@@ -741,6 +743,7 @@ async def test_run_search_force_regenerate_flags(mock_service):
 
     with patch("backend.services.search_service.llm_service.generate_search_plan", new=AsyncMock(return_value=[{"query": "fresh dev"}])), \
          patch("backend.services.search_service.llm_service.summarize_cv", new=AsyncMock(return_value="fresh summary")) as mock_summarize, \
+         patch.object(mock_service, "_normalize_user_profile", new=AsyncMock(return_value={})), \
          patch.object(mock_service, "_execute_searches", new=AsyncMock(return_value=[])), \
          patch("backend.services.search_service.update_status"):
         await mock_service.run_search(

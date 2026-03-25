@@ -134,6 +134,17 @@ class Settings(BaseSettings):
     LLM_NORMALIZE_THINKING: bool = False
     LLM_NORMALIZE_THINKING_LEVEL: str = ""
 
+    # Step: NORMALIZE_PROFILE  (normalize_user_profile — extract structured candidate data from CV + role_description)
+    LLM_NORMALIZE_PROFILE_PROVIDER: str = ""
+    LLM_NORMALIZE_PROFILE_MODEL: str = ""
+    LLM_NORMALIZE_PROFILE_API_KEY: str = ""
+    LLM_NORMALIZE_PROFILE_BASE_URL: str = ""
+    LLM_NORMALIZE_PROFILE_TEMPERATURE: float = -1.0
+    LLM_NORMALIZE_PROFILE_TOP_P: float = -1.0
+    LLM_NORMALIZE_PROFILE_MAX_TOKENS: int = -1
+    LLM_NORMALIZE_PROFILE_THINKING: bool = False
+    LLM_NORMALIZE_PROFILE_THINKING_LEVEL: str = ""
+
     # Scraping
     JOB_ROOM_USER_AGENT: str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
 
@@ -150,6 +161,15 @@ class Settings(BaseSettings):
     SEARCH_RELEVANCE_FALLBACK_MODE: str = "conservative"
     ANALYSIS_CONCURRENCY: int = 15
     ANALYSIS_BATCH_SIZE: int = 5
+
+    # Normalization-based profile matching (Phase 2)
+    # When enabled, structured filters compare normalized user profile fields
+    # (seniority, domain, qualification, experience) against normalized job fields,
+    # providing a deterministic pre-screen before the expensive LLM analysis step.
+    SEARCH_ENABLE_NORMALIZATION_MATCHING: bool = True
+    # Tolerance in years added to user experience for experience-floor matching.
+    # E.g. user has 3 yrs → jobs requiring up to 3+2=5 yrs min still pass.
+    SEARCH_NORMALIZATION_EXPERIENCE_TOLERANCE: int = 2
 
     # Logging
     LOG_LEVEL: str = "INFO"

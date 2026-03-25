@@ -156,7 +156,8 @@ async def test_run_search_stopped_by_user(search_service, mock_profile_repo, moc
          patch("backend.services.search_service.SwissDevJobsProvider"), \
          patch("backend.services.search_service.AdeccoProvider"), \
          patch("backend.services.search_service.LocalDbProvider"), \
-         patch("backend.services.search_service.update_status") as mock_update:
+         patch("backend.services.search_service.update_status") as mock_update, \
+         patch.object(search_service, "_normalize_user_profile", new=AsyncMock(return_value={})):
         
         await search_service.run_search(1)
 
@@ -300,6 +301,8 @@ async def test_run_search_uses_degraded_fallback_plan_when_enabled(search_servic
     with patch.object(search_service, "_generate_plan", new=AsyncMock(return_value=[])), \
          patch.object(search_service, "_build_degraded_fallback_plan", return_value=fallback_plan), \
          patch.object(search_service, "_execute_searches", new=AsyncMock(return_value=[])) as mock_exec, \
+         patch.object(search_service, "_normalize_user_profile", new=AsyncMock(return_value={})), \
+         patch("backend.services.search_service.llm_service.summarize_cv", new=AsyncMock(return_value="")), \
          patch("backend.services.search_service.add_log"), \
          patch("backend.services.search_service.init_status"), \
          patch("backend.services.search_service.update_status") as mock_update, \

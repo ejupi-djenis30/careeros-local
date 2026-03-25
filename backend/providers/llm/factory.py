@@ -18,7 +18,7 @@ from backend.providers.llm.ollama import OllamaProvider
 logger = logging.getLogger(__name__)
 
 # ─── recognised step names (used as env-var prefixes) ────────────────────────
-_KNOWN_STEPS = {"plan", "relevance", "match", "summary", "normalize"}
+_KNOWN_STEPS = {"plan", "relevance", "match", "summary", "normalize", "normalize_profile"}
 
 
 def _resolve_step_config(step: str) -> dict:
