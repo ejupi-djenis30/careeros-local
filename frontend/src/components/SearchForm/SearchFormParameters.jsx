@@ -1,6 +1,35 @@
 import React from "react";
 
-export function SearchFormParameters({ profile, handleChange }) {
+const LANGUAGES = [
+    { code: "en", label: "EN" },
+    { code: "de", label: "DE" },
+    { code: "fr", label: "FR" },
+    { code: "it", label: "IT" },
+];
+
+const DOMAINS = [
+    { code: "backend", label: "Backend" },
+    { code: "frontend", label: "Frontend" },
+    { code: "fullstack", label: "Fullstack" },
+    { code: "devops", label: "DevOps" },
+    { code: "data", label: "Data" },
+    { code: "machine-learning", label: "ML / AI" },
+    { code: "mobile", label: "Mobile" },
+    { code: "cloud", label: "Cloud" },
+    { code: "embedded", label: "Embedded" },
+];
+
+export function SearchFormParameters({ profile, handleChange, setProfile }) {
+    const toggleItem = (field, code) => {
+        setProfile(prev => {
+            const current = prev[field] || [];
+            const next = current.includes(code)
+                ? current.filter(v => v !== code)
+                : [...current, code];
+            return { ...prev, [field]: next };
+        });
+    };
+
     return (
         <div className="col-lg-4 d-flex flex-column gap-4 border-end border-white-5">
             <div className="row g-3">
@@ -66,6 +95,127 @@ export function SearchFormParameters({ profile, handleChange }) {
                     onChange={handleChange} 
                     className="form-range" 
                 />
+            </div>
+
+            {/* Precision Filters */}
+            <div className="p-3 bg-white-5 rounded-3 border border-white-5">
+                <div className="x-small text-secondary fw-bold text-uppercase mb-3 d-flex align-items-center gap-2">
+                    <i className="bi bi-funnel-fill"></i>Precision Filters
+                </div>
+
+                {/* Job Language chips */}
+                <div className="mb-3">
+                    <div className="x-small text-white fw-semibold mb-2">Job Language</div>
+                    <div className="d-flex flex-wrap gap-1">
+                        {LANGUAGES.map(({ code, label }) => {
+                            const active = (profile.preferred_languages || []).includes(code);
+                            return (
+                                <button key={code} type="button"
+                                    onClick={() => toggleItem("preferred_languages", code)}
+                                    className={`btn btn-sm px-2 py-0 rounded-pill ${active ? "btn-info text-dark fw-bold" : "btn-outline-secondary opacity-75"}`}
+                                    style={{ fontSize: "0.7rem", minWidth: 34 }}
+                                >
+                                    {label}
+                                </button>
+                            );
+                        })}
+                    </div>
+                    <div className="x-small text-secondary opacity-60 mt-1">Leave empty to allow all languages</div>
+                </div>
+
+                {/* Tech Domain chips */}
+                <div className="mb-3">
+                    <div className="x-small text-white fw-semibold mb-2">Tech Domain</div>
+                    <div className="d-flex flex-wrap gap-1">
+                        {DOMAINS.map(({ code, label }) => {
+                            const active = (profile.preferred_domains || []).includes(code);
+                            return (
+                                <button key={code} type="button"
+                                    onClick={() => toggleItem("preferred_domains", code)}
+                                    className={`btn btn-sm px-2 py-0 rounded-pill ${active ? "btn-primary fw-bold" : "btn-outline-secondary opacity-75"}`}
+                                    style={{ fontSize: "0.7rem" }}
+                                >
+                                    {label}
+                                </button>
+                            );
+                        })}
+                    </div>
+                </div>
+
+                {/* Remote toggle + Min Salary */}
+                <div className="row g-2 mb-2 align-items-end">
+                    <div className="col-6 d-flex align-items-center" style={{ paddingBottom: "0.375rem" }}>
+                        <div className="form-check form-switch d-flex align-items-center gap-2 ps-0 mb-0">
+                            <input
+                                className="form-check-input ms-0"
+                                type="checkbox"
+                                id="remoteOnlySwitch"
+                                checked={profile.remote_only || false}
+                                onChange={e => setProfile(prev => ({ ...prev, remote_only: e.target.checked }))}
+                                style={{ cursor: "pointer" }}
+                            />
+                            <label className="form-check-label x-small text-white fw-semibold mb-0" htmlFor="remoteOnlySwitch">
+                                Remote Only
+                            </label>
+                        </div>
+                    </div>
+                    <div className="col-6">
+                        <label className="form-label text-secondary x-small mb-1">Min Salary (CHF/yr)</label>
+                        <input
+                            type="number"
+                            name="salary_min_chf"
+                            value={profile.salary_min_chf || ""}
+                            onChange={handleChange}
+                            placeholder="No min"
+                            min="0"
+                            step="1000"
+                            className="form-control form-control-sm bg-black-20 border-white-10 text-white"
+                        />
+                    </div>
+                </div>
+
+                {/* Workload hard min/max + Hard distance */}
+                <div className="row g-2">
+                    <div className="col-4">
+                        <label className="form-label text-secondary x-small mb-1">Load min %</label>
+                        <input
+                            type="number"
+                            name="workload_min"
+                            value={profile.workload_min || ""}
+                            onChange={handleChange}
+                            placeholder="—"
+                            min="0"
+                            max="100"
+                            className="form-control form-control-sm bg-black-20 border-white-10 text-white"
+                        />
+                    </div>
+                    <div className="col-4">
+                        <label className="form-label text-secondary x-small mb-1">Load max %</label>
+                        <input
+                            type="number"
+                            name="workload_max"
+                            value={profile.workload_max || ""}
+                            onChange={handleChange}
+                            placeholder="—"
+                            min="0"
+                            max="100"
+                            className="form-control form-control-sm bg-black-20 border-white-10 text-white"
+                        />
+                    </div>
+                    <div className="col-4">
+                        <label className="form-label text-secondary x-small mb-1">Max dist km</label>
+                        <input
+                            type="number"
+                            name="hard_max_distance_km"
+                            value={profile.hard_max_distance_km || ""}
+                            onChange={handleChange}
+                            placeholder="—"
+                            min="0"
+                            className="form-control form-control-sm bg-black-20 border-white-10 text-white"
+                        />
+                    </div>
+                </div>
+                <div className="x-small text-secondary opacity-60 mt-2">Hard limits enforced after fetching results</div>
             </div>
 
             <div>

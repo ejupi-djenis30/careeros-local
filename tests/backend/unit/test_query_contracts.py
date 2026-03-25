@@ -4,6 +4,7 @@ from backend.services.search.query_contracts import (
     compute_plan_input_fingerprint,
     exact_query_fingerprint,
     is_cached_plan_compatible,
+    normalize_language,
     normalize_search_item,
     route_provider_names,
     unpack_plan_cache_payload,
@@ -75,3 +76,10 @@ def test_route_provider_names_orders_it_sources_first():
     )
 
     assert ordered[:2] == ["swissdevjobs", "job_room"]
+
+
+def test_normalize_language_supports_extended_aliases():
+    assert normalize_language("Spanish") == "es"
+    assert normalize_language("Português") == "pt"
+    assert normalize_language("Polski") == "pl"
+    assert normalize_language("Română") == "ro"

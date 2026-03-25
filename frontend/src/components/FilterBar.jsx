@@ -83,6 +83,30 @@ export function FilterBar({ filters = DEFAULT_FILTERS, onChange, searchProfiles 
                         <i className={`bi ${safeFilters.worth_applying ? 'bi-star-fill' : 'bi-star'}`}></i>
                         <span className="fw-medium">Top Picks</span>
                     </button>
+
+                    {/* Active Precision Filters badges */}
+                    {(() => {
+                        const activeProfile = availableProfiles.find(p => p.id === Number(safeFilters.search_profile_id));
+                        if (!activeProfile) return null;
+                        const langs = activeProfile.preferred_languages || [];
+                        const domains = activeProfile.preferred_domains || [];
+                        const remoteOnly = activeProfile.remote_only;
+                        const salaryMin = activeProfile.salary_min_chf;
+                        if (!langs.length && !domains.length && !remoteOnly && !salaryMin) return null;
+                        return (
+                            <div className="d-flex align-items-center gap-1 flex-wrap" title="Active precision filters for this search">
+                                <i className="bi bi-funnel-fill text-secondary opacity-50 x-small"></i>
+                                {langs.map(l => (
+                                    <span key={l} className="badge bg-info text-dark" style={{ fontSize: "0.65rem" }}>{l.toUpperCase()}</span>
+                                ))}
+                                {domains.map(d => (
+                                    <span key={d} className="badge bg-primary" style={{ fontSize: "0.65rem" }}>{d}</span>
+                                ))}
+                                {remoteOnly && <span className="badge bg-success" style={{ fontSize: "0.65rem" }}>Remote</span>}
+                                {salaryMin && <span className="badge bg-warning text-dark" style={{ fontSize: "0.65rem" }}>CHF {Number(salaryMin).toLocaleString()}+</span>}
+                            </div>
+                        );
+                    })()}
                 </>
             )}
 

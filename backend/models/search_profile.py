@@ -45,3 +45,36 @@ class SearchProfile(BaseModel, TimestampMixin):
 
     user = relationship("User", back_populates="profiles")
     jobs = relationship("Job", back_populates="search_profile", cascade="all, delete-orphan")
+
+    def _advanced_pref(self, key: str, default=None):
+        if isinstance(self.advanced_preferences, dict):
+            return self.advanced_preferences.get(key, default)
+        return default
+
+    @property
+    def preferred_languages(self):
+        return self._advanced_pref("preferred_languages")
+
+    @property
+    def preferred_domains(self):
+        return self._advanced_pref("preferred_domains")
+
+    @property
+    def remote_only(self):
+        return self._advanced_pref("remote_only", False)
+
+    @property
+    def salary_min_chf(self):
+        return self._advanced_pref("salary_min_chf")
+
+    @property
+    def workload_min(self):
+        return self._advanced_pref("workload_min")
+
+    @property
+    def workload_max(self):
+        return self._advanced_pref("workload_max")
+
+    @property
+    def hard_max_distance_km(self):
+        return self._advanced_pref("hard_max_distance_km")

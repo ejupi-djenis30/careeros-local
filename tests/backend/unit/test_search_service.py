@@ -255,3 +255,108 @@ async def test_relevance_filter_passes_correct_data(search_service):
         
         assert args[1] == "Dev"
         assert kwargs["search_strategy"] == "Remote only"
+
+
+def test_build_degraded_fallback_plan_generates_minimal_queries(search_service):
+    profile = MagicMock()
+    profile.max_queries = 2
+    profile_dict = {
+        "role_description": "Backend Developer, Platform Engineer",
+        "search_strategy": "Focus on Python and Docker",
+        "cv_content": "5 years Python, Docker, SQL",
+    }
+
+    with patch("backend.services.search_service.settings.SEARCH_DEGRADED_PLAN_MAX_QUERIES", 3), \
+         patch("backend.services.search_service.settings.SEARCH_DEGRADED_PLAN_MAX_KEYWORDS", 2):
+        plan = search_service._build_degraded_fallback_plan(profile_dict, profile)
+
+    assert len(plan) == 2
+    assert all(item.get("query") for item in plan)
+    assert all(item.get("type") in {"occupation", "keyword"} for item in plan)
+
+
+@pytest.mark.asyncio
+async def test_run_search_uses_degraded_fallback_plan_when_enabled(search_service, mock_profile_repo, mock_db):
+    mock_profile = MagicMock()
+    mock_profile.id = 1
+    mock_profile.user_id = 42
+    mock_profile.max_queries = 5
+    mock_profile.max_occupation_queries = None
+    mock_profile.max_keyword_queries = None
+    mock_profile.cv_content = "CV"
+    mock_profile.role_description = "Backend Developer"
+    mock_profile.search_strategy = ""
+    mock_profile.latitude = None
+    mock_profile.longitude = None
+    mock_profile.cached_queries = None
+    mock_profile.cached_cv_summary = None
+    mock_profile_repo.get.return_value = mock_profile
+    mock_db.query.return_value.filter.return_value.first.return_value = None
+
+    fallback_plan = [{"query": "Backend Developer", "type": "occupation", "domain": "general", "language": "en"}]
+
+    with patch.object(search_service, "_generate_plan", new=AsyncMock(return_value=[])), \
+         patch.object(search_service, "_build_degraded_fallback_plan", return_value=fallback_plan), \
+         patch.object(search_service, "_execute_searches", new=AsyncMock(return_value=[])) as mock_exec, \
+         patch("backend.services.search_service.add_log"), \
+         patch("backend.services.search_service.init_status"), \
+         patch("backend.services.search_service.update_status") as mock_update, \
+         patch("backend.services.search_service.settings.SEARCH_ENABLE_DEGRADED_PLAN_FALLBACK", True):
+        await search_service.run_search(1)
+
+    mock_exec.assert_awaited_once()
+    mock_update.assert_any_call(
+        1,
+        terminal_reason="degraded_plan_fallback",
+        degraded_mode=True,
+        total_searches=1,
+        searches_generated=fallback_plan,
+    )
+    mock_update.assert_any_call(1, state="done", terminal_reason="no_results")
+
+
+def test_apply_query_preferences_respects_language_and_domain(search_service):
+    prefs = {
+        "preferred_languages": ["de"],
+        "preferred_domains": ["it"],
+    }
+    searches = [
+        {"query": "Software Engineer", "language": "en", "domain": "it", "type": "occupation"},
+        {"query": "Java Entwickler", "language": "de", "domain": "it", "type": "occupation"},
+        {"query": "Data Analyst", "language": "de", "domain": "finance", "type": "occupation"},
+    ]
+
+    filtered, stats = search_service._apply_query_preferences(searches, prefs)
+    assert len(filtered) == 1
+    assert filtered[0]["query"] == "Java Entwickler"
+    assert stats["dropped_language"] == 1
+    assert stats["dropped_domain"] == 1
+
+
+def test_apply_hard_filters_remote_only(search_service):
+    remote_job = MagicMock()
+    remote_job.title = "Backend Engineer (Remote)"
+    remote_job.descriptions = [MagicMock(description="Fully remote role")]
+    remote_job.employment = MagicMock(work_forms=["home_office"], workload_min=80, workload_max=100)
+    remote_job.location = MagicMock(coordinates=None)
+
+    onsite_job = MagicMock()
+    onsite_job.title = "Backend Engineer"
+    onsite_job.descriptions = [MagicMock(description="On-site only")]
+    onsite_job.employment = MagicMock(work_forms=["onsite"], workload_min=80, workload_max=100)
+    onsite_job.location = MagicMock(coordinates=None)
+
+    preferences = {
+        "preferred_languages": [],
+        "preferred_domains": [],
+        "remote_only": True,
+        "salary_min_chf": None,
+        "workload_min": None,
+        "workload_max": None,
+        "hard_max_distance_km": None,
+    }
+
+    with patch("backend.services.search_service.add_log"):
+        kept = search_service._apply_hard_filters(1, {"latitude": None, "longitude": None}, [remote_job, onsite_job], preferences)
+
+    assert kept == [remote_job]

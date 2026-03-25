@@ -20,20 +20,33 @@ def test_get_profiles_by_user(profile_service, mock_repo):
     mock_repo.get_by_user.assert_called_once_with(1, skip=0, limit=100)
 
 def test_create_profile(profile_service, mock_repo):
-    profile_in = SearchProfileCreate(name="New Profile", role_description="Dev")
+    profile_in = SearchProfileCreate(
+        name="New Profile",
+        role_description="Dev",
+        preferred_languages=["en", "de"],
+        remote_only=True,
+    )
     profile_service.create_profile(1, profile_in)
     mock_repo.create.assert_called_once()
     args = mock_repo.create.call_args[0][0]
     assert args["user_id"] == 1
+    assert args["advanced_preferences"]["preferred_languages"] == ["en", "de"]
+    assert args["advanced_preferences"]["remote_only"] is True
 
 def test_update_profile_success(profile_service, mock_repo):
     mock_profile = MagicMock()
     mock_profile.user_id = 1
+    mock_profile.advanced_preferences = {"preferred_languages": ["en"]}
     mock_repo.get.return_value = mock_profile
-    
-    updates = SearchProfileUpdate(name="Updated")
+
+    updates = SearchProfileUpdate(name="Updated", preferred_languages=["de"], remote_only=True)
     profile_service.update_profile(1, 10, updates)
-    mock_repo.update.assert_called_once_with(mock_profile, updates)
+    mock_repo.update.assert_called_once()
+    args = mock_repo.update.call_args[0]
+    assert args[0] == mock_profile
+    assert args[1]["name"] == "Updated"
+    assert args[1]["advanced_preferences"]["preferred_languages"] == ["de"]
+    assert args[1]["advanced_preferences"]["remote_only"] is True
 
 def test_update_profile_forbidden(profile_service, mock_repo):
     mock_profile = MagicMock()

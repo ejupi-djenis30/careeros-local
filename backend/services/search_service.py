@@ -28,11 +28,14 @@ from backend.services.search.query_contracts import (
     exact_query_fingerprint,
     is_cached_plan_compatible,
     loose_query_fingerprint,
+    normalize_domain,
+    normalize_language,
     normalize_search_item,
     route_provider_names,
     supported_request_language,
     unpack_plan_cache_payload,
 )
+from backend.services.search.profile_preferences import get_profile_preference
 from backend.services.search_status import (
     init_status, add_log, update_status, clear_status, get_status, register_task, unregister_task
 )
@@ -110,6 +113,268 @@ class SearchService:
             return ""
         return f"{title}::{company}"
 
+    def _coerce_int(self, value, default=None):
+        if value is None or isinstance(value, bool):
+            return default
+        if isinstance(value, int):
+            return value
+        if isinstance(value, str):
+            text = value.strip()
+            if not text:
+                return default
+            try:
+                return int(text)
+            except ValueError:
+                return default
+        return default
+
+    def _coerce_string_list(self, value, normalizer) -> List[str]:
+        if value is None:
+            return []
+        if isinstance(value, str):
+            value = [item.strip() for item in value.split(",")]
+        if not isinstance(value, list):
+            return []
+        normalized: List[str] = []
+        seen = set()
+        for item in value:
+            token = normalizer(item)
+            if not token or token in seen:
+                continue
+            seen.add(token)
+            normalized.append(token)
+        return normalized
+
+    def _profile_preferences(self, profile) -> Dict[str, Any]:
+        remote_pref = get_profile_preference(profile, "remote_only", False)
+        return {
+            "preferred_languages": self._coerce_string_list(get_profile_preference(profile, "preferred_languages"), normalize_language),
+            "preferred_domains": self._coerce_string_list(get_profile_preference(profile, "preferred_domains"), normalize_domain),
+            "remote_only": remote_pref if isinstance(remote_pref, bool) else False,
+            "salary_min_chf": self._coerce_int(get_profile_preference(profile, "salary_min_chf"), None),
+            "workload_min": self._coerce_int(get_profile_preference(profile, "workload_min"), None),
+            "workload_max": self._coerce_int(get_profile_preference(profile, "workload_max"), None),
+            "hard_max_distance_km": self._coerce_int(get_profile_preference(profile, "hard_max_distance_km"), None),
+        }
+
+    def _apply_query_preferences(self, searches: List[Dict[str, Any]], preferences: Dict[str, Any]) -> tuple[List[Dict[str, Any]], Dict[str, int]]:
+        allowed_languages = set(preferences.get("preferred_languages") or [])
+        allowed_domains = set(preferences.get("preferred_domains") or [])
+
+        stats = {
+            "dropped_language": 0,
+            "dropped_domain": 0,
+        }
+        filtered: List[Dict[str, Any]] = []
+        for search in searches:
+            lang = normalize_language(search.get("language", "en"))
+            domain = normalize_domain(search.get("domain", "general"))
+            if allowed_languages and lang not in allowed_languages:
+                stats["dropped_language"] += 1
+                continue
+            if allowed_domains and domain not in allowed_domains:
+                stats["dropped_domain"] += 1
+                continue
+            filtered.append(search)
+        return filtered, stats
+
+    def _listing_is_remote(self, listing) -> bool:
+        employment = getattr(listing, "employment", None)
+        work_forms = getattr(employment, "work_forms", None) or []
+        for item in work_forms:
+            token = self._normalized_text_token(str(item))
+            if token in {"home office", "remote", "telework", "teletravail"}:
+                return True
+
+        title = self._normalized_text_token(getattr(listing, "title", ""))
+        desc_text = ""
+        descs = getattr(listing, "descriptions", [])
+        if descs:
+            first = descs[0]
+            desc_text = first.description if hasattr(first, "description") else (first.get("description", "") if isinstance(first, dict) else "")
+        haystack = f"{title} {self._normalized_text_token(desc_text)}"
+        return any(token in haystack for token in ["remote", "home office", "hybrid", "teletravail", "telelavoro"])
+
+    def _extract_salary_max_chf(self, listing) -> Optional[int]:
+        chunks: List[str] = []
+        descs = getattr(listing, "descriptions", [])
+        if descs:
+            first = descs[0]
+            desc_text = first.description if hasattr(first, "description") else (first.get("description", "") if isinstance(first, dict) else "")
+            chunks.append(str(desc_text or ""))
+        raw_data = getattr(listing, "raw_data", None)
+        if raw_data:
+            chunks.append(str(raw_data))
+        text = " ".join(chunks)
+        if not text:
+            return None
+
+        matches = re.findall(r"(?i)(?:chf|sfr|fr\.?)(?:\s*)(\d{2,3}(?:[\s'’.]\d{3})?)", text)
+        if not matches:
+            matches = re.findall(r"(?i)(\d{2,3}(?:[\s'’.]\d{3})?)(?:\s*)(?:chf|sfr|fr\.?)", text)
+
+        values = []
+        for match in matches:
+            digits = re.sub(r"\D", "", match)
+            if not digits:
+                continue
+            try:
+                values.append(int(digits))
+            except ValueError:
+                continue
+        return max(values) if values else None
+
+    def _passes_hard_filters(self, listing, preferences: Dict[str, Any], profile_dict: Dict[str, Any]) -> tuple[bool, str]:
+        if preferences.get("remote_only") and not self._listing_is_remote(listing):
+            return False, "remote_only"
+
+        salary_min = preferences.get("salary_min_chf")
+        if salary_min is not None:
+            salary_max = self._extract_salary_max_chf(listing)
+            if salary_max is None or salary_max < salary_min:
+                return False, "salary_min_chf"
+
+        workload_min = preferences.get("workload_min")
+        workload_max = preferences.get("workload_max")
+        if workload_min is not None or workload_max is not None:
+            employment = getattr(listing, "employment", None)
+            if not employment:
+                return False, "workload_missing"
+            listing_min = getattr(employment, "workload_min", None)
+            listing_max = getattr(employment, "workload_max", None)
+            if listing_min is None or listing_max is None:
+                return False, "workload_missing"
+            required_min = workload_min if workload_min is not None else 0
+            required_max = workload_max if workload_max is not None else 100
+            if listing_max < required_min or listing_min > required_max:
+                return False, "workload_range"
+
+        hard_max_distance = preferences.get("hard_max_distance_km")
+        if hard_max_distance is not None:
+            origin_lat = profile_dict.get("latitude")
+            origin_lon = profile_dict.get("longitude")
+            location = getattr(listing, "location", None)
+            coords = getattr(location, "coordinates", None) if location else None
+            if origin_lat is None or origin_lon is None or not coords:
+                return False, "distance_missing"
+            distance = haversine_distance(origin_lat, origin_lon, coords.lat, coords.lon)
+            if distance > hard_max_distance:
+                return False, "distance_limit"
+
+        return True, "ok"
+
+    def _apply_hard_filters(self, profile_id: int, profile_dict: Dict[str, Any], jobs: List[Any], preferences: Dict[str, Any]) -> List[Any]:
+        if not jobs:
+            return jobs
+
+        has_hard_filters = any(
+            [
+                preferences.get("remote_only"),
+                preferences.get("salary_min_chf") is not None,
+                preferences.get("workload_min") is not None,
+                preferences.get("workload_max") is not None,
+                preferences.get("hard_max_distance_km") is not None,
+            ]
+        )
+        if not has_hard_filters:
+            return jobs
+
+        kept: List[Any] = []
+        dropped_reasons: Dict[str, int] = {}
+        for job in jobs:
+            ok, reason = self._passes_hard_filters(job, preferences, profile_dict)
+            if ok:
+                kept.append(job)
+                continue
+            dropped_reasons[reason] = dropped_reasons.get(reason, 0) + 1
+
+        dropped_total = len(jobs) - len(kept)
+        if dropped_total > 0:
+            reasons_text = ", ".join([f"{key}:{value}" for key, value in sorted(dropped_reasons.items())])
+            add_log(
+                profile_id,
+                f"Hard filters excluded {dropped_total}/{len(jobs)} jobs ({reasons_text}).",
+            )
+        return kept
+
+    def _build_degraded_fallback_plan(self, profile_dict: dict, profile) -> List[Dict[str, str]]:
+        """Build a minimal executable plan when LLM returns no queries.
+
+        This is a safety fallback and is intentionally conservative.
+        """
+        role_description = (profile_dict.get("role_description") or "").strip()
+        search_strategy = (profile_dict.get("search_strategy") or "").strip()
+        cv_content = (profile_dict.get("cv_content") or "").strip()
+        if not role_description:
+            return []
+
+        max_by_profile = getattr(profile, "max_queries", None)
+        configured_max = max(1, int(getattr(settings, "SEARCH_DEGRADED_PLAN_MAX_QUERIES", 3)))
+        if isinstance(max_by_profile, int) and max_by_profile > 0:
+            max_count = min(configured_max, max_by_profile)
+        else:
+            max_count = configured_max
+
+        raw_candidates: List[Dict[str, Any]] = []
+
+        # Primary occupation candidate from role description.
+        raw_candidates.append(
+            {
+                "query": role_description,
+                "type": "occupation",
+                "domain": "general",
+                "language": "en",
+            }
+        )
+
+        # Split role description on common separators to capture concrete sub-roles.
+        for token in re.split(r"[,;/|]", role_description):
+            token = token.strip()
+            if token and token.lower() != role_description.lower():
+                raw_candidates.append(
+                    {
+                        "query": token,
+                        "type": "occupation",
+                        "domain": "general",
+                        "language": "en",
+                    }
+                )
+
+        keyword_pool = ["python", "java", "javascript", "typescript", "react", "docker", "sql", "aws"]
+        lower_text = f"{role_description} {search_strategy} {cv_content}".lower()
+        for kw in keyword_pool:
+            if kw in lower_text:
+                raw_candidates.append(
+                    {
+                        "query": kw,
+                        "type": "keyword",
+                        "domain": "general",
+                        "language": "en",
+                    }
+                )
+
+        fallback_searches: List[Dict[str, str]] = []
+        seen = set()
+        max_keywords = max(1, int(getattr(settings, "SEARCH_DEGRADED_PLAN_MAX_KEYWORDS", 2)))
+        keyword_count = 0
+        for candidate in raw_candidates:
+            normalized_search, _ = normalize_search_item(candidate)
+            if not normalized_search:
+                continue
+            if normalized_search.get("type") == "keyword" and keyword_count >= max_keywords:
+                continue
+            fingerprint = exact_query_fingerprint(normalized_search)
+            if not fingerprint or fingerprint in seen:
+                continue
+            seen.add(fingerprint)
+            fallback_searches.append(normalized_search)
+            if normalized_search.get("type") == "keyword":
+                keyword_count += 1
+            if len(fallback_searches) >= max_count:
+                break
+
+        return fallback_searches
+
     async def run_search(
         self,
         profile_id: int,
@@ -140,6 +405,7 @@ class SearchService:
                 "force_regenerate_cv_summary": force_regenerate_cv_summary,
                 "force_regenerate_queries": force_regenerate_queries,
             }
+            profile_preferences = self._profile_preferences(profile)
             user_id = profile.user_id
 
             # ── Step 1: Initialize status immediately ──
@@ -163,14 +429,40 @@ class SearchService:
                     )
                     return
 
-                terminal_reason = status_reason or "no_queries"
-                if terminal_reason == "no_valid_queries_after_filter":
-                    add_log(profile_id, "LLM generated plan candidates, but all were filtered out as invalid/duplicates.")
+                enable_degraded_fallback = bool(getattr(settings, "SEARCH_ENABLE_DEGRADED_PLAN_FALLBACK", False))
+                if enable_degraded_fallback:
+                    degraded_searches = self._build_degraded_fallback_plan(profile_dict, profile)
+                    if degraded_searches:
+                        searches = degraded_searches
+                        add_log(
+                            profile_id,
+                            f"⚠ LLM returned no usable plan. Using degraded fallback plan with {len(searches)} query(s).",
+                        )
+                        add_log(
+                            profile_id,
+                            f"[LLM_DEBUG] degraded_plan_fallback profile_id={profile_id} queries={len(searches)}",
+                        )
+                        update_status(
+                            profile_id,
+                            terminal_reason="degraded_plan_fallback",
+                            degraded_mode=True,
+                            total_searches=len(searches),
+                            searches_generated=searches,
+                        )
+                    else:
+                        add_log(profile_id, "Degraded fallback plan did not produce executable queries.")
+
+                if searches:
+                    add_log(profile_id, "Continuing search with degraded fallback plan.")
                 else:
-                    add_log(profile_id, "No valid search queries were generated.")
-                add_log(profile_id, f"[LLM_DEBUG] state=done terminal_reason={terminal_reason} profile_id={profile_id}")
-                update_status(profile_id, state="done", terminal_reason=terminal_reason)
-                return
+                    terminal_reason = status_reason or "no_queries"
+                    if terminal_reason == "no_valid_queries_after_filter":
+                        add_log(profile_id, "LLM generated plan candidates, but all were filtered out as invalid/duplicates.")
+                    else:
+                        add_log(profile_id, "No valid search queries were generated.")
+                    add_log(profile_id, f"[LLM_DEBUG] state=done terminal_reason={terminal_reason} profile_id={profile_id}")
+                    update_status(profile_id, state="done", terminal_reason=terminal_reason)
+                    return
 
             # ── CV Summary (with caching Feature 3) ──
             cv_summary = ""
@@ -214,6 +506,17 @@ class SearchService:
             # ── Step 3.5: Job Summary Generation (Feature 1 — opt-in) ──
             if llm_service.is_summary_step_configured():
                 unique_jobs = await self._summarize_jobs(profile_id, unique_jobs)
+
+            # ── Step 3.55: Hard filtering before LLM relevance ──
+            pre_hard_count = len(unique_jobs)
+            unique_jobs = self._apply_hard_filters(profile_id, profile_dict, unique_jobs, profile_preferences)
+            if not unique_jobs:
+                add_log(profile_id, "No jobs left after hard filters.")
+                add_log(profile_id, f"[LLM_DEBUG] state=done terminal_reason=no_jobs_after_hard_filters profile_id={profile_id}")
+                update_status(profile_id, state="done", terminal_reason="no_jobs_after_hard_filters")
+                return
+            if len(unique_jobs) != pre_hard_count:
+                add_log(profile_id, f"Hard filtering kept {len(unique_jobs)} / {pre_hard_count} jobs before relevance.")
             
             # ── Step 3.6: Relevance Pre-Filter (cheap LLM check Feature 1) ──
             add_log(profile_id, f"Step 4: Phase 1 Relevance Filter ({len(unique_jobs)} jobs)...")
@@ -282,6 +585,7 @@ class SearchService:
     # ───────────────────────── helper methods ─────────────────────────
 
     async def _generate_plan(self, profile_id: int, profile_dict: dict, profile, provider_infos) -> list:
+        preferences = self._profile_preferences(profile)
         # Feature 3: check cached queries
         force_regen_q = profile_dict.get("force_regenerate_queries", False)
         add_log(
@@ -306,14 +610,18 @@ class SearchService:
                 if is_cached_plan_compatible(cache_meta, input_fingerprint):
                     searches = cached_searches
                     add_log(profile_id, f"✓ Using {len(searches)} cached queries")
+                    update_status(profile_id, plan_cache_hit=1, plan_cache_miss=0)
                 else:
                     searches = []
                     add_log(profile_id, "Cached queries ignored because planning inputs changed.")
+                    update_status(profile_id, plan_cache_hit=0, plan_cache_miss=1)
             except Exception as e:
                 logger.error(f"Failed to parse cached queries: {e}")
                 searches = []
+                update_status(profile_id, plan_cache_hit=0, plan_cache_miss=1)
         else:
             searches = []
+            update_status(profile_id, plan_cache_hit=0, plan_cache_miss=1)
 
         if not searches:
             try:
@@ -324,6 +632,7 @@ class SearchService:
                     max_keyword_queries=profile.max_keyword_queries,
                 )
                 add_log(profile_id, f"[LLM_DEBUG] plan_raw_output_count={len(searches) if searches else 0}")
+                update_status(profile_id, plan_raw_count=len(searches) if searches else 0)
             except Exception as e:
                 logger.error(f"LLM keyword generation failed: {e}")
                 error_text = str(e).lower()
@@ -364,6 +673,18 @@ class SearchService:
             else:
                 dropped_duplicate_queries += 1
 
+        preferred_searches, pref_stats = self._apply_query_preferences(unique_searches, preferences)
+        dropped_by_preferences = len(unique_searches) - len(preferred_searches)
+        if dropped_by_preferences:
+            add_log(
+                profile_id,
+                "[LLM_DEBUG] plan_preference_filter "
+                f"kept={len(preferred_searches)} dropped={dropped_by_preferences} "
+                f"dropped_language={pref_stats.get('dropped_language', 0)} "
+                f"dropped_domain={pref_stats.get('dropped_domain', 0)}",
+            )
+        unique_searches = preferred_searches
+
         add_log(
             profile_id,
             "[LLM_DEBUG] plan_filter_stats "
@@ -371,13 +692,17 @@ class SearchService:
             f"dropped_empty={dropped_empty_queries} dropped_duplicates={dropped_duplicate_queries}",
         )
         if searches and not unique_searches:
-            update_status(profile_id, terminal_reason="no_valid_queries_after_filter")
+            terminal_reason = "no_valid_queries_after_filter"
+            if dropped_by_preferences:
+                terminal_reason = "no_queries_matching_preferences"
+            update_status(profile_id, terminal_reason=terminal_reason)
 
         # Update status with the actual plan details
         update_status(
             profile_id,
             total_searches=len(unique_searches),
-            searches_generated=unique_searches
+            searches_generated=unique_searches,
+            plan_unique_count=len(unique_searches),
         )
         add_log(profile_id, f"Generated {len(searches)} queries → {len(unique_searches)} unique")
         if profile.max_queries and len(unique_searches) < profile.max_queries:
@@ -389,6 +714,12 @@ class SearchService:
 
     async def _execute_searches(self, profile_id: int, profile, searches: list, provider_infos) -> list:
         all_jobs: list = []
+        execution_metrics = {
+            "queries_without_provider": 0,
+            "provider_failures": 0,
+            "provider_successes": 0,
+            "avam_fallback_count": 0,
+        }
         execution_mode = (settings.SEARCH_EXECUTION_MODE or "sequential").strip().lower()
         query_concurrency = settings.SEARCH_CONCURRENCY if execution_mode == "immediate" else 1
         semaphore = asyncio.Semaphore(max(1, query_concurrency))
@@ -418,10 +749,12 @@ class SearchService:
                     profession_codes = await avam_mapper.resolve(query)
                     if not profession_codes:
                         avam_fallback_keyword = True
+                        execution_metrics["avam_fallback_count"] += 1
                         add_log(profile_id, f"  ℹ AVAM found no codes for «{query}», JobRoom will use keyword fallback")
 
                 compatible = route_provider_names(normalized_search, self.providers, provider_infos)
                 if not compatible:
+                    execution_metrics["queries_without_provider"] += 1
                     add_log(profile_id, f"⚠ No providers accept domain '{domain}' for «{query}»")
                     return []
 
@@ -516,8 +849,10 @@ class SearchService:
                 found_jobs = []
                 for p_name, items, error in p_results:
                     if error:
+                        execution_metrics["provider_failures"] += 1
                         add_log(profile_id, f"  ⚠ {p_name} failed: {str(error)[:100]}")
                     else:
+                        execution_metrics["provider_successes"] += 1
                         found_jobs.extend(items)
                         add_log(profile_id, f"  ↳ {p_name}: {len(items)} jobs")
                 
@@ -548,6 +883,14 @@ class SearchService:
                     seen_url_tokens.add(url_token)
                 if fuzzy_key:
                     seen_fuzzy_keys.add(fuzzy_key)
+
+        update_status(
+            profile_id,
+            queries_without_provider=execution_metrics["queries_without_provider"],
+            provider_failures=execution_metrics["provider_failures"],
+            provider_successes=execution_metrics["provider_successes"],
+            avam_fallback_count=execution_metrics["avam_fallback_count"],
+        )
 
         return all_jobs
 

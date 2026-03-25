@@ -17,6 +17,17 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
+_PREFERENCE_FIELDS = {
+    "preferred_languages",
+    "preferred_domains",
+    "remote_only",
+    "salary_min_chf",
+    "workload_min",
+    "workload_max",
+    "hard_max_distance_km",
+}
+
+
 @router.post("/upload-cv")
 @limiter.limit("10/minute")
 async def upload_cv(
@@ -49,7 +60,13 @@ async def start_search(
     # Sanitize profile_data: convert empty strings to None for numeric fields
     # Exclude transient flags that don't map to DB columns
     _TRANSIENT_FIELDS = {"force_regenerate_cv_summary", "force_regenerate_queries"}
-    profile_data = {k: v for k, v in profile_request.model_dump(exclude_unset=True).items() if k not in _TRANSIENT_FIELDS}
+    request_data = profile_request.model_dump(exclude_unset=True)
+    preference_data = {k: request_data.get(k) for k in _PREFERENCE_FIELDS if k in request_data}
+    profile_data = {
+        k: v
+        for k, v in request_data.items()
+        if k not in _TRANSIENT_FIELDS and k not in _PREFERENCE_FIELDS
+    }
     numeric_fields = ["max_queries", "posted_within_days", "max_distance", "schedule_interval_hours"]
     for field in numeric_fields:
         val = getattr(profile_request, field, None)
@@ -70,6 +87,10 @@ async def start_search(
         # New manual search -> create history entry
         profile_data["user_id"] = user_id
         profile_data["is_history"] = True
+        # Keep advanced user preferences together for forward-compatible filtering
+        profile_data["advanced_preferences"] = {
+            key: value for key, value in preference_data.items() if value is not None
+        } or None
         # If it doesn't have a name, give it a timestamped one
         if not profile_data.get("name") or profile_data["name"] in ["Default Profile", "My Profile"]:
             timestamp = datetime.now().strftime("%Y-%m-%d %H:%M")

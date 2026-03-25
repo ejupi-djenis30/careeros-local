@@ -435,6 +435,52 @@ async def test_call_generate_search_plan_accepts_queries_alias(mock_provider):
 
 
 @pytest.mark.asyncio
+async def test_call_generate_search_plan_prefers_canonical_searches_over_legacy_alias(mock_provider):
+    """Use canonical 'searches' when both canonical and legacy keys are present."""
+    mock_provider.generate_json_async.return_value = {
+        "searches": [
+            {"domain": "it", "type": "occupation", "query": "Backend Engineer"},
+        ],
+        "queries": [
+            {"domain": "it", "type": "occupation", "query": "Ignored Alias Result"},
+        ],
+    }
+
+    with patch("backend.services.llm_service.get_provider_for_step", return_value=mock_provider):
+        service = LLMService()
+        plan = await service._call_generate_search_plan(
+            {"role_description": "Dev", "search_strategy": "", "cv_content": ""},
+            [],
+            max_queries=1,
+        )
+
+        assert len(plan) == 1
+        assert plan[0]["query"] == "Backend Engineer"
+
+
+@pytest.mark.asyncio
+async def test_call_generate_search_plan_falls_back_when_canonical_searches_invalid(mock_provider):
+    """Fallback to legacy alias when canonical key exists but has invalid shape."""
+    mock_provider.generate_json_async.return_value = {
+        "searches": "invalid",
+        "queries": [
+            {"domain": "it", "type": "keyword", "query": "Python"},
+        ],
+    }
+
+    with patch("backend.services.llm_service.get_provider_for_step", return_value=mock_provider):
+        service = LLMService()
+        plan = await service._call_generate_search_plan(
+            {"role_description": "Dev", "search_strategy": "", "cv_content": ""},
+            [],
+            max_queries=1,
+        )
+
+        assert len(plan) == 1
+        assert plan[0]["query"] == "Python"
+
+
+@pytest.mark.asyncio
 async def test_call_generate_search_plan_raises_on_invalid_payload(mock_provider):
     """Reject payloads that do not contain a list under searches/queries/results."""
     mock_provider.generate_json_async.return_value = {"status": "ok"}
@@ -521,3 +567,61 @@ def test_normalize_searches_infers_type_and_normalizes_fields(llm_service):
     assert normalized[0]["type"] == "occupation"
     assert normalized[0]["domain"] == "it-software"
     assert normalized[0]["language"] == "en"
+
+
+def test_normalize_searches_loose_dedup_drops_cosmetic_variants(llm_service):
+    searches = [
+        {"query": "React Developer", "type": "occupation", "domain": "it", "language": "en"},
+        {"query": "Developer React", "type": "occupation", "domain": "it", "language": "en"},
+    ]
+
+    with patch("backend.services.llm_service.settings.SEARCH_PLAN_ENABLE_LOOSE_DEDUP", True):
+        normalized = llm_service._normalize_searches(searches)
+
+    assert len(normalized) == 1
+    assert normalized[0]["query"] == "React Developer"
+
+
+def test_normalize_searches_loose_dedup_can_be_disabled(llm_service):
+    searches = [
+        {"query": "React Developer", "type": "occupation", "domain": "it", "language": "en"},
+        {"query": "Developer React", "type": "occupation", "domain": "it", "language": "en"},
+    ]
+
+    with patch("backend.services.llm_service.settings.SEARCH_PLAN_ENABLE_LOOSE_DEDUP", False):
+        normalized = llm_service._normalize_searches(searches)
+
+    assert len(normalized) == 2
+
+
+@pytest.mark.asyncio
+async def test_generate_search_plan_batch_rescue_runs_after_repeated_stalls(mock_provider):
+    with patch("backend.services.llm_service.get_provider_for_step", return_value=mock_provider), \
+         patch("backend.services.llm_service.settings") as mock_settings:
+        mock_settings.LLM_SUMMARY_PROVIDER = ""
+        mock_settings.LLM_SUMMARY_API_KEY = ""
+        mock_settings.LLM_SUMMARY_MODEL = ""
+        mock_settings.SEARCH_PLAN_BATCH_SIZE = 2
+        mock_settings.SEARCH_PLAN_ENABLE_LOOSE_DEDUP = True
+        mock_settings.SEARCH_PLAN_STALL_MAX_BATCHES = 2
+
+        service = LLMService()
+
+        async def fake_call(*args, **kwargs):
+            feedback = kwargs.get("feedback", "")
+            if "Recovery mode" in feedback:
+                return [
+                    {"domain": "it", "language": "en", "type": "occupation", "query": "Backend Engineer"}
+                ]
+            return [{"domain": "it", "language": "en", "type": "occupation", "query": ""}]
+
+        service._call_generate_search_plan = AsyncMock(side_effect=fake_call)
+
+        plan = await service.generate_search_plan(
+            {"role_description": "Dev", "search_strategy": "", "cv_content": ""},
+            [],
+            max_queries=1,
+        )
+
+        assert len(plan) == 1
+        assert plan[0]["query"] == "Backend Engineer"

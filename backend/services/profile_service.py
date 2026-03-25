@@ -1,8 +1,32 @@
-from typing import List
+from typing import List, Dict, Any
 from sqlalchemy.orm import Session
 from fastapi import HTTPException
 from backend.repositories.profile_repository import ProfileRepository
 from backend.schemas import SearchProfileCreate, ScheduleToggle
+
+
+_PREFERENCE_FIELDS = {
+    "preferred_languages",
+    "preferred_domains",
+    "remote_only",
+    "salary_min_chf",
+    "workload_min",
+    "workload_max",
+    "hard_max_distance_km",
+}
+
+
+def _extract_advanced_preferences(data: Dict[str, Any], existing: Dict[str, Any] | None = None) -> tuple[Dict[str, Any], Dict[str, Any] | None]:
+    base = dict(existing or {})
+    extracted: Dict[str, Any] = {}
+    for field in _PREFERENCE_FIELDS:
+        if field in data:
+            extracted[field] = data.pop(field)
+
+    base.update({k: v for k, v in extracted.items() if v is not None})
+    cleaned = {k: v for k, v in base.items() if v is not None}
+    return data, (cleaned or None)
+
 
 class ProfileService:
     def __init__(self, db: Session):
@@ -13,6 +37,8 @@ class ProfileService:
 
     def create_profile(self, user_id: int, profile_in: SearchProfileCreate):
         data = profile_in.model_dump()
+        data, advanced_preferences = _extract_advanced_preferences(data)
+        data["advanced_preferences"] = advanced_preferences
         data["user_id"] = user_id
         return self.repo.create(data)
 
@@ -22,8 +48,16 @@ class ProfileService:
             raise HTTPException(status_code=404, detail="Profile not found")
         if profile.user_id != user_id:
             raise HTTPException(status_code=403, detail="Not authorized")
-        
-        return self.repo.update(profile, profile_in)
+
+        update_data = profile_in.model_dump(exclude_unset=True)
+        update_data, advanced_preferences = _extract_advanced_preferences(
+            update_data,
+            existing=getattr(profile, "advanced_preferences", None),
+        )
+        if "advanced_preferences" in update_data or advanced_preferences is not None:
+            update_data["advanced_preferences"] = advanced_preferences
+
+        return self.repo.update(profile, update_data)
 
     def toggle_schedule(self, user_id: int, profile_id: int, schedule: ScheduleToggle):
         profile = self.repo.get(profile_id)

@@ -38,6 +38,9 @@ def test_profile_create_defaults():
     assert profile.max_distance == 50
     assert profile.scrape_mode == "sequential"
     assert profile.schedule_enabled is False
+    assert profile.preferred_languages is None
+    assert profile.preferred_domains is None
+    assert profile.remote_only is False
 
 def test_profile_create_custom():
     payload = {
@@ -46,13 +49,25 @@ def test_profile_create_custom():
         "latitude": 47.0,
         "longitude": 8.0,
         "schedule_enabled": True,
-        "schedule_interval_hours": 12
+        "schedule_interval_hours": 12,
+        "preferred_languages": ["English", "DE"],
+        "preferred_domains": ["it", "General"],
+        "salary_min_chf": 90000,
+        "workload_min": 80,
+        "workload_max": 100,
+        "hard_max_distance_km": 30,
     }
     profile = SearchProfileCreate(**payload)
     assert profile.name == "Custom Name"
     assert profile.role_description == "Data Scientist"
     assert profile.latitude == 47.0
     assert profile.schedule_interval_hours == 12
+    assert profile.preferred_languages == ["en", "de"]
+    assert profile.preferred_domains == ["it", "general"]
+    assert profile.salary_min_chf == 90000
+    assert profile.workload_min == 80
+    assert profile.workload_max == 100
+    assert profile.hard_max_distance_km == 30
 
 def test_schedule_toggle_schema():
     toggle = ScheduleToggle(enabled=True, interval_hours=48)
@@ -61,3 +76,8 @@ def test_schedule_toggle_schema():
 
     with pytest.raises(ValidationError):
         ScheduleToggle() # missing 'enabled' boolean
+
+
+def test_profile_create_invalid_workload_range():
+    with pytest.raises(ValidationError):
+        SearchProfileCreate(workload_min=90, workload_max=50)

@@ -20,6 +20,21 @@ _LANGUAGE_ALIASES = {
     "it": "it",
     "italian": "it",
     "italiano": "it",
+    "es": "es",
+    "spanish": "es",
+    "espanol": "es",
+    "español": "es",
+    "pt": "pt",
+    "portuguese": "pt",
+    "portugues": "pt",
+    "português": "pt",
+    "pl": "pl",
+    "polish": "pl",
+    "polski": "pl",
+    "ro": "ro",
+    "romanian": "ro",
+    "romana": "ro",
+    "română": "ro",
 }
 
 _ROLE_HINTS = {

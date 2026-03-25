@@ -261,6 +261,53 @@ async def test_generate_plan_uses_cache_metadata_when_inputs_match(mock_service)
     assert len(res) == 1
     assert res[0]["query"] == "dev"
 
+
+async def test_generate_plan_sets_cache_hit_metrics(mock_service):
+    profile = MagicMock(max_queries=5, max_occupation_queries=None, max_keyword_queries=None)
+    profile.cached_queries = {
+        "version": 2,
+        "input_fingerprint": "abc",
+        "searches": [{"query": "dev", "type": "occupation", "domain": "it", "language": "en"}],
+    }
+    profile_dict = {
+        "role_description": "dev",
+        "cv_content": "cv",
+        "search_strategy": "",
+        "force_regenerate_queries": False,
+    }
+
+    with patch("backend.services.search_service.compute_plan_input_fingerprint", return_value="abc"), \
+         patch("backend.services.search_service.add_log"), \
+         patch("backend.services.search_service.update_status") as mock_update:
+        await mock_service._generate_plan(1, profile_dict, profile, {})
+
+    mock_update.assert_any_call(1, plan_cache_hit=1, plan_cache_miss=0)
+    mock_update.assert_any_call(
+        1,
+        total_searches=1,
+        searches_generated=[{"query": "dev", "type": "occupation", "domain": "it", "language": "en"}],
+        plan_unique_count=1,
+    )
+
+
+async def test_generate_plan_sets_cache_miss_metrics(mock_service):
+    profile = MagicMock(max_queries=5, max_occupation_queries=None, max_keyword_queries=None)
+    profile.cached_queries = None
+    profile_dict = {
+        "role_description": "dev",
+        "cv_content": "cv",
+        "search_strategy": "",
+        "force_regenerate_queries": True,
+    }
+
+    with patch("backend.services.search_service.llm_service.generate_search_plan", return_value=[{"query": "dev", "type": "occupation", "domain": "it", "language": "en"}]), \
+         patch("backend.services.search_service.add_log"), \
+         patch("backend.services.search_service.update_status") as mock_update:
+        await mock_service._generate_plan(1, profile_dict, profile, {})
+
+    mock_update.assert_any_call(1, plan_cache_hit=0, plan_cache_miss=1)
+    mock_update.assert_any_call(1, plan_raw_count=1)
+
 async def test_analyze_and_save_stopped_and_truncation(mock_service):
     profile_dict = {"id": 1, "user_id": 1, "latitude": 47.0, "longitude": 8.0}
     

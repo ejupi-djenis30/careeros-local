@@ -8,6 +8,7 @@ from backend.services.search.query_contracts import (
     canonicalize_query_text,
     compute_plan_input_fingerprint,
     exact_query_fingerprint,
+    loose_query_fingerprint,
     normalize_search_item,
     sanitize_prompt_text,
 )
@@ -41,28 +42,51 @@ class LLMService:
         with self._provider_cache_lock:
             self._provider_cache.clear()
 
-    def _extract_searches_payload(self, result: Any) -> tuple[List[Dict[str, Any]], str]:
-        """Extract search list from variant LLM response shapes.
+    @staticmethod
+    def _build_retry_feedback(attempt: int) -> str:
+        if attempt <= 0:
+            return ""
 
-        Supports canonical payload ``{"searches": [...]}`` and common aliases
-        returned by models under pressure (``queries`` / ``results`` or a root list).
+        hints = {
+            1: "Retry policy: prioritize domain-faithful, concrete Swiss job-title wording. Avoid cosmetic variants.",
+            2: "Retry policy: increase language diversity (EN/DE/FR/IT) and vary role-family synonyms materially.",
+            3: "Retry policy: maximize uniqueness and executability. Avoid reordered-token duplicates and broad generic terms.",
+        }
+        return hints.get(
+            attempt,
+            "Retry policy: maintain strict count compliance while maximizing unique, executable query intent.",
+        )
+
+    def _extract_searches_payload(self, result: Any) -> tuple[List[Dict[str, Any]], str, bool]:
+        """Extract search list using strict-first parsing with legacy fallback.
+
+        Strict path expects canonical payload ``{"searches": [...]}``.
+        Legacy fallback accepts ``queries`` / ``results`` or a root list.
         """
         if isinstance(result, dict):
-            for key in ("searches", "queries", "results"):
+            if "searches" in result:
+                value = result.get("searches")
+                if isinstance(value, list):
+                    return value, "searches", True
+                if isinstance(value, dict):
+                    return [value], "searches", True
+                logger.warning("[PLAN] Canonical 'searches' key had invalid type: %s", type(value).__name__)
+
+            for key in ("queries", "results"):
                 if key not in result:
                     continue
                 value = result.get(key)
                 if isinstance(value, list):
-                    return value, key
+                    return value, key, False
                 if isinstance(value, dict):
-                    return [value], key
-                return [], f"invalid_{key}"
-            return [], "missing_keys"
+                    return [value], key, False
+                return [], f"invalid_{key}", False
+            return [], "missing_keys", False
 
         if isinstance(result, list):
-            return result, "root_list"
+            return result, "root_list", False
 
-        return [], "invalid_root"
+        return [], "invalid_root", False
 
     def is_summary_step_configured(self) -> bool:
         """Return True only if LLM_SUMMARY_* env vars are explicitly configured.
@@ -315,9 +339,11 @@ One boolean per job, in order. true = relevant, false = irrelevant."""
     ) -> List[Dict[str, Any]]:
         collected: List[Dict[str, Any]] = []
         seen_fingerprints = set()
+        seen_loose_fingerprints = set()
         remaining_occupations = max_occupation_queries
         remaining_keywords = max_keyword_queries
         batch_size_limit = max(1, settings.SEARCH_PLAN_BATCH_SIZE)
+        max_stall_batches = max(1, int(getattr(settings, "SEARCH_PLAN_STALL_MAX_BATCHES", 2)))
         stall_count = 0
 
         while len(collected) < total_target:
@@ -333,10 +359,13 @@ One boolean per job, in order. true = relevant, false = irrelevant."""
             best_batch: List[Dict[str, Any]] = []
             MAX_RETRIES = 3
             for attempt in range(MAX_RETRIES + 1):
+                retry_feedback = self._build_retry_feedback(attempt)
                 feedback = (
                     f"This batch must contribute EXACTLY {batch_size} NEW UNIQUE queries. "
                     f"Remaining total target after this batch: {remaining_total - batch_size}."
                 )
+                if retry_feedback:
+                    feedback = f"{feedback}\n{retry_feedback}"
                 try:
                     batch_searches = await self._call_generate_search_plan(
                         profile,
@@ -372,7 +401,11 @@ One boolean per job, in order. true = relevant, false = irrelevant."""
 
                     raise
 
-                unique_batch = self._normalize_searches(batch_searches, seen_fingerprints)
+                unique_batch = self._normalize_searches(
+                    batch_searches,
+                    seen_fingerprints,
+                    seen_loose_fingerprints,
+                )
                 if len(unique_batch) > len(best_batch):
                     best_batch = unique_batch
 
@@ -401,17 +434,10 @@ One boolean per job, in order. true = relevant, false = irrelevant."""
             if not best_batch:
                 stall_count += 1
                 logger.warning("[PLAN] Batch generation stalled with no new unique queries")
-                if stall_count >= 2:
-                    if collected:
-                        logger.warning(
-                            "[PLAN] Stopping early after repeated stalls; returning partial plan %s/%s",
-                            len(collected),
-                            total_target,
-                        )
-                        break
-
+                should_continue = True
+                if stall_count >= max_stall_batches:
                     logger.warning(
-                        "[PLAN] No queries collected after repeated stalls; attempting rescue batch without strict type split"
+                        "[PLAN] Repeated stalls reached threshold; attempting rescue batch without strict type split"
                     )
                     rescue_searches = await self._call_generate_search_plan(
                         profile,
@@ -422,11 +448,24 @@ One boolean per job, in order. true = relevant, false = irrelevant."""
                         existing_queries=[item.get("query", "") for item in collected[-120:]],
                         feedback="Recovery mode: produce any high-quality, unique executable queries.",
                     )
-                    best_batch = self._normalize_searches(rescue_searches, seen_fingerprints)
+                    best_batch = self._normalize_searches(
+                        rescue_searches,
+                        seen_fingerprints,
+                        seen_loose_fingerprints,
+                    )
                     if not best_batch:
+                        if collected:
+                            logger.warning(
+                                "[PLAN] Rescue batch produced no unique queries; returning partial plan %s/%s",
+                                len(collected),
+                                total_target,
+                            )
+                            break
                         break
                     stall_count = 0
-                continue
+                    should_continue = False
+                if should_continue:
+                    continue
 
             stall_count = 0
             batch_to_add = best_batch[:batch_size]
@@ -435,6 +474,9 @@ One boolean per job, in order. true = relevant, false = irrelevant."""
                 if fingerprint in seen_fingerprints:
                     continue
                 seen_fingerprints.add(fingerprint)
+                loose_fingerprint = loose_query_fingerprint(item)
+                if loose_fingerprint:
+                    seen_loose_fingerprints.add(loose_fingerprint)
                 collected.append(item)
 
             if remaining_occupations is not None:
@@ -457,12 +499,16 @@ One boolean per job, in order. true = relevant, false = irrelevant."""
         self,
         searches: List[Dict[str, Any]],
         seen_fingerprints: Optional[set] = None,
+        seen_loose_fingerprints: Optional[set] = None,
     ) -> List[Dict[str, Any]]:
         normalized: List[Dict[str, Any]] = []
         local_seen = set(seen_fingerprints or set())
+        local_seen_loose = set(seen_loose_fingerprints or set())
+        enable_loose_dedup = bool(getattr(settings, "SEARCH_PLAN_ENABLE_LOOSE_DEDUP", True))
         dropped_non_dict = 0
         dropped_empty_query = 0
         dropped_duplicates = 0
+        dropped_soft_duplicates = 0
         normalized_type_count = 0
 
         for search in searches:
@@ -481,22 +527,32 @@ One boolean per job, in order. true = relevant, false = irrelevant."""
                 dropped_duplicates += 1
                 continue
 
+            if enable_loose_dedup:
+                loose_fingerprint = loose_query_fingerprint(candidate)
+                if loose_fingerprint in local_seen_loose:
+                    dropped_soft_duplicates += 1
+                    continue
+                if loose_fingerprint:
+                    local_seen_loose.add(loose_fingerprint)
+
             local_seen.add(fingerprint)
             normalized.append(candidate)
 
         if searches and not normalized:
             logger.warning(
-                "[PLAN] All candidate queries were filtered out (non_dict=%s empty_query=%s duplicates=%s)",
+                "[PLAN] All candidate queries were filtered out (non_dict=%s empty_query=%s duplicates=%s soft_duplicates=%s)",
                 dropped_non_dict,
                 dropped_empty_query,
                 dropped_duplicates,
+                dropped_soft_duplicates,
             )
-        elif dropped_non_dict or dropped_empty_query or dropped_duplicates:
+        elif dropped_non_dict or dropped_empty_query or dropped_duplicates or dropped_soft_duplicates:
             logger.info(
-                "[PLAN] Query normalization dropped entries (non_dict=%s empty_query=%s duplicates=%s type_inferred=%s kept=%s)",
+                "[PLAN] Query normalization dropped entries (non_dict=%s empty_query=%s duplicates=%s soft_duplicates=%s type_inferred=%s kept=%s)",
                 dropped_non_dict,
                 dropped_empty_query,
                 dropped_duplicates,
+                dropped_soft_duplicates,
                 normalized_type_count,
                 len(normalized),
             )
@@ -689,7 +745,7 @@ Return ONLY pure JSON with a 'searches' list. Example:
 }}"""
 
         result = await provider.generate_json_async(system_prompt, user_prompt)
-        searches, payload_source = self._extract_searches_payload(result)
+        searches, payload_source, used_strict_payload = self._extract_searches_payload(result)
         if payload_source.startswith("invalid") or payload_source == "missing_keys":
             if isinstance(result, dict):
                 result_keys = list(result.keys())
@@ -699,8 +755,23 @@ Return ONLY pure JSON with a 'searches' list. Example:
                 f"LLM plan payload missing valid query list (source={payload_source}, keys={result_keys})"
             )
 
-        if payload_source != "searches":
-            logger.warning("[PLAN] Non-canonical plan payload key used by model: %s", payload_source)
+        if not used_strict_payload:
+            logger.warning("[PLAN] Legacy payload fallback engaged: %s", payload_source)
+
+        normalized_searches = self._normalize_searches(searches)
+        if searches and not normalized_searches:
+            raise ValueError("LLM plan payload had candidates but all were invalid after normalization")
+
+        if searches:
+            logger.info(
+                "[PLAN] Payload parse summary: source=%s strict=%s raw=%s normalized=%s",
+                payload_source,
+                used_strict_payload,
+                len(searches),
+                len(normalized_searches),
+            )
+
+        searches = normalized_searches
 
         # Application-side cap just in case the LLM produces too many total queries
         if max_queries is not None:

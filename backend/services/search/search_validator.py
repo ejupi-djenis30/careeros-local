@@ -1,5 +1,6 @@
 import logging
 from backend.providers.jobs.models import JobSearchRequest, SortOrder, RadiusSearchRequest, Coordinates, ContractType
+from backend.services.search.profile_preferences import get_profile_preference
 from backend.services.search.query_contracts import canonicalize_query_text, supported_request_language
 
 logger = logging.getLogger(__name__)
@@ -29,7 +30,7 @@ def _optional_int_attr(value, default=None):
 def build_search_request(
     profile,
     query: str,
-    profession_codes: list[str] = None,
+    profession_codes: list[str] | None = None,
     *,
     language: str = "en",
     page_size: int = 50,
@@ -37,14 +38,21 @@ def build_search_request(
 ) -> JobSearchRequest:
     """Create a JobSearchRequest from profile settings and a keyword query."""
     workload_min, workload_max = 0, 100
-    workload_filter = _string_attr(getattr(profile, "workload_filter", ""), "")
-    if workload_filter:
-        parts = workload_filter.replace("%", "").split("-")
-        try:
-            workload_min = int(parts[0])
-            workload_max = int(parts[1]) if len(parts) > 1 else int(parts[0])
-        except ValueError:
-            pass
+    hard_workload_min = _optional_int_attr(get_profile_preference(profile, "workload_min", None), None)
+    hard_workload_max = _optional_int_attr(get_profile_preference(profile, "workload_max", None), None)
+
+    if hard_workload_min is not None or hard_workload_max is not None:
+        workload_min = hard_workload_min if hard_workload_min is not None else 0
+        workload_max = hard_workload_max if hard_workload_max is not None else 100
+    else:
+        workload_filter = _string_attr(getattr(profile, "workload_filter", ""), "")
+        if workload_filter:
+            parts = workload_filter.replace("%", "").split("-")
+            try:
+                workload_min = int(parts[0])
+                workload_max = int(parts[1]) if len(parts) > 1 else int(parts[0])
+            except ValueError:
+                pass
 
     radius_request = None
     latitude = getattr(profile, "latitude", None)
@@ -52,7 +60,10 @@ def build_search_request(
     if isinstance(latitude, (int, float)) and isinstance(longitude, (int, float)):
         # Default to 50km if not specified, or use profile preference if available
         dist = 50 
+        hard_max_distance = _optional_int_attr(get_profile_preference(profile, "hard_max_distance_km", None), None)
         max_distance = _optional_int_attr(getattr(profile, "max_distance", None), 50)
+        if hard_max_distance is not None:
+            max_distance = hard_max_distance
         if max_distance:
              dist = max_distance
         

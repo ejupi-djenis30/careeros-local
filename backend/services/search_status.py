@@ -23,7 +23,9 @@ _VALID_STATUS_KEYS = {
     "current_query", "searches_generated", "jobs_found", "jobs_new",
     "jobs_duplicates", "jobs_skipped", "errors", "log",
     "started_at", "finished_at", "error",
-    "jobs_analyzed", "jobs_analyze_total", "terminal_reason",
+    "jobs_analyzed", "jobs_analyze_total", "terminal_reason", "degraded_mode",
+    "plan_cache_hit", "plan_cache_miss", "plan_raw_count", "plan_unique_count",
+    "queries_without_provider", "provider_failures", "provider_successes", "avam_fallback_count",
 }
 _TERMINAL_STATES = {"done", "error", "stopped", "cancelled"}
 
@@ -76,6 +78,14 @@ def init_status(profile_id: int, total_searches: int = 0, searches: List[Dict] =
             "jobs_skipped": 0,
             "jobs_analyzed": 0,
             "jobs_analyze_total": 0,
+            "plan_cache_hit": 0,
+            "plan_cache_miss": 0,
+            "plan_raw_count": 0,
+            "plan_unique_count": 0,
+            "queries_without_provider": 0,
+            "provider_failures": 0,
+            "provider_successes": 0,
+            "avam_fallback_count": 0,
             "errors": 0,
             "log": [],
             "started_at": datetime.now(timezone.utc).isoformat(),

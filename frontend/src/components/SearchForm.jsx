@@ -26,6 +26,14 @@ export function SearchForm({ onStartSearch, isLoading, prefill }) {
         // Feature 3: force-regeneration flags (only used on re-run)
         force_regenerate_cv_summary: false,
         force_regenerate_queries: false,
+        // Precision filters (hard enforcement)
+        preferred_languages: [],
+        preferred_domains: [],
+        remote_only: false,
+        salary_min_chf: "",
+        workload_min: "",
+        workload_max: "",
+        hard_max_distance_km: "",
     });
 
     useEffect(() => {
@@ -89,6 +97,14 @@ export function SearchForm({ onStartSearch, isLoading, prefill }) {
             max_queries: profile.max_queries === "" ? -1 : profile.max_queries,
             max_occupation_queries: profile.max_occupation_queries === "" ? -1 : profile.max_occupation_queries,
             max_keyword_queries: profile.max_keyword_queries === "" ? -1 : profile.max_keyword_queries,
+            // Precision filters: send only when user made a conscious selection
+            preferred_languages: profile.preferred_languages?.length ? profile.preferred_languages : undefined,
+            preferred_domains: profile.preferred_domains?.length ? profile.preferred_domains : undefined,
+            remote_only: profile.remote_only || undefined,
+            salary_min_chf: profile.salary_min_chf !== "" && profile.salary_min_chf != null ? Number(profile.salary_min_chf) : undefined,
+            workload_min: profile.workload_min !== "" && profile.workload_min != null ? Number(profile.workload_min) : undefined,
+            workload_max: profile.workload_max !== "" && profile.workload_max != null ? Number(profile.workload_max) : undefined,
+            hard_max_distance_km: profile.hard_max_distance_km !== "" && profile.hard_max_distance_km != null ? Number(profile.hard_max_distance_km) : undefined,
         };
 
         onStartSearch(searchProfile);
@@ -141,7 +157,8 @@ export function SearchForm({ onStartSearch, isLoading, prefill }) {
                         {/* Column 2: Parameters */}
                         <SearchFormParameters 
                             profile={profile} 
-                            handleChange={handleChange} 
+                            handleChange={handleChange}
+                            setProfile={setProfile}
                         />
 
                          {/* Column 3: Advanced & Logistics */}

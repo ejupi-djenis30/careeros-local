@@ -48,3 +48,25 @@ def test_build_search_request_workload_value_error():
     )
     req = build_search_request(profile, "dev")
     assert req.workload_min == 0 # Default fallback
+
+
+def test_build_search_request_hard_preferences_override_defaults():
+    profile = SimpleNamespace(
+        workload_filter="50-60%",
+        latitude=46.0,
+        longitude=8.0,
+        contract_type="any",
+        location_filter="Zurich",
+        posted_within_days=14,
+        max_distance=100,
+        advanced_preferences={
+            "workload_min": 80,
+            "workload_max": 100,
+            "hard_max_distance_km": 20,
+        },
+    )
+
+    req = build_search_request(profile, "python")
+    assert req.workload_min == 80
+    assert req.workload_max == 100
+    assert req.radius_search.distance == 20
