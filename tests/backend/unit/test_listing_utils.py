@@ -43,8 +43,8 @@ class TestNormalizedTextToken:
         assert normalized_text_token("") == ""
 
     def test_non_string_returns_empty(self):
-        assert normalized_text_token(None) == ""
-        assert normalized_text_token(123) == ""
+        assert normalized_text_token(None) == ""  # type: ignore[arg-type]
+        assert normalized_text_token(123) == ""  # type: ignore[arg-type]
 
 
 # ─── _canonicalize_skill ─────────────────────────────────────────────────────

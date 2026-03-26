@@ -8,7 +8,7 @@ import os
 import threading
 import time
 from datetime import datetime, timezone
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -62,6 +62,11 @@ def _save_statuses(force: bool = False, statuses_snapshot: Dict[int, Dict[str, A
 _statuses: Dict[int, Dict[str, Any]] = _load_statuses()
 _active_tasks: Dict[int, Any] = {} # profile_id -> asyncio.Task
 _reserved_tasks: Dict[int, float] = {}
+# ISO-8601 timestamp captured once when this worker process starts.
+# Used in _merge_with_file to distinguish live cross-worker search entries
+# (started after this boot) from stale entries left in the file by a prior
+# server run that crashed mid-search.
+_WORKER_BOOT_TIME: str = datetime.now(timezone.utc).isoformat()
 
 
 def _cleanup_stale_reservations(now: float | None = None):
@@ -75,7 +80,7 @@ def _cleanup_stale_reservations(now: float | None = None):
         _reserved_tasks.pop(profile_id, None)
 
 
-def init_status(profile_id: int, total_searches: int = 0, searches: List[Dict] = None, user_id: int = None):
+def init_status(profile_id: int, total_searches: int = 0, searches: Optional[List[Dict]] = None, user_id: Optional[int] = None):
     """Initialize or reset status when search begins."""
     with _lock:
         _statuses[profile_id] = {
@@ -149,19 +154,78 @@ def update_status(profile_id: int, **kwargs):
         _save_statuses(force=should_force, statuses_snapshot=snapshot)
 
 
+def _merge_with_file(memory: Dict[int, Dict[str, Any]]) -> Dict[int, Dict[str, Any]]:
+    """Merge in-memory statuses with file-persisted ones.
+
+    Needed when running with multiple Gunicorn workers: a background search
+    task runs entirely inside one worker process and writes its status to
+    that process's in-memory dict.  Polling requests from other workers
+    would otherwise always return an empty result.  The JSON file is the
+    shared source of truth across processes — it is force-written on every
+    init_status() call and on every terminal-state transition.
+
+    Merge rule: for a given profile_id present in both sources, whichever
+    has the *newer* ``started_at`` ISO string wins.  In practice this means
+    the owning worker's live in-memory state wins for the current run, and
+    a fresher file entry wins for a run that was started by a different
+    worker (cross-process case).
+    """
+    import copy
+    merged: Dict[int, Dict[str, Any]] = {}
+    try:
+        file_data = _load_statuses()
+    except Exception:
+        file_data = {}
+
+    all_ids = set(memory.keys()) | set(file_data.keys())
+    for pid in all_ids:
+        mem_entry = memory.get(pid)
+        file_entry = file_data.get(pid)
+        if mem_entry is None:
+            # This worker has no in-memory record — might be a sibling-worker
+            # entry or a stale entry left by a prior server run.
+            file_state = (file_entry or {}).get("state", "unknown")
+            if file_state in _TERMINAL_STATES:
+                # Terminal states are always safe to surface.
+                merged[pid] = file_entry  # type: ignore[assignment]
+            else:
+                # Non-terminal: only include if the search was started AFTER
+                # this worker booted.  Lexicographic ISO-8601 comparison is
+                # valid for UTC timestamps of the same format.
+                file_started = (file_entry or {}).get("started_at") or ""
+                if file_started >= _WORKER_BOOT_TIME:
+                    merged[pid] = copy.deepcopy(file_entry)  # type: ignore[assignment]
+                # else: stale non-terminal entry from a crashed prior run — skip.
+        elif file_entry is None:
+            merged[pid] = copy.deepcopy(mem_entry)
+        else:
+            mem_started = mem_entry.get("started_at") or ""
+            file_started = file_entry.get("started_at") or ""
+            merged[pid] = copy.deepcopy(mem_entry if mem_started >= file_started else file_entry)
+    return merged
+
+
 def get_status(profile_id: int) -> Dict[str, Any]:
     """Get current status for a profile."""
     with _lock:
-        return dict(_statuses.get(profile_id, {"state": "unknown"}))
+        if profile_id in _statuses:
+            return dict(_statuses[profile_id])
+    # Not present in this worker's memory — check the persisted file.
+    file_statuses = _load_statuses()
+    return dict(file_statuses.get(profile_id, {"state": "unknown"}))
 
 
-def get_all_statuses(user_id: int = None) -> Dict[int, Dict[str, Any]]:
-    """Get all current statuses (filtered by user_id if provided)."""
+def get_all_statuses(user_id: Optional[int] = None) -> Dict[int, Dict[str, Any]]:
+    """Get all current statuses (filtered by user_id if provided).
+
+    Merges in-memory state with the shared JSON file so that searches
+    started on a different Gunicorn worker process are also visible.
+    """
     with _lock:
-        import copy
-        if user_id is None:
-            return copy.deepcopy(_statuses)
-        return {k: copy.deepcopy(v) for k, v in _statuses.items() if v.get("user_id") == user_id}
+        merged = _merge_with_file(dict(_statuses))
+    if user_id is None:
+        return merged
+    return {k: v for k, v in merged.items() if v.get("user_id") == user_id}
 
 
 def clear_status(profile_id: int):
