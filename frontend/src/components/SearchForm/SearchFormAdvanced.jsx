@@ -1,8 +1,8 @@
 import React from "react";
 
 export function SearchFormAdvanced({ profile, handleChange, setProfile }) {
-    // A profile is considered "existing" (re-run) when it has an id
-    const isRerun = Boolean(profile.id);
+    // A profile is considered "existing" (re-run) when it has a non-null id
+    const isRerun = profile.id != null;
     
     return (
         <div className="col-xl-3 col-lg-12 d-flex flex-column gap-3">

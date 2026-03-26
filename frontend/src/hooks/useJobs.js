@@ -31,6 +31,7 @@ export function useJobs(logout) {
   const isFirstFetch = useRef(true);
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [fetchError, setFetchError] = useState(null);
   const [pendingAppliedJobIds, setPendingAppliedJobIds] = useState([]);
   const filters = filtersState;
 
@@ -76,6 +77,7 @@ export function useJobs(logout) {
         return;
       }
       console.error('Fetch jobs error:', error);
+      setFetchError(error.message || 'Failed to load jobs.');
     } finally {
       isFirstFetch.current = false;
       setIsLoading(false);
@@ -166,6 +168,7 @@ export function useJobs(logout) {
     isAppliedPending,
     clearFilters,
     isLoading,
-    isRefreshing
+    isRefreshing,
+    fetchError
   };
 }

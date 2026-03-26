@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { NavLink } from 'react-router-dom';
 import { useSearchContext } from '../../context/SearchContext';
 
@@ -33,7 +33,10 @@ export function Sidebar({ username, onLogout, isOpen, onClose, isCollapsed, onTo
   const { searchStatuses, activeProfileIds } = useSearchContext();
   
   // Compute global dynamic search state based ONLY on tracked active searches
-  const activeStatuses = activeProfileIds.map(id => searchStatuses[id]).filter(Boolean);
+  const activeStatuses = useMemo(
+    () => activeProfileIds.map(id => searchStatuses[id]).filter(Boolean),
+    [activeProfileIds, searchStatuses]
+  );
 
   const isRunning = activeStatuses.some(s => s && ['generating', 'searching', 'analyzing'].includes(s.state));
   const hasDone = activeStatuses.some(s => s && s.state === 'done');

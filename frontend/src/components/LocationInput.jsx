@@ -28,7 +28,7 @@ export function LocationInput({
         return () => document.removeEventListener("mousedown", handleClickOutside);
     }, [wrapperRef]);
 
-    const handleSearch = async (searchTerm) => {
+    const handleSearch = async (searchTerm, signal) => {
         if (!searchTerm || searchTerm.length < 3) {
             setSuggestions([]);
             return;
@@ -39,6 +39,7 @@ export function LocationInput({
             const response = await fetch(
                 `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(searchTerm)}&countrycodes=ch&addressdetails=1&limit=5`,
                 {
+                    signal,
                     headers: {
                         "Accept-Language": "en",
                         "User-Agent": "JobHunterAI/1.0"
@@ -82,6 +83,7 @@ export function LocationInput({
             setSuggestions(formattedSuggestions);
             setShowSuggestions(true);
         } catch (error) {
+            if (error.name === 'AbortError') return;
             console.error("OSM Search Error:", error);
             showToast("Failed to fetch location suggestions. Please try again.");
         } finally {
@@ -90,6 +92,7 @@ export function LocationInput({
     };
 
     useEffect(() => {
+        const abortController = new AbortController();
         const timer = setTimeout(() => {
             if (query !== location) {
                 // When typing, we clear the locked coordinates until selection
@@ -98,10 +101,13 @@ export function LocationInput({
                     lat: null,
                     lon: null
                 });
-                handleSearch(query);
+                handleSearch(query, abortController.signal);
             }
         }, 1000);
-        return () => clearTimeout(timer);
+        return () => {
+            clearTimeout(timer);
+            abortController.abort();
+        };
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [query]);
 
