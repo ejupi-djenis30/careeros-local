@@ -71,6 +71,39 @@ _SKILL_ALIASES: Dict[str, str] = {
     # Hospitality
     "housekeeping": "housekeeping", "zimmerreinigung": "housekeeping",
     "küche": "kitchen", "kitchen": "kitchen", "gastro": "gastronomy",
+    # Transferable / management skills (multilingual)
+    "project management": "project management", "projektleitung": "project management",
+    "projektmanagement": "project management", "gestion de projet": "project management",
+    "gestione del progetto": "project management",
+    "team leadership": "team leadership", "teamführung": "team leadership",
+    "führung": "leadership", "leadership": "leadership",
+    "kommunikation": "communication", "communication": "communication",
+    "teamwork": "teamwork", "teamarbeit": "teamwork",
+    "customer service": "customer service", "kundendienst": "customer service",
+    "kundenbetreuung": "customer service", "service client": "customer service",
+    "problem solving": "problem solving", "problemlösung": "problem solving",
+    "organisation": "organisation", "organization": "organisation",
+    "time management": "time management", "zeitmanagement": "time management",
+    "accounting": "accounting", "buchhaltung": "accounting", "rechnungswesen": "accounting",
+    "comptabilité": "accounting", "contabilità": "accounting",
+    # Manual / logistics / warehousing
+    "lagermitarbeiter": "warehouse worker", "lagerist": "warehouse worker",
+    "warehouse worker": "warehouse worker", "warehouse": "warehouse",
+    "montage": "assembly", "monteur": "assembly technician", "assembly": "assembly",
+    "lieferant": "delivery", "lieferfahrer": "delivery driver",
+    "delivery driver": "delivery driver", "fahrer": "driver", "driver": "driver",
+    "reinigung": "cleaning", "cleaning": "cleaning", "haushaltsführung": "housekeeping",
+    "hilfsarbeiter": "general helper", "aushilfe": "general helper",
+    "handwerk": "skilled trade", "handwerker": "skilled tradesperson",
+    "elektrik": "electrical work", "elektriker": "electrician", "electrician": "electrician",
+    "sanitär": "plumbing", "klempner": "plumber", "plumber": "plumber",
+    "maler": "painting", "painter": "painting",
+    # Office / administrative
+    "ms office": "microsoft office", "microsoft office": "microsoft office",
+    "excel": "excel", "word": "word", "powerpoint": "powerpoint",
+    "sap": "sap", "erp": "erp",
+    "verwaltung": "administration", "administration": "administration",
+    "datenerfassung": "data entry", "data entry": "data entry",
 }
 
 
@@ -390,6 +423,49 @@ def bootstrap_normalized_job_data(
     salary_max = extract_salary_max_chf(listing)
     remote = listing_is_remote(listing)
 
+    # ─── Heuristic: career_changer_friendly (confidence 0.35) ────────────
+    desc_lower = (desc_text or "").lower()
+    _career_changer_signals = [
+        "quereinsteiger", "quereinstieg", "career changer", "career change",
+        "training provided", "einarbeitung", "keine erfahrung", "no experience required",
+        "no experience needed", "will train", "we train", "wir bilden aus",
+        "auch ohne erfahrung", "reconversion", "reconversion professionnelle",
+        "anche senza esperienza",
+    ]
+    career_changer_friendly = any(sig in desc_lower for sig in _career_changer_signals)
+
+    # ─── Heuristic: entry_barrier (confidence 0.35) ───────────────────────
+    # Derive from experience requirements + qualification codes
+    entry_barrier: Optional[str] = None
+    if qualification_codes:
+        high_qual_codes = {"bachelor", "master", "phd", "eidg. dipl.", "eidg dipl"}
+        if any(qc.lower() in high_qual_codes for qc in qualification_codes):
+            entry_barrier = "high"
+        elif qualification_codes:
+            entry_barrier = "medium"
+    if entry_barrier is None:
+        max_exp = max(experience_values) if experience_values else 0
+        if max_exp >= 5:
+            entry_barrier = "medium"
+        elif max_exp == 0 and career_changer_friendly:
+            entry_barrier = "none"
+        else:
+            entry_barrier = "low"
+
+    # ─── Heuristic: physical_requirements ────────────────────────────────
+    _physical_signals = [
+        ("heavy lifting", "heavy lifting"), ("schweres heben", "heavy lifting"),
+        ("körperlich", "physically demanding"), ("physically demanding", "physically demanding"),
+        ("stehen", "prolonged standing"), ("standing", "prolonged standing"),
+        ("outdoor", "outdoor work"), ("im freien", "outdoor work"),
+        ("heben", "lifting"), ("lifting", "lifting"),
+        ("tragen", "carrying"), ("carrying", "carrying"),
+    ]
+    physical_requirements = list({
+        canonical for signal, canonical in _physical_signals
+        if signal in desc_lower
+    })
+
     return {
         "normalization_status": "provider_bootstrap",
         "normalized_at": datetime.now(timezone.utc),
@@ -411,6 +487,12 @@ def bootstrap_normalized_job_data(
         "normalized_salary_max_chf": salary_max,
         "normalized_required_languages": language_requirements or None,
         "normalized_required_skills": None,
+        "normalized_preferred_skills": None,
+        "normalized_soft_skills": None,
+        "normalized_physical_requirements": physical_requirements or None,
+        "normalized_entry_barrier": entry_barrier,
+        "normalized_career_changer_friendly": career_changer_friendly if career_changer_friendly else None,
+        "normalized_hard_blockers": None,
         "normalized_education_levels": education_levels or None,
         "normalized_key_requirements": None,
         "normalized_role_type": role_type,

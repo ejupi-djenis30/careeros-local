@@ -60,6 +60,11 @@ class SearchProfile(BaseModel, TimestampMixin):
     profile_normalized_languages = Column(JSON, nullable=True)          # [{code, level}, ...]
     profile_normalized_skills = Column(JSON, nullable=True)             # ["Python", "React", ...]
 
+    # ── Enhanced candidate profile — v2 additions ──
+    profile_normalized_role_type = Column(String, nullable=True)             # technical|manual|administrative|creative|managerial|service|professional
+    profile_normalized_industry_sectors = Column(JSON, nullable=True)        # industries candidate has worked in e.g. ["web development", "fintech"]
+    profile_normalized_transferable_skills = Column(JSON, nullable=True)     # domain-agnostic skills e.g. ["project management", "team leadership"]
+
     # ── Search intent — what the user WANTS to find (may differ from CV domain) ──
     # Derived from role_description + search_strategy at the same LLM call as candidate profile.
     # The structured filtering layer uses these as the PRIMARY comparison axis against jobs.
@@ -70,6 +75,12 @@ class SearchProfile(BaseModel, TimestampMixin):
     profile_search_intent_skills = Column(JSON, nullable=True)               # target skills
     profile_search_intent_open_to_unrelated = Column(Boolean, nullable=True, default=False)  # cross-domain search
     profile_search_intent_keywords = Column(JSON, nullable=True)             # free-form intent keywords
+    # ── Enhanced search intent — v2 additions ──
+    profile_search_intent_role_type = Column(String, nullable=True)          # target role type (manual|technical|etc.)
+    profile_search_intent_seniority_min = Column(String, nullable=True)      # acceptable lower seniority bound
+    profile_search_intent_seniority_max = Column(String, nullable=True)      # acceptable upper seniority bound
+    profile_search_intent_dealbreakers = Column(JSON, nullable=True)         # absolute no-gos e.g. ["night shifts", "requires German C2"]
+    profile_search_intent_flexibility = Column(JSON, nullable=True)          # {"domain": true, "seniority": true, "qualification": false, "location": false}
 
     user = relationship("User", back_populates="profiles")
     jobs = relationship("Job", back_populates="search_profile", cascade="all, delete-orphan")

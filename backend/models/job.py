@@ -53,6 +53,12 @@ class ScrapedJob(BaseModel, TimestampMixin):
     normalized_salary_max_chf = Column(Integer, nullable=True)
     normalized_required_languages = Column(JSON, nullable=True)
     normalized_required_skills = Column(JSON, nullable=True)
+    normalized_preferred_skills = Column(JSON, nullable=True)        # nice-to-have skills ("von Vorteil", "ideally")
+    normalized_soft_skills = Column(JSON, nullable=True)             # interpersonal/organizational skills
+    normalized_physical_requirements = Column(JSON, nullable=True)   # physical demands for manual jobs
+    normalized_entry_barrier = Column(String, nullable=True)         # none|low|medium|high — overall accessibility
+    normalized_career_changer_friendly = Column(Boolean, nullable=True)  # true if Quereinsteiger willkommen / training provided
+    normalized_hard_blockers = Column(JSON, nullable=True)           # absolute non-negotiable requirements
     normalized_education_levels = Column(JSON, nullable=True)
     normalized_key_requirements = Column(JSON, nullable=True)
     normalized_metadata = Column(JSON, nullable=True)
@@ -88,6 +94,12 @@ class ScrapedJob(BaseModel, TimestampMixin):
             "salary_max_chf": self.normalized_salary_max_chf,
             "required_languages": self.normalized_required_languages or [],
             "required_skills": self.normalized_required_skills or [],
+            "preferred_skills": self.normalized_preferred_skills or [],
+            "soft_skills": self.normalized_soft_skills or [],
+            "physical_requirements": self.normalized_physical_requirements or [],
+            "entry_barrier": self.normalized_entry_barrier,
+            "career_changer_friendly": self.normalized_career_changer_friendly,
+            "hard_blockers": self.normalized_hard_blockers or [],
             "education_levels": self.normalized_education_levels or [],
             "key_requirements": self.normalized_key_requirements or [],
             "metadata": self.normalized_metadata or {},
@@ -119,6 +131,8 @@ class Job(BaseModel, TimestampMixin):
     intent_match_score = Column(Float, nullable=True)       # 0-100: job fits what the user WANTS
     language_match_score = Column(Float, nullable=True)     # 0-100: language requirements fit
     location_match_score = Column(Float, nullable=True)     # 0-100: location/remote preference fit
+    transferability_score = Column(Float, nullable=True)    # 0-100: how well existing skills transfer to this job
+    qualification_gap_score = Column(Float, nullable=True)  # 0-100: qualification relevance for this specific job
 
     # Distance from search origin (km)
     distance_km = Column(Float, nullable=True)

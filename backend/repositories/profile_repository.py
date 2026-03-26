@@ -72,6 +72,18 @@ class ProfileRepository(BaseRepository[SearchProfile]):
         profile.profile_search_intent_open_to_unrelated = bool(normalized_data.get("open_to_unrelated", False))
         profile.profile_search_intent_keywords = normalized_data.get("intent_keywords") or []
 
+        # V2 enhanced candidate profile fields
+        profile.profile_normalized_role_type = normalized_data.get("role_type")
+        profile.profile_normalized_industry_sectors = normalized_data.get("industry_sectors") or []
+        profile.profile_normalized_transferable_skills = normalized_data.get("transferable_skills") or []
+
+        # V2 enhanced search intent fields
+        profile.profile_search_intent_role_type = normalized_data.get("intent_role_type")
+        profile.profile_search_intent_seniority_min = normalized_data.get("intent_seniority_min")
+        profile.profile_search_intent_seniority_max = normalized_data.get("intent_seniority_max")
+        profile.profile_search_intent_dealbreakers = normalized_data.get("dealbreakers") or []
+        profile.profile_search_intent_flexibility = normalized_data.get("flexibility") or {}
+
         self.db.add(profile)
         try:
             self.db.commit()

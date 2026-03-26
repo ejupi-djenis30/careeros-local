@@ -675,3 +675,277 @@ class TestIntentAwareFilters:
         )
         assert ok, f"Expected manual keyword to bypass skills check but got: {reason}"
 
+
+# ─── V2 Advanced Matching Tests ─────────────────────────────────────────────
+
+class TestV2AdvancedMatching:
+    """Tests for V2 features: role_type, dealbreakers, transferable skills,
+    career_changer_friendly, seniority range, entry_barrier."""
+
+    # ── Role-type matching ───────────────────────────────────────────────────
+
+    def test_role_type_mismatch_rejected(self, service):
+        """Developer (technical CV) with intent_role_type=manual should reject a technical job."""
+        ok, reason = service._passes_normalization_filters(
+            {"domain": "it", "role_type": "technical"},
+            {
+                "domain": "it",
+                "intent_role_type": "manual",
+                "open_to_unrelated": False,
+                "flexibility": {},
+            },
+        )
+        assert not ok
+        assert reason == "norm_role_type_mismatch"
+
+    def test_role_type_same_family_accepted(self, service):
+        """manual intent + service job → same family → accepted."""
+        ok, reason = service._passes_normalization_filters(
+            {"role_type": "service"},
+            {
+                "intent_role_type": "manual",
+                "open_to_unrelated": False,
+                "flexibility": {},
+            },
+        )
+        assert ok, f"Expected service job to pass for manual intent but got: {reason}"
+
+    def test_role_type_flexible_domain_bypasses_mismatch(self, service):
+        """flexibility.domain=True should bypass role_type mismatch."""
+        ok, reason = service._passes_normalization_filters(
+            {"role_type": "technical"},
+            {
+                "intent_role_type": "manual",
+                "open_to_unrelated": False,
+                "flexibility": {"domain": True},
+            },
+        )
+        assert ok, f"Expected flexible domain to bypass role_type check but got: {reason}"
+
+    def test_role_type_open_to_unrelated_bypasses_mismatch(self, service):
+        """open_to_unrelated=True should bypass role_type mismatch."""
+        ok, reason = service._passes_normalization_filters(
+            {"role_type": "technical"},
+            {
+                "intent_role_type": "manual",
+                "open_to_unrelated": True,
+            },
+        )
+        assert ok, f"Expected open_to_unrelated to bypass role_type check but got: {reason}"
+
+    def test_role_type_both_missing_no_rejection(self, service):
+        """If neither intent_role_type nor job role_type is set, check is skipped."""
+        ok, reason = service._passes_normalization_filters({}, {})
+        assert ok
+
+    def test_role_type_only_intent_set_no_rejection(self, service):
+        """If job doesn't have role_type, check is skipped gracefully."""
+        ok, _ = service._passes_normalization_filters(
+            {},
+            {"intent_role_type": "manual"},
+        )
+        assert ok
+
+    # ── Dealbreaker rejection ────────────────────────────────────────────────
+
+    def test_dealbreaker_matching_hard_blocker_rejected(self, service):
+        """Dealbreaker 'night shift' matches hard_blocker → rejected."""
+        ok, reason = service._passes_normalization_filters(
+            {"hard_blockers": ["mandatory night shift", "weekend availability required"]},
+            {"dealbreakers": ["night shift"]},
+        )
+        assert not ok
+        assert reason == "norm_dealbreaker_hit"
+
+    def test_dealbreaker_matching_key_requirement_rejected(self, service):
+        """Dealbreaker matching key_requirements → rejected."""
+        ok, reason = service._passes_normalization_filters(
+            {"key_requirements": ["must have security clearance", "active clearance required"]},
+            {"dealbreakers": ["security clearance"]},
+        )
+        assert not ok
+        assert reason == "norm_dealbreaker_hit"
+
+    def test_dealbreaker_no_match_passes(self, service):
+        """Dealbreaker not present in job requirements → passes."""
+        ok, reason = service._passes_normalization_filters(
+            {"hard_blockers": ["fluent German required"], "key_requirements": ["python"]},
+            {"dealbreakers": ["night shift", "relocation required"]},
+        )
+        assert ok, f"Expected no dealbreaker hit but got: {reason}"
+
+    def test_dealbreaker_empty_list_no_rejection(self, service):
+        """Empty dealbreakers list → no rejection."""
+        ok, _ = service._passes_normalization_filters(
+            {"hard_blockers": ["night shift"]},
+            {"dealbreakers": []},
+        )
+        assert ok
+
+    # ── Career changer friendly bypass ──────────────────────────────────────
+
+    def test_career_changer_friendly_bypasses_skills_disjoint(self, service):
+        """career_changer_friendly=True → zero skills overlap is acceptable."""
+        ok, reason = service._passes_normalization_filters(
+            {
+                "domain": "logistics",
+                "required_skills": ["forklift", "warehouse management", "packing"],
+                "career_changer_friendly": True,
+            },
+            {
+                "domain": "logistics",
+                "skills": ["Python", "FastAPI", "PostgreSQL"],  # no overlap
+                "intent_skills": [],
+                "transferable_skills": [],
+                "open_to_unrelated": False,
+            },
+        )
+        assert ok, f"Expected career_changer_friendly to bypass skills check but got: {reason}"
+
+    def test_career_changer_not_friendly_skills_disjoint_rejected(self, service):
+        """career_changer_friendly=False and no manual intent → skills disjoint rejects."""
+        ok, reason = service._passes_normalization_filters(
+            {
+                "domain": "it",
+                "required_skills": ["COBOL", "FORTRAN", "Assembly"],
+                "career_changer_friendly": False,
+            },
+            {
+                "domain": "it",
+                "skills": ["Python", "React", "Docker"],
+                "intent_skills": [],
+                "transferable_skills": [],
+                "open_to_unrelated": False,
+            },
+        )
+        assert not ok
+        assert reason == "norm_skills_disjoint"
+
+    # ── Transferable skills extend overlap pool ──────────────────────────────
+
+    def test_transferable_skills_allow_overlap(self, service):
+        """Developer with transferable 'project management' skill
+        overlaps with project-management job → passes skills check."""
+        ok, reason = service._passes_normalization_filters(
+            {
+                "domain": "administration",
+                "required_skills": ["project management", "excel", "reporting"],
+            },
+            {
+                "domain": "administration",
+                "skills": ["Python", "FastAPI", "Docker"],          # no direct overlap
+                "intent_skills": [],
+                "transferable_skills": ["project management", "excel", "communication"],
+                "open_to_unrelated": False,
+            },
+        )
+        assert ok, f"Expected transferable skills to close overlap gap but got: {reason}"
+
+    # ── Seniority range ──────────────────────────────────────────────────────
+
+    def test_seniority_range_job_within_range_passes(self, service):
+        """intent_seniority_min=junior, max=mid — mid job → passes."""
+        ok, reason = service._passes_normalization_filters(
+            {"seniority": "mid", "experience_min_years": 2},
+            {
+                "seniority": "junior",
+                "experience_years": 3,
+                "intent_seniority_min": "junior",
+                "intent_seniority_max": "mid",
+            },
+        )
+        assert ok, f"Expected mid job to be within junior-mid range but got: {reason}"
+
+    def test_seniority_range_job_exceeds_max_rejected(self, service):
+        """intent max=mid, senior job with high exp_min → rejected."""
+        ok, reason = service._passes_normalization_filters(
+            {"seniority": "senior", "experience_min_years": 8},
+            {
+                "seniority": "junior",
+                "experience_years": 2,
+                "intent_seniority_min": "junior",
+                "intent_seniority_max": "mid",
+            },
+        )
+        assert not ok
+        assert reason == "norm_seniority_overqualified"
+
+    def test_seniority_range_job_exceeds_max_but_exp_ok_passes(self, service):
+        """intent max=mid, senior job but exp_min within tolerance → passes."""
+        ok, reason = service._passes_normalization_filters(
+            {"seniority": "senior", "experience_min_years": 3},
+            {
+                "seniority": "junior",
+                "experience_years": 2,
+                "intent_seniority_min": "junior",
+                "intent_seniority_max": "mid",
+            },
+        )
+        # 3 <= 2+2=4 → passes
+        assert ok, f"Expected exp tolerance to allow senior job but got: {reason}"
+
+    # ── Entry barrier gate ───────────────────────────────────────────────────
+
+    def test_entry_barrier_high_open_to_unrelated_rejected(self, service):
+        """Cross-domain explorer (open_to_unrelated) + high barrier job → rejected."""
+        ok, reason = service._passes_normalization_filters(
+            {"entry_barrier": "high", "domain": "medical"},
+            {
+                "domain": "it",
+                "open_to_unrelated": True,
+                "intent_domain": "medical",
+            },
+        )
+        assert not ok
+        assert reason == "norm_entry_barrier_high"
+
+    def test_entry_barrier_medium_open_to_unrelated_passes(self, service):
+        """Cross-domain explorer + medium barrier job → passes (only high is blocked)."""
+        ok, reason = service._passes_normalization_filters(
+            {"entry_barrier": "medium", "domain": "logistics"},
+            {
+                "domain": "it",
+                "open_to_unrelated": True,
+                "intent_domain": "logistics",
+            },
+        )
+        assert ok, f"Expected medium barrier to pass for open_to_unrelated but got: {reason}"
+
+    def test_entry_barrier_high_not_open_to_unrelated_passes(self, service):
+        """High barrier job but NOT open_to_unrelated → entry barrier gate not triggered."""
+        ok, reason = service._passes_normalization_filters(
+            {"entry_barrier": "high", "domain": "it"},
+            {
+                "domain": "it",
+                "open_to_unrelated": False,
+                "qualification_level": "bachelor",  # may still pass via qual check
+            },
+        )
+        # Entry barrier doesn't block; qualification check may or may not block
+        assert reason != "norm_entry_barrier_high"
+
+    # ── Qualification bypass for career_changer_friendly jobs ───────────────
+
+    def test_career_changer_job_skips_qualification_check(self, service):
+        """career_changer_friendly=True → qualification mismatch is not applied."""
+        ok, reason = service._passes_normalization_filters(
+            {
+                "qualification_level": "master",  # would normally be too high for 'none'
+                "career_changer_friendly": True,
+            },
+            {"qualification_level": "none"},
+        )
+        assert ok, f"Expected career_changer_friendly to skip qual check but got: {reason}"
+
+    def test_entry_barrier_none_job_skips_qualification_check(self, service):
+        """entry_barrier=none → qualification mismatch not applied."""
+        ok, reason = service._passes_normalization_filters(
+            {
+                "qualification_level": "phd",  # very high rank
+                "entry_barrier": "none",
+            },
+            {"qualification_level": "none"},
+        )
+        assert ok, f"Expected entry_barrier=none to skip qual check but got: {reason}"
+
+

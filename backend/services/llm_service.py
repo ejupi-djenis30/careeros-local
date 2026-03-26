@@ -149,36 +149,47 @@ Return plain text, NOT JSON."""
             "All domain, seniority, and qualification_level values MUST come from the allowlists. "
             "Return compact structured JSON."
         )
-        user_prompt = f"""Extract the candidate's dual-signal normalized profile.
+        user_prompt = f"""Extract the candidate's dual-signal normalized profile (V2 enhanced format).
 
 OUTPUT — one JSON object with TWO nested blocks:
 
 "candidate_profile" — what the CV says the person IS:
-  - seniority         : "junior" | "mid" | "senior"  (from CV experience level)
-  - domain            : EXACTLY one of: general, it, finance, medical, engineering, hospitality, sales, logistics, administration, legal, education, marketing, consulting, pharma, construction
-  - role_family       : normalized job-title family from the CV (e.g. "Software Engineer")
-  - qualification_level: "none" | "vocational" | "bachelor" | "master" | "phd"
-  - experience_years  : integer (total years of relevant professional experience; 0 if none)
-  - languages         : list of {{code (ISO 639-1), level (CEFR A1-C2 or "native")}}
-  - skills            : concrete technical/domain skills from CV (max 20); no soft-skills
-  - confidence        : 0.0–1.0
+  - seniority              : "junior" | "mid" | "senior"  (from CV experience level)
+  - domain                 : EXACTLY one of: general, it, finance, medical, engineering, hospitality, sales, logistics, administration, legal, education, marketing, consulting, pharma, construction
+  - role_family            : normalized job-title family from the CV (e.g. "Software Engineer")
+  - role_type              : "technical" | "manual" | "administrative" | "creative" | "managerial" | "service" | "professional" — the TYPE of work the person has done
+  - qualification_level    : "none" | "vocational" | "bachelor" | "master" | "phd"
+  - experience_years       : integer (total years of relevant professional experience; 0 if none)
+  - languages              : list of {{code (ISO 639-1), level (CEFR A1-C2 or "native")}}
+  - skills                 : concrete technical/domain skills from CV (max 20); no soft-skills
+  - industry_sectors       : list of industries/sectors the candidate has worked in (e.g. ["web development", "e-commerce", "banking"]); max 5
+  - transferable_skills    : domain-agnostic competencies from CV that apply across sectors (e.g. ["project management", "team leadership", "data analysis", "process optimization", "customer relations"]); max 10, no overlap with skills
+  - confidence             : 0.0–1.0
 
 "search_intent" — what the role_description + strategy say the person WANTS:
-  - target_domain     : EXACTLY one of the same domain allowlist above — the domain they are SEARCHING IN
-  - target_seniority  : "junior" | "mid" | "senior" | null — the level they are TARGETING
-  - target_role_family: the role/title family they want (may differ from CV)
-  - target_qualification_level: "none" | "vocational" | "bachelor" | "master" | "phd" | null — acceptable qualification requirements
-  - target_skills     : skills relevant to the TARGET role (not necessarily from CV; max 15)
-  - open_to_unrelated : true if the user is EXPLICITLY searching OUTSIDE their CV domain (e.g. IT professional searching for warehouse/cleaning/hospitality work)
-  - intent_keywords   : list of free-form keywords capturing what the user wants (e.g. ["manual work", "no qualifications required", "warehouse", "physical labor"])
-  - confidence        : 0.0–1.0
+  - target_domain              : EXACTLY one of the same domain allowlist above — the domain they are SEARCHING IN
+  - target_role_type           : "technical" | "manual" | "administrative" | "creative" | "managerial" | "service" | "professional" | null — the TYPE of work they want
+  - target_seniority           : "junior" | "mid" | "senior" | null — the level they are TARGETING
+  - target_seniority_min       : "junior" | "mid" | "senior" | null — lowest acceptable seniority level
+  - target_seniority_max       : "junior" | "mid" | "senior" | null — highest acceptable seniority level
+  - target_role_family         : the role/title family they want (may differ from CV)
+  - target_qualification_level : "none" | "vocational" | "bachelor" | "master" | "phd" | null — max qualification requirement they can meet
+  - target_skills              : skills relevant to the TARGET role (not necessarily from CV; max 15)
+  - open_to_unrelated          : true if the user is EXPLICITLY searching OUTSIDE their CV domain (e.g. IT professional searching for warehouse/cleaning/hospitality work)
+  - intent_keywords            : list of free-form keywords capturing what the user wants (e.g. ["manual work", "no qualifications required", "warehouse", "physical labor"])
+  - dealbreakers               : list of absolute constraints the user will NOT accept (extract from strategy/instructions, e.g. ["night shifts", "requires German C2", "unpaid overtime", "relocation required"]); empty list if none stated
+  - flexibility                : object indicating which dimensions the user is flexible on: {{"domain": bool, "seniority": bool, "qualification": bool, "location": bool}}
+  - confidence                 : 0.0–1.0
 
 DOMAIN RULE: Use "general" only when the domain is truly ambiguous.
 OPEN_TO_UNRELATED RULE: Set to true ONLY when the role_description clearly targets a domain
   unrelated to the CV (e.g. programmer searching for cleaning jobs, lawyer searching for delivery work).
   If the search is within or adjacent to the CV domain, set to false.
-SENIORITY RULE: For candidate_profile, derive from CV facts.
-  For search_intent, derive from what level of job the role_description targets.
+SENIORITY RANGE RULE: target_seniority_min/max capture the acceptable range (e.g. if someone wants "junior or mid level", set min="junior" max="mid"). Set both equal if only one level is acceptable.
+ROLE_TYPE RULE: "manual" for physical/hands-on work (warehouse, cleaning, construction, delivery). "technical" for IT, engineering, lab roles. "administrative" for office, HR, reception. "service" for customer-facing. Use the role_description to determine target_role_type.
+TRANSFERABLE SKILLS RULE: These are competencies that cross domain boundaries — project management, team leadership, communication, data analysis, problem solving, customer relations, etc. Distinct from domain-specific technical skills.
+DEALBREAKER RULE: Extract explicit negative constraints from the strategy/instructions only. Do not infer dealbreakers.
+FLEXIBILITY RULE: domain=true if the user is explicitly open to different domains. seniority=true if they express openness to a range. qualification=true if they say qualifications don't matter. location=true if they mention remote/any location.
 
 CV (truncated to 5000 chars):
 {sanitize_prompt_text(cv_content, max_chars=5000)}
@@ -192,20 +203,28 @@ Return ONLY JSON — no markdown, no explanations:
     "seniority": "mid",
     "domain": "it",
     "role_family": "Software Engineer",
+    "role_type": "technical",
     "qualification_level": "bachelor",
     "experience_years": 4,
     "languages": [{{"code": "en", "level": "C2"}}, {{"code": "de", "level": "B2"}}],
     "skills": ["Python", "FastAPI", "React", "PostgreSQL"],
+    "industry_sectors": ["web development", "e-commerce"],
+    "transferable_skills": ["project management", "agile methodology", "team collaboration"],
     "confidence": 0.85
   }},
   "search_intent": {{
-    "target_domain": "it",
-    "target_seniority": "mid",
-    "target_role_family": "Backend Developer",
-    "target_qualification_level": "bachelor",
-    "target_skills": ["Python", "REST APIs", "Docker"],
-    "open_to_unrelated": false,
-    "intent_keywords": ["backend development", "remote work"],
+    "target_domain": "logistics",
+    "target_role_type": "manual",
+    "target_seniority": "junior",
+    "target_seniority_min": "junior",
+    "target_seniority_max": "mid",
+    "target_role_family": "Warehouse Worker",
+    "target_qualification_level": "none",
+    "target_skills": ["forklift operation", "physical fitness"],
+    "open_to_unrelated": true,
+    "intent_keywords": ["manual work", "warehouse", "no degree required", "physical labor"],
+    "dealbreakers": ["night shifts"],
+    "flexibility": {{"domain": true, "seniority": true, "qualification": true, "location": false}},
     "confidence": 0.90
   }}
 }}"""
@@ -229,6 +248,10 @@ Return ONLY JSON — no markdown, no explanations:
 
         role_family = str(cp.get("role_family") or "").strip() or None
 
+        _valid_role_types = {"technical", "manual", "administrative", "creative", "managerial", "service", "professional"}
+        role_type_raw = str(cp.get("role_type") or "").strip().lower()
+        role_type = role_type_raw if role_type_raw in _valid_role_types else None
+
         ql_valid = {"none", "vocational", "bachelor", "master", "phd"}
         ql_raw = str(cp.get("qualification_level") or "").strip().lower()
         qualification_level = ql_raw if ql_raw in ql_valid else None
@@ -239,6 +262,8 @@ Return ONLY JSON — no markdown, no explanations:
 
         languages = self._normalize_required_languages(cp.get("languages"))
         skills = self._dedupe_string_list(cp.get("skills"))
+        industry_sectors = self._dedupe_string_list(cp.get("industry_sectors"))
+        transferable_skills = self._dedupe_string_list(cp.get("transferable_skills"))
 
         cp_confidence = 0.0
         try:
@@ -256,6 +281,14 @@ Return ONLY JSON — no markdown, no explanations:
         intent_seniority_raw = str(si.get("target_seniority") or "").strip().lower()
         intent_seniority = intent_seniority_raw if intent_seniority_raw in {"junior", "mid", "senior"} else seniority
 
+        # Seniority range
+        _all_seniorities = {"junior", "mid", "senior"}
+        seniority_min_raw = str(si.get("target_seniority_min") or "").strip().lower()
+        intent_seniority_min = seniority_min_raw if seniority_min_raw in _all_seniorities else intent_seniority
+
+        seniority_max_raw = str(si.get("target_seniority_max") or "").strip().lower()
+        intent_seniority_max = seniority_max_raw if seniority_max_raw in _all_seniorities else intent_seniority
+
         intent_role_family = str(si.get("target_role_family") or role_family or "").strip() or None
 
         intent_ql_raw = str(si.get("target_qualification_level") or "").strip().lower()
@@ -263,12 +296,35 @@ Return ONLY JSON — no markdown, no explanations:
 
         intent_skills = self._dedupe_string_list(si.get("target_skills"))
 
+        intent_role_type_raw = str(si.get("target_role_type") or "").strip().lower()
+        intent_role_type = intent_role_type_raw if intent_role_type_raw in _valid_role_types else None
+
         open_to_unrelated = bool(si.get("open_to_unrelated", False))
         # Safety: only accept open_to_unrelated=True when intent domain actually differs from candidate domain
         if open_to_unrelated and intent_domain == domain and intent_domain != "general":
             open_to_unrelated = False
 
         intent_keywords = self._dedupe_string_list(si.get("intent_keywords"))
+        dealbreakers = self._dedupe_string_list(si.get("dealbreakers"))
+
+        # Flexibility object — validate each key is a boolean
+        flexibility_raw = si.get("flexibility")
+        flexibility: dict = {}
+        if isinstance(flexibility_raw, dict):
+            for dim in ("domain", "seniority", "qualification", "location"):
+                val = flexibility_raw.get(dim)
+                if isinstance(val, bool):
+                    flexibility[dim] = val
+                elif isinstance(val, str):
+                    flexibility[dim] = val.lower() in {"true", "1", "yes"}
+        if not flexibility:
+            # Derive sensible defaults from other signals
+            flexibility = {
+                "domain": open_to_unrelated,
+                "seniority": intent_seniority_min != intent_seniority_max,
+                "qualification": False,
+                "location": False,
+            }
 
         si_confidence = 0.0
         try:
@@ -282,18 +338,26 @@ Return ONLY JSON — no markdown, no explanations:
             "seniority": seniority,
             "domain": domain,
             "role_family": role_family,
+            "role_type": role_type,
             "qualification_level": qualification_level,
             "experience_years": experience_years,
             "languages": languages,
             "skills": skills,
+            "industry_sectors": industry_sectors,
+            "transferable_skills": transferable_skills,
             # Search intent — what the user is looking for
             "intent_domain": intent_domain,
+            "intent_role_type": intent_role_type,
             "intent_seniority": intent_seniority,
+            "intent_seniority_min": intent_seniority_min,
+            "intent_seniority_max": intent_seniority_max,
             "intent_role_family": intent_role_family,
             "intent_qualification_level": intent_qualification_level,
             "intent_skills": intent_skills,
             "open_to_unrelated": open_to_unrelated,
             "intent_keywords": intent_keywords,
+            "dealbreakers": dealbreakers,
+            "flexibility": flexibility,
         }
 
     # ─── Step 1: Search Plan Generation ───────────────────────────────────
@@ -797,6 +861,7 @@ Return ONLY pure JSON with a 'searches' list. Example:
             "You are a strict, evidence-driven career coach AI. "
             "Evaluate candidate-job fit conservatively using BOTH the candidate's CV profile AND their stated search intent. "
             "The candidate may intentionally search outside their CV domain — score based on the INTENT, not just the CV. "
+            "For cross-domain candidates, assess transferable skills explicitly. "
             "Cite the main reasons, never invent qualifications. "
             "Return results in the EXACT SAME ORDER as the jobs were given."
         )
@@ -814,7 +879,17 @@ Return ONLY pure JSON with a 'searches' list. Example:
             # Include pre-computed normalized job facts for the LLM to use directly
             job_norm = job.get("normalized_data") or {}
             if job_norm:
-                jobs_text += f"[Normalized] Domain: {job_norm.get('domain')} | Role type: {job_norm.get('role_type')} | Sector: {job_norm.get('industry_sector')} | Seniority: {job_norm.get('seniority')} | Qualification: {job_norm.get('qualification_level')} | Skills: {job_norm.get('required_skills')}\n"
+                jobs_text += (
+                    f"[Normalized] Domain: {job_norm.get('domain')} | Role type: {job_norm.get('role_type')}"
+                    f" | Sector: {job_norm.get('industry_sector')} | Seniority: {job_norm.get('seniority')}"
+                    f" | Qualification: {job_norm.get('qualification_level')}"
+                    f" | Entry barrier: {job_norm.get('entry_barrier')}"
+                    f" | Career-changer friendly: {job_norm.get('career_changer_friendly')}\n"
+                    f" | Required skills: {job_norm.get('required_skills')}"
+                    f" | Preferred skills: {job_norm.get('preferred_skills')}"
+                    f" | Physical requirements: {job_norm.get('physical_requirements')}"
+                    f" | Hard blockers: {job_norm.get('hard_blockers')}\n"
+                )
 
         strategy = profile.get('search_strategy')
         strategy_block = f"\n- Extra AI Instructions / Preferences: {strategy}" if strategy else ""
@@ -824,20 +899,29 @@ Return ONLY pure JSON with a 'searches' list. Example:
         candidate_structured = ""
         if profile_norm:
             candidate_structured = (
-                f"\n- CV Domain: {profile_norm.get('domain')} | Role Family: {profile_norm.get('role_family')}"
+                f"\n- CV Domain: {profile_norm.get('domain')} | CV Role Type: {profile_norm.get('role_type')}"
+                f" | Role Family: {profile_norm.get('role_family')}"
                 f" | Seniority: {profile_norm.get('seniority')} | Experience: {profile_norm.get('experience_years')} yrs"
                 f" | Qualification: {profile_norm.get('qualification_level')}"
                 f"\n- CV Skills: {profile_norm.get('skills')}"
+                f"\n- Transferable Skills: {profile_norm.get('transferable_skills')}"
+                f"\n- Industry Sectors (CV): {profile_norm.get('industry_sectors')}"
                 f"\n- CV Languages: {profile_norm.get('languages')}"
             )
+            dealbreakers = profile_norm.get('dealbreakers') or []
+            flexibility = profile_norm.get('flexibility') or {}
             intent_structured = (
-                f"\n- Search Target Domain: {profile_norm.get('intent_domain')}"
+                f"\n- Target Domain: {profile_norm.get('intent_domain')}"
+                f" | Target Role Type: {profile_norm.get('intent_role_type')}"
                 f" | Target Role: {profile_norm.get('intent_role_family')}"
-                f" | Target Seniority: {profile_norm.get('intent_seniority')}"
+                f" | Seniority Range: {profile_norm.get('intent_seniority_min')}-{profile_norm.get('intent_seniority_max')}"
                 f" | Target Qualification: {profile_norm.get('intent_qualification_level')}"
                 f"\n- Intent Skills: {profile_norm.get('intent_skills')}"
                 f"\n- Open to unrelated domain: {profile_norm.get('open_to_unrelated')}"
                 f"\n- Intent Keywords: {profile_norm.get('intent_keywords')}"
+                f"\n- Dealbreakers (ABSOLUTE NOs): {dealbreakers if dealbreakers else 'None stated'}"
+                f"\n- Flexibility: domain={flexibility.get('domain')}, seniority={flexibility.get('seniority')}"
+                f", qualification={flexibility.get('qualification')}, location={flexibility.get('location')}"
             )
         else:
             intent_structured = ""
@@ -854,20 +938,25 @@ SEARCH INTENT:{intent_structured if intent_structured else " (use role descripti
 
 SCORING RULES (STRICT CONSTRAINTS):
 1. INTENT-FIRST SCORING: If the candidate is OPEN TO UNRELATED work (open_to_unrelated=true), score based on their INTENT fit to the job, NOT their CV domain. A developer applying for warehouse work should get a high score if the job matches what they said they want.
-2. LANGUAGE MISMATCH PENALTY: If the job EXPLICITLY requires a language the candidate DOES NOT speak, cap `affinity_score` at 30 and set `worth_applying` to false.
-3. EDUCATION MISMATCH PENALTY: If the job explicitly requires a University Degree (Bachelor/Master/PhD) and the candidate has no degree, cap `affinity_score` at 40 and set `worth_applying` to false.
-4. SENIORITY MISMATCH: If the candidate targets junior roles and job requires Senior/Lead (5+ years), cap at 35. (Senior targeting Junior cap at 70).
-5. USER INSTRUCTIONS PENALTY: If the job explicitly violates a constraint stated in instructions/strategy, cap `affinity_score` at 20 and set `worth_applying` to false.
-6. BASE SCORING: Score 0-100 realistically. Score 90-100 ONLY for a virtually perfect match to WHAT THE CANDIDATE WANTS.
-7. `worth_applying` MUST ONLY be true if `affinity_score` >= 65.
-8. `affinity_analysis` must be concise and factual: mention fit factors, gaps, and any hard blockers.
+2. TRANSFERABILITY RULE: For cross-domain candidates, explicitly assess which transferable skills (project management, leadership, communication, data analysis, logistics coordination, etc.) apply to the job. A career-changer_friendly job with entry_barrier=none/low may be a good match even with zero domain overlap.
+3. DEALBREAKER PENALTY: If the candidate has stated DEALBREAKERS and the job triggers one, cap `affinity_score` at 20 and set `worth_applying` to false. State which dealbreaker was hit.
+4. LANGUAGE MISMATCH PENALTY: If the job EXPLICITLY requires a language the candidate DOES NOT speak, cap `affinity_score` at 30 and set `worth_applying` to false.
+5. EDUCATION MISMATCH PENALTY: If the job explicitly requires a University Degree (Bachelor/Master/PhD) and the candidate has no degree, cap `affinity_score` at 40 and set `worth_applying` to false. However, entry_barrier=none/low jobs should NOT apply this penalty.
+6. SENIORITY RANGE: If the candidate has a seniority range (min-max), score is not penalized if the job falls within that range. Only penalize extreme mismatches.
+7. USER INSTRUCTIONS PENALTY: If the job explicitly violates a constraint stated in instructions/strategy, cap `affinity_score` at 20 and set `worth_applying` to false.
+8. ENTRY BARRIER BONUS: If the candidate is flexible (open_to_unrelated=true) and the job has entry_barrier=none or career_changer_friendly=true, BOOST the intent_match_score — these jobs are easier to get into for career changers.
+9. BASE SCORING: Score 0-100 realistically. Score 90-100 ONLY for a virtually perfect match to WHAT THE CANDIDATE WANTS.
+10. `worth_applying` MUST ONLY be true if `affinity_score` >= 65.
+11. `affinity_analysis` must be concise and factual: mention fit factors, transferable skills relevance, gaps, and any hard blockers. Max 800 chars.
 
 DIMENSIONAL SCORING: Also produce sub-scores (0-100 each):
-- `skill_match_score`: How well candidate skills (CV + intent_skills) align with job requirements
-- `experience_match_score`: Experience level fit (years, seniority)
-- `intent_match_score`: How well the job matches what the candidate WANTS (role_description + intent keywords)
+- `skill_match_score`: How well candidate skills (CV + transferable + intent_skills) align with job required+preferred skills
+- `experience_match_score`: Experience level fit (years, seniority) — use seniority range for tolerance
+- `intent_match_score`: How well the job matches what the candidate WANTS (role description + intent keywords + role_type match)
 - `language_match_score`: Language requirements fit
 - `location_match_score`: Location / remote preference fit
+- `transferability_score`: How well candidate's transferable skills + cross-domain experience apply to this specific job (0=no overlap, 100=perfect transferable fit)
+- `qualification_gap_score`: How relevant candidate's qualification is for THIS job — consider domain relevance (a CS bachelor for warehouse work = low relevance but high accessibility if entry_barrier=none)
 
 Return ONLY JSON with a "results" array, one entry per job, IN ORDER:
 {{
@@ -880,7 +969,9 @@ Return ONLY JSON with a "results" array, one entry per job, IN ORDER:
             "experience_match_score": 90,
             "intent_match_score": 88,
             "language_match_score": 100,
-            "location_match_score": 75
+            "location_match_score": 75,
+            "transferability_score": 70,
+            "qualification_gap_score": 50
         }}
     ]
 }}"""
@@ -901,6 +992,8 @@ Return ONLY JSON with a "results" array, one entry per job, IN ORDER:
                         "intent_match_score": None,
                         "language_match_score": None,
                         "location_match_score": None,
+                        "transferability_score": None,
+                        "qualification_gap_score": None,
                     }
                 )
                 continue
@@ -930,6 +1023,8 @@ Return ONLY JSON with a "results" array, one entry per job, IN ORDER:
                     "intent_match_score": _coerce_sub_score(item.get("intent_match_score")),
                     "language_match_score": _coerce_sub_score(item.get("language_match_score")),
                     "location_match_score": _coerce_sub_score(item.get("location_match_score")),
+                    "transferability_score": _coerce_sub_score(item.get("transferability_score")),
+                    "qualification_gap_score": _coerce_sub_score(item.get("qualification_gap_score")),
                 }
             )
 
@@ -944,6 +1039,8 @@ Return ONLY JSON with a "results" array, one entry per job, IN ORDER:
                     "intent_match_score": None,
                     "language_match_score": None,
                     "location_match_score": None,
+                    "transferability_score": None,
+                    "qualification_gap_score": None,
                 }
             )
 
@@ -1034,7 +1131,7 @@ Return ONLY JSON with a "results" array, one entry per job, IN ORDER:
             "Extract only explicit evidence from each posting and return compact structured JSON in the same order. "
             "Do not infer or invent requirements that are not stated."
         )
-        user_prompt = f"""Normalize each job below.
+        user_prompt = f"""Normalize each job below. Extract structured fields for precise job-candidate matching.
 
 Output one object per job with ALL keys below:
 - title           : normalized job title (string)
@@ -1053,9 +1150,19 @@ Output one object per job with ALL keys below:
 - salary_min_chf  : integer CHF/year minimum or null
 - salary_max_chf  : integer CHF/year maximum or null
 - required_languages : list of {{code (ISO 639-1 2-letter lowercase), level (CEFR A1-C2 or \"native\")}} — only languages EXPLICITLY required
-- required_skills : list of concrete technical/domain skills (strings) — max 15, no soft-skills
+- required_skills : list of MUST-HAVE concrete technical/domain skills (strings) — max 15, no soft-skills; these are non-negotiable requirements
+- preferred_skills : list of NICE-TO-HAVE skills — mentioned as \"ideally\", \"von Vorteil\", \"a plus\", \"preferred\" — max 10
+- soft_skills     : interpersonal/organizational skills explicitly mentioned (e.g. \"team player\", \"communication\", \"problem solving\") — max 8
+- physical_requirements : list of physical demands EXPLICITLY stated (e.g. [\"heavy lifting\", \"standing 8+ hours\", \"forklift operation\", \"outdoor work\"]) — null/empty if none or non-manual job
+- entry_barrier   : \"none\" | \"low\" | \"medium\" | \"high\" — overall accessibility of the role:
+    - \"none\": no qualifications/experience required, welcomes complete beginners
+    - \"low\": vocational training or 1-2 years experience expected
+    - \"medium\": bachelor degree or 3-5 years experience required
+    - \"high\": master/PhD or 7+ years of specialized experience required
+- career_changer_friendly : true if the posting EXPLICITLY says any of: \"Quereinsteiger willkommen\", \"career changers welcome\", \"training provided\", \"no prior experience required\", \"we train you\", \"Einarbeitung wird geboten\" — false otherwise
 - education_levels : list of education degree strings explicitly required
-- key_requirements : list of important hard requirements not covered above (e.g. \"Swiss work permit\", \"clean driving licence\", \"physical fitness\")
+- key_requirements : list of important general requirements not covered above (e.g. \"Swiss work permit\", \"clean driving licence\", \"physical fitness\")
+- hard_blockers   : list of ABSOLUTE non-negotiable requirements; certifications/permits that make the role impossible without (e.g. [\"valid Swiss work permit B/C\", \"type B driving license\", \"forklift operator certificate\"])
 - confidence      : 0.0-1.0 reflecting how much explicit data supported the extraction (>0.7 only when most fields are explicitly stated)
 
 DOMAIN RULES:
@@ -1076,6 +1183,8 @@ ROLE_TYPE RULES:
 - \"professional\" for law, medicine, finance, specialized non-technical expertise
 - \"creative\" for design, marketing, content, media
 - \"managerial\" for team leads, managers, directors
+
+REQUIRED vs PREFERRED SKILLS RULE: Only list in required_skills if the posting uses mandatory language (\"you must have\", \"Voraussetzung\", \"required\", \"Kenntnisse\", \"zwingend\"). Use preferred_skills for optional language (\"ideally\", \"nice to have\", \"von Vorteil\", \"ein Plus\", \"preferred\").
 
 {jobs_text}
 
@@ -1100,8 +1209,14 @@ Return ONLY JSON:
       \"salary_max_chf\": null,
       \"required_languages\": [{{\"code\": \"de\", \"level\": \"B2\"}}],
       \"required_skills\": [\"forklift license\"],
+      \"preferred_skills\": [\"warehouse management system\"],
+      \"soft_skills\": [\"team player\", \"reliable\"],
+      \"physical_requirements\": [\"heavy lifting\", \"standing 8+ hours\"],
+      \"entry_barrier\": \"low\",
+      \"career_changer_friendly\": false,
       \"education_levels\": [],
       \"key_requirements\": [\"Swiss permit\"],
+      \"hard_blockers\": [\"valid Swiss work permit\"],
       \"confidence\": 0.75
     }}
   ]
@@ -1127,6 +1242,14 @@ Return ONLY JSON:
 
             industry_sector = str(row.get("industry_sector") or "").strip() or None
 
+            # career_changer_friendly: only accept explicit True; default to False
+            ccf_raw = row.get("career_changer_friendly")
+            career_changer_friendly = bool(ccf_raw) if isinstance(ccf_raw, bool) else False
+
+            _valid_barriers = {"none", "low", "medium", "high"}
+            barrier_raw = str(row.get("entry_barrier") or "").strip().lower()
+            entry_barrier = barrier_raw if barrier_raw in _valid_barriers else None
+
             normalized_rows.append(
                 {
                     "title": str(row.get("title") or jobs[idx].get("title") or "").strip() or None,
@@ -1146,8 +1269,14 @@ Return ONLY JSON:
                     "salary_max_chf": self._coerce_nullable_int(row.get("salary_max_chf")),
                     "required_languages": self._normalize_required_languages(row.get("required_languages")),
                     "required_skills": self._dedupe_string_list(row.get("required_skills")),
+                    "preferred_skills": self._dedupe_string_list(row.get("preferred_skills")),
+                    "soft_skills": self._dedupe_string_list(row.get("soft_skills")),
+                    "physical_requirements": self._dedupe_string_list(row.get("physical_requirements")),
+                    "entry_barrier": entry_barrier,
+                    "career_changer_friendly": career_changer_friendly,
                     "education_levels": self._dedupe_string_list(row.get("education_levels")),
                     "key_requirements": self._dedupe_string_list(row.get("key_requirements")),
+                    "hard_blockers": self._dedupe_string_list(row.get("hard_blockers")),
                     "confidence": confidence,
                 }
             )

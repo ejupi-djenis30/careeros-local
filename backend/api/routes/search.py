@@ -44,9 +44,14 @@ async def upload_cv(
     user_id: int = Depends(get_current_user_id),
 ):
     MAX_FILE_SIZE = settings.MAX_UPLOAD_FILE_SIZE
-    if file.size and file.size > MAX_FILE_SIZE:
+    # Read content first so we can check the real size regardless of whether
+    # the client sends a Content-Length header (file.size may be None).
+    content = await file.read()
+    if len(content) > MAX_FILE_SIZE:
         raise HTTPException(status_code=400, detail="File too large. Maximum size is 10MB.")
-        
+    # Rewind so extract_text_from_file can read it again
+    await file.seek(0)
+
     text = await extract_text_from_file(file)
     return {"text": text, "filename": file.filename}
 

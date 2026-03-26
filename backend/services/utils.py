@@ -20,19 +20,43 @@ def clean_html_tags(text: str) -> str:
     # Normalize whitespace
     return " ".join(clean.split())
 
+_ALLOWED_EXTENSIONS = {".pdf", ".txt", ".md"}
+# Content types that are explicitly NOT allowed regardless of extension.
+# Empty/None and generic "application/octet-stream" are permitted since many
+# clients and OS file pickers omit or genericize the content-type header.
+_BLOCKED_CONTENT_TYPES = {
+    "image/jpeg", "image/png", "image/gif", "image/webp", "image/bmp",
+    "video/mp4", "video/avi", "video/quicktime",
+    "audio/mpeg", "audio/wav",
+    "application/zip", "application/x-rar-compressed",
+    "application/x-msdownload", "application/x-executable",
+    "application/javascript", "text/javascript",
+    "application/x-sh", "application/x-csh", "application/x-python-code",
+}
+
 async def extract_text_from_file(file: UploadFile) -> str:
-    content_type = file.content_type
-    filename = file.filename.lower()
-    
+    content_type = (file.content_type or "").split(";")[0].strip().lower()
+    filename = (file.filename or "").lower()
+    ext = next((e for e in _ALLOWED_EXTENSIONS if filename.endswith(e)), None)
+
+    if ext is None:
+        raise HTTPException(status_code=400, detail="Unsupported file type. Please upload PDF, TXT, or MD.")
+
+    # Block content types that are explicitly mismatched (e.g. images, executables).
+    # Empty or generic content-type is allowed since OS/browsers often omit it.
+    if content_type and content_type in _BLOCKED_CONTENT_TYPES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"File content type '{content_type}' is not allowed.",
+        )
+
     try:
-        if filename.endswith(".pdf"):
+        if ext == ".pdf":
             content = await file.read()
             return await asyncio.to_thread(_extract_from_pdf, content)
-        elif filename.endswith(".txt") or filename.endswith(".md"):
+        else:  # .txt or .md
             content = await file.read()
             return content.decode("utf-8")
-        else:
-            raise HTTPException(status_code=400, detail="Unsupported file type. Please upload PDF, TXT, or MD.")
     except HTTPException:
         raise
     except Exception as e:
