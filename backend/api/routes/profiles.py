@@ -1,6 +1,6 @@
 from typing import List
 from fastapi import APIRouter, Depends
-from backend.api.deps import get_current_user_id, get_profile_service
+from backend.api.deps import get_current_user_id, profile_service_dep
 from backend.services.profile_service import ProfileService
 from backend.schemas import SearchProfile, SearchProfileCreate, SearchProfileUpdate, ScheduleToggle
 
@@ -11,7 +11,7 @@ def read_profiles(
     skip: int = 0,
     limit: int = 100,
     user_id: int = Depends(get_current_user_id),
-    profile_service: ProfileService = Depends(get_profile_service)
+    profile_service: ProfileService = Depends(profile_service_dep)
 ):
     return profile_service.get_profiles_by_user(user_id, skip=skip, limit=limit)
 
@@ -19,7 +19,7 @@ def read_profiles(
 def create_profile(
     profile_in: SearchProfileCreate,
     user_id: int = Depends(get_current_user_id),
-    profile_service: ProfileService = Depends(get_profile_service)
+    profile_service: ProfileService = Depends(profile_service_dep)
 ):
     return profile_service.create_profile(user_id, profile_in)
 
@@ -28,7 +28,7 @@ def toggle_schedule(
     profile_id: int,
     schedule: ScheduleToggle,
     user_id: int = Depends(get_current_user_id),
-    profile_service: ProfileService = Depends(get_profile_service)
+    profile_service: ProfileService = Depends(profile_service_dep)
 ):
     return profile_service.toggle_schedule(user_id, profile_id, schedule)
 
@@ -37,14 +37,15 @@ def update_profile(
     profile_id: int,
     profile_in: SearchProfileUpdate,
     user_id: int = Depends(get_current_user_id),
-    profile_service: ProfileService = Depends(get_profile_service)
+    profile_service: ProfileService = Depends(profile_service_dep)
 ):
     return profile_service.update_profile(user_id, profile_id, profile_in)
+
 @router.delete("/{profile_id}")
 def delete_profile(
     profile_id: int,
     user_id: int = Depends(get_current_user_id),
-    profile_service: ProfileService = Depends(get_profile_service)
+    profile_service: ProfileService = Depends(profile_service_dep)
 ):
     profile_service.delete_profile(user_id, profile_id)
     return {"status": "ok"}

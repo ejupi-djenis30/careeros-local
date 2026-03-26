@@ -23,9 +23,14 @@ COPY backend ./backend
 COPY alembic ./alembic
 COPY alembic.ini .
 
+# Run as non-root for security
+RUN addgroup --system appuser && adduser --system --ingroup appuser appuser \
+    && chown -R appuser:appuser /app
+USER appuser
+
 # Expose the port the app runs on
 EXPOSE 8000
 
-# Command to run the application
-# We use a shell script or simple command chain to run migrations then start app
-CMD ["sh", "-c", "alembic upgrade head && uvicorn backend.main:app --host 0.0.0.0 --port 8000"]
+# Migrations are handled by docker-compose `command:` which has the correct DATABASE_URL.
+# This CMD is the fallback for standalone runs (dev/test).
+CMD ["uvicorn", "backend.main:app", "--host", "0.0.0.0", "--port", "8000"]

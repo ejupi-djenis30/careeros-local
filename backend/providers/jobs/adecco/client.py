@@ -80,6 +80,11 @@ class AdeccoProvider(BaseJobProvider):
         return "adecco"
 
     @property
+    def throttle_delay(self) -> float:
+        """Adecco API rate-limits aggressive crawling; pause 1 second between pages."""
+        return 1.0
+
+    @property
     def display_name(self) -> str:
         return "Adecco.ch"
 

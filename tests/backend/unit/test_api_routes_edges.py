@@ -74,12 +74,12 @@ def test_auth_deps_user_not_found():
 
 # --- PROFILES ROUTE ---
 def test_profiles_update():
-    from backend.api.deps import get_current_user_id, get_profile_service, get_db
+    from backend.api.deps import get_current_user_id, profile_service_dep, get_db
     app.dependency_overrides[get_current_user_id] = lambda: 1
     app.dependency_overrides[get_db] = lambda: MagicMock()
     mock_service = MagicMock()
     mock_service.update_profile.return_value = {"id": 1, "name": "updated", "role_description": "test", "location_filter": "test", "created_at": "2024-01-01T00:00:00"}
-    app.dependency_overrides[get_profile_service] = lambda: mock_service
+    app.dependency_overrides[profile_service_dep] = lambda: mock_service
     try:
         response = client.patch("/api/v1/profiles/1", json={"name": "updated", "role_description": "test"})
         assert response.status_code == 200
@@ -89,11 +89,11 @@ def test_profiles_update():
 
 # --- JOBS ROUTE ---
 def test_jobs_delete():
-    from backend.api.deps import get_current_user_id, get_job_service, get_db
+    from backend.api.deps import get_current_user_id, job_service_dep, get_db
     app.dependency_overrides[get_current_user_id] = lambda: 1
     app.dependency_overrides[get_db] = lambda: MagicMock()
     mock_service = MagicMock()
-    app.dependency_overrides[get_job_service] = lambda: mock_service
+    app.dependency_overrides[job_service_dep] = lambda: mock_service
     try:
         response = client.delete("/api/v1/jobs/1")
         assert response.status_code == 204

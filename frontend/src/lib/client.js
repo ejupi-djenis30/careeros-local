@@ -81,36 +81,63 @@ export class ApiClient {
 
     static async request(endpoint, options = {}) {
         const url = `${API_BASE}${endpoint}`;
+        const defaultHeaders = this.getHeaders();
+        const providedHeaders = options.headers ?? {};
+        const isFormData = typeof FormData !== "undefined" && options.body instanceof FormData;
+
+        if (isFormData) {
+            delete defaultHeaders["Content-Type"];
+        }
+
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 30000);
+
+        // Forward an optional caller-supplied abort signal so callers can cancel
+        // in-flight requests (e.g. on component unmount) without needing their
+        // own timeout mechanism.
+        if (options.signal) {
+            if (options.signal.aborted) {
+                clearTimeout(timeoutId);
+                throw new DOMException('Aborted', 'AbortError');
+            }
+            options.signal.addEventListener('abort', () => controller.abort(), { once: true });
+        }
+
         const config = {
             credentials: 'include',
             ...options,
             headers: {
-                ...this.getHeaders(),
-                ...options.headers,
+                ...defaultHeaders,
+                ...providedHeaders,
             },
+            signal: controller.signal,
         };
 
-        let response = await fetch(url, config);
+        try {
+            let response = await fetch(url, config);
 
-        if (response.status === 401) {
-            const retryRes = await this._handleUnauthorized(url, config);
-            if (retryRes) response = retryRes;
-            else throw new Error("UNAUTHORIZED");
+            if (response.status === 401) {
+                const retryRes = await this._handleUnauthorized(url, config);
+                if (retryRes) response = retryRes;
+                else throw new Error("UNAUTHORIZED");
+            }
+
+            if (!response.ok) {
+                const errorData = await response.json().catch(() => ({}));
+                const errMsg = this._extractErrorMessage(errorData, "API Request Failed");
+                this._dispatchApiError(errMsg);
+                throw new Error(errMsg);
+            }
+
+            if (response.status === 204) return null;
+            return response.json();
+        } finally {
+            clearTimeout(timeoutId);
         }
-
-        if (!response.ok) {
-            const errorData = await response.json().catch(() => ({}));
-            const errMsg = this._extractErrorMessage(errorData, "API Request Failed");
-            this._dispatchApiError(errMsg);
-            throw new Error(errMsg);
-        }
-
-        if (response.status === 204) return null;
-        return response.json();
     }
 
-    static async get(endpoint) {
-        return this.request(endpoint, { method: "GET" });
+    static async get(endpoint, signal) {
+        return this.request(endpoint, { method: "GET", signal });
     }
 
     static async post(endpoint, body) {

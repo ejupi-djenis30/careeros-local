@@ -1,7 +1,7 @@
 from unittest.mock import patch, MagicMock
 from fastapi.testclient import TestClient
 from backend.main import app
-from backend.api.deps import get_current_user_id, get_db, get_job_service, get_profile_service
+from backend.api.deps import get_current_user_id, get_db, job_service_dep, profile_service_dep
 from backend.services.search_service import SearchService
 
 client = TestClient(app, raise_server_exceptions=False)
@@ -12,7 +12,7 @@ def test_jobs_routes_full():
     mock_job_service.create_job.return_value = {"id": 1, "title": "new", "company": "comp", "external_url": "url", "description": "desc"}
     mock_job_service.update_job.return_value = {"id": 1, "title": "updated"}
     mock_job_service.get_jobs_by_user.return_value = {"items": [], "total": 0, "page": 1, "size": 20, "pages": 0, "total_applied": 0, "avg_score": 0}
-    app.dependency_overrides[get_job_service] = lambda: mock_job_service
+    app.dependency_overrides[job_service_dep] = lambda: mock_job_service
     
     # 1. read_jobs without filters (lines 30-41)
     client.get("/api/v1/jobs/")
@@ -64,7 +64,7 @@ def test_profiles_routes_full():
     mock_profile_service = MagicMock()
     mock_profile_service.get_profiles_by_user.return_value = [{"id": 1, "name": "hi", "role_description": "dev", "location_filter": "us", "created_at": "2024-01-01T00:00:00"}]
     mock_profile_service.create_profile.return_value = {"id": 1, "name": "hi", "role_description": "dev", "location_filter": "us", "created_at": "2024-01-01T00:00:00"}
-    app.dependency_overrides[get_profile_service] = lambda: mock_profile_service
+    app.dependency_overrides[profile_service_dep] = lambda: mock_profile_service
     
     # 1. get_profiles
     client.get("/api/v1/profiles/")
@@ -203,7 +203,7 @@ def test_run_search_background_wrapper():
         mock_fresh_db.close.assert_called()
 
 def test_deps_full():
-    from backend.api.deps import get_current_user_id, get_job_service, get_profile_service
+    from backend.api.deps import get_current_user_id, job_service_dep, profile_service_dep
     from fastapi import HTTPException
     import pytest
     
@@ -218,11 +218,11 @@ def test_deps_full():
         
     # Evaluate job/profile service wrappers
     with patch("backend.services.job_service.get_job_service") as mock_js:
-        get_job_service(mock_db)
+        job_service_dep(mock_db)
         mock_js.assert_called_with(mock_db)
         
     with patch("backend.services.profile_service.get_profile_service") as mock_ps:
-        get_profile_service(mock_db)
+        profile_service_dep(mock_db)
         mock_ps.assert_called_with(mock_db)
 
     # test success

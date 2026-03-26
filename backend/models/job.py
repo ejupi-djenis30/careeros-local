@@ -95,6 +95,9 @@ class ScrapedJob(BaseModel, TimestampMixin):
 
 class Job(BaseModel, TimestampMixin):
     __tablename__ = "jobs"
+    __table_args__ = (
+        UniqueConstraint('user_id', 'scraped_job_id', 'search_profile_id', name='uq_job_user_scraped_profile'),
+    )
 
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
     search_profile_id = Column(Integer, ForeignKey("search_profiles.id"), nullable=True, index=True)

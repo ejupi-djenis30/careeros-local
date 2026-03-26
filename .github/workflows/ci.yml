@@ -49,7 +49,21 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt
+          pip install -r requirements.txt -r requirements-dev.txt
+
+      - name: Validate Alembic migrations (SQLite)
+        env:
+          SECRET_KEY: ci-test-secret-key-not-for-production
+          DATABASE_URL: sqlite:///./migration_test.db
+        run: |
+          alembic upgrade head
+
+      - name: Validate Alembic migrations (PostgreSQL)
+        env:
+          SECRET_KEY: ci-test-secret-key-not-for-production
+          DATABASE_URL: postgresql://testuser:testpass@localhost:5432/testdb
+        run: |
+          alembic upgrade head
 
       - name: Run tests (SQLite)
         env:

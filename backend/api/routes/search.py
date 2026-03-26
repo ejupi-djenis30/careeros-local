@@ -18,6 +18,7 @@ from backend.services.search_status import (
 from backend.services.utils import extract_text_from_file
 from backend.schemas.profile import StartSearchRequest
 from backend.services.search_service import get_search_service
+from backend.core.config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -42,7 +43,7 @@ async def upload_cv(
     file: UploadFile = File(...),
     user_id: int = Depends(get_current_user_id),
 ):
-    MAX_FILE_SIZE = 10 * 1024 * 1024  # 10 MB
+    MAX_FILE_SIZE = settings.MAX_UPLOAD_FILE_SIZE
     if file.size and file.size > MAX_FILE_SIZE:
         raise HTTPException(status_code=400, detail="File too large. Maximum size is 10MB.")
         

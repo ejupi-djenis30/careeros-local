@@ -9,6 +9,12 @@ class JobProvider(ABC):
         """The unique identifier name of the provider."""
         pass
 
+    @property
+    def throttle_delay(self) -> float:
+        """Delay in seconds to pause between paginated requests for this provider.
+        Override in subclasses that require rate-limit throttling (e.g. Adecco)."""
+        return 0.0
+
     @abstractmethod
     def get_provider_info(self) -> ProviderInfo:
         """Get the provider's capabilities and description for the LLM."""

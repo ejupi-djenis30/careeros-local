@@ -33,10 +33,10 @@ def get_current_user_id(token: str = Depends(oauth2_scheme), db: Session = Depen
         raise HTTPException(status_code=401, detail="User not found")
     return user.id
 
-def get_job_service(db: Session = Depends(get_db)):
+def job_service_dep(db: Session = Depends(get_db)):
     from backend.services.job_service import get_job_service
     return get_job_service(db)
 
-def get_profile_service(db: Session = Depends(get_db)):
+def profile_service_dep(db: Session = Depends(get_db)):
     from backend.services.profile_service import get_profile_service
     return get_profile_service(db)

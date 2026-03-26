@@ -1,6 +1,6 @@
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
-from backend.api.deps import get_current_user_id, get_job_service
+from backend.api.deps import get_current_user_id, job_service_dep
 from backend.services.job_service import JobService
 from backend.schemas import JobResponse, JobCreate, JobUpdate, JobPaginationResponse
 
@@ -25,7 +25,7 @@ def read_jobs(
     page_size: int = Query(20, ge=1, le=100),
     # ── Auth & DI ──
     user_id: int = Depends(get_current_user_id),
-    job_service: JobService = Depends(get_job_service),
+    job_service: JobService = Depends(job_service_dep),
 ):
     filters = {
         "min_score": min_score,
@@ -45,7 +45,7 @@ def read_jobs(
 def create_job(
     job_in: JobCreate,
     user_id: int = Depends(get_current_user_id),
-    job_service: JobService = Depends(get_job_service),
+    job_service: JobService = Depends(job_service_dep),
 ):
     return job_service.create_job(user_id, job_in)
 
@@ -55,7 +55,7 @@ def update_job(
     job_id: int,
     updates: JobUpdate,
     user_id: int = Depends(get_current_user_id),
-    job_service: JobService = Depends(get_job_service),
+    job_service: JobService = Depends(job_service_dep),
 ):
     return job_service.update_job(user_id, job_id, updates)
 
@@ -63,6 +63,6 @@ def update_job(
 def delete_job(
     job_id: int,
     user_id: int = Depends(get_current_user_id),
-    job_service: JobService = Depends(get_job_service),
+    job_service: JobService = Depends(job_service_dep),
 ):
     job_service.delete_job(user_id, job_id)

@@ -40,8 +40,6 @@ class JobCreate(JobBase):
 class JobUpdate(BaseModel):
     """Update schema — only allows updating user-specific interaction flags."""
     applied: Optional[bool] = None
-    title: Optional[str] = None
-    company: Optional[str] = None
 
 
 class NormalizedJobData(BaseModel):

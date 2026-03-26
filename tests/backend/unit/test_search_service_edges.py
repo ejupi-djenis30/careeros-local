@@ -173,7 +173,8 @@ async def test_run_search_cv_summarization_and_unexpected(mock_service):
          patch("backend.services.search_service.llm_service.summarize_cv", return_value="Short CV"), \
          patch.object(mock_service, "_normalize_user_profile", new=AsyncMock(return_value={})), \
          patch.object(mock_service, "_deduplicate") as mock_dedup, \
-         patch.object(mock_service, "_relevance_filter", return_value=[]), \
+         patch.object(mock_service, "_persist_scraped_job_catalog", new=AsyncMock(return_value=(0, 0))), \
+         patch.object(mock_service, "_normalize_persisted_jobs", new=AsyncMock(return_value=0)), \
          patch.object(mock_service, "_analyze_and_save", return_value=(0,0)), \
          patch.object(mock_service, "_generate_plan", return_value=[{"query":"dev"}]), \
          patch.object(mock_service.profile_repo, "get") as mock_get_profile:
@@ -218,30 +219,6 @@ async def test_generate_plan_empty_query(mock_service):
         res = await mock_service._generate_plan(1, {}, profile, {})
         assert len(res) == 1
         assert res[0]["query"] == "dev"
-
-async def test_relevance_filter_exception(mock_service):
-    job = MagicMock()
-    job.title = "test"
-    job.company = MagicMock()
-    job.company.name = "test"
-    job.descriptions = [MagicMock(description="desc")]
-    job._summary = None
-    with patch("backend.services.search_service.llm_service.check_relevance_batch", side_effect=Exception("relevance fail")), \
-         patch("backend.services.search_service.settings.SEARCH_RELEVANCE_FALLBACK_MODE", "conservative"):
-        res = await mock_service._relevance_filter(1, {}, [job])
-        assert len(res) == 0
-
-async def test_relevance_filter_exception_keep_mode(mock_service):
-    job = MagicMock()
-    job.title = "test"
-    job.company = MagicMock()
-    job.company.name = "test"
-    job.descriptions = [MagicMock(description="desc")]
-    job._summary = None
-    with patch("backend.services.search_service.llm_service.check_relevance_batch", side_effect=Exception("relevance fail")), \
-         patch("backend.services.search_service.settings.SEARCH_RELEVANCE_FALLBACK_MODE", "keep"):
-        res = await mock_service._relevance_filter(1, {}, [job])
-        assert len(res) == 1
 
 async def test_generate_plan_uses_cache_metadata_when_inputs_match(mock_service):
     profile = MagicMock(max_queries=5, max_occupation_queries=None, max_keyword_queries=None)
@@ -366,7 +343,7 @@ async def test_save_single_job_invalid_publication_date_logs_warning(mock_servic
     mock_session = mock_service.job_repo.db
     mock_session.query.return_value.filter.return_value.first.return_value = None
 
-    with patch("backend.services.search_service.logger") as mock_logger:
+    with patch("backend.services.search.listing_utils.logger") as mock_logger:
         await mock_service._save_single_job(
             listing,
             {"affinity_score": 80, "affinity_analysis": "ok", "worth_applying": True},
@@ -600,6 +577,7 @@ async def test_execute_searches_flow(mock_service):
 async def test_execute_searches_aborts_and_pagination(mock_service):
     searches = [{"query": "dev", "domain": "IT", "type": "keyword"}]
     mock_adecco = AsyncMock()
+    mock_adecco.throttle_delay = 0.0  # real providers return float; avoid AsyncMock > int TypeError
     # Mock search so it produces 3 pages, giving the loop a chance to stop mid-run
     mock_adecco.search = AsyncMock()
     mock_adecco.search.return_value = MagicMock(items=[MagicMock()], total_pages=3, total_count=3)
@@ -623,6 +601,7 @@ async def test_execute_searches_aborts_and_pagination(mock_service):
 async def test_execute_searches_continues_beyond_five_pages(mock_service):
     searches = [{"query": "dev", "domain": "IT", "type": "keyword"}]
     mock_provider = AsyncMock()
+    mock_provider.throttle_delay = 0.0  # real providers return float; avoid AsyncMock > int TypeError
     mock_provider.search = AsyncMock(side_effect=[
         MagicMock(items=[MagicMock(id=f"job-{idx}", external_url=f"http://example.com/{idx}")], total_pages=6, total_count=6)
         for idx in range(6)
@@ -686,12 +665,6 @@ async def test_execute_searches_incompatible_or_stopped(mock_service):
             patch("backend.services.search_service.route_provider_names", return_value=[]):
         res = await mock_service._execute_searches(1, MagicMock(), [{"query":"t"}], {})
         assert res == []
-
-async def test_relevance_filter_drops(mock_service):
-    job = MagicMock()
-    with patch("backend.services.search_service.llm_service.check_relevance_batch", return_value=[False]):
-        res = await mock_service._relevance_filter(1, {}, [job])
-        assert len(res) == 0
 
 async def test_run_search_finally_nameerror(mock_service):
     # simulate available_providers not defined NameError

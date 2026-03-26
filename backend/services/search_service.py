@@ -1,4 +1,4 @@
-import asyncio
+﻿import asyncio
 import hashlib
 import inspect
 import json
@@ -15,6 +15,22 @@ from backend.services.llm_service import llm_service
 from backend.services.search.search_validator import build_search_request
 from backend.services.utils import geocode_location, calculate_distance, haversine_distance, clean_html_tags
 from backend.core.config import settings
+from backend.services.search.listing_utils import (
+    normalized_text_token,
+    coerce_int,
+    coerce_string_list,
+    extract_company_name,
+    listing_identity_key,
+    listing_url_token,
+    listing_fuzzy_key,
+    listing_is_remote,
+    extract_salary_max_chf,
+    extract_listing_description_text,
+    extract_listing_location_string,
+    extract_listing_workload_string,
+    parse_listing_publication_date,
+    bootstrap_normalized_job_data,
+)
 
 from backend.providers.jobs.jobroom.client import JobRoomProvider
 from backend.providers.jobs.swissdevjobs.client import SwissDevJobsProvider
@@ -84,80 +100,17 @@ class SearchService:
         if AdeccoProvider:
             self.providers["adecco"] = AdeccoProvider()
 
-    def _normalized_text_token(self, value: str) -> str:
-        if not isinstance(value, str):
-            return ""
-        text = re.sub(r"[^\w\s]", " ", (value or "").lower())
-        return " ".join(text.split())
-
-    def _extract_company_name(self, listing) -> str:
-        company_obj = getattr(listing, "company", None)
-        if hasattr(company_obj, "name"):
-            return company_obj.name or ""
-        if isinstance(company_obj, str):
-            return company_obj
-        return ""
-
-    def _listing_identity_key(self, listing) -> Optional[str]:
-        platform = getattr(listing, "source", None) or getattr(listing, "platform", None)
-        platform_id = getattr(listing, "id", None) or getattr(listing, "platform_job_id", None)
-        if platform and platform_id:
-            return f"{platform}:{platform_id}"
-        return None
-
-    def _listing_url_token(self, listing) -> str:
-        url = getattr(listing, "external_url", None) or getattr(listing, "url", None) or ""
-        return (url or "").strip().lower()
-
-    def _listing_fuzzy_key(self, listing) -> str:
-        title = self._normalized_text_token(getattr(listing, "title", ""))
-        company = self._normalized_text_token(self._extract_company_name(listing))
-        if not title and not company:
-            return ""
-        return f"{title}::{company}"
-
-    def _coerce_int(self, value, default=None):
-        if value is None or isinstance(value, bool):
-            return default
-        if isinstance(value, int):
-            return value
-        if isinstance(value, str):
-            text = value.strip()
-            if not text:
-                return default
-            try:
-                return int(text)
-            except ValueError:
-                return default
-        return default
-
-    def _coerce_string_list(self, value, normalizer) -> List[str]:
-        if value is None:
-            return []
-        if isinstance(value, str):
-            value = [item.strip() for item in value.split(",")]
-        if not isinstance(value, list):
-            return []
-        normalized: List[str] = []
-        seen = set()
-        for item in value:
-            token = normalizer(item)
-            if not token or token in seen:
-                continue
-            seen.add(token)
-            normalized.append(token)
-        return normalized
 
     def _profile_preferences(self, profile) -> Dict[str, Any]:
         remote_pref = get_profile_preference(profile, "remote_only", False)
         return {
-            "preferred_languages": self._coerce_string_list(get_profile_preference(profile, "preferred_languages"), normalize_language),
-            "preferred_domains": self._coerce_string_list(get_profile_preference(profile, "preferred_domains"), normalize_domain),
+            "preferred_languages": coerce_string_list(get_profile_preference(profile, "preferred_languages"), normalize_language),
+            "preferred_domains": coerce_string_list(get_profile_preference(profile, "preferred_domains"), normalize_domain),
             "remote_only": remote_pref if isinstance(remote_pref, bool) else False,
-            "salary_min_chf": self._coerce_int(get_profile_preference(profile, "salary_min_chf"), None),
-            "workload_min": self._coerce_int(get_profile_preference(profile, "workload_min"), None),
-            "workload_max": self._coerce_int(get_profile_preference(profile, "workload_max"), None),
-            "hard_max_distance_km": self._coerce_int(get_profile_preference(profile, "hard_max_distance_km"), None),
+            "salary_min_chf": coerce_int(get_profile_preference(profile, "salary_min_chf"), None),
+            "workload_min": coerce_int(get_profile_preference(profile, "workload_min"), None),
+            "workload_max": coerce_int(get_profile_preference(profile, "workload_max"), None),
+            "hard_max_distance_km": coerce_int(get_profile_preference(profile, "hard_max_distance_km"), None),
         }
 
     def _apply_query_preferences(self, searches: List[Dict[str, Any]], preferences: Dict[str, Any]) -> tuple[List[Dict[str, Any]], Dict[str, int]]:
@@ -181,178 +134,12 @@ class SearchService:
             filtered.append(search)
         return filtered, stats
 
-    def _listing_is_remote(self, listing) -> bool:
-        employment = getattr(listing, "employment", None)
-        work_forms = getattr(employment, "work_forms", None) or []
-        for item in work_forms:
-            token = self._normalized_text_token(str(item))
-            if token in {"home office", "remote", "telework", "teletravail"}:
-                return True
 
-        title = self._normalized_text_token(getattr(listing, "title", ""))
-        desc_text = ""
-        descs = getattr(listing, "descriptions", [])
-        if descs:
-            first = descs[0]
-            desc_text = first.description if hasattr(first, "description") else (first.get("description", "") if isinstance(first, dict) else "")
-        haystack = f"{title} {self._normalized_text_token(desc_text)}"
-        return any(token in haystack for token in ["remote", "home office", "hybrid", "teletravail", "telelavoro"])
 
-    def _extract_salary_max_chf(self, listing) -> Optional[int]:
-        chunks: List[str] = []
-        descs = getattr(listing, "descriptions", [])
-        if descs:
-            first = descs[0]
-            desc_text = first.description if hasattr(first, "description") else (first.get("description", "") if isinstance(first, dict) else "")
-            chunks.append(str(desc_text or ""))
-        raw_data = getattr(listing, "raw_data", None)
-        if raw_data:
-            chunks.append(str(raw_data))
-        text = " ".join(chunks)
-        if not text:
-            return None
 
-        matches = re.findall(r"(?i)(?:chf|sfr|fr\.?)(?:\s*)(\d{2,3}(?:[\s'’.]\d{3})?)", text)
-        if not matches:
-            matches = re.findall(r"(?i)(\d{2,3}(?:[\s'’.]\d{3})?)(?:\s*)(?:chf|sfr|fr\.?)", text)
 
-        values = []
-        for match in matches:
-            digits = re.sub(r"\D", "", match)
-            if not digits:
-                continue
-            try:
-                values.append(int(digits))
-            except ValueError:
-                continue
-        return max(values) if values else None
 
-    def _extract_listing_description_text(self, listing) -> str:
-        descs = getattr(listing, "descriptions", [])
-        if not descs:
-            return ""
-        first = descs[0]
-        return first.description if hasattr(first, "description") else (first.get("description", "") if isinstance(first, dict) else "")
 
-    def _extract_listing_location_string(self, listing) -> str:
-        location = getattr(listing, "location", None)
-        return getattr(location, "city", None) or getattr(listing, "location", "") or ""
-
-    def _extract_listing_workload_string(self, listing) -> str:
-        employment = getattr(listing, "employment", None)
-        if not employment:
-            return ""
-        workload_min = getattr(employment, "workload_min", None)
-        workload_max = getattr(employment, "workload_max", None)
-        if workload_min is None and workload_max is None:
-            return ""
-        if workload_min == workload_max:
-            return f"{workload_min}%"
-        return f"{workload_min}-{workload_max}%"
-
-    def _parse_listing_publication_date(self, listing, platform: str, platform_id: str):
-        publication = getattr(listing, "publication", None)
-        if not publication or not getattr(publication, "start_date", None):
-            return None
-
-        try:
-            date_raw = publication.start_date
-            if "T" in date_raw:
-                return datetime.fromisoformat(date_raw.replace('Z', '+00:00'))
-            return datetime.strptime(date_raw, "%Y-%m-%d")
-        except (TypeError, ValueError) as exc:
-            logger.warning(
-                "Failed to parse publication date %r for %s/%s: %s",
-                publication.start_date,
-                platform,
-                platform_id,
-                exc,
-            )
-            return None
-
-    def _bootstrap_normalized_job_data(self, listing, *, desc_text: str, company_name: str, location_str: str) -> Dict[str, Any]:
-        employment = getattr(listing, "employment", None)
-        workload_min = getattr(employment, "workload_min", None) if employment else None
-        workload_max = getattr(employment, "workload_max", None) if employment else None
-
-        language_requirements = []
-        for skill in getattr(listing, "language_skills", []) or []:
-            code = str(getattr(skill, "language_code", "") or "").strip().lower()
-            level = str(getattr(skill, "spoken_level", "") or "").strip().upper() or None
-            if not code:
-                continue
-            language_requirements.append({
-                "code": code,
-                "level": level,
-            })
-
-        education_levels = []
-        qualification_codes = []
-        for occupation in getattr(listing, "occupations", []) or []:
-            education_code = getattr(occupation, "education_code", None)
-            qualification_code = getattr(occupation, "qualification_code", None)
-            if education_code:
-                token = str(education_code).strip()
-                if token and token not in education_levels:
-                    education_levels.append(token)
-            if qualification_code:
-                token = str(qualification_code).strip()
-                if token and token not in qualification_codes:
-                    qualification_codes.append(token)
-
-        title = clean_html_tags(getattr(listing, "title", "Unknown"))
-        title_lower = title.lower()
-        seniority = None
-        for label, keywords in {
-            "junior": ["junior", "entry", "intern", "trainee", "apprentice"],
-            "mid": ["professional", "specialist", "associate"],
-            "senior": ["senior", "lead", "principal", "head", "director", "manager"],
-        }.items():
-            if any(keyword in title_lower for keyword in keywords):
-                seniority = label
-                break
-
-        experience_values = []
-        for match in re.findall(r"(?i)(\d{1,2})\s*\+?\s*(?:years|year|yrs|yr|anni|jahre|ans)", desc_text or ""):
-            try:
-                experience_values.append(int(match))
-            except ValueError:
-                continue
-
-        salary_max = self._extract_salary_max_chf(listing)
-        remote = self._listing_is_remote(listing)
-
-        return {
-            "normalization_status": "provider_bootstrap",
-            "normalized_at": datetime.now(timezone.utc),
-            "normalization_version": 1,
-            "normalization_source": "provider_bootstrap",
-            "normalization_confidence": 0.35,
-            "normalized_title": title,
-            "normalized_role_family": title,
-            "normalized_domain": "general",
-            "normalized_seniority": seniority,
-            "normalized_employment_mode": "remote" if remote else "on-site",
-            "normalized_contract_type": None,
-            "normalized_qualification_level": qualification_codes[0] if qualification_codes else None,
-            "normalized_experience_min_years": min(experience_values) if experience_values else None,
-            "normalized_experience_max_years": max(experience_values) if experience_values else None,
-            "normalized_workload_min": workload_min,
-            "normalized_workload_max": workload_max,
-            "normalized_salary_min_chf": None,
-            "normalized_salary_max_chf": salary_max,
-            "normalized_required_languages": language_requirements or None,
-            "normalized_required_skills": None,
-            "normalized_education_levels": education_levels or None,
-            "normalized_key_requirements": None,
-            "normalized_metadata": {
-                "bootstrap": True,
-                "provider": getattr(listing, "source", None) or getattr(listing, "platform", "unknown"),
-                "company": company_name,
-                "location": location_str,
-                "qualification_codes": qualification_codes,
-            },
-        }
 
     def _upsert_scraped_job(self, listing) -> tuple[ScrapedJob, bool]:
         platform = getattr(listing, "source", None) or getattr(listing, "platform", "unknown")
@@ -363,12 +150,12 @@ class SearchService:
             ScrapedJob.platform_job_id == platform_id,
         ).first()
 
-        desc_text = self._extract_listing_description_text(listing)
-        company_name = self._extract_company_name(listing) or "Unknown"
-        location_str = self._extract_listing_location_string(listing)
-        workload_str = self._extract_listing_workload_string(listing)
-        pub_date = self._parse_listing_publication_date(listing, platform, platform_id)
-        normalized_bootstrap = self._bootstrap_normalized_job_data(
+        desc_text = extract_listing_description_text(listing)
+        company_name = extract_company_name(listing) or "Unknown"
+        location_str = extract_listing_location_string(listing)
+        workload_str = extract_listing_workload_string(listing)
+        pub_date = parse_listing_publication_date(listing, platform, platform_id)
+        normalized_bootstrap = bootstrap_normalized_job_data(
             listing,
             desc_text=desc_text,
             company_name=company_name,
@@ -625,26 +412,26 @@ class SearchService:
             normalized = {}
 
         if preferences.get("remote_only"):
-            mode_token = self._normalized_text_token(normalized.get("employment_mode", ""))
+            mode_token = normalized_text_token(normalized.get("employment_mode", ""))
             is_remote_like = mode_token in {"remote", "hybrid", "home office", "telework", "teletravail"}
             if mode_token:
                 if not is_remote_like:
                     return False, "remote_only"
-            elif not self._listing_is_remote(listing):
+            elif not listing_is_remote(listing):
                 return False, "remote_only"
 
         salary_min = preferences.get("salary_min_chf")
         if salary_min is not None:
-            normalized_salary_max = self._coerce_int(normalized.get("salary_max_chf"), None)
+            normalized_salary_max = coerce_int(normalized.get("salary_max_chf"), None)
             if normalized_salary_max is None:
-                normalized_salary_max = self._extract_salary_max_chf(listing)
+                normalized_salary_max = extract_salary_max_chf(listing)
             if normalized_salary_max is None or normalized_salary_max < salary_min:
                 return False, "salary_min_chf"
 
         required_min, required_max = self._resolve_required_workload_range(profile_dict, preferences)
         if required_min is not None or required_max is not None:
-            listing_min = self._coerce_int(normalized.get("workload_min"), None)
-            listing_max = self._coerce_int(normalized.get("workload_max"), None)
+            listing_min = coerce_int(normalized.get("workload_min"), None)
+            listing_max = coerce_int(normalized.get("workload_max"), None)
             if listing_min is None or listing_max is None:
                 employment = getattr(listing, "employment", None)
                 listing_min = getattr(employment, "workload_min", None) if employment else None
@@ -743,8 +530,8 @@ class SearchService:
         if user_seniority and job_seniority:
             # junior user → reject explicit senior jobs with experience floor clearly above user
             if user_seniority == "junior" and job_seniority == "senior":
-                job_exp_min = self._coerce_int(job_norm.get("experience_min_years"), None)
-                user_exp = self._coerce_int(profile_norm.get("experience_years"), None)
+                job_exp_min = coerce_int(job_norm.get("experience_min_years"), None)
+                user_exp = coerce_int(profile_norm.get("experience_years"), None)
                 tolerance = int(getattr(settings, "SEARCH_NORMALIZATION_EXPERIENCE_TOLERANCE", 2))
                 if (
                     job_exp_min is not None
@@ -755,8 +542,8 @@ class SearchService:
             # senior user → reject explicitly junior-only jobs
             # (only when job seniority is junior AND experience cap is low)
             if user_seniority == "senior" and job_seniority == "junior":
-                job_exp_max = self._coerce_int(job_norm.get("experience_max_years"), None)
-                user_exp = self._coerce_int(profile_norm.get("experience_years"), None)
+                job_exp_max = coerce_int(job_norm.get("experience_max_years"), None)
+                user_exp = coerce_int(profile_norm.get("experience_years"), None)
                 if (
                     job_exp_max is not None
                     and user_exp is not None
@@ -775,8 +562,8 @@ class SearchService:
                 return False, "norm_qualification_mismatch"
 
         # ─── 4. Experience floor ─────────────────────────────────────────
-        job_exp_min = self._coerce_int(job_norm.get("experience_min_years"), None)
-        user_exp = self._coerce_int(profile_norm.get("experience_years"), None)
+        job_exp_min = coerce_int(job_norm.get("experience_min_years"), None)
+        user_exp = coerce_int(profile_norm.get("experience_years"), None)
         if job_exp_min is not None and user_exp is not None:
             tolerance = int(getattr(settings, "SEARCH_NORMALIZATION_EXPERIENCE_TOLERANCE", 2))
             if job_exp_min > user_exp + tolerance:
@@ -821,81 +608,6 @@ class SearchService:
             if code:
                 codes.add(code)
         return codes
-
-    def _passes_hard_filters(self, listing, preferences: Dict[str, Any], profile_dict: Dict[str, Any]) -> tuple[bool, str]:
-        """DEPRECATED: Superseded by _passes_structured_filters (no normalization data used)."""
-        if preferences.get("remote_only") and not self._listing_is_remote(listing):
-            return False, "remote_only"
-
-        salary_min = preferences.get("salary_min_chf")
-        if salary_min is not None:
-            salary_max = self._extract_salary_max_chf(listing)
-            if salary_max is None or salary_max < salary_min:
-                return False, "salary_min_chf"
-
-        workload_min = preferences.get("workload_min")
-        workload_max = preferences.get("workload_max")
-        if workload_min is not None or workload_max is not None:
-            employment = getattr(listing, "employment", None)
-            if not employment:
-                return False, "workload_missing"
-            listing_min = getattr(employment, "workload_min", None)
-            listing_max = getattr(employment, "workload_max", None)
-            if listing_min is None or listing_max is None:
-                return False, "workload_missing"
-            required_min = workload_min if workload_min is not None else 0
-            required_max = workload_max if workload_max is not None else 100
-            if listing_max < required_min or listing_min > required_max:
-                return False, "workload_range"
-
-        hard_max_distance = preferences.get("hard_max_distance_km")
-        if hard_max_distance is not None:
-            origin_lat = profile_dict.get("latitude")
-            origin_lon = profile_dict.get("longitude")
-            location = getattr(listing, "location", None)
-            coords = getattr(location, "coordinates", None) if location else None
-            if origin_lat is None or origin_lon is None or not coords:
-                return False, "distance_missing"
-            distance = haversine_distance(origin_lat, origin_lon, coords.lat, coords.lon)
-            if distance > hard_max_distance:
-                return False, "distance_limit"
-
-        return True, "ok"
-
-    def _apply_hard_filters(self, profile_id: int, profile_dict: Dict[str, Any], jobs: List[Any], preferences: Dict[str, Any]) -> List[Any]:
-        """DEPRECATED: Superseded by _apply_structured_filters (no normalization data used)."""
-        if not jobs:
-            return jobs
-
-        has_hard_filters = any(
-            [
-                preferences.get("remote_only"),
-                preferences.get("salary_min_chf") is not None,
-                preferences.get("workload_min") is not None,
-                preferences.get("workload_max") is not None,
-                preferences.get("hard_max_distance_km") is not None,
-            ]
-        )
-        if not has_hard_filters:
-            return jobs
-
-        kept: List[Any] = []
-        dropped_reasons: Dict[str, int] = {}
-        for job in jobs:
-            ok, reason = self._passes_hard_filters(job, preferences, profile_dict)
-            if ok:
-                kept.append(job)
-                continue
-            dropped_reasons[reason] = dropped_reasons.get(reason, 0) + 1
-
-        dropped_total = len(jobs) - len(kept)
-        if dropped_total > 0:
-            reasons_text = ", ".join([f"{key}:{value}" for key, value in sorted(dropped_reasons.items())])
-            add_log(
-                profile_id,
-                f"Hard filters excluded {dropped_total}/{len(jobs)} jobs ({reasons_text}).",
-            )
-        return kept
 
     def _build_degraded_fallback_plan(self, profile_dict: dict, profile) -> List[Dict[str, str]]:
         """Build a minimal executable plan when LLM returns no queries.
@@ -1404,8 +1116,8 @@ class SearchService:
                                 
                             current_page += 1
                             
-                            if provider_name == "adecco":
-                                await asyncio.sleep(1.0) # Throttling
+                            if provider.throttle_delay > 0:
+                                await asyncio.sleep(provider.throttle_delay)  # Provider-level throttling
                                 
                             # Abort check
                             status_data = get_status(profile_id)
@@ -1470,9 +1182,9 @@ class SearchService:
         seen_fuzzy_keys: set[str] = set()
         for batch in results:
             for job in batch:
-                identity_key = self._listing_identity_key(job)
-                url_token = self._listing_url_token(job)
-                fuzzy_key = self._listing_fuzzy_key(job)
+                identity_key = listing_identity_key(job)
+                url_token = listing_url_token(job)
+                fuzzy_key = listing_fuzzy_key(job)
 
                 if identity_key and identity_key in seen_identity_keys:
                     continue
@@ -1515,25 +1227,47 @@ class SearchService:
         )
         
         existing_keys = {
-            self._listing_identity_key(row) for row in existing_identifiers
-            if self._listing_identity_key(row)
+            listing_identity_key(row) for row in existing_identifiers
+            if listing_identity_key(row)
         }
         existing_urls = {
-            self._listing_url_token(row) for row in existing_identifiers
-            if self._listing_url_token(row)
+            listing_url_token(row) for row in existing_identifiers
+            if listing_url_token(row)
         }
         existing_fuzzy_keys = {
-            self._listing_fuzzy_key(row) for row in existing_identifiers
-            if self._listing_fuzzy_key(row)
+            listing_fuzzy_key(row) for row in existing_identifiers
+            if listing_fuzzy_key(row)
         }
+
+        # Batch-load existing ScrapedJob records for "applied elsewhere" check.
+        # Groups by platform and uses a single IN query per provider, avoiding N+1 DB roundtrips.
+        applied_scraped_id_by_pair: dict = {}
+        if applied_scraped_ids:
+            pairs_by_platform: dict = {}
+            for l in all_jobs:
+                p = getattr(l, "source", None) or getattr(l, "platform", "unknown")
+                pid = str(getattr(l, "id", "") or getattr(l, "platform_job_id", ""))
+                if p and pid:
+                    pairs_by_platform.setdefault(p, []).append(pid)
+
+            for platform_name, platform_ids in pairs_by_platform.items():
+                batch_sjs = self.db.query(
+                    ScrapedJob.id, ScrapedJob.platform, ScrapedJob.platform_job_id
+                ).filter(
+                    ScrapedJob.platform == platform_name,
+                    ScrapedJob.platform_job_id.in_(platform_ids),
+                ).all()
+                for sj_id, sj_platform, sj_platform_id in batch_sjs:
+                    if sj_id in applied_scraped_ids:
+                        applied_scraped_id_by_pair[(sj_platform, sj_platform_id)] = sj_id
 
         for listing in all_jobs:
             platform = getattr(listing, "source", None) or getattr(listing, "platform", "unknown")
             platform_id = str(getattr(listing, "id", "") or getattr(listing, "platform_job_id", ""))
 
-            key = self._listing_identity_key(listing)
-            url = self._listing_url_token(listing)
-            fuzzy_key = self._listing_fuzzy_key(listing)
+            key = listing_identity_key(listing)
+            url = listing_url_token(listing)
+            fuzzy_key = listing_fuzzy_key(listing)
 
             if (platform and platform_id and (key in seen_keys or key in existing_keys)) or \
                (url and (url in existing_urls and key not in existing_keys)):
@@ -1549,118 +1283,14 @@ class SearchService:
             if fuzzy_key:
                 seen_fuzzy_keys.add(fuzzy_key)
             
-            # Feature 2 check: applied elsewhere
-            applied_elsewhere = False
-            # We don't have scraped_job_id yet for new jobs, so we check by platform_id
-            from backend.models import ScrapedJob
-            existing_sj = self.db.query(ScrapedJob).filter(
-                ScrapedJob.platform == platform,
-                ScrapedJob.platform_job_id == platform_id
-            ).first()
-            if existing_sj and existing_sj.id in applied_scraped_ids:
-                applied_elsewhere = True
-            
+            # Feature 2 check: applied elsewhere (O(1) dict lookup — no per-listing DB queries)
+            applied_elsewhere = (platform, platform_id) in applied_scraped_id_by_pair
+
             setattr(listing, "_applied_elsewhere", applied_elsewhere)
             unique_jobs.append(listing)
                 
         duplicates = len(all_jobs) - len(unique_jobs)
         return unique_jobs, duplicates
-
-    async def _summarize_jobs(self, profile_id: int, jobs: list, batch_size: int = 10) -> list:
-        """DEPRECATED: Job summaries are no longer used by the main pipeline.
-        The normalization step and direct LLM analysis replace this pre-screen.
-        Kept for compatibility only.
-        """
-        add_log(profile_id, f"Summarizing job descriptions for {len(jobs)} jobs…")
-        
-        jobs_needing_summary = []
-        from backend.models import ScrapedJob
-        
-        for job in jobs:
-            platform = getattr(job, "source", None) or getattr(job, "platform", "")
-            job_id = str(getattr(job, "id", "") or getattr(job, "platform_job_id", ""))
-            
-            existing_sj = self.db.query(ScrapedJob).filter(
-                ScrapedJob.platform == platform,
-                ScrapedJob.platform_job_id == job_id
-            ).first()
-            
-            if existing_sj and existing_sj.summary:
-                setattr(job, "_summary", existing_sj.summary)
-            else:
-                jobs_needing_summary.append(job)
-        
-        if not jobs_needing_summary:
-            return jobs
-        
-        add_log(profile_id, f"  Generating {len(jobs_needing_summary)} new summaries…")
-        
-        for i in range(0, len(jobs_needing_summary), batch_size):
-            batch = jobs_needing_summary[i:i + batch_size]
-            batch_data = []
-            for j in batch:
-                desc = ""
-                descs = getattr(j, "descriptions", [])
-                if descs:
-                    desc = descs[0].description if hasattr(descs[0], "description") else (descs[0].get("description", "") if isinstance(descs[0], dict) else "")
-                
-                batch_data.append({
-                    "title": getattr(j, "title", "Unknown"),
-                    "company": getattr(j, "company").name if hasattr(getattr(j, "company", None), "name") else "Unknown",
-                    "description": desc[:2000],
-                })
-            
-            try:
-                summaries = await llm_service.summarize_job_batch(batch_data)
-                for j, summary_text in zip(batch, summaries):
-                    setattr(j, "_summary", summary_text)
-            except Exception as e:
-                logger.warning(f"Job summary batch failed: {e}")
-        
-        return jobs
-
-    async def _relevance_filter(self, profile_id: int, profile_dict: dict, jobs: list, batch_size: int = 20) -> list:
-        """DEPRECATED: Title/summary-based LLM relevance filter, superseded by normalization-based
-        deterministic matching in _passes_normalization_filters.  This method is no longer called by
-        the main run_search pipeline.  Kept for compatibility only.
-        """
-        relevant_jobs = []
-        fallback_mode = (settings.SEARCH_RELEVANCE_FALLBACK_MODE or "conservative").strip().lower()
-        keep_on_failure = fallback_mode == "keep"
-        for i in range(0, len(jobs), batch_size):
-            batch = jobs[i:i + batch_size]
-            batch_data = []
-            for j in batch:
-                summary = getattr(j, "_summary", None)
-                if not summary:
-                    descs = getattr(j, "descriptions", [])
-                    if descs:
-                        summary = descs[0].description[:150] if hasattr(descs[0], "description") else (descs[0].get("description", "")[:150] if isinstance(descs[0], dict) else "")
-                
-                batch_data.append({
-                    "title": getattr(j, "title", "Unknown"),
-                    "company": getattr(j, "company").name if hasattr(getattr(j, "company", None), "name") else "Unknown",
-                    "description_snippet": summary or "",
-                })
-            try:
-                results = await llm_service.check_relevance_batch(
-                    batch_data,
-                    profile_dict.get("role_description", ""),
-                    search_strategy=profile_dict.get("search_strategy", ""),
-                )
-                for j, is_relevant in zip(batch, results):
-                    if is_relevant:
-                        relevant_jobs.append(j)
-            except Exception as e:
-                logger.warning(f"Relevance filter failed: {e}")
-                add_log(
-                    profile_id,
-                    f"[LLM_DEBUG] relevance_fallback mode={fallback_mode} batch_start={i} batch_size={len(batch)} error={type(e).__name__}",
-                )
-                if keep_on_failure:
-                    relevant_jobs.extend(batch)
-        
-        return relevant_jobs
 
     async def _analyze_and_save(self, profile_id: int, profile_dict: dict, unique_jobs: list) -> tuple[int, int]:
         semaphore = asyncio.Semaphore(settings.ANALYSIS_CONCURRENCY)
@@ -1744,7 +1374,7 @@ class SearchService:
         # 1. ScrapedJob (or fetch existing)
         existing_sj, _ = self._upsert_scraped_job(listing)
 
-        location_str = self._extract_listing_location_string(listing)
+        location_str = extract_listing_location_string(listing)
 
         # 2. Distance
         distance_km = None

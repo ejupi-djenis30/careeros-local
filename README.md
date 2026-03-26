@@ -1,7 +1,7 @@
 # Job Hunter AI 🚀
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
+[![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
 [![React 19](https://img.shields.io/badge/react-19-61dafb.svg)](https://reactjs.org/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.109+-009688.svg)](https://fastapi.tiangolo.com/)
 [![Vite](https://img.shields.io/badge/vite-5.0+-646cff.svg)](https://vitejs.dev/)
@@ -219,7 +219,7 @@ The system relies on a strictly relational schema, managed by SQLAlchemy ORM.
 ## 6. Technology Stack
 
 ### Backend
-- **Language**: Python 3.10+
+- **Language**: Python 3.11+
 - **Framework**: FastAPI (High-performance asynchronous framework)
 - **ORM**: SQLAlchemy 2.0+
 - **Database Migrations**: Alembic

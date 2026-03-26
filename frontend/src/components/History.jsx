@@ -1,10 +1,12 @@
 import React, { useState, useEffect } from "react";
 import { SearchService } from "../services/search";
+import { useToast } from "../context/ToastContext";
 import { HistoryCard } from "./HistoryCard";
 
 export function History({ onStartSearch, onStartSearchWithOptions, onUseAsTemplate, onSaveAsSchedule }) {
     const [profiles, setProfiles] = useState([]);
     const [loading, setLoading] = useState(true);
+    const { showToast } = useToast();
 
     useEffect(() => {
         loadProfiles();
@@ -17,6 +19,7 @@ export function History({ onStartSearch, onStartSearchWithOptions, onUseAsTempla
             setProfiles(data.sort((a, b) => b.id - a.id));
         } catch (e) {
             console.error("Failed to load profiles:", e);
+            showToast("Failed to load search history.");
         } finally {
             setLoading(false);
         }

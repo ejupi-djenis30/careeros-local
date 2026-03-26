@@ -46,6 +46,11 @@ ENV DATABASE_URL=sqlite:///./data/job_hunter.db
 # Data volume for SQLite persistence
 VOLUME ["/app/data"]
 
+# Run as non-root for security
+RUN addgroup --system appuser && adduser --system --ingroup appuser appuser \
+    && mkdir -p /app/data && chown -R appuser:appuser /app
+USER appuser
+
 EXPOSE 8000
 
 # Run with gunicorn for production, uvicorn worker

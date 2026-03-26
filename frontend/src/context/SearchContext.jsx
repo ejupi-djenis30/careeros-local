@@ -24,6 +24,7 @@ export function SearchProvider({ children }) {
         let isDisposed = false;
         let timeoutId;
         let pollingInterval = 1500;
+        let abortController = new AbortController();
 
         const scheduleNextPoll = () => {
             if (isDisposed) return;
@@ -31,8 +32,9 @@ export function SearchProvider({ children }) {
         };
 
         const pollStatuses = async () => {
+            abortController = new AbortController();
             try {
-                const res = await SearchService.getAllStatuses();
+                const res = await SearchService.getAllStatuses(abortController.signal);
                 if (isDisposed) return;
                 setSearchStatuses(res);
 
@@ -40,20 +42,15 @@ export function SearchProvider({ children }) {
                     .filter(([, status]) => status && ['generating', 'searching', 'analyzing'].includes(status.state))
                     .map(([id]) => String(id));
                 
-                // HALF-3: Synchronize activeProfileIds with runningIds
-                // Any ID that was in activeProfileIds but is now in res in a terminal state should be removed.
+                // Merge server-confirmed running IDs with any IDs pending first server acknowledgement
+                // (the brief window between addProfileId() being called and the first poll returning it).
                 setActiveProfileIds(prev => {
-                    // Start with those currently running
-                    let next = [...runningIds];
-                    
-                    // Add any manually added IDs that haven't appeared in res yet
+                    const next = [...runningIds];
                     for (const id of activeProfileIdsRef.current) {
                         if (!res[id] && !next.includes(id)) {
                             next.push(id);
                         }
                     }
-                    
-                    // Sort to prevent unnecessary re-renders if the order changed but set is the same
                     next.sort();
                     const prevSorted = [...prev].sort();
                     if (JSON.stringify(next) === JSON.stringify(prevSorted)) return prev;
@@ -62,6 +59,7 @@ export function SearchProvider({ children }) {
                 
                 pollingInterval = runningIds.length > 0 ? 1500 : 15000;
             } catch (e) {
+                if (e.name === 'AbortError') return;
                 console.error("Failed to poll statuses:", e);
                 pollingInterval = 15000;
             } finally {
@@ -73,6 +71,7 @@ export function SearchProvider({ children }) {
         return () => {
             isDisposed = true;
             window.clearTimeout(timeoutId);
+            abortController.abort();
         };
     }, [isLoggedIn]);
 

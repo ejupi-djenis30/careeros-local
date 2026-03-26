@@ -5,6 +5,34 @@ import { ToastProvider } from './context/ToastContext';
 import { SearchProvider } from './context/SearchContext';
 import { ProtectedRoute } from './components/ProtectedRoute';
 
+class ErrorBoundary extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = { hasError: false };
+  }
+  static getDerivedStateFromError() {
+    return { hasError: true };
+  }
+  componentDidCatch(error, info) {
+    console.error('Unhandled UI error:', error, info.componentStack);
+  }
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="d-flex flex-column align-items-center justify-content-center min-vh-100 text-center p-4">
+          <i className="bi bi-exclamation-triangle-fill text-warning fs-1 mb-3"></i>
+          <h4 className="text-white mb-2">Something went wrong</h4>
+          <p className="text-secondary mb-4">An unexpected error occurred. Please refresh the page.</p>
+          <button className="btn btn-primary" onClick={() => this.setState({ hasError: false })}>
+            Try again
+          </button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
 import { Login } from './components/Login';
 import { Sidebar } from './components/Layout/Sidebar';
 
@@ -143,15 +171,17 @@ function DashboardLayout() {
               </div>
             )}
 
-            <Routes>
-                <Route path="/" element={<Navigate to="/jobs" replace />} />
-                <Route path="/jobs" element={<JobsPage />} />
-                <Route path="/new" element={<NewSearchPage />} />
-                <Route path="/schedules" element={<SchedulesPage />} />
-                <Route path="/history" element={<HistoryPage />} />
-                <Route path="/progress" element={<ProgressPage />} />
-                <Route path="*" element={<Navigate to="/jobs" replace />} />
-            </Routes>
+            <ErrorBoundary>
+              <Routes>
+                  <Route path="/" element={<Navigate to="/jobs" replace />} />
+                  <Route path="/jobs" element={<JobsPage />} />
+                  <Route path="/new" element={<NewSearchPage />} />
+                  <Route path="/schedules" element={<SchedulesPage />} />
+                  <Route path="/history" element={<HistoryPage />} />
+                  <Route path="/progress" element={<ProgressPage />} />
+                  <Route path="*" element={<Navigate to="/jobs" replace />} />
+              </Routes>
+            </ErrorBoundary>
           </div>
         </div>
       </div>

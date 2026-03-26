@@ -228,37 +228,6 @@ async def test_run_search_keeps_error_state_when_plan_failed(search_service, moc
         ]
         assert unexpected == []
 
-@pytest.mark.asyncio
-async def test_relevance_filter_passes_correct_data(search_service):
-    """Verify _relevance_filter prepares job_data correctly and passes search_strategy."""
-    mock_job = MagicMock()
-    mock_job.title = "Software Engineer"
-    mock_job.company.name = "Google"
-    mock_job.descriptions = [MagicMock(description="Developing cool stuff at Google")]
-    mock_job._summary = None  # Ensure it falls back to description in test
-    
-    profile_dict = {
-        "role_description": "Dev",
-        "search_strategy": "Remote only"
-    }
-    
-    with patch("backend.services.search_service.llm_service") as mock_llm:
-        mock_llm.check_relevance_batch = AsyncMock(return_value=[True])
-        
-        await search_service._relevance_filter(123, profile_dict, [mock_job])
-        
-        mock_llm.check_relevance_batch.assert_called_once()
-        args, kwargs = mock_llm.check_relevance_batch.call_args
-        
-        job_data = args[0]
-        assert len(job_data) == 1
-        assert job_data[0]["title"] == "Software Engineer"
-        assert job_data[0]["company"] == "Google"
-        assert job_data[0]["description_snippet"] == "Developing cool stuff at Google"
-        
-        assert args[1] == "Dev"
-        assert kwargs["search_strategy"] == "Remote only"
-
 
 def test_build_degraded_fallback_plan_generates_minimal_queries(search_service):
     profile = MagicMock()
@@ -336,35 +305,6 @@ def test_apply_query_preferences_respects_language_and_domain(search_service):
     assert filtered[0]["query"] == "Java Entwickler"
     assert stats["dropped_language"] == 1
     assert stats["dropped_domain"] == 1
-
-
-def test_apply_hard_filters_remote_only(search_service):
-    remote_job = MagicMock()
-    remote_job.title = "Backend Engineer (Remote)"
-    remote_job.descriptions = [MagicMock(description="Fully remote role")]
-    remote_job.employment = MagicMock(work_forms=["home_office"], workload_min=80, workload_max=100)
-    remote_job.location = MagicMock(coordinates=None)
-
-    onsite_job = MagicMock()
-    onsite_job.title = "Backend Engineer"
-    onsite_job.descriptions = [MagicMock(description="On-site only")]
-    onsite_job.employment = MagicMock(work_forms=["onsite"], workload_min=80, workload_max=100)
-    onsite_job.location = MagicMock(coordinates=None)
-
-    preferences = {
-        "preferred_languages": [],
-        "preferred_domains": [],
-        "remote_only": True,
-        "salary_min_chf": None,
-        "workload_min": None,
-        "workload_max": None,
-        "hard_max_distance_km": None,
-    }
-
-    with patch("backend.services.search_service.add_log"):
-        kept = search_service._apply_hard_filters(1, {"latitude": None, "longitude": None}, [remote_job, onsite_job], preferences)
-
-    assert kept == [remote_job]
 
 
 def test_apply_structured_filters_uses_normalized_languages(search_service):

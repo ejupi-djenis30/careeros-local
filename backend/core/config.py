@@ -70,6 +70,8 @@ class Settings(BaseSettings):
     LLM_PROVIDER: str = "groq"
     LLM_API_KEY: str = ""
     LLM_BASE_URL: str = ""
+    # Default model: moonshotai/kimi-k2-instruct-0905 is available on Groq and offers
+    # strong reasoning at a low cost. Override via LLM_MODEL env var.
     LLM_MODEL: str = "moonshotai/kimi-k2-instruct-0905"
     LLM_MAX_TOKENS: int = 16384
     LLM_TEMPERATURE: float = 0.7
@@ -147,6 +149,9 @@ class Settings(BaseSettings):
 
     # Scraping
     JOB_ROOM_USER_AGENT: str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
+
+    # File uploads
+    MAX_UPLOAD_FILE_SIZE: int = 10 * 1024 * 1024  # 10 MB
 
     # Analysis Pipeline Tuning
     MAX_DESCRIPTION_CHARS: int = 6000

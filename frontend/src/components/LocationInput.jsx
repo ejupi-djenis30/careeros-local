@@ -7,6 +7,8 @@ export function LocationInput({
 }) {
     const { showToast } = useToast();
     const [query, setQuery] = useState(location || "");
+    const onLocationChangeRef = useRef(onLocationChange);
+    useEffect(() => { onLocationChangeRef.current = onLocationChange; }, [onLocationChange]);
     const [suggestions, setSuggestions] = useState([]);
     const [isLoading, setIsLoading] = useState(false);
     const [showSuggestions, setShowSuggestions] = useState(false);
@@ -91,7 +93,7 @@ export function LocationInput({
         const timer = setTimeout(() => {
             if (query !== location) {
                 // When typing, we clear the locked coordinates until selection
-                onLocationChange({
+                onLocationChangeRef.current({
                     name: query,
                     lat: null,
                     lon: null

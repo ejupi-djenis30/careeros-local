@@ -1,0 +1,12 @@
+# ═══════════════════════════════════════
+# Job Hunter AI — Development & Test Dependencies
+# ═══════════════════════════════════════
+# Install alongside requirements.txt:
+#   pip install -r requirements.txt -r requirements-dev.txt
+
+-r requirements.txt
+
+# ─── Testing ───
+pytest>=8.0.0
+pytest-asyncio>=0.24.0
+pytest-cov>=6.0.0

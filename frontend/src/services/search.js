@@ -9,8 +9,8 @@ export const SearchService = {
         return ApiClient.get(`/search/status/${profileId}`);
     },
 
-    getAllStatuses() {
-        return ApiClient.get("/search/status/all");
+    getAllStatuses(signal) {
+        return ApiClient.get("/search/status/all", signal);
     },
 
     getProfiles() {

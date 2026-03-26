@@ -135,9 +135,7 @@ export function useJobs(logout) {
 
     setPendingAppliedJobIds(prev => (prev.includes(jobId) ? prev : [...prev, jobId]));
     try {
-      // HALF-8: Backend patch returns updated Job, ensure we use it
       const updated = await JobService.toggleApplied(job.id, !job.applied);
-      // Pydantic/SQLAlchemy might return a different object but same ID
       setJobs(prev => prev.map(j => j.id === job.id ? { ...j, ...updated } : j));
     } catch (error) {
       if (error.message === "UNAUTHORIZED" && logout) { logout(); return; }

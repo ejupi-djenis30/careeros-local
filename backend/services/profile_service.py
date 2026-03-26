@@ -74,6 +74,7 @@ class ProfileService:
 
         if "cv_content" in update_data:
             update_data["cached_cv_summary"] = None
+            update_data["profile_normalization_fingerprint"] = None
 
         if any(field in update_data for field in _QUERY_CACHE_INVALIDATION_FIELDS) or (
             advanced_preferences is not None

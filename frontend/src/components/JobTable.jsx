@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { createPortal } from "react-dom";
 import { MobileJobCard } from "./JobTable/MobileJobCard";
 import { DesktopJobRow } from "./JobTable/DesktopJobRow";
@@ -6,6 +6,16 @@ import { ScoreBadge } from "./JobTable/Badges";
 
 export function JobTable({ jobs, isGlobalView, onToggleApplied, isAppliedPending = () => false, pagination, onPageChange, isLoading = false }) {
     const [selectedJobForAnalysis, setSelectedJobForAnalysis] = useState(null);
+
+    useEffect(() => {
+        if (!selectedJobForAnalysis) return;
+        const handleEscape = (e) => {
+            if (e.key === "Escape") setSelectedJobForAnalysis(null);
+        };
+        document.addEventListener("keydown", handleEscape);
+        return () => document.removeEventListener("keydown", handleEscape);
+    }, [selectedJobForAnalysis]);
+
     const handleCopy = (job) => {
         const text = JSON.stringify({
             title: job.title,
@@ -92,7 +102,8 @@ export function JobTable({ jobs, isGlobalView, onToggleApplied, isAppliedPending
             {/* Top-level Analysis Modal - Centered on screen */}
             {selectedJobForAnalysis && createPortal(
                 <div className="position-fixed top-0 start-0 w-100 h-100 d-flex align-items-center justify-content-center animate-fade-in" 
-                     style={{ zIndex: 9999, backgroundColor: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(8px)' }}>
+                     style={{ zIndex: 9999, backgroundColor: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(8px)' }}
+                     onClick={(e) => { if (e.target === e.currentTarget) setSelectedJobForAnalysis(null); }}>
                     <div className="glass-panel p-4 m-3 animate-slide-up shadow-2xl" 
                          style={{ maxWidth: '700px', width: '95%', maxHeight: '85vh', overflowY: 'auto', border: '1px solid rgba(255,255,255,0.1)' }}>
                         <div className="d-flex justify-content-between align-items-center mb-4 border-bottom border-white-10 pb-3">
