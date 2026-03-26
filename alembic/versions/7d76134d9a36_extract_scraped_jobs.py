@@ -18,6 +18,9 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
+    bind = op.get_bind()
+    is_sqlite = bind.dialect.name == 'sqlite'
+
     # 1. Create scraped_jobs table
     op.create_table('scraped_jobs',
         sa.Column('id', sa.Integer(), nullable=False),
@@ -47,54 +50,54 @@ def upgrade() -> None:
 
     # 2. Add scraped_job_id to jobs (nullable initially)
     op.add_column('jobs', sa.Column('scraped_job_id', sa.Integer(), nullable=True))
-    op.create_foreign_key('fk_jobs_scraped_job_id', 'jobs', 'scraped_jobs', ['scraped_job_id'], ['id'])
 
-    # 3. Data migration block
-    op.execute("""
-        INSERT INTO scraped_jobs (
-            platform, platform_job_id, title, company, description, location, 
-            external_url, application_url, application_email, workload, 
-            publication_date, raw_metadata, source_query, created_at, updated_at
-        )
-        SELECT DISTINCT ON (platform, platform_job_id)
-            platform, platform_job_id, title, company, description, location, 
-            external_url, application_url, application_email, workload, 
-            publication_date, raw_metadata, source_query, created_at, COALESCE(updated_at, created_at)
-        FROM jobs
-        WHERE platform IS NOT NULL AND platform_job_id IS NOT NULL;
-    """)
+    # FK constraint — SQLite does not support ALTER ADD CONSTRAINT
+    if not is_sqlite:
+        op.create_foreign_key('fk_jobs_scraped_job_id', 'jobs', 'scraped_jobs', ['scraped_job_id'], ['id'])
 
-    op.execute("""
-        INSERT INTO scraped_jobs (
-            platform, platform_job_id, title, company, description, location, 
-            external_url, application_url, application_email, workload, 
-            publication_date, raw_metadata, source_query, created_at, updated_at
-        )
-        SELECT DISTINCT ON (external_url)
-            COALESCE(platform, 'unknown'), 
-            COALESCE(platform_job_id, external_url, id::text), 
-            title, company, description, location, 
-            external_url, application_url, application_email, workload, 
-            publication_date, raw_metadata, source_query, created_at, COALESCE(updated_at, created_at)
-        FROM jobs
-        WHERE platform IS NULL OR platform_job_id IS NULL;
-    """)
+    # 3. Data migration — uses PostgreSQL-specific syntax (DISTINCT ON, ::text cast).
+    # Skipped on SQLite because CI always starts from a clean database with no existing rows.
+    if not is_sqlite:
+        op.execute("""
+            INSERT INTO scraped_jobs (
+                platform, platform_job_id, title, company, description, location,
+                external_url, application_url, application_email, workload,
+                publication_date, raw_metadata, source_query, created_at, updated_at
+            )
+            SELECT DISTINCT ON (platform, platform_job_id)
+                platform, platform_job_id, title, company, description, location,
+                external_url, application_url, application_email, workload,
+                publication_date, raw_metadata, source_query, created_at, COALESCE(updated_at, created_at)
+            FROM jobs
+            WHERE platform IS NOT NULL AND platform_job_id IS NOT NULL;
+        """)
 
-    # Link jobs
-    op.execute("""
-        UPDATE jobs
-        SET scraped_job_id = scraped_jobs.id
-        FROM scraped_jobs
-        WHERE 
-            COALESCE(jobs.platform, 'unknown') = scraped_jobs.platform 
-            AND COALESCE(jobs.platform_job_id, jobs.external_url, jobs.id::text) = scraped_jobs.platform_job_id
-    """)
+        op.execute("""
+            INSERT INTO scraped_jobs (
+                platform, platform_job_id, title, company, description, location,
+                external_url, application_url, application_email, workload,
+                publication_date, raw_metadata, source_query, created_at, updated_at
+            )
+            SELECT DISTINCT ON (external_url)
+                COALESCE(platform, 'unknown'),
+                COALESCE(platform_job_id, external_url, id::text),
+                title, company, description, location,
+                external_url, application_url, application_email, workload,
+                publication_date, raw_metadata, source_query, created_at, COALESCE(updated_at, created_at)
+            FROM jobs
+            WHERE platform IS NULL OR platform_job_id IS NULL;
+        """)
 
-    # 4. Make it non-nullable
-    op.alter_column('jobs', 'scraped_job_id', existing_type=sa.Integer(), nullable=False)
-    op.create_index(op.f('ix_jobs_scraped_job_id'), 'jobs', ['scraped_job_id'], unique=False)
+        op.execute("""
+            UPDATE jobs
+            SET scraped_job_id = scraped_jobs.id
+            FROM scraped_jobs
+            WHERE
+                COALESCE(jobs.platform, 'unknown') = scraped_jobs.platform
+                AND COALESCE(jobs.platform_job_id, jobs.external_url, jobs.id::text) = scraped_jobs.platform_job_id;
+        """)
 
-    # 5. Drop old columns
+    # 4. Drop old column indexes (DROP INDEX is supported on all dialects)
     op.drop_index('ix_jobs_title', table_name='jobs')
     op.drop_index('ix_jobs_company', table_name='jobs')
     op.drop_index('ix_jobs_location', table_name='jobs')
@@ -102,19 +105,24 @@ def upgrade() -> None:
     op.drop_index('ix_jobs_platform', table_name='jobs')
     op.drop_index('ix_jobs_platform_job_id', table_name='jobs')
 
-    op.drop_column('jobs', 'title')
-    op.drop_column('jobs', 'company')
-    op.drop_column('jobs', 'description')
-    op.drop_column('jobs', 'location')
-    op.drop_column('jobs', 'external_url')
-    op.drop_column('jobs', 'application_url')
-    op.drop_column('jobs', 'application_email')
-    op.drop_column('jobs', 'workload')
-    op.drop_column('jobs', 'publication_date')
-    op.drop_column('jobs', 'platform')
-    op.drop_column('jobs', 'platform_job_id')
-    op.drop_column('jobs', 'raw_metadata')
-    op.drop_column('jobs', 'source_query')
+    # 5. Make scraped_job_id non-nullable and drop old columns.
+    # SQLite does not support ALTER COLUMN; use batch_alter_table (copy-and-move strategy).
+    _old_cols = [
+        'title', 'company', 'description', 'location', 'external_url',
+        'application_url', 'application_email', 'workload', 'publication_date',
+        'platform', 'platform_job_id', 'raw_metadata', 'source_query',
+    ]
+    if is_sqlite:
+        with op.batch_alter_table('jobs') as batch_op:
+            batch_op.alter_column('scraped_job_id', existing_type=sa.Integer(), nullable=False)
+            for col in _old_cols:
+                batch_op.drop_column(col)
+    else:
+        op.alter_column('jobs', 'scraped_job_id', existing_type=sa.Integer(), nullable=False)
+        for col in _old_cols:
+            op.drop_column('jobs', col)
+
+    op.create_index(op.f('ix_jobs_scraped_job_id'), 'jobs', ['scraped_job_id'], unique=False)
 
 
 def downgrade() -> None:

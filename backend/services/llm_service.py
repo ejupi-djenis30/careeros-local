@@ -550,7 +550,7 @@ One boolean per job, in order. true = relevant, false = irrelevant."""
 
             if len(batch_to_add) < batch_size and len(collected) < total_target:
                 logger.warning(
-                    "[PLAN] Batch under-filled after retries (%s/%s unique queries); continuing with another batch",
+                    "[PLAN] Batch under-filled (%s/%s unique queries); continuing with another batch",
                     len(batch_to_add),
                     batch_size,
                 )

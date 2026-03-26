@@ -18,12 +18,17 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
+    bind = op.get_bind()
+    is_sqlite = bind.dialect.name == 'sqlite'
+
     # Add search_profile_id to jobs table (nullable FK to search_profiles)
     op.add_column('jobs', sa.Column('search_profile_id', sa.Integer(), nullable=True))
-    op.create_foreign_key(
-        'fk_jobs_search_profile_id', 'jobs', 'search_profiles',
-        ['search_profile_id'], ['id']
-    )
+    # FK constraint — SQLite does not support ALTER ADD CONSTRAINT
+    if not is_sqlite:
+        op.create_foreign_key(
+            'fk_jobs_search_profile_id', 'jobs', 'search_profiles',
+            ['search_profile_id'], ['id']
+        )
     op.create_index(op.f('ix_jobs_search_profile_id'), 'jobs', ['search_profile_id'], unique=False)
 
     # Add contract_type to search_profiles table
@@ -31,7 +36,11 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    bind = op.get_bind()
+    is_sqlite = bind.dialect.name == 'sqlite'
+
     op.drop_index(op.f('ix_jobs_search_profile_id'), table_name='jobs')
-    op.drop_constraint('fk_jobs_search_profile_id', 'jobs', type_='foreignkey')
+    if not is_sqlite:
+        op.drop_constraint('fk_jobs_search_profile_id', 'jobs', type_='foreignkey')
     op.drop_column('jobs', 'search_profile_id')
     op.drop_column('search_profiles', 'contract_type')
