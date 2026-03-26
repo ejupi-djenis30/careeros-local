@@ -67,7 +67,7 @@ The tool operates through a sophisticated pipeline:
 3. **Automated Extraction**: It connects to major job boards (starting with Swiss market leaders) to fetch raw listings automatically.
 4. **Normalization-First Persistence**: It persists unique fetched jobs into a shared catalog first, then normalizes each listing into deterministic fields (domain, role family, seniority, languages, salary/workload ranges, and more).
 5. **Structured Filtering + Deep Semantic Scoring**: It applies deterministic structured constraints (for example remote-only, salary minimums, language/workload limits) and only then performs deep LLM match scoring for eligible jobs.
-5. **Continuous Automation**: It runs silently in the background on a schedule, alerting you only when high-quality, actionable matches are discovered.
+6. **Continuous Automation**: It runs silently in the background on a schedule, alerting you only when high-quality, actionable matches are discovered.
 
 This project is built to be **100% self-hosted**. Your CV, your career goals, and your application history remain entirely private on your local machine or personal VPS.
 
@@ -124,9 +124,12 @@ Job Hunter AI is **LLM-agnostic** and supports a **flexible per-step architectur
 
 Each step can independently use a different LLM provider/model via `LLM_{STEP}_*` environment variables (see [Configuration](#8-comprehensive-configuration-guide)).
 
-1. **PLAN — Query Generation**: The AI reads your profile and outputs strictly formatted JSON containing executable search queries.
-2. **NORMALIZE — Shared Job Normalization**: The AI upgrades provider bootstrap facts into consistent structured fields used across filtering and downstream analysis.
-3. **MATCH — Deep Evaluation**: The AI acts as a career coach and evaluates profile-vs-job fit for final scoring and recommendation.
+1. **PLAN — Query Generation**: The AI reads your profile and generates strictly formatted JSON containing executable multi-language search queries across multiple geographic and linguistic dimensions.
+2. **NORMALIZE_PROFILE — Candidate Normalization**: The AI extracts structured candidate attributes from your CV and role description — seniority tier, technical domain, required languages, desired salary/workload ranges — used for deterministic pre-screening.
+3. **NORMALIZE — Job Normalization**: The AI upgrades raw scraper facts into consistent structured fields (domain, role family, seniority, language requirements, salary/workload bounds) enabling high-precision deterministic filtering before any expensive scoring.
+4. **RELEVANCE — Title Relevance Check** *(reserved/configurable)*: A lightweight binary filter that can be activated to discard listings whose job title has no semantic relation to your target role.
+5. **MATCH — Deep Evaluation**: The AI acts as a career coach and performs a thorough profile-vs-job compatibility analysis, producing a 0–100 affinity score, a personalized narrative rationale, and a "worth applying" recommendation.
+6. **SUMMARY — Job Summarization** *(opt-in)*: Generates a concise 2–3 sentence digest of the full job description, saving reading time on high-volume searches.
 
 ---
 
@@ -359,7 +362,7 @@ These are used as the **default for all pipeline steps** (PLAN, RELEVANCE, MATCH
 You can override **any** global LLM setting for a specific pipeline step.
 Leave empty (or `0` for numeric values) to inherit the global value.
 
-Replace `{STEP}` with `PLAN`, `RELEVANCE`, or `MATCH`:
+Replace `{STEP}` with one of: `PLAN`, `NORMALIZE_PROFILE`, `NORMALIZE`, `RELEVANCE`, `MATCH`, or `SUMMARY`.
 
 | Variable Pattern | Type | Description |
 | :--- | :---: | :--- |
@@ -370,30 +373,77 @@ Replace `{STEP}` with `PLAN`, `RELEVANCE`, or `MATCH`:
 | `LLM_{STEP}_TEMPERATURE` | float | Temperature override |
 | `LLM_{STEP}_TOP_P` | float | Top-p override |
 | `LLM_{STEP}_MAX_TOKENS` | int | Max tokens override |
-| `LLM_{STEP}_THINKING` | bool | Thinking mode override |
-| `LLM_{STEP}_THINKING_LEVEL` | string | Thinking level override |
+| `LLM_{STEP}_THINKING` | bool | Thinking mode override (DeepSeek Reasoner) |
+| `LLM_{STEP}_THINKING_LEVEL` | string | Thinking level override (Gemini: `OFF`/`LOW`/`MEDIUM`/`HIGH`) |
+
+#### Example: Quality-Focused Setup (Best Results)
+
+```env
+# PLAN — DeepSeek Reasoner for thorough query generation with extended reasoning
+LLM_PLAN_PROVIDER=deepseek
+LLM_PLAN_MODEL=deepseek-reasoner
+LLM_PLAN_API_KEY=sk-...
+LLM_PLAN_BASE_URL=https://api.deepseek.com
+LLM_PLAN_TEMPERATURE=0.20
+LLM_PLAN_TOP_P=0.90
+LLM_PLAN_MAX_TOKENS=62000
+LLM_PLAN_THINKING=true
+
+# NORMALIZE + NORMALIZE_PROFILE — large model for accurate structured extraction
+LLM_NORMALIZE_PROVIDER=groq
+LLM_NORMALIZE_MODEL=openai/gpt-oss-120b
+LLM_NORMALIZE_API_KEY=gsk_...
+LLM_NORMALIZE_BASE_URL=https://api.groq.com/openai/v1
+LLM_NORMALIZE_TEMPERATURE=0.0
+LLM_NORMALIZE_MAX_TOKENS=16384
+
+LLM_NORMALIZE_PROFILE_PROVIDER=groq
+LLM_NORMALIZE_PROFILE_MODEL=openai/gpt-oss-120b
+LLM_NORMALIZE_PROFILE_API_KEY=gsk_...
+LLM_NORMALIZE_PROFILE_BASE_URL=https://api.groq.com/openai/v1
+LLM_NORMALIZE_PROFILE_TEMPERATURE=0.0
+LLM_NORMALIZE_PROFILE_MAX_TOKENS=16384
+
+# MATCH — DeepSeek Reasoner for deep scoring, narrative, and recommendation
+LLM_MATCH_PROVIDER=deepseek
+LLM_MATCH_MODEL=deepseek-reasoner
+LLM_MATCH_API_KEY=sk-...
+LLM_MATCH_BASE_URL=https://api.deepseek.com
+LLM_MATCH_TEMPERATURE=0.15
+LLM_MATCH_TOP_P=0.90
+LLM_MATCH_MAX_TOKENS=62000
+LLM_MATCH_THINKING=true
+
+# SUMMARY — large model for rich, detailed job digests (opt-in)
+LLM_SUMMARY_PROVIDER=groq
+LLM_SUMMARY_MODEL=openai/gpt-oss-120b
+LLM_SUMMARY_API_KEY=gsk_...
+LLM_SUMMARY_BASE_URL=https://api.groq.com/openai/v1
+LLM_SUMMARY_TEMPERATURE=0.0
+LLM_SUMMARY_MAX_TOKENS=8192
+```
 
 #### Example: Cost-Optimized Mixed Setup
 
 ```env
-# Global — powerful model for the PLAN step (default)
+# Global fallback — fast Groq model
 LLM_PROVIDER=groq
 LLM_MODEL=moonshotai/kimi-k2-instruct-0905
 LLM_API_KEY=gsk_...
 LLM_BASE_URL=https://api.groq.com/openai/v1
 
-# RELEVANCE — small cheap model (binary yes/no task)
-LLM_RELEVANCE_MODEL=llama-3.1-8b-instant
-LLM_RELEVANCE_TEMPERATURE=0.1
-LLM_RELEVANCE_MAX_TOKENS=1024
+# RELEVANCE — tiny model, binary yes/no task
+LLM_RELEVANCE_MODEL=openai/gpt-oss-20b
+LLM_RELEVANCE_TEMPERATURE=0.0
+LLM_RELEVANCE_MAX_TOKENS=512
 
-# MATCH — different provider entirely for deep analysis
+# MATCH — stronger model only for deep analysis
 LLM_MATCH_PROVIDER=deepseek
 LLM_MATCH_MODEL=deepseek-chat
 LLM_MATCH_API_KEY=sk-...
 LLM_MATCH_BASE_URL=https://api.deepseek.com
-LLM_MATCH_TEMPERATURE=0.3
-LLM_MATCH_THINKING=true
+LLM_MATCH_TEMPERATURE=0.15
+LLM_MATCH_THINKING=false
 ```
 
 ---

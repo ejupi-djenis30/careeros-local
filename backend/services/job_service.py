@@ -49,16 +49,15 @@ class JobService:
         stats_filters.pop("sort_by", None)
         stats_filters.pop("sort_order", None)
 
-        total = self.repo.count_by_user_filtered(user_id, **stats_filters)
-        stats = self.repo.get_stats_by_user_filtered(user_id, **stats_filters)
-        
+        agg = self.repo.get_count_and_stats_by_user_filtered(user_id, **stats_filters)
+
         return {
             "items": items,
-            "total": total,
+            "total": agg["total"],
             "page": page,
-            "pages": (total + page_size - 1) // page_size,
-            "total_applied": stats["total_applied"],
-            "avg_score": stats["avg_score"]
+            "pages": (agg["total"] + page_size - 1) // page_size,
+            "total_applied": agg["total_applied"],
+            "avg_score": agg["avg_score"]
         }
 
 

@@ -111,7 +111,8 @@ async def test_generate_search_plan_batches_to_reach_target(mock_provider):
         assert mock_provider.generate_json_async.call_count == 2
 
 @pytest.mark.asyncio
-async def test_generate_search_plan_retries_underfilled_batch(mock_provider):
+async def test_generate_search_plan_stops_on_underfilled_no_retry(mock_provider):
+    """Verify the system stops when a batch is underfilled and cannot be completed without retry."""
     mock_provider.generate_json_async.side_effect = [
         {
             "searches": [
@@ -128,9 +129,6 @@ async def test_generate_search_plan_retries_underfilled_batch(mock_provider):
 
     with patch("backend.services.llm_service.get_provider_for_step", return_value=mock_provider), \
          patch("backend.services.llm_service.settings") as mock_settings:
-        mock_settings.LLM_SUMMARY_PROVIDER = ""
-        mock_settings.LLM_SUMMARY_API_KEY = ""
-        mock_settings.LLM_SUMMARY_MODEL = ""
         mock_settings.SEARCH_PLAN_BATCH_SIZE = 2
         service = LLMService()
 
@@ -140,7 +138,9 @@ async def test_generate_search_plan_retries_underfilled_batch(mock_provider):
             max_queries=2,
         )
 
-        assert len(plan) == 2
+        # Batch 1 gives 1 unique query. Batch 2 (asking for 1) gives a duplicate.
+        # System stalls and terminates early instead of retrying to get the missing 1 query.
+        assert len(plan) == 1
         assert mock_provider.generate_json_async.call_count == 2
 
 @pytest.mark.asyncio
@@ -354,30 +354,6 @@ async def test_normalize_job_batch_pads_invalid_rows(mock_provider):
     assert results[0]["domain"] == "general"
     assert results[1]["domain"] == "general"
 
-@pytest.mark.asyncio
-async def test_is_summary_step_configured_false_by_default():
-    """Verify summary step is NOT configured when no LLM_SUMMARY_* vars are set."""
-    with patch("backend.services.llm_service.settings") as mock_settings:
-        mock_settings.LLM_SUMMARY_PROVIDER = ""
-        mock_settings.LLM_SUMMARY_API_KEY = ""
-        mock_settings.LLM_SUMMARY_MODEL = ""
-        
-        with patch("backend.services.llm_service.get_provider_for_step"):
-            service = LLMService()
-            assert service.is_summary_step_configured() is False
-
-@pytest.mark.asyncio
-async def test_is_summary_step_configured_true_when_api_key_set():
-    """Verify summary step IS configured when LLM_SUMMARY_API_KEY is set."""
-    with patch("backend.services.llm_service.settings") as mock_settings:
-        mock_settings.LLM_SUMMARY_PROVIDER = ""
-        mock_settings.LLM_SUMMARY_API_KEY = "sk-test-key"
-        mock_settings.LLM_SUMMARY_MODEL = ""
-        
-        with patch("backend.services.llm_service.get_provider_for_step"):
-            service = LLMService()
-            assert service.is_summary_step_configured() is True
-
 # ─── Feature 4: Query Count Retry Enforcement Tests ───────────────────────────
 
 @pytest.mark.asyncio
@@ -408,16 +384,13 @@ async def test_generate_search_plan_with_strict_occupation_keyword_split(mock_pr
         assert "EXACTLY 1" in user_prompt
 
 @pytest.mark.asyncio
-async def test_generate_search_plan_retries_on_wrong_counts(mock_provider):
-    """Verify that if counts don't match, LLM is retried up to 3 times.
-    After 3 failures, the last response is accepted as-is.
-    """
-    # Wrong counts on first 3 calls (3 occupations instead of 2), last call returns same wrong answer
+async def test_generate_search_plan_accepts_wrong_counts_without_retry(mock_provider):
+    """Verify that the system now accepts the first result even if counts are wrong."""
     wrong_response = {
         "searches": [
             {"domain": "it", "type": "occupation", "query": "Dev 1"},
             {"domain": "it", "type": "occupation", "query": "Dev 2"},
-            {"domain": "it", "type": "occupation", "query": "Dev 3"},  # one too many
+            {"domain": "it", "type": "occupation", "query": "Dev 3"},
         ]
     }
     mock_provider.generate_json_async.return_value = wrong_response
@@ -425,7 +398,6 @@ async def test_generate_search_plan_retries_on_wrong_counts(mock_provider):
     with patch("backend.services.llm_service.get_provider_for_step", return_value=mock_provider):
         service = LLMService()
         
-        # Request max 2 occupations, 1 keyword — but LLM always returns 3 occupations, 0 keywords
         plan = await service.generate_search_plan(
             {"role_description": "Dev", "search_strategy": "", "cv_content": ""},
             [],
@@ -433,13 +405,12 @@ async def test_generate_search_plan_retries_on_wrong_counts(mock_provider):
             max_keyword_queries=1,
         )
         
-        # After 3 retries (4 total calls including first), accepts whatever the LLM returned
-        assert mock_provider.generate_json_async.call_count == 4  # initial + 3 retries
-        assert len(plan) == 3  # Accepted the wrong response after max retries
+        assert mock_provider.generate_json_async.call_count == 1
+        assert len(plan) == 3
 
 @pytest.mark.asyncio
-async def test_generate_search_plan_succeeds_on_second_attempt(mock_provider):
-    """Verify that if 2nd call returns correct counts, only 2 LLM calls are made."""
+async def test_generate_search_plan_accepts_first_attempt(mock_provider):
+    """Verify that the system accepts the first result even if counts are wrong, skipping retries."""
     wrong_call = {"searches": [
         {"domain": "it", "type": "occupation", "query": "Dev 1"},
         {"domain": "it", "type": "occupation", "query": "Dev 2"},
@@ -460,12 +431,10 @@ async def test_generate_search_plan_succeeds_on_second_attempt(mock_provider):
             max_keyword_queries=1,
         )
         
-        # Should stop after 2nd call which returned correct counts
-        assert mock_provider.generate_json_async.call_count == 2
+        # Should stop after 1st call even if it technically didn't meet the split ratio
+        # (Though in this specific case, total_target is 2, and it got 2 results, so it stops)
+        assert mock_provider.generate_json_async.call_count == 1
         assert len(plan) == 2
-        types = {s["type"] for s in plan}
-        assert "occupation" in types
-        assert "keyword" in types
 
 
 @pytest.mark.asyncio
@@ -649,33 +618,100 @@ def test_normalize_searches_loose_dedup_can_be_disabled(llm_service):
 
 
 @pytest.mark.asyncio
-async def test_generate_search_plan_batch_rescue_runs_after_repeated_stalls(mock_provider):
+async def test_generate_search_plan_batch_stops_after_stall(mock_provider):
+    """Verify the system terminates early if a batch produces no new unique queries, instead of rescuing."""
     with patch("backend.services.llm_service.get_provider_for_step", return_value=mock_provider), \
          patch("backend.services.llm_service.settings") as mock_settings:
-        mock_settings.LLM_SUMMARY_PROVIDER = ""
-        mock_settings.LLM_SUMMARY_API_KEY = ""
-        mock_settings.LLM_SUMMARY_MODEL = ""
         mock_settings.SEARCH_PLAN_BATCH_SIZE = 2
         mock_settings.SEARCH_PLAN_ENABLE_LOOSE_DEDUP = True
-        mock_settings.SEARCH_PLAN_STALL_MAX_BATCHES = 2
 
         service = LLMService()
 
-        async def fake_call(*args, **kwargs):
-            feedback = kwargs.get("feedback", "")
-            if "Recovery mode" in feedback:
-                return [
-                    {"domain": "it", "language": "en", "type": "occupation", "query": "Backend Engineer"}
-                ]
-            return [{"domain": "it", "language": "en", "type": "occupation", "query": ""}]
-
-        service._call_generate_search_plan = AsyncMock(side_effect=fake_call)
+        # Returns empty list (all filtered out)
+        service._call_generate_search_plan = AsyncMock(return_value=[])
 
         plan = await service.generate_search_plan(
             {"role_description": "Dev", "search_strategy": "", "cv_content": ""},
             [],
-            max_queries=1,
+            max_queries=2,
         )
 
-        assert len(plan) == 1
-        assert plan[0]["query"] == "Backend Engineer"
+        assert len(plan) == 0
+        service._call_generate_search_plan.assert_called_once()
+
+
+# ─── Coverage Report Tests ─────────────────────────────────────────────────────
+
+def test_build_coverage_report_returns_empty_for_no_queries(llm_service):
+    """First batch has no collected queries — report should be empty string."""
+    report = llm_service._build_coverage_report([])
+    assert report == ""
+
+
+def test_build_coverage_report_basic_structure(llm_service):
+    """Verify the report includes distribution stats and the full structured query list."""
+    collected = [
+        {"type": "occupation", "domain": "it", "language": "en", "query": "Software Engineer"},
+        {"type": "keyword", "domain": "it", "language": "de", "query": "Python"},
+        {"type": "occupation", "domain": "finance", "language": "fr", "query": "Analyste financier"},
+    ]
+    report = llm_service._build_coverage_report(collected)
+
+    assert "COVERAGE SO FAR (3 queries" in report
+    assert "occupation=2, keyword=1" in report
+    assert "it=2" in report
+    assert "finance=1" in report
+    assert "Software Engineer" in report
+    assert "Python" in report
+    assert "Analyste financier" in report
+    assert "do NOT repeat" in report
+    assert "Focus your new queries" in report
+
+
+def test_build_coverage_report_remaining_needed(llm_service):
+    """Remaining occupation/keyword counts should appear in the report when provided."""
+    collected = [
+        {"type": "occupation", "domain": "it", "language": "en", "query": "Backend Engineer"},
+    ]
+    report = llm_service._build_coverage_report(collected, remaining_occupations=5, remaining_keywords=3)
+
+    assert "STILL NEEDED: 5 more occupation" in report
+    assert "3 more keyword" in report
+
+
+def test_build_coverage_report_identifies_missing_languages(llm_service):
+    """Report should flag core languages (en/de/fr/it) that have no queries yet."""
+    collected = [
+        {"type": "occupation", "domain": "it", "language": "en", "query": "Backend Engineer"},
+        {"type": "keyword", "domain": "it", "language": "de", "query": "Python"},
+    ]
+    report = llm_service._build_coverage_report(collected)
+
+    # Both fr and it are missing from a 2-query set
+    assert "Missing languages" in report
+    assert "fr" in report
+    assert "it" in report
+
+
+def test_build_coverage_report_caps_list_at_100_entries(llm_service):
+    """Verify the structured list is capped at 100 entries for token budget control."""
+    collected = [
+        {"type": "occupation", "domain": "it", "language": "en", "query": f"Engineer {i}"}
+        for i in range(120)
+    ]
+    report = llm_service._build_coverage_report(collected)
+
+    assert "120 queries already generated" in report
+    assert "20 earlier queries omitted" in report
+    assert "Engineer 119" in report  # last entry is present
+    assert "Engineer 0" not in report  # first 20 entries omitted
+
+
+def test_build_coverage_report_structured_row_format(llm_service):
+    """Each query in the list should appear with type, domain, language, and text."""
+    collected = [
+        {"type": "occupation", "domain": "finance", "language": "fr", "query": "Analyste financier"},
+    ]
+    report = llm_service._build_coverage_report(collected)
+
+    assert "[occupation] [finance] [fr] Analyste financier" in report

@@ -3,7 +3,6 @@ import { BrowserRouter, Routes, Route, Navigate, useLocation, useNavigate } from
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { ToastProvider } from './context/ToastContext';
 import { SearchProvider } from './context/SearchContext';
-import { ProtectedRoute } from './components/ProtectedRoute';
 
 class ErrorBoundary extends React.Component {
   constructor(props) {

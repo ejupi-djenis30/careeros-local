@@ -9,27 +9,6 @@ class JobRepository(BaseRepository[Job]):
     def __init__(self, db: Session):
         super().__init__(Job, db)
 
-    def get_by_external_url(self, url: str) -> Optional[Job]:
-        return self.db.query(self.model).join(self.model.scraped_job).filter(ScrapedJob.external_url == url).first()
-
-    def get_by_platform_id(self, platform: str, platform_job_id: str) -> Optional[Job]:
-        return (
-            self.db.query(self.model)
-            .join(self.model.scraped_job)
-            .filter(ScrapedJob.platform == platform)
-            .filter(ScrapedJob.platform_job_id == platform_job_id)
-            .first()
-        )
-
-    def get_by_user(self, user_id: int, skip: int = 0, limit: int = 100) -> List[Job]:
-        return (
-            self.db.query(self.model)
-            .filter(self.model.user_id == user_id)
-            .offset(skip)
-            .limit(limit)
-            .all()
-        )
-
     def get_user_job_identifiers(self, user_id: int) -> List[Tuple[str, str, str, str, str]]:
         """Returns lightweight tuples of (platform, platform_job_id, external_url, title, company) for all user jobs."""
         return (
@@ -214,3 +193,39 @@ class JobRepository(BaseRepository[Job]):
             "total_applied": int(applied_count),
             "avg_score": float(avg_score)
         }
+
+    def get_count_and_stats_by_user_filtered(
+        self,
+        user_id: int,
+        *,
+        min_score: Optional[float] = None,
+        max_score: Optional[float] = None,
+        min_distance: Optional[float] = None,
+        max_distance: Optional[float] = None,
+        worth_applying: Optional[bool] = None,
+        applied: Optional[bool] = None,
+        search_profile_id: Optional[int] = None,
+    ) -> dict:
+        """Return total count, total_applied, and avg_score in a single query."""
+        q = self._build_filter_query(
+            user_id,
+            min_score=min_score,
+            max_score=max_score,
+            min_distance=min_distance,
+            max_distance=max_distance,
+            worth_applying=worth_applying,
+            applied=applied,
+            search_profile_id=search_profile_id,
+        )
+
+        row = q.with_entities(
+            func.count(self.model.id),
+            func.sum(case((self.model.applied == True, 1), else_=0)),
+            func.avg(self.model.affinity_score),
+        ).first()
+
+        total = int(row[0]) if row and row[0] else 0
+        applied_count = int(row[1]) if row and row[1] else 0
+        avg_score = float(row[2]) if row and row[2] else 0.0
+
+        return {"total": total, "total_applied": applied_count, "avg_score": avg_score}

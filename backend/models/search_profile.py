@@ -1,10 +1,13 @@
-from sqlalchemy import Column, String, Boolean, Float, Text, Integer, ForeignKey, JSON, DateTime
+from sqlalchemy import Column, String, Boolean, Float, Text, Integer, ForeignKey, JSON, DateTime, Index
 from sqlalchemy.orm import relationship
 from backend.models.base_model import BaseModel, TimestampMixin
 
 
 class SearchProfile(BaseModel, TimestampMixin):
     __tablename__ = "search_profiles"
+    __table_args__ = (
+        Index('ix_search_profile_user_schedule', 'user_id', 'schedule_enabled'),
+    )
 
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
     name = Column(String, default="")

@@ -65,10 +65,6 @@ logger = logging.getLogger(__name__)
 STOP_STATES = {"stopped", "cancelled", "finished", "failed"}
 
 
-def get_query_fingerprint(query: str) -> str:
-    return loose_query_fingerprint(query)
-
-
 # ─────────────────────── Domain Router ───────────────────────
 
 def get_compatible_providers(

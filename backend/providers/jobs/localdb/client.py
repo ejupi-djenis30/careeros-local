@@ -22,6 +22,7 @@ class LocalDbProvider(JobProvider):
     def __init__(self, db: Session):
         self.db = db
 
+    @property
     def name(self) -> str:
         return "local_db"
 
@@ -67,7 +68,7 @@ class LocalDbProvider(JobProvider):
         )
 
     async def search(self, request: JobSearchRequest) -> JobSearchResponse:
-        logger.info(f"[{self.name()}] Starting search for '{request.query}' in '{request.location}'")
+        logger.info(f"[{self.name}] Starting search for '{request.query}' in '{request.location}'")
         start_time = time.time()
 
         # Start building the ORM query
@@ -107,7 +108,7 @@ class LocalDbProvider(JobProvider):
             results.append(self._db_job_to_listing(db_job))
 
         elapsed_ms = int((time.time() - start_time) * 1000)
-        logger.info(f"[{self.name()}] Found {len(results)} internal jobs in {elapsed_ms}ms")
+        logger.info(f"[{self.name}] Found {len(results)} internal jobs in {elapsed_ms}ms")
         
         return JobSearchResponse(
             items=results,
@@ -115,7 +116,7 @@ class LocalDbProvider(JobProvider):
             page=request.page,
             page_size=request.page_size,
             total_pages=max(1, (total_count + request.page_size - 1) // request.page_size),
-            source=self.name(),
+            source=self.name,
             search_time_ms=elapsed_ms,
             request=request,
         )

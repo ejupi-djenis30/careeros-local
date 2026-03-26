@@ -1,4 +1,4 @@
-import { ApiClient, API_BASE } from "../lib/client";
+import { ApiClient } from "../lib/client";
 
 export const SearchService = {
     start(profile) {

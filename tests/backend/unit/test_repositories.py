@@ -128,15 +128,7 @@ def test_job_repository_get_by_identifiers(job_repo, test_user, db_session):
     sj = _create_scraped_job(db_session, platform="generic", platform_job_id="pj-123",
                              title="Identifier Job", company="ID Corp", external_url="http://id-corp.com")
     job_repo.create({"user_id": test_user.id, "scraped_job_id": sj.id})
-    
-    # get_by_external_url
-    job1 = job_repo.get_by_external_url("http://id-corp.com")
-    assert job1.title == "Identifier Job"
-    
-    # get_by_platform_id
-    job2 = job_repo.get_by_platform_id("generic", "pj-123")
-    assert job2.title == "Identifier Job"
-    
+
     # get_user_job_identifiers
     ids = job_repo.get_user_job_identifiers(test_user.id)
     assert ("generic", "pj-123", "http://id-corp.com", "Identifier Job", "ID Corp") in ids
@@ -158,20 +150,6 @@ def test_job_repository_get_profile_job_identifiers(job_repo, profile_repo, test
     ids_p2 = job_repo.get_profile_job_identifiers(p2.id)
     assert ("p2", "j2", "url2", "Test Job", "Test Company") in ids_p2
     assert ("p1", "j1", "url1", "Test Job", "Test Company") not in ids_p2
-
-def test_job_repository_get_by_user_pagination(job_repo, test_user, db_session):
-    for i in range(5):
-        sj = _create_scraped_job(db_session, platform_job_id=f"pj-pag-{i}",
-                                 title=f"Pagination Job {i}", company="Pag Corp",
-                                 external_url=f"http://pag-{i}.com")
-        job_repo.create({
-            "user_id": test_user.id,
-            "scraped_job_id": sj.id,
-        })
-    
-    jobs = job_repo.get_by_user(test_user.id, skip=1, limit=2)
-    assert len(jobs) == 2
-
 
 class _DummyModel:
     def __init__(self, **kwargs):

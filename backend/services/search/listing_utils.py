@@ -61,7 +61,7 @@ def coerce_string_list(value, normalizer) -> List[str]:
 def extract_company_name(listing) -> str:
     """Extract the company name string from a listing object."""
     company_obj = getattr(listing, "company", None)
-    if hasattr(company_obj, "name"):
+    if company_obj is not None and hasattr(company_obj, "name"):
         return company_obj.name or ""
     if isinstance(company_obj, str):
         return company_obj

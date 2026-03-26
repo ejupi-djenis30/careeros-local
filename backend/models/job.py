@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 
-from sqlalchemy import Column, Integer, String, Boolean, Float, Text, DateTime, ForeignKey, JSON, UniqueConstraint
+from sqlalchemy import Column, Integer, String, Boolean, Float, Text, DateTime, ForeignKey, JSON, UniqueConstraint, Index
 from sqlalchemy.orm import relationship
 from backend.models.base_model import BaseModel, TimestampMixin
 
@@ -97,6 +97,7 @@ class Job(BaseModel, TimestampMixin):
     __tablename__ = "jobs"
     __table_args__ = (
         UniqueConstraint('user_id', 'scraped_job_id', 'search_profile_id', name='uq_job_user_scraped_profile'),
+        Index('ix_job_user_profile', 'user_id', 'search_profile_id'),
     )
 
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
@@ -115,7 +116,7 @@ class Job(BaseModel, TimestampMixin):
     distance_km = Column(Float, nullable=True)
     
     # User Action
-    applied = Column(Boolean, default=False)
+    applied = Column(Boolean, default=False, index=True)
     
     # Relationships
     user = relationship("User", back_populates="jobs")
@@ -125,178 +126,73 @@ class Job(BaseModel, TimestampMixin):
     # Feature 2: Track if same ScrapedJob was applied elsewhere
     @property
     def applied_elsewhere(self) -> bool:
-        """Returns True if the underlying scraped job has been marked as 'applied' in ANY other Job entry for the same user."""
-        if hasattr(self, "_applied_elsewhere_transient"):
-            return self._applied_elsewhere_transient
-        if not self.scraped_job:
-            return False
-        return any(uj.applied for uj in self.scraped_job.user_jobs if uj.id != self.id and uj.user_id == self.user_id)
+        """Returns True if the underlying scraped job has been marked as 'applied' in ANY other Job entry for the same user.
+        
+        This value is always populated via the transient attribute set by JobService.get_jobs_by_user().
+        Outside that flow, returns False to avoid triggering a lazy-load N+1 query.
+        """
+        return getattr(self, "_applied_elsewhere_transient", False)
 
     @applied_elsewhere.setter
     def applied_elsewhere(self, value: bool):
         self._applied_elsewhere_transient = value
 
-    def __init__(self, **kwargs):
-        scraped_fields = {
-            "title", "company", "description", "location", "external_url", 
-            "application_url", "application_email", "workload", 
-            "publication_date", "platform", "platform_job_id", 
-            "raw_metadata", "source_query", "summary",
-            "normalization_status", "normalized_at", "normalization_version",
-            "normalization_source", "normalization_confidence", "normalized_title",
-            "normalized_role_family", "normalized_domain", "normalized_seniority",
-            "normalized_employment_mode", "normalized_contract_type",
-            "normalized_qualification_level", "normalized_experience_min_years",
-            "normalized_experience_max_years", "normalized_workload_min",
-            "normalized_workload_max", "normalized_salary_min_chf",
-            "normalized_salary_max_chf", "normalized_required_languages",
-            "normalized_required_skills", "normalized_education_levels",
-            "normalized_key_requirements", "normalized_metadata"
-        }
-        user_kwargs = {}
-        scraped_kwargs = {}
-        for k, v in kwargs.items():
-            if k in scraped_fields or k == "url":
-                target_key = "external_url" if k == "url" else k
-                scraped_kwargs[target_key] = v
-            else:
-                user_kwargs[k] = v
-        
-        # If we have scraped info but no linked object, create it (compatibility mode)
-        if scraped_kwargs and "scraped_job_id" not in user_kwargs and "scraped_job" not in user_kwargs:
-            import uuid
-            if "platform" not in scraped_kwargs: scraped_kwargs["platform"] = "manual"
-            if "platform_job_id" not in scraped_kwargs: scraped_kwargs["platform_job_id"] = str(uuid.uuid4())
-            if "title" not in scraped_kwargs: scraped_kwargs["title"] = "Untitled"
-            if "company" not in scraped_kwargs: scraped_kwargs["company"] = "Unknown"
-            if "external_url" not in scraped_kwargs: scraped_kwargs["external_url"] = "http://unknown"
-            user_kwargs["scraped_job"] = ScrapedJob(**scraped_kwargs)
-            
-        super().__init__(**user_kwargs)
-
-    def _ensure_scraped_job(self):
-        if self.scraped_job is None:
-            import uuid
-            self.scraped_job = ScrapedJob(
-                platform="manual",
-                platform_job_id=str(uuid.uuid4()),
-                title="Untitled",
-                company="Unknown",
-                external_url="http://unknown"
-            )
-
-    # Pass-through properties for backward compatibility
+    # Pass-through properties for Pydantic JobResponse serialization (from_attributes=True)
     @property
     def title(self):
         return self.scraped_job.title if self.scraped_job else None
-    @title.setter
-    def title(self, value):
-        self._ensure_scraped_job()
-        self.scraped_job.title = value
 
     @property
     def company(self):
         return self.scraped_job.company if self.scraped_job else None
-    @company.setter
-    def company(self, value):
-        self._ensure_scraped_job()
-        self.scraped_job.company = value
 
     @property
     def description(self):
         return self.scraped_job.description if self.scraped_job else None
-    @description.setter
-    def description(self, value):
-        self._ensure_scraped_job()
-        self.scraped_job.description = value
 
     @property
     def location(self):
         return self.scraped_job.location if self.scraped_job else None
-    @location.setter
-    def location(self, value):
-        self._ensure_scraped_job()
-        self.scraped_job.location = value
 
     @property
     def url(self):
         return self.scraped_job.external_url if self.scraped_job else None
-    @url.setter
-    def url(self, value):
-        self._ensure_scraped_job()
-        self.scraped_job.external_url = value
 
     @property
     def external_url(self):
         return self.scraped_job.external_url if self.scraped_job else None
-    @external_url.setter
-    def external_url(self, value):
-        self._ensure_scraped_job()
-        self.scraped_job.external_url = value
 
     @property
     def application_url(self):
         return self.scraped_job.application_url if self.scraped_job else None
-    @application_url.setter
-    def application_url(self, value):
-        self._ensure_scraped_job()
-        self.scraped_job.application_url = value
 
     @property
     def application_email(self):
         return self.scraped_job.application_email if self.scraped_job else None
-    @application_email.setter
-    def application_email(self, value):
-        self._ensure_scraped_job()
-        self.scraped_job.application_email = value
 
     @property
     def workload(self):
         return self.scraped_job.workload if self.scraped_job else None
-    @workload.setter
-    def workload(self, value):
-        self._ensure_scraped_job()
-        self.scraped_job.workload = value
 
     @property
     def publication_date(self):
         return self.scraped_job.publication_date if self.scraped_job else None
-    @publication_date.setter
-    def publication_date(self, value):
-        self._ensure_scraped_job()
-        self.scraped_job.publication_date = value
 
     @property
     def platform(self):
         return self.scraped_job.platform if self.scraped_job else None
-    @platform.setter
-    def platform(self, value):
-        self._ensure_scraped_job()
-        self.scraped_job.platform = value
 
     @property
     def platform_job_id(self):
         return self.scraped_job.platform_job_id if self.scraped_job else None
-    @platform_job_id.setter
-    def platform_job_id(self, value):
-        self._ensure_scraped_job()
-        self.scraped_job.platform_job_id = value
 
     @property
     def raw_metadata(self):
         return self.scraped_job.raw_metadata if self.scraped_job else None
-    @raw_metadata.setter
-    def raw_metadata(self, value):
-        self._ensure_scraped_job()
-        self.scraped_job.raw_metadata = value
 
     @property
     def source_query(self):
         return self.scraped_job.source_query if self.scraped_job else None
-    @source_query.setter
-    def source_query(self, value):
-        self._ensure_scraped_job()
-        self.scraped_job.source_query = value
 
     @property
     def normalized_job(self):

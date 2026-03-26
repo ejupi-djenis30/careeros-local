@@ -1,5 +1,6 @@
 import logging
 import threading
+from collections import Counter
 from typing import Dict, Any, List, Optional
 from tenacity import retry, stop_after_attempt, wait_exponential
 from backend.providers.llm.factory import get_provider_for_step
@@ -43,20 +44,6 @@ class LLMService:
         with self._provider_cache_lock:
             self._provider_cache.clear()
 
-    @staticmethod
-    def _build_retry_feedback(attempt: int) -> str:
-        if attempt <= 0:
-            return ""
-
-        hints = {
-            1: "Retry policy: prioritize domain-faithful, concrete Swiss job-title wording. Avoid cosmetic variants.",
-            2: "Retry policy: increase language diversity (EN/DE/FR/IT) and vary role-family synonyms materially.",
-            3: "Retry policy: maximize uniqueness and executability. Avoid reordered-token duplicates and broad generic terms.",
-        }
-        return hints.get(
-            attempt,
-            "Retry policy: maintain strict count compliance while maximizing unique, executable query intent.",
-        )
 
     def _extract_searches_payload(self, result: Any) -> tuple[List[Dict[str, Any]], str, bool]:
         """Extract search list using strict-first parsing with legacy fallback.
@@ -88,19 +75,6 @@ class LLMService:
             return result, "root_list", False
 
         return [], "invalid_root", False
-
-    def is_summary_step_configured(self) -> bool:
-        """Return True only if LLM_SUMMARY_* env vars are explicitly configured.
-        
-        If not configured the job-summary step is skipped entirely (opt-in behavior).
-        The step is considered configured when either a dedicated provider OR a
-        dedicated API key is set for the 'summary' step.
-        """
-        return bool(
-            settings.LLM_SUMMARY_PROVIDER
-            or settings.LLM_SUMMARY_API_KEY
-            or settings.LLM_SUMMARY_MODEL
-        )
 
     # ─── New Phase 2 Helpers: CV Summary & Relevance Pre-filter ────────
 
@@ -405,47 +379,99 @@ One boolean per job, in order. true = relevant, false = irrelevant."""
                 max_keyword_queries=max_keyword_queries,
             )
 
-        strict_types = (max_occupation_queries is not None) or (max_keyword_queries is not None)
-        searches: List[Dict[str, Any]] = []
-
-        MAX_RETRIES = 3
-        for attempt in range(MAX_RETRIES + 1):
-            searches = await self._call_generate_search_plan(
-                profile,
-                providers_info,
-                max_queries=max_queries,
-                max_occupation_queries=max_occupation_queries,
-                max_keyword_queries=max_keyword_queries,
-                attempt=attempt,
-            )
-            
-            if not strict_types:
-                break  # No enforcement needed
-            
-            # Validate counts
-            occupation_count = sum(1 for s in searches if s.get("type") == "occupation")
-            keyword_count = sum(1 for s in searches if s.get("type") == "keyword")
-            
-            occ_ok = (max_occupation_queries is None) or (occupation_count == max_occupation_queries)
-            kw_ok = (max_keyword_queries is None) or (keyword_count == max_keyword_queries)
-            
-            if occ_ok and kw_ok:
-                logger.info(f"[PLAN] Query counts validated on attempt {attempt + 1}: {occupation_count} occupations, {keyword_count} keywords")
-                break
-            
-            if attempt < MAX_RETRIES:
-                logger.warning(
-                    f"[PLAN] Attempt {attempt + 1}/{MAX_RETRIES}: "
-                    f"got {occupation_count} occupations (wanted {max_occupation_queries}), "
-                    f"{keyword_count} keywords (wanted {max_keyword_queries}). Retrying..."
-                )
-            else:
-                logger.warning(
-                    f"[PLAN] Max retries ({MAX_RETRIES}) reached. "
-                    f"Accepting {occupation_count} occupations, {keyword_count} keywords as-is."
-                )
-        
+        searches = await self._call_generate_search_plan(
+            profile,
+            providers_info,
+            max_queries=max_queries,
+            max_occupation_queries=max_occupation_queries,
+            max_keyword_queries=max_keyword_queries,
+        )
         return searches
+
+    @staticmethod
+    def _build_coverage_report(
+        collected: List[Dict[str, Any]],
+        remaining_occupations: Optional[int] = None,
+        remaining_keywords: Optional[int] = None,
+    ) -> str:
+        """Build a structured coverage report for progressive context injection.
+
+        Returns an empty string when no queries have been collected yet (first batch).
+        For subsequent batches, provides distribution stats, gap hints, and the full
+        structured query list so the LLM can intelligently fill coverage gaps.
+        The structured list is capped at 100 entries to keep token usage predictable.
+        """
+        if not collected:
+            return ""
+
+        domain_counts: Counter = Counter()
+        language_counts: Counter = Counter()
+        type_counts: Counter = Counter()
+
+        for item in collected:
+            domain_counts[item.get("domain", "general")] += 1
+            language_counts[item.get("language", "en")] += 1
+            type_counts[item.get("type", "keyword")] += 1
+
+        occ_count = type_counts.get("occupation", 0)
+        kw_count = type_counts.get("keyword", 0)
+        total_queries = len(collected)
+
+        # Cap structured list at 100 entries to keep token budget predictable
+        _MAX_LIST_ENTRIES = 100
+        display_list = collected[-_MAX_LIST_ENTRIES:]
+        omitted = total_queries - len(display_list)
+
+        query_lines = [
+            f"  [{item.get('type', '?')}] [{item.get('domain', 'general')}] [{item.get('language', '?')}] {item.get('query', '')}"
+            for item in display_list
+        ]
+        if omitted > 0:
+            query_lines.insert(0, f"  (... {omitted} earlier queries omitted for brevity ...)")
+        query_list_str = "\n".join(query_lines)
+
+        domain_str = ", ".join(
+            f"{d}={c}" for d, c in sorted(domain_counts.items(), key=lambda x: -x[1])
+        )
+        language_str = ", ".join(
+            f"{lang}={c}" for lang, c in sorted(language_counts.items(), key=lambda x: -x[1])
+        )
+
+        gap_hints: List[str] = []
+        core_langs = {"en", "de", "fr", "it"}
+        missing_langs = core_langs - set(language_counts.keys())
+        if missing_langs:
+            gap_hints.append(f"Missing languages: {', '.join(sorted(missing_langs))}")
+        else:
+            under_langs = sorted(
+                lang for lang in core_langs
+                if language_counts.get(lang, 0) / total_queries < 0.15
+            )
+            if under_langs:
+                gap_hints.append(f"Underrepresented languages: {', '.join(under_langs)}")
+
+        remaining_str = ""
+        if remaining_occupations is not None and remaining_keywords is not None:
+            remaining_str = (
+                f"\n  STILL NEEDED: {remaining_occupations} more occupation"
+                f" + {remaining_keywords} more keyword queries"
+            )
+
+        gap_str = ""
+        if gap_hints:
+            gap_str = "\n  GAP HINTS: " + "; ".join(gap_hints)
+
+        return (
+            f"COVERAGE SO FAR ({total_queries} queries already generated):\n"
+            f"  Distribution — types: occupation={occ_count}, keyword={kw_count}"
+            f" | domains: {domain_str} | languages: {language_str}"
+            f"{remaining_str}"
+            f"{gap_str}\n"
+            f"  FULL LIST (do NOT repeat any of these):\n"
+            f"{query_list_str}\n"
+            f"  Focus your new queries on dimensions not yet covered"
+            f" (new domains, missing/underrepresented languages, role variants, different skills)."
+        )
 
     async def _generate_search_plan_in_batches(
         self,
@@ -461,8 +487,6 @@ One boolean per job, in order. true = relevant, false = irrelevant."""
         remaining_occupations = max_occupation_queries
         remaining_keywords = max_keyword_queries
         batch_size_limit = max(1, settings.SEARCH_PLAN_BATCH_SIZE)
-        max_stall_batches = max(1, int(getattr(settings, "SEARCH_PLAN_STALL_MAX_BATCHES", 2)))
-        stall_count = 0
 
         while len(collected) < total_target:
             remaining_total = total_target - len(collected)
@@ -474,118 +498,38 @@ One boolean per job, in order. true = relevant, false = irrelevant."""
                 remaining_keywords,
             )
 
-            best_batch: List[Dict[str, Any]] = []
-            MAX_RETRIES = 3
-            for attempt in range(MAX_RETRIES + 1):
-                retry_feedback = self._build_retry_feedback(attempt)
-                feedback = (
-                    f"This batch must contribute EXACTLY {batch_size} NEW UNIQUE queries. "
-                    f"Remaining total target after this batch: {remaining_total - batch_size}."
+            try:
+                batch_searches = await self._call_generate_search_plan(
+                    profile,
+                    providers_info,
+                    max_queries=batch_size,
+                    max_occupation_queries=batch_occ,
+                    max_keyword_queries=batch_kw,
+                    coverage_context=self._build_coverage_report(
+                        collected, remaining_occupations, remaining_keywords
+                    ),
                 )
-                if retry_feedback:
-                    feedback = f"{feedback}\n{retry_feedback}"
-                try:
-                    batch_searches = await self._call_generate_search_plan(
-                        profile,
-                        providers_info,
-                        max_queries=batch_size,
-                        max_occupation_queries=batch_occ,
-                        max_keyword_queries=batch_kw,
-                        attempt=attempt,
-                        existing_queries=[item.get("query", "") for item in collected[-120:]],
-                        feedback=feedback,
-                    )
-                except Exception as batch_error:
+            except Exception as batch_error:
+                if collected:
                     logger.warning(
-                        "[PLAN] Batch call failed on attempt %s/%s: %s",
-                        attempt + 1,
-                        MAX_RETRIES + 1,
+                        "[PLAN] Batch call failed, returning partial plan %s/%s: %s",
+                        len(collected),
+                        total_target,
                         batch_error,
                     )
-                    if best_batch:
-                        logger.warning(
-                            "[PLAN] Using best partial batch (%s queries) after LLM failure",
-                            len(best_batch),
-                        )
-                        break
+                    return collected[:total_target]
+                raise
 
-                    if collected:
-                        logger.warning(
-                            "[PLAN] Returning partial collected plan %s/%s due to LLM failure",
-                            len(collected),
-                            total_target,
-                        )
-                        return collected[:total_target]
-
-                    raise
-
-                unique_batch = self._normalize_searches(
-                    batch_searches,
-                    seen_fingerprints,
-                    seen_loose_fingerprints,
-                )
-                if len(unique_batch) > len(best_batch):
-                    best_batch = unique_batch
-
-                occupation_count = sum(1 for item in unique_batch if item.get("type") == "occupation")
-                keyword_count = sum(1 for item in unique_batch if item.get("type") == "keyword")
-                counts_ok = (
-                    len(unique_batch) == batch_size
-                    and (batch_occ is None or occupation_count == batch_occ)
-                    and (batch_kw is None or keyword_count == batch_kw)
-                )
-
-                if counts_ok:
-                    best_batch = unique_batch
-                    break
-
-                logger.warning(
-                    "[PLAN] Batch retry %s/%s returned %s unique queries (%s occupations, %s keywords) for target %s",
-                    attempt + 1,
-                    MAX_RETRIES + 1,
-                    len(unique_batch),
-                    occupation_count,
-                    keyword_count,
-                    batch_size,
-                )
+            best_batch = self._normalize_searches(
+                batch_searches,
+                seen_fingerprints,
+                seen_loose_fingerprints,
+            )
 
             if not best_batch:
-                stall_count += 1
-                logger.warning("[PLAN] Batch generation stalled with no new unique queries")
-                should_continue = True
-                if stall_count >= max_stall_batches:
-                    logger.warning(
-                        "[PLAN] Repeated stalls reached threshold; attempting rescue batch without strict type split"
-                    )
-                    rescue_searches = await self._call_generate_search_plan(
-                        profile,
-                        providers_info,
-                        max_queries=min(batch_size_limit, total_target),
-                        max_occupation_queries=None,
-                        max_keyword_queries=None,
-                        existing_queries=[item.get("query", "") for item in collected[-120:]],
-                        feedback="Recovery mode: produce any high-quality, unique executable queries.",
-                    )
-                    best_batch = self._normalize_searches(
-                        rescue_searches,
-                        seen_fingerprints,
-                        seen_loose_fingerprints,
-                    )
-                    if not best_batch:
-                        if collected:
-                            logger.warning(
-                                "[PLAN] Rescue batch produced no unique queries; returning partial plan %s/%s",
-                                len(collected),
-                                total_target,
-                            )
-                            break
-                        break
-                    stall_count = 0
-                    should_continue = False
-                if should_continue:
-                    continue
+                logger.warning("[PLAN] Batch generation stalled with no new unique queries; terminating early.")
+                break
 
-            stall_count = 0
             batch_to_add = best_batch[:batch_size]
             for item in batch_to_add:
                 fingerprint = _query_fingerprint(item)
@@ -727,13 +671,11 @@ One boolean per job, in order. true = relevant, false = irrelevant."""
         max_queries: Optional[int] = None,
         max_occupation_queries: Optional[int] = None,
         max_keyword_queries: Optional[int] = None,
-        attempt: int = 0,
-        existing_queries: Optional[List[str]] = None,
-        feedback: str = "",
+        coverage_context: str = "",
     ) -> List[Dict[str, Any]]:
         """Internal method: single LLM call to generate the search plan."""
         provider = self._get_provider("plan")
-        logger.info(f"[PLAN] Using {provider.model_id} (attempt {attempt + 1})")
+        logger.info("[PLAN] Using %s", provider.model_id)
 
         role_description = sanitize_prompt_text(profile.get("role_description"), max_chars=1200)
         search_strategy = sanitize_prompt_text(profile.get("search_strategy"), max_chars=1200)
@@ -801,24 +743,7 @@ One boolean per job, in order. true = relevant, false = irrelevant."""
                 "Every query must be materially different from the others."
             )
 
-        retry_note = ""
-        if attempt > 0:
-            retry_note = (
-                f"\n\nCRITICAL: This is retry attempt {attempt + 1}. "
-                "Your previous response did NOT match the required query counts. "
-                "You MUST strictly adhere to the count requirements this time."
-            )
-
-        exclusion_block = ""
-        if existing_queries:
-            formatted_queries = "\n".join(f"- {query}" for query in existing_queries if query)
-            exclusion_block = (
-                "\nEXISTING QUERIES TO AVOID REPEATING:\n"
-                f"{formatted_queries}\n"
-                "Do NOT repeat or trivially rephrase the existing queries above."
-            )
-
-        feedback_block = f"\nADDITIONAL BATCH FEEDBACK:\n{feedback}\n" if feedback else ""
+        coverage_block = f"\n{coverage_context}\n" if coverage_context else ""
 
         user_prompt = f"""Analyze the user's profile and generate an optimal search plan.
 You do NOT need to assign queries to specific job boards — the system routes them automatically.
@@ -848,7 +773,7 @@ QUERY GENERATION RULES:
     - Prefer canonical Swiss/European job title wording over creative paraphrases.
     - If type is unclear, choose the most executable form.
 
-{limit_instruction}{retry_note}{feedback_block}{exclusion_block}
+{limit_instruction}{coverage_block}
 
 INTERNAL PLAN FINGERPRINT: {input_fingerprint}
 

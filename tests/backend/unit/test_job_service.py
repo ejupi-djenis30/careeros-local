@@ -27,8 +27,9 @@ def test_get_jobs_by_user(job_service, mock_repo):
     job2.scraped_job_id = 102
     
     mock_repo.get_by_user_filtered.return_value = [job1, job2]
-    mock_repo.count_by_user_filtered.return_value = 2
-    mock_repo.get_stats_by_user_filtered.return_value = {"total_applied": 1, "avg_score": 85.0}
+    mock_repo.get_count_and_stats_by_user_filtered.return_value = {
+        "total": 2, "total_applied": 1, "avg_score": 85.0
+    }
     mock_repo.get_applied_scraped_job_ids.return_value = {101} # job1 applied elsewhere
     
     result = job_service.get_jobs_by_user(1, page=1, page_size=10, filters={"sort_by": "created_at"})
