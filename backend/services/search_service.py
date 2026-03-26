@@ -1009,8 +1009,16 @@ class SearchService:
             try:
                 await self._normalize_persisted_jobs(profile_id, unique_jobs)
             except Exception as normalize_error:
-                logger.warning("LLM normalization failed for profile %s: %s", profile_id, normalize_error)
-                add_log(profile_id, f"Normalization warning: {normalize_error}")
+                logger.error(
+                    "LLM normalization failed for profile %s — jobs will proceed without normalized fields: %s",
+                    profile_id,
+                    normalize_error,
+                    exc_info=True,
+                )
+                add_log(
+                    profile_id,
+                    f"Normalization error (jobs will be passed to match step without field-level filtering): {normalize_error}",
+                )
 
             # ── Step 5: Structured filtering based on persisted job facts ──
             pre_filter_count = len(unique_jobs)

@@ -140,7 +140,22 @@ app.include_router(api_router, prefix=settings.API_V1_STR)
 
 @app.get(f"{settings.API_V1_STR}/health")
 def health():
-    return {"status": "ok"}
+    from backend.db.base import SessionLocal
+    from sqlalchemy import text
+    db_status = "unavailable"
+    try:
+        db = SessionLocal()
+        try:
+            db.execute(text("SELECT 1"))
+            db_status = "connected"
+        finally:
+            db.close()
+    except Exception:
+        db_status = "unavailable"
+    if db_status != "connected":
+        from fastapi.responses import JSONResponse
+        return JSONResponse(status_code=503, content={"status": "degraded", "database": db_status})
+    return {"status": "ok", "database": db_status}
 
 
 @app.get("/")

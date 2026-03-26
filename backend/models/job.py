@@ -115,7 +115,7 @@ class Job(BaseModel, TimestampMixin):
 
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
     search_profile_id = Column(Integer, ForeignKey("search_profiles.id"), nullable=True, index=True)
-    scraped_job_id = Column(Integer, ForeignKey("scraped_jobs.id"), nullable=False, index=True)
+    scraped_job_id = Column(Integer, ForeignKey("scraped_jobs.id", ondelete="CASCADE"), nullable=False, index=True)
     
     # Metadata
     is_scraped = Column(Boolean, default=False)
@@ -141,8 +141,8 @@ class Job(BaseModel, TimestampMixin):
     applied = Column(Boolean, default=False, index=True)
     
     # Relationships
-    user = relationship("User", back_populates="jobs")
-    search_profile = relationship("SearchProfile", back_populates="jobs")
+    user = relationship("User", back_populates="jobs", lazy="selectin")
+    search_profile = relationship("SearchProfile", back_populates="jobs", lazy="selectin")
     scraped_job = relationship("ScrapedJob", back_populates="user_jobs", lazy="joined")
 
     # Feature 2: Track if same ScrapedJob was applied elsewhere
