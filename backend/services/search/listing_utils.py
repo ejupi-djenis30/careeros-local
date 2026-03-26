@@ -14,7 +14,7 @@ from typing import Any, Dict, List, Optional
 logger = logging.getLogger(__name__)
 
 
-def normalized_text_token(value: str) -> str:
+def normalized_text_token(value: Any) -> str:
     """Lowercase and strip punctuation from a string for fuzzy comparison."""
     if not isinstance(value, str):
         return ""
