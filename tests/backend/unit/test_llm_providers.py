@@ -151,22 +151,25 @@ def test_factory_per_step_overrides():
         mock_settings.LLM_THINKING = False
         mock_settings.LLM_THINKING_LEVEL = "OFF"
 
-        # RELEVANCE step: override to a small model with lower temp
-        mock_settings.LLM_RELEVANCE_PROVIDER = "groq"
-        mock_settings.LLM_RELEVANCE_MODEL = "llama-3.1-8b-instant"
-        mock_settings.LLM_RELEVANCE_API_KEY = ""  # fallback to global
-        mock_settings.LLM_RELEVANCE_BASE_URL = ""  # fallback to global
-        mock_settings.LLM_RELEVANCE_TEMPERATURE = 0.1
-        mock_settings.LLM_RELEVANCE_TOP_P = 0.0
-        mock_settings.LLM_RELEVANCE_MAX_TOKENS = 1024
-        mock_settings.LLM_RELEVANCE_THINKING = False
-        mock_settings.LLM_RELEVANCE_THINKING_LEVEL = ""
+        # MATCH step: override to a specific model
+        # The pipeline previously had a RELEVANCE step, which has been removed;
+        # we now use the MATCH step here as the representative case to verify
+        # per-step configuration overrides for LLM providers.
+        mock_settings.LLM_MATCH_PROVIDER = "groq"
+        mock_settings.LLM_MATCH_MODEL = "llama-3.3-70b-versatile"
+        mock_settings.LLM_MATCH_API_KEY = ""  # fallback to global
+        mock_settings.LLM_MATCH_BASE_URL = ""  # fallback to global
+        mock_settings.LLM_MATCH_TEMPERATURE = 0.3
+        mock_settings.LLM_MATCH_TOP_P = 0.0
+        mock_settings.LLM_MATCH_MAX_TOKENS = 2048
+        mock_settings.LLM_MATCH_THINKING = False
+        mock_settings.LLM_MATCH_THINKING_LEVEL = ""
 
-        provider = get_provider_for_step("relevance")
+        provider = get_provider_for_step("match")
         assert isinstance(provider, OpenAICompatibleProvider)
-        assert provider.model == "llama-3.1-8b-instant"
-        assert provider.temperature == 0.1
-        assert provider.max_tokens == 1024
+        assert provider.model == "llama-3.3-70b-versatile"
+        assert provider.temperature == 0.3
+        assert provider.max_tokens == 2048
 
 
 def test_factory_gemini_provider():

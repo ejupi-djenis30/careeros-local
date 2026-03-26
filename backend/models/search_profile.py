@@ -60,6 +60,17 @@ class SearchProfile(BaseModel, TimestampMixin):
     profile_normalized_languages = Column(JSON, nullable=True)          # [{code, level}, ...]
     profile_normalized_skills = Column(JSON, nullable=True)             # ["Python", "React", ...]
 
+    # ── Search intent — what the user WANTS to find (may differ from CV domain) ──
+    # Derived from role_description + search_strategy at the same LLM call as candidate profile.
+    # The structured filtering layer uses these as the PRIMARY comparison axis against jobs.
+    profile_search_intent_domain = Column(String, nullable=True)             # target domain
+    profile_search_intent_seniority = Column(String, nullable=True)          # target seniority
+    profile_search_intent_role_family = Column(String, nullable=True)        # target role
+    profile_search_intent_qualification_level = Column(String, nullable=True) # acceptable qualification
+    profile_search_intent_skills = Column(JSON, nullable=True)               # target skills
+    profile_search_intent_open_to_unrelated = Column(Boolean, nullable=True, default=False)  # cross-domain search
+    profile_search_intent_keywords = Column(JSON, nullable=True)             # free-form intent keywords
+
     user = relationship("User", back_populates="profiles")
     jobs = relationship("Job", back_populates="search_profile", cascade="all, delete-orphan")
 

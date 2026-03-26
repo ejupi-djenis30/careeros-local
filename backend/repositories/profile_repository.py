@@ -37,11 +37,11 @@ class ProfileRepository(BaseRepository[SearchProfile]):
         normalized_data: dict,
         fingerprint: Optional[str] = None,
     ) -> Optional[SearchProfile]:
-        """Persist the LLM-extracted candidate normalisation fields onto the profile.
+        """Persist the dual-signal LLM-extracted candidate normalisation fields onto the profile.
 
-        ``normalized_data`` is the dict returned by
-        ``LLMService.normalize_user_profile()`` (keys: seniority, domain,
-        role_family, qualification_level, experience_years, languages, skills).
+        ``normalized_data`` is the dict returned by ``LLMService.normalize_user_profile()``.
+        It contains both ``candidate_profile`` fields (seniority, domain, skills etc.) and
+        ``search_intent`` fields (intent_domain, intent_seniority, open_to_unrelated etc.).
         ``fingerprint`` is the cache-invalidation key so we can skip re-extraction
         on the next run when inputs have not changed.
         """
@@ -53,6 +53,8 @@ class ProfileRepository(BaseRepository[SearchProfile]):
         profile.profile_normalized_at = datetime.now(timezone.utc)
         if fingerprint is not None:
             profile.profile_normalization_fingerprint = fingerprint
+
+        # Candidate profile (CV facts)
         profile.profile_normalized_seniority = normalized_data.get("seniority")
         profile.profile_normalized_domain = normalized_data.get("domain")
         profile.profile_normalized_role_family = normalized_data.get("role_family")
@@ -60,6 +62,15 @@ class ProfileRepository(BaseRepository[SearchProfile]):
         profile.profile_normalized_experience_years = normalized_data.get("experience_years")
         profile.profile_normalized_languages = normalized_data.get("languages") or []
         profile.profile_normalized_skills = normalized_data.get("skills") or []
+
+        # Search intent (what the user WANTS)
+        profile.profile_search_intent_domain = normalized_data.get("intent_domain")
+        profile.profile_search_intent_seniority = normalized_data.get("intent_seniority")
+        profile.profile_search_intent_role_family = normalized_data.get("intent_role_family")
+        profile.profile_search_intent_qualification_level = normalized_data.get("intent_qualification_level")
+        profile.profile_search_intent_skills = normalized_data.get("intent_skills") or []
+        profile.profile_search_intent_open_to_unrelated = bool(normalized_data.get("open_to_unrelated", False))
+        profile.profile_search_intent_keywords = normalized_data.get("intent_keywords") or []
 
         self.db.add(profile)
         try:

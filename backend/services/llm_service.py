@@ -76,7 +76,7 @@ class LLMService:
 
         return [], "invalid_root", False
 
-    # ─── New Phase 2 Helpers: CV Summary & Relevance Pre-filter ────────
+    # ─── CV Summary Helper ──────────────────────────────────────────────
 
     @retry(stop=stop_after_attempt(2), wait=wait_exponential(multiplier=1, min=2, max=5))
     async def summarize_cv(self, cv_content: str) -> str:
@@ -119,18 +119,18 @@ Return plain text, NOT JSON."""
         role_description: str,
         search_strategy: str = "",
     ) -> Dict[str, Any]:
-        """Extract structured candidate facts from the CV cross-referenced with the role intent.
+        """Extract a dual-signal candidate profile combining CV facts with search intent.
 
-        This is the user-side mirror of ``normalize_job_batch``: it produces a minimal
-        deterministic profile that can be compared field-for-field against normalized
-        ``ScrapedJob`` columns during structured filtering.
+        Produces TWO complementary blocks:
+        - ``candidate_profile``: What the CV says the person IS (education, skills, experience).
+        - ``search_intent``: What the role_description says the person WANTS to find.
 
-        The extraction is *intent-aware* — it combines what the CV says the candidate IS
-        with what the ``role_description`` says the candidate WANTS.  For example, a senior
-        engineer explicitly targeting junior roles will get ``seniority="junior"`` so that
-        junior job listings are not filtered out.
+        The two signals are kept separate so that the filtering layer can use the intent as
+        the primary comparison axis (e.g. a developer intentionally searching for manual-labor
+        jobs will have ``intent.target_domain="logistics"`` while ``candidate.domain="it"``).
 
-        Returns a dict with keys matching ``SearchProfile.profile_normalized_*`` columns.
+        Returns a flat dict with both ``candidate_*`` and ``intent_*`` keys that map directly
+        to the ``SearchProfile.profile_normalized_*`` and ``profile_search_intent_*`` columns.
         """
         provider = self._get_provider("normalize_profile")
 
@@ -141,30 +141,44 @@ Return plain text, NOT JSON."""
         )
 
         system_prompt = (
-            "You are a strict candidate-profile normalizer for job-matching. "
-            "Cross-reference the CV facts with the user's role-description intent to extract a "
-            "compact deterministic profile. "
+            "You are a strict dual-signal candidate-profile normalizer for job-matching. "
+            "Extract TWO separate blocks: what the CV says the candidate IS, and what the search "
+            "request says they WANT to find. Keep these as distinct signals — the candidate may be "
+            "a senior IT professional WANTING an entry-level manual-labor job, and that is valid. "
             "Use only information explicitly present in the inputs — do NOT invent. "
-            "The 'seniority', 'domain', and 'qualification_level' values MUST come from the "
-            "allowlists below. Return compact structured JSON."
+            "All domain, seniority, and qualification_level values MUST come from the allowlists. "
+            "Return compact structured JSON."
         )
-        user_prompt = f"""Extract the candidate's normalized profile from the CV and role intent below.
+        user_prompt = f"""Extract the candidate's dual-signal normalized profile.
 
-OUTPUT — one JSON object with ALL keys:
-- seniority         : "junior" | "mid" | "senior"  (infer from CV experience + role intent)
-- domain            : one of EXACTLY: general, it, finance, medical, engineering, hospitality, sales, logistics, administration
-- role_family       : normalised job-title family (e.g. "Software Engineer", "Financial Analyst")
-- qualification_level: "none" | "vocational" | "bachelor" | "master" | "phd"
-- experience_years  : integer (total years of relevant professional experience; 0 if unknown/none)
-- languages         : list of {{code (ISO 639-1 2-letter), level (CEFR A1-C2 or "native")}}
-- skills            : list of concrete technical/domain skills (max 20 strings); exclude generic soft-skills
-- confidence        : 0.0–1.0
+OUTPUT — one JSON object with TWO nested blocks:
 
-SENIORITY RULE: if the role_description explicitly targets a seniority DIFFERENT from the CV,
-use the TARGETED seniority (the user knows what they want to apply for).
+"candidate_profile" — what the CV says the person IS:
+  - seniority         : "junior" | "mid" | "senior"  (from CV experience level)
+  - domain            : EXACTLY one of: general, it, finance, medical, engineering, hospitality, sales, logistics, administration, legal, education, marketing, consulting, pharma, construction
+  - role_family       : normalized job-title family from the CV (e.g. "Software Engineer")
+  - qualification_level: "none" | "vocational" | "bachelor" | "master" | "phd"
+  - experience_years  : integer (total years of relevant professional experience; 0 if none)
+  - languages         : list of {{code (ISO 639-1), level (CEFR A1-C2 or "native")}}
+  - skills            : concrete technical/domain skills from CV (max 20); no soft-skills
+  - confidence        : 0.0–1.0
 
-DOMAIN RULE: pick the single best-fit domain from the allowlist.
-Use "general" only if the domain is genuinely unclear.
+"search_intent" — what the role_description + strategy say the person WANTS:
+  - target_domain     : EXACTLY one of the same domain allowlist above — the domain they are SEARCHING IN
+  - target_seniority  : "junior" | "mid" | "senior" | null — the level they are TARGETING
+  - target_role_family: the role/title family they want (may differ from CV)
+  - target_qualification_level: "none" | "vocational" | "bachelor" | "master" | "phd" | null — acceptable qualification requirements
+  - target_skills     : skills relevant to the TARGET role (not necessarily from CV; max 15)
+  - open_to_unrelated : true if the user is EXPLICITLY searching OUTSIDE their CV domain (e.g. IT professional searching for warehouse/cleaning/hospitality work)
+  - intent_keywords   : list of free-form keywords capturing what the user wants (e.g. ["manual work", "no qualifications required", "warehouse", "physical labor"])
+  - confidence        : 0.0–1.0
+
+DOMAIN RULE: Use "general" only when the domain is truly ambiguous.
+OPEN_TO_UNRELATED RULE: Set to true ONLY when the role_description clearly targets a domain
+  unrelated to the CV (e.g. programmer searching for cleaning jobs, lawyer searching for delivery work).
+  If the search is within or adjacent to the CV domain, set to false.
+SENIORITY RULE: For candidate_profile, derive from CV facts.
+  For search_intent, derive from what level of job the role_description targets.
 
 CV (truncated to 5000 chars):
 {sanitize_prompt_text(cv_content, max_chars=5000)}
@@ -174,14 +188,26 @@ ROLE DESCRIPTION (what the user is looking for):
 
 Return ONLY JSON — no markdown, no explanations:
 {{
-  "seniority": "mid",
-  "domain": "it",
-  "role_family": "Software Engineer",
-  "qualification_level": "bachelor",
-  "experience_years": 4,
-  "languages": [{{"code": "en", "level": "C2"}}, {{"code": "de", "level": "B2"}}],
-  "skills": ["Python", "FastAPI", "React", "PostgreSQL"],
-  "confidence": 0.85
+  "candidate_profile": {{
+    "seniority": "mid",
+    "domain": "it",
+    "role_family": "Software Engineer",
+    "qualification_level": "bachelor",
+    "experience_years": 4,
+    "languages": [{{"code": "en", "level": "C2"}}, {{"code": "de", "level": "B2"}}],
+    "skills": ["Python", "FastAPI", "React", "PostgreSQL"],
+    "confidence": 0.85
+  }},
+  "search_intent": {{
+    "target_domain": "it",
+    "target_seniority": "mid",
+    "target_role_family": "Backend Developer",
+    "target_qualification_level": "bachelor",
+    "target_skills": ["Python", "REST APIs", "Docker"],
+    "open_to_unrelated": false,
+    "intent_keywords": ["backend development", "remote work"],
+    "confidence": 0.90
+  }}
 }}"""
 
         result = await provider.generate_json_async(system_prompt, user_prompt)
@@ -189,34 +215,70 @@ Return ONLY JSON — no markdown, no explanations:
         if not isinstance(result, dict):
             return {}
 
-        # ── normalise / validate each field ──────────────────────────────
-        seniority_raw = str(result.get("seniority") or "").strip().lower()
+        # ── Parse candidate_profile block ─────────────────────────────────
+        cp = result.get("candidate_profile") or {}
+        # Fall back to top-level keys for backward compat with old single-block responses
+        if not cp and any(k in result for k in ("seniority", "domain", "skills")):
+            cp = result
+
+        seniority_raw = str(cp.get("seniority") or "").strip().lower()
         seniority = seniority_raw if seniority_raw in {"junior", "mid", "senior"} else None
 
-        domain_raw = self._normalize_job_domain_token(result.get("domain") or "general")
+        domain_raw = self._normalize_job_domain_token(cp.get("domain") or "general")
         domain = domain_raw or "general"
 
-        role_family = str(result.get("role_family") or "").strip() or None
+        role_family = str(cp.get("role_family") or "").strip() or None
 
-        ql_raw = str(result.get("qualification_level") or "").strip().lower()
         ql_valid = {"none", "vocational", "bachelor", "master", "phd"}
+        ql_raw = str(cp.get("qualification_level") or "").strip().lower()
         qualification_level = ql_raw if ql_raw in ql_valid else None
 
-        experience_years = self._coerce_nullable_int(result.get("experience_years"))
+        experience_years = self._coerce_nullable_int(cp.get("experience_years"))
         if experience_years is not None:
             experience_years = max(0, experience_years)
 
-        languages = self._normalize_required_languages(result.get("languages"))
-        skills = self._dedupe_string_list(result.get("skills"))
+        languages = self._normalize_required_languages(cp.get("languages"))
+        skills = self._dedupe_string_list(cp.get("skills"))
 
-        confidence = 0.0
+        cp_confidence = 0.0
         try:
-            confidence = float(result.get("confidence", 0.0))
+            cp_confidence = float(cp.get("confidence", 0.0))
         except (TypeError, ValueError):
             pass
-        confidence = max(0.0, min(1.0, confidence))
+        cp_confidence = max(0.0, min(1.0, cp_confidence))
+
+        # ── Parse search_intent block ─────────────────────────────────────
+        si = result.get("search_intent") or {}
+
+        intent_domain_raw = self._normalize_job_domain_token(si.get("target_domain") or domain)
+        intent_domain = intent_domain_raw or domain
+
+        intent_seniority_raw = str(si.get("target_seniority") or "").strip().lower()
+        intent_seniority = intent_seniority_raw if intent_seniority_raw in {"junior", "mid", "senior"} else seniority
+
+        intent_role_family = str(si.get("target_role_family") or role_family or "").strip() or None
+
+        intent_ql_raw = str(si.get("target_qualification_level") or "").strip().lower()
+        intent_qualification_level = intent_ql_raw if intent_ql_raw in ql_valid else qualification_level
+
+        intent_skills = self._dedupe_string_list(si.get("target_skills"))
+
+        open_to_unrelated = bool(si.get("open_to_unrelated", False))
+        # Safety: only accept open_to_unrelated=True when intent domain actually differs from candidate domain
+        if open_to_unrelated and intent_domain == domain and intent_domain != "general":
+            open_to_unrelated = False
+
+        intent_keywords = self._dedupe_string_list(si.get("intent_keywords"))
+
+        si_confidence = 0.0
+        try:
+            si_confidence = float(si.get("confidence", 0.0))
+        except (TypeError, ValueError):
+            pass
+        si_confidence = max(0.0, min(1.0, si_confidence))
 
         return {
+            # Candidate profile — what the CV says
             "seniority": seniority,
             "domain": domain,
             "role_family": role_family,
@@ -224,117 +286,15 @@ Return ONLY JSON — no markdown, no explanations:
             "experience_years": experience_years,
             "languages": languages,
             "skills": skills,
+            # Search intent — what the user is looking for
+            "intent_domain": intent_domain,
+            "intent_seniority": intent_seniority,
+            "intent_role_family": intent_role_family,
+            "intent_qualification_level": intent_qualification_level,
+            "intent_skills": intent_skills,
+            "open_to_unrelated": open_to_unrelated,
+            "intent_keywords": intent_keywords,
         }
-
-    # ─── Feature 1: Job Summary Step ──────────────────────────────────
-
-    @retry(stop=stop_after_attempt(2), wait=wait_exponential(multiplier=1, min=2, max=5))
-    async def summarize_job_batch(
-        self,
-        jobs: List[Dict[str, str]],
-    ) -> List[str]:
-        """Generate concise summaries for a batch of jobs.
-        
-        Each summary (~80 words) captures: required skills, responsibilities,
-        seniority, and language requirements. Used by the relevance filter step.
-        
-        Args:
-            jobs: List of {title, company, description} dicts.
-            
-        Returns:
-            List of summary strings, one per job, in the same order.
-        """
-        provider = self._get_provider("summary")
-        
-        jobs_text = ""
-        for i, job in enumerate(jobs):
-            desc = (job.get("description") or "")[:800]  # limit per-job input
-            jobs_text += f"\n--- JOB {i+1} ---\n"
-            jobs_text += f"Title: {job.get('title', 'Unknown')}\n"
-            jobs_text += f"Company: {job.get('company', 'Unknown')}\n"
-            jobs_text += f"Description: {desc}\n"
-
-        system_prompt = (
-            "You are a job description analyst. For each job, extract a compact factual summary "
-            "that highlights: required skills, main responsibilities, seniority level, and any "
-            "explicit language requirements. Be objective. Do NOT invent information."
-        )
-        user_prompt = f"""Summarize each job below in ~80 words each. Focus on: required skills, main tasks, seniority, and language requirements.
-
-{jobs_text}
-
-Return ONLY JSON with a "summaries" array, one string per job, in the same order as the input:
-{{
-    "summaries": [
-        "Summary for job 1...",
-        "Summary for job 2..."
-    ]
-}}"""
-
-        result = await provider.generate_json_async(system_prompt, user_prompt)
-        summaries = result.get("summaries", [])
-        
-        # Safety: if LLM returns wrong count, pad with empty strings
-        while len(summaries) < len(jobs):
-            summaries.append("")
-            
-        return summaries[:len(jobs)]
-
-    @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=10))
-    async def check_relevance_batch(
-        self,
-        jobs: List[Dict[str, str]],
-        role_description: str,
-        search_strategy: str = "",
-    ) -> List[bool]:
-        """Quick binary relevance check for a batch of jobs."""
-        provider = self._get_provider("relevance")
-        
-        system_prompt = (
-            "You are a permissive relevance gate for job discovery. "
-            "Keep borderline matches, translations, adjacent roles, and likely career moves. "
-            "Reject only roles that are clearly in a different profession."
-        )
-        
-        jobs_text = "\n".join(
-            f'{i+1}. "{j["title"]}" at {j.get("company", "Unknown")}'
-            + (f' — {j["description_snippet"]}' if j.get("description_snippet") else '')
-            for i, j in enumerate(jobs)
-        )
-        
-        strategy_block = f"\nEXTRA INSTRUCTIONS/PREFERENCES: {search_strategy}" if search_strategy else ""
-        
-        user_prompt = f"""TARGET ROLE: {role_description}{strategy_block}
-
-JOB TITLES:
-{jobs_text}
-
-FILTERING RULES:
-- Mark as TRUE (relevant) if the job title is the same role, a synonym, a translation (DE/FR/IT/EN), or a closely related role.
-- Mark as TRUE if the job is in a related field, specialization, or seniority band that could still fit the candidate.
-- Mark as FALSE ONLY if the job is clearly in a completely different field (e.g., "Nurse" for a "Software Developer").
-- When in doubt, ALWAYS mark as TRUE — the next analysis step will do a deeper evaluation with the full description.
-
-Return ONLY JSON: {{"results": [true, false, true]}}
-One boolean per job, in order. true = relevant, false = irrelevant."""
-
-        result = await provider.generate_json_async(system_prompt, user_prompt)
-        results = result.get("results", []) if isinstance(result, dict) else []
-        fallback_keep = (settings.SEARCH_RELEVANCE_FALLBACK_MODE or "conservative").strip().lower() == "keep"
-        normalized_results: List[bool] = []
-
-        for item in results[:len(jobs)]:
-            if isinstance(item, bool):
-                normalized_results.append(item)
-            elif isinstance(item, dict):
-                normalized_results.append(bool(item.get("relevant", fallback_keep)))
-            else:
-                normalized_results.append(fallback_keep)
-
-        while len(normalized_results) < len(jobs):
-            normalized_results.append(fallback_keep)
-
-        return normalized_results
 
     # ─── Step 1: Search Plan Generation ───────────────────────────────────
 
@@ -822,7 +782,7 @@ Return ONLY pure JSON with a 'searches' list. Example:
 
         return searches
 
-    # ─── Step 3: Combined Title Relevance & Job Match Analysis ──────────────
+    # ─── Step 3: Job Match Analysis ───────────────────────────────────────
 
 
     @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=10))
@@ -835,7 +795,9 @@ Return ONLY pure JSON with a 'searches' list. Example:
 
         system_prompt = (
             "You are a strict, evidence-driven career coach AI. "
-            "Evaluate candidate-job fit conservatively, cite the main reasons, and never invent qualifications. "
+            "Evaluate candidate-job fit conservatively using BOTH the candidate's CV profile AND their stated search intent. "
+            "The candidate may intentionally search outside their CV domain — score based on the INTENT, not just the CV. "
+            "Cite the main reasons, never invent qualifications. "
             "Return results in the EXACT SAME ORDER as the jobs were given."
         )
 
@@ -849,32 +811,77 @@ Return ONLY pure JSON with a 'searches' list. Example:
             jobs_text += f"Languages Required: {job.get('languages')}\n"
             jobs_text += f"Education Required: {job.get('education')}\n"
             jobs_text += f"Description: {job.get('description')}\n"
+            # Include pre-computed normalized job facts for the LLM to use directly
+            job_norm = job.get("normalized_data") or {}
+            if job_norm:
+                jobs_text += f"[Normalized] Domain: {job_norm.get('domain')} | Role type: {job_norm.get('role_type')} | Sector: {job_norm.get('industry_sector')} | Seniority: {job_norm.get('seniority')} | Qualification: {job_norm.get('qualification_level')} | Skills: {job_norm.get('required_skills')}\n"
 
         strategy = profile.get('search_strategy')
         strategy_block = f"\n- Extra AI Instructions / Preferences: {strategy}" if strategy else ""
 
-        user_prompt = f"""Analyze the match between this profile and each job below.
+        # Build structured profile context from normalized data
+        profile_norm = profile.get("profile_normalization") or {}
+        candidate_structured = ""
+        if profile_norm:
+            candidate_structured = (
+                f"\n- CV Domain: {profile_norm.get('domain')} | Role Family: {profile_norm.get('role_family')}"
+                f" | Seniority: {profile_norm.get('seniority')} | Experience: {profile_norm.get('experience_years')} yrs"
+                f" | Qualification: {profile_norm.get('qualification_level')}"
+                f"\n- CV Skills: {profile_norm.get('skills')}"
+                f"\n- CV Languages: {profile_norm.get('languages')}"
+            )
+            intent_structured = (
+                f"\n- Search Target Domain: {profile_norm.get('intent_domain')}"
+                f" | Target Role: {profile_norm.get('intent_role_family')}"
+                f" | Target Seniority: {profile_norm.get('intent_seniority')}"
+                f" | Target Qualification: {profile_norm.get('intent_qualification_level')}"
+                f"\n- Intent Skills: {profile_norm.get('intent_skills')}"
+                f"\n- Open to unrelated domain: {profile_norm.get('open_to_unrelated')}"
+                f"\n- Intent Keywords: {profile_norm.get('intent_keywords')}"
+            )
+        else:
+            intent_structured = ""
 
-PROFILE:
+        user_prompt = f"""Analyze the match between this candidate and each job below.
+
+CANDIDATE PROFILE:
 - Expected Role: {profile.get('role_description')}{strategy_block}
-- Experience Context: {profile.get('cv_summary') or profile.get('cv_content')}
+- Experience Context: {profile.get('cv_summary') or profile.get('cv_content')}{candidate_structured}
+
+SEARCH INTENT:{intent_structured if intent_structured else " (use role description above)"}
 
 {jobs_text}
 
 SCORING RULES (STRICT CONSTRAINTS):
-1. RELEVANCE CHECK: Determine if the job title and description are relevant to the requested role. Check Extra AI Instructions. If completely irrelevant or violating strict user instructions, set "relevant" to false.
-2. LANGUAGE MISMATCH PENALTY: If the job EXPLICITLY requires a language (e.g., German, French) that the candidate DOES NOT speak, cap `affinity_score` at 30 and set `worth_applying` to false.
-3. EDUCATION MISMATCH PENALTY: If the job explicitly requires a University Degree (Bachelor/Master/PhD) and the candidate has no degree, cap `affinity_score` at 40 and set `worth_applying` to false. 
-4. SENIORITY MISMATCH: If the candidate is Junior/Entry-level and the job requires Senior/Lead (5+ years), cap `affinity_score` at 35. (Senior applying to Junior cap at 70).
-5. BASE SCORING: For remaining cases, score 0-100 realistically. Score 90-100 ONLY for a virtually perfect resume-to-job match.
-6. "worth_applying" MUST ONLY be true if `affinity_score` >= 65 and `relevant` is true.
-7. `affinity_analysis` must be concise and factual: mention the top fit factors, the top gaps, and any hard blockers.
+1. INTENT-FIRST SCORING: If the candidate is OPEN TO UNRELATED work (open_to_unrelated=true), score based on their INTENT fit to the job, NOT their CV domain. A developer applying for warehouse work should get a high score if the job matches what they said they want.
+2. LANGUAGE MISMATCH PENALTY: If the job EXPLICITLY requires a language the candidate DOES NOT speak, cap `affinity_score` at 30 and set `worth_applying` to false.
+3. EDUCATION MISMATCH PENALTY: If the job explicitly requires a University Degree (Bachelor/Master/PhD) and the candidate has no degree, cap `affinity_score` at 40 and set `worth_applying` to false.
+4. SENIORITY MISMATCH: If the candidate targets junior roles and job requires Senior/Lead (5+ years), cap at 35. (Senior targeting Junior cap at 70).
+5. USER INSTRUCTIONS PENALTY: If the job explicitly violates a constraint stated in instructions/strategy, cap `affinity_score` at 20 and set `worth_applying` to false.
+6. BASE SCORING: Score 0-100 realistically. Score 90-100 ONLY for a virtually perfect match to WHAT THE CANDIDATE WANTS.
+7. `worth_applying` MUST ONLY be true if `affinity_score` >= 65.
+8. `affinity_analysis` must be concise and factual: mention fit factors, gaps, and any hard blockers.
+
+DIMENSIONAL SCORING: Also produce sub-scores (0-100 each):
+- `skill_match_score`: How well candidate skills (CV + intent_skills) align with job requirements
+- `experience_match_score`: Experience level fit (years, seniority)
+- `intent_match_score`: How well the job matches what the candidate WANTS (role_description + intent keywords)
+- `language_match_score`: Language requirements fit
+- `location_match_score`: Location / remote preference fit
 
 Return ONLY JSON with a "results" array, one entry per job, IN ORDER:
 {{
     "results": [
-        {{"relevant": true, "affinity_score": 85, "affinity_analysis": "...", "worth_applying": true}},
-        {{"relevant": false, "affinity_score": 10, "affinity_analysis": "...", "worth_applying": false}}
+        {{
+            "affinity_score": 85,
+            "affinity_analysis": "...",
+            "worth_applying": true,
+            "skill_match_score": 80,
+            "experience_match_score": 90,
+            "intent_match_score": 88,
+            "language_match_score": 100,
+            "location_match_score": 75
+        }}
     ]
 }}"""
 
@@ -886,10 +893,14 @@ Return ONLY JSON with a "results" array, one entry per job, IN ORDER:
             if not isinstance(item, dict):
                 normalized_results.append(
                     {
-                        "relevant": False,
                         "affinity_score": 0,
                         "affinity_analysis": "Invalid analysis payload returned by model.",
                         "worth_applying": False,
+                        "skill_match_score": None,
+                        "experience_match_score": None,
+                        "intent_match_score": None,
+                        "language_match_score": None,
+                        "location_match_score": None,
                     }
                 )
                 continue
@@ -900,24 +911,39 @@ Return ONLY JSON with a "results" array, one entry per job, IN ORDER:
             except Exception:
                 score = 0
 
-            relevant = bool(item.get("relevant", False))
-            worth_applying = bool(item.get("worth_applying", False)) and relevant and score >= 65
+            def _coerce_sub_score(val) -> Optional[int]:
+                if val is None:
+                    return None
+                try:
+                    return max(0, min(100, int(val)))
+                except Exception:
+                    return None
+
+            worth_applying = bool(item.get("worth_applying", False)) and score >= 65
             normalized_results.append(
                 {
-                    "relevant": relevant,
                     "affinity_score": score,
                     "affinity_analysis": sanitize_prompt_text(item.get("affinity_analysis", ""), max_chars=600) or "No analysis returned.",
                     "worth_applying": worth_applying,
+                    "skill_match_score": _coerce_sub_score(item.get("skill_match_score")),
+                    "experience_match_score": _coerce_sub_score(item.get("experience_match_score")),
+                    "intent_match_score": _coerce_sub_score(item.get("intent_match_score")),
+                    "language_match_score": _coerce_sub_score(item.get("language_match_score")),
+                    "location_match_score": _coerce_sub_score(item.get("location_match_score")),
                 }
             )
 
         while len(normalized_results) < len(jobs_metadata):
             normalized_results.append(
                 {
-                    "relevant": False,
                     "affinity_score": 0,
                     "affinity_analysis": "Model returned too few analysis rows.",
                     "worth_applying": False,
+                    "skill_match_score": None,
+                    "experience_match_score": None,
+                    "intent_match_score": None,
+                    "language_match_score": None,
+                    "location_match_score": None,
                 }
             )
 
@@ -1001,53 +1027,82 @@ Return ONLY JSON with a "results" array, one entry per job, IN ORDER:
             jobs_text += f"Company: {sanitize_prompt_text(job.get('company'), max_chars=120)}\n"
             jobs_text += f"Location: {sanitize_prompt_text(job.get('location'), max_chars=120)}\n"
             jobs_text += f"Workload: {sanitize_prompt_text(job.get('workload'), max_chars=80)}\n"
-            jobs_text += f"Description: {sanitize_prompt_text(job.get('description'), max_chars=1200)}\n"
+            jobs_text += f"Description: {sanitize_prompt_text(job.get('description'), max_chars=2400)}\n"
 
         system_prompt = (
             "You are a strict job-posting normalizer. "
-            "Extract only explicit evidence and return compact structured JSON in the same order. "
-            "Do not infer unsupported requirements."
+            "Extract only explicit evidence from each posting and return compact structured JSON in the same order. "
+            "Do not infer or invent requirements that are not stated."
         )
         user_prompt = f"""Normalize each job below.
 
-Output one object per job with keys:
-- title, role_family, domain, seniority, employment_mode, contract_type, qualification_level
-- experience_min_years, experience_max_years
-- workload_min, workload_max
-- salary_min_chf, salary_max_chf
-- required_languages (list of {{code, level}})
-- required_skills (list of strings)
-- education_levels (list of strings)
-- key_requirements (list of strings)
-- confidence (0.0-1.0)
+Output one object per job with ALL keys below:
+- title           : normalized job title (string)
+- role_family     : broader role family (e.g. \"Software Engineer\", \"Accountant\", \"Nurse\", \"Warehouse Worker\")
+- domain          : MUST be exactly one of: general, it, finance, medical, engineering, hospitality, sales, logistics, administration, legal, education, marketing, consulting, pharma, construction
+- industry_sector : granular sector within the domain (e.g. \"web development\", \"warehouse logistics\", \"hospitality cleaning\", \"retail sales\") — null if unclear
+- role_type       : \"technical\" | \"manual\" | \"administrative\" | \"creative\" | \"managerial\" | \"service\" | \"professional\"
+- seniority       : \"junior\" (0-2 yrs typical) | \"mid\" (3-6 yrs) | \"senior\" (7+ yrs) — null if genuinely unclear
+- employment_mode : \"remote\" | \"hybrid\" | \"on-site\" — null if not stated
+- contract_type   : \"permanent\" | \"temporary\" | \"internship\" | \"freelance\" — null if not stated
+- qualification_level : \"none\" | \"vocational\" | \"bachelor\" | \"master\" | \"phd\" — null if not stated
+- experience_min_years : integer minimum years required, or null if not explicitly stated
+- experience_max_years : integer maximum years stated, or null
+- workload_min    : integer % (e.g. 80). If workload not stated assume 100.
+- workload_max    : integer % (e.g. 100)
+- salary_min_chf  : integer CHF/year minimum or null
+- salary_max_chf  : integer CHF/year maximum or null
+- required_languages : list of {{code (ISO 639-1 2-letter lowercase), level (CEFR A1-C2 or \"native\")}} — only languages EXPLICITLY required
+- required_skills : list of concrete technical/domain skills (strings) — max 15, no soft-skills
+- education_levels : list of education degree strings explicitly required
+- key_requirements : list of important hard requirements not covered above (e.g. \"Swiss work permit\", \"clean driving licence\", \"physical fitness\")
+- confidence      : 0.0-1.0 reflecting how much explicit data supported the extraction (>0.7 only when most fields are explicitly stated)
 
-Domain must be one of: general, it, finance, medical, engineering, hospitality, sales, logistics, administration.
-Employment mode must be one of: remote, hybrid, on-site.
+DOMAIN RULES:
+- Use \"it\" for software, data, devops, cybersecurity, IT infrastructure
+- Use \"engineering\" for mechanical, electrical, civil, chemical engineering
+- Use \"finance\" for banking, accounting, controlling, investment
+- Use \"pharma\" for pharmaceutical research, drug development, regulatory affairs
+- Use \"consulting\" for management consulting, strategy, advisory
+- Use \"logistics\" for warehouse, shipping, delivery, supply chain, transportation
+- Use \"hospitality\" for cleaning, housekeeping, kitchen, hotel, restaurant
+- Use \"general\" ONLY when the role truly spans multiple unrelated domains
+
+ROLE_TYPE RULES:
+- \"manual\" for physical/hands-on work: warehouse, cleaning, construction, delivery, manufacturing
+- \"technical\" for IT, engineering, lab roles requiring specialized technical knowledge
+- \"administrative\" for office, HR, reception, data entry
+- \"service\" for customer service, hospitality, retail
+- \"professional\" for law, medicine, finance, specialized non-technical expertise
+- \"creative\" for design, marketing, content, media
+- \"managerial\" for team leads, managers, directors
 
 {jobs_text}
 
 Return ONLY JSON:
 {{
-  "results": [
+  \"results\": [
     {{
-      "title": "...",
-      "role_family": "...",
-      "domain": "general",
-      "seniority": "mid",
-      "employment_mode": "on-site",
-      "contract_type": "permanent",
-      "qualification_level": "vocational",
-      "experience_min_years": 2,
-      "experience_max_years": 5,
-      "workload_min": 80,
-      "workload_max": 100,
-      "salary_min_chf": null,
-      "salary_max_chf": null,
-      "required_languages": [{{"code": "de", "level": "B2"}}],
-      "required_skills": ["Python"],
-      "education_levels": ["bachelor"],
-      "key_requirements": ["Swiss permit"],
-      "confidence": 0.75
+      \"title\": \"...\",
+      \"role_family\": \"...\",
+      \"domain\": \"general\",
+      \"industry_sector\": null,
+      \"role_type\": \"manual\",
+      \"seniority\": \"mid\",
+      \"employment_mode\": \"on-site\",
+      \"contract_type\": \"permanent\",
+      \"qualification_level\": \"vocational\",
+      \"experience_min_years\": 2,
+      \"experience_max_years\": 5,
+      \"workload_min\": 80,
+      \"workload_max\": 100,
+      \"salary_min_chf\": null,
+      \"salary_max_chf\": null,
+      \"required_languages\": [{{\"code\": \"de\", \"level\": \"B2\"}}],
+      \"required_skills\": [\"forklift license\"],
+      \"education_levels\": [],
+      \"key_requirements\": [\"Swiss permit\"],
+      \"confidence\": 0.75
     }}
   ]
 }}"""
@@ -1055,6 +1110,8 @@ Return ONLY JSON:
         result = await provider.generate_json_async(system_prompt, user_prompt)
         rows = result.get("results", []) if isinstance(result, dict) else []
         normalized_rows: List[Dict[str, Any]] = []
+
+        _valid_role_types = {"technical", "manual", "administrative", "creative", "managerial", "service", "professional"}
 
         for idx in range(len(jobs)):
             row = rows[idx] if idx < len(rows) and isinstance(rows[idx], dict) else {}
@@ -1065,11 +1122,18 @@ Return ONLY JSON:
                 confidence = 0.0
             confidence = max(0.0, min(1.0, confidence))
 
+            role_type_raw = str(row.get("role_type") or "").strip().lower()
+            role_type = role_type_raw if role_type_raw in _valid_role_types else None
+
+            industry_sector = str(row.get("industry_sector") or "").strip() or None
+
             normalized_rows.append(
                 {
                     "title": str(row.get("title") or jobs[idx].get("title") or "").strip() or None,
                     "role_family": str(row.get("role_family") or row.get("title") or jobs[idx].get("title") or "").strip() or None,
                     "domain": self._normalize_job_domain_token(row.get("domain") or "general"),
+                    "industry_sector": industry_sector,
+                    "role_type": role_type,
                     "seniority": str(row.get("seniority") or "").strip().lower() or None,
                     "employment_mode": str(row.get("employment_mode") or "").strip().lower() or None,
                     "contract_type": str(row.get("contract_type") or "").strip().lower() or None,

@@ -46,9 +46,10 @@ Job Hunter AI employs a strict separation of concerns. Monolithic files are stri
 *   **Search Runtime Rule:** Current pipeline is normalization-first:
 	1) fetch + deduplicate,
 	2) persist to shared `ScrapedJob`,
-	3) normalize (`provider_bootstrap` and optional LLM normalize),
-	4) structured filtering,
-	5) deep analysis and user-job save.
+	3) normalize (`provider_bootstrap` then LLM NORMALIZE step),
+	4) structured filtering via normalized fields (domain, seniority, qualification, experience, skills),
+	5) deep analysis (MATCH step) and user-job save.
+	Normalization is the **sole gatekeeper** before the expensive MATCH step — there is no separate RELEVANCE or SUMMARY step.
 *   **Search Task Concurrency Rule:** Use reservation lifecycle (`reserve_task`/`release_task`) around background search task startup to prevent duplicate concurrent runs.
 
 ### **Frontend (React 19 & Vite)**

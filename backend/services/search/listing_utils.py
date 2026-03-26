@@ -22,6 +22,102 @@ def normalized_text_token(value: str) -> str:
     return " ".join(text.split())
 
 
+# ─── Skill synonym/alias map ─────────────────────────────────────────────────
+# Maps common abbreviations and variants to a canonical lowercase form.
+# Matching is done after normalizing both sides to their canonical form.
+_SKILL_ALIASES: Dict[str, str] = {
+    # JavaScript ecosystem
+    "js": "javascript", "javascript": "javascript", "ecmascript": "javascript",
+    "ts": "typescript", "typescript": "typescript",
+    "react.js": "react", "reactjs": "react", "react": "react",
+    "vue.js": "vue", "vuejs": "vue", "vue": "vue",
+    "angular.js": "angular", "angularjs": "angular", "angular": "angular",
+    "node.js": "nodejs", "nodejs": "nodejs", "node": "nodejs",
+    "next.js": "nextjs", "nextjs": "nextjs",
+    "nuxt.js": "nuxtjs", "nuxtjs": "nuxtjs",
+    # Python / ML
+    "python": "python", "py": "python",
+    "ml": "machine learning", "machine learning": "machine learning",
+    "ai": "artificial intelligence", "artificial intelligence": "artificial intelligence",
+    "dl": "deep learning", "deep learning": "deep learning",
+    "sklearn": "scikit-learn", "scikit-learn": "scikit-learn",
+    "tf": "tensorflow", "tensorflow": "tensorflow",
+    "pytorch": "pytorch", "torch": "pytorch",
+    # Data / DB
+    "sql": "sql", "postgresql": "postgresql", "postgres": "postgresql",
+    "mysql": "mysql", "mssql": "sql server", "sql server": "sql server",
+    "mongodb": "mongodb", "mongo": "mongodb",
+    "elasticsearch": "elasticsearch", "elastic": "elasticsearch",
+    # Cloud / DevOps
+    "aws": "aws", "amazon web services": "aws",
+    "gcp": "gcp", "google cloud": "gcp",
+    "azure": "azure", "microsoft azure": "azure",
+    "k8s": "kubernetes", "kubernetes": "kubernetes",
+    "docker": "docker",
+    "ci/cd": "cicd", "cicd": "cicd", "devops": "devops",
+    # Java / JVM
+    "java": "java", "kotlin": "kotlin", "scala": "scala",
+    "spring": "spring", "spring boot": "spring boot",
+    # .NET
+    "c#": "csharp", "csharp": "csharp", ".net": "dotnet", "dotnet": "dotnet",
+    # Other languages
+    "go": "golang", "golang": "golang",
+    "rust": "rust", "ruby": "ruby", "php": "php", "swift": "swift",
+    "c++": "cpp", "cpp": "cpp", "c": "c",
+    # Manual / physical work
+    "staplerfahrer": "forklift", "gabelstapler": "forklift", "forklift": "forklift",
+    "führerschein": "driving license", "driving license": "driving license",
+    "führerschein b": "driving license b", "driving license b": "driving license b",
+    # Hospitality
+    "housekeeping": "housekeeping", "zimmerreinigung": "housekeeping",
+    "küche": "kitchen", "kitchen": "kitchen", "gastro": "gastronomy",
+}
+
+
+def _canonicalize_skill(skill: str) -> str:
+    """Return the canonical lowercase alias for a skill string, or the normalized raw token."""
+    token = normalized_text_token(skill)
+    return _SKILL_ALIASES.get(token, token)
+
+
+def skills_overlap(job_skills: List[str], profile_skills: List[str]) -> float:
+    """Compute skill overlap ratio between two skill lists.
+
+    Uses a multi-tier matching strategy:
+    1. Exact canonical match (via alias map)
+    2. Substring containment (one skill contains the other)
+
+    Returns a float 0.0–1.0 representing the proportion of job_skills
+    that are covered by at least one profile_skill.
+    Returns 0.0 if either list is empty.
+    """
+    if not job_skills or not profile_skills:
+        return 0.0
+
+    job_canonical = [_canonicalize_skill(s) for s in job_skills if s]
+    profile_canonical = set(_canonicalize_skill(s) for s in profile_skills if s)
+    profile_raw_tokens = set(normalized_text_token(s) for s in profile_skills if s)
+
+    matched = 0
+    for jc in job_canonical:
+        if not jc:
+            continue
+        # Tier 1: exact canonical
+        if jc in profile_canonical:
+            matched += 1
+            continue
+        # Tier 2: substring containment (both ways)
+        if any(jc in pc or pc in jc for pc in profile_canonical if pc):
+            matched += 1
+            continue
+        # Tier 3: raw token substring
+        job_raw = normalized_text_token(jc)
+        if any(job_raw in pt or pt in job_raw for pt in profile_raw_tokens if pt):
+            matched += 1
+
+    return matched / len(job_canonical) if job_canonical else 0.0
+
+
 def coerce_int(value, default=None):
     """Safely coerce a value to int, returning *default* on failure."""
     if value is None or isinstance(value, bool):
@@ -265,6 +361,32 @@ def bootstrap_normalized_job_data(
         except ValueError:
             continue
 
+    # Heuristic role_type from title keywords (confidence 0.35 — overwritten by LLM later)
+    role_type: Optional[str] = None
+    for rt, keywords in {
+        "manual": [
+            "warehouse", "lager", "cleaning", "reinigung", "delivery", "driver", "fahrer",
+            "packer", "sortierer", "lagermitarbeiter", "construction", "bauarbeiter",
+            "helper", "hilfsarbeiter", "courier", "kurier", "forklift", "gabelstapler",
+        ],
+        "managerial": ["manager", "head of", "director", "chief", "vp ", "vice president"],
+        "technical": [
+            "engineer", "developer", "entwickler", "ingenieur", "programmer", "analyst",
+            "devops", "architect",
+        ],
+        "administrative": [
+            "administrator", "secretary", "receptionist", "sachbearbeiter", "assistant",
+            "koordinator", "buchhalter",
+        ],
+        "service": [
+            "customer service", "receptionist", "waitress", "waiter", "kellner",
+            "servicemitarbeiter", "barista",
+        ],
+    }.items():
+        if any(kw in title_lower for kw in keywords):
+            role_type = rt
+            break
+
     salary_max = extract_salary_max_chf(listing)
     remote = listing_is_remote(listing)
 
@@ -291,6 +413,7 @@ def bootstrap_normalized_job_data(
         "normalized_required_skills": None,
         "normalized_education_levels": education_levels or None,
         "normalized_key_requirements": None,
+        "normalized_role_type": role_type,
         "normalized_metadata": {
             "bootstrap": True,
             "provider": getattr(listing, "source", None) or getattr(listing, "platform", "unknown"),

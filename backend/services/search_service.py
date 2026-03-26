@@ -30,6 +30,7 @@ from backend.services.search.listing_utils import (
     extract_listing_workload_string,
     parse_listing_publication_date,
     bootstrap_normalized_job_data,
+    skills_overlap,
 )
 
 from backend.providers.jobs.jobroom.client import JobRoomProvider
@@ -173,16 +174,12 @@ class SearchService:
                 workload=workload_str or None,
                 publication_date=pub_date,
                 source_query=getattr(listing, "_source_query", "Unknown"),
-                summary=getattr(listing, "_summary", None),
                 **normalized_bootstrap,
             )
             self.db.add(existing_sj)
             self.db.flush()
             created = True
         else:
-            if getattr(listing, "_summary", None) and not existing_sj.summary:
-                existing_sj.summary = getattr(listing, "_summary", None)
-
             refresh_fields = {
                 "description": clean_html_tags(desc_text) if desc_text else None,
                 "location": location_str or None,
@@ -318,14 +315,11 @@ class SearchService:
         ).hexdigest()
 
     async def _normalize_user_profile(self, profile_id: int, profile: SearchProfile, profile_dict: dict, force: bool = False) -> dict:
-        """Extract/retrieve the normalized candidate profile for deterministic matching.
+        """Extract/retrieve the dual-signal normalized candidate profile.
 
-        Uses a fingerprint-based cache stored on the SearchProfile row.
-        Re-runs LLM extraction only when the trigger inputs have changed or
-        ``force=True`` (honours the same force_regenerate_cv_summary flag).
-
-        Returns the normalized data dict (keys: seniority, domain, role_family,
-        qualification_level, experience_years, languages, skills) or ``{}`` on failure.
+        Retrieves from cache when fingerprint matches; otherwise calls the LLM.
+        Returns a dict with BOTH candidate_profile fields (seniority, domain, skills etc.)
+        AND search_intent fields (intent_domain, intent_seniority, open_to_unrelated etc.).
         """
         cv_content = str(profile_dict.get("cv_content") or "")
         role_description = str(profile_dict.get("role_description") or "")
@@ -342,8 +336,9 @@ class SearchService:
         )
 
         if already_normalized and not force:
-            add_log(profile_id, "✓ Using cached candidate profile normalization")
+            add_log(profile_id, "✓ Using cached candidate profile normalization (dual-signal)")
             return {
+                # Candidate profile (CV facts)
                 "seniority": profile.profile_normalized_seniority,
                 "domain": profile.profile_normalized_domain,
                 "role_family": profile.profile_normalized_role_family,
@@ -351,6 +346,14 @@ class SearchService:
                 "experience_years": profile.profile_normalized_experience_years,
                 "languages": profile.profile_normalized_languages or [],
                 "skills": profile.profile_normalized_skills or [],
+                # Search intent (what the user wants)
+                "intent_domain": profile.profile_search_intent_domain,
+                "intent_seniority": profile.profile_search_intent_seniority,
+                "intent_role_family": profile.profile_search_intent_role_family,
+                "intent_qualification_level": profile.profile_search_intent_qualification_level,
+                "intent_skills": profile.profile_search_intent_skills or [],
+                "open_to_unrelated": profile.profile_search_intent_open_to_unrelated or False,
+                "intent_keywords": profile.profile_search_intent_keywords or [],
             }
 
         try:
@@ -370,7 +373,9 @@ class SearchService:
                     f"Candidate profile normalized: seniority={normalized.get('seniority')!r}, "
                     f"domain={normalized.get('domain')!r}, "
                     f"experience={normalized.get('experience_years')} yrs, "
-                    f"qualification={normalized.get('qualification_level')!r}",
+                    f"qualification={normalized.get('qualification_level')!r} | "
+                    f"intent: target_domain={normalized.get('intent_domain')!r}, "
+                    f"open_to_unrelated={normalized.get('open_to_unrelated')!r}",
                 )
             return normalized or {}
         except Exception as exc:
@@ -479,53 +484,107 @@ class SearchService:
         "phd": 4,
     }
 
-    _RELATED_DOMAINS: tuple[frozenset[str], ...] = (
+    # Groups of closely related domains where cross-domain filter is relaxed.
+    # Domains within the same group are considered "distance 1" (related).
+    _RELATED_DOMAIN_GROUPS: tuple[frozenset[str], ...] = (
         frozenset({"it", "engineering"}),
+        frozenset({"it", "consulting"}),
+        frozenset({"it", "marketing"}),           # digital marketing / growth
         frozenset({"finance", "administration"}),
+        frozenset({"finance", "consulting"}),
+        frozenset({"medical", "pharma"}),
+        frozenset({"medical", "education"}),      # healthcare training
+        frozenset({"sales", "marketing"}),
+        frozenset({"sales", "hospitality"}),      # client-facing service
+        frozenset({"engineering", "construction"}),
+        frozenset({"logistics", "construction"}),
+        frozenset({"logistics", "general"}),
+        frozenset({"hospitality", "general"}),
+        frozenset({"administration", "legal"}),
+        frozenset({"education", "consulting"}),
     )
 
     def _domains_are_related(self, domain_a: str, domain_b: str) -> bool:
-        for group in self._RELATED_DOMAINS:
+        """Return True when two domains are in the same related group."""
+        for group in self._RELATED_DOMAIN_GROUPS:
             if domain_a in group and domain_b in group:
                 return True
         return False
+
+    def _domain_distance(self, domain_a: str, domain_b: str) -> int:
+        """Return 0 (same), 1 (related), or 2 (unrelated) for two domain strings."""
+        if domain_a == domain_b:
+            return 0
+        if self._domains_are_related(domain_a, domain_b):
+            return 1
+        return 2
 
     def _passes_normalization_filters(
         self,
         job_norm: Dict[str, Any],
         profile_norm: Dict[str, Any],
     ) -> tuple[bool, str]:
-        """Deterministic field-vs-field match between normalized job and candidate profile.
+        """Intent-aware deterministic field-vs-field match between normalized job and candidate.
 
-        All filters are *additive*: they only reject when BOTH sides have conclusive
-        non-None data AND the data is clearly incompatible.  Unknown/missing data on
-        either side always passes (benefit of the doubt).
+        Uses the SEARCH INTENT (what the user WANTS) as the primary comparison axis,
+        falling back to the candidate CV profile for fields the intent doesn't specify.
+
+        Key principle: if the user explicitly searches in a domain different from their CV
+        (open_to_unrelated=True), domain and skills filters are bypassed so cross-domain
+        job exploration works correctly.
 
         Checks (in order):
-        1. Domain match          — rejects cross-domain mismatches (both sides non-"general")
-        2. Seniority match       — rejects clear over-/under-qualification
-        3. Qualification match   — rejects when job level exceeds candidate level
-        4. Experience floor      — rejects when job minimum >>> candidate experience
+        0. Confidence gate       — low-confidence job normalizations skip all checks
+        1. Domain match          — uses intent_domain; bypassed when open_to_unrelated=True
+        2. Role-type gate        — when intent signals manual work, skip IT-specific filters
+        3. Seniority match       — uses intent_seniority (falls back to candidate seniority)
+        4. Qualification match   — uses intent_qualification_level (falls back to candidate)
+        5. Experience floor      — uses candidate's actual experience (CV fact)
+        6. Skills overlap        — alias-aware overlap check; bypassed when open_to_unrelated
         """
-        # ─── 1. Domain match ─────────────────────────────────────────────
-        user_domain = str(profile_norm.get("domain") or "general").strip().lower()
-        job_domain = str(job_norm.get("domain") or "general").strip().lower()
-        if (
-            user_domain
-            and job_domain
-            and user_domain != "general"
-            and job_domain != "general"
-            and user_domain != job_domain
-            and not self._domains_are_related(user_domain, job_domain)
-        ):
-            return False, "norm_domain_mismatch"
+        # ─── 0. Confidence gate ───────────────────────────────────────────
+        raw_confidence = job_norm.get("confidence")
+        if raw_confidence is not None:
+            try:
+                if float(raw_confidence) < 0.4:
+                    return True, "ok"
+            except (TypeError, ValueError):
+                pass
 
-        # ─── 2. Seniority match ───────────────────────────────────────────
-        user_seniority = str(profile_norm.get("seniority") or "").strip().lower()
+        open_to_unrelated = bool(profile_norm.get("open_to_unrelated", False))
+
+        # ─── 1. Domain match ─────────────────────────────────────────────
+        # Primary: use search intent domain; fallback to CV domain
+        intent_domain = str(profile_norm.get("intent_domain") or profile_norm.get("domain") or "general").strip().lower()
+        job_domain = str(job_norm.get("domain") or "general").strip().lower()
+
+        if not open_to_unrelated:
+            if (
+                intent_domain
+                and job_domain
+                and intent_domain != "general"
+                and job_domain != "general"
+                and intent_domain != job_domain
+                and not self._domains_are_related(intent_domain, job_domain)
+            ):
+                return False, "norm_domain_mismatch"
+
+        # ─── 2. Role-type gate ────────────────────────────────────────────
+        # When a user is searching for manual work (open_to_unrelated or intent_keywords
+        # contain manual-work signals), don't penalize skill mismatches against IT jobs.
+        intent_keywords = [str(k).lower() for k in (profile_norm.get("intent_keywords") or []) if k]
+        _manual_signals = {"manual", "warehouse", "cleaning", "physical", "handwerk", "lager", "reinigung", "manuell"}
+        searching_manual = open_to_unrelated or bool(_manual_signals & set(intent_keywords))
+
+        # ─── 3. Seniority match ───────────────────────────────────────────
+        # Use intent seniority (what the user targets); fall back to CV seniority
+        effective_seniority = str(
+            profile_norm.get("intent_seniority") or profile_norm.get("seniority") or ""
+        ).strip().lower()
         job_seniority = str(job_norm.get("seniority") or "").strip().lower()
-        if user_seniority and job_seniority:
-            # junior user → reject explicit senior jobs with experience floor clearly above user
-            if user_seniority == "junior" and job_seniority == "senior":
+
+        if effective_seniority and job_seniority:
+            if effective_seniority == "junior" and job_seniority == "senior":
                 job_exp_min = coerce_int(job_norm.get("experience_min_years"), None)
                 user_exp = coerce_int(profile_norm.get("experience_years"), None)
                 tolerance = int(getattr(settings, "SEARCH_NORMALIZATION_EXPERIENCE_TOLERANCE", 2))
@@ -535,9 +594,7 @@ class SearchService:
                     and job_exp_min > user_exp + tolerance
                 ):
                     return False, "norm_seniority_overqualified"
-            # senior user → reject explicitly junior-only jobs
-            # (only when job seniority is junior AND experience cap is low)
-            if user_seniority == "senior" and job_seniority == "junior":
+            if effective_seniority == "senior" and job_seniority == "junior":
                 job_exp_max = coerce_int(job_norm.get("experience_max_years"), None)
                 user_exp = coerce_int(profile_norm.get("experience_years"), None)
                 if (
@@ -547,23 +604,39 @@ class SearchService:
                 ):
                     return False, "norm_seniority_underqualified"
 
-        # ─── 3. Qualification level ───────────────────────────────────────
-        user_ql = str(profile_norm.get("qualification_level") or "").strip().lower()
+        # ─── 4. Qualification level ───────────────────────────────────────
+        # Use intent qualification (what the user is willing to meet); fall back to CV level
+        effective_ql = str(
+            profile_norm.get("intent_qualification_level") or profile_norm.get("qualification_level") or ""
+        ).strip().lower()
         job_ql = str(job_norm.get("qualification_level") or "").strip().lower()
-        if user_ql and job_ql:
-            user_rank = self._QUALIFICATION_RANK.get(user_ql, -1)
+
+        if effective_ql and job_ql:
+            user_rank = self._QUALIFICATION_RANK.get(effective_ql, -1)
             job_rank = self._QUALIFICATION_RANK.get(job_ql, -1)
-            # Only reject when both ranks are known AND job clearly exceeds candidate
             if user_rank >= 0 and job_rank >= 0 and job_rank > user_rank + 2:
                 return False, "norm_qualification_mismatch"
 
-        # ─── 4. Experience floor ─────────────────────────────────────────
+        # ─── 5. Experience floor ─────────────────────────────────────────
         job_exp_min = coerce_int(job_norm.get("experience_min_years"), None)
         user_exp = coerce_int(profile_norm.get("experience_years"), None)
         if job_exp_min is not None and user_exp is not None:
             tolerance = int(getattr(settings, "SEARCH_NORMALIZATION_EXPERIENCE_TOLERANCE", 2))
             if job_exp_min > user_exp + tolerance:
                 return False, "norm_experience_floor"
+
+        # ─── 6. Skills overlap (alias-aware, skipped for cross-domain intent) ─
+        if not searching_manual:
+            job_skills = [s for s in (job_norm.get("required_skills") or []) if s]
+            # Combine CV skills + intent target skills as the candidate skill pool
+            profile_skills = list({
+                *[s for s in (profile_norm.get("skills") or []) if s],
+                *[s for s in (profile_norm.get("intent_skills") or []) if s],
+            })
+            if len(job_skills) >= 3 and len(profile_skills) >= 3:
+                overlap = skills_overlap(job_skills, profile_skills)
+                if overlap == 0.0:
+                    return False, "norm_skills_disjoint"
 
         return True, "ok"
 
@@ -1318,6 +1391,20 @@ class SearchService:
                     company_obj = getattr(job, "company", None)
                     company_name = company_obj.name if hasattr(company_obj, "name") else "Unknown"
 
+                    # Include pre-computed normalized facts so the MATCH LLM has
+                    # structured data instead of re-extracting it from raw text.
+                    raw_norm = getattr(job, "_normalized_job_data", None) or {}
+                    normalized_data = {
+                        "domain": raw_norm.get("domain"),
+                        "role_type": raw_norm.get("normalized_role_type"),
+                        "industry_sector": raw_norm.get("normalized_industry_sector"),
+                        "seniority": raw_norm.get("seniority"),
+                        "qualification_level": raw_norm.get("qualification_level"),
+                        "required_skills": raw_norm.get("required_skills"),
+                        "experience_min_years": raw_norm.get("experience_min_years"),
+                        "experience_max_years": raw_norm.get("experience_max_years"),
+                    }
+
                     jobs_metadata.append({
                         "title": getattr(job, "title", "Unknown"),
                         "description": desc_text[:settings.MAX_DESCRIPTION_CHARS],
@@ -1326,16 +1413,12 @@ class SearchService:
                         "languages": [f"{s.language_code} ({s.spoken_level})" for s in getattr(job, "language_skills", [])] if getattr(job, "language_skills", None) else [],
                         "education": ", ".join(education_info) if education_info else "None specified",
                         "company": company_name,
+                        "normalized_data": normalized_data,
                     })
                 
                 try:
                     results = await llm_service.analyze_job_batch(jobs_metadata, profile_dict)
-
-                    relevant_jobs = []
-                    for job, analysis in zip(batch, results):
-                        if analysis.get("relevant", True):
-                            relevant_jobs.append((job, analysis))
-                    return relevant_jobs
+                    return list(zip(batch, results))
                 except Exception as e:
                     logger.error(f"Analysis batch failed: {e}")
                     return []
@@ -1406,6 +1489,11 @@ class SearchService:
             worth_applying=analysis.get("worth_applying", False),
             distance_km=distance_km,
             applied=False,
+            skill_match_score=analysis.get("skill_match_score"),
+            experience_match_score=analysis.get("experience_match_score"),
+            intent_match_score=analysis.get("intent_match_score"),
+            language_match_score=analysis.get("language_match_score"),
+            location_match_score=analysis.get("location_match_score"),
         )
         self.db.add(new_job)
         if commit:

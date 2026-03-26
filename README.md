@@ -127,9 +127,7 @@ Each step can independently use a different LLM provider/model via `LLM_{STEP}_*
 1. **PLAN — Query Generation**: The AI reads your profile and generates strictly formatted JSON containing executable multi-language search queries across multiple geographic and linguistic dimensions.
 2. **NORMALIZE_PROFILE — Candidate Normalization**: The AI extracts structured candidate attributes from your CV and role description — seniority tier, technical domain, required languages, desired salary/workload ranges — used for deterministic pre-screening.
 3. **NORMALIZE — Job Normalization**: The AI upgrades raw scraper facts into consistent structured fields (domain, role family, seniority, language requirements, salary/workload bounds) enabling high-precision deterministic filtering before any expensive scoring.
-4. **RELEVANCE — Title Relevance Check** *(reserved/configurable)*: A lightweight binary filter that can be activated to discard listings whose job title has no semantic relation to your target role.
-5. **MATCH — Deep Evaluation**: The AI acts as a career coach and performs a thorough profile-vs-job compatibility analysis, producing a 0–100 affinity score, a personalized narrative rationale, and a "worth applying" recommendation.
-6. **SUMMARY — Job Summarization** *(opt-in)*: Generates a concise 2–3 sentence digest of the full job description, saving reading time on high-volume searches.
+4. **MATCH — Deep Evaluation**: The AI acts as a career coach and performs a thorough profile-vs-job compatibility analysis, producing a 0–100 affinity score, a personalized narrative rationale, and a "worth applying" recommendation.
 
 ---
 
@@ -180,7 +178,7 @@ The `frontend/` directory is a highly modern React 19 application.
 4. It calls the `LLMService` to generate an execution plan.
 5. It iterates over the generated queries, calling the `JobRoomProvider`.
 6. Results are deduplicated against profile history.
-7. Unique jobs are persisted into shared `ScrapedJob` catalog entries before any relevance gating.
+7. Unique jobs are persisted into shared `ScrapedJob` catalog entries before analysis.
 8. Persisted jobs are normalized (`provider_bootstrap` then optional LLM normalization).
 9. Structured deterministic filters are applied.
 10. Eligible jobs are deeply analyzed/scored and persisted as user-specific `Job` rows.
@@ -341,7 +339,7 @@ The entire behavior of Job Hunter AI is dictated by environment variables. Copy 
 
 ### Global LLM Settings
 
-These are used as the **default for all pipeline steps** (PLAN, RELEVANCE, MATCH).
+These are used as the **default for all pipeline steps** (PLAN, NORMALIZE, NORMALIZE_PROFILE, MATCH).
 
 | Variable | Status | Default | Description |
 | :--- | :---: | :--- | :--- |
@@ -362,7 +360,7 @@ These are used as the **default for all pipeline steps** (PLAN, RELEVANCE, MATCH
 You can override **any** global LLM setting for a specific pipeline step.
 Leave empty (or `0` for numeric values) to inherit the global value.
 
-Replace `{STEP}` with one of: `PLAN`, `NORMALIZE_PROFILE`, `NORMALIZE`, `RELEVANCE`, `MATCH`, or `SUMMARY`.
+Replace `{STEP}` with one of: `PLAN`, `NORMALIZE_PROFILE`, `NORMALIZE`, or `MATCH`.
 
 | Variable Pattern | Type | Description |
 | :--- | :---: | :--- |
@@ -413,14 +411,6 @@ LLM_MATCH_TEMPERATURE=0.15
 LLM_MATCH_TOP_P=0.90
 LLM_MATCH_MAX_TOKENS=62000
 LLM_MATCH_THINKING=true
-
-# SUMMARY — large model for rich, detailed job digests (opt-in)
-LLM_SUMMARY_PROVIDER=groq
-LLM_SUMMARY_MODEL=openai/gpt-oss-120b
-LLM_SUMMARY_API_KEY=gsk_...
-LLM_SUMMARY_BASE_URL=https://api.groq.com/openai/v1
-LLM_SUMMARY_TEMPERATURE=0.0
-LLM_SUMMARY_MAX_TOKENS=8192
 ```
 
 #### Example: Cost-Optimized Mixed Setup
@@ -431,11 +421,6 @@ LLM_PROVIDER=groq
 LLM_MODEL=moonshotai/kimi-k2-instruct-0905
 LLM_API_KEY=gsk_...
 LLM_BASE_URL=https://api.groq.com/openai/v1
-
-# RELEVANCE — tiny model, binary yes/no task
-LLM_RELEVANCE_MODEL=openai/gpt-oss-20b
-LLM_RELEVANCE_TEMPERATURE=0.0
-LLM_RELEVANCE_MAX_TOKENS=512
 
 # MATCH — stronger model only for deep analysis
 LLM_MATCH_PROVIDER=deepseek

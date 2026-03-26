@@ -29,9 +29,6 @@ class ScrapedJob(BaseModel, TimestampMixin):
     
     # For provider-specific details (JobRoom, SwissDevJobs, etc)
     raw_metadata = Column(JSON, nullable=True)
-    
-    # LLM-generated summary used by the relevance filter step (opt-in)
-    summary = Column(Text, nullable=True)
 
     # Normalized shared job facts used for structured filtering and later analysis reuse.
     normalization_status = Column(String, nullable=True, default="pending", index=True)
@@ -42,6 +39,8 @@ class ScrapedJob(BaseModel, TimestampMixin):
     normalized_title = Column(String, nullable=True)
     normalized_role_family = Column(String, nullable=True, index=True)
     normalized_domain = Column(String, nullable=True, index=True)
+    normalized_industry_sector = Column(String, nullable=True)          # granular sector within domain
+    normalized_role_type = Column(String, nullable=True, index=True)    # technical | manual | administrative | creative | managerial | service | professional
     normalized_seniority = Column(String, nullable=True, index=True)
     normalized_employment_mode = Column(String, nullable=True, index=True)
     normalized_contract_type = Column(String, nullable=True, index=True)
@@ -75,6 +74,8 @@ class ScrapedJob(BaseModel, TimestampMixin):
             "title": self.normalized_title,
             "role_family": self.normalized_role_family,
             "domain": self.normalized_domain,
+            "industry_sector": self.normalized_industry_sector,
+            "role_type": self.normalized_role_type,
             "seniority": self.normalized_seniority,
             "employment_mode": self.normalized_employment_mode,
             "contract_type": self.normalized_contract_type,
@@ -111,7 +112,14 @@ class Job(BaseModel, TimestampMixin):
     affinity_score = Column(Float)
     affinity_analysis = Column(Text)
     worth_applying = Column(Boolean, default=False)
-    
+
+    # Dimensional sub-scores (from advanced MATCH step)
+    skill_match_score = Column(Float, nullable=True)        # 0-100: technical/domain skill alignment
+    experience_match_score = Column(Float, nullable=True)   # 0-100: experience level fit
+    intent_match_score = Column(Float, nullable=True)       # 0-100: job fits what the user WANTS
+    language_match_score = Column(Float, nullable=True)     # 0-100: language requirements fit
+    location_match_score = Column(Float, nullable=True)     # 0-100: location/remote preference fit
+
     # Distance from search origin (km)
     distance_km = Column(Float, nullable=True)
     

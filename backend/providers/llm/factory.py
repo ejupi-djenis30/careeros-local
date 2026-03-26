@@ -18,7 +18,7 @@ from backend.providers.llm.ollama import OllamaProvider
 logger = logging.getLogger(__name__)
 
 # ─── recognised step names (used as env-var prefixes) ────────────────────────
-_KNOWN_STEPS = {"plan", "relevance", "match", "summary", "normalize", "normalize_profile"}
+_KNOWN_STEPS = {"plan", "match", "normalize", "normalize_profile"}
 
 
 def _resolve_step_config(step: str) -> dict:
@@ -109,7 +109,7 @@ def _build_provider(cfg: dict) -> LLMProvider:
 def get_provider_for_step(step: str = "default") -> LLMProvider:
     """Resolve and instantiate the LLM provider for a pipeline *step*.
 
-    Recognised steps: ``"plan"``, ``"relevance"``, ``"match"``, ``"summary"``, ``"normalize"``.
+    Recognised steps: ``"plan"``, ``"match"``, ``"normalize"``, ``"normalize_profile"``.
     Any other value (including ``"default"``) falls through to globals.
     """
     cfg = _resolve_step_config(step)

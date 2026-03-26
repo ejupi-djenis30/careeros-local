@@ -104,11 +104,10 @@ async def test_analyze_and_save_success(mock_service):
     job2.publication = MagicMock(start_date="2024-01-01")
     
     with patch("backend.services.search_service.llm_service.analyze_job_batch") as mock_analyze:
-        # Return 2 results
-        # 1st is relevant, 2nd is not
+        # Return 2 results — all analyzed jobs are now saved (relevant filter removed)
         mock_analyze.return_value = [
-            {"relevant": True, "affinity_score": 90, "worth_applying": True},
-            {"relevant": False}
+            {"affinity_score": 90, "worth_applying": True},
+            {"affinity_score": 10, "worth_applying": False}
         ]
         
         with patch("backend.services.search_service.geocode_location") as mock_geocode, \
@@ -120,8 +119,8 @@ async def test_analyze_and_save_success(mock_service):
             
             saved, skipped = await mock_service._analyze_and_save(1, profile_dict, [job1, job2])
             
-            assert saved == 1
-            assert skipped == 1
+            assert saved == 2
+            assert skipped == 0
             assert mock_session.add.called
             mock_session.commit.assert_called_once()
 

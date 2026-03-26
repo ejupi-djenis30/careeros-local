@@ -136,8 +136,7 @@ async def test_run_search_success(search_service, mock_profile_repo, mock_job_re
             {"domain": "it", "query": "Software Engineer", "type": "occupation", "language": "en"}
         ])
         mock_llm.summarize_cv = AsyncMock(return_value="Condensed CV")
-        mock_llm.check_relevance_batch = AsyncMock(return_value=[True])
-        mock_llm.analyze_job_batch = AsyncMock(return_value=[{"relevant": True, "affinity_score": 80}])
+        mock_llm.analyze_job_batch = AsyncMock(return_value=[{"affinity_score": 80, "worth_applying": True}])
         
         await svc.run_search(1)
         

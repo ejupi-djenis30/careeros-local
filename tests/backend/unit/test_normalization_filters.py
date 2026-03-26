@@ -500,3 +500,178 @@ class TestLLMServiceNormalizeUserProfile:
 
         assert result["experience_years"] == 0
 
+
+# ─── Intent-aware normalization filter tests ────────────────────────────────
+
+class TestIntentAwareFilters:
+    """Tests for the intent-first behavior of _passes_normalization_filters."""
+
+    # ── open_to_unrelated bypasses domain and skills checks ──────────────────
+
+    def test_open_to_unrelated_bypasses_domain_mismatch(self, service):
+        """A developer searching manual-labor jobs → domain mismatch must be bypassed."""
+        ok, reason = service._passes_normalization_filters(
+            {"domain": "logistics", "required_skills": ["forklift", "packing", "warehouse"]},
+            {
+                "domain": "it", "skills": ["Python", "React", "Docker"],
+                "open_to_unrelated": True,
+                "intent_domain": "logistics",
+                "intent_skills": ["forklift"],
+            },
+        )
+        assert ok, f"Expected pass but got: {reason}"
+
+    def test_open_to_unrelated_bypasses_skills_disjoint(self, service):
+        """When open_to_unrelated=True, zero skills overlap must NOT reject the job."""
+        ok, reason = service._passes_normalization_filters(
+            {"domain": "hospitality", "required_skills": ["cooking", "cleaning", "service"]},
+            {
+                "domain": "it", "skills": ["Python", "FastAPI", "PostgreSQL"],
+                "open_to_unrelated": True,
+                "intent_domain": "hospitality",
+                "intent_skills": [],
+            },
+        )
+        assert ok, f"Expected pass with open_to_unrelated=True but got: {reason}"
+
+    def test_open_to_unrelated_false_domain_mismatch_still_rejected(self, service):
+        """Without open_to_unrelated, domain mismatch should still be rejected."""
+        ok, reason = service._passes_normalization_filters(
+            {"domain": "medical"},
+            {"domain": "it", "open_to_unrelated": False},
+        )
+        assert not ok
+        assert reason == "norm_domain_mismatch"
+
+    # ── intent_domain takes priority over CV domain ──────────────────────────
+
+    def test_intent_domain_overrides_cv_domain(self, service):
+        """If CV says 'it' but intent says 'logistics', job in logistics should pass."""
+        ok, reason = service._passes_normalization_filters(
+            {"domain": "logistics"},
+            {
+                "domain": "it",
+                "intent_domain": "logistics",
+                "open_to_unrelated": False,
+            },
+        )
+        assert ok, f"Expected pass using intent_domain but got: {reason}"
+
+    def test_intent_domain_mismatch_is_rejected(self, service):
+        """If CV says 'it' but intent says 'logistics', a 'medical' job should still fail."""
+        ok, reason = service._passes_normalization_filters(
+            {"domain": "medical"},
+            {
+                "domain": "it",
+                "intent_domain": "logistics",
+                "open_to_unrelated": False,
+            },
+        )
+        assert not ok
+        assert reason == "norm_domain_mismatch"
+
+    def test_intent_domain_fallback_to_cv_domain_when_absent(self, service):
+        """If intent_domain is missing, fall back to CV domain (backward compat)."""
+        ok, reason = service._passes_normalization_filters(
+            {"domain": "it"},
+            {"domain": "it"},  # no intent_domain
+        )
+        assert ok
+
+    # ── intent_skills combined with CV skills for overlap check ─────────────
+
+    def test_intent_skills_pools_with_cv_skills_for_overlap(self, service):
+        """Intent skills should be pooled with CV skills for the disjoint check."""
+        ok, reason = service._passes_normalization_filters(
+            {"domain": "logistics", "required_skills": ["excel", "sap", "logistics"]},
+            {
+                "domain": "it",
+                "skills": ["Python", "React", "Docker"],   # no overlap with job
+                "intent_skills": ["excel", "logistics"],   # overlap with job!
+                "open_to_unrelated": False,
+                "intent_domain": "logistics",
+            },
+        )
+        assert ok, f"Expected pass due to intent_skills overlap but got: {reason}"
+
+    def test_skills_disjoint_still_rejects_when_no_overlap_and_not_manual(self, service):
+        """When skills are truly disjoint and no open_to_unrelated, should reject."""
+        ok, reason = service._passes_normalization_filters(
+            {"domain": "it", "required_skills": ["COBOL", "FORTRAN", "Assembly"]},
+            {
+                "domain": "it",
+                "skills": ["Python", "React", "Docker"],
+                "intent_skills": ["TypeScript"],
+                "open_to_unrelated": False,
+            },
+        )
+        assert not ok
+        assert reason == "norm_skills_disjoint"
+
+    # ── skill aliases (JS ↔ javascript) ─────────────────────────────────────
+
+    def test_skill_alias_js_matches_javascript(self, service):
+        """'JS' in job skills and 'javascript' in profile skills → overlap via alias."""
+        ok, reason = service._passes_normalization_filters(
+            {"domain": "it", "required_skills": ["JS", "Node.js", "CSS"]},
+            {"domain": "it", "skills": ["javascript", "html", "css"]},
+        )
+        assert ok, f"Expected alias match to prevent disjoint rejection but got: {reason}"
+
+    def test_skill_alias_k8s_matches_kubernetes(self, service):
+        """'k8s' → 'kubernetes' alias should allow overlap."""
+        ok, reason = service._passes_normalization_filters(
+            {"domain": "it", "required_skills": ["k8s", "docker", "helm"]},
+            {"domain": "it", "skills": ["kubernetes", "docker", "terraform"]},
+        )
+        assert ok, f"Expected k8s→kubernetes alias but got: {reason}"
+
+    # ── intent_seniority takes priority over CV seniority ────────────────────
+
+    def test_intent_seniority_overrides_cv_seniority(self, service):
+        """Senior dev who targets junior positions: intent_seniority=junior, job=junior → pass."""
+        ok, reason = service._passes_normalization_filters(
+            {"seniority": "junior", "experience_max_years": 2},
+            {
+                "seniority": "senior",
+                "experience_years": 8,
+                "intent_seniority": "junior",
+            },
+        )
+        # With intent_seniority=junior and experience_max_years=2, user_exp=8;
+        # the underqualified check: 2 < 8-3=5 → rejected by underqualified... UNLESS
+        # the intent signals they WANT junior, which means we should pass this.
+        # The current logic uses intent_seniority as "effective_seniority" so
+        # "junior" checking "junior" job → no check fires → passes.
+        assert ok, f"Expected pass when intent_seniority matches job seniority but got: {reason}"
+
+    # ── intent_qualification_level takes priority ─────────────────────────────
+
+    def test_intent_qualification_level_overrides_cv_qualification(self, service):
+        """User has 'vocational' CV but targets 'bachelor' jobs via intent."""
+        ok, reason = service._passes_normalization_filters(
+            {"qualification_level": "master"},
+            {
+                "qualification_level": "vocational",
+                "intent_qualification_level": "bachelor",
+            },
+        )
+        # bachelor (rank 2) vs master (rank 3): 3 <= 2+2=4 → passes
+        assert ok, f"Expected pass with intent_qualification_level=bachelor but got: {reason}"
+
+    # ── manual work signals bypass skills check ──────────────────────────────
+
+    def test_manual_intent_keyword_bypasses_skills_check(self, service):
+        """If intent_keywords contain 'manual', skills disjoint check is skipped."""
+        ok, reason = service._passes_normalization_filters(
+            {"domain": "general", "required_skills": ["forklift", "packing", "heavy lifting"]},
+            {
+                "domain": "it",
+                "skills": ["Python", "React", "Docker"],
+                "intent_keywords": ["manual", "warehouse"],
+                "open_to_unrelated": False,
+                "intent_domain": "general",
+            },
+        )
+        assert ok, f"Expected manual keyword to bypass skills check but got: {reason}"
+

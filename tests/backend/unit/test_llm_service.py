@@ -144,43 +144,6 @@ async def test_generate_search_plan_stops_on_underfilled_no_retry(mock_provider)
         assert mock_provider.generate_json_async.call_count == 2
 
 @pytest.mark.asyncio
-async def test_check_relevance_batch_is_permissive(mock_provider):
-    """Verify the relevance prompt is permissive and includes strategy/description."""
-    mock_provider.generate_json_async.return_value = {"results": [True]}
-    
-    with patch("backend.services.llm_service.get_provider_for_step", return_value=mock_provider):
-        service = LLMService()
-        jobs = [{"title": "Dev", "company": "Anticorp", "description_snippet": "Software engineering role"}]
-        strategy = "Focus on Python"
-        
-        await service.check_relevance_batch(jobs, "Developer", search_strategy=strategy)
-        
-        call_args = mock_provider.generate_json_async.call_args[0]
-        sys_prompt = call_args[0]
-        user_prompt = call_args[1]
-        
-        assert "permissive" in sys_prompt.lower()
-        assert "strict" not in sys_prompt.lower()
-        assert strategy in user_prompt
-        assert "Software engineering role" in user_prompt
-        assert "FILTERING RULES" in user_prompt
-
-@pytest.mark.asyncio
-async def test_check_relevance_batch_uses_conservative_padding_by_default(mock_provider):
-    mock_provider.generate_json_async.return_value = {"results": [True]}
-
-    with patch("backend.services.llm_service.get_provider_for_step", return_value=mock_provider), \
-         patch("backend.services.llm_service.settings.SEARCH_RELEVANCE_FALLBACK_MODE", "conservative"):
-        service = LLMService()
-        jobs = [
-            {"title": "Dev", "company": "A", "description_snippet": "one"},
-            {"title": "Ops", "company": "B", "description_snippet": "two"},
-        ]
-
-        results = await service.check_relevance_batch(jobs, "Developer")
-
-        assert results == [True, False]
-
 @pytest.mark.asyncio
 async def test_summarize_cv_success(mock_provider):
     mock_provider.generate_text_async.return_value = "- Experience: 5 years\n- Skills: Python"
@@ -203,8 +166,8 @@ async def test_summarize_cv_success(mock_provider):
 async def test_analyze_job_batch_success(mock_provider):
     mock_provider.generate_json_async.return_value = {
         "results": [
-            {"relevant": True, "affinity_score": 85, "worth_applying": True},
-            {"relevant": False, "affinity_score": 10, "worth_applying": False}
+            {"affinity_score": 85, "worth_applying": True},
+            {"affinity_score": 10, "worth_applying": False}
         ]
     }
     
@@ -224,7 +187,7 @@ async def test_analyze_job_batch_success(mock_provider):
         
         assert len(results) == 2
         assert results[0]["affinity_score"] == 85
-        assert results[1]["relevant"] is False
+        assert results[1]["affinity_score"] == 10
         
         call_args = mock_provider.generate_json_async.call_args[0]
         sys_prompt = call_args[0]
@@ -243,62 +206,7 @@ async def test_analyze_job_batch_fallback_empty_dict(mock_provider):
         service = LLMService()
         results = await service.analyze_job_batch([{"title": "T"}], {"role_description": "R"})
         assert len(results) == 1
-        assert results[0]["relevant"] is False
         assert results[0]["affinity_score"] == 0
-
-# ─── Feature 1: Job Summary Tests ─────────────────────────────────────────────
-
-@pytest.mark.asyncio
-async def test_summarize_job_batch_success(mock_provider):
-    """Verify summarize_job_batch returns one summary per job in order."""
-    mock_provider.generate_json_async.return_value = {
-        "summaries": [
-            "Software engineer role requiring Python and 3+ years experience.",
-            "Chef role requiring culinary skills and food safety knowledge."
-        ]
-    }
-    
-    with patch("backend.services.llm_service.get_provider_for_step", return_value=mock_provider):
-        service = LLMService()
-        jobs = [
-            {"title": "Backend Dev", "company": "TechCo", "description": "We need Python engineers..."},
-            {"title": "Chef", "company": "Restaurant", "description": "Experienced chef wanted..."},
-        ]
-        
-        summaries = await service.summarize_job_batch(jobs)
-        
-        assert len(summaries) == 2
-        assert "Python" in summaries[0]
-        assert "culinary" in summaries[1]
-        
-        # Verify the "summary" step provider was used
-        mock_provider.generate_json_async.assert_called_once()
-        call_args = mock_provider.generate_json_async.call_args[0]
-        user_prompt = call_args[1]
-        assert "Backend Dev" in user_prompt
-        assert "Chef" in user_prompt
-
-@pytest.mark.asyncio
-async def test_summarize_job_batch_pads_on_short_response(mock_provider):
-    """Verify padding with empty strings when LLM returns fewer summaries than jobs."""
-    mock_provider.generate_json_async.return_value = {
-        "summaries": ["Only one summary"]
-    }
-    
-    with patch("backend.services.llm_service.get_provider_for_step", return_value=mock_provider):
-        service = LLMService()
-        jobs = [
-            {"title": "Job 1", "company": "A", "description": "..."},
-            {"title": "Job 2", "company": "B", "description": "..."},
-            {"title": "Job 3", "company": "C", "description": "..."},
-        ]
-        
-        summaries = await service.summarize_job_batch(jobs)
-        
-        assert len(summaries) == 3
-        assert summaries[0] == "Only one summary"
-        assert summaries[1] == ""
-        assert summaries[2] == ""
 
 
 @pytest.mark.asyncio
@@ -715,3 +623,234 @@ def test_build_coverage_report_structured_row_format(llm_service):
     report = llm_service._build_coverage_report(collected)
 
     assert "[occupation] [finance] [fr] Analyste financier" in report
+
+
+# ─── Dual-signal normalize_user_profile tests ────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_normalize_user_profile_dual_signal_output(mock_provider):
+    """LLM returning dual-signal (candidate_profile + search_intent blocks) is flattened correctly."""
+    dual_signal_response = {
+        "candidate_profile": {
+            "seniority": "mid",
+            "domain": "it",
+            "role_family": "Backend Engineer",
+            "qualification_level": "bachelor",
+            "experience_years": 4,
+            "languages": [{"code": "en", "level": "C2"}],
+            "skills": ["Python", "FastAPI", "PostgreSQL"],
+        },
+        "search_intent": {
+            "target_domain": "logistics",
+            "target_seniority": "junior",
+            "target_role_family": "Warehouse Worker",
+            "target_qualification_level": "none",
+            "target_skills": ["forklift", "packing"],
+            "open_to_unrelated": True,
+            "intent_keywords": ["warehouse", "manual"],
+        },
+    }
+    mock_provider.generate_json_async.return_value = dual_signal_response
+
+    with patch("backend.services.llm_service.get_provider_for_step", return_value=mock_provider):
+        service = LLMService()
+        result = await service.normalize_user_profile(
+            cv_content="I am a backend Python developer with 4 years experience",
+            role_description="Looking for warehouse work",
+            search_strategy="Any manual labor accepted",
+        )
+
+    # Candidate profile fields
+    assert result["domain"] == "it"
+    assert result["seniority"] == "mid"
+    assert "Python" in result["skills"]
+
+    # Search intent fields
+    assert result["intent_domain"] == "logistics"
+    assert result["intent_seniority"] == "junior"
+    assert result["open_to_unrelated"] is True
+    assert "forklift" in result["intent_skills"]
+    assert "warehouse" in result["intent_keywords"]
+
+
+@pytest.mark.asyncio
+async def test_normalize_user_profile_flat_response_backward_compat(mock_provider):
+    """Old flat LLM response (no dual blocks) is still accepted via backward-compat path."""
+    flat_response = {
+        "seniority": "senior",
+        "domain": "finance",
+        "role_family": "Financial Analyst",
+        "qualification_level": "master",
+        "experience_years": 8,
+        "languages": [],
+        "skills": ["Excel", "SQL"],
+        "confidence": 0.85,
+    }
+    mock_provider.generate_json_async.return_value = flat_response
+
+    with patch("backend.services.llm_service.get_provider_for_step", return_value=mock_provider):
+        service = LLMService()
+        result = await service.normalize_user_profile("Finance CV", "Senior analyst role", "")
+
+    assert result["seniority"] == "senior"
+    assert result["domain"] == "finance"
+    assert result["experience_years"] == 8
+
+
+@pytest.mark.asyncio
+async def test_normalize_user_profile_open_to_unrelated_defaults_false(mock_provider):
+    """When the LLM omits open_to_unrelated, default is False."""
+    mock_provider.generate_json_async.return_value = {
+        "seniority": "junior",
+        "domain": "it",
+        "role_family": "Dev",
+        "qualification_level": "none",
+        "experience_years": 1,
+        "languages": [],
+        "skills": [],
+    }
+
+    with patch("backend.services.llm_service.get_provider_for_step", return_value=mock_provider):
+        service = LLMService()
+        result = await service.normalize_user_profile("Short CV", "Junior dev role", "")
+
+    # Should default to False (not missing key causing KeyError)
+    assert result.get("open_to_unrelated", False) is False
+
+
+# ─── analyze_job_batch dimensional sub-score tests ───────────────────────────
+
+@pytest.mark.asyncio
+async def test_analyze_job_batch_returns_dimensional_subscores(mock_provider):
+    """analyze_job_batch must propagate all 5 dimensional sub-scores from LLM output."""
+    mock_provider.generate_json_async.return_value = {
+        "results": [
+            {
+                "affinity_score": 78,
+                "worth_applying": True,
+                "affinity_analysis": "Good fit for skills and intent.",
+                "skill_match_score": 80,
+                "experience_match_score": 90,
+                "intent_match_score": 95,
+                "language_match_score": 100,
+                "location_match_score": 60,
+            }
+        ]
+    }
+
+    with patch("backend.services.llm_service.get_provider_for_step", return_value=mock_provider):
+        service = LLMService()
+        results = await service.analyze_job_batch(
+            [{"title": "Warehouse Operator", "description": "Manual packing job"}],
+            {"role_description": "Looking for warehouse work", "cv_summary": "Python dev"},
+        )
+
+    assert len(results) == 1
+    r = results[0]
+    assert r["affinity_score"] == 78
+    assert r["skill_match_score"] == 80
+    assert r["experience_match_score"] == 90
+    assert r["intent_match_score"] == 95
+    assert r["language_match_score"] == 100
+    assert r["location_match_score"] == 60
+
+
+@pytest.mark.asyncio
+async def test_analyze_job_batch_subscores_default_to_none_on_fallback(mock_provider):
+    """When LLM returns malformed response, fallback rows have None sub-scores (not KeyError)."""
+    mock_provider.generate_json_async.return_value = {}  # malformed
+
+    with patch("backend.services.llm_service.get_provider_for_step", return_value=mock_provider):
+        service = LLMService()
+        results = await service.analyze_job_batch(
+            [{"title": "Some job", "description": "desc"}],
+            {"role_description": "Some role"},
+        )
+
+    assert len(results) == 1
+    r = results[0]
+    assert r["affinity_score"] == 0
+    # sub-scores must exist as keys (with None value) to avoid KeyError downstream
+    assert "skill_match_score" in r
+    assert r["skill_match_score"] is None
+    assert r["intent_match_score"] is None
+
+
+# ─── normalize_job_batch role_type and industry_sector tests ─────────────────
+
+@pytest.mark.asyncio
+async def test_normalize_job_batch_returns_role_type_and_industry_sector(mock_provider):
+    """normalize_job_batch must propagate role_type and industry_sector from LLM output."""
+    mock_provider.generate_json_async.return_value = {
+        "results": [
+            {
+                "title": "Warehouse Packer",
+                "role_family": "Warehouse Worker",
+                "domain": "logistics",
+                "seniority": "junior",
+                "employment_mode": "on-site",
+                "contract_type": "temporary",
+                "qualification_level": "none",
+                "experience_min_years": 0,
+                "experience_max_years": 2,
+                "workload_min": 100,
+                "workload_max": 100,
+                "salary_max_chf": None,
+                "required_languages": [],
+                "required_skills": ["packing", "forklift"],
+                "education_levels": [],
+                "key_requirements": ["physical fitness"],
+                "role_type": "manual",
+                "industry_sector": "warehouse logistics",
+                "confidence": 0.75,
+            }
+        ]
+    }
+
+    with patch("backend.services.llm_service.get_provider_for_step", return_value=mock_provider):
+        service = LLMService()
+        results = await service.normalize_job_batch([
+            {"title": "Warehouse Packer", "description": "Packing boxes in a warehouse"}
+        ])
+
+    assert len(results) == 1
+    assert results[0]["role_type"] == "manual"
+    assert results[0]["industry_sector"] == "warehouse logistics"
+
+
+@pytest.mark.asyncio
+async def test_normalize_job_batch_invalid_role_type_coerced_to_none(mock_provider):
+    """Unknown role_type value must be coerced to None."""
+    mock_provider.generate_json_async.return_value = {
+        "results": [
+            {
+                "title": "Specialist",
+                "role_family": "X",
+                "domain": "general",
+                "seniority": None,
+                "employment_mode": "on-site",
+                "contract_type": None,
+                "qualification_level": None,
+                "experience_min_years": None,
+                "experience_max_years": None,
+                "workload_min": None,
+                "workload_max": None,
+                "salary_max_chf": None,
+                "required_languages": [],
+                "required_skills": [],
+                "education_levels": [],
+                "key_requirements": [],
+                "role_type": "alien",  # not in valid set
+                "industry_sector": None,
+                "confidence": 0.5,
+            }
+        ]
+    }
+
+    with patch("backend.services.llm_service.get_provider_for_step", return_value=mock_provider):
+        service = LLMService()
+        results = await service.normalize_job_batch([
+            {"title": "Specialist", "description": "unclear role"}
+        ])
+
+    assert results[0].get("role_type") is None
