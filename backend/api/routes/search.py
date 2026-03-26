@@ -44,8 +44,10 @@ async def upload_cv(
     user_id: int = Depends(get_current_user_id),
 ):
     MAX_FILE_SIZE = settings.MAX_UPLOAD_FILE_SIZE
-    # Read content first so we can check the real size regardless of whether
-    # the client sends a Content-Length header (file.size may be None).
+    # Reject early using Content-Length if the client provides it, to avoid
+    # reading a potentially huge payload into memory before we can check it.
+    if file.size is not None and file.size > MAX_FILE_SIZE:
+        raise HTTPException(status_code=400, detail="File too large. Maximum size is 10MB.")
     content = await file.read()
     if len(content) > MAX_FILE_SIZE:
         raise HTTPException(status_code=400, detail="File too large. Maximum size is 10MB.")
@@ -130,6 +132,13 @@ async def start_search(
                 force_regenerate_cv_summary=_force_cv,
                 force_regenerate_queries=_force_q,
             )
+        except Exception:
+            # Safety net: if run_search never called register_task (e.g. get_search_service
+            # raised), the reservation slot is still held. Release it so future searches
+            # for this profile are not permanently blocked.
+            # If register_task was already called, release_task is a no-op.
+            release_task(_profile_id)
+            logger.exception("Background search failed unexpectedly for profile %d", _profile_id)
         finally:
             fresh_db.close()
 

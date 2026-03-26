@@ -32,7 +32,7 @@ def test_register_existing_user():
     
     response = client.post("/api/v1/auth/register", json={"username": "exist", "password": "ExistUserPwd1!"})
     assert response.status_code == 400
-    assert "already registered" in response.json()["detail"]
+    assert "Registration failed" in response.json()["detail"]
     app.dependency_overrides.clear()
 
 def test_login_success():

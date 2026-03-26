@@ -36,10 +36,14 @@ export function LocationInput({
 
         setIsLoading(true);
         try {
+            const timeoutSignal = AbortSignal.timeout(5000);
+            const combinedSignal = AbortSignal.any
+                ? AbortSignal.any([signal, timeoutSignal])
+                : signal;
             const response = await fetch(
                 `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(searchTerm)}&countrycodes=ch&addressdetails=1&limit=5`,
                 {
-                    signal,
+                    signal: combinedSignal,
                     headers: {
                         "Accept-Language": "en",
                         "User-Agent": "JobHunterAI/1.0"
@@ -135,6 +139,7 @@ export function LocationInput({
                     const response = await fetch(
                         `https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}`,
                         {
+                            signal: AbortSignal.timeout(5000),
                             headers: {
                                 "Accept-Language": "en",
                                 "User-Agent": "JobHunterAI/1.0"

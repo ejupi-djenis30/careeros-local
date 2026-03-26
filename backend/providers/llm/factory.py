@@ -69,6 +69,13 @@ def _build_provider(cfg: dict) -> LLMProvider:
     """Instantiate the correct ``LLMProvider`` subclass from a resolved *cfg*."""
     provider_name = cfg["provider"].lower()
 
+    # Validate API key is present for cloud providers (not needed for ollama)
+    if provider_name not in ("ollama",) and not cfg.get("api_key"):
+        raise ValueError(
+            f"LLM provider '{provider_name}' requires an API key but none was set. "
+            "Configure LLM_API_KEY (or the step-specific variant) in your environment."
+        )
+
     if provider_name == "gemini":
         return GeminiProvider(
             api_key=cfg["api_key"],

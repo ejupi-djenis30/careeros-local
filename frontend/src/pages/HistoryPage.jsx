@@ -21,7 +21,7 @@ export function HistoryPage() {
 
   const handleUseAsTemplate = (profile) => {
     // Strip id and metadata so a fresh profile is created on submit
-    const { id, created_at, last_scheduled_run, ...templateData } = profile;
+    const { id: _id, created_at: _created_at, last_scheduled_run: _last_scheduled_run, ...templateData } = profile;
     navigate('/new', { state: { prefillProfile: templateData } });
   };
 

@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 # ═══════════════════════════════════════
 # Job Schemas
@@ -19,6 +19,13 @@ class JobBase(BaseModel):
     publication_date: Optional[datetime] = None
     platform: Optional[str] = None
     platform_job_id: Optional[str] = None
+
+    @field_validator("title", "company", "external_url")
+    @classmethod
+    def reject_empty_strings(cls, v: str) -> str:
+        if not v or not v.strip():
+            raise ValueError("Field must not be empty")
+        return v
 
     @property
     def url(self):

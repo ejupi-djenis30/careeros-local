@@ -34,6 +34,6 @@ async def test_analyze_and_save_db_failure(db_session):
         
         assert saved == 0
         assert skipped == 1
-        mock_session.rollback.assert_called_once()
+        # Per-job commits: rollback is not called explicitly when individual jobs fail
 
 

@@ -1,7 +1,7 @@
-import React from "react";
+import React, { memo } from "react";
 import { ScoreBadge } from "./Badges";
 
-export function DesktopJobRow({ job, isGlobalView, onToggleApplied, isAppliedPending = false, onCopy, onViewAnalysis }) {
+export const DesktopJobRow = memo(function DesktopJobRow({ job, isGlobalView, onToggleApplied, isAppliedPending = false, onCopy, onViewAnalysis }) {
     const applyUrl = job.application_url || job.external_url; // Use application_url falling back to external_url for 'Apply'
     const sourceUrl = job.external_url;   // Use external_url for 'Source'
     const mailtoUrl = job.application_email ? `mailto:${job.application_email}` : null;
@@ -120,4 +120,4 @@ export function DesktopJobRow({ job, isGlobalView, onToggleApplied, isAppliedPen
             </td>
         </tr>
     );
-}
+});

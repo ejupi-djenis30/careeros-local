@@ -122,15 +122,17 @@ async def test_analyze_and_save_success(mock_service):
             assert saved == 2
             assert skipped == 0
             assert mock_session.add.called
-            mock_session.commit.assert_called_once()
+            # With per-job commits, commit is called once per saved job
+            assert mock_session.commit.call_count == 2
 
 async def test_analyze_and_save_db_error(mock_service):
     profile_dict = {"id": 1, "user_id": 1}
     job1 = MagicMock()
     job1.descriptions = [MagicMock(description="x")]
     
+    # Patch _save_single_job to raise an exception — job should be skipped
     with patch("backend.services.search_service.llm_service.analyze_job_batch") as mock_analyze, \
-         patch.object(mock_service, "_save_single_job", new=AsyncMock(return_value=None)):
+         patch.object(mock_service, "_save_single_job", new=AsyncMock(side_effect=Exception("DB Fail"))):
         mock_analyze.return_value = [{"relevant": True}]
         
         with patch("backend.services.search_service.get_status", return_value={"state": "searching"}):
@@ -138,13 +140,9 @@ async def test_analyze_and_save_db_error(mock_service):
             mock_session = mock_service.job_repo.db
             mock_session.query.return_value.filter.return_value.all.return_value = []
             
-            mock_session.commit.side_effect = Exception("DB Fail")
-            
             saved, skipped = await mock_service._analyze_and_save(1, profile_dict, [job1])
             assert saved == 0
             assert skipped == 1
-            mock_session.commit.assert_called_once()
-            mock_session.rollback.assert_called_once()
 
 async def test_analyze_and_save_batch_exception(mock_service):
     profile_dict = {"id": 1, "user_id": 1}

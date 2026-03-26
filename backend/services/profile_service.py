@@ -32,12 +32,52 @@ _QUERY_CACHE_INVALIDATION_FIELDS = {
 }
 
 
+_PREFERENCE_FIELD_TYPES: Dict[str, type] = {
+    "preferred_languages": list,
+    "preferred_domains": list,
+    "remote_only": bool,
+    "salary_min_chf": (int, float),
+    "workload_min": int,
+    "workload_max": int,
+    "hard_max_distance_km": (int, float),
+}
+
+
+def _coerce_preference_value(field: str, value: Any) -> Any:
+    """Coerce a preference value to its expected type, returning None if invalid."""
+    expected = _PREFERENCE_FIELD_TYPES.get(field)
+    if expected is None or value is None:
+        return value
+    if isinstance(value, expected):
+        return value
+    # Attempt coercion
+    try:
+        if expected is bool or (isinstance(expected, tuple) and bool in expected):
+            if isinstance(value, str):
+                if value.lower() in ("true", "yes", "1"):
+                    return True
+                if value.lower() in ("false", "no", "0"):
+                    return False
+            return bool(value)
+        if expected is int or (isinstance(expected, tuple) and int in expected):
+            return int(float(str(value)))
+        if expected is list:
+            if isinstance(value, str):
+                return [v.strip() for v in value.split(",") if v.strip()]
+            return list(value)
+    except (TypeError, ValueError):
+        return None
+    return None
+
+
 def _extract_advanced_preferences(data: Dict[str, Any], existing: Dict[str, Any] | None = None) -> tuple[Dict[str, Any], Dict[str, Any] | None]:
     base = dict(existing or {})
     extracted: Dict[str, Any] = {}
     for field in _PREFERENCE_FIELDS:
         if field in data:
-            extracted[field] = data.pop(field)
+            raw = data.pop(field)
+            coerced = _coerce_preference_value(field, raw)
+            extracted[field] = coerced
 
     base.update({k: v for k, v in extracted.items() if v is not None})
     cleaned = {k: v for k, v in base.items() if v is not None}

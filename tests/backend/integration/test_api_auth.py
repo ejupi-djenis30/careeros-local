@@ -18,7 +18,7 @@ class TestAdvancedAuthenticationAPI:
             json={"username": "globaladmin", "password": "Newpassword123"}
         )
         assert response.status_code == 400
-        assert "already registered" in response.json()["detail"]
+        assert "Registration failed" in response.json()["detail"]
 
     def test_register_user_validation_error(self, client):
         # Missing password field

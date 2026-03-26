@@ -2,12 +2,14 @@ import asyncio
 import math
 import re
 import threading
+from collections import OrderedDict
 from typing import Optional
 
 import fitz  # PyMuPDF
 from fastapi import HTTPException, UploadFile
 
-_geocode_cache: dict = {}
+_MAX_GEOCODE_CACHE = 1024
+_geocode_cache: OrderedDict = OrderedDict()
 _geocode_cache_lock = threading.Lock()
 
 def clean_html_tags(text: str) -> str:
@@ -173,6 +175,9 @@ async def geocode_location(city: str, client: Optional["httpx.AsyncClient"] = No
                     )
                     with _geocode_cache_lock:
                         _geocode_cache[normalized] = coords
+                        _geocode_cache.move_to_end(normalized)
+                        if len(_geocode_cache) > _MAX_GEOCODE_CACHE:
+                            _geocode_cache.popitem(last=False)
                     return coords
             return None
 

@@ -50,6 +50,7 @@ class SwissDevJobsProvider(BaseJobProvider):
         self._client: httpx.AsyncClient | None = None
         self._light_jobs_cache: Any = None
         self._cache_time: float = 0
+        self._cache_lock: asyncio.Lock = asyncio.Lock()
 
     @property
     def name(self) -> str:
@@ -104,17 +105,18 @@ class SwissDevJobsProvider(BaseJobProvider):
 
         try:
             # Step 1: Fetch the bulk list (with simple 1-hour cache across the session)
-            if self._light_jobs_cache is None or time.time() - self._cache_time > 3600:
-                @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=10))
-                async def fetch_light_jobs():
-                    resp = await self._client.get(f"{API_BASE_URL}/jobsLight")
-                    resp.raise_for_status()
-                    return resp.json()
+            async with self._cache_lock:
+                if self._light_jobs_cache is None or time.time() - self._cache_time > 3600:
+                    @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=10))
+                    async def fetch_light_jobs():
+                        resp = await self._client.get(f"{API_BASE_URL}/jobsLight")
+                        resp.raise_for_status()
+                        return resp.json()
 
-                self._light_jobs_cache = await fetch_light_jobs()
-                self._cache_time = time.time()
+                    self._light_jobs_cache = await fetch_light_jobs()
+                    self._cache_time = time.time()
 
-            all_jobs_light = self._light_jobs_cache
+                all_jobs_light = self._light_jobs_cache
             if not isinstance(all_jobs_light, list):
                  raise ResponseParseError(self.name, "Expected a list from jobsLight API")
 

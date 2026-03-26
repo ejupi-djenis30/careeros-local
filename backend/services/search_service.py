@@ -407,8 +407,8 @@ class SearchService:
                 )
             return normalized or {}
         except Exception as exc:
-            logger.warning("Profile normalization failed for profile %s: %s", profile_id, exc)
-            add_log(profile_id, f"Profile normalization warning (non-fatal): {exc}")
+            logger.error("Profile normalization failed for profile %s: %s", profile_id, exc, exc_info=True)
+            add_log(profile_id, f"⚠ Profile normalization failed (normalization filters will be skipped): {exc}")
             return {}
 
     def _apply_structured_filters(self, profile_id: int, profile_dict: Dict[str, Any], jobs: List[Any], preferences: Dict[str, Any]) -> List[Any]:
@@ -604,7 +604,7 @@ class SearchService:
         raw_confidence = job_norm.get("confidence")
         if raw_confidence is not None:
             try:
-                if float(raw_confidence) < 0.4:
+                if float(raw_confidence) < 0.7:
                     return True, "ok"
             except (TypeError, ValueError):
                 pass
@@ -1555,21 +1555,18 @@ class SearchService:
 
         jobs_to_persist = [item for batch_result in results for item in batch_result]
 
-        try:
-            for job, analysis in jobs_to_persist:
-                await self._save_single_job(job, analysis, profile_dict, origin_coords, commit=False)
-            if jobs_to_persist:
-                self.db.commit()
-        except Exception as exc:
-            self.db.rollback()
-            logger.error(
-                "Failed staged persistence for profile %s: %s",
-                profile_dict.get("id"),
-                exc,
-            )
-            return 0, len(unique_jobs)
+        saved_count = 0
+        for job, analysis in jobs_to_persist:
+            try:
+                await self._save_single_job(job, analysis, profile_dict, origin_coords, commit=True)
+                saved_count += 1
+            except Exception as exc:
+                logger.warning(
+                    "Skipping job due to persistence error (profile %s): %s",
+                    profile_dict.get("id"),
+                    exc,
+                )
 
-        saved_count = len(jobs_to_persist)
         skipped_count = len(unique_jobs) - saved_count
         return saved_count, skipped_count
 

@@ -8,7 +8,8 @@ from backend.providers.jobs.models import Coordinates
 async def test_geocode_location_nominatim_success():
     """Test successful geocoding via Nominatim fallback."""
     # Ensure cache is clear for this test
-    with patch("backend.services.utils._geocode_cache", {}):
+    from collections import OrderedDict
+    with patch("backend.services.utils._geocode_cache", OrderedDict()):
         mock_resp = MagicMock()
         mock_resp.status_code = 200
         mock_resp.json.return_value = [{"lat": "46.5", "lon": "6.5"}]
@@ -24,7 +25,8 @@ async def test_geocode_location_nominatim_success():
 @pytest.mark.asyncio
 async def test_geocode_location_nominatim_failure():
     """Test geocoding failure (Nominatim returns 404 or empty)."""
-    with patch("backend.services.utils._geocode_cache", {}):
+    from collections import OrderedDict
+    with patch("backend.services.utils._geocode_cache", OrderedDict()):
         mock_resp = MagicMock()
         mock_resp.status_code = 404
         

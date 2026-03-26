@@ -25,7 +25,7 @@ def register(request: Request, response: Response, user_in: UserCreate, db: Sess
     if user:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Username already registered",
+            detail="Registration failed. Please try a different username.",
         )
 
     hashed_password = get_password_hash(user_in.password)
@@ -51,7 +51,12 @@ def register(request: Request, response: Response, user_in: UserCreate, db: Sess
 @limiter.limit("10/minute")
 def login(request: Request, response: Response, form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
     user = db.query(User).filter(User.username == form_data.username).first()
-    if not user or not verify_password(form_data.password, user.hashed_password):
+    # Always call verify_password even when user is None to prevent username
+    # enumeration via response-time side-channel (constant-time comparison).
+    dummy_hash = get_password_hash("_dummy_constant_time_placeholder_")
+    candidate_hash = user.hashed_password if user else dummy_hash
+    password_ok = verify_password(form_data.password, candidate_hash)
+    if not user or not password_ok:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect username or password",

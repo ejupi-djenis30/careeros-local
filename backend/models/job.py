@@ -79,7 +79,9 @@ class ScrapedJob(BaseModel, TimestampMixin):
     source_query = Column(String, nullable=True)
 
     # Relationships
-    user_jobs = relationship("Job", back_populates="scraped_job", cascade="all, delete-orphan")
+    # No cascade delete-orphan: deleting a ScrapedJob must never silently remove
+    # all user Job records across every user that saved it.
+    user_jobs = relationship("Job", back_populates="scraped_job")
 
     @property
     def normalized_job_data(self):

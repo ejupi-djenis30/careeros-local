@@ -127,12 +127,34 @@ async def core_exception_handler(request, exc):
 
 @app.exception_handler(Exception)
 async def generic_exception_handler(request, exc):
-    logger.error(f"Unhandled exception: {exc}", exc_info=True)
+    logger.error(
+        "Unhandled exception on %s %s: %s",
+        request.method,
+        request.url.path,
+        exc,
+        exc_info=True,
+    )
     return JSONResponse(
         status_code=500,
         content={"detail": "Internal Server Error"},
         headers=_cors_headers_for(request),
     )
+
+
+def _check_db_status() -> str:
+    """Return 'connected' or 'unavailable' depending on whether the DB is reachable."""
+    from sqlalchemy import text
+
+    from backend.db.base import SessionLocal
+    try:
+        db = SessionLocal()
+        try:
+            db.execute(text("SELECT 1"))
+            return "connected"
+        finally:
+            db.close()
+    except Exception:
+        return "unavailable"
 
 
 # ─── Routes ───
@@ -141,19 +163,7 @@ app.include_router(api_router, prefix=settings.API_V1_STR)
 
 @app.get(f"{settings.API_V1_STR}/health")
 def health():
-    from sqlalchemy import text
-
-    from backend.db.base import SessionLocal
-    db_status = "unavailable"
-    try:
-        db = SessionLocal()
-        try:
-            db.execute(text("SELECT 1"))
-            db_status = "connected"
-        finally:
-            db.close()
-    except Exception:
-        db_status = "unavailable"
+    db_status = _check_db_status()
     if db_status != "connected":
         from fastapi.responses import JSONResponse
         return JSONResponse(status_code=503, content={"status": "degraded", "database": db_status})
@@ -162,20 +172,7 @@ def health():
 
 @app.get("/")
 async def root():
-    from sqlalchemy import text
-
-    from backend.db.base import SessionLocal
-    db_status = "unavailable"
-    try:
-        db = SessionLocal()
-        try:
-            db.execute(text("SELECT 1"))
-            db_status = "connected"
-        finally:
-            db.close()
-    except Exception:
-        db_status = "unavailable"
-
+    db_status = _check_db_status()
     return {
         "message": "Job Hunter AI API",
         "status": "online",

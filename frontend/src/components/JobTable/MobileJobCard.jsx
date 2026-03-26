@@ -1,7 +1,7 @@
-import React from "react";
+import React, { memo } from "react";
 import { ScoreBadge } from "./Badges";
 
-export function MobileJobCard({ job, isGlobalView, onToggleApplied, isAppliedPending = false, onCopy, onViewAnalysis }) {
+export const MobileJobCard = memo(function MobileJobCard({ job, isGlobalView, onToggleApplied, isAppliedPending = false, onCopy, onViewAnalysis }) {
     const applyUrl = job.application_url || job.external_url;
     const sourceUrl = job.external_url;
     const mailtoUrl = job.application_email ? `mailto:${job.application_email}` : null;
@@ -96,4 +96,4 @@ export function MobileJobCard({ job, isGlobalView, onToggleApplied, isAppliedPen
             </div>
         </div>
     );
-}
+});
