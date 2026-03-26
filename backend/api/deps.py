@@ -1,14 +1,16 @@
+import logging
+import os
+
 from fastapi import Depends, HTTPException
 from fastapi.security import OAuth2PasswordBearer
 from jwt.exceptions import PyJWTError
-from sqlalchemy.orm import Session
-from backend.db.base import get_db
-from backend.services.auth import decode_access_token
-from backend.models import User
-import os
-import logging
 from slowapi import Limiter
 from slowapi.util import get_remote_address
+from sqlalchemy.orm import Session
+
+from backend.db.base import get_db
+from backend.models import User
+from backend.services.auth import decode_access_token
 
 is_testing = os.environ.get("TESTING") == "1"
 limiter = Limiter(key_func=get_remote_address, enabled=not is_testing)
@@ -30,7 +32,7 @@ def get_current_user_id(token: str = Depends(oauth2_scheme), db: Session = Depen
     username = payload.get("sub")
     if username is None:
         raise HTTPException(status_code=401, detail="Invalid token")
-    
+
     user = db.query(User).filter(User.username == username).first()
     if user is None:
         raise HTTPException(status_code=401, detail="User not found")

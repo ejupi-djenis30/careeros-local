@@ -1,6 +1,7 @@
 from abc import ABC, abstractmethod
-from typing import List
-from backend.providers.jobs.models import JobListing, JobSearchRequest, ProviderInfo
+
+from backend.providers.jobs.models import JobSearchRequest, ProviderInfo
+
 
 class JobProvider(ABC):
     @property
@@ -21,7 +22,7 @@ class JobProvider(ABC):
         pass
 
     @abstractmethod
-    async def search(self, request: JobSearchRequest) -> "JobSearchResponse":
+    async def search(self, request: JobSearchRequest) -> "JobSearchResponse":  # noqa: F821
         """Search for jobs."""
         pass
 

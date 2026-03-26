@@ -10,47 +10,34 @@ Production-grade client for job-room.ch with:
 
 import logging
 import time
-from datetime import datetime
 from typing import Any, cast
 
+from backend.providers.jobs.base import (
+    JobProvider as BaseJobProvider,
+)
 from backend.providers.jobs.exceptions import (
     ProviderError,
     ResponseParseError,
 )
-from backend.providers.jobs.models import (
-    ApplicationChannel,
-    CompanyInfo,
-    ContactInfo,
-    ContractType,
-    Coordinates,
-    EmploymentDetails,
-    JobDescription,
-    JobListing,
-    JobLocation,
-    JobSearchRequest,
-    JobSearchResponse,
-    LanguageSkill,
-    Occupation,
-    PublicationInfo,
-    SortOrder,
-    ProviderCapabilities,
-    ProviderHealth,
-    ProviderStatus,
-)
-from backend.providers.jobs.base import (
-    JobProvider as BaseJobProvider,
-)
-# ProviderCapabilities, ProviderHealth, ProviderStatus are now in models.py
-from backend.providers.jobs.session import ExecutionMode, ScraperSession
 from backend.providers.jobs.jobroom.constants import (
     API_BASE,
     BASE_URL,
     LANGUAGE_PARAMS,
-    SEARCH_ENDPOINT,
 )
 from backend.providers.jobs.jobroom.mapper import BFSLocationMapper
 from backend.providers.jobs.jobroom.request_builder import build_search_payload, build_search_url
 from backend.providers.jobs.jobroom.transformer import transform_job_data
+from backend.providers.jobs.models import (
+    JobListing,
+    JobSearchRequest,
+    JobSearchResponse,
+    ProviderCapabilities,
+    ProviderHealth,
+    ProviderStatus,
+)
+
+# ProviderCapabilities, ProviderHealth, ProviderStatus are now in models.py
+from backend.providers.jobs.session import ExecutionMode, ScraperSession
 
 logger = logging.getLogger(__name__)
 
@@ -94,7 +81,7 @@ class JobRoomProvider(BaseJobProvider):
     def display_name(self) -> str:
         return "Job-Room.ch (SECO)"
 
-    def get_provider_info(self) -> "ProviderInfo":
+    def get_provider_info(self) -> "ProviderInfo":  # noqa: F821
         from backend.providers.jobs.models import ProviderInfo
         return ProviderInfo(
             name=self.name,

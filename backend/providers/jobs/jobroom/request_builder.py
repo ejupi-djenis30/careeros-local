@@ -1,9 +1,9 @@
 import logging
 from typing import Any
 
-from backend.providers.jobs.models import ContractType, JobSearchRequest, SortOrder
-from backend.providers.jobs.jobroom.constants import SEARCH_ENDPOINT, LANGUAGE_PARAMS
+from backend.providers.jobs.jobroom.constants import LANGUAGE_PARAMS, SEARCH_ENDPOINT
 from backend.providers.jobs.jobroom.mapper import BFSLocationMapper
+from backend.providers.jobs.models import ContractType, JobSearchRequest, SortOrder
 
 logger = logging.getLogger(__name__)
 

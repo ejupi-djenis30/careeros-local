@@ -1,9 +1,10 @@
-from typing import List, Dict, Any
-from sqlalchemy.orm import Session
-from fastapi import HTTPException
-from backend.repositories.profile_repository import ProfileRepository
-from backend.schemas import SearchProfileCreate, ScheduleToggle
+from typing import Any, Dict
 
+from fastapi import HTTPException
+from sqlalchemy.orm import Session
+
+from backend.repositories.profile_repository import ProfileRepository
+from backend.schemas import ScheduleToggle, SearchProfileCreate
 
 _PREFERENCE_FIELDS = {
     "preferred_languages",
@@ -57,7 +58,7 @@ class ProfileService:
         data["user_id"] = user_id
         return self.repo.create(data)
 
-    def update_profile(self, user_id: int, profile_id: int, profile_in: "SearchProfileUpdate"):
+    def update_profile(self, user_id: int, profile_id: int, profile_in: "SearchProfileUpdate"):  # noqa: F821
         profile = self.repo.get(profile_id)
         if not profile:
             raise HTTPException(status_code=404, detail="Profile not found")
@@ -89,13 +90,13 @@ class ProfileService:
             raise HTTPException(status_code=404, detail="Profile not found")
         if profile.user_id != user_id:
             raise HTTPException(status_code=403, detail="Not authorized")
-        
+
         update_data = {"schedule_enabled": schedule.enabled}
         if schedule.interval_hours:
             update_data["schedule_interval_hours"] = schedule.interval_hours
-            
+
         updated_profile = self.repo.update(profile, update_data)
-        
+
         # Actually add/remove the APScheduler job
         from backend.services.scheduler import add_schedule, remove_schedule
         if schedule.enabled:
@@ -103,7 +104,7 @@ class ProfileService:
             add_schedule(profile_id, interval)
         else:
             remove_schedule(profile_id)
-        
+
         return updated_profile
 
     def delete_profile(self, user_id: int, profile_id: int):
@@ -112,10 +113,10 @@ class ProfileService:
             raise HTTPException(status_code=404, detail="Profile not found")
         if profile.user_id != user_id:
             raise HTTPException(status_code=403, detail="Not authorized")
-        
+
         from backend.services.scheduler import remove_schedule
         remove_schedule(profile_id)
-        
+
         self.repo.delete(profile_id)
 
 def get_profile_service(db: Session) -> ProfileService:

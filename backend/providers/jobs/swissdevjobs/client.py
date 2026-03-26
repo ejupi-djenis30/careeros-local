@@ -4,14 +4,15 @@ SwissDevJobs API Client.
 Client for swissdevjobs.ch fetching via the jobsLight API and retrieving details via jobWithUrl.
 """
 
+import asyncio
 import logging
 import time
 from typing import Any
-import asyncio
-from tenacity import retry, stop_after_attempt, wait_exponential
 
 import httpx
+from tenacity import retry, stop_after_attempt, wait_exponential
 
+from backend.providers.jobs.base import JobProvider as BaseJobProvider
 from backend.providers.jobs.exceptions import (
     ProviderError,
     ResponseParseError,
@@ -23,7 +24,6 @@ from backend.providers.jobs.models import (
     ProviderHealth,
     ProviderStatus,
 )
-from backend.providers.jobs.base import JobProvider as BaseJobProvider
 
 # Import extracted logic
 from backend.providers.jobs.swissdevjobs.filters import filter_jobs
@@ -59,7 +59,7 @@ class SwissDevJobsProvider(BaseJobProvider):
     def display_name(self) -> str:
         return "SwissDevJobs.ch"
 
-    def get_provider_info(self) -> "ProviderInfo":
+    def get_provider_info(self) -> "ProviderInfo":  # noqa: F821
         from backend.providers.jobs.models import ProviderInfo
         return ProviderInfo(
             name=self.name,
@@ -73,7 +73,7 @@ class SwissDevJobsProvider(BaseJobProvider):
         return ProviderCapabilities(
             supports_radius_search=True,
             supports_canton_filter=False,
-            supports_profession_codes=False, 
+            supports_profession_codes=False,
             supports_language_skills=False,
             supports_company_filter=True,
             supports_work_forms=True,
@@ -98,7 +98,7 @@ class SwissDevJobsProvider(BaseJobProvider):
     async def search(self, request: JobSearchRequest) -> JobSearchResponse:
         """Search for jobs on swissdevjobs.ch."""
         start_time = time.time()
-        
+
         if not self._client:
             self._client = httpx.AsyncClient(timeout=30.0)
 
@@ -110,10 +110,10 @@ class SwissDevJobsProvider(BaseJobProvider):
                     resp = await self._client.get(f"{API_BASE_URL}/jobsLight")
                     resp.raise_for_status()
                     return resp.json()
-                    
+
                 self._light_jobs_cache = await fetch_light_jobs()
                 self._cache_time = time.time()
-                
+
             all_jobs_light = self._light_jobs_cache
             if not isinstance(all_jobs_light, list):
                  raise ResponseParseError(self.name, "Expected a list from jobsLight API")
@@ -127,13 +127,13 @@ class SwissDevJobsProvider(BaseJobProvider):
             total_count = len(filtered_jobs)
             start_idx = page * page_size
             end_idx = start_idx + page_size
-            
+
             page_items = filtered_jobs[start_idx:end_idx]
-            
+
             # Step 4: Fetch details for the paginated items and transform (Parallelized with sem)
             hydrated_jobs = []
             sem = asyncio.Semaphore(5) # Concurrent fetching limit
-            
+
             @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=10))
             async def fetch_job_details_with_retry(job_url_slug):
                 detail_res = await self._client.get(f"{API_BASE_URL}/jobWithUrl/{job_url_slug}")
@@ -147,14 +147,14 @@ class SwissDevJobsProvider(BaseJobProvider):
                  job_url_slug = light_job.get("jobUrl")
                  if not job_url_slug:
                      return None
-                     
+
                  async with sem:
                      try:
                          detail_data = await fetch_job_details_with_retry(job_url_slug)
                          job_listing = transform_job_data(
-                             detail_data, 
-                             light_job, 
-                             self.name, 
+                             detail_data,
+                             light_job,
+                             self.name,
                              self._include_raw_data
                          )
                          return job_listing
@@ -164,7 +164,7 @@ class SwissDevJobsProvider(BaseJobProvider):
 
             tasks = [fetch_job_details(job) for job in page_items]
             results = await asyncio.gather(*tasks)
-            
+
             for job_listing in results:
                 if job_listing:
                     hydrated_jobs.append(job_listing)
@@ -190,7 +190,7 @@ class SwissDevJobsProvider(BaseJobProvider):
         """Check if swissdevjobs.ch API is accessible."""
         start_time = time.time()
         should_close = False
-        
+
         if not self._client:
             self._client = httpx.AsyncClient(timeout=10.0)
             should_close = True
@@ -198,7 +198,7 @@ class SwissDevJobsProvider(BaseJobProvider):
         try:
             response = await self._client.get(f"{API_BASE_URL}/jobsLight")
             latency_ms = int((time.time() - start_time) * 1000)
-            
+
             if response.status_code == 200:
                 return ProviderHealth(
                     provider=self.name,

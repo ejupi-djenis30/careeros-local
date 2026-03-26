@@ -1,7 +1,19 @@
-from datetime import datetime, timezone
 
-from sqlalchemy import Column, Integer, String, Boolean, Float, Text, DateTime, ForeignKey, JSON, UniqueConstraint, Index
+from sqlalchemy import (
+    JSON,
+    Boolean,
+    Column,
+    DateTime,
+    Float,
+    ForeignKey,
+    Index,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+)
 from sqlalchemy.orm import relationship
+
 from backend.models.base_model import BaseModel, TimestampMixin
 
 
@@ -13,20 +25,20 @@ class ScrapedJob(BaseModel, TimestampMixin):
 
     platform = Column(String, index=True, nullable=False)
     platform_job_id = Column(String, index=True, nullable=False)
-    
+
     title = Column(String, index=True, nullable=False)
     company = Column(String, index=True, nullable=False)
     description = Column(Text)
     location = Column(String, index=True)
-    
+
     # Generic URLs
     external_url = Column(String, index=True, nullable=False)
     application_url = Column(String, nullable=True)
     application_email = Column(String, nullable=True)
-    
+
     workload = Column(String)
     publication_date = Column(DateTime(timezone=True))
-    
+
     # For provider-specific details (JobRoom, SwissDevJobs, etc)
     raw_metadata = Column(JSON, nullable=True)
 
@@ -62,7 +74,7 @@ class ScrapedJob(BaseModel, TimestampMixin):
     normalized_education_levels = Column(JSON, nullable=True)
     normalized_key_requirements = Column(JSON, nullable=True)
     normalized_metadata = Column(JSON, nullable=True)
-    
+
     # Keep track of where it originally came from (optional but useful)
     source_query = Column(String, nullable=True)
 
@@ -116,10 +128,10 @@ class Job(BaseModel, TimestampMixin):
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
     search_profile_id = Column(Integer, ForeignKey("search_profiles.id"), nullable=True, index=True)
     scraped_job_id = Column(Integer, ForeignKey("scraped_jobs.id", ondelete="CASCADE"), nullable=False, index=True)
-    
+
     # Metadata
     is_scraped = Column(Boolean, default=False)
-    
+
     # AI Analysis (User-specific match)
     affinity_score = Column(Float)
     affinity_analysis = Column(Text)
@@ -136,10 +148,10 @@ class Job(BaseModel, TimestampMixin):
 
     # Distance from search origin (km)
     distance_km = Column(Float, nullable=True)
-    
+
     # User Action
     applied = Column(Boolean, default=False, index=True)
-    
+
     # Relationships
     user = relationship("User", back_populates="jobs", lazy="selectin")
     search_profile = relationship("SearchProfile", back_populates="jobs", lazy="selectin")
@@ -149,7 +161,7 @@ class Job(BaseModel, TimestampMixin):
     @property
     def applied_elsewhere(self) -> bool:
         """Returns True if the underlying scraped job has been marked as 'applied' in ANY other Job entry for the same user.
-        
+
         This value is always populated via the transient attribute set by JobService.get_jobs_by_user().
         Outside that flow, returns False to avoid triggering a lazy-load N+1 query.
         """

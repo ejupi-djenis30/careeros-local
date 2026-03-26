@@ -4,16 +4,17 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
-from starlette.exceptions import HTTPException as StarletteHTTPException
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
-from backend.api.api import api_router
-from backend.core.config import settings
-from backend.core.exceptions import CoreException
-from backend.api.deps import limiter
+from fastapi.responses import JSONResponse
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
+from starlette.exceptions import HTTPException as StarletteHTTPException
+
+from backend.api.api import api_router
+from backend.api.deps import limiter
+from backend.core.config import settings
+from backend.core.exceptions import CoreException
 
 # ─── Logging ───
 logging.basicConfig(
@@ -140,8 +141,9 @@ app.include_router(api_router, prefix=settings.API_V1_STR)
 
 @app.get(f"{settings.API_V1_STR}/health")
 def health():
-    from backend.db.base import SessionLocal
     from sqlalchemy import text
+
+    from backend.db.base import SessionLocal
     db_status = "unavailable"
     try:
         db = SessionLocal()
@@ -160,8 +162,9 @@ def health():
 
 @app.get("/")
 async def root():
-    from backend.db.base import SessionLocal
     from sqlalchemy import text
+
+    from backend.db.base import SessionLocal
     db_status = "unavailable"
     try:
         db = SessionLocal()

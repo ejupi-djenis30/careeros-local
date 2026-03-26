@@ -1,6 +1,7 @@
 import json
 import logging
-from typing import Dict, Any, Optional
+from typing import Any, Dict, Optional
+
 from backend.providers.llm.base import LLMProvider
 
 logger = logging.getLogger(__name__)
@@ -62,14 +63,14 @@ class GeminiProvider(LLMProvider):
 
         if json_mode:
             gen_config_kwargs["response_mime_type"] = "application/json"
-            
+
         return self.types.GenerateContentConfig(**gen_config_kwargs)
 
     # ── public API ─────────────────────────────────────────────────────────
 
     def generate_text(self, system_prompt: str, user_prompt: str, max_tokens: Optional[int] = None) -> str:
         config = self._get_config(json_mode=False, max_tokens=max_tokens, system_instruction=system_prompt)
-        
+
         try:
             response = self.client.models.generate_content(
                 model=self.model,
@@ -83,7 +84,7 @@ class GeminiProvider(LLMProvider):
 
     def generate_json(self, system_prompt: str, user_prompt: str, max_tokens: Optional[int] = None) -> Dict[str, Any]:
         config = self._get_config(json_mode=True, max_tokens=max_tokens, system_instruction=system_prompt)
-        
+
         try:
             response = self.client.models.generate_content(
                 model=self.model,

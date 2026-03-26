@@ -5,49 +5,56 @@ import json
 import logging
 import re
 from datetime import datetime, timezone
-from typing import List, Dict, Any, Optional
+from typing import Any, Dict, List, Optional
 
 from sqlalchemy.orm import Session
-from backend.models import ScrapedJob, Job, SearchProfile
+
+from backend.core.config import settings
+from backend.models import Job, ScrapedJob, SearchProfile
+from backend.providers.jobs.jobroom.client import JobRoomProvider
+from backend.providers.jobs.swissdevjobs.client import SwissDevJobsProvider
 from backend.repositories.job_repository import JobRepository
 from backend.repositories.profile_repository import ProfileRepository
 from backend.services.llm_service import llm_service
-from backend.services.search.search_validator import build_search_request
-from backend.services.utils import geocode_location, calculate_distance, haversine_distance, clean_html_tags
-from backend.core.config import settings
 from backend.services.search.listing_utils import (
-    normalized_text_token,
+    bootstrap_normalized_job_data,
     coerce_int,
     coerce_string_list,
     extract_company_name,
-    listing_identity_key,
-    listing_url_token,
-    listing_fuzzy_key,
-    listing_is_remote,
-    extract_salary_max_chf,
     extract_listing_description_text,
     extract_listing_location_string,
     extract_listing_workload_string,
+    extract_salary_max_chf,
+    listing_fuzzy_key,
+    listing_identity_key,
+    listing_is_remote,
+    listing_url_token,
+    normalized_text_token,
     parse_listing_publication_date,
-    bootstrap_normalized_job_data,
     skills_overlap,
 )
+from backend.services.search.search_validator import build_search_request
+from backend.services.utils import (
+    clean_html_tags,
+    geocode_location,
+    haversine_distance,
+)
 
-from backend.providers.jobs.jobroom.client import JobRoomProvider
-from backend.providers.jobs.swissdevjobs.client import SwissDevJobsProvider
 try:
     from backend.providers.jobs.adecco.client import AdeccoProvider
 except ImportError:
     AdeccoProvider = None
-from backend.providers.jobs.localdb.client import LocalDbProvider
-from backend.providers.jobs.models import JobSearchRequest, SortOrder, RadiusSearchRequest, Coordinates
 from backend.providers.jobs.jobroom.avam_mapper import avam_mapper
+from backend.providers.jobs.localdb.client import LocalDbProvider
+from backend.providers.jobs.models import (
+    JobSearchRequest,
+)
+from backend.services.search.profile_preferences import get_profile_preference
 from backend.services.search.query_contracts import (
     build_plan_cache_payload,
     compute_plan_input_fingerprint,
     exact_query_fingerprint,
     is_cached_plan_compatible,
-    loose_query_fingerprint,
     normalize_domain,
     normalize_language,
     normalize_search_item,
@@ -55,9 +62,13 @@ from backend.services.search.query_contracts import (
     supported_request_language,
     unpack_plan_cache_payload,
 )
-from backend.services.search.profile_preferences import get_profile_preference
 from backend.services.search_status import (
-    init_status, add_log, update_status, clear_status, get_status, register_task, unregister_task
+    add_log,
+    get_status,
+    init_status,
+    register_task,
+    unregister_task,
+    update_status,
 )
 
 logger = logging.getLogger(__name__)
@@ -871,7 +882,7 @@ class SearchService:
     ):
         """Run the full search workflow for a saved profile."""
         register_task(profile_id, asyncio.current_task())
-        
+
         # Ensure fresh LLM providers (reload config)
         llm_service.clear_provider_cache()
 
@@ -982,7 +993,7 @@ class SearchService:
 
             # ── Step 2: Execute searches with domain routing (Feature 4) ──
             update_status(profile_id, state="searching")
-            add_log(profile_id, f"Step 2: Executing scraper queries...")
+            add_log(profile_id, "Step 2: Executing scraper queries...")
             all_jobs = await self._execute_searches(profile_id, profile, searches, provider_infos)
             if not all_jobs:
                 add_log(profile_id, "No jobs found across all queries.")
@@ -994,7 +1005,7 @@ class SearchService:
             add_log(profile_id, "Step 3: Deduplicating and checking cross-profile status...")
             unique_jobs, duplicates = self._deduplicate(profile, all_jobs)
             add_log(profile_id, f"After dedup: {len(unique_jobs)} new, {duplicates} duplicates")
-            
+
             if not unique_jobs:
                 add_log(profile_id, "All found jobs are already in profile history.")
                 add_log(profile_id, f"[LLM_DEBUG] state=done terminal_reason=all_duplicates profile_id={profile_id}")
@@ -1104,7 +1115,7 @@ class SearchService:
             max_occupation_queries=profile.max_occupation_queries,
             max_keyword_queries=profile.max_keyword_queries,
         )
-        
+
         if profile.cached_queries and not force_regen_q:
             try:
                 cached_searches, cache_meta = unpack_plan_cache_payload(profile.cached_queries)
@@ -1142,10 +1153,10 @@ class SearchService:
                     terminal_reason = "llm_plan_rate_limited"
                 update_status(profile_id, state="error", terminal_reason=terminal_reason, error=str(e))
                 return []
-            
+
             if not searches:
                 return []
-            
+
             # Save queries to cache (Feature 3)
             try:
                 cache_payload = build_plan_cache_payload(
@@ -1233,7 +1244,7 @@ class SearchService:
                 status_data = get_status(profile_id)
                 if status_data.get("state") in STOP_STATES:
                     return []
-                    
+
                 normalized_search, _ = normalize_search_item(search)
                 if not normalized_search:
                     add_log(profile_id, f"⚠ Skipping invalid query payload at index {idx + 1}")
@@ -1243,7 +1254,7 @@ class SearchService:
                 domain = normalized_search.get("domain", "general")
                 query_type = normalized_search.get("type", "keyword")
                 query_language = normalized_search.get("language", "en")
-                
+
                 profession_codes = []
                 avam_fallback_keyword = False
                 if query_type == "occupation":
@@ -1265,8 +1276,9 @@ class SearchService:
 
                 async def search_provider(provider_name: str, req: JobSearchRequest):
                     provider = self.providers[provider_name]
-                    if not provider: return provider_name, [], None
-                    
+                    if not provider:
+                        return provider_name, [], None
+
                     provider_jobs = []
                     try:
                         current_page = 0
@@ -1274,40 +1286,40 @@ class SearchService:
                             page_size = 50
                             if hasattr(provider, "capabilities") and hasattr(provider.capabilities, "max_page_size"):
                                 page_size = provider.capabilities.max_page_size
-                                
+
                             page_req = req.model_copy(update={"page": current_page, "page_size": page_size})
                             result = await provider.search(page_req)
                             page_items = list(getattr(result, "items", []) or [])
-                            
+
                             for item in page_items:
                                 # Mark the source query for tracking
                                 if hasattr(item, "_source_query"):
                                     item._source_query = query
                                 else:
                                     setattr(item, "_source_query", query)
-                            
+
                             provider_jobs.extend(page_items)
 
                             if not page_items:
                                 break
-                            
+
                             total_pages = getattr(result, "total_pages", 1)
                             total_count = getattr(result, "total_count", None)
                             if total_pages and current_page >= total_pages - 1:
                                 break
                             if total_count is not None and total_count >= 0 and len(provider_jobs) >= total_count:
                                 break
-                                
+
                             current_page += 1
-                            
+
                             if provider.throttle_delay > 0:
                                 await asyncio.sleep(provider.throttle_delay)  # Provider-level throttling
-                                
+
                             # Abort check
                             status_data = get_status(profile_id)
                             if status_data.get("state") in STOP_STATES:
                                 break
-                                
+
                         return provider_name, provider_jobs, None
                     except Exception as e:
                         return provider_name, provider_jobs, e
@@ -1356,7 +1368,7 @@ class SearchService:
                         execution_metrics["provider_successes"] += 1
                         found_jobs.extend(items)
                         add_log(profile_id, f"  ↳ {p_name}: {len(items)} jobs")
-                
+
                 return found_jobs
 
         results = await asyncio.gather(*(execute_single_search(i, q) for i, q in enumerate(searches)))
@@ -1401,7 +1413,7 @@ class SearchService:
         seen_keys: set = set()
         seen_fuzzy_keys: set = set()
         unique_jobs: list = []
-        
+
         existing_identifiers = self.job_repo.get_profile_job_identifiers(profile_id)
         profile_user_id = getattr(profile, "user_id", None)
         applied_scraped_ids = (
@@ -1409,7 +1421,7 @@ class SearchService:
             if profile_user_id is not None
             else set()
         )
-        
+
         existing_keys = {
             listing_identity_key(row) for row in existing_identifiers
             if listing_identity_key(row)
@@ -1428,9 +1440,9 @@ class SearchService:
         applied_scraped_id_by_pair: dict = {}
         if applied_scraped_ids:
             pairs_by_platform: dict = {}
-            for l in all_jobs:
-                p = getattr(l, "source", None) or getattr(l, "platform", "unknown")
-                pid = str(getattr(l, "id", "") or getattr(l, "platform_job_id", ""))
+            for job in all_jobs:
+                p = getattr(job, "source", None) or getattr(job, "platform", "unknown")
+                pid = str(getattr(job, "id", "") or getattr(job, "platform_job_id", ""))
                 if p and pid:
                     pairs_by_platform.setdefault(p, []).append(pid)
 
@@ -1466,13 +1478,13 @@ class SearchService:
                 existing_urls.add(url)
             if fuzzy_key:
                 seen_fuzzy_keys.add(fuzzy_key)
-            
+
             # Feature 2 check: applied elsewhere (O(1) dict lookup — no per-listing DB queries)
             applied_elsewhere = (platform, platform_id) in applied_scraped_id_by_pair
 
             setattr(listing, "_applied_elsewhere", applied_elsewhere)
             unique_jobs.append(listing)
-                
+
         duplicates = len(all_jobs) - len(unique_jobs)
         return unique_jobs, duplicates
 
@@ -1490,7 +1502,7 @@ class SearchService:
                 status_data = get_status(profile_id)
                 if status_data.get("state") in ["stopped", "cancelled", "finished", "failed"]:
                     return []
-                    
+
                 jobs_metadata = []
                 for job in batch:
                     desc_text = ""
@@ -1502,7 +1514,7 @@ class SearchService:
                     for occ in getattr(job, "occupations", []):
                         if getattr(occ, "education_code", None):
                             education_info.append(f"Edu: {occ.education_code}")
-                            
+
                     company_obj = getattr(job, "company", None)
                     company_name = company_obj.name if hasattr(company_obj, "name") else "Unknown"
 
@@ -1530,7 +1542,7 @@ class SearchService:
                         "company": company_name,
                         "normalized_data": normalized_data,
                     })
-                
+
                 try:
                     results = await llm_service.analyze_job_batch(jobs_metadata, profile_dict)
                     return list(zip(batch, results))
@@ -1564,7 +1576,7 @@ class SearchService:
     async def _save_single_job(self, listing, analysis, profile_dict, origin_coords, commit: bool = True):
         platform = getattr(listing, "source", None) or getattr(listing, "platform", "unknown")
         platform_id = str(getattr(listing, "id", "") or getattr(listing, "platform_job_id", ""))
-        
+
         # 1. ScrapedJob (or fetch existing)
         existing_sj, _ = self._upsert_scraped_job(listing)
 
@@ -1586,7 +1598,7 @@ class SearchService:
                         platform_id,
                         location_str,
                     )
-            
+
             if coords:
                 distance_km = haversine_distance(
                     origin_coords[0], origin_coords[1],

@@ -1,8 +1,11 @@
-from typing import List, Optional
 from datetime import datetime, timezone
+from typing import List, Optional
+
 from sqlalchemy.orm import Session
-from backend.repositories.base import BaseRepository
+
 from backend.models import SearchProfile
+from backend.repositories.base import BaseRepository
+
 
 class ProfileRepository(BaseRepository[SearchProfile]):
     def __init__(self, db: Session):
@@ -16,12 +19,12 @@ class ProfileRepository(BaseRepository[SearchProfile]):
         profile = self.get(profile_id)
         if not profile:
             return None
-        
+
         if cv_summary is not None:
             profile.cached_cv_summary = cv_summary
         if queries_json is not None:
             profile.cached_queries = queries_json
-            
+
         self.db.add(profile)
         try:
             self.db.commit()

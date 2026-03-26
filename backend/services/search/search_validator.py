@@ -1,7 +1,17 @@
 import logging
-from backend.providers.jobs.models import JobSearchRequest, SortOrder, RadiusSearchRequest, Coordinates, ContractType
+
+from backend.providers.jobs.models import (
+    ContractType,
+    Coordinates,
+    JobSearchRequest,
+    RadiusSearchRequest,
+    SortOrder,
+)
 from backend.services.search.profile_preferences import get_profile_preference
-from backend.services.search.query_contracts import canonicalize_query_text, supported_request_language
+from backend.services.search.query_contracts import (
+    canonicalize_query_text,
+    supported_request_language,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -59,14 +69,14 @@ def build_search_request(
     longitude = getattr(profile, "longitude", None)
     if isinstance(latitude, (int, float)) and isinstance(longitude, (int, float)):
         # Default to 50km if not specified, or use profile preference if available
-        dist = 50 
+        dist = 50
         hard_max_distance = _optional_int_attr(get_profile_preference(profile, "hard_max_distance_km", None), None)
         max_distance = _optional_int_attr(getattr(profile, "max_distance", None), 50)
         if hard_max_distance is not None:
             max_distance = hard_max_distance
         if max_distance:
              dist = max_distance
-        
+
         radius_request = RadiusSearchRequest(
             geo_point=Coordinates(lat=latitude, lon=longitude),
             distance=dist
@@ -77,11 +87,11 @@ def build_search_request(
         "temporary": ContractType.TEMPORARY,
         "any": ContractType.ANY
     }
-    
+
     contract_val = _string_attr(getattr(profile, "contract_type", "any"), "any")
     if not contract_val:
         contract_val = "any"
-        
+
     c_type = contract_type_mapping.get(contract_val.lower(), ContractType.ANY)
     normalized_query = canonicalize_query_text(query)
     request_language = supported_request_language(language, provider) if provider else language

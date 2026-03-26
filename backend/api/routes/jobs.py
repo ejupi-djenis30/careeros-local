@@ -1,8 +1,10 @@
-from typing import List, Optional
-from fastapi import APIRouter, Depends, HTTPException, Query
+from typing import Optional
+
+from fastapi import APIRouter, Depends, Query
+
 from backend.api.deps import get_current_user_id, job_service_dep
+from backend.schemas import JobCreate, JobPaginationResponse, JobResponse, JobUpdate
 from backend.services.job_service import JobService
-from backend.schemas import JobResponse, JobCreate, JobUpdate, JobPaginationResponse
 
 router = APIRouter()
 

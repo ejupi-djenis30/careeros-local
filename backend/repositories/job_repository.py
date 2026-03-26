@@ -1,8 +1,10 @@
 from typing import List, Optional, Tuple
+
+from sqlalchemy import asc, case, desc, func
 from sqlalchemy.orm import Session
-from sqlalchemy import asc, desc, case, func
-from backend.repositories.base import BaseRepository
+
 from backend.models import Job, ScrapedJob
+from backend.repositories.base import BaseRepository
 
 
 class JobRepository(BaseRepository[Job]):
@@ -41,7 +43,7 @@ class JobRepository(BaseRepository[Job]):
 
     def get_applied_scraped_job_ids(self, user_id: int) -> set:
         """Return a set of scraped_job_id values where user has applied=True.
-        
+
         Used by Feature 2 to populate the `applied_elsewhere` badge:
         any job whose ScrapedJob is in this set but whose own `applied` flag
         is False was applied in a different search profile.
@@ -50,7 +52,7 @@ class JobRepository(BaseRepository[Job]):
             self.db.query(self.model.scraped_job_id)
             .filter(
                 self.model.user_id == user_id,
-                self.model.applied == True,
+                self.model.applied.is_(True),
             )
             .all()
         )
@@ -120,9 +122,9 @@ class JobRepository(BaseRepository[Job]):
             "affinity_score": self.model.affinity_score,
             "distance_km": self.model.distance_km,
         }
-        
+
         col = allowed_sort.get(sort_by, self.model.created_at)
-        
+
         if sort_by in ["title", "publication_date"]:
             q = q.join(self.model.scraped_job)
             col = getattr(ScrapedJob, sort_by)
@@ -169,7 +171,7 @@ class JobRepository(BaseRepository[Job]):
         search_profile_id: Optional[int] = None,
     ) -> dict:
         """Get aggregate stats for filtered jobs."""
-        
+
         q = self._build_filter_query(
             user_id,
             min_score=min_score,
@@ -180,15 +182,15 @@ class JobRepository(BaseRepository[Job]):
             applied=applied,
             search_profile_id=search_profile_id,
         )
-        
+
         stats = q.with_entities(
-            func.sum(case((self.model.applied == True, 1), else_=0)),
+            func.sum(case((self.model.applied.is_(True), 1), else_=0)),
             func.avg(self.model.affinity_score)
         ).first()
-        
+
         applied_count = stats[0] if stats and stats[0] else 0
         avg_score = stats[1] if stats and stats[1] else 0.0
-        
+
         return {
             "total_applied": int(applied_count),
             "avg_score": float(avg_score)
@@ -220,7 +222,7 @@ class JobRepository(BaseRepository[Job]):
 
         row = q.with_entities(
             func.count(self.model.id),
-            func.sum(case((self.model.applied == True, 1), else_=0)),
+            func.sum(case((self.model.applied.is_(True), 1), else_=0)),
             func.avg(self.model.affinity_score),
         ).first()
 

@@ -6,10 +6,10 @@ return plain Python values. Because they are side-effect-free they are safe
 to import and call from anywhere without worrying about circular imports.
 """
 
-import re
 import logging
+import re
 from datetime import datetime, timezone
-from typing import Optional, List, Dict, Any
+from typing import Any, Dict, List, Optional
 
 logger = logging.getLogger(__name__)
 

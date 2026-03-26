@@ -1,13 +1,19 @@
-from fastapi import APIRouter, Depends, HTTPException, status, Request, Response, Cookie
-from sqlalchemy.orm import Session
+from fastapi import APIRouter, Cookie, Depends, HTTPException, Request, Response, status
 from fastapi.security import OAuth2PasswordRequestForm
+from sqlalchemy.orm import Session
 
-from backend.db.base import get_db
-from backend.services.auth import create_access_token, create_refresh_token, decode_refresh_token, verify_password, get_password_hash
+from backend.api.deps import limiter
 from backend.core.config import settings
+from backend.db.base import get_db
 from backend.models import User
 from backend.schemas import Token, UserCreate
-from backend.api.deps import limiter
+from backend.services.auth import (
+    create_access_token,
+    create_refresh_token,
+    decode_refresh_token,
+    get_password_hash,
+    verify_password,
+)
 
 router = APIRouter()
 
@@ -73,15 +79,15 @@ def refresh(request: Request, response: Response, jh_refresh_token: str | None =
     payload = decode_refresh_token(jh_refresh_token)
     if not payload or "sub" not in payload:
         raise HTTPException(status_code=401, detail="Invalid refresh token")
-        
+
     username = payload["sub"]
     user = db.query(User).filter(User.username == username).first()
     if not user:
         raise HTTPException(status_code=401, detail="User vanished")
-        
+
     access_token = create_access_token(data={"sub": username})
     new_refresh_token = create_refresh_token(data={"sub": username})
-    
+
     response.set_cookie(
         key="jh_refresh_token",
         value=new_refresh_token,

@@ -1,10 +1,11 @@
+from typing import Any, Dict, List
+
 from fastapi import APIRouter, Depends
-from typing import Dict, Any, List
+from sqlalchemy.orm import Session
 
 from backend.api.deps import get_current_user_id
 from backend.db.base import get_db
-from sqlalchemy.orm import Session
-from backend.services.scheduler import get_scheduler, get_all_schedules
+from backend.services.scheduler import get_all_schedules, get_scheduler
 
 router = APIRouter()
 

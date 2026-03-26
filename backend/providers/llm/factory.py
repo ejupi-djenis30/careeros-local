@@ -9,11 +9,12 @@ directly — this is functionally identical to the old ``get_llm_provider()``.
 """
 
 import logging
+
 from backend.core.config import settings
 from backend.providers.llm.base import LLMProvider
-from backend.providers.llm.openai_compatible import OpenAICompatibleProvider
 from backend.providers.llm.gemini import GeminiProvider
 from backend.providers.llm.ollama import OllamaProvider
+from backend.providers.llm.openai_compatible import OpenAICompatibleProvider
 
 logger = logging.getLogger(__name__)
 

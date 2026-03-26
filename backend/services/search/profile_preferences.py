@@ -1,4 +1,3 @@
-from typing import Any
 
 
 def get_profile_preference(profile, key: str, default=None):

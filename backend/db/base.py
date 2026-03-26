@@ -1,8 +1,11 @@
 import os
+
 from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker, declarative_base
+from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
+
 from backend.core.config import settings
+from backend.models.base_model import Base as Base
 
 # Configure connection pooling appropriately based on the database type
 if os.environ.get("TESTING") == "1":
@@ -27,7 +30,6 @@ else:
         pool_pre_ping=True,
         pool_recycle=1800,
     )
-from backend.models.base_model import Base
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, expire_on_commit=False, bind=engine)
 

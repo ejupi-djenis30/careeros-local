@@ -1,12 +1,13 @@
 import logging
 import threading
 from collections import Counter
-from typing import Dict, Any, List, Optional
+from typing import Any, Dict, List, Optional
+
 from tenacity import retry, stop_after_attempt, wait_exponential
-from backend.providers.llm.factory import get_provider_for_step
+
 from backend.core.config import settings
+from backend.providers.llm.factory import get_provider_for_step
 from backend.services.search.query_contracts import (
-    canonicalize_query_text,
     compute_plan_input_fingerprint,
     exact_query_fingerprint,
     loose_query_fingerprint,
@@ -82,7 +83,7 @@ class LLMService:
     async def summarize_cv(self, cv_content: str) -> str:
         """Produce a compact CV summary for downstream MATCH calls."""
         provider = self._get_provider("plan")
-        
+
         system_prompt = (
             "You are an expert HR analyst producing factual candidate summaries for job matching. "
             "Extract only information supported by the CV. Never invent skills, degrees, or languages."
@@ -107,7 +108,7 @@ CV:
 {cv_content}
 
 Return plain text, NOT JSON."""
-        
+
         return await provider.generate_text_async(system_prompt, user_prompt)
 
     # ─── Step 1.5: User / Candidate Profile Normalization ─────────────

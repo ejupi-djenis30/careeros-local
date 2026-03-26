@@ -17,7 +17,7 @@ def format_provider_error(e: Exception) -> str:
     """Format exceptions like tenacity RetryError into readable HTTP errors."""
     error_msg = str(e)
     cause = getattr(e, "__cause__", None)
-    
+
     if cause is not None:
         if hasattr(cause, "last_attempt"):
             exc = cause.last_attempt.exception()
@@ -30,5 +30,5 @@ def format_provider_error(e: Exception) -> str:
                 error_msg = f"HTTP {cause.response.status_code} Error"
             else:
                 error_msg = str(cause)
-    
+
     return error_msg

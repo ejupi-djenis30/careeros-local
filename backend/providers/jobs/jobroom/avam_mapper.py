@@ -1,30 +1,31 @@
 import logging
-from typing import List, Dict
-import httpx
 import time
+from typing import Dict, List
+
+import httpx
 from tenacity import retry, stop_after_attempt, wait_exponential
 
 logger = logging.getLogger(__name__)
 
-# Curated list of common Swiss AVAM profession codes 
+# Curated list of common Swiss AVAM profession codes
 # Keys are AVAM codes (as strings), values are lists of normalized job titles in various languages.
 # Note: These are representative codes. JobRoom API expects valid AVAM codes.
 # 27114 is often generic IT, 27114004 is software engineer etc.
 AVAM_MAPPING: Dict[str, List[str]] = {
     # Software Engineering & IT
     "27114004": [
-        "software engineer", "softwareentwickler", "ingénieur logiciel", "sviluppatore software", 
+        "software engineer", "softwareentwickler", "ingénieur logiciel", "sviluppatore software",
         "software developer", "developer", "entwickler", "programmeur", "software", "programmer"
     ],
     "27114014": [
         "devops engineer", "devops-ingenieur", "devops", "site reliability engineer", "sre"
     ],
     "27114003": [
-        "web developer", "webentwickler", "développeur web", "frontend developer", 
+        "web developer", "webentwickler", "développeur web", "frontend developer",
         "backend developer", "fullstack developer", "full stack", "web"
     ],
     "27111001": [
-        "system administrator", "systemadministrator", "administrateur système", "sysadmin", 
+        "system administrator", "systemadministrator", "administrateur système", "sysadmin",
         "it administrator", "system engineer", "it support"
     ],
     "27115001": [
@@ -164,29 +165,29 @@ class AVAMProfessionMapper:
     into Swiss AVAM profession codes for the JobRoom API.
     Uses a hybrid approach: static dictionary (L1) -> JobRoom API live lookup (L2).
     """
-    
+
     def __init__(self):
         self._static_cache = AVAM_MAPPING
         self._api_cache: Dict[str, tuple[List[str], float]] = {}
         # TTL of 24h (86400 seconds)
         self._ttl_seconds = 86400
         self._client = httpx.AsyncClient(timeout=2.0, verify=False)
-        
+
     @retry(stop=stop_after_attempt(2), wait=wait_exponential(multiplier=0.5, min=0.5, max=1))
     async def _fetch_from_api(self, title: str) -> List[str]:
         """Live lookup directly against federal database API."""
         url = f"https://www.job-room.ch/job-board-api/public/occupations?prefix={title}&language=en"
         response = await self._client.get(url)
         response.raise_for_status()
-        
+
         results = response.json()
         codes = set()
         for occ in results:
             if occ.get("type") == "AVAM" and occ.get("code"):
                 codes.add(str(occ.get("code")))
-                
+
         return list(codes)
-        
+
     async def resolve(self, title: str) -> List[str]:
         """
         Takes a job title/occupation string and returns a list of matching AVAM codes.
@@ -194,9 +195,9 @@ class AVAMProfessionMapper:
         """
         if not title:
             return []
-            
+
         normalized = title.lower().strip()
-        
+
         # 1. Check L1 Static Cache
         matches = set()
         for code, aliases in self._static_cache.items():
@@ -204,19 +205,19 @@ class AVAMProfessionMapper:
                 # Basic token intersection or substring matching
                 if alias in normalized or normalized in alias:
                     matches.add(code)
-                    
+
         result = list(matches)
         if result:
             logger.debug(f"Mapped occupation '{title}' to AVAM codes (Static L1): {result}")
             return result
-            
+
         # 2. Check L2 TTL API Cache
         if normalized in self._api_cache:
             cache_codes, timestamp = self._api_cache[normalized]
             if time.time() - timestamp < self._ttl_seconds:
                 logger.debug(f"Mapped occupation '{title}' to AVAM codes (Cache L2): {cache_codes}")
                 return cache_codes
-                
+
         # 3. L3 Live API Fallback
         try:
             api_codes = await self._fetch_from_api(title)
@@ -230,7 +231,7 @@ class AVAMProfessionMapper:
                 self._api_cache[normalized] = ([], time.time())
         except Exception as e:
             logger.warning(f"Failed to fetch dynamic AVAM codes for '{title}': {e}")
-            
+
         return []
-        
+
 avam_mapper = AVAMProfessionMapper()

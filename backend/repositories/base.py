@@ -1,8 +1,9 @@
 import logging
+from typing import Any, Dict, Generic, List, Optional, Type, TypeVar, Union
+
+from pydantic import BaseModel as PydanticBaseModel
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
-from typing import Generic, TypeVar, Type, Optional, List, Any, Dict, Union
-from pydantic import BaseModel as PydanticBaseModel
 
 logger = logging.getLogger(__name__)
 
@@ -26,7 +27,7 @@ class BaseRepository(Generic[ModelType]):
             obj_in_data = obj_in
         else:
             obj_in_data = obj_in.model_dump()
-        
+
         db_obj = self.model(**obj_in_data)
         self.db.add(db_obj)
         try:
@@ -43,19 +44,19 @@ class BaseRepository(Generic[ModelType]):
         return db_obj
 
     def update(
-        self, 
-        db_obj: ModelType, 
+        self,
+        db_obj: ModelType,
         obj_in: Union[UpdateSchemaType, Dict[str, Any]]
     ) -> ModelType:
         if isinstance(obj_in, dict):
             update_data = obj_in
         else:
             update_data = obj_in.model_dump(exclude_unset=True)
-        
+
         for field, value in update_data.items():
             if hasattr(db_obj, field):
                 setattr(db_obj, field, value)
-        
+
         self.db.add(db_obj)
         try:
             self.db.commit()

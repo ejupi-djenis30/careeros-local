@@ -1,10 +1,11 @@
+import asyncio
 import math
 import re
-import asyncio
 import threading
-import fitz  # PyMuPDF
 from typing import Optional
-from fastapi import UploadFile, HTTPException
+
+import fitz  # PyMuPDF
+from fastapi import HTTPException, UploadFile
 
 _geocode_cache: dict = {}
 _geocode_cache_lock = threading.Lock()
@@ -92,19 +93,19 @@ def calculate_distance(coords1: tuple, coords2: tuple) -> float:
     return haversine_distance(coords1[0], coords1[1], coords2[0], coords2[1])
 
 
-async def geocode_location(city: str, client: Optional["httpx.AsyncClient"] = None) -> Optional["Coordinates"]:
+async def geocode_location(city: str, client: Optional["httpx.AsyncClient"] = None) -> Optional["Coordinates"]:  # noqa: F821
     """
     Resolve a city name to Coordinates (lat, lon).
     Uses a local cache for major Swiss cities, an in-memory dynamic cache, and falls back to Nominatim API.
     Can accept a shared httpx.AsyncClient for connection pooling.
     """
     from backend.providers.jobs.models import Coordinates
-    
+
     if not city:
         return None
-    
+
     normalized = city.lower().strip()
-    
+
     # 1. Local Cache for major Swiss cities (to avoid external API calls)
     SWISS_CITIES_COORDS = {
         "zurich": (47.3769, 8.5417),
@@ -138,16 +139,16 @@ async def geocode_location(city: str, client: Optional["httpx.AsyncClient"] = No
         "dubendorf": (47.3969, 8.6153),
         "dübendorf": (47.3969, 8.6153),
     }
-    
+
     if normalized in SWISS_CITIES_COORDS:
         lat, lon = SWISS_CITIES_COORDS[normalized]
         return Coordinates(lat=lat, lon=lon)
-        
+
     global _geocode_cache
     with _geocode_cache_lock:
         if normalized in _geocode_cache:
             return _geocode_cache[normalized]
-        
+
     # 2. Nominatim Fallback
     import httpx
     try:
@@ -160,7 +161,7 @@ async def geocode_location(city: str, client: Optional["httpx.AsyncClient"] = No
         headers = {
             "User-Agent": "JobHunterAI/1.0 (contact: info@jobhunterai.ch)"
         }
-        
+
         async def fetch(c):
             resp = await c.get(url, params=params, headers=headers, timeout=5.0)
             if resp.status_code == 200:
@@ -183,5 +184,5 @@ async def geocode_location(city: str, client: Optional["httpx.AsyncClient"] = No
     except Exception as e:
         import logging
         logging.getLogger(__name__).warning(f"Geocoding failed for {city}: {e}")
-        
+
     return None

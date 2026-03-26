@@ -1,8 +1,10 @@
 from typing import List
+
 from fastapi import APIRouter, Depends
+
 from backend.api.deps import get_current_user_id, profile_service_dep
+from backend.schemas import ScheduleToggle, SearchProfile, SearchProfileCreate, SearchProfileUpdate
 from backend.services.profile_service import ProfileService
-from backend.schemas import SearchProfile, SearchProfileCreate, SearchProfileUpdate, ScheduleToggle
 
 router = APIRouter()
 

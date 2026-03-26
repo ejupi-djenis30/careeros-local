@@ -1,20 +1,19 @@
 import logging
 import time
-from typing import List
-from sqlalchemy.orm import Session
-from sqlalchemy import or_
 
+from sqlalchemy import or_
+from sqlalchemy.orm import Session
+
+from backend.models import ScrapedJob
 from backend.providers.jobs.base import JobProvider
 from backend.providers.jobs.models import (
+    EmploymentDetails,
+    JobListing,
+    JobLocation,
     JobSearchRequest,
     JobSearchResponse,
-    JobListing,
     ProviderInfo,
-    JobLocation,
-    EmploymentDetails
 )
-from backend.services.utils import haversine_distance
-from backend.models import ScrapedJob
 
 logger = logging.getLogger(__name__)
 
@@ -55,7 +54,7 @@ class LocalDbProvider(JobProvider):
         location = None
         if db_job.location:
             location = JobLocation(city=db_job.location)
-            
+
         return JobListing(
             id=db_job.platform_job_id,
             title=db_job.title,
@@ -73,7 +72,7 @@ class LocalDbProvider(JobProvider):
 
         # Start building the ORM query
         q = self.db.query(ScrapedJob)
-        
+
         # 1. Keywords filtering (ILIKE)
         if request.query:
             query_terms = request.query.split(" ")
@@ -109,7 +108,7 @@ class LocalDbProvider(JobProvider):
 
         elapsed_ms = int((time.time() - start_time) * 1000)
         logger.info(f"[{self.name}] Found {len(results)} internal jobs in {elapsed_ms}ms")
-        
+
         return JobSearchResponse(
             items=results,
             total_count=total_count,
