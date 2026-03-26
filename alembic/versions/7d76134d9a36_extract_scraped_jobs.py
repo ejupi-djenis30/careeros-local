@@ -97,7 +97,12 @@ def upgrade() -> None:
                 AND COALESCE(jobs.platform_job_id, jobs.external_url, jobs.id::text) = scraped_jobs.platform_job_id;
         """)
 
-    # 4. Drop old column indexes (DROP INDEX is supported on all dialects)
+    # 4. Drop old column indexes (DROP INDEX is supported on all dialects).
+    # ix_jobs_url is the original index on the 'url' column; when 'url' was renamed to
+    # 'external_url' in migration a1b2c3d4e5f6 SQLite preserved the index under its old
+    # name still referencing external_url. batch_alter_table would try to recreate it on
+    # the now-dropped column, so we must drop it explicitly here.
+    op.drop_index('ix_jobs_url', table_name='jobs')
     op.drop_index('ix_jobs_title', table_name='jobs')
     op.drop_index('ix_jobs_company', table_name='jobs')
     op.drop_index('ix_jobs_location', table_name='jobs')
