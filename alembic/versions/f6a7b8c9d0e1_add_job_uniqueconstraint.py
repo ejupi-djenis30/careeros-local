@@ -17,16 +17,33 @@ depends_on = None
 
 
 def upgrade() -> None:
-    op.create_unique_constraint(
-        'uq_job_user_scraped_profile',
-        'jobs',
-        ['user_id', 'scraped_job_id', 'search_profile_id'],
-    )
+    bind = op.get_bind()
+    is_sqlite = bind.dialect.name == 'sqlite'
+
+    if is_sqlite:
+        with op.batch_alter_table('jobs') as batch_op:
+            batch_op.create_unique_constraint(
+                'uq_job_user_scraped_profile',
+                ['user_id', 'scraped_job_id', 'search_profile_id'],
+            )
+    else:
+        op.create_unique_constraint(
+            'uq_job_user_scraped_profile',
+            'jobs',
+            ['user_id', 'scraped_job_id', 'search_profile_id'],
+        )
 
 
 def downgrade() -> None:
-    op.drop_constraint(
-        'uq_job_user_scraped_profile',
-        'jobs',
-        type_='unique',
-    )
+    bind = op.get_bind()
+    is_sqlite = bind.dialect.name == 'sqlite'
+
+    if is_sqlite:
+        with op.batch_alter_table('jobs') as batch_op:
+            batch_op.drop_constraint('uq_job_user_scraped_profile', type_='unique')
+    else:
+        op.drop_constraint(
+            'uq_job_user_scraped_profile',
+            'jobs',
+            type_='unique',
+        )

@@ -18,14 +18,31 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    # Add unique constraint to scraped_jobs (Incremental change)
-    op.create_unique_constraint(
-        'uq_scraped_job_platform_id', 
-        'scraped_jobs', 
-        ['platform', 'platform_job_id']
-    )
+    bind = op.get_bind()
+    is_sqlite = bind.dialect.name == 'sqlite'
+
+    # SQLite does not support ALTER ADD CONSTRAINT; use batch_alter_table (copy-and-move)
+    if is_sqlite:
+        with op.batch_alter_table('scraped_jobs') as batch_op:
+            batch_op.create_unique_constraint(
+                'uq_scraped_job_platform_id',
+                ['platform', 'platform_job_id']
+            )
+    else:
+        op.create_unique_constraint(
+            'uq_scraped_job_platform_id',
+            'scraped_jobs',
+            ['platform', 'platform_job_id']
+        )
 
 
 def downgrade() -> None:
-    op.drop_constraint('uq_scraped_job_platform_id', 'scraped_jobs', type_='unique')
+    bind = op.get_bind()
+    is_sqlite = bind.dialect.name == 'sqlite'
+
+    if is_sqlite:
+        with op.batch_alter_table('scraped_jobs') as batch_op:
+            batch_op.drop_constraint('uq_scraped_job_platform_id', type_='unique')
+    else:
+        op.drop_constraint('uq_scraped_job_platform_id', 'scraped_jobs', type_='unique')
 
