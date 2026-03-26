@@ -17,9 +17,11 @@ from alembic import op
 
 # revision identifiers, used by Alembic.
 revision: str = 'h8i9j0k1l2m3'
-# This migration depends on g7h8i9j0k1l2, which drops the deprecated `summary` column.
-# Ensure g7h8i9j0k1l2 is applied before this revision so the migration chain remains linear.
-down_revision: Union[str, None] = 'g7h8i9j0k1l2'
+# This migration merges two branches that diverged from f6a7b8c9d0e1:
+#   - g7h8i9j0k1l2: drops the deprecated `summary` column
+#   - a2b3c4d5e6f7: adds performance indexes
+# Both must be applied before this revision.
+down_revision: Union[str, tuple] = ('g7h8i9j0k1l2', 'a2b3c4d5e6f7')
 branch_labels = None
 depends_on = None
 
