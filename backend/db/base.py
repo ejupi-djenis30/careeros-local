@@ -25,8 +25,8 @@ elif "sqlite" in settings.DATABASE_URL:
 else:
     engine = create_engine(
         settings.DATABASE_URL,
-        pool_size=getattr(settings, "DB_POOL_SIZE", 5),
-        max_overflow=getattr(settings, "DB_MAX_OVERFLOW", 10),
+        pool_size=settings.DB_POOL_SIZE,
+        max_overflow=settings.DB_MAX_OVERFLOW,
         pool_pre_ping=True,
         pool_recycle=1800,
     )
