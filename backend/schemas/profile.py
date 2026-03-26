@@ -1,7 +1,8 @@
-from pydantic import BaseModel, ConfigDict, field_validator, Field, model_validator
-from typing import Optional, Any, List
-from datetime import datetime
 import re
+from datetime import datetime
+from typing import Any, List, Optional
+
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 # ═══════════════════════════════════════
 # Search Profile Schemas
@@ -23,7 +24,7 @@ class SearchProfileBase(BaseModel):
     max_queries: Optional[int] = None
     is_history: Optional[bool] = False
     is_stopped: Optional[bool] = False
-    
+
     # Query generation control (Feature 4)
     max_occupation_queries: Optional[int] = None
     max_keyword_queries: Optional[int] = None
@@ -38,7 +39,7 @@ class SearchProfileBase(BaseModel):
     workload_min: Optional[int] = None
     workload_max: Optional[int] = None
     hard_max_distance_km: Optional[int] = None
-    
+
     # Schedule
     schedule_enabled: Optional[bool] = False
     schedule_interval_hours: Optional[int] = Field(default=24, ge=1)
@@ -192,11 +193,11 @@ class SearchProfile(SearchProfileBase):
 
     id: int
     last_scheduled_run: Optional[datetime] = None
-    
+
     # Caching layer (Feature 3)
     cached_cv_summary: Optional[str] = None
     cached_queries: Optional[Any] = None  # JSON object
-    
+
     created_at: datetime
 
 

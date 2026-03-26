@@ -18,6 +18,7 @@ export function Schedules() {
             setProfiles(data);
         } catch (e) {
             console.error("Failed to load profiles:", e);
+            showToast("Failed to load schedules. Please refresh.");
         } finally {
             setLoading(false);
         }

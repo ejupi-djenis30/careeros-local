@@ -2,17 +2,19 @@
 Transformer for Adecco API data.
 """
 import logging
-from typing import Any, Dict, Optional
 from datetime import datetime
+from typing import Any, Dict, Optional
+
 from pydantic import ValidationError
+
 from backend.providers.jobs.models import (
-    JobListing,
-    JobDescription,
-    CompanyInfo,
-    JobLocation,
-    EmploymentDetails,
-    ContactInfo,
     ApplicationChannel,
+    CompanyInfo,
+    ContactInfo,
+    EmploymentDetails,
+    JobDescription,
+    JobListing,
+    JobLocation,
 )
 
 logger = logging.getLogger(__name__)
@@ -28,9 +30,9 @@ def parse_date(date_str: str | None) -> Optional[datetime]:
         return None
 
 def transform_job_data(
-    light_job: Dict[str, Any], 
-    detail_job: Optional[Dict[str, Any]], 
-    source_name: str, 
+    light_job: Dict[str, Any],
+    detail_job: Optional[Dict[str, Any]],
+    source_name: str,
     include_raw_data: bool = False
 ) -> JobListing | None:
     """
@@ -39,13 +41,13 @@ def transform_job_data(
     try:
         # Detail data is the primary truth for description, but light_job has list metadata
         primary_source = detail_job if detail_job else light_job
-        
+
         job_id = light_job.get("jobId", "unknown")
-        
+
         # 1. Basic Info
         title = primary_source.get("jobName") or light_job.get("jobTitle") or "Unknown Title"
         external_ref = light_job.get("externalReference")
-        
+
         # 2. Company Info
         # Adecco often hides the company or acts as the agency.
         company_name = primary_source.get("companyName")
@@ -53,7 +55,7 @@ def transform_job_data(
             name=company_name,
             is_agency=True  # Adecco is an agency
         ) if company_name else CompanyInfo(name="Adecco", is_agency=True)
-        
+
         # 3. Location
         country_raw = light_job.get("countryId", "CH")
         country_map = {"CHE": "CH", "DEU": "DE", "AUT": "AT", "FRA": "FR"}
@@ -64,17 +66,17 @@ def transform_job_data(
             canton_code=light_job.get("stateName"),
             country_code=country_normalized,
         )
-        
+
         # 4. Employment Details
         contract_type_id = light_job.get("contractTypeId", "")
         is_permanent = contract_type_id == "PERM"
-        
+
         work_forms = []
         if light_job.get("isRemote"):
             work_forms.append("remote")
-            
+
         start_date = primary_source.get("startDate")
-        
+
         # Workload mapping
         emp_type_id = light_job.get("employmentTypeId", "")
         if emp_type_id == "FULLTIME":
@@ -83,13 +85,13 @@ def transform_job_data(
             wmin, wmax = 20, 80
         else:
             wmin, wmax = 0, 100
-            
+
         # Override with exact hours if provided and sensible
         min_hours = light_job.get("workMinHours", 0)
         max_hours = light_job.get("workMaxHours", 0)
         if min_hours > 0 and max_hours > 0 and max_hours <= 100:
             wmin, wmax = min_hours, max_hours
-        
+
         employment = EmploymentDetails(
             is_permanent=is_permanent,
             start_date=start_date,
@@ -97,14 +99,14 @@ def transform_job_data(
             workload_min=wmin,
             workload_max=wmax
         )
-        
+
         # 5. Descriptions
         descriptions = []
         desc_html = primary_source.get("jobDescription")
         if desc_html:
             lang_code_str = light_job.get("language", "en-US")
             lang = lang_code_str.split("-")[0] if "-" in lang_code_str else "en"
-            
+
             descriptions.append(
                 JobDescription(
                     language_code=lang,
@@ -112,7 +114,7 @@ def transform_job_data(
                     description=desc_html
                 )
             )
-            
+
         # 6. Contact and Application
         contact = None
         recruiter = primary_source.get("recruiterName") or light_job.get("recruiterName")
@@ -120,21 +122,21 @@ def transform_job_data(
             parts = recruiter.split(" ", 1)
             first = parts[0]
             last = parts[1] if len(parts) > 1 else None
-            
+
             contact = ContactInfo(
                 first_name=first,
                 last_name=last,
                 email=primary_source.get("recruiterEmail")
             )
-            
+
         application = None
         apply_uri = primary_source.get("applyUri") or light_job.get("applyUri")
         if apply_uri:
             application = ApplicationChannel(form_url=apply_uri)
-            
+
         # Dates
         created_at = parse_date(light_job.get("postedDate") or light_job.get("jobCreationDate"))
-        
+
         raw_data = None
         if include_raw_data:
             raw_data = {

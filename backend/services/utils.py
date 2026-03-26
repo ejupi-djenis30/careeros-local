@@ -1,10 +1,11 @@
+import asyncio
 import math
 import re
-import asyncio
 import threading
-import fitz  # PyMuPDF
 from typing import Optional
-from fastapi import UploadFile, HTTPException
+
+import fitz  # PyMuPDF
+from fastapi import HTTPException, UploadFile
 
 _geocode_cache: dict = {}
 _geocode_cache_lock = threading.Lock()
@@ -20,19 +21,43 @@ def clean_html_tags(text: str) -> str:
     # Normalize whitespace
     return " ".join(clean.split())
 
+_ALLOWED_EXTENSIONS = {".pdf", ".txt", ".md"}
+# Content types that are explicitly NOT allowed regardless of extension.
+# Empty/None and generic "application/octet-stream" are permitted since many
+# clients and OS file pickers omit or genericize the content-type header.
+_BLOCKED_CONTENT_TYPES = {
+    "image/jpeg", "image/png", "image/gif", "image/webp", "image/bmp",
+    "video/mp4", "video/avi", "video/quicktime",
+    "audio/mpeg", "audio/wav",
+    "application/zip", "application/x-rar-compressed",
+    "application/x-msdownload", "application/x-executable",
+    "application/javascript", "text/javascript",
+    "application/x-sh", "application/x-csh", "application/x-python-code",
+}
+
 async def extract_text_from_file(file: UploadFile) -> str:
-    content_type = file.content_type
-    filename = file.filename.lower()
-    
+    content_type = (file.content_type or "").split(";")[0].strip().lower()
+    filename = (file.filename or "").lower()
+    ext = next((e for e in _ALLOWED_EXTENSIONS if filename.endswith(e)), None)
+
+    if ext is None:
+        raise HTTPException(status_code=400, detail="Unsupported file type. Please upload PDF, TXT, or MD.")
+
+    # Block content types that are explicitly mismatched (e.g. images, executables).
+    # Empty or generic content-type is allowed since OS/browsers often omit it.
+    if content_type and content_type in _BLOCKED_CONTENT_TYPES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"File content type '{content_type}' is not allowed.",
+        )
+
     try:
-        if filename.endswith(".pdf"):
+        if ext == ".pdf":
             content = await file.read()
             return await asyncio.to_thread(_extract_from_pdf, content)
-        elif filename.endswith(".txt") or filename.endswith(".md"):
+        else:  # .txt or .md
             content = await file.read()
             return content.decode("utf-8")
-        else:
-            raise HTTPException(status_code=400, detail="Unsupported file type. Please upload PDF, TXT, or MD.")
     except HTTPException:
         raise
     except Exception as e:
@@ -68,19 +93,19 @@ def calculate_distance(coords1: tuple, coords2: tuple) -> float:
     return haversine_distance(coords1[0], coords1[1], coords2[0], coords2[1])
 
 
-async def geocode_location(city: str, client: Optional["httpx.AsyncClient"] = None) -> Optional["Coordinates"]:
+async def geocode_location(city: str, client: Optional["httpx.AsyncClient"] = None) -> Optional["Coordinates"]:  # noqa: F821
     """
     Resolve a city name to Coordinates (lat, lon).
     Uses a local cache for major Swiss cities, an in-memory dynamic cache, and falls back to Nominatim API.
     Can accept a shared httpx.AsyncClient for connection pooling.
     """
     from backend.providers.jobs.models import Coordinates
-    
+
     if not city:
         return None
-    
+
     normalized = city.lower().strip()
-    
+
     # 1. Local Cache for major Swiss cities (to avoid external API calls)
     SWISS_CITIES_COORDS = {
         "zurich": (47.3769, 8.5417),
@@ -114,16 +139,16 @@ async def geocode_location(city: str, client: Optional["httpx.AsyncClient"] = No
         "dubendorf": (47.3969, 8.6153),
         "dübendorf": (47.3969, 8.6153),
     }
-    
+
     if normalized in SWISS_CITIES_COORDS:
         lat, lon = SWISS_CITIES_COORDS[normalized]
         return Coordinates(lat=lat, lon=lon)
-        
+
     global _geocode_cache
     with _geocode_cache_lock:
         if normalized in _geocode_cache:
             return _geocode_cache[normalized]
-        
+
     # 2. Nominatim Fallback
     import httpx
     try:
@@ -136,7 +161,7 @@ async def geocode_location(city: str, client: Optional["httpx.AsyncClient"] = No
         headers = {
             "User-Agent": "JobHunterAI/1.0 (contact: info@jobhunterai.ch)"
         }
-        
+
         async def fetch(c):
             resp = await c.get(url, params=params, headers=headers, timeout=5.0)
             if resp.status_code == 200:
@@ -159,5 +184,5 @@ async def geocode_location(city: str, client: Optional["httpx.AsyncClient"] = No
     except Exception as e:
         import logging
         logging.getLogger(__name__).warning(f"Geocoding failed for {city}: {e}")
-        
+
     return None

@@ -4,32 +4,30 @@ Adecco API Client.
 Client for adecco.com/api/data/jobs fetching summarized jobs and detailed descriptions.
 """
 
-import logging
-import time
-from typing import Any, Callable
 import asyncio
-import random
 import email.utils
+import logging
+import random
+import time
 from datetime import datetime, timezone
+from typing import Any, Callable
 
 import httpx
 
+from backend.providers.jobs.adecco.filters import build_query_string, filter_jobs
+from backend.providers.jobs.adecco.transformer import transform_job_data
+from backend.providers.jobs.base import JobProvider as BaseJobProvider
 from backend.providers.jobs.exceptions import (
     ProviderError,
     ResponseParseError,
 )
 from backend.providers.jobs.models import (
-    JobListing,
     JobSearchRequest,
     JobSearchResponse,
     ProviderCapabilities,
     ProviderHealth,
     ProviderStatus,
 )
-from backend.providers.jobs.base import JobProvider as BaseJobProvider
-
-from backend.providers.jobs.adecco.filters import build_query_string, filter_jobs
-from backend.providers.jobs.adecco.transformer import transform_job_data
 
 logger = logging.getLogger(__name__)
 
@@ -44,7 +42,7 @@ class AdeccoProvider(BaseJobProvider):
     """
     Adecco Switzerland HTTP API Provider.
     """
-    
+
     # Class-level global semaphore to throttle all concurrent Adecco requests
     # regardless of how many parallel searches (queries) are running.
     # This prevents SEARCH_CONCURRENCY=3 from spawning 6+ detail requests.
@@ -53,7 +51,7 @@ class AdeccoProvider(BaseJobProvider):
     def __init__(self, include_raw_data: bool = False):
         self._include_raw_data = include_raw_data
         self._client: httpx.AsyncClient | None = None
-        
+
         user_agents = [
             "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
             "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36",
@@ -62,7 +60,7 @@ class AdeccoProvider(BaseJobProvider):
             "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Safari/605.1.15",
             "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36 Edg/124.0.0.0"
         ]
-        
+
         self._headers = {
             "User-Agent": random.choice(user_agents),
             "Accept": "application/json, text/plain, */*",
@@ -160,11 +158,11 @@ class AdeccoProvider(BaseJobProvider):
                                     retry_after,
                                     parse_error,
                                 )
-                    
+
                     if sleep_time is None:
                         # Stricter backoff for 429 than other errors: 4s, then 8s
                         sleep_time = random.uniform(4.0, 7.0) * (attempt + 1)
-                    
+
                     logger.warning(f"Adecco 429 Too Many Requests. Retrying in {sleep_time:.1f}s (Attempt {attempt + 1}/{max_retries})")
                     await asyncio.sleep(sleep_time)
                     continue
@@ -211,7 +209,7 @@ class AdeccoProvider(BaseJobProvider):
                     max_retries=10
                 )
             summary_data = resp.json()
-            
+
             if not isinstance(summary_data, dict) or "jobs" not in summary_data:
                 raise ResponseParseError(self.name, "Unexpected response format from summarized API")
 
@@ -225,17 +223,17 @@ class AdeccoProvider(BaseJobProvider):
                 job_id = light_job.get("jobId")
                 if not job_id:
                     return None
-                
+
                 lang_code = payload["languageCode"]
-                
+
                 # Random delay BEFORE fetching details to spread out requests
                 # without wasting a concurrency slot in the global semaphore
                 await asyncio.sleep(random.uniform(1.0, 2.5))
-                
+
                 async with self._global_sem:
                     try:
                         detail_url = f"{API_BASE_URL}/job-description-details/{job_id}/adecco/CH/{lang_code}/job-details"
-                        
+
                         detail_data = None
                         try:
                             # Use custom retry executing routine
@@ -285,7 +283,7 @@ class AdeccoProvider(BaseJobProvider):
             # 4. Apply In-Memory Filters (Contract Type, Workload, etc.)
             successfully_hydrated_count = len(hydrated_jobs)
             hydrated_jobs = filter_jobs(hydrated_jobs, request)
-            
+
             # Update total_count based on how many valid jobs were filtered out
             if len(hydrated_jobs) < successfully_hydrated_count:
                 diff = successfully_hydrated_count - len(hydrated_jobs)
@@ -326,12 +324,12 @@ class AdeccoProvider(BaseJobProvider):
                 "countryCode": "CH",
                 "languageCode": "en-CH",
             }
-            
+
             async with self._global_sem:
                 response = await client.post(f"{API_BASE_URL}/summarized", json=payload)
-                
+
             latency_ms = int((time.time() - start_time) * 1000)
-            
+
             if response.status_code == 200:
                 return ProviderHealth(
                     provider=self.name,

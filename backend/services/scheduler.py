@@ -6,13 +6,14 @@
 
 import logging
 from datetime import datetime, timezone
+
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.interval import IntervalTrigger
 from sqlalchemy.orm import Session
 
-from backend.db.base import Base, SessionLocal
-from backend.services.search_service import get_search_service
+from backend.db.base import SessionLocal
 from backend.models import SearchProfile
+from backend.services.search_service import get_search_service
 
 logger = logging.getLogger(__name__)
 
@@ -38,19 +39,19 @@ async def _run_scheduled_search(profile_id: int):
             logger.warning(f"[Scheduler] Profile {profile_id} not found, removing job")
             remove_schedule(profile_id)
             return
-        
+
         if not profile.schedule_enabled:
             logger.info(f"[Scheduler] Profile {profile_id} schedule disabled, skipping")
             return
-        
+
         # Update last run time
         profile.last_scheduled_run = datetime.now(timezone.utc)
         db.commit()
-        
+
         # Run the search workflow
         search_service = get_search_service(db)
         await search_service.run_search(profile_id)
-        
+
         logger.info(f"[Scheduler] Completed scheduled search for profile {profile_id}")
     except Exception as e:
         logger.error(f"[Scheduler] Error running scheduled search for profile {profile_id}: {e}")
@@ -62,12 +63,12 @@ def add_schedule(profile_id: int, interval_hours: int):
     """Add or update a scheduled search job."""
     scheduler = get_scheduler()
     job_id = f"search_profile_{profile_id}"
-    
+
     # Remove existing job if any
     existing = scheduler.get_job(job_id)
     if existing:
         scheduler.remove_job(job_id)
-    
+
     trigger = IntervalTrigger(hours=interval_hours)
     scheduler.add_job(
         _run_scheduled_search,
@@ -94,21 +95,21 @@ def get_all_schedules(user_id: int = None, db: Session = None) -> list[dict]:
     """Get info about all scheduled jobs."""
     scheduler = get_scheduler()
     jobs = []
-    
+
     close_db = False
     if db is None:
         db = SessionLocal()
         close_db = True
-        
+
     try:
-        query = db.query(SearchProfile).filter(SearchProfile.schedule_enabled == True)
+        query = db.query(SearchProfile).filter(SearchProfile.schedule_enabled.is_(True))
         if user_id is not None:
             query = query.filter(SearchProfile.user_id == user_id)
         valid_profile_ids = {p.id for p in query.all()}
     finally:
         if close_db:
             db.close()
-        
+
     for job in scheduler.get_jobs():
         if job.id.startswith("search_profile_"):
             try:
@@ -132,14 +133,14 @@ def start_scheduler():
     scheduler = get_scheduler()
     if scheduler.running:
         return
-    
+
     # Load saved schedules from DB
     db: Session = SessionLocal()
     try:
         profiles = db.query(SearchProfile).filter(
-            SearchProfile.schedule_enabled == True
+            SearchProfile.schedule_enabled.is_(True)
         ).all()
-        
+
         for profile in profiles:
             interval = profile.schedule_interval_hours or 24
             add_schedule(profile.id, interval)
@@ -148,7 +149,7 @@ def start_scheduler():
         logger.error(f"[Scheduler] Error loading schedules: {e}")
     finally:
         db.close()
-    
+
     scheduler.start()
     logger.info("[Scheduler] Started")
 

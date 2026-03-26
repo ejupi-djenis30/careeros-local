@@ -1,24 +1,24 @@
 import logging
 from datetime import datetime
 
-from fastapi import APIRouter, Depends, BackgroundTasks, UploadFile, File, HTTPException, Request
+from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, Request, UploadFile
 from sqlalchemy.orm import Session
 
-from backend.db.base import get_db, SessionLocal
-from backend.repositories.profile_repository import ProfileRepository
 from backend.api.deps import get_current_user_id, limiter
-from backend.services.search_status import (
-    get_status,
-    cancel_task,
-    update_status,
-    get_all_statuses,
-    reserve_task,
-    release_task,
-)
-from backend.services.utils import extract_text_from_file
+from backend.core.config import settings
+from backend.db.base import SessionLocal, get_db
+from backend.repositories.profile_repository import ProfileRepository
 from backend.schemas.profile import StartSearchRequest
 from backend.services.search_service import get_search_service
-from backend.core.config import settings
+from backend.services.search_status import (
+    cancel_task,
+    get_all_statuses,
+    get_status,
+    release_task,
+    reserve_task,
+    update_status,
+)
+from backend.services.utils import extract_text_from_file
 
 logger = logging.getLogger(__name__)
 
@@ -44,9 +44,14 @@ async def upload_cv(
     user_id: int = Depends(get_current_user_id),
 ):
     MAX_FILE_SIZE = settings.MAX_UPLOAD_FILE_SIZE
-    if file.size and file.size > MAX_FILE_SIZE:
+    # Read content first so we can check the real size regardless of whether
+    # the client sends a Content-Length header (file.size may be None).
+    content = await file.read()
+    if len(content) > MAX_FILE_SIZE:
         raise HTTPException(status_code=400, detail="File too large. Maximum size is 10MB.")
-        
+    # Rewind so extract_text_from_file can read it again
+    await file.seek(0)
+
     text = await extract_text_from_file(file)
     return {"text": text, "filename": file.filename}
 
@@ -82,7 +87,7 @@ async def start_search(
             profile_data[field] = None
 
     profile_id = profile_data.get("id")
-    
+
     if profile_id:
         profile = profile_repo.get(profile_id)
         if not profile or profile.user_id != user_id:
@@ -103,17 +108,17 @@ async def start_search(
         if not profile_data.get("name") or profile_data["name"] in ["Default Profile", "My Profile"]:
             timestamp = datetime.now().strftime("%Y-%m-%d %H:%M")
             profile_data["name"] = f"Search {timestamp}"
-            
+
         profile_data["is_stopped"] = False
         profile = profile_repo.create(profile_data)
 
     if not reserve_task(profile.id):
         raise HTTPException(status_code=409, detail="A search is already running for this profile")
-    
+
     # Extract force-regeneration flags from the original request (not stored in DB)
     force_regen_cv = profile_request.force_regenerate_cv_summary
     force_regen_q = profile_request.force_regenerate_queries
-    
+
     # The FastAPI dependency session `db` is closed as soon as this HTTP route returns,
     # so the background task needs its own fresh session to avoid DetachedInstanceError.
     async def run_search_background(_profile_id: int, _force_cv: bool, _force_q: bool):
@@ -127,7 +132,7 @@ async def start_search(
             )
         finally:
             fresh_db.close()
-            
+
     try:
         background_tasks.add_task(run_search_background, profile.id, force_regen_cv, force_regen_q)
     except Exception:
@@ -145,19 +150,19 @@ async def stop_search(
 ):
     profile_repo = ProfileRepository(db)
     profile = profile_repo.get(profile_id)
-    
+
     if not profile or profile.user_id != user_id:
         raise HTTPException(status_code=403, detail="Unauthorized profile access")
-        
+
     profile.is_stopped = True
     profile_repo.update(profile, {"is_stopped": True})
-    
+
     # Also update the in-memory status so frontend sees it immediately
     update_status(profile_id, state="stopped", error="Search stopped by user.")
-    
+
     # Explicitly cancel the background task if it exists
     cancel_task(profile_id)
-    
+
     return {"message": "Search stopped successfully"}
 
 
@@ -178,5 +183,5 @@ def get_search_status(
     profile = repo.get(profile_id)
     if not profile or profile.user_id != user_id:
         raise HTTPException(status_code=404, detail="Profile not found or unauthorized")
-        
+
     return get_status(profile_id)

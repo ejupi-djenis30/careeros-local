@@ -1,5 +1,17 @@
-from sqlalchemy import Column, String, Boolean, Float, Text, Integer, ForeignKey, JSON, DateTime, Index
+from sqlalchemy import (
+    JSON,
+    Boolean,
+    Column,
+    DateTime,
+    Float,
+    ForeignKey,
+    Index,
+    Integer,
+    String,
+    Text,
+)
 from sqlalchemy.orm import relationship
+
 from backend.models.base_model import BaseModel, TimestampMixin
 
 
@@ -12,11 +24,11 @@ class SearchProfile(BaseModel, TimestampMixin):
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
     name = Column(String, default="")
     cv_content = Column(Text)
-    
+
     # Preferences
     role_description = Column(Text)
     search_strategy = Column(Text)
-    
+
     # Filters
     location_filter = Column(String)
     workload_filter = Column(String)
@@ -29,12 +41,12 @@ class SearchProfile(BaseModel, TimestampMixin):
     max_queries = Column(Integer, nullable=True)
     is_history = Column(Boolean, default=False)
     is_stopped = Column(Boolean, default=False)
-    
+
     # Schedule
     schedule_enabled = Column(Boolean, default=False)
     schedule_interval_hours = Column(Integer, default=24)
     last_scheduled_run = Column(DateTime(timezone=True), nullable=True)
-    
+
     # Advanced / Extensible preferences
     advanced_preferences = Column(JSON, nullable=True)
 
@@ -60,6 +72,11 @@ class SearchProfile(BaseModel, TimestampMixin):
     profile_normalized_languages = Column(JSON, nullable=True)          # [{code, level}, ...]
     profile_normalized_skills = Column(JSON, nullable=True)             # ["Python", "React", ...]
 
+    # ── Enhanced candidate profile — v2 additions ──
+    profile_normalized_role_type = Column(String, nullable=True)             # technical|manual|administrative|creative|managerial|service|professional
+    profile_normalized_industry_sectors = Column(JSON, nullable=True)        # industries candidate has worked in e.g. ["web development", "fintech"]
+    profile_normalized_transferable_skills = Column(JSON, nullable=True)     # domain-agnostic skills e.g. ["project management", "team leadership"]
+
     # ── Search intent — what the user WANTS to find (may differ from CV domain) ──
     # Derived from role_description + search_strategy at the same LLM call as candidate profile.
     # The structured filtering layer uses these as the PRIMARY comparison axis against jobs.
@@ -70,6 +87,12 @@ class SearchProfile(BaseModel, TimestampMixin):
     profile_search_intent_skills = Column(JSON, nullable=True)               # target skills
     profile_search_intent_open_to_unrelated = Column(Boolean, nullable=True, default=False)  # cross-domain search
     profile_search_intent_keywords = Column(JSON, nullable=True)             # free-form intent keywords
+    # ── Enhanced search intent — v2 additions ──
+    profile_search_intent_role_type = Column(String, nullable=True)          # target role type (manual|technical|etc.)
+    profile_search_intent_seniority_min = Column(String, nullable=True)      # acceptable lower seniority bound
+    profile_search_intent_seniority_max = Column(String, nullable=True)      # acceptable upper seniority bound
+    profile_search_intent_dealbreakers = Column(JSON, nullable=True)         # absolute no-gos e.g. ["night shifts", "requires German C2"]
+    profile_search_intent_flexibility = Column(JSON, nullable=True)          # {"domain": true, "seniority": true, "qualification": false, "location": false}
 
     user = relationship("User", back_populates="profiles")
     jobs = relationship("Job", back_populates="search_profile", cascade="all, delete-orphan")

@@ -26,7 +26,7 @@ export function HistoryCard({ profile, onStartSearch, onStartSearchWithOptions, 
                         {profile.schedule_enabled && (
                             <span className="text-success fw-medium d-flex align-items-center">
                                 <i className="bi bi-check-circle-fill me-1"></i>
-                                {`Auto-runs every ${profile.schedule_interval_hours}h`}
+                                {`Auto-runs every ${profile.schedule_interval_hours ?? 24}h`}
                             </span>
                         )}
                     </div>

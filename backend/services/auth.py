@@ -1,8 +1,10 @@
 from datetime import datetime, timedelta, timezone
 from typing import Optional
+
+import bcrypt
 import jwt
 from jwt.exceptions import PyJWTError
-import bcrypt
+
 from backend.core.config import settings
 
 

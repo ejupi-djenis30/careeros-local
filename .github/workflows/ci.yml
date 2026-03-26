@@ -51,6 +51,10 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt -r requirements-dev.txt
 
+      - name: Lint backend (ruff)
+        run: |
+          ruff check backend/
+
       - name: Validate Alembic migrations (SQLite)
         env:
           SECRET_KEY: ci-test-secret-key-not-for-production
@@ -110,6 +114,10 @@ jobs:
       - name: Run frontend tests
         working-directory: frontend
         run: npm run test -- --run --coverage
+
+      - name: Lint frontend (eslint)
+        working-directory: frontend
+        run: npm run lint
 
       - name: Upload frontend coverage
         uses: actions/upload-artifact@v4

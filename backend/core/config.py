@@ -1,6 +1,7 @@
 import logging
-from typing import List, Union, Any, Optional
-from pydantic import AnyHttpUrl, field_validator
+from typing import Any, List, Optional
+
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 logger = logging.getLogger(__name__)
@@ -9,7 +10,7 @@ logger = logging.getLogger(__name__)
 class Settings(BaseSettings):
     API_V1_STR: str = "/api/v1"
     PROJECT_NAME: str = "Job Hunter AI"
-    
+
     # CORS
     CORS_ORIGINS: Optional[str] = "http://localhost:5173,http://127.0.0.1:5173,http://localhost:8000"
     CORS_ALLOW_ORIGIN_REGEX: str = r"^https?://(localhost|127\.0\.0\.1)(:\d+)?$"
@@ -30,7 +31,7 @@ class Settings(BaseSettings):
     DATABASE_URL: str = "sqlite:///./job_hunter.db"
     DB_POOL_SIZE: int = 5
     DB_MAX_OVERFLOW: int = 10
-    
+
     # Security
     SECRET_KEY: str = "changeme"
     ALLOWED_HOSTS: List[str] = ["localhost", "127.0.0.1", "testserver"]
@@ -53,7 +54,8 @@ class Settings(BaseSettings):
     @field_validator("SECRET_KEY")
     @classmethod
     def validate_secret_key(cls, v: str) -> str:
-        import os, logging
+        import logging
+        import os
         if v in ("changeme", ""):
             if os.getenv("ENVIRONMENT", "development").lower() == "production":
                 raise ValueError(
@@ -161,8 +163,8 @@ class Settings(BaseSettings):
     OLLAMA_MODEL: str = "llama3"
 
     model_config = SettingsConfigDict(
-        case_sensitive=True, 
-        env_file=".env", 
+        case_sensitive=True,
+        env_file=".env",
         extra="ignore"
     )
 

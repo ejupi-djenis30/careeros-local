@@ -1,7 +1,8 @@
 import logging
-import httpx
 from enum import Enum
-from typing import Optional, Any, Dict
+from typing import Dict, Optional
+
+import httpx
 from tenacity import retry, stop_after_attempt, wait_exponential
 
 logger = logging.getLogger(__name__)
@@ -39,11 +40,11 @@ class ScraperSession:
         """Fetch index page to get CSRF token (Angular app)."""
         # JobRoom uses X-XSRF-TOKEN header from cookies or similar.
         # usually Angular sets a cookie 'XSRF-TOKEN', client reads it and sends 'X-XSRF-TOKEN'.
-        response = await self.get(url)
+        await self.get(url)
         # In many systems, just visiting the page sets the cookie.
         # Httpx client stores cookies automatically.
         # We might need to extract it manually if the client logic expects it in a header.
-        
+
         # Check cookies
         for cookie in self.client.cookies.jar:
             if cookie.name == "XSRF-TOKEN":
@@ -56,18 +57,18 @@ class ScraperSession:
     async def with_retry_csrf(self, method: str, url: str, csrf_refresh_url: str, json: Optional[Dict] = None):
         if not self.client:
             await self.start()
-        
+
         # Ensure we have CSRF if needed
         if method in ["POST", "PUT", "DELETE"] and not self.csrf_token:
             await self.refresh_csrf_token(csrf_refresh_url)
-            
+
         try:
             response = await self.client.request(method, url, json=json)
             if response.status_code == 403 or response.status_code == 401:
                 logger.warning("CSRF/Auth failed, retrying once...")
                 await self.refresh_csrf_token(csrf_refresh_url)
                 response = await self.client.request(method, url, json=json)
-            
+
             response.raise_for_status()
             return response
         except httpx.HTTPError as e:

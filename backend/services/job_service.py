@@ -1,10 +1,13 @@
 import hashlib
-from typing import Dict, Any
-from sqlalchemy.orm import Session
+from typing import Any, Dict
+
 from fastapi import HTTPException
+from sqlalchemy.orm import Session
+
 from backend.models import SearchProfile
 from backend.repositories.job_repository import JobRepository
 from backend.schemas import JobCreate, JobUpdate
+
 
 class JobService:
     def __init__(self, db: Session):
@@ -26,24 +29,24 @@ class JobService:
         filters: Dict[str, Any]
     ) -> Dict[str, Any]:
         skip = (page - 1) * page_size
-        
+
         items = self.repo.get_by_user_filtered(
             user_id, skip=skip, limit=page_size, **filters
         )
-        
+
         # Feature 2: populate applied_elsewhere badge
         # Get all ScrapedJob IDs where this user has applied=True (across all profiles)
         applied_scraped_ids = set()
         if items:
             applied_scraped_ids = self.repo.get_applied_scraped_job_ids(user_id)
-        
+
         # Attach applied_elsewhere as a Python attribute so Pydantic can read it
         for item in items:
             item.applied_elsewhere = (
                 not item.applied
                 and item.scraped_job_id in applied_scraped_ids
             )
-        
+
         # Remove pagination/sorting params before passing to count/stats
         stats_filters = filters.copy()
         stats_filters.pop("sort_by", None)
@@ -63,7 +66,7 @@ class JobService:
 
     def create_job(self, user_id: int, job_in: JobCreate):
         from backend.models import ScrapedJob
-        
+
         job_dict = job_in.model_dump()
         profile_id = job_dict.get("search_profile_id")
         if profile_id is not None:
@@ -74,7 +77,7 @@ class JobService:
             )
             if not profile:
                 raise HTTPException(status_code=403, detail="Unauthorized profile access")
-        
+
         # Split fields: scraped-job fields vs user-relationship fields
         scraped_fields = {
             "title": job_dict.get("title", ""),
@@ -86,7 +89,7 @@ class JobService:
             "location": job_dict.get("location", None),
             "workload": job_dict.get("workload", None),
         }
-        
+
         # Upsert or create ScrapedJob
         existing_scraped = (
             self.repo.db.query(ScrapedJob)
@@ -102,7 +105,7 @@ class JobService:
             self.repo.db.flush()
         else:
             scraped_job = existing_scraped
-        
+
         # Create the user-specific Job record
         job_data = {
             "user_id": user_id,

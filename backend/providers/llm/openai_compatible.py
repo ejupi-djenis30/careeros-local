@@ -1,7 +1,9 @@
 import json
 import logging
-from typing import Dict, Any, Optional
-from openai import OpenAI, AsyncOpenAI
+from typing import Any, Dict, Optional
+
+from openai import AsyncOpenAI, OpenAI
+
 from backend.providers.llm.base import LLMProvider
 
 logger = logging.getLogger(__name__)
@@ -43,16 +45,16 @@ class OpenAICompatibleProvider(LLMProvider):
 
     def _clean_json(self, text: str) -> str:
         text = text.strip()
-        
+
         # Strip markdown code blocks
         if text.startswith("```"):
             lines = text.split("\n")
             if len(lines) > 2 and lines[-1].strip().startswith("```"):
                 text = "\n".join(lines[1:-1])
             else:
-                lines = [l for l in lines[1:] if not l.strip() == "```"]
+                lines = [line for line in lines[1:] if not line.strip() == "```"]
                 text = "\n".join(lines)
-                
+
         # Deepseek and some OpenAI-compatible models often prepend reasoning text.
         # Find first JSON opener and then extract the first decodable JSON fragment.
         start_idx_dict = text.find("{")
@@ -99,7 +101,7 @@ class OpenAICompatibleProvider(LLMProvider):
             "temperature": self.temperature,
             "top_p": self.top_p,
         }
-        
+
         # Deepseek thinking mode specific adjustments
         if self.provider_name == "deepseek" and self.thinking:
             params.pop("temperature", None)
@@ -109,10 +111,10 @@ class OpenAICompatibleProvider(LLMProvider):
             completion = self.client.chat.completions.create(**params)
             message = completion.choices[0].message
             content = message.content or ""
-            
+
             if getattr(message, "reasoning_content", None):
                 logger.info(f"DeepSeek Reasoning Trace: {message.reasoning_content[:500]}...")
-            
+
             return content
         except Exception as e:
             logger.error(f"LLM Error ({self.model_id}): {e}")
@@ -158,7 +160,7 @@ class OpenAICompatibleProvider(LLMProvider):
             "temperature": self.temperature,
             "top_p": self.top_p,
         }
-        
+
         if self.provider_name == "deepseek" and self.thinking:
             params.pop("temperature", None)
             params.pop("top_p", None)
@@ -167,10 +169,10 @@ class OpenAICompatibleProvider(LLMProvider):
             completion = await self.async_client.chat.completions.create(**params)
             message = completion.choices[0].message
             content = message.content or ""
-            
+
             if getattr(message, "reasoning_content", None):
                 logger.debug(f"DeepSeek Reasoning Trace: {message.reasoning_content[:200]}...")
-            
+
             return content
         except Exception as e:
             logger.error(f"Async LLM Error ({self.model_id}): {e}")

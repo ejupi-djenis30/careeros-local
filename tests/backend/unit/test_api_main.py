@@ -7,9 +7,14 @@ from backend.core.exceptions import CoreException
 client = TestClient(app, raise_server_exceptions=False)
 
 def test_health():
-    response = client.get("/api/v1/health")
-    assert response.status_code == 200
-    assert response.json() == {"status": "ok"}
+    with patch("backend.db.base.SessionLocal") as mock_session:
+        mock_db = MagicMock()
+        mock_session.return_value = mock_db
+        response = client.get("/api/v1/health")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["status"] == "ok"
+        assert data["database"] == "connected"
 
 def test_root_db_success():
     with patch("backend.db.base.SessionLocal") as mock_session:

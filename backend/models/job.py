@@ -1,7 +1,19 @@
-from datetime import datetime, timezone
 
-from sqlalchemy import Column, Integer, String, Boolean, Float, Text, DateTime, ForeignKey, JSON, UniqueConstraint, Index
+from sqlalchemy import (
+    JSON,
+    Boolean,
+    Column,
+    DateTime,
+    Float,
+    ForeignKey,
+    Index,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+)
 from sqlalchemy.orm import relationship
+
 from backend.models.base_model import BaseModel, TimestampMixin
 
 
@@ -13,20 +25,20 @@ class ScrapedJob(BaseModel, TimestampMixin):
 
     platform = Column(String, index=True, nullable=False)
     platform_job_id = Column(String, index=True, nullable=False)
-    
+
     title = Column(String, index=True, nullable=False)
     company = Column(String, index=True, nullable=False)
     description = Column(Text)
     location = Column(String, index=True)
-    
+
     # Generic URLs
     external_url = Column(String, index=True, nullable=False)
     application_url = Column(String, nullable=True)
     application_email = Column(String, nullable=True)
-    
+
     workload = Column(String)
     publication_date = Column(DateTime(timezone=True))
-    
+
     # For provider-specific details (JobRoom, SwissDevJobs, etc)
     raw_metadata = Column(JSON, nullable=True)
 
@@ -53,10 +65,16 @@ class ScrapedJob(BaseModel, TimestampMixin):
     normalized_salary_max_chf = Column(Integer, nullable=True)
     normalized_required_languages = Column(JSON, nullable=True)
     normalized_required_skills = Column(JSON, nullable=True)
+    normalized_preferred_skills = Column(JSON, nullable=True)        # nice-to-have skills ("von Vorteil", "ideally")
+    normalized_soft_skills = Column(JSON, nullable=True)             # interpersonal/organizational skills
+    normalized_physical_requirements = Column(JSON, nullable=True)   # physical demands for manual jobs
+    normalized_entry_barrier = Column(String, nullable=True)         # none|low|medium|high — overall accessibility
+    normalized_career_changer_friendly = Column(Boolean, nullable=True)  # true if Quereinsteiger willkommen / training provided
+    normalized_hard_blockers = Column(JSON, nullable=True)           # absolute non-negotiable requirements
     normalized_education_levels = Column(JSON, nullable=True)
     normalized_key_requirements = Column(JSON, nullable=True)
     normalized_metadata = Column(JSON, nullable=True)
-    
+
     # Keep track of where it originally came from (optional but useful)
     source_query = Column(String, nullable=True)
 
@@ -88,6 +106,12 @@ class ScrapedJob(BaseModel, TimestampMixin):
             "salary_max_chf": self.normalized_salary_max_chf,
             "required_languages": self.normalized_required_languages or [],
             "required_skills": self.normalized_required_skills or [],
+            "preferred_skills": self.normalized_preferred_skills or [],
+            "soft_skills": self.normalized_soft_skills or [],
+            "physical_requirements": self.normalized_physical_requirements or [],
+            "entry_barrier": self.normalized_entry_barrier,
+            "career_changer_friendly": self.normalized_career_changer_friendly,
+            "hard_blockers": self.normalized_hard_blockers or [],
             "education_levels": self.normalized_education_levels or [],
             "key_requirements": self.normalized_key_requirements or [],
             "metadata": self.normalized_metadata or {},
@@ -103,11 +127,11 @@ class Job(BaseModel, TimestampMixin):
 
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
     search_profile_id = Column(Integer, ForeignKey("search_profiles.id"), nullable=True, index=True)
-    scraped_job_id = Column(Integer, ForeignKey("scraped_jobs.id"), nullable=False, index=True)
-    
+    scraped_job_id = Column(Integer, ForeignKey("scraped_jobs.id", ondelete="CASCADE"), nullable=False, index=True)
+
     # Metadata
     is_scraped = Column(Boolean, default=False)
-    
+
     # AI Analysis (User-specific match)
     affinity_score = Column(Float)
     affinity_analysis = Column(Text)
@@ -119,23 +143,25 @@ class Job(BaseModel, TimestampMixin):
     intent_match_score = Column(Float, nullable=True)       # 0-100: job fits what the user WANTS
     language_match_score = Column(Float, nullable=True)     # 0-100: language requirements fit
     location_match_score = Column(Float, nullable=True)     # 0-100: location/remote preference fit
+    transferability_score = Column(Float, nullable=True)    # 0-100: how well existing skills transfer to this job
+    qualification_gap_score = Column(Float, nullable=True)  # 0-100: qualification relevance for this specific job
 
     # Distance from search origin (km)
     distance_km = Column(Float, nullable=True)
-    
+
     # User Action
     applied = Column(Boolean, default=False, index=True)
-    
+
     # Relationships
-    user = relationship("User", back_populates="jobs")
-    search_profile = relationship("SearchProfile", back_populates="jobs")
+    user = relationship("User", back_populates="jobs", lazy="selectin")
+    search_profile = relationship("SearchProfile", back_populates="jobs", lazy="selectin")
     scraped_job = relationship("ScrapedJob", back_populates="user_jobs", lazy="joined")
 
     # Feature 2: Track if same ScrapedJob was applied elsewhere
     @property
     def applied_elsewhere(self) -> bool:
         """Returns True if the underlying scraped job has been marked as 'applied' in ANY other Job entry for the same user.
-        
+
         This value is always populated via the transient attribute set by JobService.get_jobs_by_user().
         Outside that flow, returns False to avoid triggering a lazy-load N+1 query.
         """

@@ -5,49 +5,56 @@ import json
 import logging
 import re
 from datetime import datetime, timezone
-from typing import List, Dict, Any, Optional
+from typing import Any, Dict, List, Optional
 
 from sqlalchemy.orm import Session
-from backend.models import ScrapedJob, Job, SearchProfile
+
+from backend.core.config import settings
+from backend.models import Job, ScrapedJob, SearchProfile
+from backend.providers.jobs.jobroom.client import JobRoomProvider
+from backend.providers.jobs.swissdevjobs.client import SwissDevJobsProvider
 from backend.repositories.job_repository import JobRepository
 from backend.repositories.profile_repository import ProfileRepository
 from backend.services.llm_service import llm_service
-from backend.services.search.search_validator import build_search_request
-from backend.services.utils import geocode_location, calculate_distance, haversine_distance, clean_html_tags
-from backend.core.config import settings
 from backend.services.search.listing_utils import (
-    normalized_text_token,
+    bootstrap_normalized_job_data,
     coerce_int,
     coerce_string_list,
     extract_company_name,
-    listing_identity_key,
-    listing_url_token,
-    listing_fuzzy_key,
-    listing_is_remote,
-    extract_salary_max_chf,
     extract_listing_description_text,
     extract_listing_location_string,
     extract_listing_workload_string,
+    extract_salary_max_chf,
+    listing_fuzzy_key,
+    listing_identity_key,
+    listing_is_remote,
+    listing_url_token,
+    normalized_text_token,
     parse_listing_publication_date,
-    bootstrap_normalized_job_data,
     skills_overlap,
 )
+from backend.services.search.search_validator import build_search_request
+from backend.services.utils import (
+    clean_html_tags,
+    geocode_location,
+    haversine_distance,
+)
 
-from backend.providers.jobs.jobroom.client import JobRoomProvider
-from backend.providers.jobs.swissdevjobs.client import SwissDevJobsProvider
 try:
     from backend.providers.jobs.adecco.client import AdeccoProvider
 except ImportError:
     AdeccoProvider = None
-from backend.providers.jobs.localdb.client import LocalDbProvider
-from backend.providers.jobs.models import JobSearchRequest, SortOrder, RadiusSearchRequest, Coordinates
 from backend.providers.jobs.jobroom.avam_mapper import avam_mapper
+from backend.providers.jobs.localdb.client import LocalDbProvider
+from backend.providers.jobs.models import (
+    JobSearchRequest,
+)
+from backend.services.search.profile_preferences import get_profile_preference
 from backend.services.search.query_contracts import (
     build_plan_cache_payload,
     compute_plan_input_fingerprint,
     exact_query_fingerprint,
     is_cached_plan_compatible,
-    loose_query_fingerprint,
     normalize_domain,
     normalize_language,
     normalize_search_item,
@@ -55,9 +62,13 @@ from backend.services.search.query_contracts import (
     supported_request_language,
     unpack_plan_cache_payload,
 )
-from backend.services.search.profile_preferences import get_profile_preference
 from backend.services.search_status import (
-    init_status, add_log, update_status, clear_status, get_status, register_task, unregister_task
+    add_log,
+    get_status,
+    init_status,
+    register_task,
+    unregister_task,
+    update_status,
 )
 
 logger = logging.getLogger(__name__)
@@ -281,6 +292,13 @@ class SearchService:
             scraped_job.normalized_required_skills = normalized.get("required_skills") or None
             scraped_job.normalized_education_levels = normalized.get("education_levels") or None
             scraped_job.normalized_key_requirements = normalized.get("key_requirements") or None
+            # V2 enhanced job normalization fields
+            scraped_job.normalized_preferred_skills = normalized.get("preferred_skills") or None
+            scraped_job.normalized_soft_skills = normalized.get("soft_skills") or None
+            scraped_job.normalized_physical_requirements = normalized.get("physical_requirements") or None
+            scraped_job.normalized_entry_barrier = normalized.get("entry_barrier")
+            scraped_job.normalized_career_changer_friendly = normalized.get("career_changer_friendly")
+            scraped_job.normalized_hard_blockers = normalized.get("hard_blockers") or None
 
             metadata = scraped_job.normalized_metadata or {}
             metadata.update({"llm_normalized": True, "source": "llm_normalizer"})
@@ -354,6 +372,16 @@ class SearchService:
                 "intent_skills": profile.profile_search_intent_skills or [],
                 "open_to_unrelated": profile.profile_search_intent_open_to_unrelated or False,
                 "intent_keywords": profile.profile_search_intent_keywords or [],
+                # V2 enhanced candidate profile fields
+                "role_type": getattr(profile, "profile_normalized_role_type", None),
+                "industry_sectors": getattr(profile, "profile_normalized_industry_sectors", None) or [],
+                "transferable_skills": getattr(profile, "profile_normalized_transferable_skills", None) or [],
+                # V2 enhanced search intent fields
+                "intent_role_type": getattr(profile, "profile_search_intent_role_type", None),
+                "intent_seniority_min": getattr(profile, "profile_search_intent_seniority_min", None),
+                "intent_seniority_max": getattr(profile, "profile_search_intent_seniority_max", None),
+                "dealbreakers": getattr(profile, "profile_search_intent_dealbreakers", None) or [],
+                "flexibility": getattr(profile, "profile_search_intent_flexibility", None) or {},
             }
 
         try:
@@ -519,6 +547,33 @@ class SearchService:
             return 1
         return 2
 
+    # Ordered seniority levels for range-based comparison
+    _SENIORITY_ORDER: Dict[str, int] = {
+        "intern": 0, "trainee": 0, "entry": 0,
+        "junior": 1,
+        "mid": 2,
+        "senior": 3,
+        "lead": 4,
+        "director": 5,
+    }
+
+    # Role types grouped by family for compatibility checks
+    _ROLE_TYPE_FAMILIES: List[frozenset] = [
+        frozenset({"manual", "service"}),
+        frozenset({"technical", "professional"}),
+        frozenset({"administrative", "managerial"}),
+        frozenset({"creative"}),
+    ]
+
+    def _role_types_compatible(self, intent_rt: str, job_rt: str) -> bool:
+        """Return True when intent_role_type and job_role_type are in the same family."""
+        if intent_rt == job_rt:
+            return True
+        for family in self._ROLE_TYPE_FAMILIES:
+            if intent_rt in family and job_rt in family:
+                return True
+        return False
+
     def _passes_normalization_filters(
         self,
         job_norm: Dict[str, Any],
@@ -534,13 +589,16 @@ class SearchService:
         job exploration works correctly.
 
         Checks (in order):
-        0. Confidence gate       — low-confidence job normalizations skip all checks
-        1. Domain match          — uses intent_domain; bypassed when open_to_unrelated=True
-        2. Role-type gate        — when intent signals manual work, skip IT-specific filters
-        3. Seniority match       — uses intent_seniority (falls back to candidate seniority)
-        4. Qualification match   — uses intent_qualification_level (falls back to candidate)
-        5. Experience floor      — uses candidate's actual experience (CV fact)
-        6. Skills overlap        — alias-aware overlap check; bypassed when open_to_unrelated
+        0. Confidence gate           — low-confidence normalizations skip all checks
+        0.5 Dealbreaker rejection    — absolute no-gos from the search intent
+        1. Domain match              — uses intent_domain; bypassed when open_to_unrelated=True
+        2. Role-type match           — intent_role_type vs job role_type family check
+        3. Seniority range match     — uses intent_seniority_min/max (falls back to single seniority)
+        4. Qualification match       — uses intent_qualification_level (falls back to candidate)
+        5a. Entry barrier gate       — high-barrier jobs rejected for cross-domain explorers
+        5b. Experience floor         — uses candidate's actual experience (CV fact)
+        6. Skills overlap            — alias-aware; extended with transferable_skills;
+                                       bypassed when job is career_changer_friendly
         """
         # ─── 0. Confidence gate ───────────────────────────────────────────
         raw_confidence = job_norm.get("confidence")
@@ -552,6 +610,18 @@ class SearchService:
                 pass
 
         open_to_unrelated = bool(profile_norm.get("open_to_unrelated", False))
+        flexibility = profile_norm.get("flexibility") or {}
+
+        # ─── 0.5. Dealbreaker rejection ──────────────────────────────────
+        # Absolute no-gos from the search intent take effect before any other filter.
+        dealbreakers = [str(d).lower().strip() for d in (profile_norm.get("dealbreakers") or []) if d]
+        if dealbreakers:
+            hard_blockers_raw = list(job_norm.get("hard_blockers") or []) + list(job_norm.get("key_requirements") or [])
+            hard_blockers = [normalized_text_token(str(b)) for b in hard_blockers_raw if b]
+            for dk in dealbreakers:
+                dk_token = normalized_text_token(dk)
+                if dk_token and any(dk_token in hb or hb in dk_token for hb in hard_blockers if hb):
+                    return False, "norm_dealbreaker_hit"
 
         # ─── 1. Domain match ─────────────────────────────────────────────
         # Primary: use search intent domain; fallback to CV domain
@@ -569,40 +639,75 @@ class SearchService:
             ):
                 return False, "norm_domain_mismatch"
 
-        # ─── 2. Role-type gate ────────────────────────────────────────────
-        # When a user is searching for manual work (open_to_unrelated or intent_keywords
-        # contain manual-work signals), don't penalize skill mismatches against IT jobs.
+        # ─── 2. Role-type match ───────────────────────────────────────────
+        # Use explicit intent_role_type when available.
+        # Example: junior developer with intent_role_type="manual" should only see manual/service jobs.
+        intent_role_type = str(profile_norm.get("intent_role_type") or "").strip().lower() or None
+        job_role_type = str(job_norm.get("role_type") or "").strip().lower() or None
+
+        if intent_role_type and job_role_type:
+            flexible_domain = bool(flexibility.get("domain", False))
+            if not flexible_domain and not open_to_unrelated:
+                if not self._role_types_compatible(intent_role_type, job_role_type):
+                    return False, "norm_role_type_mismatch"
+
+        # ─── Manual-work gate (keyword fallback when intent_role_type not extracted yet) ─
         intent_keywords = [str(k).lower() for k in (profile_norm.get("intent_keywords") or []) if k]
         _manual_signals = {"manual", "warehouse", "cleaning", "physical", "handwerk", "lager", "reinigung", "manuell"}
-        searching_manual = open_to_unrelated or bool(_manual_signals & set(intent_keywords))
+        searching_manual = (
+            (intent_role_type in {"manual", "service"})
+            or open_to_unrelated
+            or bool(_manual_signals & set(intent_keywords))
+        )
 
-        # ─── 3. Seniority match ───────────────────────────────────────────
-        # Use intent seniority (what the user targets); fall back to CV seniority
-        effective_seniority = str(
-            profile_norm.get("intent_seniority") or profile_norm.get("seniority") or ""
-        ).strip().lower()
+        # ─── 3. Seniority range match ─────────────────────────────────────
+        # Use intent_seniority_min/max range; fall back to single intent_seniority or CV seniority.
+        intent_seniority_min = str(profile_norm.get("intent_seniority_min") or "").strip().lower() or None
+        intent_seniority_max = str(profile_norm.get("intent_seniority_max") or "").strip().lower() or None
+        has_range = intent_seniority_min or intent_seniority_max
         job_seniority = str(job_norm.get("seniority") or "").strip().lower()
 
-        if effective_seniority and job_seniority:
-            if effective_seniority == "junior" and job_seniority == "senior":
-                job_exp_min = coerce_int(job_norm.get("experience_min_years"), None)
-                user_exp = coerce_int(profile_norm.get("experience_years"), None)
-                tolerance = int(getattr(settings, "SEARCH_NORMALIZATION_EXPERIENCE_TOLERANCE", 2))
-                if (
-                    job_exp_min is not None
-                    and user_exp is not None
-                    and job_exp_min > user_exp + tolerance
-                ):
-                    return False, "norm_seniority_overqualified"
-            if effective_seniority == "senior" and job_seniority == "junior":
-                job_exp_max = coerce_int(job_norm.get("experience_max_years"), None)
-                user_exp = coerce_int(profile_norm.get("experience_years"), None)
-                if (
-                    job_exp_max is not None
-                    and user_exp is not None
-                    and job_exp_max < user_exp - 3
-                ):
-                    return False, "norm_seniority_underqualified"
+        if job_seniority and has_range:
+            job_rank = self._SENIORITY_ORDER.get(job_seniority, -1)
+            if job_rank >= 0:
+                if intent_seniority_min:
+                    min_rank = self._SENIORITY_ORDER.get(intent_seniority_min, -1)
+                    if min_rank >= 0 and job_rank < min_rank:
+                        pass  # job is below min — fine, user can fill an easier role
+                if intent_seniority_max:
+                    max_rank = self._SENIORITY_ORDER.get(intent_seniority_max, -1)
+                    if max_rank >= 0 and job_rank > max_rank:
+                        # Job requires higher seniority than max tolerance — check exp gap
+                        user_exp = coerce_int(profile_norm.get("experience_years"), None)
+                        job_exp_min = coerce_int(job_norm.get("experience_min_years"), None)
+                        tolerance = int(getattr(settings, "SEARCH_NORMALIZATION_EXPERIENCE_TOLERANCE", 2))
+                        if job_exp_min is not None and user_exp is not None and job_exp_min > user_exp + tolerance:
+                            return False, "norm_seniority_overqualified"
+        elif job_seniority:
+            # Legacy single-point seniority check
+            effective_seniority = str(
+                profile_norm.get("intent_seniority") or profile_norm.get("seniority") or ""
+            ).strip().lower()
+            if effective_seniority:
+                if effective_seniority == "junior" and job_seniority == "senior":
+                    job_exp_min = coerce_int(job_norm.get("experience_min_years"), None)
+                    user_exp = coerce_int(profile_norm.get("experience_years"), None)
+                    tolerance = int(getattr(settings, "SEARCH_NORMALIZATION_EXPERIENCE_TOLERANCE", 2))
+                    if (
+                        job_exp_min is not None
+                        and user_exp is not None
+                        and job_exp_min > user_exp + tolerance
+                    ):
+                        return False, "norm_seniority_overqualified"
+                if effective_seniority == "senior" and job_seniority == "junior":
+                    job_exp_max = coerce_int(job_norm.get("experience_max_years"), None)
+                    user_exp = coerce_int(profile_norm.get("experience_years"), None)
+                    if (
+                        job_exp_max is not None
+                        and user_exp is not None
+                        and job_exp_max < user_exp - 3
+                    ):
+                        return False, "norm_seniority_underqualified"
 
         # ─── 4. Qualification level ───────────────────────────────────────
         # Use intent qualification (what the user is willing to meet); fall back to CV level
@@ -612,12 +717,23 @@ class SearchService:
         job_ql = str(job_norm.get("qualification_level") or "").strip().lower()
 
         if effective_ql and job_ql:
-            user_rank = self._QUALIFICATION_RANK.get(effective_ql, -1)
-            job_rank = self._QUALIFICATION_RANK.get(job_ql, -1)
-            if user_rank >= 0 and job_rank >= 0 and job_rank > user_rank + 2:
-                return False, "norm_qualification_mismatch"
+            # Skip qualification check for entry_barrier=none or career_changer_friendly jobs
+            job_entry_barrier = str(job_norm.get("entry_barrier") or "").strip().lower()
+            job_career_changer = bool(job_norm.get("career_changer_friendly", False))
+            if not job_career_changer and job_entry_barrier not in {"none", "low"}:
+                user_rank = self._QUALIFICATION_RANK.get(effective_ql, -1)
+                job_rank = self._QUALIFICATION_RANK.get(job_ql, -1)
+                if user_rank >= 0 and job_rank >= 0 and job_rank > user_rank + 2:
+                    return False, "norm_qualification_mismatch"
 
-        # ─── 5. Experience floor ─────────────────────────────────────────
+        # ─── 5a. Entry barrier gate ───────────────────────────────────────
+        # Cross-domain explorers (open_to_unrelated) should not be forced into
+        # high-barrier jobs that require domain-specific credentials.
+        job_entry_barrier_check = str(job_norm.get("entry_barrier") or "").strip().lower()
+        if open_to_unrelated and job_entry_barrier_check == "high":
+            return False, "norm_entry_barrier_high"
+
+        # ─── 5b. Experience floor ─────────────────────────────────────────
         job_exp_min = coerce_int(job_norm.get("experience_min_years"), None)
         user_exp = coerce_int(profile_norm.get("experience_years"), None)
         if job_exp_min is not None and user_exp is not None:
@@ -625,13 +741,15 @@ class SearchService:
             if job_exp_min > user_exp + tolerance:
                 return False, "norm_experience_floor"
 
-        # ─── 6. Skills overlap (alias-aware, skipped for cross-domain intent) ─
-        if not searching_manual:
+        # ─── 6. Skills overlap (alias-aware, extended with transferable skills) ─
+        career_changer_friendly = bool(job_norm.get("career_changer_friendly", False))
+        if not searching_manual and not career_changer_friendly:
             job_skills = [s for s in (job_norm.get("required_skills") or []) if s]
-            # Combine CV skills + intent target skills as the candidate skill pool
+            # Combine CV skills + intent target skills + transferable skills as the candidate pool
             profile_skills = list({
                 *[s for s in (profile_norm.get("skills") or []) if s],
                 *[s for s in (profile_norm.get("intent_skills") or []) if s],
+                *[s for s in (profile_norm.get("transferable_skills") or []) if s],
             })
             if len(job_skills) >= 3 and len(profile_skills) >= 3:
                 overlap = skills_overlap(job_skills, profile_skills)
@@ -764,7 +882,7 @@ class SearchService:
     ):
         """Run the full search workflow for a saved profile."""
         register_task(profile_id, asyncio.current_task())
-        
+
         # Ensure fresh LLM providers (reload config)
         llm_service.clear_provider_cache()
 
@@ -875,7 +993,7 @@ class SearchService:
 
             # ── Step 2: Execute searches with domain routing (Feature 4) ──
             update_status(profile_id, state="searching")
-            add_log(profile_id, f"Step 2: Executing scraper queries...")
+            add_log(profile_id, "Step 2: Executing scraper queries...")
             all_jobs = await self._execute_searches(profile_id, profile, searches, provider_infos)
             if not all_jobs:
                 add_log(profile_id, "No jobs found across all queries.")
@@ -887,7 +1005,7 @@ class SearchService:
             add_log(profile_id, "Step 3: Deduplicating and checking cross-profile status...")
             unique_jobs, duplicates = self._deduplicate(profile, all_jobs)
             add_log(profile_id, f"After dedup: {len(unique_jobs)} new, {duplicates} duplicates")
-            
+
             if not unique_jobs:
                 add_log(profile_id, "All found jobs are already in profile history.")
                 add_log(profile_id, f"[LLM_DEBUG] state=done terminal_reason=all_duplicates profile_id={profile_id}")
@@ -902,8 +1020,16 @@ class SearchService:
             try:
                 await self._normalize_persisted_jobs(profile_id, unique_jobs)
             except Exception as normalize_error:
-                logger.warning("LLM normalization failed for profile %s: %s", profile_id, normalize_error)
-                add_log(profile_id, f"Normalization warning: {normalize_error}")
+                logger.error(
+                    "LLM normalization failed for profile %s — jobs will proceed without normalized fields: %s",
+                    profile_id,
+                    normalize_error,
+                    exc_info=True,
+                )
+                add_log(
+                    profile_id,
+                    f"Normalization error (jobs will be passed to match step without field-level filtering): {normalize_error}",
+                )
 
             # ── Step 5: Structured filtering based on persisted job facts ──
             pre_filter_count = len(unique_jobs)
@@ -989,7 +1115,7 @@ class SearchService:
             max_occupation_queries=profile.max_occupation_queries,
             max_keyword_queries=profile.max_keyword_queries,
         )
-        
+
         if profile.cached_queries and not force_regen_q:
             try:
                 cached_searches, cache_meta = unpack_plan_cache_payload(profile.cached_queries)
@@ -1027,10 +1153,10 @@ class SearchService:
                     terminal_reason = "llm_plan_rate_limited"
                 update_status(profile_id, state="error", terminal_reason=terminal_reason, error=str(e))
                 return []
-            
+
             if not searches:
                 return []
-            
+
             # Save queries to cache (Feature 3)
             try:
                 cache_payload = build_plan_cache_payload(
@@ -1118,7 +1244,7 @@ class SearchService:
                 status_data = get_status(profile_id)
                 if status_data.get("state") in STOP_STATES:
                     return []
-                    
+
                 normalized_search, _ = normalize_search_item(search)
                 if not normalized_search:
                     add_log(profile_id, f"⚠ Skipping invalid query payload at index {idx + 1}")
@@ -1128,7 +1254,7 @@ class SearchService:
                 domain = normalized_search.get("domain", "general")
                 query_type = normalized_search.get("type", "keyword")
                 query_language = normalized_search.get("language", "en")
-                
+
                 profession_codes = []
                 avam_fallback_keyword = False
                 if query_type == "occupation":
@@ -1150,8 +1276,9 @@ class SearchService:
 
                 async def search_provider(provider_name: str, req: JobSearchRequest):
                     provider = self.providers[provider_name]
-                    if not provider: return provider_name, [], None
-                    
+                    if not provider:
+                        return provider_name, [], None
+
                     provider_jobs = []
                     try:
                         current_page = 0
@@ -1159,40 +1286,40 @@ class SearchService:
                             page_size = 50
                             if hasattr(provider, "capabilities") and hasattr(provider.capabilities, "max_page_size"):
                                 page_size = provider.capabilities.max_page_size
-                                
+
                             page_req = req.model_copy(update={"page": current_page, "page_size": page_size})
                             result = await provider.search(page_req)
                             page_items = list(getattr(result, "items", []) or [])
-                            
+
                             for item in page_items:
                                 # Mark the source query for tracking
                                 if hasattr(item, "_source_query"):
                                     item._source_query = query
                                 else:
                                     setattr(item, "_source_query", query)
-                            
+
                             provider_jobs.extend(page_items)
 
                             if not page_items:
                                 break
-                            
+
                             total_pages = getattr(result, "total_pages", 1)
                             total_count = getattr(result, "total_count", None)
                             if total_pages and current_page >= total_pages - 1:
                                 break
                             if total_count is not None and total_count >= 0 and len(provider_jobs) >= total_count:
                                 break
-                                
+
                             current_page += 1
-                            
+
                             if provider.throttle_delay > 0:
                                 await asyncio.sleep(provider.throttle_delay)  # Provider-level throttling
-                                
+
                             # Abort check
                             status_data = get_status(profile_id)
                             if status_data.get("state") in STOP_STATES:
                                 break
-                                
+
                         return provider_name, provider_jobs, None
                     except Exception as e:
                         return provider_name, provider_jobs, e
@@ -1241,7 +1368,7 @@ class SearchService:
                         execution_metrics["provider_successes"] += 1
                         found_jobs.extend(items)
                         add_log(profile_id, f"  ↳ {p_name}: {len(items)} jobs")
-                
+
                 return found_jobs
 
         results = await asyncio.gather(*(execute_single_search(i, q) for i, q in enumerate(searches)))
@@ -1286,7 +1413,7 @@ class SearchService:
         seen_keys: set = set()
         seen_fuzzy_keys: set = set()
         unique_jobs: list = []
-        
+
         existing_identifiers = self.job_repo.get_profile_job_identifiers(profile_id)
         profile_user_id = getattr(profile, "user_id", None)
         applied_scraped_ids = (
@@ -1294,7 +1421,7 @@ class SearchService:
             if profile_user_id is not None
             else set()
         )
-        
+
         existing_keys = {
             listing_identity_key(row) for row in existing_identifiers
             if listing_identity_key(row)
@@ -1313,9 +1440,9 @@ class SearchService:
         applied_scraped_id_by_pair: dict = {}
         if applied_scraped_ids:
             pairs_by_platform: dict = {}
-            for l in all_jobs:
-                p = getattr(l, "source", None) or getattr(l, "platform", "unknown")
-                pid = str(getattr(l, "id", "") or getattr(l, "platform_job_id", ""))
+            for job in all_jobs:
+                p = getattr(job, "source", None) or getattr(job, "platform", "unknown")
+                pid = str(getattr(job, "id", "") or getattr(job, "platform_job_id", ""))
                 if p and pid:
                     pairs_by_platform.setdefault(p, []).append(pid)
 
@@ -1351,13 +1478,13 @@ class SearchService:
                 existing_urls.add(url)
             if fuzzy_key:
                 seen_fuzzy_keys.add(fuzzy_key)
-            
+
             # Feature 2 check: applied elsewhere (O(1) dict lookup — no per-listing DB queries)
             applied_elsewhere = (platform, platform_id) in applied_scraped_id_by_pair
 
             setattr(listing, "_applied_elsewhere", applied_elsewhere)
             unique_jobs.append(listing)
-                
+
         duplicates = len(all_jobs) - len(unique_jobs)
         return unique_jobs, duplicates
 
@@ -1375,7 +1502,7 @@ class SearchService:
                 status_data = get_status(profile_id)
                 if status_data.get("state") in ["stopped", "cancelled", "finished", "failed"]:
                     return []
-                    
+
                 jobs_metadata = []
                 for job in batch:
                     desc_text = ""
@@ -1387,7 +1514,7 @@ class SearchService:
                     for occ in getattr(job, "occupations", []):
                         if getattr(occ, "education_code", None):
                             education_info.append(f"Edu: {occ.education_code}")
-                            
+
                     company_obj = getattr(job, "company", None)
                     company_name = company_obj.name if hasattr(company_obj, "name") else "Unknown"
 
@@ -1415,7 +1542,7 @@ class SearchService:
                         "company": company_name,
                         "normalized_data": normalized_data,
                     })
-                
+
                 try:
                     results = await llm_service.analyze_job_batch(jobs_metadata, profile_dict)
                     return list(zip(batch, results))
@@ -1449,7 +1576,7 @@ class SearchService:
     async def _save_single_job(self, listing, analysis, profile_dict, origin_coords, commit: bool = True):
         platform = getattr(listing, "source", None) or getattr(listing, "platform", "unknown")
         platform_id = str(getattr(listing, "id", "") or getattr(listing, "platform_job_id", ""))
-        
+
         # 1. ScrapedJob (or fetch existing)
         existing_sj, _ = self._upsert_scraped_job(listing)
 
@@ -1471,7 +1598,7 @@ class SearchService:
                         platform_id,
                         location_str,
                     )
-            
+
             if coords:
                 distance_km = haversine_distance(
                     origin_coords[0], origin_coords[1],
@@ -1494,6 +1621,8 @@ class SearchService:
             intent_match_score=analysis.get("intent_match_score"),
             language_match_score=analysis.get("language_match_score"),
             location_match_score=analysis.get("location_match_score"),
+            transferability_score=analysis.get("transferability_score"),
+            qualification_gap_score=analysis.get("qualification_gap_score"),
         )
         self.db.add(new_job)
         if commit:

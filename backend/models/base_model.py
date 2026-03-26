@@ -1,7 +1,7 @@
-from sqlalchemy import Column, Integer, DateTime
-from sqlalchemy.sql import func
+
+from sqlalchemy import Column, DateTime, Integer
 from sqlalchemy.orm import declarative_base, declared_attr
-from datetime import datetime
+from sqlalchemy.sql import func
 
 Base = declarative_base()
 
