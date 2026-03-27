@@ -122,7 +122,11 @@ class SearchService:
         }
 
     def _apply_query_preferences(self, searches: List[Dict[str, Any]], preferences: Dict[str, Any]) -> tuple[List[Dict[str, Any]], Dict[str, int]]:
-        allowed_languages = set(preferences.get("preferred_languages") or [])
+        # NOTE: preferred_languages intentionally NOT used here.
+        # Queries are always generated in all core languages (en, de, fr, it) so that
+        # jobs written in any language are discovered — a job posting in German may still
+        # accept Italian-speaking candidates.  Language preference is enforced later at the
+        # job-filtering stage (_passes_structured_filters → _extract_required_language_codes).
         allowed_domains = set(preferences.get("preferred_domains") or [])
 
         stats = {
@@ -131,11 +135,7 @@ class SearchService:
         }
         filtered: List[Dict[str, Any]] = []
         for search in searches:
-            lang = normalize_language(search.get("language", "en"))
             domain = normalize_domain(search.get("domain", "general"))
-            if allowed_languages and lang not in allowed_languages:
-                stats["dropped_language"] += 1
-                continue
             if allowed_domains and domain not in allowed_domains:
                 stats["dropped_domain"] += 1
                 continue
@@ -479,6 +479,19 @@ class SearchService:
             if required_languages and required_languages.isdisjoint(allowed_languages):
                 return False, "preferred_languages"
 
+        # ── CEFR language level check ────────────────────────────────────
+        # Drop jobs that require a language level the candidate clearly cannot meet
+        # (gap >= 2 CEFR tiers). Uses normalized profile languages, so only active
+        # when the profile has been normalized.
+        profile_norm_for_lang = profile_dict.get("profile_normalization") or {}
+        user_languages = profile_norm_for_lang.get("languages") or []
+        if user_languages:
+            ok, reason = self._check_language_level_mismatch(
+                normalized.get("required_languages") or [], user_languages
+            )
+            if not ok:
+                return False, reason
+
         hard_max_distance = preferences.get("hard_max_distance_km")
         if hard_max_distance is not None:
             origin_lat = profile_dict.get("latitude")
@@ -796,6 +809,58 @@ class SearchService:
                 codes.add(code)
         return codes
 
+    # CEFR level rank — higher = better; native treated as C2 when comparing job requirements
+    _CEFR_RANK: Dict[str, int] = {
+        "a1": 1, "a2": 2, "b1": 3, "b2": 4, "c1": 5, "c2": 6, "native": 6,
+    }
+
+    def _check_language_level_mismatch(
+        self,
+        required_languages: list,
+        user_languages: list,
+    ) -> tuple[bool, str]:
+        """Return (False, reason) when a job's required language level exceeds the user's
+        level by 2 or more CEFR tiers for any language both sides declare.
+
+        A gap of 1 tier is within normal tolerance and is passed through so the MATCH
+        LLM can make a nuanced decision. A gap of 2+ tiers (e.g. user A2, job C2) is a
+        hard mismatch — the candidate cannot realistically meet the requirement.
+
+        Only fires when the job has explicit CEFR levels in its required_languages AND
+        the user's profile normalization has corresponding language entries with levels.
+        """
+        # Build a lookup: language_code → user_cefr_rank
+        user_level_map: Dict[str, int] = {}
+        for entry in user_languages:
+            if not isinstance(entry, dict):
+                continue
+            code = str(entry.get("code", "") or "").strip().lower()
+            level = str(entry.get("level", "") or "").strip().lower()
+            rank = self._CEFR_RANK.get(level)
+            if code and rank is not None:
+                # Keep the highest level if a language appears multiple times
+                if code not in user_level_map or rank > user_level_map[code]:
+                    user_level_map[code] = rank
+
+        if not user_level_map:
+            return True, "ok"
+
+        for req in required_languages:
+            if not isinstance(req, dict):
+                continue
+            req_code = str(req.get("code", "") or "").strip().lower()
+            req_level = str(req.get("level", "") or "").strip().lower()
+            req_rank = self._CEFR_RANK.get(req_level)
+            if not req_code or req_rank is None:
+                continue  # no level stated — code-only check already handled above
+            user_rank = user_level_map.get(req_code)
+            if user_rank is None:
+                continue  # user doesn't list this language at all — handled by code filter
+            if req_rank - user_rank >= 2:
+                return False, "language_level_mismatch"
+
+        return True, "ok"
+
     def _build_degraded_fallback_plan(self, profile_dict: dict, profile) -> List[Dict[str, str]]:
         """Build a minimal executable plan when LLM returns no queries.
 
@@ -887,186 +952,26 @@ class SearchService:
         llm_service.clear_provider_cache()
 
         try:
-            profile = self.profile_repo.get(profile_id)
-            if not profile:
-                logger.error(f"Profile {profile_id} not found")
-                return
-
-            profile_dict = {
-                "id": profile.id,
-                "user_id": profile.user_id,
-                "cv_content": profile.cv_content or "",
-                "role_description": profile.role_description or "",
-                "search_strategy": profile.search_strategy or "",
-                "latitude": profile.latitude,
-                "longitude": profile.longitude,
-                # Feature 3: force-regeneration flags (propagated from HTTP request)
-                "force_regenerate_cv_summary": force_regenerate_cv_summary,
-                "force_regenerate_queries": force_regenerate_queries,
-            }
-            profile_preferences = self._profile_preferences(profile)
-            user_id = profile.user_id
-
-            # ── Step 1: Initialize status immediately ──
-            init_status(profile_id, user_id=user_id)
-            add_log(profile_id, "Step 1: Generating/Retrieving search plan...")
-
-            provider_infos = {
-                name: p.get_provider_info() for name, p in self.providers.items() if p
-            }
-
-            searches = await self._generate_plan(profile_id, profile_dict, profile, provider_infos)
-            if not searches:
-                status_data = get_status(profile_id)
-                status_state = status_data.get("state")
-                status_reason = status_data.get("terminal_reason")
-
-                if status_state == "error":
-                    add_log(
-                        profile_id,
-                        f"[LLM_DEBUG] state=error terminal_reason={status_reason or 'llm_plan_error'} profile_id={profile_id}",
-                    )
-                    return
-
-                enable_degraded_fallback = bool(getattr(settings, "SEARCH_ENABLE_DEGRADED_PLAN_FALLBACK", False))
-                if enable_degraded_fallback:
-                    degraded_searches = self._build_degraded_fallback_plan(profile_dict, profile)
-                    if degraded_searches:
-                        searches = degraded_searches
-                        add_log(
-                            profile_id,
-                            f"⚠ LLM returned no usable plan. Using degraded fallback plan with {len(searches)} query(s).",
-                        )
-                        add_log(
-                            profile_id,
-                            f"[LLM_DEBUG] degraded_plan_fallback profile_id={profile_id} queries={len(searches)}",
-                        )
-                        update_status(
-                            profile_id,
-                            terminal_reason="degraded_plan_fallback",
-                            degraded_mode=True,
-                            total_searches=len(searches),
-                            searches_generated=searches,
-                        )
-                    else:
-                        add_log(profile_id, "Degraded fallback plan did not produce executable queries.")
-
-                if searches:
-                    add_log(profile_id, "Continuing search with degraded fallback plan.")
-                else:
-                    terminal_reason = status_reason or "no_queries"
-                    if terminal_reason == "no_valid_queries_after_filter":
-                        add_log(profile_id, "LLM generated plan candidates, but all were filtered out as invalid/duplicates.")
-                    else:
-                        add_log(profile_id, "No valid search queries were generated.")
-                    add_log(profile_id, f"[LLM_DEBUG] state=done terminal_reason={terminal_reason} profile_id={profile_id}")
-                    update_status(profile_id, state="done", terminal_reason=terminal_reason)
-                    return
-
-            # ── CV Summary (with caching Feature 3) ──
-            cv_summary = ""
-            if profile_dict.get("cv_content"):
-                force_regen_cv = profile_dict.get("force_regenerate_cv_summary", False)
-                if profile.cached_cv_summary and not force_regen_cv:
-                    cv_summary = profile.cached_cv_summary
-                    add_log(profile_id, "✓ Using cached CV summary")
-                else:
-                    try:
-                        cv_summary = await llm_service.summarize_cv(profile_dict["cv_content"])
-                        add_log(profile_id, "CV summary generated for efficient analysis")
-                        # Save to cache
-                        self.profile_repo.update(profile, {"cached_cv_summary": cv_summary})
-                    except Exception as e:
-                        logger.warning(f"CV summarization failed: {e}")
-                        cv_summary = profile_dict["cv_content"]
-            profile_dict["cv_summary"] = cv_summary
-
-            # ── Step 1.5: Normalize candidate profile for deterministic matching ──
-            # Runs once per unique (cv, role_description, search_strategy) triplet.
-            # Result is cached on the profile row; force_regenerate_cv_summary also forces
-            # a re-extraction of the profile normalization since CV content drives it.
-            force_regen_cv = profile_dict.get("force_regenerate_cv_summary", False)
-            profile_normalization = await self._normalize_user_profile(
-                profile_id, profile, profile_dict, force=force_regen_cv
+            await asyncio.wait_for(
+                self._run_pipeline(profile_id, force_regenerate_cv_summary, force_regenerate_queries),
+                timeout=settings.SEARCH_PIPELINE_TIMEOUT_SECONDS,
             )
-            profile_dict["profile_normalization"] = profile_normalization
-
-            # ── Step 2: Execute searches with domain routing (Feature 4) ──
-            update_status(profile_id, state="searching")
-            add_log(profile_id, "Step 2: Executing scraper queries...")
-            all_jobs = await self._execute_searches(profile_id, profile, searches, provider_infos)
-            if not all_jobs:
-                add_log(profile_id, "No jobs found across all queries.")
-                add_log(profile_id, f"[LLM_DEBUG] state=done terminal_reason=no_results profile_id={profile_id}")
-                update_status(profile_id, state="done", terminal_reason="no_results")
-                return
-
-            # ── Step 3: Deduplication & Feature 2 (Cross-Profile Applied) ──
-            add_log(profile_id, "Step 3: Deduplicating and checking cross-profile status...")
-            unique_jobs, duplicates = self._deduplicate(profile, all_jobs)
-            add_log(profile_id, f"After dedup: {len(unique_jobs)} new, {duplicates} duplicates")
-
-            if not unique_jobs:
-                add_log(profile_id, "All found jobs are already in profile history.")
-                add_log(profile_id, f"[LLM_DEBUG] state=done terminal_reason=all_duplicates profile_id={profile_id}")
-                update_status(profile_id, state="done", terminal_reason="all_duplicates")
-                return
-
-            # ── Step 4: Persist every unique scraped job before any gating ──
-            add_log(profile_id, f"Step 4: Persisting {len(unique_jobs)} unique fetched jobs into the shared catalog...")
-            await self._persist_scraped_job_catalog(profile_id, unique_jobs)
-
-            # ── Step 4.5: Upgrade provider bootstrap normalization with LLM normalization ──
-            try:
-                await self._normalize_persisted_jobs(profile_id, unique_jobs)
-            except Exception as normalize_error:
-                logger.error(
-                    "LLM normalization failed for profile %s — jobs will proceed without normalized fields: %s",
-                    profile_id,
-                    normalize_error,
-                    exc_info=True,
-                )
-                add_log(
-                    profile_id,
-                    f"Normalization error (jobs will be passed to match step without field-level filtering): {normalize_error}",
-                )
-
-            # ── Step 5: Structured filtering based on persisted job facts ──
-            pre_filter_count = len(unique_jobs)
-            unique_jobs = self._apply_structured_filters(profile_id, profile_dict, unique_jobs, profile_preferences)
-            filtered_out_count = pre_filter_count - len(unique_jobs)
-
-            if not unique_jobs:
-                add_log(profile_id, "No jobs left after structured filtering.")
-                add_log(profile_id, f"[LLM_DEBUG] state=done terminal_reason=no_jobs_after_structured_filters profile_id={profile_id}")
-                update_status(profile_id, state="done", terminal_reason="no_jobs_after_structured_filters")
-                return
-
+        except asyncio.TimeoutError:
+            logger.error(
+                "Pipeline timeout for profile %d after %d seconds",
+                profile_id,
+                settings.SEARCH_PIPELINE_TIMEOUT_SECONDS,
+            )
+            add_log(
+                profile_id,
+                f"Pipeline exceeded maximum allowed time ({settings.SEARCH_PIPELINE_TIMEOUT_SECONDS}s). "
+                "Search terminated.",
+            )
             update_status(
                 profile_id,
-                state="analyzing",
-                jobs_found=len(all_jobs),
-                jobs_new=len(unique_jobs),
-                jobs_duplicates=duplicates,
-                jobs_skipped=filtered_out_count,
-            )
-
-            # ── Step 6: Analyze & save each structurally eligible job (Parallel) ──
-            add_log(profile_id, f"Step 6: Detailed analysis and match scoring ({len(unique_jobs)} jobs)...")
-            saved_count, skipped_count = await self._analyze_and_save(profile_id, profile_dict, unique_jobs)
-            total_skipped = filtered_out_count + skipped_count
-
-            add_log(profile_id, f"✓ Search complete – {saved_count} jobs saved, {skipped_count} skipped")
-            add_log(profile_id, f"[LLM_DEBUG] state=done terminal_reason=completed profile_id={profile_id} jobs_saved={saved_count} jobs_skipped={skipped_count}")
-            update_status(
-                profile_id,
-                state="done",
-                terminal_reason="completed",
-                finished_at=datetime.now(timezone.utc).isoformat(),
-                jobs_found=len(all_jobs),
-                jobs_new=saved_count,
-                jobs_duplicates=duplicates,
-                jobs_skipped=total_skipped
+                state="error",
+                terminal_reason="pipeline_timeout",
+                error=f"Pipeline timed out after {settings.SEARCH_PIPELINE_TIMEOUT_SECONDS}s",
             )
         except Exception as e:
             logger.error(f"Unexpected error in run_search for profile {profile_id}: {e}", exc_info=True)
@@ -1093,6 +998,195 @@ class SearchService:
                     logger.warning("Failed to close provider %s cleanly: %s", provider_name, close_error)
 
             unregister_task(profile_id)
+
+    async def _run_pipeline(
+        self,
+        profile_id: int,
+        force_regenerate_cv_summary: bool = False,
+        force_regenerate_queries: bool = False,
+    ) -> None:
+        """Execute the core search pipeline steps (wrapped by run_search with timeout)."""
+        profile = self.profile_repo.get(profile_id)
+        if not profile:
+            logger.error(f"Profile {profile_id} not found")
+            return
+
+        profile_dict = {
+            "id": profile.id,
+            "user_id": profile.user_id,
+            "cv_content": profile.cv_content or "",
+            "role_description": profile.role_description or "",
+            "search_strategy": profile.search_strategy or "",
+            "latitude": profile.latitude,
+            "longitude": profile.longitude,
+            # Feature 3: force-regeneration flags (propagated from HTTP request)
+            "force_regenerate_cv_summary": force_regenerate_cv_summary,
+            "force_regenerate_queries": force_regenerate_queries,
+        }
+        profile_preferences = self._profile_preferences(profile)
+        user_id = profile.user_id
+
+        # ── Step 1: Initialize status immediately ──
+        init_status(profile_id, user_id=user_id)
+        add_log(profile_id, "Step 1: Generating/Retrieving search plan...")
+
+        provider_infos = {
+            name: p.get_provider_info() for name, p in self.providers.items() if p
+        }
+
+        searches = await self._generate_plan(profile_id, profile_dict, profile, provider_infos)
+        if not searches:
+            status_data = get_status(profile_id)
+            status_state = status_data.get("state")
+            status_reason = status_data.get("terminal_reason")
+
+            if status_state == "error":
+                add_log(
+                    profile_id,
+                    f"[LLM_DEBUG] state=error terminal_reason={status_reason or 'llm_plan_error'} profile_id={profile_id}",
+                )
+                return
+
+            enable_degraded_fallback = bool(getattr(settings, "SEARCH_ENABLE_DEGRADED_PLAN_FALLBACK", False))
+            if enable_degraded_fallback:
+                degraded_searches = self._build_degraded_fallback_plan(profile_dict, profile)
+                if degraded_searches:
+                    searches = degraded_searches
+                    add_log(
+                        profile_id,
+                        f"⚠ LLM returned no usable plan. Using degraded fallback plan with {len(searches)} query(s).",
+                    )
+                    add_log(
+                        profile_id,
+                        f"[LLM_DEBUG] degraded_plan_fallback profile_id={profile_id} queries={len(searches)}",
+                    )
+                    update_status(
+                        profile_id,
+                        terminal_reason="degraded_plan_fallback",
+                        degraded_mode=True,
+                        total_searches=len(searches),
+                        searches_generated=searches,
+                    )
+                else:
+                    add_log(profile_id, "Degraded fallback plan did not produce executable queries.")
+
+            if searches:
+                add_log(profile_id, "Continuing search with degraded fallback plan.")
+            else:
+                terminal_reason = status_reason or "no_queries"
+                if terminal_reason == "no_valid_queries_after_filter":
+                    add_log(profile_id, "LLM generated plan candidates, but all were filtered out as invalid/duplicates.")
+                else:
+                    add_log(profile_id, "No valid search queries were generated.")
+                add_log(profile_id, f"[LLM_DEBUG] state=done terminal_reason={terminal_reason} profile_id={profile_id}")
+                update_status(profile_id, state="done", terminal_reason=terminal_reason)
+                return
+
+        # ── CV Summary (with caching Feature 3) ──
+        cv_summary = ""
+        if profile_dict.get("cv_content"):
+            force_regen_cv = profile_dict.get("force_regenerate_cv_summary", False)
+            if profile.cached_cv_summary and not force_regen_cv:
+                cv_summary = profile.cached_cv_summary
+                add_log(profile_id, "✓ Using cached CV summary")
+            else:
+                try:
+                    cv_summary = await llm_service.summarize_cv(profile_dict["cv_content"])
+                    add_log(profile_id, "CV summary generated for efficient analysis")
+                    # Save to cache
+                    self.profile_repo.update(profile, {"cached_cv_summary": cv_summary})
+                except Exception as e:
+                    logger.warning(f"CV summarization failed: {e}")
+                    cv_summary = profile_dict["cv_content"]
+        profile_dict["cv_summary"] = cv_summary
+
+        # ── Step 1.5: Normalize candidate profile for deterministic matching ──
+        # Runs once per unique (cv, role_description, search_strategy) triplet.
+        # Result is cached on the profile row; force_regenerate_cv_summary also forces
+        # a re-extraction of the profile normalization since CV content drives it.
+        force_regen_cv = profile_dict.get("force_regenerate_cv_summary", False)
+        profile_normalization = await self._normalize_user_profile(
+            profile_id, profile, profile_dict, force=force_regen_cv
+        )
+        profile_dict["profile_normalization"] = profile_normalization
+
+        # ── Step 2: Execute searches with domain routing (Feature 4) ──
+        update_status(profile_id, state="searching")
+        add_log(profile_id, "Step 2: Executing scraper queries...")
+        all_jobs = await self._execute_searches(profile_id, profile, searches, provider_infos)
+        if not all_jobs:
+            add_log(profile_id, "No jobs found across all queries.")
+            add_log(profile_id, f"[LLM_DEBUG] state=done terminal_reason=no_results profile_id={profile_id}")
+            update_status(profile_id, state="done", terminal_reason="no_results")
+            return
+
+        # ── Step 3: Deduplication & Feature 2 (Cross-Profile Applied) ──
+        add_log(profile_id, "Step 3: Deduplicating and checking cross-profile status...")
+        unique_jobs, duplicates = self._deduplicate(profile, all_jobs)
+        add_log(profile_id, f"After dedup: {len(unique_jobs)} new, {duplicates} duplicates")
+
+        if not unique_jobs:
+            add_log(profile_id, "All found jobs are already in profile history.")
+            add_log(profile_id, f"[LLM_DEBUG] state=done terminal_reason=all_duplicates profile_id={profile_id}")
+            update_status(profile_id, state="done", terminal_reason="all_duplicates")
+            return
+
+        # ── Step 4: Persist every unique scraped job before any gating ──
+        add_log(profile_id, f"Step 4: Persisting {len(unique_jobs)} unique fetched jobs into the shared catalog...")
+        await self._persist_scraped_job_catalog(profile_id, unique_jobs)
+
+        # ── Step 4.5: Upgrade provider bootstrap normalization with LLM normalization ──
+        try:
+            await self._normalize_persisted_jobs(profile_id, unique_jobs)
+        except Exception as normalize_error:
+            logger.error(
+                "LLM normalization failed for profile %s — jobs will proceed without normalized fields: %s",
+                profile_id,
+                normalize_error,
+                exc_info=True,
+            )
+            add_log(
+                profile_id,
+                f"Normalization error (jobs will be passed to match step without field-level filtering): {normalize_error}",
+            )
+
+        # ── Step 5: Structured filtering based on persisted job facts ──
+        pre_filter_count = len(unique_jobs)
+        unique_jobs = self._apply_structured_filters(profile_id, profile_dict, unique_jobs, profile_preferences)
+        filtered_out_count = pre_filter_count - len(unique_jobs)
+
+        if not unique_jobs:
+            add_log(profile_id, "No jobs left after structured filtering.")
+            add_log(profile_id, f"[LLM_DEBUG] state=done terminal_reason=no_jobs_after_structured_filters profile_id={profile_id}")
+            update_status(profile_id, state="done", terminal_reason="no_jobs_after_structured_filters")
+            return
+
+        update_status(
+            profile_id,
+            state="analyzing",
+            jobs_found=len(all_jobs),
+            jobs_new=len(unique_jobs),
+            jobs_duplicates=duplicates,
+            jobs_skipped=filtered_out_count,
+        )
+
+        # ── Step 6: Analyze & save each structurally eligible job (Parallel) ──
+        add_log(profile_id, f"Step 6: Detailed analysis and match scoring ({len(unique_jobs)} jobs)...")
+        saved_count, skipped_count = await self._analyze_and_save(profile_id, profile_dict, unique_jobs)
+        total_skipped = filtered_out_count + skipped_count
+
+        add_log(profile_id, f"✓ Search complete – {saved_count} jobs saved, {skipped_count} skipped")
+        add_log(profile_id, f"[LLM_DEBUG] state=done terminal_reason=completed profile_id={profile_id} jobs_saved={saved_count} jobs_skipped={skipped_count}")
+        update_status(
+            profile_id,
+            state="done",
+            terminal_reason="completed",
+            finished_at=datetime.now(timezone.utc).isoformat(),
+            jobs_found=len(all_jobs),
+            jobs_new=saved_count,
+            jobs_duplicates=duplicates,
+            jobs_skipped=total_skipped
+        )
 
     # ───────────────────────── helper methods ─────────────────────────
 
@@ -1523,18 +1617,29 @@ class SearchService:
                     raw_norm = getattr(job, "_normalized_job_data", None) or {}
                     normalized_data = {
                         "domain": raw_norm.get("domain"),
-                        "role_type": raw_norm.get("normalized_role_type"),
-                        "industry_sector": raw_norm.get("normalized_industry_sector"),
+                        "role_type": raw_norm.get("role_type") or raw_norm.get("normalized_role_type"),
+                        "industry_sector": raw_norm.get("industry_sector") or raw_norm.get("normalized_industry_sector"),
                         "seniority": raw_norm.get("seniority"),
                         "qualification_level": raw_norm.get("qualification_level"),
                         "required_skills": raw_norm.get("required_skills"),
+                        "preferred_skills": raw_norm.get("preferred_skills"),
                         "experience_min_years": raw_norm.get("experience_min_years"),
                         "experience_max_years": raw_norm.get("experience_max_years"),
+                        "required_languages": raw_norm.get("required_languages"),
+                        "entry_barrier": raw_norm.get("entry_barrier"),
+                        "career_changer_friendly": raw_norm.get("career_changer_friendly"),
+                        "hard_blockers": raw_norm.get("hard_blockers"),
+                        "education_levels": raw_norm.get("education_levels"),
+                        "key_requirements": raw_norm.get("key_requirements"),
+                        "physical_requirements": raw_norm.get("physical_requirements"),
+                        "soft_skills": raw_norm.get("soft_skills"),
                     }
 
                     jobs_metadata.append({
                         "title": getattr(job, "title", "Unknown"),
-                        "description": desc_text[:settings.MAX_DESCRIPTION_CHARS],
+                        "description": await llm_service._compress_description_if_needed(
+                            desc_text, settings.MAX_DESCRIPTION_CHARS
+                        ),
                         "location": job.location.city if getattr(job, "location", None) else "Unknown",
                         "workload": f"{job.employment.workload_min}-{job.employment.workload_max}%" if getattr(job, "employment", None) else "Unknown",
                         "languages": [f"{s.language_code} ({s.spoken_level})" for s in getattr(job, "language_skills", [])] if getattr(job, "language_skills", None) else [],

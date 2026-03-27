@@ -134,17 +134,29 @@ class Settings(BaseSettings):
     MAX_UPLOAD_FILE_SIZE: int = 10 * 1024 * 1024  # 10 MB
 
     # Analysis Pipeline Tuning
-    MAX_DESCRIPTION_CHARS: int = 6000
+    MAX_DESCRIPTION_CHARS: int = 64000
     SEARCH_EXECUTION_MODE: str = "sequential"
     SEARCH_CONCURRENCY: int = 3
-    SEARCH_PLAN_BATCH_SIZE: int = 15
     SEARCH_PLAN_ENABLE_LOOSE_DEDUP: bool = True
-    SEARCH_PLAN_STALL_MAX_BATCHES: int = 2
     SEARCH_ENABLE_DEGRADED_PLAN_FALLBACK: bool = True
     SEARCH_DEGRADED_PLAN_MAX_QUERIES: int = 3
     SEARCH_DEGRADED_PLAN_MAX_KEYWORDS: int = 2
     ANALYSIS_CONCURRENCY: int = 15
     ANALYSIS_BATCH_SIZE: int = 5
+
+    # Pipeline & LLM call timeouts
+    # Total allowed wall-clock time for a single end-to-end search run (seconds).
+    SEARCH_PIPELINE_TIMEOUT_SECONDS: int = 1800  # 30 minutes
+    # Per-step LLM call timeouts (seconds).  0 = disabled.
+    LLM_CALL_TIMEOUT_PLAN: int = 60
+    LLM_CALL_TIMEOUT_NORMALIZE: int = 90
+    LLM_CALL_TIMEOUT_MATCH: int = 120
+
+    # Circuit breaker (per provider)
+    # Number of consecutive failures before tripping to OPEN state.
+    CIRCUIT_BREAKER_FAILURE_THRESHOLD: int = 5
+    # Seconds to wait in OPEN state before trying a probe call (HALF_OPEN).
+    CIRCUIT_BREAKER_RECOVERY_SECONDS: int = 60
 
     # Normalization-based profile matching (Phase 2)
     # When enabled, structured filters compare normalized user profile fields

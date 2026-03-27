@@ -9,6 +9,8 @@ def mock_provider():
     provider.generate_json_async = AsyncMock()
     provider.generate_text_async = AsyncMock()
     provider.model_id = "groq/test-model"
+    # Alias: generate_json_async_with_timeout routes through generate_json_async in tests
+    provider.generate_json_async_with_timeout = provider.generate_json_async
     return provider
 
 @pytest.fixture
@@ -77,28 +79,18 @@ async def test_generate_search_plan_respects_max_queries(mock_provider):
         assert len(plan) == 3
 
 @pytest.mark.asyncio
-async def test_generate_search_plan_batches_to_reach_target(mock_provider):
-    mock_provider.generate_json_async.side_effect = [
-        {
-            "searches": [
-                {"domain": "it", "language": "en", "type": "occupation", "query": "Backend Engineer"},
-                {"domain": "it", "language": "en", "type": "keyword", "query": "Python"},
-            ]
-        },
-        {
-            "searches": [
-                {"domain": "it", "language": "de", "type": "occupation", "query": "Softwareentwickler"},
-                {"domain": "it", "language": "fr", "type": "keyword", "query": "Docker"},
-            ]
-        },
-    ]
+async def test_generate_search_plan_single_shot_returns_all(mock_provider):
+    """With single-shot generation, all queries come from one LLM call."""
+    mock_provider.generate_json_async.return_value = {
+        "searches": [
+            {"domain": "it", "language": "en", "type": "occupation", "query": "Backend Engineer"},
+            {"domain": "it", "language": "en", "type": "keyword", "query": "Python"},
+            {"domain": "it", "language": "de", "type": "occupation", "query": "Softwareentwickler"},
+            {"domain": "it", "language": "fr", "type": "keyword", "query": "Docker"},
+        ]
+    }
 
-    with patch("backend.services.llm_service.get_provider_for_step", return_value=mock_provider), \
-         patch("backend.services.llm_service.settings") as mock_settings:
-        mock_settings.LLM_SUMMARY_PROVIDER = ""
-        mock_settings.LLM_SUMMARY_API_KEY = ""
-        mock_settings.LLM_SUMMARY_MODEL = ""
-        mock_settings.SEARCH_PLAN_BATCH_SIZE = 2
+    with patch("backend.services.llm_service.get_provider_for_step", return_value=mock_provider):
         service = LLMService()
 
         plan = await service.generate_search_plan(
@@ -108,40 +100,29 @@ async def test_generate_search_plan_batches_to_reach_target(mock_provider):
         )
 
         assert len(plan) == 4
-        assert mock_provider.generate_json_async.call_count == 2
+        assert mock_provider.generate_json_async.call_count == 1
 
 @pytest.mark.asyncio
-async def test_generate_search_plan_stops_on_underfilled_no_retry(mock_provider):
-    """Verify the system stops when a batch is underfilled and cannot be completed without retry."""
-    mock_provider.generate_json_async.side_effect = [
-        {
-            "searches": [
-                {"domain": "it", "language": "en", "type": "occupation", "query": "Backend Engineer"},
-            ]
-        },
-        {
-            "searches": [
-                {"domain": "it", "language": "en", "type": "occupation", "query": "Backend Engineer"},
-                {"domain": "it", "language": "en", "type": "keyword", "query": "Python"},
-            ]
-        },
-    ]
+async def test_generate_search_plan_partial_result_accepted(mock_provider):
+    """When LLM returns fewer queries than requested, the partial result is accepted."""
+    mock_provider.generate_json_async.return_value = {
+        "searches": [
+            {"domain": "it", "language": "en", "type": "occupation", "query": "Backend Engineer"},
+        ]
+    }
 
-    with patch("backend.services.llm_service.get_provider_for_step", return_value=mock_provider), \
-         patch("backend.services.llm_service.settings") as mock_settings:
-        mock_settings.SEARCH_PLAN_BATCH_SIZE = 2
+    with patch("backend.services.llm_service.get_provider_for_step", return_value=mock_provider):
         service = LLMService()
 
         plan = await service.generate_search_plan(
             {"role_description": "Python developer", "search_strategy": "", "cv_content": "Python"},
             [],
-            max_queries=2,
+            max_queries=4,
         )
 
-        # Batch 1 gives 1 unique query. Batch 2 (asking for 1) gives a duplicate.
-        # System stalls and terminates early instead of retrying to get the missing 1 query.
+        # Single call returns whatever the LLM provided, even if fewer than max_queries
         assert len(plan) == 1
-        assert mock_provider.generate_json_async.call_count == 2
+        assert mock_provider.generate_json_async.call_count == 1
 
 @pytest.mark.asyncio
 @pytest.mark.asyncio
@@ -546,83 +527,6 @@ async def test_generate_search_plan_batch_stops_after_stall(mock_provider):
 
         assert len(plan) == 0
         service._call_generate_search_plan.assert_called_once()
-
-
-# ─── Coverage Report Tests ─────────────────────────────────────────────────────
-
-def test_build_coverage_report_returns_empty_for_no_queries(llm_service):
-    """First batch has no collected queries — report should be empty string."""
-    report = llm_service._build_coverage_report([])
-    assert report == ""
-
-
-def test_build_coverage_report_basic_structure(llm_service):
-    """Verify the report includes distribution stats and the full structured query list."""
-    collected = [
-        {"type": "occupation", "domain": "it", "language": "en", "query": "Software Engineer"},
-        {"type": "keyword", "domain": "it", "language": "de", "query": "Python"},
-        {"type": "occupation", "domain": "finance", "language": "fr", "query": "Analyste financier"},
-    ]
-    report = llm_service._build_coverage_report(collected)
-
-    assert "COVERAGE SO FAR (3 queries" in report
-    assert "occupation=2, keyword=1" in report
-    assert "it=2" in report
-    assert "finance=1" in report
-    assert "Software Engineer" in report
-    assert "Python" in report
-    assert "Analyste financier" in report
-    assert "do NOT repeat" in report
-    assert "Focus your new queries" in report
-
-
-def test_build_coverage_report_remaining_needed(llm_service):
-    """Remaining occupation/keyword counts should appear in the report when provided."""
-    collected = [
-        {"type": "occupation", "domain": "it", "language": "en", "query": "Backend Engineer"},
-    ]
-    report = llm_service._build_coverage_report(collected, remaining_occupations=5, remaining_keywords=3)
-
-    assert "STILL NEEDED: 5 more occupation" in report
-    assert "3 more keyword" in report
-
-
-def test_build_coverage_report_identifies_missing_languages(llm_service):
-    """Report should flag core languages (en/de/fr/it) that have no queries yet."""
-    collected = [
-        {"type": "occupation", "domain": "it", "language": "en", "query": "Backend Engineer"},
-        {"type": "keyword", "domain": "it", "language": "de", "query": "Python"},
-    ]
-    report = llm_service._build_coverage_report(collected)
-
-    # Both fr and it are missing from a 2-query set
-    assert "Missing languages" in report
-    assert "fr" in report
-    assert "it" in report
-
-
-def test_build_coverage_report_caps_list_at_100_entries(llm_service):
-    """Verify the structured list is capped at 100 entries for token budget control."""
-    collected = [
-        {"type": "occupation", "domain": "it", "language": "en", "query": f"Engineer {i}"}
-        for i in range(120)
-    ]
-    report = llm_service._build_coverage_report(collected)
-
-    assert "120 queries already generated" in report
-    assert "20 earlier queries omitted" in report
-    assert "Engineer 119" in report  # last entry is present
-    assert "Engineer 0" not in report  # first 20 entries omitted
-
-
-def test_build_coverage_report_structured_row_format(llm_service):
-    """Each query in the list should appear with type, domain, language, and text."""
-    collected = [
-        {"type": "occupation", "domain": "finance", "language": "fr", "query": "Analyste financier"},
-    ]
-    report = llm_service._build_coverage_report(collected)
-
-    assert "[occupation] [finance] [fr] Analyste financier" in report
 
 
 # ─── Dual-signal normalize_user_profile tests ────────────────────────────────

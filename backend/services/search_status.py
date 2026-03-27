@@ -239,10 +239,29 @@ def clear_status(profile_id: int):
         _save_statuses(force=True, statuses_snapshot=snapshot)
 
 def register_task(profile_id: int, task: Any):
-    """Register an active search task."""
+    """Register an active search task.
+
+    Guards against a second worker overwriting an already-active task for the
+    same profile_id (cross-worker race).  If the slot is already occupied by a
+    live task the call is a no-op and returns False so the caller can abort.
+    """
     with _lock:
         _reserved_tasks.pop(profile_id, None)
+        existing = _active_tasks.get(profile_id)
+        if existing is not None:
+            # Check if the existing task is still alive before refusing.
+            import asyncio
+            try:
+                if not existing.done():
+                    logger.warning(
+                        "register_task: profile %d already has an active task — ignoring duplicate registration",
+                        profile_id,
+                    )
+                    return False
+            except Exception:
+                pass  # Non-asyncio task object — treat as replaced
         _active_tasks[profile_id] = task
+        return True
 
 
 def unregister_task(profile_id: int):
@@ -252,12 +271,48 @@ def unregister_task(profile_id: int):
         _active_tasks.pop(profile_id, None)
 
 
+def get_all_active_tasks() -> dict:
+    """Return a snapshot of {profile_id: task} for graceful shutdown."""
+    with _lock:
+        return dict(_active_tasks)
+
+
 def reserve_task(profile_id: int) -> bool:
-    """Reserve a profile before the background task is registered."""
+    """Reserve a profile before the background task is registered.
+
+    Cross-worker safe: in addition to checking the in-process task registries
+    this also inspects the shared JSON status file so that a reservation made
+    by a sibling Gunicorn worker is honoured.  A non-terminal status entry
+    whose ``started_at`` was created after this worker booted means another
+    worker already owns (or just started) the search.
+    """
     with _lock:
         _cleanup_stale_reservations()
         if profile_id in _active_tasks or profile_id in _reserved_tasks:
             return False
+
+        # Cross-worker guard: check the shared status file.
+        try:
+            file_data = _load_statuses()
+            file_entry = file_data.get(profile_id)
+            if file_entry:
+                file_state = file_entry.get("state", "unknown")
+                file_started = file_entry.get("started_at") or ""
+                # Non-terminal status that was started AFTER this worker booted
+                # means another live worker owns this profile's search.
+                if (
+                    file_state not in _TERMINAL_STATES
+                    and file_state != "unknown"
+                    and file_started >= _WORKER_BOOT_TIME
+                ):
+                    logger.info(
+                        "reserve_task: profile %d is already running on another worker (state=%s, started=%s)",
+                        profile_id, file_state, file_started,
+                    )
+                    return False
+        except Exception as exc:
+            logger.warning("reserve_task: failed to read status file for cross-worker check: %s", exc)
+
         _reserved_tasks[profile_id] = time.time()
         return True
 

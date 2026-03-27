@@ -1,11 +1,11 @@
 import logging
 import threading
-from collections import Counter
 from typing import Any, Dict, List, Optional
 
 from tenacity import retry, stop_after_attempt, wait_exponential
 
 from backend.core.config import settings
+from backend.providers.circuit_breaker import CircuitOpenError, circuit_registry
 from backend.providers.llm.factory import get_provider_for_step
 from backend.services.search.query_contracts import (
     compute_plan_input_fingerprint,
@@ -44,6 +44,36 @@ class LLMService:
         """Force reload of all LLM providers (e.g. if config changes)."""
         with self._provider_cache_lock:
             self._provider_cache.clear()
+
+    async def _call_provider_json(
+        self,
+        provider,
+        step: str,
+        system_prompt: str,
+        user_prompt: str,
+        max_tokens: Optional[int] = None,
+    ) -> Dict[str, Any]:
+        """Invoke provider.generate_json_async with per-step timeout + circuit breaker.
+
+        Uses the circuit breaker keyed on the provider's model_id so that
+        repeated failures trip the breaker and subsequent calls fail fast
+        (raising CircuitOpenError) rather than blocking for the full timeout.
+        """
+        cb = circuit_registry.get(
+            provider.model_id,
+            failure_threshold=settings.CIRCUIT_BREAKER_FAILURE_THRESHOLD,
+            recovery_seconds=float(settings.CIRCUIT_BREAKER_RECOVERY_SECONDS),
+        )
+
+        async def _do_call() -> Dict[str, Any]:
+            return await provider.generate_json_async_with_timeout(
+                system_prompt,
+                user_prompt,
+                max_tokens,
+                step=step,
+            )
+
+        return await cb.call(_do_call())
 
 
     def _extract_searches_payload(self, result: Any) -> tuple[List[Dict[str, Any]], str, bool]:
@@ -136,7 +166,7 @@ Return plain text, NOT JSON."""
         provider = self._get_provider("normalize_profile")
 
         strategy_block = (
-            f"\n\nSEARCH STRATEGY / EXTRA INSTRUCTIONS:\n{sanitize_prompt_text(search_strategy, max_chars=800)}"
+            f"\n\nSEARCH STRATEGY / EXTRA INSTRUCTIONS:\n{sanitize_prompt_text(search_strategy, max_chars=3000)}"
             if search_strategy.strip()
             else ""
         )
@@ -192,11 +222,11 @@ TRANSFERABLE SKILLS RULE: These are competencies that cross domain boundaries �
 DEALBREAKER RULE: Extract explicit negative constraints from the strategy/instructions only. Do not infer dealbreakers.
 FLEXIBILITY RULE: domain=true if the user is explicitly open to different domains. seniority=true if they express openness to a range. qualification=true if they say qualifications don't matter. location=true if they mention remote/any location.
 
-CV (truncated to 5000 chars):
-{sanitize_prompt_text(cv_content, max_chars=5000)}
+CV:
+{sanitize_prompt_text(cv_content, max_chars=20000)}
 
 ROLE DESCRIPTION (what the user is looking for):
-{sanitize_prompt_text(role_description, max_chars=800)}{strategy_block}
+{sanitize_prompt_text(role_description, max_chars=3000)}{strategy_block}
 
 Return ONLY JSON — no markdown, no explanations:
 {{
@@ -230,7 +260,7 @@ Return ONLY JSON — no markdown, no explanations:
   }}
 }}"""
 
-        result = await provider.generate_json_async(system_prompt, user_prompt)
+        result = await self._call_provider_json(provider, "normalize_profile", system_prompt, user_prompt)
 
         if not isinstance(result, dict):
             return {}
@@ -391,19 +421,6 @@ Return ONLY JSON — no markdown, no explanations:
             ):
                 raise ValueError("The sum of occupation and keyword query limits cannot exceed max_queries")
 
-        total_target = max_queries
-        if total_target is None and max_occupation_queries is not None and max_keyword_queries is not None:
-            total_target = max_occupation_queries + max_keyword_queries
-
-        if total_target is not None:
-            return await self._generate_search_plan_in_batches(
-                profile,
-                providers_info,
-                total_target=total_target,
-                max_occupation_queries=max_occupation_queries,
-                max_keyword_queries=max_keyword_queries,
-            )
-
         searches = await self._call_generate_search_plan(
             profile,
             providers_info,
@@ -412,175 +429,6 @@ Return ONLY JSON — no markdown, no explanations:
             max_keyword_queries=max_keyword_queries,
         )
         return searches
-
-    @staticmethod
-    def _build_coverage_report(
-        collected: List[Dict[str, Any]],
-        remaining_occupations: Optional[int] = None,
-        remaining_keywords: Optional[int] = None,
-    ) -> str:
-        """Build a structured coverage report for progressive context injection.
-
-        Returns an empty string when no queries have been collected yet (first batch).
-        For subsequent batches, provides distribution stats, gap hints, and the full
-        structured query list so the LLM can intelligently fill coverage gaps.
-        The structured list is capped at 100 entries to keep token usage predictable.
-        """
-        if not collected:
-            return ""
-
-        domain_counts: Counter = Counter()
-        language_counts: Counter = Counter()
-        type_counts: Counter = Counter()
-
-        for item in collected:
-            domain_counts[item.get("domain", "general")] += 1
-            language_counts[item.get("language", "en")] += 1
-            type_counts[item.get("type", "keyword")] += 1
-
-        occ_count = type_counts.get("occupation", 0)
-        kw_count = type_counts.get("keyword", 0)
-        total_queries = len(collected)
-
-        # Cap structured list at 100 entries to keep token budget predictable
-        _MAX_LIST_ENTRIES = 100
-        display_list = collected[-_MAX_LIST_ENTRIES:]
-        omitted = total_queries - len(display_list)
-
-        query_lines = [
-            f"  [{item.get('type', '?')}] [{item.get('domain', 'general')}] [{item.get('language', '?')}] {item.get('query', '')}"
-            for item in display_list
-        ]
-        if omitted > 0:
-            query_lines.insert(0, f"  (... {omitted} earlier queries omitted for brevity ...)")
-        query_list_str = "\n".join(query_lines)
-
-        domain_str = ", ".join(
-            f"{d}={c}" for d, c in sorted(domain_counts.items(), key=lambda x: -x[1])
-        )
-        language_str = ", ".join(
-            f"{lang}={c}" for lang, c in sorted(language_counts.items(), key=lambda x: -x[1])
-        )
-
-        gap_hints: List[str] = []
-        core_langs = {"en", "de", "fr", "it"}
-        missing_langs = core_langs - set(language_counts.keys())
-        if missing_langs:
-            gap_hints.append(f"Missing languages: {', '.join(sorted(missing_langs))}")
-        else:
-            under_langs = sorted(
-                lang for lang in core_langs
-                if language_counts.get(lang, 0) / total_queries < 0.15
-            )
-            if under_langs:
-                gap_hints.append(f"Underrepresented languages: {', '.join(under_langs)}")
-
-        remaining_str = ""
-        if remaining_occupations is not None and remaining_keywords is not None:
-            remaining_str = (
-                f"\n  STILL NEEDED: {remaining_occupations} more occupation"
-                f" + {remaining_keywords} more keyword queries"
-            )
-
-        gap_str = ""
-        if gap_hints:
-            gap_str = "\n  GAP HINTS: " + "; ".join(gap_hints)
-
-        return (
-            f"COVERAGE SO FAR ({total_queries} queries already generated):\n"
-            f"  Distribution — types: occupation={occ_count}, keyword={kw_count}"
-            f" | domains: {domain_str} | languages: {language_str}"
-            f"{remaining_str}"
-            f"{gap_str}\n"
-            f"  FULL LIST (do NOT repeat any of these):\n"
-            f"{query_list_str}\n"
-            f"  Focus your new queries on dimensions not yet covered"
-            f" (new domains, missing/underrepresented languages, role variants, different skills)."
-        )
-
-    async def _generate_search_plan_in_batches(
-        self,
-        profile: Dict[str, Any],
-        providers_info: List[Any],
-        total_target: int,
-        max_occupation_queries: Optional[int] = None,
-        max_keyword_queries: Optional[int] = None,
-    ) -> List[Dict[str, Any]]:
-        collected: List[Dict[str, Any]] = []
-        seen_fingerprints = set()
-        seen_loose_fingerprints = set()
-        remaining_occupations = max_occupation_queries
-        remaining_keywords = max_keyword_queries
-        batch_size_limit = max(1, settings.SEARCH_PLAN_BATCH_SIZE)
-
-        while len(collected) < total_target:
-            remaining_total = total_target - len(collected)
-            batch_size = min(batch_size_limit, remaining_total)
-            batch_occ, batch_kw = self._plan_batch_targets(
-                batch_size,
-                remaining_total,
-                remaining_occupations,
-                remaining_keywords,
-            )
-
-            try:
-                batch_searches = await self._call_generate_search_plan(
-                    profile,
-                    providers_info,
-                    max_queries=batch_size,
-                    max_occupation_queries=batch_occ,
-                    max_keyword_queries=batch_kw,
-                    coverage_context=self._build_coverage_report(
-                        collected, remaining_occupations, remaining_keywords
-                    ),
-                )
-            except Exception as batch_error:
-                if collected:
-                    logger.warning(
-                        "[PLAN] Batch call failed, returning partial plan %s/%s: %s",
-                        len(collected),
-                        total_target,
-                        batch_error,
-                    )
-                    return collected[:total_target]
-                raise
-
-            best_batch = self._normalize_searches(
-                batch_searches,
-                seen_fingerprints,
-                seen_loose_fingerprints,
-            )
-
-            if not best_batch:
-                logger.warning("[PLAN] Batch generation stalled with no new unique queries; terminating early.")
-                break
-
-            batch_to_add = best_batch[:batch_size]
-            for item in batch_to_add:
-                fingerprint = _query_fingerprint(item)
-                if fingerprint in seen_fingerprints:
-                    continue
-                seen_fingerprints.add(fingerprint)
-                loose_fingerprint = loose_query_fingerprint(item)
-                if loose_fingerprint:
-                    seen_loose_fingerprints.add(loose_fingerprint)
-                collected.append(item)
-
-            if remaining_occupations is not None:
-                remaining_occupations = max(0, remaining_occupations - sum(1 for item in batch_to_add if item.get("type") == "occupation"))
-            if remaining_keywords is not None:
-                remaining_keywords = max(0, remaining_keywords - sum(1 for item in batch_to_add if item.get("type") == "keyword"))
-
-            logger.info("[PLAN] Collected %s/%s search queries", len(collected), total_target)
-
-            if len(batch_to_add) < batch_size and len(collected) < total_target:
-                logger.warning(
-                    "[PLAN] Batch under-filled (%s/%s unique queries); continuing with another batch",
-                    len(batch_to_add),
-                    batch_size,
-                )
-
-        return collected[:total_target]
 
     def _normalize_searches(
         self,
@@ -646,48 +494,6 @@ Return ONLY JSON — no markdown, no explanations:
 
         return normalized
 
-    def _plan_batch_targets(
-        self,
-        batch_size: int,
-        remaining_total: int,
-        remaining_occupations: Optional[int],
-        remaining_keywords: Optional[int],
-    ) -> tuple[int, int]:
-        if remaining_occupations is not None and remaining_keywords is not None:
-            strict_total = remaining_occupations + remaining_keywords
-            if strict_total <= 0:
-                return batch_size, 0
-            occupation_target = round(batch_size * (remaining_occupations / strict_total))
-            occupation_target = min(remaining_occupations, max(0, occupation_target))
-            keyword_target = batch_size - occupation_target
-            if keyword_target > remaining_keywords:
-                keyword_target = remaining_keywords
-                occupation_target = batch_size - keyword_target
-            if occupation_target > remaining_occupations:
-                occupation_target = remaining_occupations
-                keyword_target = batch_size - occupation_target
-            return occupation_target, keyword_target
-
-        if remaining_occupations is not None:
-            occupation_target = min(batch_size, remaining_occupations)
-            keyword_target = batch_size - occupation_target
-            return occupation_target, keyword_target
-
-        if remaining_keywords is not None:
-            keyword_target = min(batch_size, remaining_keywords)
-            occupation_target = batch_size - keyword_target
-            return occupation_target, keyword_target
-
-        if batch_size == 1:
-            return 1, 0
-
-        occupation_target = max(1, int(round(batch_size * 0.6)))
-        keyword_target = batch_size - occupation_target
-        if keyword_target == 0:
-            keyword_target = 1
-            occupation_target = batch_size - 1
-        return occupation_target, keyword_target
-
     @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=10))
     async def _call_generate_search_plan(
         self,
@@ -696,15 +502,14 @@ Return ONLY JSON — no markdown, no explanations:
         max_queries: Optional[int] = None,
         max_occupation_queries: Optional[int] = None,
         max_keyword_queries: Optional[int] = None,
-        coverage_context: str = "",
     ) -> List[Dict[str, Any]]:
         """Internal method: single LLM call to generate the search plan."""
         provider = self._get_provider("plan")
         logger.info("[PLAN] Using %s", provider.model_id)
 
-        role_description = sanitize_prompt_text(profile.get("role_description"), max_chars=1200)
-        search_strategy = sanitize_prompt_text(profile.get("search_strategy"), max_chars=1200)
-        cv_content = sanitize_prompt_text(profile.get("cv_content"), max_chars=6000)
+        role_description = sanitize_prompt_text(profile.get("role_description"), max_chars=3000)
+        search_strategy = sanitize_prompt_text(profile.get("search_strategy"), max_chars=3000)
+        cv_content = sanitize_prompt_text(profile.get("cv_content"), max_chars=20000)
         input_fingerprint = compute_plan_input_fingerprint(
             {
                 "role_description": role_description,
@@ -768,8 +573,6 @@ Return ONLY JSON — no markdown, no explanations:
                 "Every query must be materially different from the others."
             )
 
-        coverage_block = f"\n{coverage_context}\n" if coverage_context else ""
-
         user_prompt = f"""Analyze the user's profile and generate an optimal search plan.
 You do NOT need to assign queries to specific job boards — the system routes them automatically.
 
@@ -798,7 +601,7 @@ QUERY GENERATION RULES:
     - Prefer canonical Swiss/European job title wording over creative paraphrases.
     - If type is unclear, choose the most executable form.
 
-{limit_instruction}{coverage_block}
+{limit_instruction}
 
 INTERNAL PLAN FINGERPRINT: {input_fingerprint}
 
@@ -812,7 +615,7 @@ Return ONLY pure JSON with a 'searches' list. Example:
     ]
 }}"""
 
-        result = await provider.generate_json_async(system_prompt, user_prompt)
+        result = await self._call_provider_json(provider, "plan", system_prompt, user_prompt)
         searches, payload_source, used_strict_payload = self._extract_searches_payload(result)
         if payload_source.startswith("invalid") or payload_source == "missing_keys":
             if isinstance(result, dict):
@@ -948,7 +751,7 @@ SCORING RULES (STRICT CONSTRAINTS):
 8. ENTRY BARRIER BONUS: If the candidate is flexible (open_to_unrelated=true) and the job has entry_barrier=none or career_changer_friendly=true, BOOST the intent_match_score — these jobs are easier to get into for career changers.
 9. BASE SCORING: Score 0-100 realistically. Score 90-100 ONLY for a virtually perfect match to WHAT THE CANDIDATE WANTS.
 10. `worth_applying` MUST ONLY be true if `affinity_score` >= 65.
-11. `affinity_analysis` must be concise and factual: mention fit factors, transferable skills relevance, gaps, and any hard blockers. Max 800 chars.
+11. `affinity_analysis` must be factual and detailed: mention fit factors, transferable skills relevance, gaps, language requirements, certifications/hard blockers, and dealbreaker hits. Max 1,500 chars.
 
 DIMENSIONAL SCORING: Also produce sub-scores (0-100 each):
 - `skill_match_score`: How well candidate skills (CV + transferable + intent_skills) align with job required+preferred skills
@@ -977,7 +780,7 @@ Return ONLY JSON with a "results" array, one entry per job, IN ORDER:
     ]
 }}"""
 
-        result = await provider.generate_json_async(system_prompt, user_prompt)
+        result = await self._call_provider_json(provider, "match", system_prompt, user_prompt)
         results = result.get("results", []) if isinstance(result, dict) else []
         normalized_results: List[Dict[str, Any]] = []
 
@@ -1017,7 +820,7 @@ Return ONLY JSON with a "results" array, one entry per job, IN ORDER:
             normalized_results.append(
                 {
                     "affinity_score": score,
-                    "affinity_analysis": sanitize_prompt_text(item.get("affinity_analysis", ""), max_chars=600) or "No analysis returned.",
+                    "affinity_analysis": sanitize_prompt_text(item.get("affinity_analysis", ""), max_chars=1500) or "No analysis returned.",
                     "worth_applying": worth_applying,
                     "skill_match_score": _coerce_sub_score(item.get("skill_match_score")),
                     "experience_match_score": _coerce_sub_score(item.get("experience_match_score")),
@@ -1111,21 +914,81 @@ Return ONLY JSON with a "results" array, one entry per job, IN ORDER:
             out.append({"code": code, "level": level or None})
         return out
 
+    async def _compress_description_if_needed(self, description: str, max_chars: int) -> str:
+        """Compress a job description with the LLM when it exceeds max_chars.
+
+        This is a lossless operation: the compressor preserves ALL explicit factual
+        requirements (language levels, certifications, skills, experience minimums,
+        qualifications, hard blockers, work permits) and removes only marketing filler,
+        repeated sentences, and generic company introductions.
+
+        Falls back to hard truncation if the LLM call fails, so the caller always
+        gets a usable string within the limit.
+        """
+        if not description or len(description) <= max_chars:
+            return description
+
+        logger.info(
+            "[COMPRESS] Description (%d chars) exceeds %d — compressing with LLM",
+            len(description), max_chars,
+        )
+        provider = self._get_provider("compress")
+        system_prompt = (
+            "You are a lossless job-description compressor. "
+            "Your task: compress a job posting to fit within a character limit while preserving "
+            "EVERY explicit factual requirement without exception. "
+            "MUST preserve: language requirements with CEFR levels (e.g. 'German C2 required'), "
+            "certifications, licenses, work permits, required and preferred skills, "
+            "minimum/maximum experience years, education requirements, salary ranges, "
+            "workload percentages, employment mode, contract type, hard blockers, "
+            "physical requirements, and all qualification constraints. "
+            "REMOVE ONLY: company marketing language, mission/vision statements, "
+            "repeated sentences, redundant 'we offer' filler, and generic introductions. "
+            "Never soften, paraphrase away, or omit any stated factual requirement. "
+            "Output plain text only — no JSON, no bullet points, no headers unless the original had them."
+        )
+        user_prompt = (
+            f"Compress the following job description to under {max_chars} characters. "
+            "PRESERVE ALL explicit requirements (language levels, certifications, skills, "
+            "experience, qualifications, hard blockers). "
+            "REMOVE ONLY marketing fluff and repetition.\n\n"
+            f"{description}"
+        )
+        try:
+            compressed = await provider.generate_text_async(system_prompt, user_prompt)
+            if compressed and len(compressed.strip()) > 50:
+                result = compressed.strip()
+                logger.info("[COMPRESS] Compressed %d → %d chars", len(description), len(result))
+                return result
+        except Exception as exc:
+            logger.warning("[COMPRESS] LLM compression failed (%s); falling back to hard truncation", exc)
+        return description[:max_chars]
+
     @retry(stop=stop_after_attempt(2), wait=wait_exponential(multiplier=1, min=2, max=5))
     async def normalize_job_batch(self, jobs: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """Normalize unstructured job payloads into deterministic filtering fields."""
         if not jobs:
             return []
 
+        import asyncio as _asyncio
+
         provider = self._get_provider("normalize")
+        NORMALIZE_DESC_LIMIT = 8000
+        # Compress descriptions that exceed the limit in parallel before building the batch text.
+        # Lossless: the compressor preserves all factual requirements, removes only marketing filler.
+        descriptions = await _asyncio.gather(*[
+            self._compress_description_if_needed(job.get("description") or "", NORMALIZE_DESC_LIMIT)
+            for job in jobs
+        ])
+
         jobs_text = ""
-        for i, job in enumerate(jobs):
+        for i, (job, desc) in enumerate(zip(jobs, descriptions)):
             jobs_text += f"\n--- JOB {i+1} ---\n"
             jobs_text += f"Title: {sanitize_prompt_text(job.get('title'), max_chars=180)}\n"
             jobs_text += f"Company: {sanitize_prompt_text(job.get('company'), max_chars=120)}\n"
             jobs_text += f"Location: {sanitize_prompt_text(job.get('location'), max_chars=120)}\n"
             jobs_text += f"Workload: {sanitize_prompt_text(job.get('workload'), max_chars=80)}\n"
-            jobs_text += f"Description: {sanitize_prompt_text(job.get('description'), max_chars=2400)}\n"
+            jobs_text += f"Description: {sanitize_prompt_text(desc, max_chars=8000)}\n"
 
         system_prompt = (
             "You are a strict job-posting normalizer. "
@@ -1223,7 +1086,7 @@ Return ONLY JSON:
   ]
 }}"""
 
-        result = await provider.generate_json_async(system_prompt, user_prompt)
+        result = await self._call_provider_json(provider, "normalize", system_prompt, user_prompt)
         rows = result.get("results", []) if isinstance(result, dict) else []
         normalized_rows: List[Dict[str, Any]] = []
 
