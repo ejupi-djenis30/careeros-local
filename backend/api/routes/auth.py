@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 from backend.api.deps import limiter
 from backend.core.config import settings
 from backend.db.base import get_db
-from backend.models import User
+from backend.repositories.user_repository import UserRepository
 from backend.schemas import Token, UserCreate
 from backend.services.auth import (
     create_access_token,
@@ -21,18 +21,15 @@ router = APIRouter()
 @router.post("/register", response_model=Token)
 @limiter.limit("5/minute")
 def register(request: Request, response: Response, user_in: UserCreate, db: Session = Depends(get_db)):
-    user = db.query(User).filter(User.username == user_in.username).first()
-    if user:
+    user_repo = UserRepository(db)
+    if user_repo.get_by_username(user_in.username):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Registration failed. Please try a different username.",
         )
 
     hashed_password = get_password_hash(user_in.password)
-    db_user = User(username=user_in.username, hashed_password=hashed_password)
-    db.add(db_user)
-    db.commit()
-    db.refresh(db_user)
+    db_user = user_repo.create({"username": user_in.username, "hashed_password": hashed_password})
 
     access_token = create_access_token(data={"sub": user_in.username})
     refresh_token = create_refresh_token(data={"sub": user_in.username})
@@ -50,7 +47,8 @@ def register(request: Request, response: Response, user_in: UserCreate, db: Sess
 @router.post("/login", response_model=Token)
 @limiter.limit("10/minute")
 def login(request: Request, response: Response, form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
-    user = db.query(User).filter(User.username == form_data.username).first()
+    user_repo = UserRepository(db)
+    user = user_repo.get_by_username(form_data.username)
     # Always call verify_password even when user is None to prevent username
     # enumeration via response-time side-channel (constant-time comparison).
     dummy_hash = get_password_hash("_dummy_constant_time_placeholder_")
@@ -86,7 +84,8 @@ def refresh(request: Request, response: Response, jh_refresh_token: str | None =
         raise HTTPException(status_code=401, detail="Invalid refresh token")
 
     username = payload["sub"]
-    user = db.query(User).filter(User.username == username).first()
+    user_repo = UserRepository(db)
+    user = user_repo.get_by_username(username)
     if not user:
         raise HTTPException(status_code=401, detail="User vanished")
 

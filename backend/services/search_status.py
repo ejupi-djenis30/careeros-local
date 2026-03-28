@@ -78,6 +78,14 @@ def _cleanup_stale_reservations(now: float | None = None):
     ]
     for profile_id in stale:
         _reserved_tasks.pop(profile_id, None)
+    # Also evict active_tasks slots where the asyncio Task has already finished.
+    done_tasks = [
+        profile_id
+        for profile_id, task in _active_tasks.items()
+        if hasattr(task, "done") and task.done()
+    ]
+    for profile_id in done_tasks:
+        _active_tasks.pop(profile_id, None)
 
 
 def init_status(profile_id: int, total_searches: int = 0, searches: Optional[List[Dict]] = None, user_id: Optional[int] = None):
@@ -205,6 +213,28 @@ def _merge_with_file(memory: Dict[int, Dict[str, Any]]) -> Dict[int, Dict[str, A
     return merged
 
 
+def _prune_old_terminal_statuses(statuses: Dict[int, Dict[str, Any]], max_age_seconds: float = 86400.0) -> Dict[int, Dict[str, Any]]:
+    """Remove terminal status entries whose ``finished_at`` timestamp is older than max_age_seconds."""
+    cutoff = datetime.now(timezone.utc).timestamp() - max_age_seconds
+    pruned: Dict[int, Dict[str, Any]] = {}
+    for pid, entry in statuses.items():
+        if entry.get("state") not in _TERMINAL_STATES:
+            pruned[pid] = entry
+            continue
+        finished_at = entry.get("finished_at")
+        if not finished_at:
+            pruned[pid] = entry
+            continue
+        try:
+            finished_ts = datetime.fromisoformat(finished_at).timestamp()
+            if finished_ts >= cutoff:
+                pruned[pid] = entry
+            # else: expired terminal entry — silently drop it
+        except (ValueError, TypeError):
+            pruned[pid] = entry  # keep entries with unparseable timestamps
+    return pruned
+
+
 def get_status(profile_id: int) -> Dict[str, Any]:
     """Get current status for a profile."""
     with _lock:
@@ -220,9 +250,14 @@ def get_all_statuses(user_id: Optional[int] = None) -> Dict[int, Dict[str, Any]]
 
     Merges in-memory state with the shared JSON file so that searches
     started on a different Gunicorn worker process are also visible.
+    Terminal entries older than 24 hours are pruned on each call.
     """
     with _lock:
         merged = _merge_with_file(dict(_statuses))
+
+    # Prune stale terminal entries (>24h old) to prevent unbounded file growth.
+    merged = _prune_old_terminal_statuses(merged)
+
     if user_id is None:
         return merged
     return {k: v for k, v in merged.items() if v.get("user_id") == user_id}
@@ -332,3 +367,8 @@ def cancel_task(profile_id: int):
             task.cancel()
             return True
     return False
+
+
+# Prune stale terminal statuses from prior server runs at module load so the
+# status file does not grow unboundedly across restarts.
+_statuses = _prune_old_terminal_statuses(_statuses)

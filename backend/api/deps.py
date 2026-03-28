@@ -9,7 +9,7 @@ from slowapi.util import get_remote_address
 from sqlalchemy.orm import Session
 
 from backend.db.base import get_db
-from backend.models import User
+from backend.repositories.user_repository import UserRepository
 from backend.services.auth import decode_access_token
 
 is_testing = os.environ.get("TESTING") == "1"
@@ -33,7 +33,7 @@ def get_current_user_id(token: str = Depends(oauth2_scheme), db: Session = Depen
     if username is None:
         raise HTTPException(status_code=401, detail="Invalid token")
 
-    user = db.query(User).filter(User.username == username).first()
+    user = UserRepository(db).get_by_username(username)
     if user is None:
         raise HTTPException(status_code=401, detail="User not found")
     return user.id

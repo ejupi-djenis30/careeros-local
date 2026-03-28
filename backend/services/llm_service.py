@@ -1,5 +1,4 @@
 import logging
-import threading
 from typing import Any, Dict, List, Optional
 
 from tenacity import retry, stop_after_attempt, wait_exponential
@@ -32,18 +31,16 @@ class LLMService:
 
     def __init__(self):
         self._provider_cache: Dict[str, Any] = {}
-        self._provider_cache_lock = threading.RLock()
 
     def _get_provider(self, step: str):
-        with self._provider_cache_lock:
-            if step not in self._provider_cache:
-                self._provider_cache[step] = get_provider_for_step(step)
-            return self._provider_cache[step]
+        # asyncio is single-threaded; no lock needed for dict access
+        if step not in self._provider_cache:
+            self._provider_cache[step] = get_provider_for_step(step)
+        return self._provider_cache[step]
 
     def clear_provider_cache(self):
         """Force reload of all LLM providers (e.g. if config changes)."""
-        with self._provider_cache_lock:
-            self._provider_cache.clear()
+        self._provider_cache.clear()
 
     async def _call_provider_json(
         self,
@@ -964,7 +961,7 @@ Return ONLY JSON with a "results" array, one entry per job, IN ORDER:
             logger.warning("[COMPRESS] LLM compression failed (%s); falling back to hard truncation", exc)
         return description[:max_chars]
 
-    @retry(stop=stop_after_attempt(2), wait=wait_exponential(multiplier=1, min=2, max=5))
+    @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=5))
     async def normalize_job_batch(self, jobs: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """Normalize unstructured job payloads into deterministic filtering fields."""
         if not jobs:

@@ -1,7 +1,6 @@
 import asyncio
 import math
 import re
-import threading
 from collections import OrderedDict
 from typing import Optional
 
@@ -10,7 +9,7 @@ from fastapi import HTTPException, UploadFile
 
 _MAX_GEOCODE_CACHE = 1024
 _geocode_cache: OrderedDict = OrderedDict()
-_geocode_cache_lock = threading.Lock()
+_geocode_cache_lock = asyncio.Lock()
 
 def clean_html_tags(text: str) -> str:
     """Remove HTML tags like <em>, &nbsp;, etc. from text."""
@@ -147,7 +146,7 @@ async def geocode_location(city: str, client: Optional["httpx.AsyncClient"] = No
         return Coordinates(lat=lat, lon=lon)
 
     global _geocode_cache
-    with _geocode_cache_lock:
+    async with _geocode_cache_lock:
         if normalized in _geocode_cache:
             return _geocode_cache[normalized]
 
@@ -173,7 +172,7 @@ async def geocode_location(city: str, client: Optional["httpx.AsyncClient"] = No
                         lat=float(data[0]["lat"]),
                         lon=float(data[0]["lon"])
                     )
-                    with _geocode_cache_lock:
+                    async with _geocode_cache_lock:
                         _geocode_cache[normalized] = coords
                         _geocode_cache.move_to_end(normalized)
                         if len(_geocode_cache) > _MAX_GEOCODE_CACHE:

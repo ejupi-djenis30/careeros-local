@@ -9,13 +9,11 @@ def test_job_create_schema_valid():
         "title": "Software Engineer",
         "company": "Tech Corp",
         "external_url": "https://example.com/job",
-        "is_scraped": True
     }
     job = JobCreate(**payload)
     assert job.title == "Software Engineer"
     assert job.company == "Tech Corp"
     assert job.external_url == "https://example.com/job"
-    assert job.is_scraped is True
     # Default fields
     assert job.worth_applying is False
     assert job.affinity_score is None
@@ -33,7 +31,7 @@ def test_job_update_schema():
 
 def test_profile_create_defaults():
     profile = SearchProfileCreate()
-    assert profile.name == "Default Profile"
+    assert profile.name == ""
     assert profile.posted_within_days == 30
     assert profile.max_distance == 50
     assert profile.scrape_mode == "sequential"

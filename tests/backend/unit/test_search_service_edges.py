@@ -510,7 +510,7 @@ async def test_normalize_persisted_jobs_upgrades_bootstrap_rows(mock_service):
     scraped_job.normalized_job_data = {"status": "normalized", "domain": "it"}
 
     mock_session = mock_service.job_repo.db
-    mock_session.query.return_value.filter.return_value.first.return_value = scraped_job
+    mock_session.query.return_value.filter.return_value.all.return_value = [scraped_job]
 
     with patch("backend.services.search_service.llm_service.normalize_job_batch", new=AsyncMock(return_value=[
         {
@@ -799,4 +799,83 @@ async def test_run_search_done_terminal_reason_no_jobs_after_structured_filters(
         await mock_service.run_search(1)
 
         mock_update.assert_any_call(1, state="done", terminal_reason="no_jobs_after_structured_filters")
+
+
+# ─── MATCH Payload Completeness ──────────────────────────────────────────────
+
+async def test_analyze_and_save_match_payload_includes_all_normalized_fields(mock_service):
+    """Ensure the normalized_data dict forwarded to analyze_job_batch contains all
+    critical fields (required_languages, hard_blockers, entry_barrier, etc.) that
+    the MATCH prompt references, not just the original 8 fields."""
+    from types import SimpleNamespace
+
+    job = SimpleNamespace(
+        id="1",
+        source="test",
+        title="Reinigungskraft (m/w/d)",
+        company=SimpleNamespace(name="CleanCo AG"),
+        location=SimpleNamespace(city="Bern", coordinates=None),
+        employment=SimpleNamespace(workload_min=100, workload_max=100),
+        application=None,
+        external_url="https://example.com/job/1",
+        publication=None,
+        descriptions=[SimpleNamespace(description="Gute Deutschkenntnisse C2 erforderlich.")],
+        language_skills=[],
+        occupations=[],
+    )
+    # Attach full normalized data — the kind produced by normalized_job_data property
+    job._normalized_job_data = {
+        "domain": "general",
+        "role_type": "manual",
+        "industry_sector": "hospitality cleaning",
+        "seniority": "junior",
+        "qualification_level": "none",
+        "required_skills": ["cleaning equipment"],
+        "preferred_skills": ["HACCP"],
+        "experience_min_years": None,
+        "experience_max_years": None,
+        "required_languages": [{"code": "de", "level": "C2"}],
+        "entry_barrier": "none",
+        "career_changer_friendly": True,
+        "hard_blockers": ["valid Swiss work permit"],
+        "education_levels": [],
+        "key_requirements": ["physical fitness"],
+        "physical_requirements": ["standing 8+ hours"],
+        "soft_skills": ["team player"],
+        "confidence": 0.85,
+    }
+    job._scraped_job_id = None
+
+    captured_batches = []
+
+    async def mock_analyze(batch, profile):
+        captured_batches.append(batch)
+        return [{"affinity_score": 70, "affinity_analysis": "ok", "worth_applying": True}]
+
+    profile_dict = {"id": 1, "user_id": 1, "latitude": None, "longitude": None, "profile_normalization": {}}
+
+    mock_session = mock_service.job_repo.db
+    mock_session.query.return_value.filter.return_value.all.return_value = []
+
+    with patch("backend.services.search_service.get_status", return_value={"state": "searching"}), \
+         patch("backend.services.search_service.llm_service.analyze_job_batch", side_effect=mock_analyze):
+        await mock_service._analyze_and_save(1, profile_dict, [job])
+
+    assert len(captured_batches) == 1
+    job_meta = captured_batches[0][0]
+    nd = job_meta["normalized_data"]
+
+    # All previously missing fields must now be present and correct
+    assert nd["required_languages"] == [{"code": "de", "level": "C2"}]
+    assert nd["hard_blockers"] == ["valid Swiss work permit"]
+    assert nd["entry_barrier"] == "none"
+    assert nd["career_changer_friendly"] is True
+    assert nd["preferred_skills"] == ["HACCP"]
+    assert nd["physical_requirements"] == ["standing 8+ hours"]
+    assert nd["education_levels"] == []
+    assert nd["key_requirements"] == ["physical fitness"]
+    assert nd["soft_skills"] == ["team player"]
+    # Original fields still present
+    assert nd["domain"] == "general"
+    assert nd["required_skills"] == ["cleaning equipment"]
 

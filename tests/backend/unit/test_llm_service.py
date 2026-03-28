@@ -125,7 +125,6 @@ async def test_generate_search_plan_partial_result_accepted(mock_provider):
         assert mock_provider.generate_json_async.call_count == 1
 
 @pytest.mark.asyncio
-@pytest.mark.asyncio
 async def test_summarize_cv_success(mock_provider):
     mock_provider.generate_text_async.return_value = "- Experience: 5 years\n- Skills: Python"
     

@@ -288,9 +288,16 @@ async def test_run_search_uses_degraded_fallback_plan_when_enabled(search_servic
     mock_update.assert_any_call(1, state="done", terminal_reason="no_results")
 
 
-def test_apply_query_preferences_respects_language_and_domain(search_service):
+def test_apply_query_preferences_language_not_filtered_domain_is(search_service):
+    """preferred_languages must NOT filter queries — only preferred_domains does.
+
+    Queries are intentionally generated in all core languages (en/de/fr/it) so
+    that multilingual job boards are fully covered.  Language preference is
+    enforced later at the job-matching stage (required_languages structured
+    filter), not at the query-planning stage.
+    """
     prefs = {
-        "preferred_languages": ["de"],
+        "preferred_languages": ["de"],  # should have NO effect on query filtering
         "preferred_domains": ["it"],
     }
     searches = [
@@ -300,9 +307,12 @@ def test_apply_query_preferences_respects_language_and_domain(search_service):
     ]
 
     filtered, stats = search_service._apply_query_preferences(searches, prefs)
-    assert len(filtered) == 1
-    assert filtered[0]["query"] == "Java Entwickler"
-    assert stats["dropped_language"] == 1
+    # Both "it" domain queries survive regardless of language; "finance" domain is dropped.
+    assert len(filtered) == 2
+    queries = [s["query"] for s in filtered]
+    assert "Software Engineer" in queries
+    assert "Java Entwickler" in queries
+    assert stats["dropped_language"] == 0   # language filter no longer applied
     assert stats["dropped_domain"] == 1
 
 
@@ -376,3 +386,186 @@ def test_apply_structured_filters_uses_profile_workload_filter(search_service):
         )
 
     assert kept == [fitting_job]
+
+
+# ─── CEFR Language Level Filter Tests ────────────────────────────────────────
+
+def test_language_level_mismatch_drops_job_with_large_gap(search_service):
+    """Job requires de C2, user has de A2 (4-tier gap) → filtered out."""
+    job = MagicMock()
+    job._normalized_job_data = {
+        "required_languages": [{"code": "de", "level": "C2"}],
+    }
+    job.language_skills = []
+    job.employment = MagicMock(workload_min=80, workload_max=100)
+    job.location = MagicMock(coordinates=None)
+
+    preferences = {
+        "preferred_languages": [],
+        "preferred_domains": [],
+        "remote_only": False,
+        "salary_min_chf": None,
+        "workload_min": None,
+        "workload_max": None,
+        "hard_max_distance_km": None,
+    }
+    profile_dict = {
+        "latitude": None,
+        "longitude": None,
+        "workload_filter": None,
+        "profile_normalization": {
+            "languages": [{"code": "de", "level": "A2"}],
+        },
+    }
+
+    with patch("backend.services.search_service.add_log"):
+        kept = search_service._apply_structured_filters(1, profile_dict, [job], preferences)
+
+    assert kept == []
+
+
+def test_language_level_mismatch_passes_job_within_tolerance(search_service):
+    """Job requires de B2, user has de B1 (1-tier gap) → passes through."""
+    job = MagicMock()
+    job._normalized_job_data = {
+        "required_languages": [{"code": "de", "level": "B2"}],
+    }
+    job.language_skills = []
+    job.employment = MagicMock(workload_min=80, workload_max=100)
+    job.location = MagicMock(coordinates=None)
+
+    preferences = {
+        "preferred_languages": [],
+        "preferred_domains": [],
+        "remote_only": False,
+        "salary_min_chf": None,
+        "workload_min": None,
+        "workload_max": None,
+        "hard_max_distance_km": None,
+    }
+    profile_dict = {
+        "latitude": None,
+        "longitude": None,
+        "workload_filter": None,
+        "profile_normalization": {
+            "languages": [{"code": "de", "level": "B1"}],
+        },
+    }
+
+    with patch("backend.services.search_service.add_log"):
+        kept = search_service._apply_structured_filters(1, profile_dict, [job], preferences)
+
+    assert kept == [job]
+
+
+def test_language_level_mismatch_no_filter_when_level_not_stated(search_service):
+    """Job has required language without level → code filter only, level filter skips."""
+    job = MagicMock()
+    job._normalized_job_data = {
+        "required_languages": [{"code": "de"}],  # no level key
+    }
+    job.language_skills = []
+    job.employment = MagicMock(workload_min=80, workload_max=100)
+    job.location = MagicMock(coordinates=None)
+
+    preferences = {
+        "preferred_languages": [],
+        "preferred_domains": [],
+        "remote_only": False,
+        "salary_min_chf": None,
+        "workload_min": None,
+        "workload_max": None,
+        "hard_max_distance_km": None,
+    }
+    profile_dict = {
+        "latitude": None,
+        "longitude": None,
+        "workload_filter": None,
+        "profile_normalization": {
+            "languages": [{"code": "de", "level": "A1"}],
+        },
+    }
+
+    with patch("backend.services.search_service.add_log"):
+        kept = search_service._apply_structured_filters(1, profile_dict, [job], preferences)
+
+    assert kept == [job]
+
+
+def test_language_level_check_language_not_in_user_profile_skips_level_check(search_service):
+    """Job requires French C2 but user doesn't list French at all → code check handles it, level check skips."""
+    job = MagicMock()
+    job._normalized_job_data = {
+        "required_languages": [{"code": "fr", "level": "C2"}],
+    }
+    job.language_skills = []
+    job.employment = MagicMock(workload_min=80, workload_max=100)
+    job.location = MagicMock(coordinates=None)
+
+    preferences = {
+        "preferred_languages": [],
+        "preferred_domains": [],
+        "remote_only": False,
+        "salary_min_chf": None,
+        "workload_min": None,
+        "workload_max": None,
+        "hard_max_distance_km": None,
+    }
+    # User only has German — doesn't list French at all
+    profile_dict = {
+        "latitude": None,
+        "longitude": None,
+        "workload_filter": None,
+        "profile_normalization": {
+            "languages": [{"code": "de", "level": "A2"}],
+        },
+    }
+
+    with patch("backend.services.search_service.add_log"):
+        kept = search_service._apply_structured_filters(1, profile_dict, [job], preferences)
+
+    # Job passes level check (fr not in user map); code filter doesn't drop it since
+    # preferred_languages is empty, so job stays in — the MATCH LLM will handle it.
+    assert kept == [job]
+
+
+# ─── MATCH Payload Completeness Tests ────────────────────────────────────────
+
+def test_check_language_level_mismatch_direct(search_service):
+    """Unit test for the _check_language_level_mismatch helper directly."""
+    # C2 required, A2 spoken → 4-tier gap → mismatch
+    ok, reason = search_service._check_language_level_mismatch(
+        required_languages=[{"code": "de", "level": "C2"}],
+        user_languages=[{"code": "de", "level": "A2"}],
+    )
+    assert ok is False
+    assert reason == "language_level_mismatch"
+
+    # B2 required, B1 spoken → 1-tier gap → ok
+    ok, reason = search_service._check_language_level_mismatch(
+        required_languages=[{"code": "de", "level": "B2"}],
+        user_languages=[{"code": "de", "level": "B1"}],
+    )
+    assert ok is True
+
+    # Native required, B2 spoken → native treated same as C2 (rank 6), B2 = 4 → gap 2 → mismatch
+    ok, reason = search_service._check_language_level_mismatch(
+        required_languages=[{"code": "de", "level": "native"}],
+        user_languages=[{"code": "de", "level": "B2"}],
+    )
+    assert ok is False
+    assert reason == "language_level_mismatch"
+
+    # Exact level match → ok
+    ok, reason = search_service._check_language_level_mismatch(
+        required_languages=[{"code": "en", "level": "C1"}],
+        user_languages=[{"code": "en", "level": "C1"}],
+    )
+    assert ok is True
+
+    # No user languages → always ok
+    ok, reason = search_service._check_language_level_mismatch(
+        required_languages=[{"code": "de", "level": "C2"}],
+        user_languages=[],
+    )
+    assert ok is True

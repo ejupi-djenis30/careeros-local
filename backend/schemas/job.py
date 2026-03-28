@@ -34,7 +34,6 @@ class JobBase(BaseModel):
 
 
 class JobCreate(JobBase):
-    is_scraped: bool = False
     source_query: Optional[str] = None
     search_profile_id: Optional[int] = None
     scraped_job_id: Optional[int] = None
@@ -79,6 +78,7 @@ class NormalizedJobData(BaseModel):
     hard_blockers: List[str] = Field(default_factory=list)
     education_levels: List[str] = Field(default_factory=list)
     key_requirements: List[str] = Field(default_factory=list)
+    industry_sector: Optional[str] = None
     metadata: Dict[str, Any] = Field(default_factory=dict)
 
 
@@ -86,7 +86,6 @@ class JobResponse(JobBase):
     model_config = ConfigDict(from_attributes=True)
 
     id: int
-    is_scraped: bool
     source_query: Optional[str] = None
     search_profile_id: Optional[int] = None
     scraped_job_id: int

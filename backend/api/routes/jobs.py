@@ -1,6 +1,6 @@
-from typing import Optional
+from typing import Literal, Optional
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 
 from backend.api.deps import get_current_user_id, job_service_dep
 from backend.schemas import JobCreate, JobPaginationResponse, JobResponse, JobUpdate
@@ -20,8 +20,8 @@ def read_jobs(
     min_distance: Optional[float] = Query(None, ge=0),
     max_distance: Optional[float] = Query(None, ge=0),
     # ── Sorting ──
-    sort_by: str = Query("created_at", pattern="^(created_at|affinity_score|distance_km|title|publication_date)$"),
-    sort_order: str = Query("desc", pattern="^(asc|desc)$"),
+    sort_by: Literal["created_at", "affinity_score", "distance_km", "title", "publication_date"] = Query("created_at"),
+    sort_order: Literal["asc", "desc"] = Query("desc"),
     # ── Pagination ──
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
@@ -40,6 +40,10 @@ def read_jobs(
         "sort_by": sort_by,
         "sort_order": sort_order,
     }
+    if min_score is not None and max_score is not None and min_score > max_score:
+        raise HTTPException(status_code=422, detail="min_score cannot be greater than max_score")
+    if min_distance is not None and max_distance is not None and min_distance > max_distance:
+        raise HTTPException(status_code=422, detail="min_distance cannot be greater than max_distance")
     return job_service.get_jobs_by_user(user_id, page, page_size, filters)
 
 

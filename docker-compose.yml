@@ -1,6 +1,6 @@
 services:
   db:
-    image: postgres:15-alpine
+    image: postgres:16-alpine
     restart: always
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-postgres}
@@ -35,7 +35,7 @@ services:
     command: >
       sh -c "python -m backend.pre_start &&
              alembic upgrade head &&
-             gunicorn backend.main:app --worker-class uvicorn.workers.UvicornWorker --bind 0.0.0.0:8000 --workers 4 --timeout 120"
+             gunicorn backend.main:app --worker-class uvicorn.workers.UvicornWorker --bind 0.0.0.0:8000 --workers 1 --timeout 120"
     volumes:
       - app_data:/app/data
       - ./tests:/app/tests

@@ -100,11 +100,12 @@ class CircuitBreaker:
 
         return result
 
-    def reset(self) -> None:
+    async def reset(self) -> None:
         """Manually reset the breaker to CLOSED (e.g. after config change)."""
-        self._state = CircuitState.CLOSED
-        self._failure_count = 0
-        self._last_failure_time = 0.0
+        async with self._lock:
+            self._state = CircuitState.CLOSED
+            self._failure_count = 0
+            self._last_failure_time = 0.0
         logger.info("Circuit breaker '%s' manually reset to CLOSED", self._service)
 
     # ── internal helpers ───────────────────────────────────────────────────
@@ -180,9 +181,9 @@ class CircuitBreakerRegistry:
     def all_states(self) -> dict[str, str]:
         return {name: cb.state.value for name, cb in self._breakers.items()}
 
-    def reset_all(self) -> None:
+    async def reset_all(self) -> None:
         for cb in self._breakers.values():
-            cb.reset()
+            await cb.reset()
 
 
 # Singleton shared across the application

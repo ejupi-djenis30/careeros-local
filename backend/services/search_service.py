@@ -91,11 +91,6 @@ class SearchService:
     """Orchestrates the entire multi-step job search pipeline (Feature 1 & 4)."""
 
     def __init__(self, db: Session = None, job_repo=None, profile_repo=None):
-        if db is not None and not isinstance(db, Session) and job_repo is not None and profile_repo is None:
-            profile_repo = job_repo
-            job_repo = db
-            db = None
-
         self.db = db or getattr(job_repo, "db", None) or getattr(profile_repo, "db", None)
         self.job_repo = job_repo or (JobRepository(db) if db else None)
         self.profile_repo = profile_repo or (ProfileRepository(db) if db else None)
@@ -243,11 +238,22 @@ class SearchService:
         candidates: List[Dict[str, Any]] = []
         candidate_records: List[ScrapedJob] = []
 
+        # Batch-load all referenced ScrapedJob records in a single IN query
+        all_scraped_ids = [
+            getattr(listing, "_scraped_job_id", None)
+            for listing in jobs
+        ]
+        all_scraped_ids = [sid for sid in all_scraped_ids if sid is not None]
+        scraped_jobs_by_id: Dict[int, ScrapedJob] = {}
+        if all_scraped_ids:
+            batch = self.db.query(ScrapedJob).filter(ScrapedJob.id.in_(all_scraped_ids)).all()
+            scraped_jobs_by_id = {sj.id: sj for sj in batch}
+
         for listing in jobs:
             scraped_job_id = getattr(listing, "_scraped_job_id", None)
             if not scraped_job_id:
                 continue
-            scraped_job = self.db.query(ScrapedJob).filter(ScrapedJob.id == scraped_job_id).first()
+            scraped_job = scraped_jobs_by_id.get(scraped_job_id)
             if not scraped_job:
                 continue
             if scraped_job.normalization_status not in {None, "", "pending", "provider_bootstrap"}:
@@ -307,13 +313,15 @@ class SearchService:
 
         self.db.commit()
 
+        # Propagate normalized_job_data from already-updated in-memory records
+        # (avoids a second per-job DB round-trip after the commit)
         for listing in jobs:
             scraped_job_id = getattr(listing, "_scraped_job_id", None)
             if not scraped_job_id:
                 continue
-            refreshed = self.db.query(ScrapedJob).filter(ScrapedJob.id == scraped_job_id).first()
-            if refreshed:
-                setattr(listing, "_normalized_job_data", refreshed.normalized_job_data)
+            scraped_job = scraped_jobs_by_id.get(scraped_job_id)
+            if scraped_job:
+                setattr(listing, "_normalized_job_data", scraped_job.normalized_job_data)
 
         if upgraded > 0:
             add_log(profile_id, f"Normalized {upgraded} persisted jobs with LLM structured extraction.")
@@ -814,6 +822,23 @@ class SearchService:
         "a1": 1, "a2": 2, "b1": 3, "b2": 4, "c1": 5, "c2": 6, "native": 6,
     }
 
+    @staticmethod
+    def _normalize_cefr_level(level: str) -> str:
+        """Normalize CEFR level variants to standard base form before rank lookup.
+
+        Handles real-world variants from job postings:
+        - Trailing modifiers: "B1+" → "B1", "C2-" → "C2"
+        - Ranges: "B2/C1" → "B2", "B2-C1" → "B2" (takes the lower/first level)
+        """
+        if not level:
+            return level
+        import re as _re
+        # Strip trailing +/- modifiers
+        normalized = _re.sub(r"[+\-]+$", "", level.strip().lower())
+        # For range formats (b2/c1 or b2-c1), keep only the lower (first) level
+        normalized = _re.split(r"[/\-]", normalized)[0].strip()
+        return normalized
+
     def _check_language_level_mismatch(
         self,
         required_languages: list,
@@ -836,7 +861,7 @@ class SearchService:
                 continue
             code = str(entry.get("code", "") or "").strip().lower()
             level = str(entry.get("level", "") or "").strip().lower()
-            rank = self._CEFR_RANK.get(level)
+            rank = self._CEFR_RANK.get(self._normalize_cefr_level(level))
             if code and rank is not None:
                 # Keep the highest level if a language appears multiple times
                 if code not in user_level_map or rank > user_level_map[code]:
@@ -850,7 +875,7 @@ class SearchService:
                 continue
             req_code = str(req.get("code", "") or "").strip().lower()
             req_level = str(req.get("level", "") or "").strip().lower()
-            req_rank = self._CEFR_RANK.get(req_level)
+            req_rank = self._CEFR_RANK.get(self._normalize_cefr_level(req_level))
             if not req_code or req_rank is None:
                 continue  # no level stated — code-only check already handled above
             user_rank = user_level_map.get(req_code)
@@ -1097,7 +1122,17 @@ class SearchService:
                     self.profile_repo.update(profile, {"cached_cv_summary": cv_summary})
                 except Exception as e:
                     logger.warning(f"CV summarization failed: {e}")
-                    cv_summary = profile_dict["cv_content"]
+                    raw_cv = profile_dict["cv_content"]
+                    # Guard against oversized fallback reaching the MATCH LLM
+                    if len(raw_cv) > settings.MAX_DESCRIPTION_CHARS:
+                        cv_summary = raw_cv[: settings.MAX_DESCRIPTION_CHARS]
+                        logger.warning(
+                            "CV content truncated to %d chars for profile %s (fallback path)",
+                            settings.MAX_DESCRIPTION_CHARS,
+                            profile_id,
+                        )
+                    else:
+                        cv_summary = raw_cv
         profile_dict["cv_summary"] = cv_summary
 
         # ── Step 1.5: Normalize candidate profile for deterministic matching ──
@@ -1658,6 +1693,13 @@ class SearchService:
         tasks = [analyze_batch(batch) for batch in batches]
         results = await asyncio.gather(*tasks)
 
+        # Re-check cancellation: a stop/cancel request arriving during gather should
+        # prevent us from persisting analysis results that are now unwanted.
+        post_gather_status = get_status(profile_id)
+        if post_gather_status.get("state") in STOP_STATES:
+            add_log(profile_id, "Search was stopped during analysis — discarding results.")
+            return 0, len(unique_jobs)
+
         jobs_to_persist = [item for batch_result in results for item in batch_result]
 
         saved_count = 0
@@ -1712,7 +1754,6 @@ class SearchService:
             user_id=profile_dict["user_id"],
             search_profile_id=profile_dict["id"],
             scraped_job_id=existing_sj.id,
-            is_scraped=True,
             affinity_score=analysis.get("affinity_score", 0),
             affinity_analysis=analysis.get("affinity_analysis", ""),
             worth_applying=analysis.get("worth_applying", False),

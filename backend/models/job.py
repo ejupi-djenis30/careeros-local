@@ -131,9 +131,6 @@ class Job(BaseModel, TimestampMixin):
     search_profile_id = Column(Integer, ForeignKey("search_profiles.id"), nullable=True, index=True)
     scraped_job_id = Column(Integer, ForeignKey("scraped_jobs.id", ondelete="CASCADE"), nullable=False, index=True)
 
-    # Metadata
-    is_scraped = Column(Boolean, default=False)
-
     # AI Analysis (User-specific match)
     affinity_score = Column(Float)
     affinity_analysis = Column(Text)

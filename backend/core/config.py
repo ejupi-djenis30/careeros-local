@@ -24,6 +24,10 @@ class Settings(BaseSettings):
             try:
                 return json.loads(self.CORS_ORIGINS)
             except Exception as exc:
+                if self.ENVIRONMENT == "production":
+                    raise ValueError(
+                        f"Invalid CORS_ORIGINS JSON in production environment: {exc}"
+                    ) from exc
                 logger.warning("Invalid CORS_ORIGINS JSON %r: %s", self.CORS_ORIGINS, exc)
         return [i.strip() for i in self.CORS_ORIGINS.split(",") if i.strip()]
 
@@ -88,9 +92,9 @@ class Settings(BaseSettings):
     LLM_PLAN_MODEL: str = ""
     LLM_PLAN_API_KEY: str = ""
     LLM_PLAN_BASE_URL: str = ""
-    LLM_PLAN_TEMPERATURE: float = -1.0
-    LLM_PLAN_TOP_P: float = -1.0
-    LLM_PLAN_MAX_TOKENS: int = -1
+    LLM_PLAN_TEMPERATURE: Optional[float] = None
+    LLM_PLAN_TOP_P: Optional[float] = None
+    LLM_PLAN_MAX_TOKENS: Optional[int] = None
     LLM_PLAN_THINKING: bool = False
     LLM_PLAN_THINKING_LEVEL: str = ""
 
@@ -99,9 +103,9 @@ class Settings(BaseSettings):
     LLM_MATCH_MODEL: str = ""
     LLM_MATCH_API_KEY: str = ""
     LLM_MATCH_BASE_URL: str = ""
-    LLM_MATCH_TEMPERATURE: float = -1.0
-    LLM_MATCH_TOP_P: float = -1.0
-    LLM_MATCH_MAX_TOKENS: int = -1
+    LLM_MATCH_TEMPERATURE: Optional[float] = None
+    LLM_MATCH_TOP_P: Optional[float] = None
+    LLM_MATCH_MAX_TOKENS: Optional[int] = None
     LLM_MATCH_THINKING: bool = False
     LLM_MATCH_THINKING_LEVEL: str = ""
 
@@ -110,9 +114,9 @@ class Settings(BaseSettings):
     LLM_NORMALIZE_MODEL: str = ""
     LLM_NORMALIZE_API_KEY: str = ""
     LLM_NORMALIZE_BASE_URL: str = ""
-    LLM_NORMALIZE_TEMPERATURE: float = -1.0
-    LLM_NORMALIZE_TOP_P: float = -1.0
-    LLM_NORMALIZE_MAX_TOKENS: int = -1
+    LLM_NORMALIZE_TEMPERATURE: Optional[float] = None
+    LLM_NORMALIZE_TOP_P: Optional[float] = None
+    LLM_NORMALIZE_MAX_TOKENS: Optional[int] = None
     LLM_NORMALIZE_THINKING: bool = False
     LLM_NORMALIZE_THINKING_LEVEL: str = ""
 
@@ -121,9 +125,9 @@ class Settings(BaseSettings):
     LLM_NORMALIZE_PROFILE_MODEL: str = ""
     LLM_NORMALIZE_PROFILE_API_KEY: str = ""
     LLM_NORMALIZE_PROFILE_BASE_URL: str = ""
-    LLM_NORMALIZE_PROFILE_TEMPERATURE: float = -1.0
-    LLM_NORMALIZE_PROFILE_TOP_P: float = -1.0
-    LLM_NORMALIZE_PROFILE_MAX_TOKENS: int = -1
+    LLM_NORMALIZE_PROFILE_TEMPERATURE: Optional[float] = None
+    LLM_NORMALIZE_PROFILE_TOP_P: Optional[float] = None
+    LLM_NORMALIZE_PROFILE_MAX_TOKENS: Optional[int] = None
     LLM_NORMALIZE_PROFILE_THINKING: bool = False
     LLM_NORMALIZE_PROFILE_THINKING_LEVEL: str = ""
 

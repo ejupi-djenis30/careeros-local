@@ -43,10 +43,16 @@ class AdeccoProvider(BaseJobProvider):
     Adecco Switzerland HTTP API Provider.
     """
 
-    # Class-level global semaphore to throttle all concurrent Adecco requests
-    # regardless of how many parallel searches (queries) are running.
-    # This prevents SEARCH_CONCURRENCY=3 from spawning 6+ detail requests.
-    _global_sem = asyncio.Semaphore(2)
+    # Lazily-initialized semaphore to ensure it binds to the running event loop,
+    # not the import-time loop (which can differ in tests or worker restarts).
+    _global_sem: asyncio.Semaphore | None = None
+
+    @classmethod
+    def _get_semaphore(cls) -> asyncio.Semaphore:
+        """Return the class-level semaphore, creating it on the current event loop if needed."""
+        if cls._global_sem is None:
+            cls._global_sem = asyncio.Semaphore(2)
+        return cls._global_sem
 
     def __init__(self, include_raw_data: bool = False):
         self._include_raw_data = include_raw_data
@@ -130,12 +136,21 @@ class AdeccoProvider(BaseJobProvider):
             self._client = httpx.AsyncClient(timeout=30.0, headers=self._headers)
         return self._client
 
-    async def _execute_with_retry(self, func: Callable, *args, max_retries: int = 10, **kwargs) -> httpx.Response:
+    async def _execute_with_retry(self, func: Callable, *args, max_retries: int = 10, sem: asyncio.Semaphore | None = None, **kwargs) -> httpx.Response:
         """Execute HTTP request with 429-aware retry logic and exponential backoff.
+
+        ``sem``: if provided, the semaphore is acquired only around the raw HTTP
+        call itself.  Backoff sleeps happen *outside* the semaphore so that other
+        concurrent requests are not blocked while we wait to retry a 429.
+
         This completely replaces the generic @retry from tenacity for Adecco's specifics."""
         for attempt in range(max_retries):
             try:
-                response = await func(*args, **kwargs)
+                if sem is not None:
+                    async with sem:
+                        response = await func(*args, **kwargs)
+                else:
+                    response = await func(*args, **kwargs)
                 if response.status_code == 429:
                     raise httpx.HTTPStatusError("429 Too Many Requests", request=response.request, response=response)
                 response.raise_for_status()
@@ -160,22 +175,22 @@ class AdeccoProvider(BaseJobProvider):
                                 )
 
                     if sleep_time is None:
-                        # Stricter backoff for 429 than other errors: 4s, then 8s
-                        sleep_time = random.uniform(4.0, 7.0) * (attempt + 1)
+                        # Stricter backoff for 429 than other errors: 4s, then 8s, capped at 30s
+                        sleep_time = min(30.0, random.uniform(4.0, 7.0) * (attempt + 1))
 
                     logger.warning(f"Adecco 429 Too Many Requests. Retrying in {sleep_time:.1f}s (Attempt {attempt + 1}/{max_retries})")
                     await asyncio.sleep(sleep_time)
                     continue
                 # Retry on transient server errors
                 elif status in (500, 502, 503, 504) and attempt < max_retries - 1:
-                    sleep_time = random.uniform(2.0, 5.0) * (attempt + 1)
+                    sleep_time = min(30.0, random.uniform(2.0, 5.0) * (attempt + 1))
                     logger.warning(f"Adecco {status} Error. Retrying in {sleep_time:.1f}s (Attempt {attempt + 1}/{max_retries})")
                     await asyncio.sleep(sleep_time)
                     continue
                 raise
             except (httpx.RequestError, asyncio.TimeoutError) as e:
                 if attempt < max_retries - 1:
-                    sleep_time = random.uniform(2.0, 5.0) * (attempt + 1)
+                    sleep_time = min(30.0, random.uniform(2.0, 5.0) * (attempt + 1))
                     logger.warning(f"Adecco transient error {type(e).__name__}. Retrying in {sleep_time:.1f}s (Attempt {attempt + 1}/{max_retries})")
                     await asyncio.sleep(sleep_time)
                     continue
@@ -200,14 +215,15 @@ class AdeccoProvider(BaseJobProvider):
                 "languageCode": "de-CH" if request.language == "de" else "en-CH",
             }
 
-            # 2. Fetch Summarized Jobs
-            async with self._global_sem:
-                resp = await self._execute_with_retry(
-                    client.post,
-                    f"{API_BASE_URL}/summarized",
-                    json=payload,
-                    max_retries=10
-                )
+            # 2. Fetch Summarized Jobs — semaphore is passed INTO _execute_with_retry
+            # so it is released during backoff sleeps and not held for up to 28 seconds.
+            resp = await self._execute_with_retry(
+                client.post,
+                f"{API_BASE_URL}/summarized",
+                json=payload,
+                max_retries=10,
+                sem=self._get_semaphore(),
+            )
             summary_data = resp.json()
 
             if not isinstance(summary_data, dict) or "jobs" not in summary_data:
@@ -230,47 +246,48 @@ class AdeccoProvider(BaseJobProvider):
                 # without wasting a concurrency slot in the global semaphore
                 await asyncio.sleep(random.uniform(1.0, 2.5))
 
-                async with self._global_sem:
+                try:
+                    detail_url = f"{API_BASE_URL}/job-description-details/{job_id}/adecco/CH/{lang_code}/job-details"
+
+                    detail_data = None
                     try:
-                        detail_url = f"{API_BASE_URL}/job-description-details/{job_id}/adecco/CH/{lang_code}/job-details"
-
-                        detail_data = None
-                        try:
-                            # Use custom retry executing routine
-                            detail_res = await self._execute_with_retry(
-                                client.get,
-                                detail_url,
-                                max_retries=10
-                            )
-                            if detail_res.status_code == 200:
-                                detail_data = detail_res.json()
-                            elif detail_res.status_code == 204:
-                                detail_data = None
-                        except httpx.HTTPStatusError as he:
-                            if he.response.status_code == 404:
-                                detail_data = None
-                            else:
-                                raise
-
-                        job_listing = transform_job_data(
-                            light_job,
-                            detail_data,
-                            self.name,
-                            self._include_raw_data
+                        # Semaphore passed into _execute_with_retry so it is released
+                        # during backoff sleeps (not held for up to 28 seconds).
+                        detail_res = await self._execute_with_retry(
+                            client.get,
+                            detail_url,
+                            max_retries=10,
+                            sem=self._get_semaphore(),
                         )
-                        return job_listing
-                    except Exception as e:
-                        logger.warning(f"Failed to fetch details for {job_id} on {self.name}: {e}")
-                        # Fallback to transform without details if detail fetch fails
-                        try:
-                            return transform_job_data(light_job, None, self.name, self._include_raw_data)
-                        except Exception as fallback_error:
-                            logger.warning(
-                                "Failed to transform Adecco job %s without details: %s",
-                                job_id,
-                                fallback_error,
-                            )
-                            return None
+                        if detail_res.status_code == 200:
+                            detail_data = detail_res.json()
+                        elif detail_res.status_code == 204:
+                            detail_data = None
+                    except httpx.HTTPStatusError as he:
+                        if he.response.status_code == 404:
+                            detail_data = None
+                        else:
+                            raise
+
+                    job_listing = transform_job_data(
+                        light_job,
+                        detail_data,
+                        self.name,
+                        self._include_raw_data
+                    )
+                    return job_listing
+                except Exception as e:
+                    logger.warning(f"Failed to fetch details for {job_id} on {self.name}: {e}")
+                    # Fallback to transform without details if detail fetch fails
+                    try:
+                        return transform_job_data(light_job, None, self.name, self._include_raw_data)
+                    except Exception as fallback_error:
+                        logger.warning(
+                            "Failed to transform Adecco job %s without details: %s",
+                            job_id,
+                            fallback_error,
+                        )
+                        return None
 
             tasks = [process_job(job) for job in jobs_light]
             results = await asyncio.gather(*tasks)
@@ -325,7 +342,7 @@ class AdeccoProvider(BaseJobProvider):
                 "languageCode": "en-CH",
             }
 
-            async with self._global_sem:
+            async with self._get_semaphore():
                 response = await client.post(f"{API_BASE_URL}/summarized", json=payload)
 
             latency_ms = int((time.time() - start_time) * 1000)

@@ -9,7 +9,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 # ═══════════════════════════════════════
 
 class SearchProfileBase(BaseModel):
-    name: str = "Default Profile"
+    name: str = ""
     cv_content: Optional[str] = None
     role_description: Optional[str] = None
     search_strategy: Optional[str] = None
@@ -184,6 +184,30 @@ class SearchProfileUpdate(BaseModel):
     schedule_enabled: Optional[bool] = None
     schedule_interval_hours: Optional[int] = None
 
+    @model_validator(mode="after")
+    def validate_update_ranges(self):
+        if self.workload_min is not None and not 0 <= self.workload_min <= 100:
+            raise ValueError("workload_min must be between 0 and 100")
+        if self.workload_max is not None and not 0 <= self.workload_max <= 100:
+            raise ValueError("workload_max must be between 0 and 100")
+        if (
+            self.workload_min is not None
+            and self.workload_max is not None
+            and self.workload_min > self.workload_max
+        ):
+            raise ValueError("workload_min cannot be greater than workload_max")
+        if self.salary_min_chf is not None and self.salary_min_chf < 0:
+            raise ValueError("salary_min_chf must be non-negative")
+        if self.hard_max_distance_km is not None and self.hard_max_distance_km < 0:
+            raise ValueError("hard_max_distance_km must be non-negative")
+        if self.max_distance is not None and not 0 <= self.max_distance <= 500:
+            raise ValueError("max_distance must be between 0 and 500 km")
+        if self.posted_within_days is not None and not 1 <= self.posted_within_days <= 365:
+            raise ValueError("posted_within_days must be between 1 and 365 days")
+        if self.schedule_interval_hours is not None and self.schedule_interval_hours < 1:
+            raise ValueError("schedule_interval_hours must be at least 1")
+        return self
+
 
 class StartSearchRequest(SearchProfileBase):
     id: Optional[int] = None
@@ -203,6 +227,35 @@ class SearchProfile(SearchProfileBase):
     cached_queries: Optional[Any] = None  # JSON object
 
     created_at: datetime
+
+    # V2 profile normalization fields
+    profile_normalization_status: Optional[str] = None
+    profile_normalized_at: Optional[datetime] = None
+    profile_normalized_seniority: Optional[str] = None
+    profile_normalized_domain: Optional[str] = None
+    profile_normalized_role_family: Optional[str] = None
+    profile_normalized_qualification_level: Optional[str] = None
+    profile_normalized_experience_years: Optional[int] = None
+    profile_normalized_languages: Optional[Any] = None
+    profile_normalized_skills: Optional[Any] = None
+    profile_normalized_role_type: Optional[str] = None
+    profile_normalized_industry_sectors: Optional[Any] = None
+    profile_normalized_transferable_skills: Optional[Any] = None
+
+    # V2 search intent fields
+    profile_search_intent_domain: Optional[str] = None
+    profile_search_intent_seniority: Optional[str] = None
+    profile_search_intent_role_family: Optional[str] = None
+    profile_search_intent_qualification_level: Optional[str] = None
+    profile_search_intent_skills: Optional[Any] = None
+    profile_search_intent_open_to_unrelated: Optional[bool] = None
+    profile_search_intent_keywords: Optional[Any] = None
+    profile_search_intent_role_type: Optional[str] = None
+    # V2 enhanced search intent fields
+    profile_search_intent_seniority_min: Optional[str] = None
+    profile_search_intent_seniority_max: Optional[str] = None
+    profile_search_intent_dealbreakers: Optional[Any] = None
+    profile_search_intent_flexibility: Optional[Any] = None
 
 
 class ScheduleToggle(BaseModel):

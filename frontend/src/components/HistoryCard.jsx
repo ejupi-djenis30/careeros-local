@@ -1,6 +1,6 @@
-import React from 'react';
+import React, { memo } from 'react';
 
-export function HistoryCard({ profile, onStartSearch, onStartSearchWithOptions, onUseAsTemplate, onSaveAsSchedule }) {
+export const HistoryCard = memo(function HistoryCard({ profile, onStartSearch, onStartSearchWithOptions, onUseAsTemplate, onSaveAsSchedule, isLoading }) {
     return (
         <div className="glass-panel p-3 px-md-4 py-md-3 hover-bg-white-5 transition-colors group">
             <div className="d-flex flex-column flex-md-row align-items-md-center gap-3">
@@ -38,14 +38,19 @@ export function HistoryCard({ profile, onStartSearch, onStartSearchWithOptions, 
                         <button
                             className="btn btn-sm btn-primary px-3 rounded-pill fw-medium shadow-glow d-flex align-items-center justify-content-center"
                             onClick={() => onStartSearch?.(profile)}
+                            disabled={isLoading}
                             title="Rerun Search"
                         >
-                            <i className="bi bi-play-fill me-1"></i> Run
+                            {isLoading
+                                ? <><span className="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span> Running…</>
+                                : <><i className="bi bi-play-fill me-1"></i> Run</>
+                            }
                         </button>
 
                         <button
                             className="btn btn-sm btn-icon btn-secondary rounded-circle d-flex align-items-center justify-content-center"
                             onClick={() => onStartSearchWithOptions?.(profile, { force_regenerate_queries: true })}
+                            disabled={isLoading}
                             title="Rerun with fresh queries only"
                             aria-label="Rerun with fresh queries only"
                         >
@@ -55,6 +60,7 @@ export function HistoryCard({ profile, onStartSearch, onStartSearchWithOptions, 
                         <button
                             className="btn btn-sm btn-icon btn-secondary rounded-circle d-flex align-items-center justify-content-center"
                             onClick={() => onStartSearchWithOptions?.(profile, { force_regenerate_cv_summary: true })}
+                            disabled={isLoading}
                             title="Rerun with fresh CV summary only"
                             aria-label="Rerun with fresh CV summary only"
                         >
@@ -64,6 +70,7 @@ export function HistoryCard({ profile, onStartSearch, onStartSearchWithOptions, 
                         <button
                             className="btn btn-sm btn-icon btn-warning text-dark rounded-circle d-flex align-items-center justify-content-center"
                             onClick={() => onStartSearchWithOptions?.(profile, { force_regenerate_cv_summary: true, force_regenerate_queries: true })}
+                            disabled={isLoading}
                             title="Rerun with fresh CV summary and queries (full refresh)"
                             aria-label="Rerun with fresh CV summary and queries"
                         >
@@ -73,6 +80,7 @@ export function HistoryCard({ profile, onStartSearch, onStartSearchWithOptions, 
                         <button
                             className="btn btn-sm btn-icon btn-secondary rounded-circle d-flex align-items-center justify-content-center"
                             onClick={() => onUseAsTemplate?.(profile)}
+                            disabled={isLoading}
                             title="New Search from this"
                         >
                             <i className="bi bi-copy"></i>
@@ -82,6 +90,7 @@ export function HistoryCard({ profile, onStartSearch, onStartSearchWithOptions, 
                             <button
                                 className="btn btn-sm btn-icon btn-secondary rounded-circle d-flex align-items-center justify-content-center"
                                 onClick={() => onSaveAsSchedule?.(profile)}
+                                disabled={isLoading}
                                 title="Add to Schedule"
                             >
                                 <i className="bi bi-clock"></i>
@@ -92,4 +101,4 @@ export function HistoryCard({ profile, onStartSearch, onStartSearchWithOptions, 
             </div>
         </div>
     );
-}
+});

@@ -95,7 +95,6 @@ def test_job_repository_create_and_get(job_repo, profile_repo, test_user, db_ses
         "user_id": test_user.id,
         "search_profile_id": profile.id,
         "scraped_job_id": sj.id,
-        "is_scraped": True
     })
     assert job.id is not None
 
@@ -112,8 +111,8 @@ def test_job_repository_filtering(job_repo, profile_repo, test_user, db_session)
     sj1 = _create_scraped_job(db_session, platform_job_id="pj-f1", title="Job Profile 1", company="Corp", external_url="http://f1.com")
     sj2 = _create_scraped_job(db_session, platform_job_id="pj-f2", title="Job Profile 2", company="Corp", external_url="http://f2.com")
     
-    job_repo.create({"user_id": test_user.id, "search_profile_id": profile1.id, "scraped_job_id": sj1.id, "is_scraped": True})
-    job_repo.create({"user_id": test_user.id, "search_profile_id": profile2.id, "scraped_job_id": sj2.id, "is_scraped": True})
+    job_repo.create({"user_id": test_user.id, "search_profile_id": profile1.id, "scraped_job_id": sj1.id})
+    job_repo.create({"user_id": test_user.id, "search_profile_id": profile2.id, "scraped_job_id": sj2.id})
 
     jobs_p1 = job_repo.get_by_user_filtered(test_user.id, skip=0, limit=10, search_profile_id=profile1.id)
     total_p1 = job_repo.count_by_user_filtered(test_user.id, search_profile_id=profile1.id)

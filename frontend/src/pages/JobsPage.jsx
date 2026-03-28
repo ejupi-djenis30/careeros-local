@@ -38,7 +38,8 @@ export function JobsPage() {
     isAppliedPending,
     clearFilters,
     isLoading,
-    isRefreshing
+    isRefreshing,
+    fetchError
   } = useJobs(logout);
 
   const totalJobs = pagination.total;
@@ -48,6 +49,12 @@ export function JobsPage() {
 
   return (
     <div className="animate-slide-up">
+      {fetchError && (
+        <div className="alert alert-danger d-flex align-items-center gap-2 mb-4" role="alert">
+          <i className="bi bi-exclamation-triangle-fill"></i>
+          {fetchError}
+        </div>
+      )}
       <div className="row g-3 g-md-4 mb-4 mb-md-5">
         <div className="col-12 col-md-4">
           <StatCard label="Jobs Found" value={totalJobs} color="primary" icon="bi-briefcase-fill" isLoading={isLoading} />

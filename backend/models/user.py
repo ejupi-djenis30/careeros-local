@@ -9,6 +9,8 @@ class User(BaseModel, TimestampMixin):
 
     username = Column(String, unique=True, index=True, nullable=False)
     hashed_password = Column(String, nullable=False)
+    email = Column(String, nullable=True, unique=True, index=True)
+    supabase_id = Column(String, nullable=True, unique=True, index=True)
 
     # Relationships
     jobs = relationship("Job", back_populates="user")

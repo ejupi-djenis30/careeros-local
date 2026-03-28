@@ -111,7 +111,6 @@ class JobService:
             "user_id": user_id,
             "scraped_job_id": scraped_job.id,
             "applied": job_dict.get("applied", False),
-            "is_scraped": job_dict.get("is_scraped", False),
             "affinity_score": job_dict.get("affinity_score", None),
             "search_profile_id": profile_id,
         }

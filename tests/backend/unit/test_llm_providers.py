@@ -119,9 +119,9 @@ def test_factory_default_returns_global_provider():
         mock_settings.LLM_PLAN_MODEL = ""
         mock_settings.LLM_PLAN_API_KEY = ""
         mock_settings.LLM_PLAN_BASE_URL = ""
-        mock_settings.LLM_PLAN_TEMPERATURE = -1.0
-        mock_settings.LLM_PLAN_TOP_P = -1.0
-        mock_settings.LLM_PLAN_MAX_TOKENS = -1
+        mock_settings.LLM_PLAN_TEMPERATURE = None
+        mock_settings.LLM_PLAN_TOP_P = None
+        mock_settings.LLM_PLAN_MAX_TOKENS = None
         mock_settings.LLM_PLAN_THINKING = False
         mock_settings.LLM_PLAN_THINKING_LEVEL = ""
 

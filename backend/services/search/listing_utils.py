@@ -113,6 +113,18 @@ def _canonicalize_skill(skill: str) -> str:
     return _SKILL_ALIASES.get(token, token)
 
 
+def _word_bounded_substring(needle: str, haystack: str) -> bool:
+    """Return True only when *needle* appears as a complete word inside *haystack*.
+
+    Prevents false-positive skill overlaps such as "java" matching "javascript".
+    Uses ``\\b`` word-boundary anchors so "java" matches "core java backend" but
+    not "javascript" or "javafx".
+    """
+    if not needle or not haystack:
+        return False
+    return bool(re.search(r"\b" + re.escape(needle) + r"\b", haystack))
+
+
 def skills_overlap(job_skills: List[str], profile_skills: List[str]) -> float:
     """Compute skill overlap ratio between two skill lists.
 
@@ -139,13 +151,13 @@ def skills_overlap(job_skills: List[str], profile_skills: List[str]) -> float:
         if jc in profile_canonical:
             matched += 1
             continue
-        # Tier 2: substring containment (both ways)
-        if any(jc in pc or pc in jc for pc in profile_canonical if pc):
+        # Tier 2: substring containment with word boundaries (prevents "java" ⊂ "javascript")
+        if any(_word_bounded_substring(jc, pc) or _word_bounded_substring(pc, jc) for pc in profile_canonical if pc):
             matched += 1
             continue
-        # Tier 3: raw token substring
+        # Tier 3: raw token substring with word boundaries
         job_raw = normalized_text_token(jc)
-        if any(job_raw in pt or pt in job_raw for pt in profile_raw_tokens if pt):
+        if any(_word_bounded_substring(job_raw, pt) or _word_bounded_substring(pt, job_raw) for pt in profile_raw_tokens if pt):
             matched += 1
 
     return matched / len(job_canonical) if job_canonical else 0.0

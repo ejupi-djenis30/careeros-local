@@ -71,12 +71,29 @@ async def test_run_scheduled_search_success():
     mock_search_service = AsyncMock()
     
     with patch("backend.services.scheduler.SessionLocal", return_value=mock_db), \
-         patch("backend.services.scheduler.get_search_service", return_value=mock_search_service):
+         patch("backend.services.scheduler.get_search_service", return_value=mock_search_service), \
+         patch("backend.services.scheduler.reserve_task", return_value=True) as mock_reserve, \
+         patch("backend.services.scheduler.release_task") as mock_release:
         await _run_scheduled_search(1)
         
+        mock_reserve.assert_called_once_with(1)
         mock_search_service.run_search.assert_awaited_once_with(1)
         mock_db.commit.assert_called_once()
         assert mock_profile.last_scheduled_run is not None
+        # release_task should NOT be called on a successful run (run_search handles task lifecycle)
+        mock_release.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_run_scheduled_search_skipped_when_already_running():
+    """Scheduler must skip the run if reserve_task returns False (another worker owns it)."""
+    mock_search_service = AsyncMock()
+
+    with patch("backend.services.scheduler.reserve_task", return_value=False), \
+         patch("backend.services.scheduler.get_search_service", return_value=mock_search_service):
+        await _run_scheduled_search(1)
+
+    mock_search_service.run_search.assert_not_awaited()
 
 @pytest.mark.asyncio
 async def test_run_scheduled_search_profile_not_found():
@@ -84,9 +101,12 @@ async def test_run_scheduled_search_profile_not_found():
     mock_db.query.return_value.filter.return_value.first.return_value = None
     
     with patch("backend.services.scheduler.SessionLocal", return_value=mock_db), \
+         patch("backend.services.scheduler.reserve_task", return_value=True), \
+         patch("backend.services.scheduler.release_task") as mock_release, \
          patch("backend.services.scheduler.remove_schedule") as mock_remove:
         await _run_scheduled_search(1)
         mock_remove.assert_called_once_with(1)
+        mock_release.assert_called_once_with(1)
 
 @pytest.mark.asyncio
 async def test_run_scheduled_search_disabled():
@@ -98,9 +118,12 @@ async def test_run_scheduled_search_disabled():
     mock_search_service = AsyncMock()
     
     with patch("backend.services.scheduler.SessionLocal", return_value=mock_db), \
+         patch("backend.services.scheduler.reserve_task", return_value=True), \
+         patch("backend.services.scheduler.release_task") as mock_release, \
          patch("backend.services.scheduler.get_search_service", return_value=mock_search_service):
         await _run_scheduled_search(1)
         mock_search_service.run_search.assert_not_awaited()
+        mock_release.assert_called_once_with(1)
 
 def test_start_scheduler():
     mock_scheduler = MagicMock()
@@ -135,9 +158,13 @@ async def test_run_scheduled_search_exception():
     mock_db.query.return_value.filter.return_value.first.return_value = mock_profile
     
     with patch("backend.services.scheduler.SessionLocal", return_value=mock_db), \
+         patch("backend.services.scheduler.reserve_task", return_value=True), \
+         patch("backend.services.scheduler.release_task") as mock_release, \
          patch("backend.services.scheduler.get_search_service", side_effect=Exception("DB Failure")):
         await _run_scheduled_search(1)
         mock_db.close.assert_called_once()
+        # Safety net: release_task must be called when run_search never registered the task
+        mock_release.assert_called_once_with(1)
         
 def test_get_all_schedules_no_db_and_specific_user():
     mock_scheduler = MagicMock()
