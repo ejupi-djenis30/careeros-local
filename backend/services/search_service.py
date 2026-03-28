@@ -446,8 +446,15 @@ class SearchService:
                 )
             return normalized or {}
         except Exception as exc:
-            logger.error("Profile normalization failed for profile %s: %s", profile_id, exc, exc_info=True)
-            add_log(profile_id, f"⚠ Profile normalization failed (normalization filters will be skipped): {exc}")
+            # Unwrap tenacity RetryError so the real API error is visible in logs.
+            from tenacity import RetryError
+            from backend.services.llm_service import _unwrap_retry_error
+            _, error_msg = _unwrap_retry_error(exc)
+            logger.error(
+                "Profile normalization failed for profile %s: %s",
+                profile_id, error_msg, exc_info=True,
+            )
+            add_log(profile_id, f"⚠ Profile normalization failed (normalization filters will be skipped): {error_msg}")
             return {}
 
     def _apply_structured_filters(self, profile_id: int, profile_dict: Dict[str, Any], jobs: List[Any], preferences: Dict[str, Any]) -> List[Any]:
@@ -1292,15 +1299,17 @@ class SearchService:
         try:
             await self._normalize_persisted_jobs(profile_id, unique_jobs)
         except Exception as normalize_error:
+            from backend.services.llm_service import _unwrap_retry_error
+            _, _norm_err_msg = _unwrap_retry_error(normalize_error)
             logger.error(
                 "LLM normalization failed for profile %s — jobs will proceed without normalized fields: %s",
                 profile_id,
-                normalize_error,
+                _norm_err_msg,
                 exc_info=True,
             )
             add_log(
                 profile_id,
-                f"Normalization error (jobs will be passed to match step without field-level filtering): {normalize_error}",
+                f"Normalization error (jobs will be passed to match step without field-level filtering): {_norm_err_msg}",
             )
 
         # ── Step 5: Structured filtering based on persisted job facts ──

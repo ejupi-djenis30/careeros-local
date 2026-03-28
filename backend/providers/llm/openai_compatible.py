@@ -112,6 +112,13 @@ class OpenAICompatibleProvider(LLMProvider):
             params.pop("top_p", None)
         elif for_json:
             params["response_format"] = {"type": "json_object"}
+            # Groq (and some other OpenAI-compatible providers) require the word
+            # "json" to appear somewhere in the messages when response_format is
+            # json_object — otherwise they return HTTP 400.  Append a minimal
+            # reminder to the system prompt if the word is not already present.
+            combined = system_prompt.lower() + user_prompt.lower()
+            if "json" not in combined:
+                params["messages"][0]["content"] = system_prompt + "\nRespond with valid JSON."
         return params
 
     # ── public API ─────────────────────────────────────────────────────────

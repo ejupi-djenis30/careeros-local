@@ -1,7 +1,7 @@
 import logging
 from typing import Any, Dict, List, Optional
 
-from tenacity import retry, stop_after_attempt, wait_exponential
+from tenacity import RetryError, retry, stop_after_attempt, wait_exponential
 
 from backend.core.config import settings
 from backend.providers.circuit_breaker import circuit_registry
@@ -16,6 +16,25 @@ from backend.services.search.query_contracts import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+def _unwrap_retry_error(exc: Exception) -> tuple[Exception, str]:
+    """Extract the real cause from a tenacity RetryError and format a message.
+
+    Returns (real_exception, formatted_message) where formatted_message
+    includes the HTTP status code when the underlying error is an APIStatusError.
+    """
+    real_exc = exc
+    if isinstance(exc, RetryError):
+        try:
+            real_exc = exc.last_attempt.exception()
+        except Exception:
+            pass
+    status_code = getattr(real_exc, "status_code", None)
+    msg = str(real_exc)
+    if status_code:
+        msg = f"HTTP {status_code}: {msg}"
+    return real_exc, msg
 
 
 def _query_fingerprint(search: Dict[str, Any]) -> str:
