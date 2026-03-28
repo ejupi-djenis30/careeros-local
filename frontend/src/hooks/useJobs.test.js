@@ -23,6 +23,10 @@ vi.mock('../services/search', () => ({
   }
 }));
 
+vi.mock('../context/ToastContext', () => ({
+  useToast: () => ({ showToast: vi.fn(), clearToast: vi.fn() })
+}));
+
 describe('useJobs', () => {
   const mockJobs = [
     { id: 1, title: 'Job 1', applied: false },

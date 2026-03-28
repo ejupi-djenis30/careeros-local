@@ -1,18 +1,11 @@
-import React, { memo, useState } from "react";
+import React, { memo } from "react";
 import { ScoreBadge } from "./Badges";
-import { DismissDialog } from "./DismissDialog";
 
-export const DesktopJobRow = memo(function DesktopJobRow({ job, isGlobalView, onToggleApplied, isAppliedPending = false, onCopy, onViewAnalysis, onDismiss, onReactivate }) {
-    const [showDismissDialog, setShowDismissDialog] = useState(false);
+export const DesktopJobRow = memo(function DesktopJobRow({ job, isGlobalView, onToggleApplied, isAppliedPending = false, onCopy, onViewAnalysis, onOpenDismissDialog, onReactivate }) {
     const applyUrl = job.application_url || job.external_url;
     const sourceUrl = job.external_url && job.external_url !== applyUrl ? job.external_url : null;
     const mailtoUrl = job.application_email ? `mailto:${job.application_email}` : null;
     const fmtDistance = job.distance_km != null ? parseFloat(Number(job.distance_km).toFixed(2)) : null;
-
-    const handleDismiss = (signal) => {
-        setShowDismissDialog(false);
-        if (onDismiss) onDismiss(job, signal);
-    };
 
     return (
         <tr className="job-row border-bottom border-white-5 hover-elevation hover-all-200">
@@ -106,7 +99,7 @@ export const DesktopJobRow = memo(function DesktopJobRow({ job, isGlobalView, on
                         </a>
                     )}
                     {applyUrl && (
-                        <a href={applyUrl} target="_blank" rel="noopener noreferrer" className="btn btn-sm btn-primary px-3 rounded-md shadow-sm">
+                        <a href={applyUrl} target="_blank" rel="noopener noreferrer" className="btn btn-sm btn-primary px-3 rounded-2 shadow-sm">
                             Apply
                         </a>
                     )}
@@ -129,23 +122,16 @@ export const DesktopJobRow = memo(function DesktopJobRow({ job, isGlobalView, on
                         >
                             <i className="bi bi-arrow-counterclockwise"></i>
                         </button>
-                    ) : onDismiss && !job.dismissed && (
+                    ) : onOpenDismissDialog && !job.dismissed && (
                         <button
                             className="btn btn-sm btn-icon btn-secondary rounded-circle"
                             title="Not Interested"
-                            onClick={() => setShowDismissDialog(true)}
+                            onClick={() => onOpenDismissDialog(job)}
                         >
                             <i className="bi bi-x-circle"></i>
                         </button>
                     )}
                 </div>
-
-                <DismissDialog
-                    open={showDismissDialog}
-                    jobTitle={job.title}
-                    onDismiss={handleDismiss}
-                    onClose={() => setShowDismissDialog(false)}
-                />
             </td>
         </tr>
     );

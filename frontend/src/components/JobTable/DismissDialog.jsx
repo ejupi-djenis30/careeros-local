@@ -1,4 +1,5 @@
-import React, { useEffect, useRef } from "react";
+import React, { useEffect } from "react";
+import { createPortal } from "react-dom";
 
 const DISMISS_OPTIONS = [
     { value: "not_interested", label: "Not interested", icon: "bi-hand-thumbs-down" },
@@ -11,8 +12,6 @@ const DISMISS_OPTIONS = [
 ];
 
 export function DismissDialog({ open, jobTitle, onDismiss, onClose }) {
-    const overlayRef = useRef(null);
-
     useEffect(() => {
         if (!open) return;
         const handleEscape = (e) => {
@@ -24,26 +23,27 @@ export function DismissDialog({ open, jobTitle, onDismiss, onClose }) {
 
     if (!open) return null;
 
-    return (
+    return createPortal(
         <div
-            ref={overlayRef}
-            className="position-fixed top-0 start-0 w-100 h-100 d-flex align-items-center justify-content-center"
-            style={{ zIndex: 1060, backgroundColor: "rgba(0,0,0,0.6)", backdropFilter: "blur(4px)" }}
-            onClick={(e) => { if (e.target === overlayRef.current) onClose(); }}
+            className="position-fixed top-0 start-0 w-100 h-100 d-flex align-items-center justify-content-center animate-fade-in custom-modal-backdrop"
+            onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
         >
             <div
-                className="glass-panel border border-white-10 rounded-3 shadow-lg p-4 animate-fade-in"
-                style={{ maxWidth: 380, width: "90%" }}
+                className="glass-panel border border-white-10 rounded-3 shadow-lg p-4 animate-slide-up"
+                style={{ maxWidth: 400, width: "90%" }}
                 onClick={(e) => e.stopPropagation()}
             >
-                <div className="d-flex align-items-center gap-3 mb-3">
-                    <div className="rounded-circle bg-danger bg-opacity-10 d-flex align-items-center justify-content-center" style={{ width: 40, height: 40 }}>
-                        <i className="bi bi-x-circle text-danger fs-5"></i>
+                <div className="d-flex justify-content-between align-items-start mb-3">
+                    <div className="min-w-0 flex-grow-1 pe-2">
+                        <h6 className="text-white fw-bold mb-1">Not interested?</h6>
+                        {jobTitle && <div className="text-secondary x-small text-truncate w-100">{jobTitle}</div>}
                     </div>
-                    <div>
-                        <h6 className="text-white fw-bold mb-0">Not interested?</h6>
-                        {jobTitle && <div className="text-secondary x-small text-truncate" style={{ maxWidth: 260 }}>{jobTitle}</div>}
-                    </div>
+                    <button 
+                        onClick={onClose}
+                        className="btn btn-sm btn-icon btn-secondary rounded-circle flex-shrink-0"
+                    >
+                        <i className="bi bi-x-lg"></i>
+                    </button>
                 </div>
 
                 <div className="text-secondary small mb-3">Select a reason:</div>
@@ -70,6 +70,7 @@ export function DismissDialog({ open, jobTitle, onDismiss, onClose }) {
                     </button>
                 </div>
             </div>
-        </div>
+        </div>,
+        document.body
     );
 }

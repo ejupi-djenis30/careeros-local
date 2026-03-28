@@ -3,6 +3,11 @@ import { render, screen, fireEvent } from '@testing-library/react';
 import { describe, it, expect, vi } from 'vitest';
 import { JobTable } from './JobTable';
 
+// Mock useToast so JobTable can render without a ToastProvider
+vi.mock('../context/ToastContext', () => ({
+    useToast: () => ({ showToast: vi.fn(), clearToast: vi.fn() })
+}));
+
 // Mock matchMedia for window size
 Object.defineProperty(window, 'matchMedia', {
     writable: true,

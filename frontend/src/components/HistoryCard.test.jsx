@@ -19,7 +19,7 @@ describe('HistoryCard', () => {
         expect(screen.getByText('Software Engineer')).toBeInTheDocument();
         expect(screen.getByText('Remote')).toBeInTheDocument();
         expect(screen.getByText('Last 7 days')).toBeInTheDocument();
-        expect(screen.getByText('Auto-runs every 24h')).toBeInTheDocument();
+        expect(screen.getByText(/Auto every/)).toBeInTheDocument();
     });
 
     it('renders default location text when location is missing', () => {

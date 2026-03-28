@@ -2,11 +2,13 @@ import React, { useState, useEffect } from "react";
 import { MobileJobCard } from "./JobTable/MobileJobCard";
 import { DesktopJobRow } from "./JobTable/DesktopJobRow";
 import { JobAnalysisModal } from "./JobTable/JobAnalysisModal";
+import { DismissDialog } from "./JobTable/DismissDialog";
 import { JobService } from "../services/jobs";
 import { useToast } from "../context/ToastContext";
 
 export function JobTable({ jobs, isGlobalView, onToggleApplied, isAppliedPending = () => false, onDismiss, onReactivate, pagination, onPageChange, isLoading = false }) {
     const [selectedJobForAnalysis, setSelectedJobForAnalysis] = useState(null);
+    const [selectedJobForDismiss, setSelectedJobForDismiss] = useState(null);
     const { showToast } = useToast();
 
     const handleViewAnalysis = (job) => {
@@ -25,6 +27,17 @@ export function JobTable({ jobs, isGlobalView, onToggleApplied, isAppliedPending
         document.addEventListener("keydown", handleEscape);
         return () => document.removeEventListener("keydown", handleEscape);
     }, [selectedJobForAnalysis]);
+
+    const handleOpenDismissDialog = (job) => {
+        setSelectedJobForDismiss(job);
+    };
+
+    const handleDismissFromDialog = (signal) => {
+        if (selectedJobForDismiss && onDismiss) {
+            onDismiss(selectedJobForDismiss, signal);
+        }
+        setSelectedJobForDismiss(null);
+    };
 
     const handleCopy = (job) => {
         const data = {
@@ -111,7 +124,7 @@ export function JobTable({ jobs, isGlobalView, onToggleApplied, isAppliedPending
                         isAppliedPending={isAppliedPending(job.id)}
                         onCopy={handleCopy}
                         onViewAnalysis={handleViewAnalysis}
-                        onDismiss={onDismiss}
+                        onOpenDismissDialog={onDismiss ? handleOpenDismissDialog : undefined}
                         onReactivate={onReactivate}
                     />
                 ))}
@@ -143,7 +156,7 @@ export function JobTable({ jobs, isGlobalView, onToggleApplied, isAppliedPending
                                 isAppliedPending={isAppliedPending(job.id)}
                                 onCopy={handleCopy}
                                 onViewAnalysis={handleViewAnalysis}
-                                onDismiss={onDismiss}
+                                onOpenDismissDialog={onDismiss ? handleOpenDismissDialog : undefined}
                                 onReactivate={onReactivate}
                             />
                         ))}
@@ -153,6 +166,14 @@ export function JobTable({ jobs, isGlobalView, onToggleApplied, isAppliedPending
 
             {/* Analysis Modal */}
             <JobAnalysisModal job={selectedJobForAnalysis} onClose={() => setSelectedJobForAnalysis(null)} />
+
+            {/* Dismiss Dialog (full-screen portal) */}
+            <DismissDialog
+                open={!!selectedJobForDismiss}
+                jobTitle={selectedJobForDismiss?.title}
+                onDismiss={handleDismissFromDialog}
+                onClose={() => setSelectedJobForDismiss(null)}
+            />
 
             {/* Pagination Footer */}
             <div className="p-3 border-top border-white-10 bg-black-20 rounded-bottom">

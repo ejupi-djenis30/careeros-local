@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { JobService } from '../services/jobs';
 import { SearchService } from '../services/search';
 import { useSearchContext } from '../context/SearchContext';
+import { useToast } from '../context/ToastContext';
 
 const DEFAULT_FILTERS = {
   search_profile_id: '',
@@ -25,6 +26,7 @@ const PAGE_SIZE = 20;
 
 export function useJobs(logout) {
   const { activeProfileIds } = useSearchContext();
+  const { showToast } = useToast();
   const [jobs, setJobs] = useState([]);
   const [filtersState, setFiltersState] = useState(DEFAULT_FILTERS);
   const [pagination, setPaginationState] = useState(DEFAULT_PAGINATION);
@@ -177,12 +179,32 @@ export function useJobs(logout) {
   };
 
   const dismissJob = async (job, feedbackSignal) => {
+    const originalPosition = jobs.findIndex(j => j.id === job.id);
     try {
       const updated = await JobService.dismiss(job.id, feedbackSignal);
       // Remove from the list immediately (dismissed jobs are hidden by default)
       setJobs(prev => prev.filter(j => j.id !== job.id));
       // Refresh pagination count
       setPagination(prev => ({ ...prev, total: Math.max(0, prev.total - 1) }));
+      // Undo toast — re-inserts job at original position
+      showToast('Job dismissed', 'secondary', {
+        label: 'Undo',
+        onAction: async () => {
+          try {
+            const reactivated = await JobService.reactivate(job.id);
+            const restoredJob = { ...job, ...reactivated, dismissed: false, dismissed_at: null, feedback_signal: null };
+            setJobs(prev => {
+              const newList = [...prev];
+              newList.splice(Math.min(originalPosition, newList.length), 0, restoredJob);
+              return newList;
+            });
+            setPagination(prev => ({ ...prev, total: prev.total + 1 }));
+          } catch (undoError) {
+            if (undoError.message === 'UNAUTHORIZED' && logout) { logout(); return; }
+            console.error('Failed to undo dismiss', undoError);
+          }
+        }
+      }, 5000);
       return updated;
     } catch (error) {
       if (error.message === "UNAUTHORIZED" && logout) { logout(); return; }

@@ -1,18 +1,11 @@
-import React, { memo, useState } from "react";
+import React, { memo } from "react";
 import { ScoreBadge } from "./Badges";
-import { DismissDialog } from "./DismissDialog";
 
-export const MobileJobCard = memo(function MobileJobCard({ job, isGlobalView, onToggleApplied, isAppliedPending = false, onCopy, onViewAnalysis, onDismiss, onReactivate }) {
-    const [showDismissDialog, setShowDismissDialog] = useState(false);
+export const MobileJobCard = memo(function MobileJobCard({ job, isGlobalView, onToggleApplied, isAppliedPending = false, onCopy, onViewAnalysis, onOpenDismissDialog, onReactivate }) {
     const applyUrl = job.application_url || job.external_url;
     const sourceUrl = job.external_url && job.external_url !== applyUrl ? job.external_url : null;
     const mailtoUrl = job.application_email ? `mailto:${job.application_email}` : null;
     const fmtDistance = job.distance_km != null ? parseFloat(Number(job.distance_km).toFixed(2)) : null;
-
-    const handleDismiss = (signal) => {
-        setShowDismissDialog(false);
-        if (onDismiss) onDismiss(job, signal);
-    };
 
     return (
         <div className="glass-panel p-3 mb-3 border border-white-5 hover-elevation hover-transform">
@@ -47,7 +40,7 @@ export const MobileJobCard = memo(function MobileJobCard({ job, isGlobalView, on
                 </div>
             </div>
 
-            <div className="x-small text-secondary mb-3 d-flex flex-wrap gap-x-3 gap-y-1 opacity-75">
+            <div className="x-small text-secondary mb-3 d-flex flex-wrap column-gap-3 row-gap-1 opacity-75">
                 <div><i className="bi bi-clock me-1"></i> {new Date(job.created_at).toLocaleDateString()}</div>
                 {job.publication_date && <div><i className="bi bi-megaphone me-1"></i> {new Date(job.publication_date).toLocaleDateString()}</div>}
                 {fmtDistance != null && <div><i className="bi bi-geo-alt me-1"></i> {fmtDistance}km</div>}
@@ -57,7 +50,7 @@ export const MobileJobCard = memo(function MobileJobCard({ job, isGlobalView, on
             <div className="d-flex justify-content-between align-items-center pt-3 border-top border-white-10">
                 <div className="d-flex gap-2">
                     {applyUrl && (
-                        <a href={applyUrl} target="_blank" rel="noopener noreferrer" className="btn btn-sm btn-primary px-3 rounded-md fw-bold">
+                        <a href={applyUrl} target="_blank" rel="noopener noreferrer" className="btn btn-sm btn-primary px-3 rounded-2 fw-bold">
                             Apply
                         </a>
                     )}
@@ -83,11 +76,11 @@ export const MobileJobCard = memo(function MobileJobCard({ job, isGlobalView, on
                         >
                             <i className="bi bi-arrow-counterclockwise text-08"></i>
                         </button>
-                    ) : onDismiss && !job.dismissed && (
+                    ) : onOpenDismissDialog && !job.dismissed && (
                         <button
                             className="btn btn-sm btn-secondary rounded-circle btn-icon"
                             title="Not Interested"
-                            onClick={() => setShowDismissDialog(true)}
+                            onClick={() => onOpenDismissDialog(job)}
                         >
                             <i className="bi bi-x-circle text-08"></i>
                         </button>
@@ -116,13 +109,6 @@ export const MobileJobCard = memo(function MobileJobCard({ job, isGlobalView, on
                     )}
                 </div>
             </div>
-
-            <DismissDialog
-                open={showDismissDialog}
-                jobTitle={job.title}
-                onDismiss={handleDismiss}
-                onClose={() => setShowDismissDialog(false)}
-            />
         </div>
     );
 });

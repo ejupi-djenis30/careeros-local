@@ -7,12 +7,12 @@ export function ToastProvider({ children }) {
     const [toast, setToast] = useState(null);
     const hideTimeoutRef = useRef(null);
 
-    const showToast = useCallback((message, type = 'danger') => {
-        setToast({ message, type });
+    const showToast = useCallback((message, type = 'danger', action = null, duration = 5000) => {
+        setToast({ message, type, action });
         if (hideTimeoutRef.current) {
             clearTimeout(hideTimeoutRef.current);
         }
-        hideTimeoutRef.current = setTimeout(() => setToast(null), 5000);
+        hideTimeoutRef.current = setTimeout(() => setToast(null), duration);
     }, []);
 
     const clearToast = useCallback(() => {
@@ -49,6 +49,15 @@ export function ToastProvider({ children }) {
                     <div className={`toast show align-items-center text-bg-${toast.type} border-0`} role="alert">
                         <div className="d-flex">
                             <div className="toast-body">{toast.message}</div>
+                            {toast.action && (
+                                <button
+                                    type="button"
+                                    className="btn btn-sm btn-link text-white fw-bold text-decoration-none pe-2 flex-shrink-0"
+                                    onClick={() => { toast.action.onAction(); clearToast(); }}
+                                >
+                                    {toast.action.label}
+                                </button>
+                            )}
                             <button
                                 type="button"
                                 className="btn-close btn-close-white me-2 m-auto"
