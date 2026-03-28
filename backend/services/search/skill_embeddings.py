@@ -20,18 +20,20 @@ from __future__ import annotations
 import logging
 import threading
 from functools import lru_cache
-from typing import List, Optional
+from typing import Any, List, Optional
 
 logger = logging.getLogger(__name__)
 
 # ─── availability flag ────────────────────────────────────────────────────────
 
 try:
-    import numpy as np  # type: ignore
-    from sentence_transformers import SentenceTransformer  # type: ignore
+    import numpy as np  # type: ignore[import]
+    from sentence_transformers import SentenceTransformer  # type: ignore[import]
 
     _SENTENCE_TRANSFORMERS_AVAILABLE = True
 except ImportError:
+    np = None  # type: ignore[assignment]
+    SentenceTransformer = None  # type: ignore[assignment]
     _SENTENCE_TRANSFORMERS_AVAILABLE = False
     logger.info(
         "[SKILL_EMB] sentence-transformers not installed. "
@@ -52,15 +54,19 @@ class _EmbeddingCache:
 
     _instance: Optional["_EmbeddingCache"] = None
     _lock = threading.Lock()
+    # Instance attributes initialised in __new__:
+    _model: Any | None
+    _model_name: str
+    _model_lock: threading.Lock
 
     def __new__(cls) -> "_EmbeddingCache":
         if cls._instance is None:
             with cls._lock:
                 if cls._instance is None:
                     obj = super().__new__(cls)
-                    obj._model = None  # type: ignore[attr-defined]
-                    obj._model_name = ""  # type: ignore[attr-defined]
-                    obj._model_lock = threading.Lock()  # type: ignore[attr-defined]
+                    obj._model = None
+                    obj._model_name = ""
+                    obj._model_lock = threading.Lock()
                     cls._instance = obj
         return cls._instance
 
@@ -72,7 +78,7 @@ class _EmbeddingCache:
                 return
             try:
                 logger.info("[SKILL_EMB] Loading embedding model: %s", model_name)
-                self._model = SentenceTransformer(model_name)
+                self._model = SentenceTransformer(model_name)  # type: ignore[operator]
                 self._model_name = model_name
                 logger.info("[SKILL_EMB] Embedding model loaded successfully.")
             except Exception as exc:
@@ -80,6 +86,7 @@ class _EmbeddingCache:
                 self._model = None
 
     def get_model(self, model_name: str):
+
         if self._model is None or self._model_name != model_name:
             self._load_model(model_name)
         return self._model
@@ -121,7 +128,7 @@ def _embed_skill(skill_text: str, model_name: str):
 def _cosine(a, b) -> float:
     """Cosine similarity of two normalised (unit) vectors."""
     # Both are already L2-normalised by encode(normalize_embeddings=True)
-    return float(np.dot(a, b))
+    return float(np.dot(a, b))  # type: ignore[union-attr]
 
 
 # ─── public API ───────────────────────────────────────────────────────────────

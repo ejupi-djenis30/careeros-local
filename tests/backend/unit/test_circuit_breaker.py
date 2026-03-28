@@ -87,8 +87,12 @@ class TestCircuitBreakerTrip:
             await cb.call(_fail())
         except RuntimeError:
             pass
-        with pytest.raises(CircuitOpenError) as exc_info:
-            await cb.call(_ok())
+        coro = _ok()
+        try:
+            with pytest.raises(CircuitOpenError) as exc_info:
+                await cb.call(coro)
+        finally:
+            coro.close()
         assert exc_info.value.service == "svc"
         assert exc_info.value.retry_after >= 0
 
@@ -99,12 +103,15 @@ class TestCircuitBreakerTrip:
             await cb.call(_fail())
         except RuntimeError:
             pass
+        coro = _ok()
         try:
-            await cb.call(_ok())
+            await cb.call(coro)
         except CircuitOpenError as e:
             assert "my-service" in str(e)
         else:
             pytest.fail("Expected CircuitOpenError")
+        finally:
+            coro.close()
 
 
 # ─── OPEN → HALF_OPEN → CLOSED recovery ───────────────────────────────────────
