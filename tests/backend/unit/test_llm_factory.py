@@ -1,0 +1,184 @@
+"""Unit tests for backend/providers/llm/factory.py.
+
+Covers:
+- _resolve_step_config: known steps, unknown step, per-step overrides
+- _build_provider: gemini, ollama, openai-compatible, missing API key error
+- get_provider_for_step: end-to-end instantiation for each known step
+"""
+import pytest
+from unittest.mock import patch, MagicMock
+
+from backend.providers.llm.factory import (
+    _resolve_step_config,
+    _build_provider,
+    get_provider_for_step,
+)
+from backend.providers.llm.gemini import GeminiProvider
+from backend.providers.llm.ollama import OllamaProvider
+from backend.providers.llm.openai_compatible import OpenAICompatibleProvider
+
+
+# ─── _resolve_step_config ─────────────────────────────────────────────────────
+
+class TestResolveStepConfig:
+    def _mock_settings(self, **overrides):
+        defaults = dict(
+            LLM_PROVIDER="openai",
+            LLM_MODEL="gpt-4",
+            LLM_API_KEY="global-key",
+            LLM_BASE_URL="https://api.openai.com",
+            LLM_TEMPERATURE=0.2,
+            LLM_TOP_P=0.9,
+            LLM_MAX_TOKENS=1024,
+            LLM_THINKING=False,
+            LLM_THINKING_LEVEL="",
+            # step-specific defaults (empty = use global)
+            LLM_PLAN_PROVIDER="", LLM_PLAN_MODEL="", LLM_PLAN_API_KEY="",
+            LLM_PLAN_BASE_URL="", LLM_PLAN_TEMPERATURE=None, LLM_PLAN_TOP_P=None,
+            LLM_PLAN_MAX_TOKENS=None, LLM_PLAN_THINKING=False, LLM_PLAN_THINKING_LEVEL="",
+            LLM_MATCH_PROVIDER="", LLM_MATCH_MODEL="", LLM_MATCH_API_KEY="",
+            LLM_MATCH_BASE_URL="", LLM_MATCH_TEMPERATURE=None, LLM_MATCH_TOP_P=None,
+            LLM_MATCH_MAX_TOKENS=None, LLM_MATCH_THINKING=False, LLM_MATCH_THINKING_LEVEL="",
+            LLM_NORMALIZE_PROVIDER="", LLM_NORMALIZE_MODEL="", LLM_NORMALIZE_API_KEY="",
+            LLM_NORMALIZE_BASE_URL="", LLM_NORMALIZE_TEMPERATURE=None, LLM_NORMALIZE_TOP_P=None,
+            LLM_NORMALIZE_MAX_TOKENS=None, LLM_NORMALIZE_THINKING=False, LLM_NORMALIZE_THINKING_LEVEL="",
+            LLM_NORMALIZE_PROFILE_PROVIDER="", LLM_NORMALIZE_PROFILE_MODEL="",
+            LLM_NORMALIZE_PROFILE_API_KEY="", LLM_NORMALIZE_PROFILE_BASE_URL="",
+            LLM_NORMALIZE_PROFILE_TEMPERATURE=None, LLM_NORMALIZE_PROFILE_TOP_P=None,
+            LLM_NORMALIZE_PROFILE_MAX_TOKENS=None, LLM_NORMALIZE_PROFILE_THINKING=False,
+            LLM_NORMALIZE_PROFILE_THINKING_LEVEL="",
+            LLM_COMPRESS_PROVIDER="", LLM_COMPRESS_MODEL="", LLM_COMPRESS_API_KEY="",
+            LLM_COMPRESS_BASE_URL="", LLM_COMPRESS_TEMPERATURE=None, LLM_COMPRESS_TOP_P=None,
+            LLM_COMPRESS_MAX_TOKENS=None, LLM_COMPRESS_THINKING=False, LLM_COMPRESS_THINKING_LEVEL="",
+            OLLAMA_BASE_URL="http://localhost:11434", OLLAMA_MODEL="mistral",
+        )
+        defaults.update(overrides)
+        m = MagicMock()
+        for k, v in defaults.items():
+            setattr(m, k, v)
+        return m
+
+    def test_unknown_step_falls_through_to_globals(self):
+        with patch("backend.providers.llm.factory.settings", self._mock_settings()):
+            cfg = _resolve_step_config("default")
+        assert cfg["provider"] == "openai"
+        assert cfg["model"] == "gpt-4"
+        assert cfg["api_key"] == "global-key"
+
+    def test_known_step_plan_uses_global_when_step_fields_empty(self):
+        with patch("backend.providers.llm.factory.settings", self._mock_settings()):
+            cfg = _resolve_step_config("plan")
+        assert cfg["provider"] == "openai"
+        assert cfg["temperature"] == 0.2
+
+    def test_known_step_plan_overrides_when_step_fields_set(self):
+        with patch("backend.providers.llm.factory.settings", self._mock_settings(
+            LLM_PLAN_PROVIDER="gemini",
+            LLM_PLAN_MODEL="gemini-pro",
+            LLM_PLAN_API_KEY="plan-key",
+            LLM_PLAN_TEMPERATURE=0.5,
+        )):
+            cfg = _resolve_step_config("plan")
+        assert cfg["provider"] == "gemini"
+        assert cfg["model"] == "gemini-pro"
+        assert cfg["api_key"] == "plan-key"
+        assert cfg["temperature"] == 0.5
+
+    def test_step_temperature_none_falls_back_to_global(self):
+        with patch("backend.providers.llm.factory.settings", self._mock_settings(
+            LLM_MATCH_TEMPERATURE=None,
+            LLM_TEMPERATURE=0.7,
+        )):
+            cfg = _resolve_step_config("match")
+        assert cfg["temperature"] == 0.7
+
+    def test_all_known_steps_are_resolvable(self):
+        with patch("backend.providers.llm.factory.settings", self._mock_settings()):
+            for step in ("plan", "match", "normalize", "normalize_profile", "compress"):
+                cfg = _resolve_step_config(step)
+                assert "provider" in cfg
+
+
+# ─── _build_provider ──────────────────────────────────────────────────────────
+
+class TestBuildProvider:
+    def _base_cfg(self, **overrides):
+        cfg = {
+            "provider": "openai",
+            "model": "gpt-4",
+            "api_key": "test-key",
+            "base_url": "https://api.openai.com",
+            "temperature": 0.2,
+            "top_p": 0.9,
+            "max_tokens": 512,
+            "thinking": False,
+            "thinking_level": "",
+        }
+        cfg.update(overrides)
+        return cfg
+
+    def test_builds_openai_compatible_provider(self):
+        cfg = self._base_cfg()
+        provider = _build_provider(cfg)
+        assert isinstance(provider, OpenAICompatibleProvider)
+
+    def test_builds_gemini_provider(self):
+        cfg = self._base_cfg(provider="gemini", api_key="gemini-key")
+        provider = _build_provider(cfg)
+        assert isinstance(provider, GeminiProvider)
+
+    def test_builds_ollama_provider(self):
+        with patch("backend.providers.llm.factory.settings") as mock_settings:
+            mock_settings.OLLAMA_BASE_URL = "http://localhost:11434"
+            mock_settings.OLLAMA_MODEL = "mistral"
+            cfg = self._base_cfg(provider="ollama", api_key="")
+            provider = _build_provider(cfg)
+        assert isinstance(provider, OllamaProvider)
+
+    def test_raises_when_no_api_key_for_cloud_provider(self):
+        cfg = self._base_cfg(provider="openai", api_key="")
+        with pytest.raises(ValueError, match="API key"):
+            _build_provider(cfg)
+
+    def test_ollama_does_not_require_api_key(self):
+        with patch("backend.providers.llm.factory.settings") as mock_settings:
+            mock_settings.OLLAMA_BASE_URL = "http://localhost:11434"
+            mock_settings.OLLAMA_MODEL = "llama3"
+            cfg = self._base_cfg(provider="ollama", api_key="")
+            # Should not raise
+            provider = _build_provider(cfg)
+        assert isinstance(provider, OllamaProvider)
+
+
+# ─── get_provider_for_step ────────────────────────────────────────────────────
+
+class TestGetProviderForStep:
+    def _patched_settings(self):
+        m = MagicMock()
+        m.LLM_PROVIDER = "openai"
+        m.LLM_MODEL = "gpt-4o"
+        m.LLM_API_KEY = "sk-test"
+        m.LLM_BASE_URL = ""
+        m.LLM_TEMPERATURE = 0.3
+        m.LLM_TOP_P = 1.0
+        m.LLM_MAX_TOKENS = 1024
+        m.LLM_THINKING = False
+        m.LLM_THINKING_LEVEL = ""
+        for step in ("PLAN", "MATCH", "NORMALIZE", "NORMALIZE_PROFILE", "COMPRESS"):
+            for field in ("PROVIDER", "MODEL", "API_KEY", "BASE_URL", "THINKING_LEVEL"):
+                setattr(m, f"LLM_{step}_{field}", "")
+            for field in ("TEMPERATURE", "TOP_P", "MAX_TOKENS"):
+                setattr(m, f"LLM_{step}_{field}", None)
+            setattr(m, f"LLM_{step}_THINKING", False)
+        return m
+
+    def test_default_step_returns_provider(self):
+        with patch("backend.providers.llm.factory.settings", self._patched_settings()):
+            provider = get_provider_for_step("default")
+        assert isinstance(provider, OpenAICompatibleProvider)
+
+    def test_each_known_step_returns_provider(self):
+        with patch("backend.providers.llm.factory.settings", self._patched_settings()):
+            for step in ("plan", "match", "normalize", "normalize_profile", "compress"):
+                provider = get_provider_for_step(step)
+                assert provider is not None
