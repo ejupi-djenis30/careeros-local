@@ -13,7 +13,6 @@ Usage::
 """
 from typing import Dict
 
-
 # Affinity matrix: symmetric, values 0.0–1.0
 # 1.0 = same domain (handled automatically in get_domain_affinity)
 # 0.7-0.9 = very closely related (same sector, complementary skills)

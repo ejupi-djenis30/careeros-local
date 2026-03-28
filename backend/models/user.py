@@ -1,4 +1,4 @@
-from sqlalchemy import Column, DateTime, JSON, String
+from sqlalchemy import JSON, Column, DateTime, String
 from sqlalchemy.orm import relationship
 
 from backend.models.base_model import BaseModel, TimestampMixin

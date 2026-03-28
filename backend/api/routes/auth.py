@@ -29,7 +29,7 @@ def register(request: Request, response: Response, user_in: UserCreate, db: Sess
         )
 
     hashed_password = get_password_hash(user_in.password)
-    db_user = user_repo.create({"username": user_in.username, "hashed_password": hashed_password})
+    user_repo.create({"username": user_in.username, "hashed_password": hashed_password})
 
     access_token = create_access_token(data={"sub": user_in.username})
     refresh_token = create_refresh_token(data={"sub": user_in.username})

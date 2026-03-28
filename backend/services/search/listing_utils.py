@@ -584,6 +584,8 @@ def semantic_skills_score(
         if getattr(_settings, "SKILL_EMBEDDING_ENABLED", True):
             from backend.services.search.skill_embeddings import (  # type: ignore
                 best_embedding_match as _best_embedding_match,
+            )
+            from backend.services.search.skill_embeddings import (
                 is_available as _emb_is_available,
             )
             _emb_available = _emb_is_available()

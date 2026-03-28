@@ -4,7 +4,7 @@ from typing import Any, Dict, List, Optional
 from tenacity import retry, stop_after_attempt, wait_exponential
 
 from backend.core.config import settings
-from backend.providers.circuit_breaker import CircuitOpenError, circuit_registry
+from backend.providers.circuit_breaker import circuit_registry
 from backend.providers.llm.factory import get_provider_for_step
 from backend.services.search.query_contracts import (
     compute_plan_input_fingerprint,

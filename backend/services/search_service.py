@@ -34,7 +34,6 @@ from backend.services.search.listing_utils import (
     normalized_text_token,
     parse_listing_publication_date,
     semantic_skills_score,
-    skills_overlap,
 )
 from backend.services.search.search_validator import build_search_request
 from backend.services.utils import (

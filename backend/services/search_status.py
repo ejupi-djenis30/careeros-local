@@ -285,7 +285,6 @@ def register_task(profile_id: int, task: Any):
         existing = _active_tasks.get(profile_id)
         if existing is not None:
             # Check if the existing task is still alive before refusing.
-            import asyncio
             try:
                 if not existing.done():
                     logger.warning(

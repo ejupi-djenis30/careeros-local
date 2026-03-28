@@ -27,8 +27,8 @@ logger = logging.getLogger(__name__)
 # ─── availability flag ────────────────────────────────────────────────────────
 
 try:
-    from sentence_transformers import SentenceTransformer  # type: ignore
     import numpy as np  # type: ignore
+    from sentence_transformers import SentenceTransformer  # type: ignore
 
     _SENTENCE_TRANSFORMERS_AVAILABLE = True
 except ImportError:

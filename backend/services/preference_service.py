@@ -191,8 +191,6 @@ def compute_salary_benchmark(
 
         {"p25": 70000, "median": 85000, "p75": 100000, "n": 42}
     """
-    from backend.models.job import ScrapedJob
-    from sqlalchemy import func
 
     if not domain:
         return None

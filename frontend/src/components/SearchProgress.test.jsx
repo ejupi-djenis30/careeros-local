@@ -2,6 +2,7 @@ import React from 'react';
 import { render, screen } from '@testing-library/react';
 import { describe, it, expect, vi } from 'vitest';
 import { SearchProgress } from './SearchProgress';
+import { ToastProvider } from '../context/ToastContext';
 
 vi.mock('../services/search', () => ({
   SearchService: {
@@ -41,7 +42,7 @@ describe('SearchProgress', () => {
       log: [],
     };
 
-    render(<SearchProgress profileId="1" status={status} onStateChange={vi.fn()} onClear={vi.fn()} />);
+    render(<ToastProvider><SearchProgress profileId="1" status={status} onStateChange={vi.fn()} onClear={vi.fn()} /></ToastProvider>);
 
     expect(
       screen.getByText('Search completed with notice: no jobs were found for the generated queries.')
@@ -66,7 +67,7 @@ describe('SearchProgress', () => {
       log: [],
     };
 
-    render(<SearchProgress profileId="1" status={status} onStateChange={vi.fn()} onClear={vi.fn()} />);
+    render(<ToastProvider><SearchProgress profileId="1" status={status} onStateChange={vi.fn()} onClear={vi.fn()} /></ToastProvider>);
 
     expect(
       screen.getByText('Search completed with notice: all fetched jobs were filtered out by structured constraints.')
@@ -91,7 +92,7 @@ describe('SearchProgress', () => {
       log: [],
     };
 
-    render(<SearchProgress profileId="1" status={status} onStateChange={vi.fn()} onClear={vi.fn()} />);
+    render(<ToastProvider><SearchProgress profileId="1" status={status} onStateChange={vi.fn()} onClear={vi.fn()} /></ToastProvider>);
 
     expect(screen.queryByText(/Search completed with notice:/)).not.toBeInTheDocument();
     expect(screen.getByTestId('llm-debug-label')).toHaveTextContent(
