@@ -100,7 +100,7 @@ export function Schedules() {
                     </div>
                 </div>
                 <h4 className="text-white fw-bold">No Active Schedules</h4>
-                <p className="text-secondary opacity-75 max-w-sm">Enable "Automatic Search" when creating a new search to let the agent work for you.</p>
+                <p className="text-secondary opacity-75 max-w-480">Enable "Automatic Search" when creating a new search to let the agent work for you.</p>
             </div>
         );
     }

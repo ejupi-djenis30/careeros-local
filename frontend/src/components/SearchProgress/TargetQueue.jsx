@@ -26,7 +26,7 @@ export function TargetQueue({ state, analyzedJobs, searches_generated, current_s
                                         </div>
                                         <div>
                                             <div className="x-small text-uppercase tracking-wider opacity-50 mb-1 text-secondary">Target {j.idx}/{j.total}</div>
-                                            <div className={`text-sm fw-medium font-monospace ${isCurrent ? 'text-primary' : 'text-secondary'}`}>{j.title}</div>
+                                            <div className={`small fw-medium font-monospace ${isCurrent ? 'text-primary' : 'text-secondary'}`}>{j.title}</div>
                                         </div>
                                     </li>
                                 );
@@ -50,7 +50,7 @@ export function TargetQueue({ state, analyzedJobs, searches_generated, current_s
                                         </div>
                                         <div>
                                             <div className="x-small text-uppercase tracking-wider opacity-50 mb-1 text-secondary">{s.type || s.provider}</div>
-                                            <div className={`text-sm fw-medium font-monospace ${isCurrent ? 'text-primary' : 'text-secondary'}`}>{s.query}</div>
+                                            <div className={`small fw-medium font-monospace ${isCurrent ? 'text-primary' : 'text-secondary'}`}>{s.query}</div>
                                         </div>
                                     </li>
                                 );

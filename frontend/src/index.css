@@ -595,6 +595,7 @@ textarea.form-control {
 .hover-all-200 { transition: all 0.2s; }
 .max-w-280 { max-width: 280px; }
 .max-w-200 { max-width: 200px; }
+.min-w-0 { min-width: 0; }
 .cursor-pointer { cursor: pointer; }
 .badge-applied-other {
     font-size: 0.6rem;
