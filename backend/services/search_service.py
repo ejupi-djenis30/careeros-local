@@ -28,6 +28,7 @@ from backend.services.search.listing_utils import (
     extract_listing_location_string,
     extract_listing_workload_string,
     extract_salary_max_chf,
+    listing_description_fingerprint,
     listing_fuzzy_key,
     listing_identity_key,
     listing_is_remote,
@@ -277,9 +278,28 @@ class SearchService:
         if not candidates:
             return 0
 
-        normalized_rows = await llm_service.normalize_job_batch(candidates)
+        # ── Chunked normalization: send candidates in small batches to avoid
+        # context-limit errors (APIStatusError) that would fail the entire batch.
+        batch_size = max(1, settings.NORMALIZE_BATCH_SIZE)
+        normalized_rows: List[Dict[str, Any]] = []
+        for chunk_start in range(0, len(candidates), batch_size):
+            chunk = candidates[chunk_start: chunk_start + batch_size]
+            try:
+                chunk_result = await llm_service.normalize_job_batch(chunk)
+                normalized_rows.extend(chunk_result)
+            except Exception as batch_err:
+                logger.warning(
+                    "[NORMALIZE] Batch %d-%d failed for profile %s, skipping chunk: %s",
+                    chunk_start, chunk_start + len(chunk) - 1, profile_id, batch_err,
+                )
+                # Pad with empty dicts so indices stay aligned with candidate_records
+                normalized_rows.extend([{} for _ in chunk])
+
         upgraded = 0
         for scraped_job, normalized in zip(candidate_records, normalized_rows):
+            if not normalized:
+                # Batch failed for this job — leave normalization_status unchanged
+                continue
             scraped_job.normalization_status = "normalized"
             scraped_job.normalized_at = datetime.now(timezone.utc)
             scraped_job.normalization_source = "llm_normalizer"
@@ -654,11 +674,18 @@ class SearchService:
                                        bypassed when job is career_changer_friendly
         """
         # ─── 0. Confidence gate ───────────────────────────────────────────
+        # Low-confidence normalization means categorical fields (domain, seniority,
+        # role_type, qualification, skills) are unreliable.  Rather than skipping ALL
+        # checks (old, unsafe behaviour), we set a flag and selectively skip only the
+        # inference-based categorical gates, while still enforcing hard numeric facts
+        # (experience floor, entry barrier) and the candidate's own dealbreakers.
+        # The prescore threshold is raised by 15 pts as an additional safety net.
         raw_confidence = job_norm.get("confidence")
+        low_confidence = False
         if raw_confidence is not None:
             try:
                 if float(raw_confidence) < 0.7:
-                    return True, "ok"
+                    low_confidence = True
             except (TypeError, ValueError):
                 pass
 
@@ -679,12 +706,36 @@ class SearchService:
                 ):
                     return False, "norm_dealbreaker_hit"
 
+        # ─── 0.6. Progressive dealbreaker escalation (Tier 3 hard filter) ────
+        # When a user has dismissed 10+ jobs with the same feedback signal, that pattern
+        # is a strong learned preference. We auto-reject new jobs that clearly match it
+        # without waiting for MATCH — saving tokens and improving precision.
+        if preference_signals:
+            _t3 = int(getattr(settings, "DEALBREAKER_ESCALATION_TIER3", 10))
+            _dealbreaker_patterns = preference_signals.get("dealbreaker_patterns") or {}
+            _job_seniority_esc = str(job_norm.get("seniority") or job_norm.get("normalized_seniority") or "").lower()
+            _profile_seniority_esc = str(
+                profile_norm.get("intent_seniority") or profile_norm.get("seniority") or ""
+            ).lower()
+            _job_domain_esc = str(job_norm.get("domain") or job_norm.get("normalized_domain") or "general").lower()
+            _avoided_domains_esc = [d.lower() for d in (preference_signals.get("avoided_domains") or [])]
+            for _sig, _cnt in _dealbreaker_patterns.items():
+                if _cnt < _t3:
+                    continue
+                if _sig == "too_senior" and _job_seniority_esc == "senior" and _profile_seniority_esc in ("junior", "mid"):
+                    return False, "norm_escalated_dealbreaker:too_senior"
+                if _sig == "too_junior" and _job_seniority_esc == "junior" and _profile_seniority_esc in ("senior", "mid"):
+                    return False, "norm_escalated_dealbreaker:too_junior"
+                if _sig == "wrong_domain" and _job_domain_esc and _job_domain_esc in _avoided_domains_esc:
+                    return False, "norm_escalated_dealbreaker:wrong_domain"
+
         # ─── 1. Domain match ─────────────────────────────────────────────
+        # Skip for low-confidence normalizations — the extracted domain may be wrong.
         # Primary: use search intent domain; fallback to CV domain
         intent_domain = str(profile_norm.get("intent_domain") or profile_norm.get("domain") or "general").strip().lower()
         job_domain = str(job_norm.get("domain") or "general").strip().lower()
 
-        if not open_to_unrelated:
+        if not low_confidence and not open_to_unrelated:
             if (
                 intent_domain
                 and job_domain
@@ -698,10 +749,11 @@ class SearchService:
         # ─── 2. Role-type match ───────────────────────────────────────────
         # Use explicit intent_role_type when available.
         # Example: junior developer with intent_role_type="manual" should only see manual/service jobs.
+        # Skip for low-confidence normalizations — the extracted role_type may be wrong.
         intent_role_type = str(profile_norm.get("intent_role_type") or "").strip().lower() or None
         job_role_type = str(job_norm.get("role_type") or "").strip().lower() or None
 
-        if intent_role_type and job_role_type:
+        if not low_confidence and intent_role_type and job_role_type:
             flexible_domain = bool(flexibility.get("domain", False))
             if not flexible_domain and not open_to_unrelated:
                 if not self._role_types_compatible(intent_role_type, job_role_type):
@@ -718,12 +770,13 @@ class SearchService:
 
         # ─── 3. Seniority range match ─────────────────────────────────────
         # Use intent_seniority_min/max range; fall back to single intent_seniority or CV seniority.
+        # Skip for low-confidence normalizations — the extracted seniority may be wrong.
         intent_seniority_min = str(profile_norm.get("intent_seniority_min") or "").strip().lower() or None
         intent_seniority_max = str(profile_norm.get("intent_seniority_max") or "").strip().lower() or None
         has_range = intent_seniority_min or intent_seniority_max
         job_seniority = str(job_norm.get("seniority") or "").strip().lower()
 
-        if job_seniority and has_range:
+        if not low_confidence and job_seniority and has_range:
             job_rank = self._SENIORITY_ORDER.get(job_seniority, -1)
             if job_rank >= 0:
                 if intent_seniority_min:
@@ -739,7 +792,7 @@ class SearchService:
                         tolerance = int(getattr(settings, "SEARCH_NORMALIZATION_EXPERIENCE_TOLERANCE", 2))
                         if job_exp_min is not None and user_exp is not None and job_exp_min > user_exp + tolerance:
                             return False, "norm_seniority_overqualified"
-        elif job_seniority:
+        elif not low_confidence and job_seniority:
             # Legacy single-point seniority check
             effective_seniority = str(
                 profile_norm.get("intent_seniority") or profile_norm.get("seniority") or ""
@@ -766,13 +819,14 @@ class SearchService:
                         return False, "norm_seniority_underqualified"
 
         # ─── 4. Qualification level ───────────────────────────────────────
-        # Use intent qualification (what the user is willing to meet); fall back to CV level
+        # Use intent qualification (what the user is willing to meet); fall back to CV level.
+        # Skip for low-confidence normalizations — the extracted qualification may be wrong.
         effective_ql = str(
             profile_norm.get("intent_qualification_level") or profile_norm.get("qualification_level") or ""
         ).strip().lower()
         job_ql = str(job_norm.get("qualification_level") or "").strip().lower()
 
-        if effective_ql and job_ql:
+        if not low_confidence and effective_ql and job_ql:
             # Skip qualification check for entry_barrier=none or career_changer_friendly jobs
             job_entry_barrier = str(job_norm.get("entry_barrier") or "").strip().lower()
             job_career_changer = bool(job_norm.get("career_changer_friendly", False))
@@ -798,8 +852,9 @@ class SearchService:
                 return False, "norm_experience_floor"
 
         # ─── 6. Skills overlap (alias-aware, extended with transferable skills) ─
+        # Skip for low-confidence normalizations — required_skills may be empty or wrong.
         career_changer_friendly = bool(job_norm.get("career_changer_friendly", False))
-        if not searching_manual and not career_changer_friendly:
+        if not low_confidence and not searching_manual and not career_changer_friendly:
             job_skills = [s for s in (job_norm.get("required_skills") or []) if s]
             # Combine CV skills + intent target skills + transferable skills as the candidate pool
             profile_skills = list({
@@ -817,7 +872,16 @@ class SearchService:
         # 0-100 multi-signal score and rejects jobs that are very unlikely matches.
         if getattr(settings, "STRUCTURED_PRESCORE_ENABLED", False):
             try:
-                threshold = float(getattr(settings, "STRUCTURED_PRESCORE_THRESHOLD", 20.0))
+                threshold = float(getattr(settings, "STRUCTURED_PRESCORE_THRESHOLD", 30.0))
+                # Dynamic threshold: stricter when user has established preference signals
+                if (
+                    preference_signals
+                    and preference_signals.get("signal_count", 0) >= getattr(settings, "PREFERENCE_MIN_SIGNAL_COUNT", 10)
+                ):
+                    threshold = float(getattr(settings, "STRUCTURED_PRESCORE_THRESHOLD_WITH_PREFS", 35.0))
+                # Low-confidence penalty: unreliable normalization must clear a higher bar
+                if low_confidence:
+                    threshold += 15.0
                 prescore = compute_prescore(job_norm, profile_norm, preference_signals)
                 if prescore < threshold:
                     return False, f"norm_prescore_low:{prescore:.1f}"
@@ -1595,6 +1659,7 @@ class SearchService:
 
         seen_keys: set = set()
         seen_fuzzy_keys: set = set()
+        seen_desc_fingerprints: set = set()
         unique_jobs: list = []
 
         existing_identifiers = self.job_repo.get_profile_job_identifiers(profile_id)
@@ -1655,12 +1720,24 @@ class SearchService:
             if fuzzy_key and (fuzzy_key in existing_fuzzy_keys or fuzzy_key in seen_fuzzy_keys):
                 continue
 
+            # Tier 4: description fingerprint — catches cross-provider reposts where
+            # different platform IDs, URLs, and titles are used for the same body text.
+            desc_fp = listing_description_fingerprint(listing)
+            if desc_fp and desc_fp in seen_desc_fingerprints:
+                logger.debug(
+                    "[DEDUP][T4] Skipping cross-provider repost: %s/%s (desc_fp=%s…)",
+                    platform, platform_id, desc_fp[:8],
+                )
+                continue
+
             if key:
                 seen_keys.add(key)
             if url:
                 existing_urls.add(url)
             if fuzzy_key:
                 seen_fuzzy_keys.add(fuzzy_key)
+            if desc_fp:
+                seen_desc_fingerprints.add(desc_fp)
 
             # Feature 2 check: applied elsewhere (O(1) dict lookup — no per-listing DB queries)
             applied_elsewhere = (platform, platform_id) in applied_scraped_id_by_pair

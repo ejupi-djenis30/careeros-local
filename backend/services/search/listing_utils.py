@@ -268,6 +268,40 @@ def listing_fuzzy_key(listing) -> str:
     return f"{title}::{company}"
 
 
+def listing_description_fingerprint(listing) -> Optional[str]:
+    """Return a SHA-256 fingerprint of the first 500 normalised chars of the description.
+
+    Used as Tier-4 deduplication: catches cross-provider reposts where the
+    identity key and fuzzy key differ but the body text is virtually identical
+    (e.g., the same opening posted on both JobRoom and StepStone).
+
+    Returns *None* if the description is too short to be meaningful (<50 chars),
+    preventing false-positive collisions on stub listings.
+    """
+    import hashlib
+
+    desc_text: str = ""
+    descs = getattr(listing, "descriptions", None)
+    if descs:
+        first = descs[0]
+        desc_text = (
+            first.description
+            if hasattr(first, "description")
+            else (first.get("description", "") if isinstance(first, dict) else "")
+        ) or ""
+    if not desc_text:
+        desc_text = getattr(listing, "description", None) or ""
+
+    if len(desc_text.strip()) < 50:
+        return None
+
+    # Strip HTML tags, lowercase, collapse whitespace, take first 500 chars.
+    clean = re.sub(r"<[^>]+>", " ", desc_text)
+    clean = re.sub(r"\s+", " ", clean.lower().strip())
+    clean = clean[:500]
+    return hashlib.sha256(clean.encode("utf-8")).hexdigest()
+
+
 def listing_is_remote(listing) -> bool:
     """Heuristically detect whether a listing is remote/hybrid."""
     employment = getattr(listing, "employment", None)
@@ -441,28 +475,43 @@ def bootstrap_normalized_job_data(
         except ValueError:
             continue
 
-    # Heuristic role_type from title keywords (confidence 0.35 — overwritten by LLM later)
+    # Cross-reference title-inferred seniority with description experience requirements.
+    # "Associate Software Engineer" (title=mid) with "10+ years required" (desc) → upgrade to senior.
+    if experience_values:
+        max_exp = max(experience_values)
+        if max_exp >= 7 and seniority in (None, "mid"):
+            seniority = "senior"
+        elif max_exp >= 3 and seniority is None:
+            seniority = "mid"
+
+    # Heuristic role_type from title keywords (confidence 0.35 — overwritten by LLM later).
+    # PRIORITY ORDER MATTERS: check managerial before domain-specific types so that
+    # "Warehouse Manager" → managerial (not manual) and "Senior Engineer" → technical (not manual).
     role_type: Optional[str] = None
-    for rt, keywords in {
-        "manual": [
+    _ROLE_TYPE_PRIORITY = [
+        ("managerial", [
+            "manager", "head of", "director", "chief", "vp ", "vice president",
+            "leiter", "leiterin", "führungskraft", "teamleiter", "teamleiterin",
+        ]),
+        ("technical", [
+            "engineer", "developer", "entwickler", "ingenieur", "programmer", "analyst",
+            "devops", "architect",
+        ]),
+        ("administrative", [
+            "administrator", "secretary", "receptionist", "sachbearbeiter", "assistant",
+            "koordinator", "buchhalter",
+        ]),
+        ("service", [
+            "customer service", "waitress", "waiter", "kellner",
+            "servicemitarbeiter", "barista",
+        ]),
+        ("manual", [
             "warehouse", "lager", "cleaning", "reinigung", "delivery", "driver", "fahrer",
             "packer", "sortierer", "lagermitarbeiter", "construction", "bauarbeiter",
             "helper", "hilfsarbeiter", "courier", "kurier", "forklift", "gabelstapler",
-        ],
-        "managerial": ["manager", "head of", "director", "chief", "vp ", "vice president"],
-        "technical": [
-            "engineer", "developer", "entwickler", "ingenieur", "programmer", "analyst",
-            "devops", "architect",
-        ],
-        "administrative": [
-            "administrator", "secretary", "receptionist", "sachbearbeiter", "assistant",
-            "koordinator", "buchhalter",
-        ],
-        "service": [
-            "customer service", "receptionist", "waitress", "waiter", "kellner",
-            "servicemitarbeiter", "barista",
-        ],
-    }.items():
+        ]),
+    ]
+    for rt, keywords in _ROLE_TYPE_PRIORITY:
         if any(kw in title_lower for kw in keywords):
             role_type = rt
             break
@@ -664,14 +713,15 @@ def compute_prescore(
     This runs BEFORE the expensive LLM MATCH step and acts as a lightweight gate.
     It only uses fields available after normalization.
 
-    Score breakdown (total 100):
+    Score breakdown (total max ~105):
     - Domain alignment (20 pts)
     - Seniority fit (15 pts)
-    - Semantic skill overlap (25 pts)
+    - Semantic skill overlap (0–25 pts, domain-aware weight)
     - Experience years fit (15 pts)
     - Entry barrier vs. qualifications (10 pts)
     - Language requirements (10 pts)
     - Qualification level match (5 pts)
+    - Posting quality bonus/penalty (−8 to +5 pts)
     - User preference alignment (up to +5 bonus / −5 penalty, gated)
     """
     score = 0.0
@@ -719,16 +769,32 @@ def compute_prescore(
     else:
         score += 7.5  # neutral
 
-    # 3. Semantic skill overlap (0–25 pts)
+    # 3. Semantic skill overlap (0–25 pts, domain-aware weight)
+    # Manual and service roles rarely list technical skills — penalising a qualified
+    # warehouse worker for not having Python is counterproductive.  Reduce the skill
+    # maximum for non-technical role types and redistribute to experience/entry-barrier.
+    job_role_type_for_skills = (job_norm.get("normalized_role_type") or "").lower().strip()
+    _SKILL_MAX_BY_ROLE_TYPE: Dict[str, float] = {
+        "manual": 10.0,
+        "service": 15.0,
+        "technical": 25.0,
+        "professional": 25.0,
+        "managerial": 20.0,
+        "administrative": 18.0,
+        "creative": 20.0,
+    }
+    skill_max = _SKILL_MAX_BY_ROLE_TYPE.get(job_role_type_for_skills, 25.0)
+    skill_neutral = skill_max / 2.0  # neutral when data is missing
+
     job_skills: List[str] = job_norm.get("normalized_required_skills") or []
     profile_skills: List[str] = (
         profile_norm.get("skills") or profile_norm.get("normalized_skills") or []
     )
     if job_skills and profile_skills:
         sem_score = semantic_skills_score(job_skills, profile_skills)
-        score += sem_score * 25.0
+        score += sem_score * skill_max
     else:
-        score += 12.5  # neutral if missing
+        score += skill_neutral  # neutral if missing
 
     # 4. Experience years fit (0–15 pts)
     job_exp_min = job_norm.get("normalized_experience_min_years")
@@ -803,7 +869,23 @@ def compute_prescore(
     else:
         score += 2.5  # neutral
 
-    # 8. User preference alignment (−5 to +5 pts bonus, gated by signal_count)
+    # 8. Posting quality bonus/penalty (−8 to +5 pts)
+    # High-quality postings (clear requirements, salary, structure) are more reliable
+    # for matching.  Low-quality / template / spam postings deserve a prescore penalty
+    # because MATCH analysis will be less accurate on thin descriptions.
+    posting_quality = job_norm.get("posting_quality")
+    if posting_quality is not None:
+        try:
+            pq = float(posting_quality)
+            if pq >= 0.6:
+                score += 5.0   # well-structured, informative posting
+            elif pq < 0.3:
+                score -= 8.0   # sparse / template / spam posting
+            # between 0.3 and 0.6: no adjustment (neutral)
+        except (TypeError, ValueError):
+            pass
+
+    # 9. User preference alignment (−5 to +5 pts bonus, gated by signal_count)
     try:
         from backend.core.config import settings as _cfg
         if (
@@ -835,14 +917,27 @@ def compute_prescore(
             if len(overlap) >= 2:
                 pref_delta += min(2.0, len(overlap) * 0.5)
 
-            # −3 if dealbreaker signals dominate
+            # Progressive dealbreaker escalation: penalise based on repeat dismissal tiers
+            # Tier 1 (≥3): −3 pts · Tier 2 (≥6): −5 pts · Tier 3 (≥10): −8 pts
+            # Only applied when the current job actually matches the dismissed pattern.
+            try:
+                tier1 = int(getattr(_cfg, "DEALBREAKER_ESCALATION_TIER1", 3))
+                tier2 = int(getattr(_cfg, "DEALBREAKER_ESCALATION_TIER2", 6))
+                tier3 = int(getattr(_cfg, "DEALBREAKER_ESCALATION_TIER3", 10))
+            except Exception:
+                tier1, tier2, tier3 = 3, 6, 10
+
             dealbreakers = preference_signals.get("dealbreaker_patterns") or {}
-            total_dismissed = sum(dealbreakers.values()) if dealbreakers else 0
-            high_signal_dismissals = {"too_senior", "too_junior", "wrong_domain"}
-            hard_flags = sum(dealbreakers.get(k, 0) for k in high_signal_dismissals)
-            if total_dismissed >= 5 and hard_flags / total_dismissed > 0.6:
-                if job_domain and job_domain in avoided_domains:
-                    pref_delta -= 3.0
+            for signal, count in dealbreakers.items():
+                if count < tier1:
+                    continue
+                penalty = -3.0 if count < tier2 else (-5.0 if count < tier3 else -8.0)
+                if signal == "too_senior" and job_seniority == "senior" and profile_seniority in ("junior", "mid"):
+                    pref_delta += penalty
+                elif signal == "too_junior" and job_seniority == "junior" and profile_seniority in ("senior", "mid"):
+                    pref_delta += penalty
+                elif signal == "wrong_domain" and job_domain and job_domain in avoided_domains:
+                    pref_delta += penalty
 
             score += max(-5.0, min(5.0, pref_delta))
     except Exception:

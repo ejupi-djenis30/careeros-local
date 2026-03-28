@@ -147,6 +147,8 @@ class Settings(BaseSettings):
     SEARCH_DEGRADED_PLAN_MAX_KEYWORDS: int = 2
     ANALYSIS_CONCURRENCY: int = 15
     ANALYSIS_BATCH_SIZE: int = 5
+    # Jobs per normalization LLM prompt. Smaller = fewer context-limit errors.
+    NORMALIZE_BATCH_SIZE: int = 10
 
     # Pipeline & LLM call timeouts
     # Total allowed wall-clock time for a single end-to-end search run (seconds).
@@ -184,7 +186,12 @@ class Settings(BaseSettings):
     # When enabled, jobs must reach STRUCTURED_PRESCORE_THRESHOLD to pass to MATCH.
     STRUCTURED_PRESCORE_ENABLED: bool = True
     # Minimum composite pre-score (0–100) required to pass to the MATCH step.
-    STRUCTURED_PRESCORE_THRESHOLD: float = 20.0
+    # Raised from 20 → 30 to reduce token waste on weak matches.
+    STRUCTURED_PRESCORE_THRESHOLD: float = 30.0
+    # Stricter threshold applied once the user has accumulated preference signals
+    # (>= PREFERENCE_MIN_SIGNAL_COUNT interactions).  The system can afford to be
+    # pickier when it knows the user's patterns.
+    STRUCTURED_PRESCORE_THRESHOLD_WITH_PREFS: float = 35.0
 
     # ─── MATCH quality improvements ───────────────────────────────────────────
     # Evidence-grounded MATCH: prompt requires citing specific text from job description.
@@ -244,6 +251,14 @@ class Settings(BaseSettings):
     PREFERENCE_MIN_SIGNAL_COUNT: int = 10
     # Enable preference-based pre-score component.
     PREFERENCE_PRESCORE_ENABLED: bool = True
+
+    # Progressive dealbreaker escalation — dismissal thresholds for each tier.
+    # Tier 1 (3+ dismissals same signal): prescore penalty −3 pts
+    # Tier 2 (6+ dismissals same signal): prescore penalty −5 pts
+    # Tier 3 (10+ dismissals same signal): prescore penalty −8 pts + hard filter in structured gating
+    DEALBREAKER_ESCALATION_TIER1: int = 3
+    DEALBREAKER_ESCALATION_TIER2: int = 6
+    DEALBREAKER_ESCALATION_TIER3: int = 10
 
     # ─── Swiss Market Enhancements (Phase 3) ──────────────────────────────────
     # Inject implicit language requirements (canton-based) into MATCH prompt.

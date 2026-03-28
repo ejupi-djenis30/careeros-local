@@ -11,7 +11,7 @@ on:
     branches: [main, master]
   pull_request:
     branches: [main, master]
-  workflow_call: {} # allow reuse from deploy.yml
+  workflow_call: # allow reuse from deploy.yml
 
 jobs:
   test:

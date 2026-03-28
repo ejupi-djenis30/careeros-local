@@ -2046,6 +2046,152 @@
       "related": {
         "german language": 0.3
       }
+    },
+    "fastapi": {
+      "aliases": ["fast api", "fastapi python"],
+      "related": {
+        "python": 0.85,
+        "rest api": 0.8,
+        "pydantic": 0.75,
+        "sqlalchemy": 0.65,
+        "docker": 0.5,
+        "microservices": 0.6
+      }
+    },
+    "nextjs": {
+      "aliases": ["next.js", "next js", "next.js framework"],
+      "related": {
+        "react": 0.9,
+        "javascript": 0.8,
+        "typescript": 0.8,
+        "vercel": 0.7,
+        "css": 0.5,
+        "tailwind": 0.55
+      }
+    },
+    "react native": {
+      "aliases": ["react-native", "rn mobile"],
+      "related": {
+        "react": 0.85,
+        "javascript": 0.8,
+        "typescript": 0.75,
+        "mobile": 0.9,
+        "ios": 0.7,
+        "android": 0.7,
+        "flutter": 0.65
+      }
+    },
+    "snowflake": {
+      "aliases": ["snowflake data warehouse", "snowflake cloud"],
+      "related": {
+        "data engineering": 0.85,
+        "dbt": 0.8,
+        "sql": 0.75,
+        "data science": 0.6,
+        "etl": 0.75,
+        "airflow": 0.6
+      }
+    },
+    "bigquery": {
+      "aliases": ["google bigquery", "bq"],
+      "related": {
+        "gcp": 0.85,
+        "data engineering": 0.85,
+        "sql": 0.75,
+        "dbt": 0.7,
+        "snowflake": 0.65,
+        "data science": 0.6
+      }
+    },
+    "helm": {
+      "aliases": ["helm charts", "kubernetes helm", "helm chart"],
+      "related": {
+        "kubernetes": 0.9,
+        "docker": 0.7,
+        "devops": 0.75,
+        "cicd": 0.65,
+        "terraform": 0.55
+      }
+    },
+    "servicenow": {
+      "aliases": ["service now", "snow", "itsm servicenow"],
+      "related": {
+        "itil": 0.85,
+        "it support": 0.8,
+        "devops": 0.45,
+        "helpdesk": 0.75
+      }
+    },
+    "prometheus": {
+      "aliases": ["prometheus monitoring"],
+      "related": {
+        "grafana": 0.9,
+        "kubernetes": 0.7,
+        "devops": 0.75,
+        "linux": 0.6,
+        "docker": 0.6
+      }
+    },
+    "grafana": {
+      "aliases": ["grafana dashboard"],
+      "related": {
+        "prometheus": 0.9,
+        "devops": 0.75,
+        "data visualization": 0.65,
+        "elasticsearch": 0.55,
+        "kubernetes": 0.6
+      }
+    },
+    "tailwind": {
+      "aliases": ["tailwindcss", "tailwind css"],
+      "related": {
+        "css": 0.9,
+        "html": 0.75,
+        "react": 0.65,
+        "nextjs": 0.6,
+        "vue": 0.55,
+        "ui ux design": 0.45
+      }
+    },
+    "nestjs": {
+      "aliases": ["nest.js", "nest js"],
+      "related": {
+        "nodejs": 0.9,
+        "typescript": 0.85,
+        "javascript": 0.75,
+        "rest api": 0.75,
+        "microservices": 0.65,
+        "graphql": 0.6
+      }
+    },
+    "nuxtjs": {
+      "aliases": ["nuxt.js", "nuxt js"],
+      "related": {
+        "vue": 0.9,
+        "javascript": 0.8,
+        "typescript": 0.75,
+        "css": 0.5
+      }
+    },
+    "databricks": {
+      "aliases": ["azure databricks", "databricks platform"],
+      "related": {
+        "spark": 0.9,
+        "data engineering": 0.85,
+        "python": 0.7,
+        "snowflake": 0.65,
+        "azure": 0.65,
+        "machine learning": 0.6
+      }
+    },
+    "istio": {
+      "aliases": ["service mesh", "istio service mesh"],
+      "related": {
+        "kubernetes": 0.85,
+        "microservices": 0.85,
+        "devops": 0.7,
+        "helm": 0.65
+      }
     }
   }
 }

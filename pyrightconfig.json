@@ -1,0 +1,17 @@
+{
+  "pythonVersion": "3.11",
+  "typeCheckingMode": "basic",
+  "reportAttributeAccessIssue": "none",
+  "reportGeneralTypeIssues": "none",
+  "reportOperatorIssue": "none",
+  "reportOptionalMemberAccess": "none",
+  "reportArgumentType": "none",
+  "reportAssignmentType": "none",
+  "exclude": [
+    "venv",
+    ".venv",
+    "node_modules",
+    "frontend",
+    "alembic"
+  ]
+}

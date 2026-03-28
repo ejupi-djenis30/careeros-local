@@ -814,8 +814,19 @@ SCORING RULES (STRICT CONSTRAINTS):
 9. BASE SCORING: Score 0-100 realistically. Score 90-100 ONLY for a virtually perfect match to WHAT THE CANDIDATE WANTS.
 10. `worth_applying` MUST ONLY be true if `affinity_score` >= 65.
 11. `affinity_analysis` must be factual and detailed: mention fit factors, transferable skills relevance, gaps, language requirements, certifications/hard blockers, and dealbreaker hits. Max 1,500 chars.
+12. PENALTY PRIORITY CHAIN: When multiple caps apply simultaneously, use the LOWEST (most restrictive) cap. Priority order from most to least restrictive: DEALBREAKER (cap 20) → USER INSTRUCTIONS (cap 20) → LANGUAGE MISMATCH (cap 30) → EDUCATION MISMATCH (cap 40). Never average caps — always take the strictest.
+13. RED FLAG SCORE IMPACT: Each CRITICAL red flag (unrealistic_requirements, discriminatory_language) reduces `affinity_score` by 5 pts AFTER all other caps are applied.
 
-DIMENSIONAL SCORING: Also produce sub-scores (0-100 each):
+DIMENSIONAL SCORING RUBRICS (0–100 each):
+- `skill_match_score`: 85–100 = ≥80% required skills covered; 60–84 = 50–79% covered; 30–59 = 25–49% covered; 0–29 = <25% covered. For manual/service roles with no listed technical skills, default to 70 if candidate has general relevant experience.
+- `experience_match_score`: 90–100 = experience years within job's stated range; 65–89 = within ±2 yrs of job minimum; 40–64 = 3–5 yr gap; 0–39 = >5 yr gap or completely wrong seniority.
+- `intent_match_score`: 90–100 = job role title + domain + seniority ALL match stated intent; 65–89 = 2/3 match; 40–64 = 1/3 match or partial; 0–39 = job contradicts stated intent.
+- `language_match_score`: 100 = all required languages covered; 60–99 = most languages covered but minor gap; 0–59 = a required language is missing entirely.
+- `location_match_score`: 100 = remote or within preferred location; 60–99 = hybrid or commutable; 0–59 = on-site only far from candidate or contradicts remote preference.
+- `transferability_score`: 90–100 = multiple high-value transferable skills explicitly apply; 60–89 = some transferable skills apply; 30–59 = weak transferability; 0–29 = no transferable skills apply.
+- `qualification_gap_score`: 100 = candidate's qualification is relevant and sufficient; 60–99 = slight over/under-qualification; 0–59 = major qualification mismatch for THIS specific job.
+
+DIMENSIONAL SCORING: Produce sub-scores (0-100 each) following the rubrics above:
 - `skill_match_score`: How well candidate skills (CV + transferable + intent_skills) align with job required+preferred skills
 - `experience_match_score`: Experience level fit (years, seniority) — use seniority range for tolerance
 - `intent_match_score`: How well the job matches what the candidate WANTS (role description + intent keywords + role_type match)
