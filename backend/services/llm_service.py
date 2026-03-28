@@ -667,8 +667,18 @@ Return ONLY pure JSON with a 'searches' list. Example:
             "Return results in the EXACT SAME ORDER as the jobs were given."
         )
 
+        import asyncio as _asyncio
+
+        MATCH_DESC_LIMIT = 6000
+        # Compress descriptions that exceed the limit before building the batch prompt.
+        # Keeps the MATCH step within context limits while preserving all explicit requirements.
+        descriptions = await _asyncio.gather(*[
+            self._compress_description_if_needed(job.get("description") or "", MATCH_DESC_LIMIT)
+            for job in jobs_metadata
+        ])
+
         jobs_text = ""
-        for i, job in enumerate(jobs_metadata):
+        for i, (job, desc) in enumerate(zip(jobs_metadata, descriptions)):
             jobs_text += f"\n--- JOB {i+1} ---\n"
             jobs_text += f"Title: {job.get('title')}\n"
             jobs_text += f"Company: {job.get('company')}\n"
@@ -676,7 +686,7 @@ Return ONLY pure JSON with a 'searches' list. Example:
             jobs_text += f"Workload: {job.get('workload')}\n"
             jobs_text += f"Languages Required: {job.get('languages')}\n"
             jobs_text += f"Education Required: {job.get('education')}\n"
-            jobs_text += f"Description: {job.get('description')}\n"
+            jobs_text += f"Description: {desc}\n"
             # Include pre-computed normalized job facts for the LLM to use directly
             job_norm = job.get("normalized_data") or {}
             if job_norm:

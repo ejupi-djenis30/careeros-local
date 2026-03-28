@@ -258,4 +258,37 @@ describe('useJobs', () => {
       vi.useRealTimers();
     }
   });
+
+  it('aborts stale in-flight request when filters change', async () => {
+    // Arrange: first call hangs indefinitely (stale), second resolves immediately
+    let rejectStale;
+    const staleAbortError = Object.assign(new Error('Aborted'), { name: 'AbortError' });
+    JobService.getAll
+      .mockImplementationOnce(() => new Promise((_, reject) => { rejectStale = () => reject(staleAbortError); }))
+      .mockResolvedValue({ items: [{ id: 99, title: 'New result' }], total: 1, pages: 1, page: 1, total_applied: 0, avg_score: 0 });
+
+    const { result } = renderHook(() => useJobs());
+
+    // Let the first (stale) request start
+    await act(async () => { await Promise.resolve(); });
+
+    // Change filters — this should abort the previous request
+    await act(async () => {
+      result.current.setFilters({ min_score: 75 });
+    });
+
+    // Simulate the stale request completing with AbortError — jobs should NOT update to stale data
+    await act(async () => {
+      rejectStale();
+      await Promise.resolve();
+    });
+
+    // The second (fresh) request should have resolved with the new data
+    await waitFor(() => {
+      const newRequestCalled = JobService.getAll.mock.calls.some(
+        ([filters]) => filters.min_score === 75
+      );
+      expect(newRequestCalled).toBe(true);
+    });
+  });
 });

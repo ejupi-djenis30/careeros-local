@@ -14,7 +14,7 @@ export const JobService = {
      * @param {string}  [filters.sort_by]      - created_at | affinity_score | distance_km | title
      * @param {string}  [filters.sort_order]   - asc | desc
      */
-    async getAll(filters = {}) {
+    async getAll(filters = {}, signal) {
         const params = new URLSearchParams();
         for (const [key, value] of Object.entries(filters)) {
             if (value !== null && value !== undefined && value !== "") {
@@ -23,7 +23,7 @@ export const JobService = {
         }
         const qs = params.toString();
         const url = qs ? `/jobs/?${qs}` : "/jobs/";
-        const res = await ApiClient.get(url);
+        const res = await ApiClient.get(url, signal);
         // Backend returns { items, total, page, pages }
         return res;
     },
@@ -34,6 +34,10 @@ export const JobService = {
 
     async dismiss(jobId, feedbackSignal) {
         return ApiClient.post(`/jobs/${jobId}/dismiss`, { feedback_signal: feedbackSignal || null });
+    },
+
+    async reactivate(jobId) {
+        return ApiClient.patch(`/jobs/${jobId}`, { dismissed: false });
     },
 
     async recordView(jobId) {

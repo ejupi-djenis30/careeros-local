@@ -1,31 +1,23 @@
 import React, { memo, useState } from "react";
 import { ScoreBadge } from "./Badges";
+import { DismissDialog } from "./DismissDialog";
 
-const DISMISS_OPTIONS = [
-    { value: "not_interested", label: "Not interested" },
-    { value: "wrong_domain", label: "Wrong domain" },
-    { value: "too_senior", label: "Too senior" },
-    { value: "too_junior", label: "Too junior" },
-    { value: "bad_salary", label: "Bad salary" },
-    { value: "bad_location", label: "Bad location" },
-    { value: "already_applied", label: "Already applied" },
-];
-
-export const DesktopJobRow = memo(function DesktopJobRow({ job, isGlobalView, onToggleApplied, isAppliedPending = false, onCopy, onViewAnalysis, onDismiss }) {
-    const [showDismissMenu, setShowDismissMenu] = useState(false);
+export const DesktopJobRow = memo(function DesktopJobRow({ job, isGlobalView, onToggleApplied, isAppliedPending = false, onCopy, onViewAnalysis, onDismiss, onReactivate }) {
+    const [showDismissDialog, setShowDismissDialog] = useState(false);
     const applyUrl = job.application_url || job.external_url;
-    const sourceUrl = job.external_url;
+    const sourceUrl = job.external_url && job.external_url !== applyUrl ? job.external_url : null;
     const mailtoUrl = job.application_email ? `mailto:${job.application_email}` : null;
+    const fmtDistance = job.distance_km != null ? parseFloat(Number(job.distance_km).toFixed(2)) : null;
 
     const handleDismiss = (signal) => {
-        setShowDismissMenu(false);
+        setShowDismissDialog(false);
         if (onDismiss) onDismiss(job, signal);
     };
 
     return (
-        <tr className="job-row border-bottom border-white-5 hover-elevation" style={{ transition: 'all 0.2s' }}>
+        <tr className="job-row border-bottom border-white-5 hover-elevation hover-all-200">
             <td className="ps-4 py-4 border-0">
-                <div className="fw-bold text-white text-truncate" style={{ maxWidth: 280 }} title={job.title}>
+                <div className="fw-bold text-white text-truncate max-w-280" title={job.title}>
                     {job.title}
                 </div>
                 <div className="x-small text-secondary mt-1 d-flex gap-2">
@@ -42,13 +34,13 @@ export const DesktopJobRow = memo(function DesktopJobRow({ job, isGlobalView, on
                 </div>
             </td>
             <td className="border-0">
-                <div className="text-white fw-medium text-truncate" style={{ maxWidth: 200 }} title={job.company}>
+                <div className="text-white fw-medium text-truncate max-w-200" title={job.company}>
                     {job.company}
                 </div>
                 <div className="text-secondary small d-flex align-items-center gap-2">
                     <i className="bi bi-geo-alt opacity-50"></i>
                     {job.location || "Remote"}
-                    {job.distance_km != null && <span className="text-white-50 opacity-75">({job.distance_km}km)</span>}
+                    {fmtDistance != null && <span className="text-white-50 opacity-75">({fmtDistance}km)</span>}
                 </div>
             </td>
             {!isGlobalView && (
@@ -60,21 +52,19 @@ export const DesktopJobRow = memo(function DesktopJobRow({ job, isGlobalView, on
                         
                         <div className="d-flex flex-wrap gap-1 align-items-center">
                             {job.worth_applying && (
-                                <span className="bg-success rounded-circle d-inline-flex align-items-center justify-content-center" 
-                                      style={{width: '18px', height: '18px'}} title="Top Pick">
-                                    <i className="bi bi-check-lg text-white" style={{fontSize: '0.7rem'}}></i>
+                                <span className="bg-success rounded-circle d-inline-flex align-items-center justify-content-center sz-18" title="Top Pick">
+                                    <i className="bi bi-check-lg text-white text-07"></i>
                                 </span>
                             )}
                             {job.workload && job.workload < 100 && (
-                                <span className="badge-pill badge-info border-0 py-1" style={{fontSize: '0.65rem'}}>
+                                <span className="badge-pill badge-info border-0 py-1 text-065">
                                     {job.workload}%
                                 </span>
                             )}
                             {job.affinity_analysis && (
                                 <button 
-                                    className="btn btn-sm btn-icon btn-secondary rounded-circle d-flex align-items-center justify-content-center border-0 bg-white-5 hover-bg-white-10 ms-1"
-                                    onClick={() => onViewAnalysis(job)}
-                                    style={{ width: '28px', height: '28px' }}
+                                    className="btn btn-sm btn-icon btn-secondary rounded-circle d-flex align-items-center justify-content-center border-0 bg-white-5 hover-bg-white-10 ms-1 sz-28"
+                                        onClick={() => onViewAnalysis(job)}
                                     title="View Analysis"
                                 >
                                     <i className="bi bi-robot"></i>
@@ -89,19 +79,17 @@ export const DesktopJobRow = memo(function DesktopJobRow({ job, isGlobalView, on
                 <div className="d-flex flex-column gap-1 align-items-start">
                     <div className="form-check form-switch ms-1 mb-0">
                         <input
-                            className="form-check-input"
+                            className="form-check-input cursor-pointer"
                             type="checkbox"
                             checked={job.applied}
                             disabled={isAppliedPending}
                             onChange={() => onToggleApplied(job)}
-                            style={{ cursor: 'pointer' }}
                             title={isAppliedPending ? "Updating Applied Status" : "Toggle Applied Status"}
                         />
                     </div>
                     {job.applied_elsewhere && !job.applied && (
                         <span
-                            className="badge d-flex align-items-center gap-1"
-                            style={{ fontSize: '0.6rem', backgroundColor: 'rgba(255,193,7,0.15)', color: '#ffc107', border: '1px solid rgba(255,193,7,0.3)', borderRadius: '4px', padding: '2px 5px' }}
+                            className="badge d-flex align-items-center gap-1 badge-applied-other"
                             title="You applied to this job in another search"
                         >
                             <i className="bi bi-check2-circle"></i>
@@ -132,38 +120,32 @@ export const DesktopJobRow = memo(function DesktopJobRow({ job, isGlobalView, on
                             <i className="bi bi-link-45deg fs-5"></i>
                         </a>
                     )}
-                    {/* Dismiss button */}
-                    {onDismiss && (
-                        <div className="position-relative">
-                            <button
-                                className="btn btn-sm btn-icon"
-                                style={{ color: '#ff6b6b', opacity: 0.7 }}
-                                title="Not Interested"
-                                onClick={() => setShowDismissMenu(v => !v)}
-                            >
-                                <i className="bi bi-x-circle"></i>
-                            </button>
-                            {showDismissMenu && (
-                                <div
-                                    className="position-absolute end-0 mt-1 glass-panel border border-white-10 rounded shadow-lg"
-                                    style={{ zIndex: 1050, minWidth: 160, top: '100%' }}
-                                    onMouseLeave={() => setShowDismissMenu(false)}
-                                >
-                                    {DISMISS_OPTIONS.map(opt => (
-                                        <button
-                                            key={opt.value}
-                                            className="btn btn-sm w-100 text-start text-white-50 hover-bg-white-10 px-3 py-2 border-0 rounded-0"
-                                            style={{ fontSize: '0.75rem' }}
-                                            onClick={() => handleDismiss(opt.value)}
-                                        >
-                                            {opt.label}
-                                        </button>
-                                    ))}
-                                </div>
-                            )}
-                        </div>
+                    {/* Dismiss / Reactivate button */}
+                    {job.dismissed && onReactivate ? (
+                        <button
+                            className="btn btn-sm btn-icon btn-secondary rounded-circle"
+                            title="Reactivate Job"
+                            onClick={() => onReactivate(job)}
+                        >
+                            <i className="bi bi-arrow-counterclockwise"></i>
+                        </button>
+                    ) : onDismiss && !job.dismissed && (
+                        <button
+                            className="btn btn-sm btn-icon btn-secondary rounded-circle"
+                            title="Not Interested"
+                            onClick={() => setShowDismissDialog(true)}
+                        >
+                            <i className="bi bi-x-circle"></i>
+                        </button>
                     )}
                 </div>
+
+                <DismissDialog
+                    open={showDismissDialog}
+                    jobTitle={job.title}
+                    onDismiss={handleDismiss}
+                    onClose={() => setShowDismissDialog(false)}
+                />
             </td>
         </tr>
     );

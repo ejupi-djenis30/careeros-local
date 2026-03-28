@@ -8,6 +8,7 @@ import { normalizePrefillProfile } from "./SearchForm/searchFormUtils";
 
 export function SearchForm({ onStartSearch, isLoading, prefill }) {
     const { showToast } = useToast();
+    const [existingNames, setExistingNames] = useState([]);
     const [profile, setProfile] = useState({
         name: "",
         role_description: "",
@@ -42,6 +43,17 @@ export function SearchForm({ onStartSearch, isLoading, prefill }) {
         }
     }, [prefill]);
 
+    useEffect(() => {
+        SearchService.getProfiles()
+            .then(profiles => {
+                const names = (profiles || [])
+                    .map(p => (p.name || "").trim().toLowerCase())
+                    .filter(Boolean);
+                setExistingNames(names);
+            })
+            .catch(() => {});
+    }, []);
+
     const handleChange = (e) => {
         const { name, value } = e.target;
         setProfile(prev => ({ ...prev, [name]: value }));
@@ -63,7 +75,7 @@ export function SearchForm({ onStartSearch, isLoading, prefill }) {
             const { text } = await SearchService.uploadCV(file);
             setProfile(prev => ({ ...prev, cv_content: text }));
         } catch (err) {
-            showToast("Failed to upload CV: " + err.message);
+            showToast("Failed to upload CV: " + (err?.message || String(err) || "Unknown error"));
         }
     };
 
@@ -84,6 +96,10 @@ export function SearchForm({ onStartSearch, isLoading, prefill }) {
         }
         if (profile.latitude == null || profile.longitude == null) {
             showToast("Invalid location: please select a valid location from the suggestions.");
+            return;
+        }
+        if (profile.name.trim() && existingNames.includes(profile.name.trim().toLowerCase())) {
+            showToast("A search with this name already exists. Please choose a unique name.");
             return;
         }
 
@@ -156,7 +172,8 @@ export function SearchForm({ onStartSearch, isLoading, prefill }) {
                          <SearchFormAdvanced 
                             profile={profile} 
                             handleChange={handleChange} 
-                            setProfile={setProfile} 
+                            setProfile={setProfile}
+                            existingNames={existingNames}
                         />
                     </div>
                 </form>

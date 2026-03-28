@@ -96,6 +96,14 @@ class ProfileService:
         data, advanced_preferences = _extract_advanced_preferences(data)
         data["advanced_preferences"] = advanced_preferences
         data["user_id"] = user_id
+
+        # Enforce per-user name uniqueness (non-empty names only)
+        name = data.get("name", "").strip()
+        if name:
+            existing = self.repo.get_by_user(user_id)
+            if any(p.name and p.name.strip().lower() == name.lower() for p in existing):
+                raise HTTPException(status_code=409, detail=f"A search with the name '{name}' already exists.")
+
         return self.repo.create(data)
 
     def update_profile(self, user_id: int, profile_id: int, profile_in: "SearchProfileUpdate"):  # noqa: F821

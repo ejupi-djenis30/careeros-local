@@ -2,12 +2,14 @@ import React, { useState, useEffect } from "react";
 import { SearchService } from "../services/search";
 import { useToast } from "../context/ToastContext";
 import { ScheduleCard } from "./ScheduleCard";
+import { ConfirmationDialog } from "./ConfirmationDialog";
 
 export function Schedules() {
     const { showToast } = useToast();
     const [profiles, setProfiles] = useState([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
+    const [profileToDelete, setProfileToDelete] = useState(null);
 
     useEffect(() => {
         loadProfiles();
@@ -38,14 +40,24 @@ export function Schedules() {
         }
     };
 
-    const handleDelete = async (profileId) => {
-        if (!window.confirm("Remove this schedule? The history will be preserved.")) return;
+    const handleDeleteRequest = (profileId) => {
+        setProfileToDelete(profileId);
+    };
+
+    const handleConfirmDelete = async () => {
+        if (!profileToDelete) return;
         try {
-            await SearchService.toggleSchedule(profileId, false);
+            await SearchService.toggleSchedule(profileToDelete, false);
             loadProfiles();
         } catch (e) {
             showToast("Failed to remove schedule: " + e.message);
+        } finally {
+            setProfileToDelete(null);
         }
+    };
+
+    const handleCancelDelete = () => {
+        setProfileToDelete(null);
     };
 
     const handleChangeInterval = async (profileId, newInterval) => {
@@ -83,7 +95,7 @@ export function Schedules() {
         return (
             <div className="glass-panel text-center py-5 animate-fade-in align-items-center d-flex flex-column justify-content-center h-100">
                 <div className="mb-4">
-                    <div className="rounded-circle bg-success-10 d-inline-flex align-items-center justify-content-center border border-success-20 shadow-glow" style={{ width: 80, height: 80 }}>
+                    <div className="rounded-circle bg-success-10 d-inline-flex align-items-center justify-content-center border border-success-20 shadow-glow sz-80">
                         <i className="bi bi-clock-history fs-1 text-success"></i>
                     </div>
                 </div>
@@ -112,10 +124,19 @@ export function Schedules() {
                         profile={p}
                         onToggle={handleToggle}
                         onChangeInterval={handleChangeInterval}
-                        onDelete={handleDelete}
+                        onDelete={handleDeleteRequest}
                     />
                 ))}
             </div>
+
+            <ConfirmationDialog 
+                isOpen={!!profileToDelete}
+                title="Remove Schedule"
+                message="Remove this schedule? The history will be preserved."
+                confirmText="Remove"
+                onConfirm={handleConfirmDelete}
+                onCancel={handleCancelDelete}
+            />
         </div>
     );
 }

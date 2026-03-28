@@ -17,6 +17,7 @@ from backend.repositories.job_repository import JobRepository
 from backend.repositories.profile_repository import ProfileRepository
 from backend.services.llm_service import llm_service
 from backend.services.search.listing_utils import (
+    _word_bounded_substring,
     bootstrap_normalized_job_data,
     coerce_int,
     coerce_string_list,
@@ -672,7 +673,10 @@ class SearchService:
             hard_blockers = [normalized_text_token(str(b)) for b in hard_blockers_raw if b]
             for dk in dealbreakers:
                 dk_token = normalized_text_token(dk)
-                if dk_token and any(dk_token in hb or hb in dk_token for hb in hard_blockers if hb):
+                if dk_token and any(
+                    _word_bounded_substring(dk_token, hb) or _word_bounded_substring(hb, dk_token)
+                    for hb in hard_blockers if hb
+                ):
                     return False, "norm_dealbreaker_hit"
 
         # ─── 1. Domain match ─────────────────────────────────────────────
@@ -775,7 +779,7 @@ class SearchService:
             if not job_career_changer and job_entry_barrier not in {"none", "low"}:
                 user_rank = self._QUALIFICATION_RANK.get(effective_ql, -1)
                 job_rank = self._QUALIFICATION_RANK.get(job_ql, -1)
-                if user_rank >= 0 and job_rank >= 0 and job_rank > user_rank + 2:
+                if user_rank >= 0 and job_rank >= 0 and job_rank > user_rank + 1:
                     return False, "norm_qualification_mismatch"
 
         # ─── 5a. Entry barrier gate ───────────────────────────────────────

@@ -5,6 +5,7 @@ const DEFAULT_FILTERS = {
     min_score: "",
     max_distance: "",
     worth_applying: "",
+    include_dismissed: "",
     sort_by: "created_at",
     sort_order: "desc",
 };
@@ -25,10 +26,9 @@ export function FilterBar({ filters = DEFAULT_FILTERS, onChange, searchProfiles 
             <div className="d-flex align-items-center bg-primary bg-opacity-10 border border-primary rounded-pill px-2">
                 <i className="bi bi-radar text-primary ms-1 me-2 text-primary"></i>
                 <select
-                    className="form-select form-select-sm border-0 bg-transparent text-primary fw-bold py-0 shadow-none ps-0"
+                    className="form-select form-select-sm border-0 bg-transparent text-primary fw-bold py-0 shadow-none ps-0 min-w-150"
                     value={safeFilters.search_profile_id || ""}
                     onChange={(e) => handleChange("search_profile_id", e.target.value ? Number(e.target.value) : "")}
-                    style={{ width: 'auto', minWidth: '150px' }}
                 >
                     <option value="" className="bg-dark text-white">Global Dashboard</option>
                     {availableProfiles.map(p => (
@@ -45,10 +45,9 @@ export function FilterBar({ filters = DEFAULT_FILTERS, onChange, searchProfiles 
                     <div className="d-flex align-items-center bg-white-5 rounded-pill px-2 border border-white-5" title="Minimum Score">
                         <i className="bi bi-bar-chart-line text-secondary px-2"></i>
                         <select
-                            className="form-select form-select-sm border-0 bg-transparent text-white py-0 shadow-none"
+                            className="form-select form-select-sm border-0 bg-transparent text-white py-0 shadow-none min-w-85"
                             value={safeFilters.min_score || ""}
                             onChange={(e) => handleChange("min_score", e.target.value ? Number(e.target.value) : "")}
-                            style={{ width: 'auto', minWidth: '85px' }}
                         >
                             <option value="" className="bg-dark text-white">Any</option>
                             <option value="50" className="bg-dark text-white">50%+</option>
@@ -61,10 +60,9 @@ export function FilterBar({ filters = DEFAULT_FILTERS, onChange, searchProfiles 
                     <div className="d-flex align-items-center bg-white-5 rounded-pill px-2 border border-white-5" title="Maximum Distance">
                         <i className="bi bi-geo-alt text-secondary px-2"></i>
                         <select
-                            className="form-select form-select-sm border-0 bg-transparent text-white py-0 shadow-none"
+                            className="form-select form-select-sm border-0 bg-transparent text-white py-0 shadow-none min-w-85"
                             value={safeFilters.max_distance || ""}
                             onChange={(e) => handleChange("max_distance", e.target.value ? Number(e.target.value) : "")}
-                            style={{ width: 'auto', minWidth: '85px' }}
                         >
                             <option value="" className="bg-dark text-white">Any</option>
                             <option value="10" className="bg-dark text-white">10 km</option>
@@ -84,6 +82,16 @@ export function FilterBar({ filters = DEFAULT_FILTERS, onChange, searchProfiles 
                         <span className="fw-medium">Top Picks</span>
                     </button>
 
+                    {/* Show Dismissed toggle */}
+                    <button 
+                        type="button"
+                        className={`btn btn-sm rounded-pill px-3 d-flex align-items-center gap-2 border transition-all ${safeFilters.include_dismissed ? 'bg-danger bg-opacity-10 border-danger text-danger' : 'bg-white-5 border-white-5 text-secondary hover-bg-white-10'}`}
+                        onClick={() => handleChange("include_dismissed", !safeFilters.include_dismissed)}
+                    >
+                        <i className={`bi ${safeFilters.include_dismissed ? 'bi-eye-fill' : 'bi-eye-slash'}`}></i>
+                        <span className="fw-medium">Dismissed</span>
+                    </button>
+
                     {/* Active Precision Filters badges */}
                     {(() => {
                         const activeProfile = availableProfiles.find(p => p.id === Number(safeFilters.search_profile_id));
@@ -96,10 +104,10 @@ export function FilterBar({ filters = DEFAULT_FILTERS, onChange, searchProfiles 
                             <div className="d-flex align-items-center gap-1 flex-wrap" title="Active precision filters for this search">
                                 <i className="bi bi-funnel-fill text-secondary opacity-50 x-small"></i>
                                 {langs.map(l => (
-                                    <span key={l} className="badge bg-info text-dark" style={{ fontSize: "0.65rem" }}>{l.toUpperCase()}</span>
+                                    <span key={l} className="badge bg-info text-dark text-xs">{l.toUpperCase()}</span>
                                 ))}
-                                {remoteOnly && <span className="badge bg-success" style={{ fontSize: "0.65rem" }}>Remote</span>}
-                                {salaryMin && <span className="badge bg-warning text-dark" style={{ fontSize: "0.65rem" }}>CHF {Number(salaryMin).toLocaleString()}+</span>}
+                                {remoteOnly && <span className="badge bg-success text-xs">Remote</span>}
+                                {salaryMin && <span className="badge bg-warning text-dark text-xs">CHF {Number(salaryMin).toLocaleString()}+</span>}
                             </div>
                         );
                     })()}
@@ -110,13 +118,12 @@ export function FilterBar({ filters = DEFAULT_FILTERS, onChange, searchProfiles 
 
             <div className="d-flex align-items-center ms-auto">
                 <select
-                    className="form-select form-select-sm bg-white-5 text-white border-white-5 rounded-pill ps-3"
+                    className="form-select form-select-sm bg-transparent text-white border-white-15 glass-input px-3 custom-select min-w-120"
                     value={`${safeFilters.sort_by}:${safeFilters.sort_order}`}
                     onChange={(e) => {
                         const [by, order] = e.target.value.split(":");
                         onChange({ ...safeFilters, sort_by: by, sort_order: order });
                     }}
-                    style={{ width: 'auto', minWidth: '120px' }}
                 >
                     <option value="created_at:desc" className="bg-dark">Newest</option>
                     <option value="created_at:asc" className="bg-dark">Oldest</option>

@@ -32,6 +32,7 @@ def read_jobs(
     max_score: Optional[float] = Query(None, ge=0, le=100),
     min_distance: Optional[float] = Query(None, ge=0),
     max_distance: Optional[float] = Query(None, ge=0),
+    include_dismissed: Optional[bool] = Query(None),
     # ── Sorting ──
     sort_by: Literal["created_at", "affinity_score", "distance_km", "title", "publication_date"] = Query("created_at"),
     sort_order: Literal["asc", "desc"] = Query("desc"),
@@ -50,6 +51,7 @@ def read_jobs(
         "worth_applying": worth_applying,
         "applied": applied,
         "search_profile_id": search_profile_id,
+        "include_dismissed": include_dismissed,
         "sort_by": sort_by,
         "sort_order": sort_order,
     }
