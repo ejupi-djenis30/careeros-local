@@ -71,7 +71,7 @@ describe('AuthService', () => {
 
   it('refresh resets _suppressUnauthorized even on error', async () => {
     vi.spyOn(ApiClient, 'post').mockRejectedValue(new Error('fail'));
-    try { await AuthService.refresh(); } catch {}
+    try { await AuthService.refresh(); } catch { /* ignore */ }
     expect(ApiClient._suppressUnauthorized).toBe(false);
   });
 
