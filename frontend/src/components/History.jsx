@@ -85,7 +85,8 @@ export function History({ onStartSearch, onStartSearchWithOptions, onUseAsTempla
                         onStartSearchWithOptions={onStartSearchWithOptions}
                         onUseAsTemplate={onUseAsTemplate}
                         onSaveAsSchedule={onSaveAsSchedule}
-                        isLoading={loadingProfileId !== null}
+                        isLoading={loadingProfileId === p.id}
+                        isDisabled={loadingProfileId !== null}
                     />
                 ))}
             </div>

@@ -85,7 +85,7 @@ export function FilterBar({ filters = DEFAULT_FILTERS, onChange, searchProfiles 
                     {/* Show Dismissed toggle */}
                     <button 
                         type="button"
-                        className={`btn btn-sm rounded-pill px-3 d-flex align-items-center gap-2 border transition-all ${safeFilters.include_dismissed ? 'bg-danger bg-opacity-15 border-danger text-danger fw-semibold' : 'bg-white-5 border-white-10 text-white-50 hover-bg-white-10'}`}
+                        className={`btn btn-sm rounded-pill px-3 d-flex align-items-center gap-2 border transition-all ${safeFilters.include_dismissed ? 'bg-danger-10 border-danger text-danger fw-semibold' : 'bg-white-5 border-white-10 text-white-50 hover-bg-white-10'}`}
                         onClick={() => handleChange("include_dismissed", !safeFilters.include_dismissed)}
                         title={safeFilters.include_dismissed ? "Hide dismissed jobs" : "Show jobs you marked as not interested"}
                     >

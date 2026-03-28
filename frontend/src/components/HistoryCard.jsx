@@ -1,11 +1,12 @@
 import React, { memo } from 'react';
 
-export const HistoryCard = memo(function HistoryCard({ profile, onStartSearch, onStartSearchWithOptions, onUseAsTemplate, onSaveAsSchedule, isLoading }) {
+export const HistoryCard = memo(function HistoryCard({ profile, onStartSearch, onStartSearchWithOptions, onUseAsTemplate, onSaveAsSchedule, isLoading, isDisabled }) {
     const displayName = (profile.name && profile.name.trim()) || "Untitled Search";
     const advPrefs = profile.advanced_preferences || {};
     const languages = advPrefs.preferred_languages || profile.preferred_languages || [];
     const remoteOnly = advPrefs.remote_only || profile.remote_only;
     const salaryMin = advPrefs.salary_min_chf || profile.salary_min_chf;
+    const isActionDisabled = isDisabled || isLoading;
 
     return (
         <div className="glass-panel p-3 px-md-4 py-md-3 hover-bg-white-5 transition-colors group">
@@ -30,7 +31,7 @@ export const HistoryCard = memo(function HistoryCard({ profile, onStartSearch, o
                         <button
                             className="btn btn-sm btn-primary px-3 rounded-pill fw-medium shadow-glow d-flex align-items-center justify-content-center"
                             onClick={() => onStartSearch?.(profile)}
-                            disabled={isLoading}
+                            disabled={isActionDisabled}
                             title="Rerun Search"
                         >
                             {isLoading
@@ -42,7 +43,7 @@ export const HistoryCard = memo(function HistoryCard({ profile, onStartSearch, o
                         <button
                             className="btn btn-sm btn-icon btn-secondary rounded-circle d-flex align-items-center justify-content-center"
                             onClick={() => onStartSearchWithOptions?.(profile, { force_regenerate_queries: true })}
-                            disabled={isLoading}
+                            disabled={isActionDisabled}
                             title="Rerun with fresh queries only"
                             aria-label="Rerun with fresh queries only"
                         >
@@ -52,7 +53,7 @@ export const HistoryCard = memo(function HistoryCard({ profile, onStartSearch, o
                         <button
                             className="btn btn-sm btn-icon btn-secondary rounded-circle d-flex align-items-center justify-content-center"
                             onClick={() => onStartSearchWithOptions?.(profile, { force_regenerate_cv_summary: true })}
-                            disabled={isLoading}
+                            disabled={isActionDisabled}
                             title="Rerun with fresh CV summary only"
                             aria-label="Rerun with fresh CV summary only"
                         >
@@ -62,7 +63,7 @@ export const HistoryCard = memo(function HistoryCard({ profile, onStartSearch, o
                         <button
                             className="btn btn-sm btn-icon btn-warning text-dark rounded-circle d-flex align-items-center justify-content-center"
                             onClick={() => onStartSearchWithOptions?.(profile, { force_regenerate_cv_summary: true, force_regenerate_queries: true })}
-                            disabled={isLoading}
+                            disabled={isActionDisabled}
                             title="Rerun with fresh CV summary and queries (full refresh)"
                             aria-label="Rerun with fresh CV summary and queries"
                         >
@@ -72,7 +73,7 @@ export const HistoryCard = memo(function HistoryCard({ profile, onStartSearch, o
                         <button
                             className="btn btn-sm btn-icon btn-secondary rounded-circle d-flex align-items-center justify-content-center"
                             onClick={() => onUseAsTemplate?.(profile)}
-                            disabled={isLoading}
+                            disabled={isActionDisabled}
                             title="New Search from this"
                         >
                             <i className="bi bi-copy"></i>
@@ -82,7 +83,7 @@ export const HistoryCard = memo(function HistoryCard({ profile, onStartSearch, o
                             <button
                                 className="btn btn-sm btn-icon btn-secondary rounded-circle d-flex align-items-center justify-content-center"
                                 onClick={() => onSaveAsSchedule?.(profile)}
-                                disabled={isLoading}
+                                disabled={isActionDisabled}
                                 title="Add to Schedule"
                             >
                                 <i className="bi bi-clock"></i>
@@ -91,6 +92,9 @@ export const HistoryCard = memo(function HistoryCard({ profile, onStartSearch, o
                     </div>
                 </div>
             </div>
+
+            <hr className="border-white-10 my-3 opacity-50" />
+
             {/* Search parameters row */}
             <div className="d-flex flex-wrap column-gap-3 row-gap-1 small text-white-50 lh-sm mb-2">
                 <span className="d-flex align-items-center" title="Location">
@@ -99,7 +103,7 @@ export const HistoryCard = memo(function HistoryCard({ profile, onStartSearch, o
                 </span>
                 <span className="d-flex align-items-center" title="Time range">
                     <i className="bi bi-calendar me-1 text-primary"></i>
-                    {`Last ${profile.posted_within_days} days`}
+                    {`Last ${profile.posted_within_days || 30} days`}
                 </span>
                 {profile.workload_filter && (
                     <span className="d-flex align-items-center" title="Workload">
@@ -148,8 +152,7 @@ export const HistoryCard = memo(function HistoryCard({ profile, onStartSearch, o
             {/* Role description (multi-line, word-wrap) */}
             {profile.role_description && (
                 <div
-                    className="text-secondary x-small lh-base"
-                    style={{ overflowWrap: 'break-word', wordBreak: 'break-word', whiteSpace: 'normal', maxHeight: '4.5em', overflow: 'hidden' }}
+                    className="text-secondary x-small lh-base text-truncate-2"
                     title={profile.role_description}
                 >
                     {profile.role_description}
