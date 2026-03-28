@@ -8,6 +8,7 @@ const DEFAULT_FILTERS = {
   min_score: '',
   max_distance: '',
   worth_applying: '',
+  include_dismissed: '',
   sort_by: 'created_at',
   sort_order: 'desc'
 };
@@ -189,6 +190,17 @@ export function useJobs(logout) {
     }
   };
 
+  const reactivateJob = async (job) => {
+    try {
+      const updated = await JobService.reactivate(job.id);
+      setJobs(prev => prev.map(j => j.id === job.id ? { ...j, ...updated, dismissed: false, dismissed_at: null, feedback_signal: null } : j));
+      return updated;
+    } catch (error) {
+      if (error.message === "UNAUTHORIZED" && logout) { logout(); return; }
+      console.error("Failed to reactivate job", error);
+    }
+  };
+
   return {
     jobs,
     pagination,
@@ -200,6 +212,7 @@ export function useJobs(logout) {
     toggleApplied,
     isAppliedPending,
     dismissJob,
+    reactivateJob,
     clearFilters,
     isLoading,
     isRefreshing,

@@ -28,7 +28,7 @@ export function DistanceBadge({ km }) {
 
     return (
         <span className={`small fw-medium ${colorClass} d-inline-flex align-items-center bg-black-20 px-2 py-1 rounded`}>
-            <i className="bi bi-geo-alt me-1 opacity-75"></i>{km}km
+            <i className="bi bi-geo-alt me-1 opacity-75"></i>{parseFloat(Number(km).toFixed(2))}km
         </span>
     );
 }

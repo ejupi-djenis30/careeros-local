@@ -1,34 +1,26 @@
 import React, { memo, useState } from "react";
 import { ScoreBadge } from "./Badges";
+import { DismissDialog } from "./DismissDialog";
 
-const DISMISS_OPTIONS = [
-    { value: "not_interested", label: "Not interested" },
-    { value: "wrong_domain", label: "Wrong domain" },
-    { value: "too_senior", label: "Too senior" },
-    { value: "too_junior", label: "Too junior" },
-    { value: "bad_salary", label: "Bad salary" },
-    { value: "bad_location", label: "Bad location" },
-    { value: "already_applied", label: "Already applied" },
-];
-
-export const MobileJobCard = memo(function MobileJobCard({ job, isGlobalView, onToggleApplied, isAppliedPending = false, onCopy, onViewAnalysis, onDismiss }) {
-    const [showDismissMenu, setShowDismissMenu] = useState(false);
+export const MobileJobCard = memo(function MobileJobCard({ job, isGlobalView, onToggleApplied, isAppliedPending = false, onCopy, onViewAnalysis, onDismiss, onReactivate }) {
+    const [showDismissDialog, setShowDismissDialog] = useState(false);
     const applyUrl = job.application_url || job.external_url;
-    const sourceUrl = job.external_url;
+    const sourceUrl = job.external_url && job.external_url !== applyUrl ? job.external_url : null;
     const mailtoUrl = job.application_email ? `mailto:${job.application_email}` : null;
+    const fmtDistance = job.distance_km != null ? parseFloat(Number(job.distance_km).toFixed(2)) : null;
 
     const handleDismiss = (signal) => {
-        setShowDismissMenu(false);
+        setShowDismissDialog(false);
         if (onDismiss) onDismiss(job, signal);
     };
 
     return (
-        <div className="glass-panel p-3 mb-3 border border-white-5 hover-elevation" style={{ transition: 'transform 0.2s' }}>
+        <div className="glass-panel p-3 mb-3 border border-white-5 hover-elevation hover-transform">
             <div className="d-flex justify-content-between align-items-start mb-3">
                 <div className="flex-grow-1 min-w-0 me-2">
                     <h6 className="text-white mb-1 fw-bold text-truncate">{job.title}</h6>
                     <div className="d-flex align-items-center gap-2 text-secondary small">
-                        <span className="text-truncate fw-medium" style={{ maxWidth: '120px' }}>{job.company}</span>
+                        <span className="text-truncate fw-medium max-w-120">{job.company}</span>
                         <span className="opacity-25">|</span>
                         <span>{job.location || "Remote"}</span>
                     </div>
@@ -38,20 +30,18 @@ export const MobileJobCard = memo(function MobileJobCard({ job, isGlobalView, on
                         <ScoreBadge score={Math.round(job.affinity_score)} />
                     )}
                     {!isGlobalView && job.worth_applying && (
-                        <span className="bg-success rounded-circle d-inline-flex align-items-center justify-content-center" 
-                              style={{width: '18px', height: '18px'}} title="Top Pick">
-                            <i className="bi bi-check-lg text-white" style={{fontSize: '0.7rem'}}></i>
+                        <span className="bg-success rounded-circle d-inline-flex align-items-center justify-content-center sz-18" title="Top Pick">
+                            <i className="bi bi-check-lg text-white text-07"></i>
                         </span>
                     )}
 
                     {!isGlobalView && job.affinity_analysis && (
                         <button 
-                            className="btn btn-sm btn-icon btn-secondary rounded-circle d-flex align-items-center justify-content-center border-0 bg-white-5"
+                            className="btn btn-sm btn-icon btn-secondary rounded-circle d-flex align-items-center justify-content-center border-0 bg-white-5 sz-24"
                             onClick={() => onViewAnalysis(job)}
-                            style={{ width: '24px', height: '24px' }}
                             title="View Analysis"
                         >
-                            <i className="bi bi-robot" style={{fontSize: '0.8rem'}}></i>
+                            <i className="bi bi-robot text-08"></i>
                         </button>
                     )}
                 </div>
@@ -60,7 +50,7 @@ export const MobileJobCard = memo(function MobileJobCard({ job, isGlobalView, on
             <div className="x-small text-secondary mb-3 d-flex flex-wrap gap-x-3 gap-y-1 opacity-75">
                 <div><i className="bi bi-clock me-1"></i> {new Date(job.created_at).toLocaleDateString()}</div>
                 {job.publication_date && <div><i className="bi bi-megaphone me-1"></i> {new Date(job.publication_date).toLocaleDateString()}</div>}
-                {job.distance_km != null && <div><i className="bi bi-geo-alt me-1"></i> {job.distance_km}km</div>}
+                {fmtDistance != null && <div><i className="bi bi-geo-alt me-1"></i> {fmtDistance}km</div>}
                 {job.workload != null && <div className="text-info fw-bold">{job.workload}%</div>}
             </div>
 
@@ -72,66 +62,52 @@ export const MobileJobCard = memo(function MobileJobCard({ job, isGlobalView, on
                         </a>
                     )}
                     <button onClick={() => onCopy(job)} className="btn btn-sm btn-secondary rounded-circle btn-icon" title="Copy Info">
-                        <i className="bi bi-clipboard" style={{fontSize: '0.8rem'}}></i>
+                        <i className="bi bi-clipboard text-08"></i>
                     </button>
                     {mailtoUrl && (
                         <a href={mailtoUrl} className="btn btn-sm btn-secondary rounded-circle btn-icon" title="Email">
-                            <i className="bi bi-envelope" style={{fontSize: '0.8rem'}}></i>
+                            <i className="bi bi-envelope text-08"></i>
                         </a>
                     )}
                     {sourceUrl && (
                         <a href={sourceUrl} target="_blank" rel="noopener noreferrer" className="btn btn-sm btn-secondary rounded-circle btn-icon" title="Source">
-                            <i className="bi bi-link-45deg" style={{fontSize: '1rem'}}></i>
+                            <i className="bi bi-link-45deg text-1"></i>
                         </a>
                     )}
-                    {/* Dismiss button */}
-                    {onDismiss && (
-                        <div className="position-relative">
-                            <button
-                                className="btn btn-sm btn-secondary rounded-circle btn-icon"
-                                style={{ color: '#ff6b6b', opacity: 0.8 }}
-                                title="Not Interested"
-                                onClick={() => setShowDismissMenu(v => !v)}
-                            >
-                                <i className="bi bi-x-circle" style={{fontSize: '0.8rem'}}></i>
-                            </button>
-                            {showDismissMenu && (
-                                <div
-                                    className="position-absolute start-0 mt-1 glass-panel border border-white-10 rounded shadow-lg"
-                                    style={{ zIndex: 1050, minWidth: 150, bottom: '100%' }}
-                                >
-                                    {DISMISS_OPTIONS.map(opt => (
-                                        <button
-                                            key={opt.value}
-                                            className="btn btn-sm w-100 text-start text-white-50 px-3 py-2 border-0 rounded-0"
-                                            style={{ fontSize: '0.73rem' }}
-                                            onClick={() => handleDismiss(opt.value)}
-                                        >
-                                            {opt.label}
-                                        </button>
-                                    ))}
-                                </div>
-                            )}
-                        </div>
+                    {/* Dismiss / Reactivate button */}
+                    {job.dismissed && onReactivate ? (
+                        <button
+                            className="btn btn-sm btn-secondary rounded-circle btn-icon"
+                            title="Reactivate Job"
+                            onClick={() => onReactivate(job)}
+                        >
+                            <i className="bi bi-arrow-counterclockwise text-08"></i>
+                        </button>
+                    ) : onDismiss && !job.dismissed && (
+                        <button
+                            className="btn btn-sm btn-secondary rounded-circle btn-icon"
+                            title="Not Interested"
+                            onClick={() => setShowDismissDialog(true)}
+                        >
+                            <i className="bi bi-x-circle text-08"></i>
+                        </button>
                     )}
                 </div>
                 
                 <div className="d-flex flex-column align-items-end gap-1">
                     <div className="form-check form-switch m-0">
                         <input
-                            className="form-check-input ms-0"
+                            className="form-check-input ms-0 toggle-sm"
                             type="checkbox"
                             checked={job.applied}
                             disabled={isAppliedPending}
                             onChange={() => onToggleApplied(job)}
                             title={isAppliedPending ? "Updating Applied Status" : "Toggle Applied Status"}
-                            style={{ width: '2rem', height: '1rem' }}
                         />
                     </div>
                     {job.applied_elsewhere && !job.applied && (
                         <span
-                            className="d-flex align-items-center gap-1"
-                            style={{ fontSize: '0.6rem', color: '#ffc107' }}
+                            className="d-flex align-items-center gap-1 text-06 text-warn-custom"
                             title="Applied in another search"
                         >
                             <i className="bi bi-check2-circle"></i>
@@ -140,6 +116,13 @@ export const MobileJobCard = memo(function MobileJobCard({ job, isGlobalView, on
                     )}
                 </div>
             </div>
+
+            <DismissDialog
+                open={showDismissDialog}
+                jobTitle={job.title}
+                onDismiss={handleDismiss}
+                onClose={() => setShowDismissDialog(false)}
+            />
         </div>
     );
 });

@@ -1,8 +1,9 @@
 import React from "react";
 
-export function SearchFormAdvanced({ profile, handleChange, setProfile }) {
+export function SearchFormAdvanced({ profile, handleChange, setProfile, existingNames = [] }) {
     // A profile is considered "existing" (re-run) when it has a non-null id
     const isRerun = profile.id != null;
+    const nameIsDuplicate = profile.name.trim() && existingNames.includes(profile.name.trim().toLowerCase());
     
     return (
         <div className="col-xl-3 col-lg-12 d-flex flex-column gap-3">
@@ -49,9 +50,13 @@ export function SearchFormAdvanced({ profile, handleChange, setProfile }) {
                     value={profile.name}
                     onChange={handleChange}
                     placeholder="E.g. Senior Python Remote"
-                    className="form-control form-control-sm bg-black-20 border-white-10 text-white"
+                    className={`form-control form-control-sm bg-black-20 border-white-10 text-white ${nameIsDuplicate ? 'border-danger' : ''}`}
                 />
-                <div className="x-small text-secondary mt-1 opacity-75">Leave empty to auto-name from the role brief</div>
+                {nameIsDuplicate ? (
+                    <div className="x-small text-danger mt-1">A search with this name already exists</div>
+                ) : (
+                    <div className="x-small text-secondary mt-1 opacity-75">Leave empty to auto-name from the role brief</div>
+                )}
             </div>
 
             {/* Query Controls */}

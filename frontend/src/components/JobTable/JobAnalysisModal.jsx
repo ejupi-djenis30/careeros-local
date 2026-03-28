@@ -7,16 +7,14 @@ export function JobAnalysisModal({ job, onClose }) {
 
     return createPortal(
         <div
-            className="position-fixed top-0 start-0 w-100 h-100 d-flex align-items-center justify-content-center animate-fade-in"
-            style={{ zIndex: 9999, backgroundColor: "rgba(0,0,0,0.85)", backdropFilter: "blur(8px)" }}
+            className="position-fixed top-0 start-0 w-100 h-100 d-flex align-items-center justify-content-center animate-fade-in custom-modal-backdrop"
             onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
         >
             <div
-                className="glass-panel p-4 m-3 animate-slide-up shadow-2xl"
+                className="glass-panel p-4 m-3 animate-slide-up shadow-2xl custom-modal-content"
                 role="dialog"
                 aria-modal="true"
                 aria-label="AI Match Analysis"
-                style={{ maxWidth: "700px", width: "95%", maxHeight: "85vh", overflowY: "auto", border: "1px solid rgba(255,255,255,0.1)" }}
             >
                 <div className="d-flex justify-content-between align-items-center mb-4 border-bottom border-white-10 pb-3">
                     <div>
@@ -37,8 +35,7 @@ export function JobAnalysisModal({ job, onClose }) {
                     </button>
                 </div>
                 <div
-                    className="text-secondary section-text"
-                    style={{ lineHeight: "1.7", whiteSpace: "pre-wrap", fontSize: "0.95rem" }}
+                    className="text-secondary section-text text-pre-wrap-lh"
                 >
                     {job.affinity_analysis}
                 </div>

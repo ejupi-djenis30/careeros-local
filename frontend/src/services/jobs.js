@@ -36,6 +36,10 @@ export const JobService = {
         return ApiClient.post(`/jobs/${jobId}/dismiss`, { feedback_signal: feedbackSignal || null });
     },
 
+    async reactivate(jobId) {
+        return ApiClient.patch(`/jobs/${jobId}`, { dismissed: false });
+    },
+
     async recordView(jobId) {
         return ApiClient.post(`/jobs/${jobId}/view`, {});
     },

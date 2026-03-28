@@ -69,11 +69,14 @@ class JobRepository(BaseRepository[Job]):
         worth_applying: Optional[bool] = None,
         applied: Optional[bool] = None,
         search_profile_id: Optional[int] = None,
+        include_dismissed: Optional[bool] = None,
     ):
         q = self.db.query(self.model).filter(
             self.model.user_id == user_id,
-            self.model.dismissed.is_not(True),
         )
+
+        if not include_dismissed:
+            q = q.filter(self.model.dismissed.is_not(True))
 
         if search_profile_id is not None:
             q = q.filter(self.model.search_profile_id == search_profile_id)
@@ -102,6 +105,7 @@ class JobRepository(BaseRepository[Job]):
         worth_applying: Optional[bool] = None,
         applied: Optional[bool] = None,
         search_profile_id: Optional[int] = None,
+        include_dismissed: Optional[bool] = None,
         sort_by: str = "created_at",
         sort_order: str = "desc",
         skip: int = 0,
@@ -117,6 +121,7 @@ class JobRepository(BaseRepository[Job]):
             worth_applying=worth_applying,
             applied=applied,
             search_profile_id=search_profile_id,
+            include_dismissed=include_dismissed,
         )
 
         # Sorting
@@ -148,6 +153,7 @@ class JobRepository(BaseRepository[Job]):
         worth_applying: Optional[bool] = None,
         applied: Optional[bool] = None,
         search_profile_id: Optional[int] = None,
+        include_dismissed: Optional[bool] = None,
     ) -> int:
         q = self._build_filter_query(
             user_id,
@@ -158,6 +164,7 @@ class JobRepository(BaseRepository[Job]):
             worth_applying=worth_applying,
             applied=applied,
             search_profile_id=search_profile_id,
+            include_dismissed=include_dismissed,
         )
         return q.with_entities(func.count(self.model.id)).scalar()
 
@@ -172,6 +179,7 @@ class JobRepository(BaseRepository[Job]):
         worth_applying: Optional[bool] = None,
         applied: Optional[bool] = None,
         search_profile_id: Optional[int] = None,
+        include_dismissed: Optional[bool] = None,
     ) -> dict:
         """Get aggregate stats for filtered jobs."""
 
@@ -184,6 +192,7 @@ class JobRepository(BaseRepository[Job]):
             worth_applying=worth_applying,
             applied=applied,
             search_profile_id=search_profile_id,
+            include_dismissed=include_dismissed,
         )
 
         stats = q.with_entities(
@@ -210,6 +219,7 @@ class JobRepository(BaseRepository[Job]):
         worth_applying: Optional[bool] = None,
         applied: Optional[bool] = None,
         search_profile_id: Optional[int] = None,
+        include_dismissed: Optional[bool] = None,
     ) -> dict:
         """Return total count, total_applied, and avg_score in a single query."""
         q = self._build_filter_query(
@@ -221,6 +231,7 @@ class JobRepository(BaseRepository[Job]):
             worth_applying=worth_applying,
             applied=applied,
             search_profile_id=search_profile_id,
+            include_dismissed=include_dismissed,
         )
 
         row = q.with_entities(

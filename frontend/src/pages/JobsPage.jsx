@@ -37,6 +37,7 @@ export function JobsPage() {
     toggleApplied,
     isAppliedPending,
     dismissJob,
+    reactivateJob,
     clearFilters,
     isLoading,
     isRefreshing,
@@ -85,6 +86,7 @@ export function JobsPage() {
             onToggleApplied={toggleApplied}
             isAppliedPending={isAppliedPending}
             onDismiss={dismissJob}
+            onReactivate={filters.include_dismissed ? reactivateJob : undefined}
             pagination={pagination}
             onPageChange={(p) => setPagination(prev => ({ ...prev, page: p }))}
             isLoading={isLoading}

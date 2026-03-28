@@ -60,9 +60,9 @@ export function ProgressPage() {
 
   if (activeProfileIds.length === 0) {
     return (
-      <div className="animate-slide-up d-flex justify-content-center align-items-center" style={{ minHeight: '60vh' }}>
-        <div className="glass-panel p-5 text-center" style={{ maxWidth: 480 }}>
-          <div className="rounded-circle bg-secondary bg-opacity-10 d-inline-flex align-items-center justify-content-center mb-4" style={{ width: 80, height: 80 }}>
+      <div className="animate-slide-up d-flex justify-content-center align-items-center min-h-60vh">
+        <div className="glass-panel p-5 text-center max-w-480">
+          <div className="rounded-circle bg-secondary bg-opacity-10 d-inline-flex align-items-center justify-content-center mb-4 sz-80">
             <i className="bi bi-cpu fs-1 text-secondary opacity-50"></i>
           </div>
           <h4 className="text-white fw-bold mb-2">No Active Searches</h4>
@@ -109,7 +109,7 @@ export function ProgressPage() {
       )}
 
       {activeProfileIds.map(pid => (
-        <div key={pid} style={{ display: String(visibleProfileId) === String(pid) ? 'block' : 'none' }}>
+        <div key={pid} className={String(visibleProfileId) === String(pid) ? 'd-block' : 'd-none'}>
           <SearchProgress
             profileId={pid}
             status={searchStatuses[pid]}
