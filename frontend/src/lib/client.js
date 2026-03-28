@@ -123,7 +123,18 @@ export class ApiClient {
             }
 
             if (!response.ok) {
-                const errorData = await response.json().catch(() => ({}));
+                let errorData = {};
+                try {
+                    errorData = await response.json();
+                } catch {
+                    // Response is not JSON (e.g. HTML error page). Try to extract text for debugging.
+                    try {
+                        const rawText = await response.text();
+                        errorData = { detail: rawText.slice(0, 200) };
+                    } catch {
+                        errorData = {};
+                    }
+                }
                 const errMsg = this._extractErrorMessage(errorData, "API Request Failed");
                 this._dispatchApiError(errMsg);
                 throw new Error(errMsg);

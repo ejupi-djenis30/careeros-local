@@ -192,13 +192,14 @@ class TestPassesNormalizationFilters:
 
     # ── 3. Qualification level ────────────────────────────────────────────────
 
-    def test_qualification_job_requires_phd_user_has_bachelor_passes(self, service):
-        """bachelor (rank 2) vs phd job (rank 4): 4 == 2+2 → passes."""
-        ok, _ = service._passes_normalization_filters(
+    def test_qualification_job_requires_phd_user_has_bachelor_rejected(self, service):
+        """bachelor (rank 2) vs phd job (rank 4): 4 > 2+1=3 → rejected."""
+        ok, reason = service._passes_normalization_filters(
             {"qualification_level": "phd"},
             {"qualification_level": "bachelor"},
         )
-        assert ok
+        assert not ok
+        assert reason == "norm_qualification_mismatch"
 
     def test_qualification_job_requires_phd_user_has_vocational_rejected(self, service):
         """vocational (rank 1) vs phd job (rank 4): 4 > 1+2=3 → rejected."""
@@ -225,13 +226,14 @@ class TestPassesNormalizationFilters:
         )
         assert ok
 
-    def test_qualification_user_none_vs_bachelor_passes(self, service):
-        """none (rank 0) vs bachelor (rank 2): 2 == 0+2 → passes."""
-        ok, _ = service._passes_normalization_filters(
+    def test_qualification_user_none_vs_bachelor_rejected(self, service):
+        """none (rank 0) vs bachelor (rank 2): 2 > 0+1=1 → rejected."""
+        ok, reason = service._passes_normalization_filters(
             {"qualification_level": "bachelor"},
             {"qualification_level": "none"},
         )
-        assert ok
+        assert not ok
+        assert reason == "norm_qualification_mismatch"
 
     def test_qualification_missing_on_job_passes(self, service):
         ok, _ = service._passes_normalization_filters(
@@ -791,6 +793,32 @@ class TestV2AdvancedMatching:
             {"dealbreakers": []},
         )
         assert ok
+
+    def test_dealbreaker_word_boundary_no_false_positive(self, service):
+        """Dealbreaker 'shift' must NOT match 'gearshift' (substring that contains the word
+        but is not a full word boundary match). Word-bounded matching prevents this false positive."""
+        ok, reason = service._passes_normalization_filters(
+            {"hard_blockers": ["gearshift operation", "mechanical assembly required"]},
+            {"dealbreakers": ["shift"]},
+        )
+        assert ok, f"Expected 'shift' not to falsely match 'gearshift' but got: {reason}"
+
+    def test_dealbreaker_word_boundary_exact_word_rejected(self, service):
+        """Dealbreaker 'shift' MUST match 'mandatory shift work' (exact word boundary)."""
+        ok, reason = service._passes_normalization_filters(
+            {"hard_blockers": ["mandatory shift work required"]},
+            {"dealbreakers": ["shift"]},
+        )
+        assert not ok
+        assert reason == "norm_dealbreaker_hit"
+
+    def test_dealbreaker_word_boundary_java_vs_javascript(self, service):
+        """Dealbreaker 'java' must NOT falsely match 'javascript' requirement."""
+        ok, reason = service._passes_normalization_filters(
+            {"hard_blockers": ["javascript required", "node.js experience"]},
+            {"dealbreakers": ["java"]},
+        )
+        assert ok, f"Expected 'java' not to falsely match 'javascript' but got: {reason}"
 
     # ── Career changer friendly bypass ──────────────────────────────────────
 

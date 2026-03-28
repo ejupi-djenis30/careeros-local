@@ -29,6 +29,7 @@ export function useJobs(logout) {
   const [pagination, setPaginationState] = useState(DEFAULT_PAGINATION);
   const [searchProfiles, setSearchProfiles] = useState([]);
   const isFirstFetch = useRef(true);
+  const fetchAbortControllerRef = useRef(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [fetchError, setFetchError] = useState(null);
@@ -45,6 +46,10 @@ export function useJobs(logout) {
       return { ...DEFAULT_FILTERS, ...resolved };
     });
     setPaginationState((prev) => (prev.page === 1 ? prev : { ...prev, page: 1 }));
+    // Abort any in-flight fetch so a stale response can't overwrite the new filter state
+    if (fetchAbortControllerRef.current) {
+      fetchAbortControllerRef.current.abort();
+    }
   }, []);
 
   const fetchJobs = useCallback(async (isBackground = false) => {
@@ -55,12 +60,23 @@ export function useJobs(logout) {
         setIsRefreshing(true);
       }
     }
+
+    // Cancel any previous in-flight request before starting a new one
+    if (fetchAbortControllerRef.current) {
+      fetchAbortControllerRef.current.abort();
+    }
+    const controller = new AbortController();
+    fetchAbortControllerRef.current = controller;
+
     try {
       const response = await JobService.getAll({
         ...filters,
         page: pagination.page,
         page_size: PAGE_SIZE
-      });
+      }, controller.signal);
+
+      // Ignore stale responses that completed after a newer request was aborted
+      if (controller.signal.aborted) return;
 
       setJobs(response?.items || []);
       setPaginationState((prev) => ({
@@ -72,6 +88,7 @@ export function useJobs(logout) {
         avg_score: response?.avg_score ?? 0
       }));
     } catch (error) {
+      if (error.name === 'AbortError') return; // Stale request — discard silently
       if (error.message === 'UNAUTHORIZED' && logout) {
         logout();
         return;
@@ -79,9 +96,11 @@ export function useJobs(logout) {
       console.error('Fetch jobs error:', error);
       setFetchError(error.message || 'Failed to load jobs.');
     } finally {
-      isFirstFetch.current = false;
-      setIsLoading(false);
-      setIsRefreshing(false);
+      if (!controller.signal.aborted) {
+        isFirstFetch.current = false;
+        setIsLoading(false);
+        setIsRefreshing(false);
+      }
     }
   }, [filters, pagination.page, logout]);
 

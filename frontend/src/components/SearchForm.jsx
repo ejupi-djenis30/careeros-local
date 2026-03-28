@@ -63,7 +63,7 @@ export function SearchForm({ onStartSearch, isLoading, prefill }) {
             const { text } = await SearchService.uploadCV(file);
             setProfile(prev => ({ ...prev, cv_content: text }));
         } catch (err) {
-            showToast("Failed to upload CV: " + err.message);
+            showToast("Failed to upload CV: " + (err?.message || String(err) || "Unknown error"));
         }
     };
 

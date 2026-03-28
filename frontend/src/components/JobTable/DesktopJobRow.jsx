@@ -1,4 +1,4 @@
-import React, { memo, useState } from "react";
+import React, { memo, useState, useRef, useEffect } from "react";
 import { ScoreBadge } from "./Badges";
 
 const DISMISS_OPTIONS = [
@@ -13,9 +13,31 @@ const DISMISS_OPTIONS = [
 
 export const DesktopJobRow = memo(function DesktopJobRow({ job, isGlobalView, onToggleApplied, isAppliedPending = false, onCopy, onViewAnalysis, onDismiss }) {
     const [showDismissMenu, setShowDismissMenu] = useState(false);
+    const dismissMenuRef = useRef(null);
     const applyUrl = job.application_url || job.external_url;
     const sourceUrl = job.external_url;
     const mailtoUrl = job.application_email ? `mailto:${job.application_email}` : null;
+
+    // Close dismiss menu on click-outside or Escape key
+    useEffect(() => {
+        if (!showDismissMenu) return;
+
+        const handleClickOutside = (e) => {
+            if (dismissMenuRef.current && !dismissMenuRef.current.contains(e.target)) {
+                setShowDismissMenu(false);
+            }
+        };
+        const handleEscape = (e) => {
+            if (e.key === 'Escape') setShowDismissMenu(false);
+        };
+
+        document.addEventListener('mousedown', handleClickOutside);
+        document.addEventListener('keydown', handleEscape);
+        return () => {
+            document.removeEventListener('mousedown', handleClickOutside);
+            document.removeEventListener('keydown', handleEscape);
+        };
+    }, [showDismissMenu]);
 
     const handleDismiss = (signal) => {
         setShowDismissMenu(false);
@@ -134,7 +156,7 @@ export const DesktopJobRow = memo(function DesktopJobRow({ job, isGlobalView, on
                     )}
                     {/* Dismiss button */}
                     {onDismiss && (
-                        <div className="position-relative">
+                        <div className="position-relative" ref={dismissMenuRef}>
                             <button
                                 className="btn btn-sm btn-icon"
                                 style={{ color: '#ff6b6b', opacity: 0.7 }}
@@ -147,7 +169,6 @@ export const DesktopJobRow = memo(function DesktopJobRow({ job, isGlobalView, on
                                 <div
                                     className="position-absolute end-0 mt-1 glass-panel border border-white-10 rounded shadow-lg"
                                     style={{ zIndex: 1050, minWidth: 160, top: '100%' }}
-                                    onMouseLeave={() => setShowDismissMenu(false)}
                                 >
                                     {DISMISS_OPTIONS.map(opt => (
                                         <button
