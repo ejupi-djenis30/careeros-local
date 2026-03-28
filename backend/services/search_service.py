@@ -529,7 +529,8 @@ class SearchService:
         if settings.SEARCH_ENABLE_NORMALIZATION_MATCHING:
             profile_norm = profile_dict.get("profile_normalization") or {}
             if profile_norm:
-                ok, reason = self._passes_normalization_filters(normalized, profile_norm)
+                preference_signals = profile_dict.get("preference_signals") or {}
+                ok, reason = self._passes_normalization_filters(normalized, profile_norm, preference_signals)
                 if not ok:
                     return False, reason
 
@@ -629,6 +630,7 @@ class SearchService:
         self,
         job_norm: Dict[str, Any],
         profile_norm: Dict[str, Any],
+        preference_signals: Optional[Dict[str, Any]] = None,
     ) -> tuple[bool, str]:
         """Intent-aware deterministic field-vs-field match between normalized job and candidate.
 
@@ -813,7 +815,7 @@ class SearchService:
         if getattr(settings, "STRUCTURED_PRESCORE_ENABLED", False):
             try:
                 threshold = float(getattr(settings, "STRUCTURED_PRESCORE_THRESHOLD", 20.0))
-                prescore = compute_prescore(job_norm, profile_norm)
+                prescore = compute_prescore(job_norm, profile_norm, preference_signals)
                 if prescore < threshold:
                     return False, f"norm_prescore_low:{prescore:.1f}"
             except Exception:
@@ -1186,6 +1188,13 @@ class SearchService:
             profile_id, profile, profile_dict, force=force_regen_cv
         )
         profile_dict["profile_normalization"] = profile_normalization
+
+        # ── Step 1.6: Load user preference signals for prescore gating ──
+        try:
+            from backend.services.preference_service import get_preference_signals
+            profile_dict["preference_signals"] = get_preference_signals(user_id, self.db) or {}
+        except Exception:
+            profile_dict["preference_signals"] = {}
 
         # ── Step 2: Execute searches with domain routing (Feature 4) ──
         update_status(profile_id, state="searching")
@@ -1820,6 +1829,30 @@ class SearchService:
                 logger.warning("[RERANK] Re-rank pass failed: %s", exc)
 
         saved_count = 0
+        # ── Phase 3.3: Deterministic salary_below_market red flag injection ──
+        if getattr(settings, "SALARY_BENCHMARK_ENABLED", False):
+            try:
+                from backend.services.preference_service import compute_salary_benchmark
+                for idx, (job, analysis) in enumerate(jobs_to_persist):
+                    job_norm_data = getattr(job, "_normalized_job_data", None) or {}
+                    job_salary_max = job_norm_data.get("salary_max_chf")
+                    if not job_salary_max:
+                        continue
+                    benchmark = compute_salary_benchmark(
+                        domain=job_norm_data.get("domain"),
+                        seniority=job_norm_data.get("seniority"),
+                        db=self.db,
+                    )
+                    if benchmark and benchmark["p25"] and job_salary_max < benchmark["p25"]:
+                        updated = dict(analysis)
+                        flags = list(updated.get("red_flags") or [])
+                        if "salary_below_market" not in flags:
+                            flags.append("salary_below_market")
+                            updated["red_flags"] = flags
+                            jobs_to_persist[idx] = (job, updated)
+            except Exception:
+                logger.debug("salary_below_market check skipped (non-critical)")
+
         for job, analysis in jobs_to_persist:
             try:
                 await self._save_single_job(job, analysis, profile_dict, origin_coords, commit=True)

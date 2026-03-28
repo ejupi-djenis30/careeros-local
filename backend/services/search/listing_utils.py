@@ -13,6 +13,10 @@ import re
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple
 
+# ─── Lazy import of embedding tier (Phase 1) ─────────────────────────────────
+# Imported lazily inside semantic_skills_score() so this module stays importable
+# even when sentence-transformers is not installed.
+
 logger = logging.getLogger(__name__)
 
 
@@ -555,13 +559,15 @@ def bootstrap_normalized_job_data(
 def semantic_skills_score(
     job_skills: List[str], profile_skills: List[str]
 ) -> float:
-    """Weighted semantic skill overlap using the skill taxonomy.
+    """Weighted semantic skill overlap using the skill taxonomy + embeddings.
 
-    Unlike ``skills_overlap`` (which is binary), this accounts for related skills:
-    - Exact match → weight 1.0
-    - Alias match → weight 1.0
-    - Related skill from taxonomy → weight from taxonomy (e.g., 0.5–0.9)
-    - String containment fallback → weight 0.5
+    Four-tier matching strategy (Phase 1 upgrade):
+    1. Exact canonical match → weight 1.0
+    2. Alias match → weight 1.0 (resolved via _ALIAS_TO_CANONICAL)
+    3. Taxonomy-weighted related skill → weight from taxonomy (0.0–1.0)
+    4. Embedding cosine similarity (NEW) → cosine weight if above threshold
+       (requires sentence-transformers; skipped gracefully if absent)
+    5. String containment fallback → weight 0.3 (reduced from 0.5 for precision)
 
     Returns a float 0.0–1.0 representing the *weighted* coverage of the job's
     required skills with the candidate's profile skills.
@@ -569,10 +575,28 @@ def semantic_skills_score(
     if not job_skills or not profile_skills:
         return 0.0
 
+    # Lazy imports for embedding tier — avoids hard dependency at module load time
+    _emb_available = False
+    _emb_threshold = 0.65
+    _best_embedding_match = None
+    try:
+        from backend.core.config import settings as _settings
+        if getattr(_settings, "SKILL_EMBEDDING_ENABLED", True):
+            from backend.services.search.skill_embeddings import (  # type: ignore
+                best_embedding_match as _best_embedding_match,
+                is_available as _emb_is_available,
+            )
+            _emb_available = _emb_is_available()
+            _emb_threshold = float(getattr(_settings, "SKILL_EMBEDDING_THRESHOLD", 0.65))
+    except Exception:
+        pass
+
     profile_canonical_set = {
         _ALIAS_TO_CANONICAL.get(normalized_text_token(s), normalized_text_token(s))
         for s in profile_skills if s
     }
+    # Build a plain list for embedding comparison (use raw tokens, not canonical only)
+    profile_raw_list: List[str] = [normalized_text_token(s) for s in profile_skills if s]
 
     total_weight = 0.0
     matched_weight = 0.0
@@ -605,14 +629,21 @@ def semantic_skills_score(
             matched_weight += best_related_weight
             continue
 
-        # Tier 3: string containment fallback
+        # Tier 2.5 (Phase 1): embedding cosine similarity
+        if _emb_available and _best_embedding_match is not None:
+            emb_score = _best_embedding_match(js, profile_raw_list, threshold=_emb_threshold)
+            if emb_score > 0.0:
+                matched_weight += emb_score
+                continue
+
+        # Tier 3: string containment fallback (reduced weight 0.3 for precision)
         job_raw = normalized_text_token(js)
         for prof_canon in profile_canonical_set:
             if prof_canon and (
                 _word_bounded_substring(job_raw, prof_canon)
                 or _word_bounded_substring(prof_canon, job_raw)
             ):
-                matched_weight += 0.5
+                matched_weight += 0.3
                 break
 
     return matched_weight / total_weight if total_weight > 0 else 0.0
@@ -621,7 +652,11 @@ def semantic_skills_score(
 # ─── Structured pre-score ─────────────────────────────────────────────────────
 
 
-def compute_prescore(job_norm: Dict[str, Any], profile_norm: Dict[str, Any]) -> float:
+def compute_prescore(
+    job_norm: Dict[str, Any],
+    profile_norm: Dict[str, Any],
+    preference_signals: Optional[Dict[str, Any]] = None,
+) -> float:
     """Compute a continuous pre-score (0–100) from normalized structured fields.
 
     This runs BEFORE the expensive LLM MATCH step and acts as a lightweight gate.
@@ -635,6 +670,7 @@ def compute_prescore(job_norm: Dict[str, Any], profile_norm: Dict[str, Any]) -> 
     - Entry barrier vs. qualifications (10 pts)
     - Language requirements (10 pts)
     - Qualification level match (5 pts)
+    - User preference alignment (up to +5 bonus / −5 penalty, gated)
     """
     score = 0.0
 
@@ -765,7 +801,133 @@ def compute_prescore(job_norm: Dict[str, Any], profile_norm: Dict[str, Any]) -> 
     else:
         score += 2.5  # neutral
 
+    # 8. User preference alignment (−5 to +5 pts bonus, gated by signal_count)
+    try:
+        from backend.core.config import settings as _cfg
+        if (
+            _cfg.PREFERENCE_PRESCORE_ENABLED
+            and preference_signals
+            and preference_signals.get("signal_count", 0) >= _cfg.PREFERENCE_MIN_SIGNAL_COUNT
+        ):
+            pref_delta = 0.0
+            job_domain = (job_norm.get("normalized_domain") or "").lower().strip()
+            job_seniority = (job_norm.get("normalized_seniority") or "").lower().strip()
+            job_skills_set = {s.lower() for s in (job_norm.get("normalized_required_skills") or [])}
+
+            # +3 if domain is in top preferred domains
+            preferred_domains = [d.lower() for d in (preference_signals.get("preferred_domains") or [])]
+            avoided_domains = [d.lower() for d in (preference_signals.get("avoided_domains") or [])]
+            if job_domain and job_domain in preferred_domains[:3]:
+                pref_delta += 3.0
+            elif job_domain and job_domain in avoided_domains:
+                pref_delta -= 4.0  # penalise consistently-avoided domains
+
+            # +2 if seniority is preferred
+            preferred_seniority = [s.lower() for s in (preference_signals.get("preferred_seniority") or [])]
+            if job_seniority and job_seniority in preferred_seniority:
+                pref_delta += 2.0
+
+            # +2 if ≥2 preferred skills overlap
+            preferred_skills = {s.lower() for s in (preference_signals.get("preferred_skills") or [])}
+            overlap = job_skills_set & preferred_skills
+            if len(overlap) >= 2:
+                pref_delta += min(2.0, len(overlap) * 0.5)
+
+            # −3 if dealbreaker signals dominate
+            dealbreakers = preference_signals.get("dealbreaker_patterns") or {}
+            total_dismissed = sum(dealbreakers.values()) if dealbreakers else 0
+            high_signal_dismissals = {"too_senior", "too_junior", "wrong_domain"}
+            hard_flags = sum(dealbreakers.get(k, 0) for k in high_signal_dismissals)
+            if total_dismissed >= 5 and hard_flags / total_dismissed > 0.6:
+                if job_domain and job_domain in avoided_domains:
+                    pref_delta -= 3.0
+
+            score += max(-5.0, min(5.0, pref_delta))
+    except Exception:
+        pass  # preference injection is a bonus — never block scoring
+
     return min(100.0, max(0.0, score))
+
+
+# ─── Swiss implicit language inference ───────────────────────────────────────
+
+# Canton → primary administrative language code (ISO 639-1)
+_CANTON_LANGUAGE_MAP: Dict[str, str] = {
+    # German-speaking cantons
+    "zurich": "de", "zürich": "de", "zh": "de",
+    "bern": "de", "be": "de",
+    "lucerne": "de", "luzern": "de", "lu": "de",
+    "uri": "de", "ur": "de",
+    "schwyz": "de", "sz": "de",
+    "obwalden": "de", "ow": "de",
+    "nidwalden": "de", "nw": "de",
+    "glarus": "de", "gl": "de",
+    "zug": "de", "zg": "de",
+    "solothurn": "de", "so": "de",
+    "basel-stadt": "de", "basel": "de", "bs": "de",
+    "basel-landschaft": "de", "baselland": "de", "bl": "de",
+    "schaffhausen": "de", "sh": "de",
+    "appenzell": "de", "ar": "de", "ai": "de",
+    "st. gallen": "de", "st gallen": "de", "sg": "de",
+    "graubünden": "de", "graubuenden": "de", "gr": "de",
+    "aargau": "de", "ag": "de",
+    "thurgau": "de", "tg": "de",
+    # French-speaking cantons (Romandy)
+    "geneva": "fr", "genève": "fr", "genf": "fr", "ge": "fr",
+    "vaud": "fr", "vd": "fr",
+    "neuchâtel": "fr", "neuchatel": "fr", "ne": "fr",
+    "jura": "fr", "ju": "fr",
+    "fribourg": "fr", "freiburg": "fr", "fr": "fr",
+    # Italian-speaking canton
+    "ticino": "it", "ti": "it",
+    # Valais / Wallis: bilingual (de/fr) — default German
+    "valais": "fr", "wallis": "de", "vs": "de",
+}
+
+_CITY_LANGUAGE_MAP: Dict[str, str] = {
+    "zürich": "de", "zurich": "de", "bern": "de", "basel": "de",
+    "winterthur": "de", "lucerne": "de", "luzern": "de", "st. gallen": "de",
+    "biel": "de", "thun": "de", "köniz": "de", "uster": "de",
+    "genf": "fr", "geneva": "fr", "genève": "fr",
+    "lausanne": "fr", "fribourg": "fr", "biel/bienne": "fr",
+    "lugano": "it", "bellinzona": "it", "locarno": "it",
+}
+
+
+def infer_implicit_language(location_str: Optional[str]) -> Optional[str]:
+    """Infer the predominant spoken language from a Swiss location string.
+
+    Returns an ISO 639-1 language code ("de", "fr", "it") or None when the
+    location cannot be mapped.  Used by the MATCH prompt as a soft tiebreaker
+    when the job posting does not explicitly list language requirements.
+
+    The heuristic is city-first, then canton-name matching. Only active when
+    ``SWISS_IMPLICIT_LANGUAGE_ENABLED`` is True (default).
+    """
+    try:
+        from backend.core.config import settings as _cfg
+        if not _cfg.SWISS_IMPLICIT_LANGUAGE_ENABLED:
+            return None
+    except Exception:
+        return None
+
+    if not location_str:
+        return None
+
+    text = location_str.lower().strip()
+
+    # City lookup (highest precision) — use word boundaries to avoid
+    # partial-word false positives (e.g. "bern" inside "berlin").
+    for city, lang in _CITY_LANGUAGE_MAP.items():
+        if re.search(r'\b' + re.escape(city) + r'\b', text):
+            return lang
+
+    # Canton lookup
+    for canton, lang in _CANTON_LANGUAGE_MAP.items():
+        if re.search(r'\b' + re.escape(canton) + r'\b', text):
+            return lang
+
+    return None
 
 
 # ─── Job posting quality ──────────────────────────────────────────────────────

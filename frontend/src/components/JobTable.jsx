@@ -2,9 +2,18 @@ import React, { useState, useEffect } from "react";
 import { MobileJobCard } from "./JobTable/MobileJobCard";
 import { DesktopJobRow } from "./JobTable/DesktopJobRow";
 import { JobAnalysisModal } from "./JobTable/JobAnalysisModal";
+import { JobService } from "../services/jobs";
 
-export function JobTable({ jobs, isGlobalView, onToggleApplied, isAppliedPending = () => false, pagination, onPageChange, isLoading = false }) {
+export function JobTable({ jobs, isGlobalView, onToggleApplied, isAppliedPending = () => false, onDismiss, pagination, onPageChange, isLoading = false }) {
     const [selectedJobForAnalysis, setSelectedJobForAnalysis] = useState(null);
+
+    const handleViewAnalysis = (job) => {
+        setSelectedJobForAnalysis(job);
+        // Fire-and-forget view recording (idempotent on the server)
+        if (job?.id) {
+            JobService.recordView(job.id).catch(() => {});
+        }
+    };
 
     useEffect(() => {
         if (!selectedJobForAnalysis) return;
@@ -54,14 +63,15 @@ export function JobTable({ jobs, isGlobalView, onToggleApplied, isAppliedPending
             {/* Mobile View (Cards) */}
             <div className="d-lg-none">
                 {jobs.map(job => (
-                    <MobileJobCard 
-                        key={job.id} 
-                        job={job} 
-                        isGlobalView={isGlobalView} 
-                        onToggleApplied={onToggleApplied} 
+                    <MobileJobCard
+                        key={job.id}
+                        job={job}
+                        isGlobalView={isGlobalView}
+                        onToggleApplied={onToggleApplied}
                         isAppliedPending={isAppliedPending(job.id)}
                         onCopy={handleCopy}
-                        onViewAnalysis={(j) => setSelectedJobForAnalysis(j)}
+                        onViewAnalysis={handleViewAnalysis}
+                        onDismiss={onDismiss}
                     />
                 ))}
             </div>
@@ -84,14 +94,15 @@ export function JobTable({ jobs, isGlobalView, onToggleApplied, isAppliedPending
                     </thead>
                     <tbody>
                         {jobs.map((job) => (
-                            <DesktopJobRow 
-                                key={job.id} 
-                                job={job} 
-                                isGlobalView={isGlobalView} 
-                                onToggleApplied={onToggleApplied} 
+                            <DesktopJobRow
+                                key={job.id}
+                                job={job}
+                                isGlobalView={isGlobalView}
+                                onToggleApplied={onToggleApplied}
                                 isAppliedPending={isAppliedPending(job.id)}
-                                onCopy={handleCopy} 
-                                onViewAnalysis={(j) => setSelectedJobForAnalysis(j)}
+                                onCopy={handleCopy}
+                                onViewAnalysis={handleViewAnalysis}
+                                onDismiss={onDismiss}
                             />
                         ))}
                     </tbody>

@@ -44,9 +44,24 @@ class JobCreate(JobBase):
     raw_metadata: Optional[Dict[str, Any]] = None
 
 
+FEEDBACK_SIGNAL_VALUES = {
+    "too_senior", "too_junior", "wrong_domain", "bad_salary",
+    "bad_location", "not_interested", "already_applied", "other",
+}
+
+
 class JobUpdate(BaseModel):
     """Update schema — only allows updating user-specific interaction flags."""
     applied: Optional[bool] = None
+    dismissed: Optional[bool] = None
+    feedback_signal: Optional[str] = None
+
+    @field_validator("feedback_signal")
+    @classmethod
+    def validate_feedback_signal(cls, v: Optional[str]) -> Optional[str]:
+        if v is not None and v not in FEEDBACK_SIGNAL_VALUES:
+            raise ValueError(f"feedback_signal must be one of {sorted(FEEDBACK_SIGNAL_VALUES)}")
+        return v
 
 
 class NormalizedJobData(BaseModel):
@@ -98,6 +113,10 @@ class JobResponse(JobBase):
         default=False,
         description="Derived response field. True when the same scraped job is marked applied in another profile for the same user.",
     )
+    viewed_at: Optional[datetime] = None
+    dismissed: bool = False
+    dismissed_at: Optional[datetime] = None
+    feedback_signal: Optional[str] = None
     skill_match_score: Optional[float] = None
     experience_match_score: Optional[float] = None
     intent_match_score: Optional[float] = None

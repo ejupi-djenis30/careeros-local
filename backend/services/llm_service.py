@@ -691,6 +691,15 @@ Return ONLY pure JSON with a 'searches' list. Example:
                     f" | Physical requirements: {job_norm.get('physical_requirements')}"
                     f" | Hard blockers: {job_norm.get('hard_blockers')}\n"
                 )
+            # Phase 3.1: Swiss implicit language hint when no explicit lang requirements
+            if not job.get("languages"):
+                try:
+                    from backend.services.search.listing_utils import infer_implicit_language
+                    implicit_lang = infer_implicit_language(job.get("location"))
+                    if implicit_lang:
+                        jobs_text += f"[Implicit Language Hint] Location suggests primary language: {implicit_lang} — consider this when scoring language fit.\n"
+                except Exception:
+                    pass
 
         strategy = profile.get('search_strategy')
         strategy_block = f"\n- Extra AI Instructions / Preferences: {strategy}" if strategy else ""
@@ -727,13 +736,59 @@ Return ONLY pure JSON with a 'searches' list. Example:
         else:
             intent_structured = ""
 
+        # ── Phase 2: Behavioural preference injection ─────────────────────────
+        # Injects aggregated apply/dismiss signals as a SOFT tiebreaker. This
+        # block is only activated once the user has enough interaction history
+        # (PREFERENCE_MIN_SIGNAL_COUNT) and is never allowed to override hard
+        # constraints (dealbreakers, language caps, etc.).
+        preference_block = ""
+        try:
+            pref_signals = profile.get("preference_signals") or {}
+            if (
+                settings.MATCH_ENABLE_PREFERENCE_INJECTION
+                and pref_signals.get("signal_count", 0) >= settings.PREFERENCE_MIN_SIGNAL_COUNT
+            ):
+                preferred_domains = pref_signals.get("preferred_domains") or []
+                avoided_domains = pref_signals.get("avoided_domains") or []
+                preferred_skills = (pref_signals.get("preferred_skills") or [])[:10]
+                preferred_role_types = pref_signals.get("preferred_role_types") or []
+                dealbreaker_patterns = pref_signals.get("dealbreaker_patterns") or {}
+                typical_salary = pref_signals.get("typical_salary_range") or {}
+
+                signal_lines = []
+                if preferred_domains:
+                    signal_lines.append(f"- Preferred domains (user has applied to): {', '.join(preferred_domains[:3])}")
+                if avoided_domains:
+                    signal_lines.append(f"- Domains user consistently dismisses (treat as soft negative): {', '.join(avoided_domains[:3])}")
+                if preferred_role_types:
+                    signal_lines.append(f"- Preferred role types: {', '.join(preferred_role_types)}")
+                if preferred_skills:
+                    signal_lines.append(f"- Skills the user actively engages with: {', '.join(preferred_skills)}")
+                if dealbreaker_patterns:
+                    top_reasons = sorted(dealbreaker_patterns.items(), key=lambda x: -x[1])[:3]
+                    signal_lines.append(f"- Frequent dismissal reasons: {', '.join(f'{r}({c})' for r, c in top_reasons)}")
+                if typical_salary.get("typical_min_chf"):
+                    signal_lines.append(
+                        f"- Typical salary bracket the user applies to: "
+                        f"{typical_salary.get('typical_min_chf'):,}–{typical_salary.get('typical_max_chf') or '?'} CHF/yr"
+                    )
+
+                if signal_lines:
+                    preference_block = (
+                        "\n\nUSER BEHAVIOURAL SIGNALS (soft tiebreaker — do NOT override hard constraints above):\n"
+                        + "\n".join(signal_lines)
+                        + "\nUse these only to gently adjust scores when two jobs are otherwise similar."
+                    )
+        except Exception:
+            preference_block = ""  # Never let preference injection break the prompt
+
         user_prompt = f"""Analyze the match between this candidate and each job below.
 
 CANDIDATE PROFILE:
 - Expected Role: {profile.get('role_description')}{strategy_block}
 - Experience Context: {profile.get('cv_summary') or profile.get('cv_content')}{candidate_structured}
 
-SEARCH INTENT:{intent_structured if intent_structured else " (use role description above)"}
+SEARCH INTENT:{intent_structured if intent_structured else " (use role description above)"}{preference_block}
 
 {jobs_text}
 

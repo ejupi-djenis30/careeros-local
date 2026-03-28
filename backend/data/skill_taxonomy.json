@@ -1,7 +1,7 @@
 {
   "_metadata": {
-    "version": "1.0",
-    "description": "Weighted skill taxonomy for semantic job-candidate matching. Each entry maps a canonical skill to its aliases and related skills with weights (0-1). Weight=1.0 means equivalent/identical. Weight=0.7 means strongly related (same ecosystem). Weight=0.4 means moderately related. Weight=0.2 means weakly related."
+    "version": "2.0",
+    "description": "Weighted skill taxonomy for semantic job-candidate matching. Each entry maps a canonical skill to its aliases and related skills with weights (0-1). Weight=1.0 means equivalent/identical. Weight=0.7 means strongly related (same ecosystem). Weight=0.4 means moderately related. Weight=0.2 means weakly related. v2.0: expanded with Swiss market domains (medical, legal, construction, finance), multilingual DE/FR/IT aliases, and Phase 1 embedding-tier support."
   },
   "skills": {
     "python": {
@@ -1584,6 +1584,467 @@
         "teaching": 0.75,
         "hr": 0.6,
         "communication": 0.65
+      }
+    },
+
+    "nursing": {
+      "aliases": [
+        "pflege", "krankenpflege", "altenpflege", "pflegefachmann", "pflegefachfrau",
+        "ota", "medizinische pflege", "soins infirmiers", "soins", "infirmier",
+        "infirmière", "cure infermieristiche", "infermiere", "infermiera",
+        "registered nurse", "rn", "licensed practical nurse", "lpn",
+        "fachmann gesundheit", "fachfrau gesundheit", "facha gesundheit"
+      ],
+      "related": {
+        "healthcare": 1.0,
+        "elderly care": 0.85,
+        "social work": 0.6,
+        "childcare": 0.5,
+        "psychology": 0.45
+      }
+    },
+    "medical assistant": {
+      "aliases": [
+        "medizinische praxisassistenz", "mpa", "arztassistenz", "arztassistentin",
+        "assistante médicale", "assistente medica", "medical practice assistant",
+        "praxisassistentin", "ambulatorycare"
+      ],
+      "related": {
+        "healthcare": 0.95,
+        "nursing": 0.75,
+        "administration": 0.5
+      }
+    },
+    "medical technology": {
+      "aliases": [
+        "medizintechnik", "medizintechniker", "biomedizintechnik", "gerätetechnik medizin",
+        "technologie médicale", "tecnologia medica", "medical devices", "biomedical engineering",
+        "biomedical technician"
+      ],
+      "related": {
+        "healthcare": 0.85,
+        "electrical engineering": 0.7,
+        "mechanical engineering": 0.65
+      }
+    },
+    "pharmacy": {
+      "aliases": [
+        "pharmazie", "pharmazeutische industrie", "pharmaassistentin",
+        "drogist", "drogistin", "pharmacie", "farmacia",
+        "pharmaceutical", "pharmacist", "drug regulatory"
+      ],
+      "related": {
+        "healthcare": 0.85,
+        "chemistry": 0.8,
+        "regulatory affairs": 0.75
+      }
+    },
+    "chemistry": {
+      "aliases": [
+        "chemie", "chemiker", "chemielaborant", "laborant", "analytische chemie",
+        "chimie", "chimica", "biochemistry", "biochemie", "organic chemistry",
+        "quality control lab", "laboranalyse"
+      ],
+      "related": {
+        "pharmacy": 0.8,
+        "medical technology": 0.65,
+        "laboratory": 0.9
+      }
+    },
+    "laboratory": {
+      "aliases": [
+        "labor", "laborarbeit", "laborant fachrichtung", "laboratorio", "laboratoire",
+        "lab technician", "labortechniker", "diagnostics", "laboratory analysis"
+      ],
+      "related": {
+        "chemistry": 0.9,
+        "pharmacy": 0.75,
+        "healthcare": 0.7
+      }
+    },
+    "radiography": {
+      "aliases": [
+        "röntgen", "röntgenassistenz", "radiologie", "mrt", "ct", "radiographer",
+        "medical imaging", "radiotechnologue", "radiologia"
+      ],
+      "related": {
+        "healthcare": 0.9,
+        "medical technology": 0.8
+      }
+    },
+    "physiotherapy": {
+      "aliases": [
+        "physiotherapie", "physiotherapeut", "physiothérapeute", "fisioterapia",
+        "physical therapy", "rehabilitation", "rehab", "bewegungstherapie",
+        "ergotherapie", "ergotherapy"
+      ],
+      "related": {
+        "healthcare": 0.9,
+        "sports science": 0.7,
+        "nursing": 0.6
+      }
+    },
+    "compliance": {
+      "aliases": [
+        "regulatory compliance", "rechtliche compliance", "gesetzeskonformität",
+        "conformité réglementaire", "conformità normativa", "grc",
+        "governance risk compliance", "finma", "regulatory affairs",
+        "compliance officer", "compliance management"
+      ],
+      "related": {
+        "legal": 0.9,
+        "banking": 0.8,
+        "audit": 0.75,
+        "risk management": 0.8
+      }
+    },
+    "audit": {
+      "aliases": [
+        "revision", "revisor", "wirtschaftsprüfung", "wirtschaftsprüfer",
+        "audit interne", "internal audit", "external audit", "réviseur",
+        "revisione", "auditeur", "cia"
+      ],
+      "related": {
+        "accounting": 0.85,
+        "financial analysis": 0.8,
+        "compliance": 0.75,
+        "tax": 0.7
+      }
+    },
+    "risk management": {
+      "aliases": [
+        "risikomanagement", "risk assessment", "risikoanalyse", "gestion des risques",
+        "gestione del rischio", "operational risk", "credit risk", "market risk",
+        "risk officer", "risk analyst"
+      ],
+      "related": {
+        "compliance": 0.8,
+        "banking": 0.75,
+        "financial analysis": 0.7,
+        "insurance": 0.75
+      }
+    },
+    "treuhand": {
+      "aliases": [
+        "treuhandwesen", "treuhänder", "treuhänderin", "fiduciaire",
+        "fiduciary", "trustee services", "fiduciaria svizzera",
+        "treuhand ag", "buchführung und treuhand"
+      ],
+      "related": {
+        "accounting": 0.9,
+        "tax": 0.85,
+        "audit": 0.75,
+        "financial analysis": 0.7
+      }
+    },
+    "ifrs": {
+      "aliases": [
+        "international financial reporting standards", "ias", "us gaap", "gaap",
+        "swiss gaap fer", "ifrs reporting", "normes ifrs", "rechnungslegung ifrs"
+      ],
+      "related": {
+        "accounting": 0.9,
+        "financial analysis": 0.85,
+        "audit": 0.8,
+        "treuhand": 0.75
+      }
+    },
+    "controlling": {
+      "aliases": [
+        "finanzcontrolling", "unternehmenscontrolling", "controller", "contrôle de gestion",
+        "management control", "financial controlling", "business controlling",
+        "budget controlling", "cost controlling"
+      ],
+      "related": {
+        "financial analysis": 0.9,
+        "accounting": 0.8,
+        "ifrs": 0.7,
+        "treuhand": 0.65
+      }
+    },
+    "contract law": {
+      "aliases": [
+        "vertragsrecht", "vertragsgestaltung", "droit des contrats",
+        "diritto contrattuale", "contract drafting", "legal contracts",
+        "commercial law", "handelsrecht", "droit commercial"
+      ],
+      "related": {
+        "legal": 0.95,
+        "compliance": 0.75,
+        "negotiation": 0.6
+      }
+    },
+    "labour law": {
+      "aliases": [
+        "arbeitsrecht", "droit du travail", "diritto del lavoro",
+        "employment law", "hr law", "personal recht", "tariffvertrag"
+      ],
+      "related": {
+        "legal": 0.95,
+        "hr": 0.8,
+        "compliance": 0.65
+      }
+    },
+    "structural engineering": {
+      "aliases": [
+        "tragwerkplanung", "tragwerksplanung", "tiefbau", "hochbau", "stahlbau",
+        "bauwesen", "bauingenieur", "bauingenieurwesen", "génie civil",
+        "civil structural", "reinforced concrete", "stahlbeton", "bausatik"
+      ],
+      "related": {
+        "civil engineering": 0.95,
+        "construction": 0.9,
+        "cad": 0.6,
+        "architecture": 0.7
+      }
+    },
+    "building technology": {
+      "aliases": [
+        "gebäudetechnik", "haustechnik", "hvac", "heizung lüftung klima",
+        "sanitär heizung klima", "hlk", "technologie du bâtiment",
+        "technica degli edifici", "building services", "fm facility management",
+        "glx", "bms"
+      ],
+      "related": {
+        "mechanical engineering": 0.75,
+        "electrical engineering": 0.7,
+        "construction": 0.8
+      }
+    },
+    "electrical installation": {
+      "aliases": [
+        "elektroinstallation", "elektroinstallateur", "elektromonteur",
+        "installation électrique", "installazione elettrica",
+        "low voltage", "niederspannung", "high voltage", "hochspannung",
+        "elektrik", "electrician"
+      ],
+      "related": {
+        "electrical engineering": 0.95,
+        "building technology": 0.7,
+        "construction": 0.7
+      }
+    },
+    "automation": {
+      "aliases": [
+        "automatisierungstechnik", "automatisierung", "steuerungstechnik",
+        "automatisation", "automazione", "process automation", "rpa",
+        "industrial automation", "plc programming"
+      ],
+      "related": {
+        "plc": 0.9,
+        "embedded systems": 0.8,
+        "electrical engineering": 0.8,
+        "mechanical engineering": 0.65
+      }
+    },
+    "supply chain management": {
+      "aliases": [
+        "lieferkettenverwaltung", "supply chain", "scm", "logistikmanagement",
+        "gestion de la chaîne d'approvisionnement", "gestione della catena di fornitura",
+        "procurement", "beschaffung", "einkauf", "purchasing", "verkehr und logistik"
+      ],
+      "related": {
+        "supply chain": 1.0,
+        "logistics": 0.95,
+        "import export": 0.8,
+        "warehouse": 0.7
+      }
+    },
+    "sap mm": {
+      "aliases": [
+        "sap materials management", "sap mm modul", "sap procurement", "sap einkauf"
+      ],
+      "related": {
+        "sap": 0.95,
+        "supply chain management": 0.75,
+        "erp": 0.8
+      }
+    },
+    "sap fi": {
+      "aliases": [
+        "sap financial accounting", "sap fi/co", "sap finance", "sap accounting"
+      ],
+      "related": {
+        "sap": 0.95,
+        "accounting": 0.8,
+        "controlling": 0.75,
+        "erp": 0.8
+      }
+    },
+    "sap hr": {
+      "aliases": [
+        "sap hcm", "sap human capital management", "sap personnel", "sap payroll"
+      ],
+      "related": {
+        "sap": 0.95,
+        "hr": 0.85,
+        "payroll": 0.8,
+        "erp": 0.8
+      }
+    },
+    "data analysis": {
+      "aliases": [
+        "datenanalyse", "analyse de données", "analisi dei dati",
+        "data analytics", "business analytics", "statistical analysis",
+        "descriptive analytics", "kpi reporting", "reporting"
+      ],
+      "related": {
+        "data science": 0.85,
+        "machine learning": 0.7,
+        "power bi": 0.75,
+        "tableau": 0.75,
+        "sql": 0.65,
+        "excel": 0.6
+      }
+    },
+    "product management": {
+      "aliases": [
+        "produktmanagement", "product owner", "gestion de produit",
+        "gestione del prodotto", "product manager", "po", "roadmap",
+        "product strategy", "feature prioritization"
+      ],
+      "related": {
+        "agile": 0.8,
+        "project management": 0.75,
+        "ux design": 0.6,
+        "team leadership": 0.6
+      }
+    },
+    "ux design": {
+      "aliases": [
+        "user experience", "ux", "ui design", "user interface", "usability",
+        "interaction design", "service design", "design thinking",
+        "nutzererfahrung", "conception ux"
+      ],
+      "related": {
+        "ui ux design": 1.0,
+        "figma": 0.85,
+        "graphic design": 0.7,
+        "product management": 0.6
+      }
+    },
+    "business development": {
+      "aliases": [
+        "geschäftsentwicklung", "business dev", "biz dev",
+        "développement commercial", "sviluppo commerciale",
+        "new business", "partnership development"
+      ],
+      "related": {
+        "sales": 0.85,
+        "marketing": 0.7,
+        "negotiation": 0.75,
+        "project management": 0.6
+      }
+    },
+    "key account management": {
+      "aliases": [
+        "key account", "kam", "großkundenbetreuung", "gestion grands comptes",
+        "customer account management", "account manager", "kundenpflege"
+      ],
+      "related": {
+        "sales": 0.9,
+        "customer service": 0.8,
+        "negotiation": 0.7,
+        "crm": 0.7
+      }
+    },
+    "crm": {
+      "aliases": [
+        "customer relationship management", "kundenpflege software",
+        "salesforce crm", "zoho crm", "hubspot", "microsoft dynamics crm",
+        "gestion relation client"
+      ],
+      "related": {
+        "salesforce": 0.85,
+        "customer service": 0.75,
+        "key account management": 0.7,
+        "sales": 0.7
+      }
+    },
+    "german language": {
+      "aliases": [
+        "deutsch", "hochdeutsch", "schweizerdeutsch", "german b2", "german c1",
+        "german c2", "deutschkenntnisse", "langue allemande", "tedesco"
+      ],
+      "related": {
+        "german": 1.0,
+        "communication": 0.4
+      }
+    },
+    "french language": {
+      "aliases": [
+        "französisch", "français", "francese", "french b2", "french c1",
+        "langue française", "connaissance du français"
+      ],
+      "related": {
+        "french": 1.0,
+        "communication": 0.4
+      }
+    },
+    "italian language": {
+      "aliases": [
+        "italienisch", "italiano", "italian b2", "italian c1",
+        "connaissance de l'italien", "kenntnisse italienisch"
+      ],
+      "related": {
+        "italian": 1.0,
+        "communication": 0.4
+      }
+    },
+    "sports science": {
+      "aliases": [
+        "sportwissenschaft", "sporttrainer", "personal trainer", "fitnesstrainer",
+        "sportcoach", "bewegungswissenschaft", "sportpädagogik"
+      ],
+      "related": {
+        "fitness": 0.9,
+        "coaching": 0.7,
+        "physiotherapy": 0.65
+      }
+    },
+    "food safety": {
+      "aliases": [
+        "lebensmittelhygiene", "haccp", "food hygiene", "lebensmittelsicherheit",
+        "hygiène alimentaire", "sicurezza alimentare", "lebensmittelkontrolle"
+      ],
+      "related": {
+        "cooking": 0.8,
+        "food service": 0.85,
+        "quality management": 0.7
+      }
+    },
+    "barista": {
+      "aliases": [
+        "kaffee", "kaffeespezialitäten", "espresso", "specialty coffee",
+        "café", "caffè", "coffee preparation", "latte art"
+      ],
+      "related": {
+        "food service": 0.9,
+        "hospitality": 0.85,
+        "cooking": 0.5
+      }
+    },
+    "property management": {
+      "aliases": [
+        "immobilienverwaltung", "liegenschaftsverwaltung", "mietverwaltung",
+        "gestion immobilière", "gestione immobiliare",
+        "facility management", "bewirtschaftung"
+      ],
+      "related": {
+        "real estate": 0.9,
+        "administration": 0.7,
+        "accounting": 0.6
+      }
+    },
+    "german work permit": {
+      "aliases": [
+        "schweizer arbeitsbewilligung", "aufenthaltsbewilligung", "eu citizen",
+        "permit b", "permit c", "permit l", "bewilligung b", "bewilligung c",
+        "autorisation de travail suisse", "permesso di lavoro svizzero",
+        "work permit switzerland", "ch work permit", "swiss permit"
+      ],
+      "related": {
+        "german language": 0.3
       }
     }
   }

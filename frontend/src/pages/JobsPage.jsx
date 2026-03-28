@@ -36,6 +36,7 @@ export function JobsPage() {
     fetchJobs,
     toggleApplied,
     isAppliedPending,
+    dismissJob,
     clearFilters,
     isLoading,
     isRefreshing,
@@ -83,6 +84,7 @@ export function JobsPage() {
             isGlobalView={!filters.search_profile_id}
             onToggleApplied={toggleApplied}
             isAppliedPending={isAppliedPending}
+            onDismiss={dismissJob}
             pagination={pagination}
             onPageChange={(p) => setPagination(prev => ({ ...prev, page: p }))}
             isLoading={isLoading}

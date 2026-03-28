@@ -31,4 +31,12 @@ export const JobService = {
     async toggleApplied(jobId, applied) {
         return ApiClient.patch(`/jobs/${jobId}`, { applied });
     },
+
+    async dismiss(jobId, feedbackSignal) {
+        return ApiClient.post(`/jobs/${jobId}/dismiss`, { feedback_signal: feedbackSignal || null });
+    },
+
+    async recordView(jobId) {
+        return ApiClient.post(`/jobs/${jobId}/view`, {});
+    },
 };

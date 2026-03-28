@@ -1,10 +1,26 @@
-import React, { memo } from "react";
+import React, { memo, useState } from "react";
 import { ScoreBadge } from "./Badges";
 
-export const DesktopJobRow = memo(function DesktopJobRow({ job, isGlobalView, onToggleApplied, isAppliedPending = false, onCopy, onViewAnalysis }) {
-    const applyUrl = job.application_url || job.external_url; // Use application_url falling back to external_url for 'Apply'
-    const sourceUrl = job.external_url;   // Use external_url for 'Source'
+const DISMISS_OPTIONS = [
+    { value: "not_interested", label: "Not interested" },
+    { value: "wrong_domain", label: "Wrong domain" },
+    { value: "too_senior", label: "Too senior" },
+    { value: "too_junior", label: "Too junior" },
+    { value: "bad_salary", label: "Bad salary" },
+    { value: "bad_location", label: "Bad location" },
+    { value: "already_applied", label: "Already applied" },
+];
+
+export const DesktopJobRow = memo(function DesktopJobRow({ job, isGlobalView, onToggleApplied, isAppliedPending = false, onCopy, onViewAnalysis, onDismiss }) {
+    const [showDismissMenu, setShowDismissMenu] = useState(false);
+    const applyUrl = job.application_url || job.external_url;
+    const sourceUrl = job.external_url;
     const mailtoUrl = job.application_email ? `mailto:${job.application_email}` : null;
+
+    const handleDismiss = (signal) => {
+        setShowDismissMenu(false);
+        if (onDismiss) onDismiss(job, signal);
+    };
 
     return (
         <tr className="job-row border-bottom border-white-5 hover-elevation" style={{ transition: 'all 0.2s' }}>
@@ -115,6 +131,37 @@ export const DesktopJobRow = memo(function DesktopJobRow({ job, isGlobalView, on
                             title={`View on ${job.platform || 'Source'}`}>
                             <i className="bi bi-link-45deg fs-5"></i>
                         </a>
+                    )}
+                    {/* Dismiss button */}
+                    {onDismiss && (
+                        <div className="position-relative">
+                            <button
+                                className="btn btn-sm btn-icon"
+                                style={{ color: '#ff6b6b', opacity: 0.7 }}
+                                title="Not Interested"
+                                onClick={() => setShowDismissMenu(v => !v)}
+                            >
+                                <i className="bi bi-x-circle"></i>
+                            </button>
+                            {showDismissMenu && (
+                                <div
+                                    className="position-absolute end-0 mt-1 glass-panel border border-white-10 rounded shadow-lg"
+                                    style={{ zIndex: 1050, minWidth: 160, top: '100%' }}
+                                    onMouseLeave={() => setShowDismissMenu(false)}
+                                >
+                                    {DISMISS_OPTIONS.map(opt => (
+                                        <button
+                                            key={opt.value}
+                                            className="btn btn-sm w-100 text-start text-white-50 hover-bg-white-10 px-3 py-2 border-0 rounded-0"
+                                            style={{ fontSize: '0.75rem' }}
+                                            onClick={() => handleDismiss(opt.value)}
+                                        >
+                                            {opt.label}
+                                        </button>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
                     )}
                 </div>
             </td>

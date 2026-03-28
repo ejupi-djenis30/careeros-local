@@ -156,6 +156,20 @@ export function useJobs(logout) {
     setFilters(DEFAULT_FILTERS);
   };
 
+  const dismissJob = async (job, feedbackSignal) => {
+    try {
+      const updated = await JobService.dismiss(job.id, feedbackSignal);
+      // Remove from the list immediately (dismissed jobs are hidden by default)
+      setJobs(prev => prev.filter(j => j.id !== job.id));
+      // Refresh pagination count
+      setPagination(prev => ({ ...prev, total: Math.max(0, prev.total - 1) }));
+      return updated;
+    } catch (error) {
+      if (error.message === "UNAUTHORIZED" && logout) { logout(); return; }
+      console.error("Failed to dismiss job", error);
+    }
+  };
+
   return {
     jobs,
     pagination,
@@ -166,6 +180,7 @@ export function useJobs(logout) {
     fetchJobs,
     toggleApplied,
     isAppliedPending,
+    dismissJob,
     clearFilters,
     isLoading,
     isRefreshing,

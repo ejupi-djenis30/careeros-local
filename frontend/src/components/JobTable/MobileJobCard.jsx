@@ -1,10 +1,26 @@
-import React, { memo } from "react";
+import React, { memo, useState } from "react";
 import { ScoreBadge } from "./Badges";
 
-export const MobileJobCard = memo(function MobileJobCard({ job, isGlobalView, onToggleApplied, isAppliedPending = false, onCopy, onViewAnalysis }) {
+const DISMISS_OPTIONS = [
+    { value: "not_interested", label: "Not interested" },
+    { value: "wrong_domain", label: "Wrong domain" },
+    { value: "too_senior", label: "Too senior" },
+    { value: "too_junior", label: "Too junior" },
+    { value: "bad_salary", label: "Bad salary" },
+    { value: "bad_location", label: "Bad location" },
+    { value: "already_applied", label: "Already applied" },
+];
+
+export const MobileJobCard = memo(function MobileJobCard({ job, isGlobalView, onToggleApplied, isAppliedPending = false, onCopy, onViewAnalysis, onDismiss }) {
+    const [showDismissMenu, setShowDismissMenu] = useState(false);
     const applyUrl = job.application_url || job.external_url;
     const sourceUrl = job.external_url;
     const mailtoUrl = job.application_email ? `mailto:${job.application_email}` : null;
+
+    const handleDismiss = (signal) => {
+        setShowDismissMenu(false);
+        if (onDismiss) onDismiss(job, signal);
+    };
 
     return (
         <div className="glass-panel p-3 mb-3 border border-white-5 hover-elevation" style={{ transition: 'transform 0.2s' }}>
@@ -67,6 +83,36 @@ export const MobileJobCard = memo(function MobileJobCard({ job, isGlobalView, on
                         <a href={sourceUrl} target="_blank" rel="noopener noreferrer" className="btn btn-sm btn-secondary rounded-circle btn-icon" title="Source">
                             <i className="bi bi-link-45deg" style={{fontSize: '1rem'}}></i>
                         </a>
+                    )}
+                    {/* Dismiss button */}
+                    {onDismiss && (
+                        <div className="position-relative">
+                            <button
+                                className="btn btn-sm btn-secondary rounded-circle btn-icon"
+                                style={{ color: '#ff6b6b', opacity: 0.8 }}
+                                title="Not Interested"
+                                onClick={() => setShowDismissMenu(v => !v)}
+                            >
+                                <i className="bi bi-x-circle" style={{fontSize: '0.8rem'}}></i>
+                            </button>
+                            {showDismissMenu && (
+                                <div
+                                    className="position-absolute start-0 mt-1 glass-panel border border-white-10 rounded shadow-lg"
+                                    style={{ zIndex: 1050, minWidth: 150, bottom: '100%' }}
+                                >
+                                    {DISMISS_OPTIONS.map(opt => (
+                                        <button
+                                            key={opt.value}
+                                            className="btn btn-sm w-100 text-start text-white-50 px-3 py-2 border-0 rounded-0"
+                                            style={{ fontSize: '0.73rem' }}
+                                            onClick={() => handleDismiss(opt.value)}
+                                        >
+                                            {opt.label}
+                                        </button>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
                     )}
                 </div>
                 

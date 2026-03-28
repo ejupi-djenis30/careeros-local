@@ -227,6 +227,30 @@ class Settings(BaseSettings):
     LLM_CALL_TIMEOUT_CRITIQUE: int = 90
     LLM_CALL_TIMEOUT_RERANK: int = 60
 
+    # ─── Semantic Skill Matching (Phase 1 — embedding-based) ────────────────────
+    # Enable embedding-based Tier 2.5 in semantic_skills_score().
+    # Requires sentence-transformers to be installed.
+    SKILL_EMBEDDING_ENABLED: bool = True
+    # Cosine similarity threshold: pairs below this are ignored by the embedding tier.
+    SKILL_EMBEDDING_THRESHOLD: float = 0.65
+    # HuggingFace model name. Must be a sentence-transformers compatible model.
+    # Default: all-MiniLM-L6-v2 (22MB, multilingual, runs locally, no API cost).
+    SKILL_EMBEDDING_MODEL: str = "all-MiniLM-L6-v2"
+
+    # ─── User Feedback & Personalisation (Phase 2) ────────────────────────────
+    # Inject user behavioural signals into the MATCH LLM prompt when enough data.
+    MATCH_ENABLE_PREFERENCE_INJECTION: bool = True
+    # Minimum number of jobs with signals (applied/dismissed) before activating.
+    PREFERENCE_MIN_SIGNAL_COUNT: int = 10
+    # Enable preference-based pre-score component.
+    PREFERENCE_PRESCORE_ENABLED: bool = True
+
+    # ─── Swiss Market Enhancements (Phase 3) ──────────────────────────────────
+    # Inject implicit language requirements (canton-based) into MATCH prompt.
+    SWISS_IMPLICIT_LANGUAGE_ENABLED: bool = True
+    # Add salary_below_market red flag based on aggregated ScrapedJob salary data.
+    SALARY_BENCHMARK_ENABLED: bool = True
+
     # Logging
     LOG_LEVEL: str = "INFO"
 

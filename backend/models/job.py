@@ -160,6 +160,17 @@ class Job(BaseModel, TimestampMixin):
     # User Action
     applied = Column(Boolean, default=False, index=True)
 
+    # ─── Phase 2: User feedback tracking ─────────────────────────────────────
+    # First time the user opened the analysis panel for this job.
+    viewed_at = Column(DateTime(timezone=True), nullable=True)
+    # User explicitly dismissed / not-interested for this job.
+    dismissed = Column(Boolean, default=False, nullable=False, index=True)
+    dismissed_at = Column(DateTime(timezone=True), nullable=True)
+    # Optional short reason for dismissal (user-supplied or inferred).
+    # Allowed values: too_senior | too_junior | wrong_domain | bad_salary |
+    #                 bad_location | not_interested | already_applied | other
+    feedback_signal = Column(String, nullable=True)
+
     # Relationships
     user = relationship("User", back_populates="jobs", lazy="selectin")
     search_profile = relationship("SearchProfile", back_populates="jobs", lazy="selectin")
