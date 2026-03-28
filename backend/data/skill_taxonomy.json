@@ -523,6 +523,379 @@
         "linux": 0.55,
         "cloud": 0.5
       }
+    },
+    "git": {
+      "aliases": ["version control", "github", "gitlab", "bitbucket", "source control", "svn"],
+      "related": {
+        "devops": 0.55,
+        "cicd": 0.6,
+        "github actions": 0.6,
+        "gitlab ci": 0.55
+      }
+    },
+    "graphql": {
+      "aliases": ["graph ql"],
+      "related": {
+        "rest api": 0.6,
+        "nodejs": 0.55,
+        "react": 0.55,
+        "apollo": 0.85,
+        "api design": 0.65
+      }
+    },
+    "testing": {
+      "aliases": ["unit testing", "tdd", "test driven development", "automated testing", "qa engineer", "quality assurance", "integration testing"],
+      "related": {
+        "selenium": 0.75,
+        "playwright": 0.8,
+        "jest": 0.7,
+        "pytest": 0.75,
+        "junit": 0.7,
+        "cicd": 0.6,
+        "devops": 0.5
+      }
+    },
+    "power bi": {
+      "aliases": ["powerbi", "power bi desktop", "microsoft power bi"],
+      "related": {
+        "tableau": 0.75,
+        "data visualization": 0.85,
+        "excel": 0.6,
+        "sql": 0.55,
+        "azure": 0.5,
+        "data science": 0.55,
+        "reporting": 0.75
+      }
+    },
+    "tableau": {
+      "aliases": ["tableau desktop", "tableau server"],
+      "related": {
+        "power bi": 0.75,
+        "data visualization": 0.85,
+        "data science": 0.6,
+        "sql": 0.55,
+        "reporting": 0.7
+      }
+    },
+    "kafka": {
+      "aliases": ["apache kafka", "event streaming", "message streaming"],
+      "related": {
+        "rabbitmq": 0.65,
+        "message queue": 0.8,
+        "microservices": 0.65,
+        "java": 0.5,
+        "scala": 0.55,
+        "devops": 0.45
+      }
+    },
+    "ansible": {
+      "aliases": ["configuration management", "infrastructure automation"],
+      "related": {
+        "devops": 0.8,
+        "terraform": 0.7,
+        "linux": 0.65,
+        "docker": 0.55,
+        "cicd": 0.6,
+        "puppet": 0.7,
+        "chef": 0.7
+      }
+    },
+    "c++": {
+      "aliases": ["cpp", "c plus plus", "c/c++"],
+      "related": {
+        "c": 0.85,
+        "rust": 0.55,
+        "systems programming": 0.75,
+        "embedded": 0.7,
+        "game development": 0.5,
+        "java": 0.4
+      }
+    },
+    "swift": {
+      "aliases": ["swift language", "ios development"],
+      "related": {
+        "ios": 0.9,
+        "macos": 0.7,
+        "kotlin": 0.6,
+        "objective-c": 0.75,
+        "xcode": 0.85,
+        "mobile": 0.8
+      }
+    },
+    "scala": {
+      "aliases": [],
+      "related": {
+        "java": 0.75,
+        "spark": 0.8,
+        "kafka": 0.55,
+        "jvm": 0.8,
+        "functional programming": 0.65,
+        "data engineering": 0.6
+      }
+    },
+    "r": {
+      "aliases": ["r language", "r programming", "rstudio"],
+      "related": {
+        "statistics": 0.85,
+        "data science": 0.8,
+        "machine learning": 0.65,
+        "python": 0.6,
+        "tableau": 0.45,
+        "power bi": 0.45
+      }
+    },
+    "selenium": {
+      "aliases": ["selenium webdriver", "test automation"],
+      "related": {
+        "testing": 0.85,
+        "playwright": 0.8,
+        "cypress": 0.75,
+        "java": 0.5,
+        "python": 0.5,
+        "cicd": 0.55
+      }
+    },
+    "salesforce": {
+      "aliases": ["sfdc", "salesforce crm", "salesforce platform"],
+      "related": {
+        "crm": 0.85,
+        "apex": 0.8,
+        "sales": 0.6,
+        "marketing": 0.45,
+        "cloud": 0.45
+      }
+    },
+    "firebase": {
+      "aliases": ["google firebase"],
+      "related": {
+        "gcp": 0.65,
+        "nosql": 0.6,
+        "mobile": 0.6,
+        "react": 0.45,
+        "nodejs": 0.5,
+        "authentication": 0.65
+      }
+    },
+    "communication": {
+      "aliases": ["kommunikation", "communication skills", "interpersonal skills", "verbal communication", "written communication"],
+      "related": {
+        "presentation": 0.8,
+        "teamwork": 0.7,
+        "customer service": 0.65,
+        "negotiation": 0.6,
+        "team leadership": 0.55
+      }
+    },
+    "problem solving": {
+      "aliases": ["analytical thinking", "critical thinking", "analytical skills", "analytisches denken", "résolution de problèmes"],
+      "related": {
+        "communication": 0.5,
+        "teamwork": 0.55,
+        "time management": 0.5,
+        "project management": 0.55
+      }
+    },
+    "teamwork": {
+      "aliases": ["collaboration", "team player", "zusammenarbeit", "travail en équipe", "cooperative"],
+      "related": {
+        "communication": 0.75,
+        "team leadership": 0.65,
+        "agile": 0.55,
+        "problem solving": 0.55,
+        "project management": 0.5
+      }
+    },
+    "time management": {
+      "aliases": ["organization", "prioritization", "organisationstalent", "gestion du temps", "planning"],
+      "related": {
+        "project management": 0.65,
+        "teamwork": 0.5,
+        "problem solving": 0.5
+      }
+    },
+    "presentation": {
+      "aliases": ["public speaking", "präsentation", "pitching", "powerpoint presentations", "präsentationsfähigkeiten"],
+      "related": {
+        "communication": 0.85,
+        "microsoft office": 0.55,
+        "sales": 0.6,
+        "negotiation": 0.5
+      }
+    },
+    "negotiation": {
+      "aliases": ["verhandlung", "verhandlungsführung", "négociation", "contract negotiation"],
+      "related": {
+        "sales": 0.8,
+        "communication": 0.75,
+        "procurement": 0.6,
+        "team leadership": 0.45
+      }
+    },
+    "sales": {
+      "aliases": ["verkauf", "vertrieb", "vente", "vendita", "business development", "b2b sales", "b2c sales", "account management"],
+      "related": {
+        "negotiation": 0.8,
+        "customer service": 0.7,
+        "crm": 0.65,
+        "marketing": 0.65,
+        "salesforce": 0.55,
+        "communication": 0.65
+      }
+    },
+    "marketing": {
+      "aliases": ["marketing management", "brand management", "branding"],
+      "related": {
+        "digital marketing": 0.85,
+        "social media": 0.7,
+        "sales": 0.65,
+        "copywriting": 0.65,
+        "seo": 0.6,
+        "content marketing": 0.75,
+        "email marketing": 0.65
+      }
+    },
+    "digital marketing": {
+      "aliases": ["online marketing", "performance marketing", "growth marketing", "inbound marketing"],
+      "related": {
+        "marketing": 0.9,
+        "seo": 0.8,
+        "social media": 0.8,
+        "google ads": 0.8,
+        "email marketing": 0.75,
+        "content marketing": 0.75,
+        "analytics": 0.65
+      }
+    },
+    "hr": {
+      "aliases": ["human resources", "personalwesen", "ressources humaines", "risorse umane", "people management", "hr management"],
+      "related": {
+        "recruiting": 0.85,
+        "payroll": 0.65,
+        "labor law": 0.65,
+        "team leadership": 0.55,
+        "training": 0.65,
+        "employer branding": 0.6
+      }
+    },
+    "recruiting": {
+      "aliases": ["talent acquisition", "talent management", "recruitment", "staffing"],
+      "related": {
+        "hr": 0.9,
+        "headhunting": 0.8,
+        "sourcing": 0.75,
+        "employer branding": 0.65,
+        "communication": 0.55
+      }
+    },
+    "quality management": {
+      "aliases": ["qualitätsmanagement", "qualitätssicherung", "iso", "qm", "qc", "quality control", "iso 9001", "iso 14001"],
+      "related": {
+        "lean": 0.75,
+        "six sigma": 0.8,
+        "process improvement": 0.8,
+        "audit": 0.65,
+        "testing": 0.5
+      }
+    },
+    "lean": {
+      "aliases": ["lean management", "lean manufacturing", "six sigma", "kaizen", "continuous improvement", "5s"],
+      "related": {
+        "quality management": 0.8,
+        "supply chain": 0.65,
+        "project management": 0.55,
+        "process improvement": 0.85,
+        "warehouse": 0.5
+      }
+    },
+    "supply chain": {
+      "aliases": ["supply chain management", "scm", "procurement", "purchasing", "einkauf", "beschaffung", "approvisionnement"],
+      "related": {
+        "logistics": 0.8,
+        "lean": 0.6,
+        "sap": 0.55,
+        "warehouse": 0.65,
+        "inventory management": 0.8,
+        "import export": 0.65,
+        "negotiation": 0.5
+      }
+    },
+    "cad": {
+      "aliases": ["autocad", "technical drawing", "technisches zeichnen", "solidworks", "catia", "autocad 2d", "autocad 3d"],
+      "related": {
+        "engineering": 0.75,
+        "mechanical engineering": 0.75,
+        "architecture": 0.6,
+        "revit": 0.75,
+        "3d modeling": 0.75,
+        "bim": 0.65
+      }
+    },
+    "healthcare": {
+      "aliases": ["pflege", "nursing", "krankenpflege", "soins infirmiers", "infermieristica", "medical care", "clinical", "pflegefachkraft"],
+      "related": {
+        "patient care": 0.9,
+        "first aid": 0.7,
+        "medical documentation": 0.75,
+        "elderly care": 0.75,
+        "pharmacy": 0.55,
+        "physiotherapy": 0.55
+      }
+    },
+    "teaching": {
+      "aliases": ["lehrer", "lehrerin", "unterricht", "enseignement", "education", "trainer", "instructor", "ausbilder"],
+      "related": {
+        "coaching": 0.75,
+        "communication": 0.7,
+        "curriculum development": 0.75,
+        "e-learning": 0.65,
+        "assessment": 0.65,
+        "team leadership": 0.45
+      }
+    },
+    "german": {
+      "aliases": ["deutsch", "allemand", "tedesco", "german language", "deutschkenntnisse", "muttersprache deutsch"],
+      "related": {
+        "communication": 0.55,
+        "english": 0.35,
+        "french": 0.3,
+        "italian": 0.3
+      }
+    },
+    "english": {
+      "aliases": ["englisch", "anglais", "inglese", "english language", "business english", "english proficiency"],
+      "related": {
+        "communication": 0.6,
+        "german": 0.35,
+        "french": 0.3,
+        "italian": 0.3
+      }
+    },
+    "french": {
+      "aliases": ["französisch", "français", "francese", "french language", "french proficiency"],
+      "related": {
+        "communication": 0.55,
+        "english": 0.3,
+        "german": 0.3,
+        "italian": 0.35
+      }
+    },
+    "italian": {
+      "aliases": ["italienisch", "italiano", "italien", "italian language"],
+      "related": {
+        "communication": 0.55,
+        "english": 0.3,
+        "german": 0.3,
+        "french": 0.35
+      }
+    },
+    "driving license": {
+      "aliases": ["führerschein", "permis de conduire", "patente di guida", "driver's license", "fahrerlaubnis", "cat. b", "category b"],
+      "related": {
+        "forklift": 0.45,
+        "logistics": 0.5,
+        "field service": 0.6,
+        "warehouse": 0.4
+      }
     }
   }
 }
