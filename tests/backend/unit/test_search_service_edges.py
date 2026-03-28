@@ -307,6 +307,7 @@ async def test_analyze_and_save_stopped_and_truncation(mock_service):
     with patch("backend.services.search_service.settings.MAX_DESCRIPTION_CHARS", 100), \
          patch("backend.services.search_service.get_status", return_value={"state": "searching"}), \
          patch("backend.services.search_service.llm_service.analyze_job_batch", return_value=[{"relevant": True, "affinity_score": 50, "worth_applying": False}]), \
+         patch("backend.services.search_service.llm_service._compress_description_if_needed", new_callable=AsyncMock, return_value="compressed"), \
          patch("backend.services.search_service.geocode_location", return_value=MagicMock(lat=46.9, lon=7.4)):
          
          mock_session = mock_service.job_repo.db

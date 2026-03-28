@@ -70,7 +70,10 @@ class JobRepository(BaseRepository[Job]):
         applied: Optional[bool] = None,
         search_profile_id: Optional[int] = None,
     ):
-        q = self.db.query(self.model).filter(self.model.user_id == user_id)
+        q = self.db.query(self.model).filter(
+            self.model.user_id == user_id,
+            self.model.dismissed.is_not(True),
+        )
 
         if search_profile_id is not None:
             q = q.filter(self.model.search_profile_id == search_profile_id)

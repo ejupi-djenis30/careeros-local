@@ -4,7 +4,7 @@ import { useToast } from "../context/ToastContext";
 import { SearchFormCoreInputs } from "./SearchForm/SearchFormCoreInputs";
 import { SearchFormParameters } from "./SearchForm/SearchFormParameters";
 import { SearchFormAdvanced } from "./SearchForm/SearchFormAdvanced";
-import { mergeRoleDescription, normalizePrefillProfile } from "./SearchForm/searchFormUtils";
+import { normalizePrefillProfile } from "./SearchForm/searchFormUtils";
 
 export function SearchForm({ onStartSearch, isLoading, prefill }) {
     const { showToast } = useToast();

@@ -101,11 +101,12 @@ def test_create_job_rejects_foreign_profile(job_service, mock_repo):
 def test_update_job_success(job_service, mock_repo):
     mock_job = MagicMock()
     mock_job.user_id = 1
+    mock_job.dismissed = False
     mock_repo.get.return_value = mock_job
     
     updates = JobUpdate(applied=True)
     job_service.update_job(1, 101, updates)
-    mock_repo.update.assert_called_once_with(mock_job, updates)
+    mock_repo.update.assert_called_once_with(mock_job, {'applied': True})
 
 def test_update_job_not_found(job_service, mock_repo):
     mock_repo.get.return_value = None
