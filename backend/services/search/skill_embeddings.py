@@ -86,7 +86,8 @@ class _EmbeddingCache:
                 self._model = None
 
     def get_model(self, model_name: str):
-
+        if not _SENTENCE_TRANSFORMERS_AVAILABLE:
+            return None
         if self._model is None or self._model_name != model_name:
             self._load_model(model_name)
         return self._model
