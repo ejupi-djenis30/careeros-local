@@ -142,7 +142,8 @@ class JobRoomProvider(BaseJobProvider):
 
         payload = build_search_payload(request, self._mapper)
 
-        assert self._session is not None
+        if self._session is None:
+            raise ProviderError(self.name, "Session not initialized — _init_session() failed")
         url = build_search_url(request)
 
         try:
@@ -196,7 +197,8 @@ class JobRoomProvider(BaseJobProvider):
     async def get_details(self, job_id: str, language: str = "en") -> JobListing:
         """Get full details for a specific job."""
         await self._init_session()
-        assert self._session is not None
+        if self._session is None:
+            raise ProviderError(self.name, "Session not initialized — _init_session() failed")
 
         lang_param = LANGUAGE_PARAMS.get(language, "ZW4=")
         url = f"{API_BASE}/{job_id}?_ng={lang_param}"
@@ -227,7 +229,8 @@ class JobRoomProvider(BaseJobProvider):
 
         try:
             await self._init_session()
-            assert self._session is not None
+            if self._session is None:
+                raise ProviderError(self.name, "Session not initialized — _init_session() failed")
 
             response = await self._session.get(BASE_URL)
             latency_ms = int((time.time() - start_time) * 1000)

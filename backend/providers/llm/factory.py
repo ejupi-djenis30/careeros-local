@@ -19,7 +19,7 @@ from backend.providers.llm.openai_compatible import OpenAICompatibleProvider
 logger = logging.getLogger(__name__)
 
 # ─── recognised step names (used as env-var prefixes) ────────────────────────
-_KNOWN_STEPS = {"plan", "match", "normalize", "normalize_profile"}
+_KNOWN_STEPS = {"plan", "match", "normalize", "normalize_profile", "compress"}
 
 
 def _resolve_step_config(step: str) -> dict:
@@ -37,17 +37,17 @@ def _resolve_step_config(step: str) -> dict:
         step_model           = getattr(settings, f"{prefix}MODEL", "")
         step_api_key         = getattr(settings, f"{prefix}API_KEY", "")
         step_base_url        = getattr(settings, f"{prefix}BASE_URL", "")
-        step_temp            = getattr(settings, f"{prefix}TEMPERATURE", -1.0)
-        step_top_p           = getattr(settings, f"{prefix}TOP_P", -1.0)
-        step_max_tok         = getattr(settings, f"{prefix}MAX_TOKENS", -1)
+        step_temp            = getattr(settings, f"{prefix}TEMPERATURE", None)
+        step_top_p           = getattr(settings, f"{prefix}TOP_P", None)
+        step_max_tok         = getattr(settings, f"{prefix}MAX_TOKENS", None)
         step_thinking        = getattr(settings, f"{prefix}THINKING", False)
         step_thinking_level  = getattr(settings, f"{prefix}THINKING_LEVEL", "")
     else:
         # Unknown step or "default" — everything falls through to globals
         step_provider = step_model = step_api_key = step_base_url = ""
-        step_temp = -1.0
-        step_top_p = -1.0
-        step_max_tok = -1
+        step_temp = None
+        step_top_p = None
+        step_max_tok = None
         step_thinking = False
         step_thinking_level = ""
 
@@ -56,10 +56,10 @@ def _resolve_step_config(step: str) -> dict:
         "model":          step_model or settings.LLM_MODEL,
         "api_key":        step_api_key or settings.LLM_API_KEY,
         "base_url":       step_base_url or settings.LLM_BASE_URL,
-        # Sentinel: -1.0/-1 means "not set for this step" → use global default
-        "temperature":    step_temp if step_temp >= 0 else settings.LLM_TEMPERATURE,
-        "top_p":          step_top_p if step_top_p >= 0 else settings.LLM_TOP_P,
-        "max_tokens":     step_max_tok if step_max_tok >= 0 else settings.LLM_MAX_TOKENS,
+        # None means "not set for this step" → use global default
+        "temperature":    step_temp if step_temp is not None else settings.LLM_TEMPERATURE,
+        "top_p":          step_top_p if step_top_p is not None else settings.LLM_TOP_P,
+        "max_tokens":     step_max_tok if step_max_tok is not None else settings.LLM_MAX_TOKENS,
         "thinking":       step_thinking if step_thinking else settings.LLM_THINKING,
         "thinking_level": step_thinking_level or settings.LLM_THINKING_LEVEL,
     }

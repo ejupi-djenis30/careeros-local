@@ -1,3 +1,4 @@
+import asyncio
 import logging
 from contextlib import asynccontextmanager
 
@@ -39,7 +40,22 @@ async def lifespan(app: FastAPI):
 
     yield
 
-    # Shutdown: stop scheduler
+    # Shutdown: cancel any in-flight search tasks, then stop scheduler
+    from backend.services.search_status import get_all_active_tasks, update_status
+
+    active = get_all_active_tasks()
+    if active:
+        logger.info("Graceful shutdown: cancelling %d active search task(s)…", len(active))
+        for pid, task in active.items():
+            try:
+                if not task.done():
+                    task.cancel()
+                    update_status(pid, state="error", terminal_reason="server_shutdown", error="Server shutdown")
+            except Exception:
+                pass
+        # Give tasks a moment to handle CancelledError and run their finally blocks
+        await asyncio.gather(*active.values(), return_exceptions=True)
+
     stop_scheduler()
 
 

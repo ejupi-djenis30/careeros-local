@@ -9,6 +9,7 @@ from backend.core.config import settings
 from backend.db.base import SessionLocal, get_db
 from backend.repositories.profile_repository import ProfileRepository
 from backend.schemas.profile import StartSearchRequest
+from backend.schemas.search import CVUploadResponse, SearchStartResponse, SearchStopResponse
 from backend.services.search_service import get_search_service
 from backend.services.search_status import (
     cancel_task,
@@ -36,7 +37,7 @@ _PREFERENCE_FIELDS = {
 }
 
 
-@router.post("/upload-cv")
+@router.post("/upload-cv", response_model=CVUploadResponse)
 @limiter.limit("10/minute")
 async def upload_cv(
     request: Request,
@@ -58,7 +59,7 @@ async def upload_cv(
     return {"text": text, "filename": file.filename}
 
 
-@router.post("/start")
+@router.post("/start", response_model=SearchStartResponse)
 @limiter.limit("5/minute")
 async def start_search(
     request: Request,
@@ -94,6 +95,11 @@ async def start_search(
         profile = profile_repo.get(profile_id)
         if not profile or profile.user_id != user_id:
             raise HTTPException(status_code=403, detail="Unauthorized profile access")
+        # Reserve the task slot BEFORE modifying the profile to avoid leaving
+        # the profile in an inconsistent state (is_stopped=False) if the slot
+        # is already taken by a concurrent run.
+        if not reserve_task(profile.id):
+            raise HTTPException(status_code=409, detail="A search is already running for this profile")
         # Update existing if needed (e.g. if settings changed before re-run)
         # Profile fields such as role, location, etc., are meant to be immutable.
         # Just reset the stopped flag so it can run again.
@@ -107,15 +113,15 @@ async def start_search(
             key: value for key, value in preference_data.items() if value is not None
         } or None
         # If it doesn't have a name, give it a timestamped one
-        if not profile_data.get("name") or profile_data["name"] in ["Default Profile", "My Profile"]:
+        if not profile_data.get("name") or profile_data["name"] in ["", "Default Profile", "My Profile"]:
             timestamp = datetime.now().strftime("%Y-%m-%d %H:%M")
             profile_data["name"] = f"Search {timestamp}"
 
         profile_data["is_stopped"] = False
         profile = profile_repo.create(profile_data)
 
-    if not reserve_task(profile.id):
-        raise HTTPException(status_code=409, detail="A search is already running for this profile")
+        if not reserve_task(profile.id):
+            raise HTTPException(status_code=409, detail="A search is already running for this profile")
 
     # Extract force-regeneration flags from the original request (not stored in DB)
     force_regen_cv = profile_request.force_regenerate_cv_summary
@@ -151,7 +157,7 @@ async def start_search(
     return {"message": "Search started", "profile_id": profile.id}
 
 
-@router.post("/stop/{profile_id}")
+@router.post("/stop/{profile_id}", response_model=SearchStopResponse)
 async def stop_search(
     profile_id: int,
     db: Session = Depends(get_db),
@@ -160,10 +166,11 @@ async def stop_search(
     profile_repo = ProfileRepository(db)
     profile = profile_repo.get(profile_id)
 
-    if not profile or profile.user_id != user_id:
+    if not profile:
+        raise HTTPException(status_code=404, detail="Profile not found")
+    if profile.user_id != user_id:
         raise HTTPException(status_code=403, detail="Unauthorized profile access")
 
-    profile.is_stopped = True
     profile_repo.update(profile, {"is_stopped": True})
 
     # Also update the in-memory status so frontend sees it immediately
@@ -176,13 +183,17 @@ async def stop_search(
 
 
 @router.get("/status/all")
+@limiter.limit("60/minute")
 def get_all_search_statuses(
+    request: Request,
     user_id: int = Depends(get_current_user_id),
 ):
     return get_all_statuses(user_id=user_id)
 
 @router.get("/status/{profile_id}")
+@limiter.limit("60/minute")
 def get_search_status(
+    request: Request,
     profile_id: int,
     user_id: int = Depends(get_current_user_id),
     db: Session = Depends(get_db),

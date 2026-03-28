@@ -6,12 +6,47 @@ return plain Python values. Because they are side-effect-free they are safe
 to import and call from anywhere without worrying about circular imports.
 """
 
+import json
 import logging
+import os
 import re
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
+
+# ─── Lazy import of embedding tier (Phase 1) ─────────────────────────────────
+# Imported lazily inside semantic_skills_score() so this module stays importable
+# even when sentence-transformers is not installed.
 
 logger = logging.getLogger(__name__)
+
+
+# ─── Skill taxonomy loader ────────────────────────────────────────────────────
+
+def _load_skill_taxonomy() -> Dict[str, Any]:
+    """Load the skill taxonomy JSON from backend/data/skill_taxonomy.json."""
+    try:
+        _here = os.path.dirname(os.path.abspath(__file__))
+        taxonomy_path = os.path.join(_here, "..", "..", "data", "skill_taxonomy.json")
+        with open(taxonomy_path, encoding="utf-8") as f:
+            return json.load(f)
+    except Exception as exc:
+        logger.warning("[SKILL_TAXONOMY] Could not load skill_taxonomy.json: %s", exc)
+        return {}
+
+
+_TAXONOMY: Dict[str, Any] = _load_skill_taxonomy()
+# Pre-built lookup: alias → canonical skill name
+_ALIAS_TO_CANONICAL: Dict[str, str] = {}
+# Pre-built lookup: canonical → related {skill: weight}
+_CANONICAL_RELATED: Dict[str, Dict[str, float]] = {}
+
+for _canonical, _entry in (_TAXONOMY.get("skills") or {}).items():
+    _ALIAS_TO_CANONICAL[_canonical] = _canonical
+    for _alias in (_entry.get("aliases") or []):
+        _ALIAS_TO_CANONICAL[_alias.lower()] = _canonical
+    _CANONICAL_RELATED[_canonical] = {
+        k.lower(): float(v) for k, v in (_entry.get("related") or {}).items()
+    }
 
 
 def normalized_text_token(value: Any) -> str:
@@ -113,6 +148,18 @@ def _canonicalize_skill(skill: str) -> str:
     return _SKILL_ALIASES.get(token, token)
 
 
+def _word_bounded_substring(needle: str, haystack: str) -> bool:
+    """Return True only when *needle* appears as a complete word inside *haystack*.
+
+    Prevents false-positive skill overlaps such as "java" matching "javascript".
+    Uses ``\\b`` word-boundary anchors so "java" matches "core java backend" but
+    not "javascript" or "javafx".
+    """
+    if not needle or not haystack:
+        return False
+    return bool(re.search(r"\b" + re.escape(needle) + r"\b", haystack))
+
+
 def skills_overlap(job_skills: List[str], profile_skills: List[str]) -> float:
     """Compute skill overlap ratio between two skill lists.
 
@@ -139,13 +186,13 @@ def skills_overlap(job_skills: List[str], profile_skills: List[str]) -> float:
         if jc in profile_canonical:
             matched += 1
             continue
-        # Tier 2: substring containment (both ways)
-        if any(jc in pc or pc in jc for pc in profile_canonical if pc):
+        # Tier 2: substring containment with word boundaries (prevents "java" ⊂ "javascript")
+        if any(_word_bounded_substring(jc, pc) or _word_bounded_substring(pc, jc) for pc in profile_canonical if pc):
             matched += 1
             continue
-        # Tier 3: raw token substring
+        # Tier 3: raw token substring with word boundaries
         job_raw = normalized_text_token(jc)
-        if any(job_raw in pt or pt in job_raw for pt in profile_raw_tokens if pt):
+        if any(_word_bounded_substring(job_raw, pt) or _word_bounded_substring(pt, job_raw) for pt in profile_raw_tokens if pt):
             matched += 1
 
     return matched / len(job_canonical) if job_canonical else 0.0
@@ -504,3 +551,457 @@ def bootstrap_normalized_job_data(
             "qualification_codes": qualification_codes,
         },
     }
+
+
+# ─── Semantic skill score ─────────────────────────────────────────────────────
+
+
+def semantic_skills_score(
+    job_skills: List[str], profile_skills: List[str]
+) -> float:
+    """Weighted semantic skill overlap using the skill taxonomy + embeddings.
+
+    Four-tier matching strategy (Phase 1 upgrade):
+    1. Exact canonical match → weight 1.0
+    2. Alias match → weight 1.0 (resolved via _ALIAS_TO_CANONICAL)
+    3. Taxonomy-weighted related skill → weight from taxonomy (0.0–1.0)
+    4. Embedding cosine similarity (NEW) → cosine weight if above threshold
+       (requires sentence-transformers; skipped gracefully if absent)
+    5. String containment fallback → weight 0.3 (reduced from 0.5 for precision)
+
+    Returns a float 0.0–1.0 representing the *weighted* coverage of the job's
+    required skills with the candidate's profile skills.
+    """
+    if not job_skills or not profile_skills:
+        return 0.0
+
+    # Lazy imports for embedding tier — avoids hard dependency at module load time
+    _emb_available = False
+    _emb_threshold = 0.65
+    _best_embedding_match = None
+    try:
+        from backend.core.config import settings as _settings
+        if getattr(_settings, "SKILL_EMBEDDING_ENABLED", True):
+            from backend.services.search.skill_embeddings import (  # type: ignore
+                best_embedding_match as _best_embedding_match,
+                is_available as _emb_is_available,
+            )
+            _emb_available = _emb_is_available()
+            _emb_threshold = float(getattr(_settings, "SKILL_EMBEDDING_THRESHOLD", 0.65))
+    except Exception:
+        pass
+
+    profile_canonical_set = {
+        _ALIAS_TO_CANONICAL.get(normalized_text_token(s), normalized_text_token(s))
+        for s in profile_skills if s
+    }
+    # Build a plain list for embedding comparison (use raw tokens, not canonical only)
+    profile_raw_list: List[str] = [normalized_text_token(s) for s in profile_skills if s]
+
+    total_weight = 0.0
+    matched_weight = 0.0
+
+    for js in job_skills:
+        if not js:
+            continue
+        total_weight += 1.0
+        job_token = normalized_text_token(js)
+        job_canon = _ALIAS_TO_CANONICAL.get(job_token, job_token)
+
+        # Tier 1: exact canonical match
+        if job_canon in profile_canonical_set:
+            matched_weight += 1.0
+            continue
+
+        # Tier 2: taxonomy-weighted related skill match
+        best_related_weight = 0.0
+        related_map = _CANONICAL_RELATED.get(job_canon, {})
+        for prof_canon in profile_canonical_set:
+            w = related_map.get(prof_canon, 0.0)
+            if w > best_related_weight:
+                best_related_weight = w
+            rev_related = _CANONICAL_RELATED.get(prof_canon, {})
+            w_rev = rev_related.get(job_canon, 0.0)
+            if w_rev > best_related_weight:
+                best_related_weight = w_rev
+
+        if best_related_weight > 0.0:
+            matched_weight += best_related_weight
+            continue
+
+        # Tier 2.5 (Phase 1): embedding cosine similarity
+        if _emb_available and _best_embedding_match is not None:
+            emb_score = _best_embedding_match(js, profile_raw_list, threshold=_emb_threshold)
+            if emb_score > 0.0:
+                matched_weight += emb_score
+                continue
+
+        # Tier 3: string containment fallback (reduced weight 0.3 for precision)
+        job_raw = normalized_text_token(js)
+        for prof_canon in profile_canonical_set:
+            if prof_canon and (
+                _word_bounded_substring(job_raw, prof_canon)
+                or _word_bounded_substring(prof_canon, job_raw)
+            ):
+                matched_weight += 0.3
+                break
+
+    return matched_weight / total_weight if total_weight > 0 else 0.0
+
+
+# ─── Structured pre-score ─────────────────────────────────────────────────────
+
+
+def compute_prescore(
+    job_norm: Dict[str, Any],
+    profile_norm: Dict[str, Any],
+    preference_signals: Optional[Dict[str, Any]] = None,
+) -> float:
+    """Compute a continuous pre-score (0–100) from normalized structured fields.
+
+    This runs BEFORE the expensive LLM MATCH step and acts as a lightweight gate.
+    It only uses fields available after normalization.
+
+    Score breakdown (total 100):
+    - Domain alignment (20 pts)
+    - Seniority fit (15 pts)
+    - Semantic skill overlap (25 pts)
+    - Experience years fit (15 pts)
+    - Entry barrier vs. qualifications (10 pts)
+    - Language requirements (10 pts)
+    - Qualification level match (5 pts)
+    - User preference alignment (up to +5 bonus / −5 penalty, gated)
+    """
+    score = 0.0
+
+    try:
+        from backend.data.domain_affinity import get_domain_affinity  # type: ignore
+    except Exception:
+        get_domain_affinity = None  # type: ignore
+
+    # 1. Domain alignment (0–20 pts)
+    job_domain = (job_norm.get("normalized_domain") or "").lower().strip()
+    profile_domains = profile_norm.get("target_domains") or profile_norm.get("normalized_domains") or []
+    if isinstance(profile_domains, str):
+        profile_domains = [profile_domains]
+    if job_domain and profile_domains:
+        best_domain_aff = 0.0
+        for pd in profile_domains:
+            pd_str = (pd or "").lower().strip()
+            if pd_str:
+                if get_domain_affinity:
+                    aff = get_domain_affinity(job_domain, pd_str)
+                else:
+                    aff = 1.0 if job_domain == pd_str else 0.0
+                best_domain_aff = max(best_domain_aff, aff)
+        score += best_domain_aff * 20.0
+    elif not job_domain:
+        score += 10.0  # neutral if domain unknown
+
+    # 2. Seniority fit (0–15 pts)
+    job_seniority = (job_norm.get("normalized_seniority") or "").lower()
+    profile_seniority = (
+        profile_norm.get("seniority")
+        or profile_norm.get("target_seniority")
+        or ""
+    ).lower()
+    _SENIORITY_SCORES: Dict[Tuple[str, str], float] = {
+        ("junior", "junior"): 1.0, ("mid", "mid"): 1.0, ("senior", "senior"): 1.0,
+        ("junior", "mid"): 0.6, ("mid", "junior"): 0.6,
+        ("mid", "senior"): 0.6, ("senior", "mid"): 0.5,
+        ("senior", "junior"): 0.1, ("junior", "senior"): 0.2,
+    }
+    if job_seniority and profile_seniority:
+        seniority_fit = _SENIORITY_SCORES.get((job_seniority, profile_seniority), 0.5)
+        score += seniority_fit * 15.0
+    else:
+        score += 7.5  # neutral
+
+    # 3. Semantic skill overlap (0–25 pts)
+    job_skills: List[str] = job_norm.get("normalized_required_skills") or []
+    profile_skills: List[str] = (
+        profile_norm.get("skills") or profile_norm.get("normalized_skills") or []
+    )
+    if job_skills and profile_skills:
+        sem_score = semantic_skills_score(job_skills, profile_skills)
+        score += sem_score * 25.0
+    else:
+        score += 12.5  # neutral if missing
+
+    # 4. Experience years fit (0–15 pts)
+    job_exp_min = job_norm.get("normalized_experience_min_years")
+    job_exp_max = job_norm.get("normalized_experience_max_years")
+    profile_exp = profile_norm.get("experience_years") or profile_norm.get("years_of_experience")
+    if profile_exp is not None and (job_exp_min is not None or job_exp_max is not None):
+        try:
+            p_exp = float(profile_exp)
+            j_min = float(job_exp_min) if job_exp_min is not None else 0.0
+            j_max = float(job_exp_max) if job_exp_max is not None else j_min + 10.0
+            if j_min <= p_exp <= j_max:
+                score += 15.0
+            elif p_exp < j_min:
+                gap = j_min - p_exp
+                score += max(0.0, 15.0 - gap * 3.0)
+            else:
+                score += 10.0  # slightly over-qualified
+        except (TypeError, ValueError):
+            score += 7.5  # neutral
+    else:
+        score += 7.5  # neutral
+
+    # 5. Entry barrier vs. qualifications (0–10 pts)
+    job_barrier = (job_norm.get("normalized_entry_barrier") or "").lower()
+    profile_qualification = (
+        profile_norm.get("qualification_level")
+        or profile_norm.get("normalized_qualification_level")
+        or ""
+    ).lower()
+    _BARRIER_QUAL_FIT: Dict[Tuple[str, str], float] = {
+        ("none", "none"): 1.0, ("none", "low"): 1.0, ("none", "medium"): 1.0, ("none", "high"): 1.0,
+        ("low", "none"): 0.8, ("low", "low"): 1.0, ("low", "medium"): 1.0, ("low", "high"): 1.0,
+        ("medium", "none"): 0.4, ("medium", "low"): 0.7, ("medium", "medium"): 1.0, ("medium", "high"): 1.0,
+        ("high", "none"): 0.1, ("high", "low"): 0.4, ("high", "medium"): 0.8, ("high", "high"): 1.0,
+    }
+    if job_barrier and profile_qualification:
+        fit = _BARRIER_QUAL_FIT.get((job_barrier, profile_qualification), 0.5)
+        score += fit * 10.0
+    else:
+        score += 5.0  # neutral
+
+    # 6. Language requirements (0–10 pts)
+    job_langs: List[Dict] = job_norm.get("normalized_required_languages") or []
+    profile_langs = profile_norm.get("languages") or profile_norm.get("normalized_languages") or []
+    if job_langs and profile_langs:
+        profile_lang_codes = set()
+        for lang_item in profile_langs:
+            if isinstance(lang_item, dict):
+                code = (lang_item.get("code") or "").lower()
+            else:
+                code = str(lang_item).lower()
+            if code:
+                profile_lang_codes.add(code)
+        matched_langs = sum(
+            1 for jl in job_langs if (jl.get("code") or "").lower() in profile_lang_codes
+        )
+        lang_ratio = matched_langs / len(job_langs) if job_langs else 1.0
+        score += lang_ratio * 10.0
+    else:
+        score += 5.0  # neutral
+
+    # 7. Qualification level match (0–5 pts)
+    job_qual = (job_norm.get("normalized_qualification_level") or "").lower()
+    if profile_qualification and job_qual:
+        _QUAL_RANK = {"none": 0, "low": 1, "medium": 2, "high": 3, "bachelor": 2, "master": 3, "phd": 4}
+        p_rank = _QUAL_RANK.get(profile_qualification, 1)
+        j_rank = _QUAL_RANK.get(job_qual, 1)
+        if p_rank >= j_rank:
+            score += 5.0
+        else:
+            score += max(0.0, 5.0 - (j_rank - p_rank) * 2.0)
+    else:
+        score += 2.5  # neutral
+
+    # 8. User preference alignment (−5 to +5 pts bonus, gated by signal_count)
+    try:
+        from backend.core.config import settings as _cfg
+        if (
+            _cfg.PREFERENCE_PRESCORE_ENABLED
+            and preference_signals
+            and preference_signals.get("signal_count", 0) >= _cfg.PREFERENCE_MIN_SIGNAL_COUNT
+        ):
+            pref_delta = 0.0
+            job_domain = (job_norm.get("normalized_domain") or "").lower().strip()
+            job_seniority = (job_norm.get("normalized_seniority") or "").lower().strip()
+            job_skills_set = {s.lower() for s in (job_norm.get("normalized_required_skills") or [])}
+
+            # +3 if domain is in top preferred domains
+            preferred_domains = [d.lower() for d in (preference_signals.get("preferred_domains") or [])]
+            avoided_domains = [d.lower() for d in (preference_signals.get("avoided_domains") or [])]
+            if job_domain and job_domain in preferred_domains[:3]:
+                pref_delta += 3.0
+            elif job_domain and job_domain in avoided_domains:
+                pref_delta -= 4.0  # penalise consistently-avoided domains
+
+            # +2 if seniority is preferred
+            preferred_seniority = [s.lower() for s in (preference_signals.get("preferred_seniority") or [])]
+            if job_seniority and job_seniority in preferred_seniority:
+                pref_delta += 2.0
+
+            # +2 if ≥2 preferred skills overlap
+            preferred_skills = {s.lower() for s in (preference_signals.get("preferred_skills") or [])}
+            overlap = job_skills_set & preferred_skills
+            if len(overlap) >= 2:
+                pref_delta += min(2.0, len(overlap) * 0.5)
+
+            # −3 if dealbreaker signals dominate
+            dealbreakers = preference_signals.get("dealbreaker_patterns") or {}
+            total_dismissed = sum(dealbreakers.values()) if dealbreakers else 0
+            high_signal_dismissals = {"too_senior", "too_junior", "wrong_domain"}
+            hard_flags = sum(dealbreakers.get(k, 0) for k in high_signal_dismissals)
+            if total_dismissed >= 5 and hard_flags / total_dismissed > 0.6:
+                if job_domain and job_domain in avoided_domains:
+                    pref_delta -= 3.0
+
+            score += max(-5.0, min(5.0, pref_delta))
+    except Exception:
+        pass  # preference injection is a bonus — never block scoring
+
+    return min(100.0, max(0.0, score))
+
+
+# ─── Swiss implicit language inference ───────────────────────────────────────
+
+# Canton → primary administrative language code (ISO 639-1)
+_CANTON_LANGUAGE_MAP: Dict[str, str] = {
+    # German-speaking cantons
+    "zurich": "de", "zürich": "de", "zh": "de",
+    "bern": "de", "be": "de",
+    "lucerne": "de", "luzern": "de", "lu": "de",
+    "uri": "de", "ur": "de",
+    "schwyz": "de", "sz": "de",
+    "obwalden": "de", "ow": "de",
+    "nidwalden": "de", "nw": "de",
+    "glarus": "de", "gl": "de",
+    "zug": "de", "zg": "de",
+    "solothurn": "de", "so": "de",
+    "basel-stadt": "de", "basel": "de", "bs": "de",
+    "basel-landschaft": "de", "baselland": "de", "bl": "de",
+    "schaffhausen": "de", "sh": "de",
+    "appenzell": "de", "ar": "de", "ai": "de",
+    "st. gallen": "de", "st gallen": "de", "sg": "de",
+    "graubünden": "de", "graubuenden": "de", "gr": "de",
+    "aargau": "de", "ag": "de",
+    "thurgau": "de", "tg": "de",
+    # French-speaking cantons (Romandy)
+    "geneva": "fr", "genève": "fr", "genf": "fr", "ge": "fr",
+    "vaud": "fr", "vd": "fr",
+    "neuchâtel": "fr", "neuchatel": "fr", "ne": "fr",
+    "jura": "fr", "ju": "fr",
+    "fribourg": "fr", "freiburg": "fr", "fr": "fr",
+    # Italian-speaking canton
+    "ticino": "it", "ti": "it",
+    # Valais / Wallis: bilingual (de/fr) — default German
+    "valais": "fr", "wallis": "de", "vs": "de",
+}
+
+_CITY_LANGUAGE_MAP: Dict[str, str] = {
+    "zürich": "de", "zurich": "de", "bern": "de", "basel": "de",
+    "winterthur": "de", "lucerne": "de", "luzern": "de", "st. gallen": "de",
+    "biel": "de", "thun": "de", "köniz": "de", "uster": "de",
+    "genf": "fr", "geneva": "fr", "genève": "fr",
+    "lausanne": "fr", "fribourg": "fr", "biel/bienne": "fr",
+    "lugano": "it", "bellinzona": "it", "locarno": "it",
+}
+
+
+def infer_implicit_language(location_str: Optional[str]) -> Optional[str]:
+    """Infer the predominant spoken language from a Swiss location string.
+
+    Returns an ISO 639-1 language code ("de", "fr", "it") or None when the
+    location cannot be mapped.  Used by the MATCH prompt as a soft tiebreaker
+    when the job posting does not explicitly list language requirements.
+
+    The heuristic is city-first, then canton-name matching. Only active when
+    ``SWISS_IMPLICIT_LANGUAGE_ENABLED`` is True (default).
+    """
+    try:
+        from backend.core.config import settings as _cfg
+        if not _cfg.SWISS_IMPLICIT_LANGUAGE_ENABLED:
+            return None
+    except Exception:
+        return None
+
+    if not location_str:
+        return None
+
+    text = location_str.lower().strip()
+
+    # City lookup (highest precision) — use word boundaries to avoid
+    # partial-word false positives (e.g. "bern" inside "berlin").
+    for city, lang in _CITY_LANGUAGE_MAP.items():
+        if re.search(r'\b' + re.escape(city) + r'\b', text):
+            return lang
+
+    # Canton lookup
+    for canton, lang in _CANTON_LANGUAGE_MAP.items():
+        if re.search(r'\b' + re.escape(canton) + r'\b', text):
+            return lang
+
+    return None
+
+
+# ─── Job posting quality ──────────────────────────────────────────────────────
+
+
+def compute_posting_quality(description: str) -> float:
+    """Rate the information quality of a job description (0.0–1.0).
+
+    Higher score = better structured, more informative posting.
+    Used to down-weight jobs that lack detail (making MATCH less reliable).
+
+    Signals:
+    - Length (>= 300 words = max signal)
+    - Salary/compensation mentioned
+    - CEFR language level mentioned
+    - Explicit skills/requirements section
+    - Structured sections (responsibilities, requirements, etc.)
+    - Contact info / application process described
+    """
+    if not description:
+        return 0.1
+
+    score = 0.0
+    text = description.lower()
+    word_count = len(description.split())
+
+    # 1. Length (0.0–0.30)
+    if word_count >= 300:
+        score += 0.30
+    elif word_count >= 150:
+        score += 0.15 + 0.15 * ((word_count - 150) / 150)
+    elif word_count >= 50:
+        score += 0.05 + 0.10 * ((word_count - 50) / 100)
+    else:
+        score += 0.02
+
+    # 2. Salary / compensation (0.0–0.20)
+    _salary_patterns = [
+        r"chf\s*\d", r"\d+\s*chf", r"salary", r"lohn", r"gehalt", r"salaire",
+        r"\d+[kK]\s*[-\u2013]\s*\d+[kK]", r"\bcompensation\b", r"\bverg.tung\b",
+        r"per\s+(?:year|month|annum|jahr|monat)", r"j.hrlich", r"monatlich",
+    ]
+    if any(re.search(p, text) for p in _salary_patterns):
+        score += 0.20
+
+    # 3. CEFR language levels (0.0–0.10)
+    if re.search(r"\b[abc][12]\b", text):
+        score += 0.10
+
+    # 4. Explicit skills/requirements section (0.0–0.15)
+    _req_signals = [
+        "requirements", "anforderungen", "qualifications", "qualifikationen",
+        "your profile", "ihr profil", "we require", "you have", "you bring",
+        "sie bringen", "must have", "experience with", "erfahrung mit", "kenntnisse",
+    ]
+    req_hits = sum(1 for sig in _req_signals if sig in text)
+    score += min(0.15, req_hits * 0.05)
+
+    # 5. Structured sections (0.0–0.15)
+    _section_markers = [
+        "responsibilities", "aufgaben", "your tasks", "what you will do",
+        "we offer", "wir bieten", "benefits", "key responsibilities",
+        "about the role", "what we expect",
+    ]
+    section_hits = sum(1 for m in _section_markers if m in text)
+    score += min(0.15, section_hits * 0.05)
+
+    # 6. Application / contact info (0.0–0.10)
+    _apply_signals = [
+        "apply", "bewerben", "postuler", "candidature",
+        "send your cv", "send your resume", "contact us",
+        "application deadline", "bewerbungsfrist", "@",
+    ]
+    if any(sig in text for sig in _apply_signals):
+        score += 0.10
+
+    return min(1.0, score)

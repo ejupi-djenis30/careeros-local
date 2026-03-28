@@ -7,17 +7,21 @@ export function Schedules() {
     const { showToast } = useToast();
     const [profiles, setProfiles] = useState([]);
     const [loading, setLoading] = useState(true);
+    const [error, setError] = useState(null);
 
     useEffect(() => {
         loadProfiles();
     }, []);
 
     const loadProfiles = async () => {
+        setError(null);
+        setLoading(true);
         try {
             const data = await SearchService.getProfiles();
             setProfiles(data);
         } catch (e) {
             console.error("Failed to load profiles:", e);
+            setError("Failed to load schedules.");
             showToast("Failed to load schedules. Please refresh.");
         } finally {
             setLoading(false);
@@ -56,6 +60,18 @@ export function Schedules() {
         return (
             <div className="d-flex justify-content-center align-items-center h-100">
                 <div className="spinner-border text-primary" role="status"></div>
+            </div>
+        );
+    }
+
+    if (error) {
+        return (
+            <div className="glass-panel text-center py-5 animate-fade-in align-items-center d-flex flex-column justify-content-center h-100">
+                <i className="bi bi-exclamation-triangle-fill fs-1 text-danger mb-3"></i>
+                <p className="text-secondary opacity-75 mb-3">{error}</p>
+                <button onClick={loadProfiles} className="btn btn-outline-primary">
+                    <i className="bi bi-arrow-clockwise me-2"></i>Try again
+                </button>
             </div>
         );
     }

@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
 import { SearchService } from "../services/search";
+import { useToast } from "../context/ToastContext";
 import { ProgressHeader } from "./SearchProgress/ProgressHeader";
 import { ProgressBar } from "./SearchProgress/ProgressBar";
 import { TargetQueue } from "./SearchProgress/TargetQueue";
@@ -8,6 +9,7 @@ import { LiveLogs } from "./SearchProgress/LiveLogs";
 export function SearchProgress({ profileId, status, onStateChange, onClear }) {
     const logEndRef = useRef(null);
     const reportedState = useRef(null);
+    const { showToast } = useToast();
     const [cachedStatus, setCachedStatus] = useState(status);
 
     useEffect(() => {
@@ -38,6 +40,7 @@ export function SearchProgress({ profileId, status, onStateChange, onClear }) {
             await SearchService.stopSearch(profileId);
         } catch (e) {
             console.error("Stop error:", e);
+            showToast("Failed to stop search. Please try again.");
         }
     };
 

@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session
 from backend.db.base import SessionLocal
 from backend.models import SearchProfile
 from backend.services.search_service import get_search_service
+from backend.services.search_status import release_task, reserve_task
 
 logger = logging.getLogger(__name__)
 
@@ -32,28 +33,43 @@ def get_scheduler() -> AsyncIOScheduler:
 async def _run_scheduled_search(profile_id: int):
     """Execute a scheduled search for the given profile."""
     logger.info(f"[Scheduler] Running scheduled search for profile {profile_id}")
+
+    # Respect the same reservation lifecycle as manual searches so that a
+    # scheduled run cannot overlap with a manually-triggered run on any worker.
+    if not reserve_task(profile_id):
+        logger.info(
+            "[Scheduler] Skipping scheduled search for profile %d — a search is already running",
+            profile_id,
+        )
+        return
+
     db: Session = SessionLocal()
     try:
         profile = db.query(SearchProfile).filter(SearchProfile.id == profile_id).first()
         if not profile:
             logger.warning(f"[Scheduler] Profile {profile_id} not found, removing job")
+            release_task(profile_id)
             remove_schedule(profile_id)
             return
 
         if not profile.schedule_enabled:
             logger.info(f"[Scheduler] Profile {profile_id} schedule disabled, skipping")
+            release_task(profile_id)
             return
 
         # Update last run time
         profile.last_scheduled_run = datetime.now(timezone.utc)
         db.commit()
 
-        # Run the search workflow
+        # Run the search workflow — run_search calls register_task internally,
+        # which moves the slot from reserved → active.
         search_service = get_search_service(db)
         await search_service.run_search(profile_id)
 
         logger.info(f"[Scheduler] Completed scheduled search for profile {profile_id}")
     except Exception as e:
+        # Safety net: release the reservation if run_search never registered the task.
+        release_task(profile_id)
         logger.error(f"[Scheduler] Error running scheduled search for profile {profile_id}: {e}")
     finally:
         db.close()
@@ -61,6 +77,8 @@ async def _run_scheduled_search(profile_id: int):
 
 def add_schedule(profile_id: int, interval_hours: int):
     """Add or update a scheduled search job."""
+    if not interval_hours or interval_hours < 1:
+        interval_hours = 24
     scheduler = get_scheduler()
     job_id = f"search_profile_{profile_id}"
 

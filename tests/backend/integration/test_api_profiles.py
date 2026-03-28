@@ -71,7 +71,7 @@ class TestAdvancedProfilesAPI:
         print("[TEST] Calling DELETE API...")
         response = client.delete(f"/api/v1/profiles/{profile_id}", headers=auth_headers)
         print(f"[TEST] API Response: {response.status_code}")
-        assert response.status_code == 200
+        assert response.status_code == 204
         
         # 5. Verify Job is gone, but ScrapedJob remains
         print("[TEST] Verifying cascade...")

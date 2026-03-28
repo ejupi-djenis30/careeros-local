@@ -414,6 +414,8 @@ class TestLLMServiceNormalizeUserProfile:
         with patch.object(llm, "_get_provider") as mock_get_prov:
             mock_provider = AsyncMock()
             mock_provider.generate_json_async = AsyncMock(return_value=None)
+            mock_provider.generate_json_async_with_timeout = mock_provider.generate_json_async
+            mock_provider.model_id = "test/mock-model"
             mock_get_prov.return_value = mock_provider
             result = await llm.normalize_user_profile("cv text", "developer", "")
         assert result == {}
@@ -433,6 +435,8 @@ class TestLLMServiceNormalizeUserProfile:
         with patch.object(llm, "_get_provider") as mock_get_prov:
             mock_provider = AsyncMock()
             mock_provider.generate_json_async = AsyncMock(return_value=valid_llm_output)
+            mock_provider.generate_json_async_with_timeout = mock_provider.generate_json_async
+            mock_provider.model_id = "test/mock-model"
             mock_get_prov.return_value = mock_provider
             result = await llm.normalize_user_profile("cv text", "Python developer", "")
 
@@ -455,6 +459,8 @@ class TestLLMServiceNormalizeUserProfile:
         with patch.object(llm, "_get_provider") as mock_get_prov:
             mock_provider = AsyncMock()
             mock_provider.generate_json_async = AsyncMock(return_value=llm_output)
+            mock_provider.generate_json_async_with_timeout = mock_provider.generate_json_async
+            mock_provider.model_id = "test/mock-model"
             mock_get_prov.return_value = mock_provider
             result = await llm.normalize_user_profile("cv text", "executive role", "")
 
@@ -475,6 +481,8 @@ class TestLLMServiceNormalizeUserProfile:
         with patch.object(llm, "_get_provider") as mock_get_prov:
             mock_provider = AsyncMock()
             mock_provider.generate_json_async = AsyncMock(return_value=llm_output)
+            mock_provider.generate_json_async_with_timeout = mock_provider.generate_json_async
+            mock_provider.model_id = "test/mock-model"
             mock_get_prov.return_value = mock_provider
             result = await llm.normalize_user_profile("cv", "developer", "")
 
@@ -495,6 +503,8 @@ class TestLLMServiceNormalizeUserProfile:
         with patch.object(llm, "_get_provider") as mock_get_prov:
             mock_provider = AsyncMock()
             mock_provider.generate_json_async = AsyncMock(return_value=llm_output)
+            mock_provider.generate_json_async_with_timeout = mock_provider.generate_json_async
+            mock_provider.model_id = "test/mock-model"
             mock_get_prov.return_value = mock_provider
             result = await llm.normalize_user_profile("cv", "junior dev", "")
 

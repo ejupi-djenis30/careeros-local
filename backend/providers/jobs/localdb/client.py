@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 from backend.models import ScrapedJob
 from backend.providers.jobs.base import JobProvider
 from backend.providers.jobs.models import (
+    CompanyInfo,
     EmploymentDetails,
     JobListing,
     JobLocation,
@@ -58,7 +59,7 @@ class LocalDbProvider(JobProvider):
         return JobListing(
             id=db_job.platform_job_id,
             title=db_job.title,
-            company={"name": db_job.company} if db_job.company else None,
+            company=CompanyInfo(name=db_job.company) if db_job.company else None,
             source=db_job.platform,
             location=location,
             employment=employment,

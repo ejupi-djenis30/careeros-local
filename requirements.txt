@@ -42,3 +42,7 @@ python-dotenv>=1.0.0
 
 # ─── Rate Limiting ───
 slowapi>=0.1.9
+
+# ─── Semantic Skill Matching (Phase 1) ───
+# Lightweight local embedding model (all-MiniLM-L6-v2 ~22MB, multilingual, no API cost)
+sentence-transformers>=3.0.0

@@ -1,10 +1,23 @@
-from typing import Optional
+from typing import Literal, Optional
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import BaseModel, field_validator
 
 from backend.api.deps import get_current_user_id, job_service_dep
 from backend.schemas import JobCreate, JobPaginationResponse, JobResponse, JobUpdate
+from backend.schemas.job import FEEDBACK_SIGNAL_VALUES
 from backend.services.job_service import JobService
+
+
+class DismissRequest(BaseModel):
+    feedback_signal: Optional[str] = None
+
+    @field_validator("feedback_signal")
+    @classmethod
+    def validate_signal(cls, v: Optional[str]) -> Optional[str]:
+        if v is not None and v not in FEEDBACK_SIGNAL_VALUES:
+            raise ValueError(f"feedback_signal must be one of {sorted(FEEDBACK_SIGNAL_VALUES)}")
+        return v
 
 router = APIRouter()
 
@@ -20,8 +33,8 @@ def read_jobs(
     min_distance: Optional[float] = Query(None, ge=0),
     max_distance: Optional[float] = Query(None, ge=0),
     # ── Sorting ──
-    sort_by: str = Query("created_at", pattern="^(created_at|affinity_score|distance_km|title|publication_date)$"),
-    sort_order: str = Query("desc", pattern="^(asc|desc)$"),
+    sort_by: Literal["created_at", "affinity_score", "distance_km", "title", "publication_date"] = Query("created_at"),
+    sort_order: Literal["asc", "desc"] = Query("desc"),
     # ── Pagination ──
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
@@ -40,6 +53,10 @@ def read_jobs(
         "sort_by": sort_by,
         "sort_order": sort_order,
     }
+    if min_score is not None and max_score is not None and min_score > max_score:
+        raise HTTPException(status_code=422, detail="min_score cannot be greater than max_score")
+    if min_distance is not None and max_distance is not None and min_distance > max_distance:
+        raise HTTPException(status_code=422, detail="min_distance cannot be greater than max_distance")
     return job_service.get_jobs_by_user(user_id, page, page_size, filters)
 
 
@@ -68,3 +85,25 @@ def delete_job(
     job_service: JobService = Depends(job_service_dep),
 ):
     job_service.delete_job(user_id, job_id)
+
+
+@router.post("/{job_id}/view", response_model=JobResponse)
+def record_job_view(
+    job_id: int,
+    user_id: int = Depends(get_current_user_id),
+    job_service: JobService = Depends(job_service_dep),
+):
+    """Idempotently record that the user opened the analysis panel for this job."""
+    return job_service.record_view(user_id, job_id)
+
+
+@router.post("/{job_id}/dismiss", response_model=JobResponse)
+def dismiss_job(
+    job_id: int,
+    body: DismissRequest,
+    user_id: int = Depends(get_current_user_id),
+    job_service: JobService = Depends(job_service_dep),
+):
+    """Mark a job as not-interested with an optional dismissal reason."""
+    updates = JobUpdate(dismissed=True, feedback_signal=body.feedback_signal)
+    return job_service.update_job(user_id, job_id, updates)

@@ -34,9 +34,9 @@ def setup_job_data(db_session, test_user):
     sj3 = _make_scraped_job(db_session, "pj3", "QA Auto", "C", "http://c")
 
     # Create dummy jobs linking to ScrapedJobs
-    job1 = Job(user_id=test_user.id, search_profile_id=profile.id, scraped_job_id=sj1.id, affinity_score=100, is_scraped=True)
-    job2 = Job(user_id=test_user.id, search_profile_id=profile.id, scraped_job_id=sj2.id, affinity_score=40, worth_applying=True, is_scraped=True)
-    job3 = Job(user_id=test_user.id, search_profile_id=profile.id, scraped_job_id=sj3.id, affinity_score=0, applied=True, is_scraped=True)
+    job1 = Job(user_id=test_user.id, search_profile_id=profile.id, scraped_job_id=sj1.id, affinity_score=100)
+    job2 = Job(user_id=test_user.id, search_profile_id=profile.id, scraped_job_id=sj2.id, affinity_score=40, worth_applying=True)
+    job3 = Job(user_id=test_user.id, search_profile_id=profile.id, scraped_job_id=sj3.id, affinity_score=0, applied=True)
     
     db_session.add_all([job1, job2, job3])
     db_session.commit()
@@ -110,8 +110,8 @@ class TestAdvancedJobsAPI:
         sj1 = _make_scraped_job(db_session, "sort-a", "Zeta Engineer", "A", "http://zeta")
         sj2 = _make_scraped_job(db_session, "sort-b", "Alpha Engineer", "B", "http://alpha")
         db_session.add_all([
-            Job(user_id=test_user.id, search_profile_id=profile.id, scraped_job_id=sj1.id, is_scraped=True),
-            Job(user_id=test_user.id, search_profile_id=profile.id, scraped_job_id=sj2.id, is_scraped=True),
+            Job(user_id=test_user.id, search_profile_id=profile.id, scraped_job_id=sj1.id),
+            Job(user_id=test_user.id, search_profile_id=profile.id, scraped_job_id=sj2.id),
         ])
         db_session.commit()
 
@@ -142,8 +142,8 @@ class TestAdvancedJobsAPI:
             publication_date=datetime(2024, 2, 10, tzinfo=timezone.utc),
         )
         db_session.add_all([
-            Job(user_id=test_user.id, search_profile_id=profile.id, scraped_job_id=sj1.id, is_scraped=True),
-            Job(user_id=test_user.id, search_profile_id=profile.id, scraped_job_id=sj2.id, is_scraped=True),
+            Job(user_id=test_user.id, search_profile_id=profile.id, scraped_job_id=sj1.id),
+            Job(user_id=test_user.id, search_profile_id=profile.id, scraped_job_id=sj2.id),
         ])
         db_session.commit()
 
@@ -158,6 +158,16 @@ def test_jobs_crud_flow(client, auth_headers: dict):
     response = client.get("/api/v1/jobs/", headers=auth_headers)
     assert response.status_code == 200
     assert response.json()["total"] == 0
+
+
+@pytest.mark.parametrize("params,expected_detail", [
+    ("min_score=80&max_score=20", "min_score cannot be greater than max_score"),
+    ("min_distance=100&max_distance=10", "min_distance cannot be greater than max_distance"),
+])
+def test_jobs_list_score_distance_cross_validation(client, auth_headers, params, expected_detail):
+    response = client.get(f"/api/v1/jobs/?{params}", headers=auth_headers)
+    assert response.status_code == 422
+    assert expected_detail in response.json()["detail"]
 
     # 2. Create a job
     job_data = {
@@ -261,7 +271,7 @@ def test_jobs_response_includes_normalized_job_data(client, auth_headers, db_ses
     )
     db_session.add(scraped)
     db_session.flush()
-    db_session.add(Job(user_id=test_user.id, search_profile_id=profile.id, scraped_job_id=scraped.id, is_scraped=True))
+    db_session.add(Job(user_id=test_user.id, search_profile_id=profile.id, scraped_job_id=scraped.id))
     db_session.commit()
 
     response = client.get("/api/v1/jobs/", headers=auth_headers)

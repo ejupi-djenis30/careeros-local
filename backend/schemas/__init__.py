@@ -31,6 +31,9 @@ from backend.schemas.profile import (
 from backend.schemas.profile import (
     SearchProfileUpdate as SearchProfileUpdate,
 )
+from backend.schemas.search import CVUploadResponse as CVUploadResponse
+from backend.schemas.search import SearchStartResponse as SearchStartResponse
+from backend.schemas.search import SearchStopResponse as SearchStopResponse
 from backend.schemas.user import Token as Token
 from backend.schemas.user import UserCreate as UserCreate
 from backend.schemas.user import UserLogin as UserLogin

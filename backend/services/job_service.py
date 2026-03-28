@@ -1,4 +1,5 @@
 import hashlib
+from datetime import datetime, timezone
 from typing import Any, Dict
 
 from fastapi import HTTPException
@@ -111,7 +112,6 @@ class JobService:
             "user_id": user_id,
             "scraped_job_id": scraped_job.id,
             "applied": job_dict.get("applied", False),
-            "is_scraped": job_dict.get("is_scraped", False),
             "affinity_score": job_dict.get("affinity_score", None),
             "search_profile_id": profile_id,
         }
@@ -123,15 +123,46 @@ class JobService:
             raise HTTPException(status_code=404, detail="Job not found")
         if job.user_id != user_id:
             raise HTTPException(status_code=403, detail="Not authorized")
-        return self.repo.update(job, updates)
 
-    def delete_job(self, user_id: int, job_id: int):
+        update_data = updates.model_dump(exclude_unset=True)
+
+        # Auto-timestamp dismissed_at when dismissed flag is toggled
+        if update_data.get("dismissed") is True and not job.dismissed:
+            update_data["dismissed_at"] = datetime.now(timezone.utc)
+        elif update_data.get("dismissed") is False:
+            update_data["dismissed_at"] = None
+
+        result = self.repo.update(job, update_data)
+
+        # Recompute preference signals after any interaction that carries signal
+        if "applied" in update_data or "dismissed" in update_data:
+            from backend.services.preference_service import compute_and_save_preferences
+            compute_and_save_preferences(user_id, self.repo.db)
+
+        return result
+
+    def record_view(self, user_id: int, job_id: int):
+        """Idempotently record the first time a user views a job's analysis."""
         job = self.repo.get(job_id)
         if not job:
             raise HTTPException(status_code=404, detail="Job not found")
         if job.user_id != user_id:
             raise HTTPException(status_code=403, detail="Not authorized")
-        self.repo.delete(job.id)
+        if job.viewed_at is None:
+            self.repo.update(job, {"viewed_at": datetime.now(timezone.utc)})
+        return job
+
+    def delete_job(self, user_id: int, job_id: int):
+        """Soft-delete: mark dismissed instead of hard-deleting rows."""
+        job = self.repo.get(job_id)
+        if not job:
+            raise HTTPException(status_code=404, detail="Job not found")
+        if job.user_id != user_id:
+            raise HTTPException(status_code=403, detail="Not authorized")
+        self.repo.update(job, {
+            "dismissed": True,
+            "dismissed_at": datetime.now(timezone.utc),
+        })
 
 
 def get_job_service(db: Session) -> JobService:

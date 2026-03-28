@@ -7,15 +7,25 @@ import { SearchService } from '../services/search';
 export function HistoryPage() {
   const navigate = useNavigate();
   const { showToast } = useToast();
+  const [loadingProfileId, setLoadingProfileId] = React.useState(null);
 
   const handleStartSearch = async (profile, overrides = {}) => {
+    if (loadingProfileId !== null) return; // prevent double-fire while any request is in-flight
+    const pid = profile.id;
+    setLoadingProfileId(pid);
     try {
       const result = await SearchService.start({ ...profile, ...overrides });
-      const pid = result.profile_id;
-      navigate(`/progress?pid=${pid}`);
+      navigate(`/progress?pid=${result.profile_id}`);
     } catch (error) {
-       // 401 intercepted globally
+      if (error.message === 'UNAUTHORIZED') return; // intercepted globally by auth layer
+      if (error.message?.includes('409') || error.status === 409) {
+        showToast("A search is already running for this profile.", "warning");
+      } else {
+        showToast("Failed to start search: " + (error.message || "Unknown error"));
+      }
       console.error("Failed to start search:", error);
+    } finally {
+      setLoadingProfileId(null);
     }
   };
 
@@ -41,6 +51,7 @@ export function HistoryPage() {
         onStartSearchWithOptions={handleStartSearch}
         onUseAsTemplate={handleUseAsTemplate}
         onSaveAsSchedule={handleSaveAsSchedule}
+        loadingProfileId={loadingProfileId}
       />
     </div>
   );

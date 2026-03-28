@@ -58,10 +58,6 @@ export function ProgressPage() {
     }
   };
 
-  const handleSearchStateChange = () => {
-    // Optional Hook for when search finishes
-  };
-
   if (activeProfileIds.length === 0) {
     return (
       <div className="animate-slide-up d-flex justify-content-center align-items-center" style={{ minHeight: '60vh' }}>
@@ -118,7 +114,6 @@ export function ProgressPage() {
             profileId={pid}
             status={searchStatuses[pid]}
             setStatus={() => {}} // Now handled strictly by context polling
-            onStateChange={handleSearchStateChange}
             onClear={() => handleClearSearch(pid)}
           />
         </div>

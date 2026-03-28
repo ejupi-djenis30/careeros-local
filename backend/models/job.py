@@ -75,6 +75,9 @@ class ScrapedJob(BaseModel, TimestampMixin):
     normalized_key_requirements = Column(JSON, nullable=True)
     normalized_metadata = Column(JSON, nullable=True)
 
+    # Job posting quality score (0.0–1.0), computed from description richness (Phase 4)
+    posting_quality = Column(Float, nullable=True)
+
     # Keep track of where it originally came from (optional but useful)
     source_query = Column(String, nullable=True)
 
@@ -131,9 +134,6 @@ class Job(BaseModel, TimestampMixin):
     search_profile_id = Column(Integer, ForeignKey("search_profiles.id"), nullable=True, index=True)
     scraped_job_id = Column(Integer, ForeignKey("scraped_jobs.id", ondelete="CASCADE"), nullable=False, index=True)
 
-    # Metadata
-    is_scraped = Column(Boolean, default=False)
-
     # AI Analysis (User-specific match)
     affinity_score = Column(Float)
     affinity_analysis = Column(Text)
@@ -148,11 +148,28 @@ class Job(BaseModel, TimestampMixin):
     transferability_score = Column(Float, nullable=True)    # 0-100: how well existing skills transfer to this job
     qualification_gap_score = Column(Float, nullable=True)  # 0-100: qualification relevance for this specific job
 
+    # Structured per-dimension analysis and gap analysis (Phase 5)
+    analysis_structured = Column(JSON, nullable=True)       # {strengths, weaknesses, gaps, verdict, evidence_citations}
+
+    # Red flags detected in job description (Phase 4)
+    red_flags = Column(JSON, nullable=True)                 # list of flag strings / {type, description} dicts
+
     # Distance from search origin (km)
     distance_km = Column(Float, nullable=True)
 
     # User Action
     applied = Column(Boolean, default=False, index=True)
+
+    # ─── Phase 2: User feedback tracking ─────────────────────────────────────
+    # First time the user opened the analysis panel for this job.
+    viewed_at = Column(DateTime(timezone=True), nullable=True)
+    # User explicitly dismissed / not-interested for this job.
+    dismissed = Column(Boolean, default=False, nullable=False, index=True)
+    dismissed_at = Column(DateTime(timezone=True), nullable=True)
+    # Optional short reason for dismissal (user-supplied or inferred).
+    # Allowed values: too_senior | too_junior | wrong_domain | bad_salary |
+    #                 bad_location | not_interested | already_applied | other
+    feedback_signal = Column(String, nullable=True)
 
     # Relationships
     user = relationship("User", back_populates="jobs", lazy="selectin")

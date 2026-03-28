@@ -171,7 +171,9 @@ class AVAMProfessionMapper:
         self._api_cache: Dict[str, tuple[List[str], float]] = {}
         # TTL of 24h (86400 seconds)
         self._ttl_seconds = 86400
-        self._client = httpx.AsyncClient(timeout=2.0, verify=False)
+        # Max entries in the live-API cache before LRU eviction
+        self._api_cache_max_size = 2048
+        self._client = httpx.AsyncClient(timeout=2.0)
 
     @retry(stop=stop_after_attempt(2), wait=wait_exponential(multiplier=0.5, min=0.5, max=1))
     async def _fetch_from_api(self, title: str) -> List[str]:
@@ -223,12 +225,14 @@ class AVAMProfessionMapper:
             api_codes = await self._fetch_from_api(title)
             if api_codes:
                 logger.info(f"Dynamically mapped occupation '{title}' via API to AVAM codes: {api_codes}")
-                self._api_cache[normalized] = (api_codes, time.time())
-                return api_codes
             else:
                 logger.debug(f"No AVAM mapping found for occupation '{title}' via API.")
-                # Cache the empty result as well to prevent re-querying dead-ends
-                self._api_cache[normalized] = ([], time.time())
+            # Cache result (including empty) to prevent re-querying dead-ends; evict oldest if at capacity
+            if len(self._api_cache) >= self._api_cache_max_size:
+                self._api_cache.pop(next(iter(self._api_cache)))
+            self._api_cache[normalized] = (api_codes, time.time())
+            if api_codes:
+                return api_codes
         except Exception as e:
             logger.warning(f"Failed to fetch dynamic AVAM codes for '{title}': {e}")
 

@@ -24,6 +24,10 @@ class Settings(BaseSettings):
             try:
                 return json.loads(self.CORS_ORIGINS)
             except Exception as exc:
+                if self.ENVIRONMENT == "production":
+                    raise ValueError(
+                        f"Invalid CORS_ORIGINS JSON in production environment: {exc}"
+                    ) from exc
                 logger.warning("Invalid CORS_ORIGINS JSON %r: %s", self.CORS_ORIGINS, exc)
         return [i.strip() for i in self.CORS_ORIGINS.split(",") if i.strip()]
 
@@ -88,9 +92,9 @@ class Settings(BaseSettings):
     LLM_PLAN_MODEL: str = ""
     LLM_PLAN_API_KEY: str = ""
     LLM_PLAN_BASE_URL: str = ""
-    LLM_PLAN_TEMPERATURE: float = -1.0
-    LLM_PLAN_TOP_P: float = -1.0
-    LLM_PLAN_MAX_TOKENS: int = -1
+    LLM_PLAN_TEMPERATURE: Optional[float] = None
+    LLM_PLAN_TOP_P: Optional[float] = None
+    LLM_PLAN_MAX_TOKENS: Optional[int] = None
     LLM_PLAN_THINKING: bool = False
     LLM_PLAN_THINKING_LEVEL: str = ""
 
@@ -99,9 +103,9 @@ class Settings(BaseSettings):
     LLM_MATCH_MODEL: str = ""
     LLM_MATCH_API_KEY: str = ""
     LLM_MATCH_BASE_URL: str = ""
-    LLM_MATCH_TEMPERATURE: float = -1.0
-    LLM_MATCH_TOP_P: float = -1.0
-    LLM_MATCH_MAX_TOKENS: int = -1
+    LLM_MATCH_TEMPERATURE: Optional[float] = None
+    LLM_MATCH_TOP_P: Optional[float] = None
+    LLM_MATCH_MAX_TOKENS: Optional[int] = None
     LLM_MATCH_THINKING: bool = False
     LLM_MATCH_THINKING_LEVEL: str = ""
 
@@ -110,9 +114,9 @@ class Settings(BaseSettings):
     LLM_NORMALIZE_MODEL: str = ""
     LLM_NORMALIZE_API_KEY: str = ""
     LLM_NORMALIZE_BASE_URL: str = ""
-    LLM_NORMALIZE_TEMPERATURE: float = -1.0
-    LLM_NORMALIZE_TOP_P: float = -1.0
-    LLM_NORMALIZE_MAX_TOKENS: int = -1
+    LLM_NORMALIZE_TEMPERATURE: Optional[float] = None
+    LLM_NORMALIZE_TOP_P: Optional[float] = None
+    LLM_NORMALIZE_MAX_TOKENS: Optional[int] = None
     LLM_NORMALIZE_THINKING: bool = False
     LLM_NORMALIZE_THINKING_LEVEL: str = ""
 
@@ -121,9 +125,9 @@ class Settings(BaseSettings):
     LLM_NORMALIZE_PROFILE_MODEL: str = ""
     LLM_NORMALIZE_PROFILE_API_KEY: str = ""
     LLM_NORMALIZE_PROFILE_BASE_URL: str = ""
-    LLM_NORMALIZE_PROFILE_TEMPERATURE: float = -1.0
-    LLM_NORMALIZE_PROFILE_TOP_P: float = -1.0
-    LLM_NORMALIZE_PROFILE_MAX_TOKENS: int = -1
+    LLM_NORMALIZE_PROFILE_TEMPERATURE: Optional[float] = None
+    LLM_NORMALIZE_PROFILE_TOP_P: Optional[float] = None
+    LLM_NORMALIZE_PROFILE_MAX_TOKENS: Optional[int] = None
     LLM_NORMALIZE_PROFILE_THINKING: bool = False
     LLM_NORMALIZE_PROFILE_THINKING_LEVEL: str = ""
 
@@ -134,17 +138,29 @@ class Settings(BaseSettings):
     MAX_UPLOAD_FILE_SIZE: int = 10 * 1024 * 1024  # 10 MB
 
     # Analysis Pipeline Tuning
-    MAX_DESCRIPTION_CHARS: int = 6000
+    MAX_DESCRIPTION_CHARS: int = 64000
     SEARCH_EXECUTION_MODE: str = "sequential"
     SEARCH_CONCURRENCY: int = 3
-    SEARCH_PLAN_BATCH_SIZE: int = 15
     SEARCH_PLAN_ENABLE_LOOSE_DEDUP: bool = True
-    SEARCH_PLAN_STALL_MAX_BATCHES: int = 2
     SEARCH_ENABLE_DEGRADED_PLAN_FALLBACK: bool = True
     SEARCH_DEGRADED_PLAN_MAX_QUERIES: int = 3
     SEARCH_DEGRADED_PLAN_MAX_KEYWORDS: int = 2
     ANALYSIS_CONCURRENCY: int = 15
     ANALYSIS_BATCH_SIZE: int = 5
+
+    # Pipeline & LLM call timeouts
+    # Total allowed wall-clock time for a single end-to-end search run (seconds).
+    SEARCH_PIPELINE_TIMEOUT_SECONDS: int = 1800  # 30 minutes
+    # Per-step LLM call timeouts (seconds).  0 = disabled.
+    LLM_CALL_TIMEOUT_PLAN: int = 60
+    LLM_CALL_TIMEOUT_NORMALIZE: int = 90
+    LLM_CALL_TIMEOUT_MATCH: int = 120
+
+    # Circuit breaker (per provider)
+    # Number of consecutive failures before tripping to OPEN state.
+    CIRCUIT_BREAKER_FAILURE_THRESHOLD: int = 5
+    # Seconds to wait in OPEN state before trying a probe call (HALF_OPEN).
+    CIRCUIT_BREAKER_RECOVERY_SECONDS: int = 60
 
     # Normalization-based profile matching (Phase 2)
     # When enabled, structured filters compare normalized user profile fields
@@ -154,6 +170,86 @@ class Settings(BaseSettings):
     # Tolerance in years added to user experience for experience-floor matching.
     # E.g. user has 3 yrs → jobs requiring up to 3+2=5 yrs min still pass.
     SEARCH_NORMALIZATION_EXPERIENCE_TOLERANCE: int = 3
+
+    # ─── Normalization quality & confidence-tiered re-normalization ───────────
+    # When enabled, low-confidence jobs get a second targeted normalization pass.
+    NORMALIZATION_RENORMALIZE_ENABLED: bool = True
+    # Jobs with confidence >= TIER1 are accepted as-is.
+    NORMALIZATION_CONFIDENCE_TIER1_THRESHOLD: float = 0.70
+    # Jobs with confidence >= TIER2 (and < TIER1) are accepted but flagged.
+    # Jobs below TIER2 get a second-pass re-normalization call.
+    NORMALIZATION_CONFIDENCE_TIER2_THRESHOLD: float = 0.40
+
+    # ─── Structured pre-score gate (runs before expensive MATCH step) ─────────
+    # When enabled, jobs must reach STRUCTURED_PRESCORE_THRESHOLD to pass to MATCH.
+    STRUCTURED_PRESCORE_ENABLED: bool = True
+    # Minimum composite pre-score (0–100) required to pass to the MATCH step.
+    STRUCTURED_PRESCORE_THRESHOLD: float = 20.0
+
+    # ─── MATCH quality improvements ───────────────────────────────────────────
+    # Evidence-grounded MATCH: prompt requires citing specific text from job description.
+    MATCH_EVIDENCE_GROUNDED: bool = True
+    # Two-pass critique: re-analyze borderline jobs (45–80 score range).
+    MATCH_CRITIQUE_ENABLED: bool = True
+    MATCH_CRITIQUE_SCORE_RANGE_MIN: int = 40
+    MATCH_CRITIQUE_SCORE_RANGE_MAX: int = 80
+    # Comparative re-ranking of the top-N jobs after individual scoring.
+    MATCH_RERANK_ENABLED: bool = True
+    MATCH_RERANK_TOP_N: int = 20
+
+    # ─── Job intelligence ─────────────────────────────────────────────────────
+    # Detect and store red flags in job descriptions.
+    RED_FLAGS_DETECTION_ENABLED: bool = True
+    # Apply posting publication-date decay to final scores.
+    RECENCY_WEIGHTING_ENABLED: bool = True
+    # Number of days after which a job starts losing score due to age.
+    RECENCY_DECAY_HALFLIFE_DAYS: int = 30
+
+    # ─── Per-step LLM overrides: CRITIQUE step ────────────────────────────────
+    LLM_CRITIQUE_PROVIDER: str = ""
+    LLM_CRITIQUE_MODEL: str = ""
+    LLM_CRITIQUE_API_KEY: str = ""
+    LLM_CRITIQUE_BASE_URL: str = ""
+    LLM_CRITIQUE_TEMPERATURE: Optional[float] = None
+    LLM_CRITIQUE_TOP_P: Optional[float] = None
+    LLM_CRITIQUE_MAX_TOKENS: Optional[int] = None
+
+    # ─── Per-step LLM overrides: RERANK step ─────────────────────────────────
+    LLM_RERANK_PROVIDER: str = ""
+    LLM_RERANK_MODEL: str = ""
+    LLM_RERANK_API_KEY: str = ""
+    LLM_RERANK_BASE_URL: str = ""
+    LLM_RERANK_TEMPERATURE: Optional[float] = None
+    LLM_RERANK_TOP_P: Optional[float] = None
+    LLM_RERANK_MAX_TOKENS: Optional[int] = None
+
+    # ─── Per-step timeouts: new steps ─────────────────────────────────────────
+    LLM_CALL_TIMEOUT_CRITIQUE: int = 90
+    LLM_CALL_TIMEOUT_RERANK: int = 60
+
+    # ─── Semantic Skill Matching (Phase 1 — embedding-based) ────────────────────
+    # Enable embedding-based Tier 2.5 in semantic_skills_score().
+    # Requires sentence-transformers to be installed.
+    SKILL_EMBEDDING_ENABLED: bool = True
+    # Cosine similarity threshold: pairs below this are ignored by the embedding tier.
+    SKILL_EMBEDDING_THRESHOLD: float = 0.65
+    # HuggingFace model name. Must be a sentence-transformers compatible model.
+    # Default: all-MiniLM-L6-v2 (22MB, multilingual, runs locally, no API cost).
+    SKILL_EMBEDDING_MODEL: str = "all-MiniLM-L6-v2"
+
+    # ─── User Feedback & Personalisation (Phase 2) ────────────────────────────
+    # Inject user behavioural signals into the MATCH LLM prompt when enough data.
+    MATCH_ENABLE_PREFERENCE_INJECTION: bool = True
+    # Minimum number of jobs with signals (applied/dismissed) before activating.
+    PREFERENCE_MIN_SIGNAL_COUNT: int = 10
+    # Enable preference-based pre-score component.
+    PREFERENCE_PRESCORE_ENABLED: bool = True
+
+    # ─── Swiss Market Enhancements (Phase 3) ──────────────────────────────────
+    # Inject implicit language requirements (canton-based) into MATCH prompt.
+    SWISS_IMPLICIT_LANGUAGE_ENABLED: bool = True
+    # Add salary_below_market red flag based on aggregated ScrapedJob salary data.
+    SALARY_BENCHMARK_ENABLED: bool = True
 
     # Logging
     LOG_LEVEL: str = "INFO"

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { useToast } from '../context/ToastContext';
 
 export function LocationInput({
@@ -9,6 +9,8 @@ export function LocationInput({
     const [query, setQuery] = useState(location || "");
     const onLocationChangeRef = useRef(onLocationChange);
     useEffect(() => { onLocationChangeRef.current = onLocationChange; }, [onLocationChange]);
+    const locationRef = useRef(location);
+    useEffect(() => { locationRef.current = location; }, [location]);
     const [suggestions, setSuggestions] = useState([]);
     const [isLoading, setIsLoading] = useState(false);
     const [showSuggestions, setShowSuggestions] = useState(false);
@@ -98,7 +100,7 @@ export function LocationInput({
     useEffect(() => {
         const abortController = new AbortController();
         const timer = setTimeout(() => {
-            if (query !== location) {
+            if (query !== locationRef.current) {
                 // When typing, we clear the locked coordinates until selection
                 onLocationChangeRef.current({
                     name: query,

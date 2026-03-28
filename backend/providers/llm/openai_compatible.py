@@ -88,10 +88,16 @@ class OpenAICompatibleProvider(LLMProvider):
 
         return text.strip()
 
-    # ── public API ─────────────────────────────────────────────────────────
-
-    def generate_text(self, system_prompt: str, user_prompt: str, max_tokens: Optional[int] = None) -> str:
-        params = {
+    def _prepare_params(
+        self,
+        system_prompt: str,
+        user_prompt: str,
+        max_tokens: Optional[int],
+        *,
+        for_json: bool = False,
+    ) -> Dict[str, Any]:
+        """Build shared request params, applying DeepSeek thinking-mode adjustments."""
+        params: Dict[str, Any] = {
             "model": self.model,
             "messages": [
                 {"role": "system", "content": system_prompt},
@@ -101,11 +107,17 @@ class OpenAICompatibleProvider(LLMProvider):
             "temperature": self.temperature,
             "top_p": self.top_p,
         }
-
-        # Deepseek thinking mode specific adjustments
         if self.provider_name == "deepseek" and self.thinking:
             params.pop("temperature", None)
             params.pop("top_p", None)
+        elif for_json:
+            params["response_format"] = {"type": "json_object"}
+        return params
+
+    # ── public API ─────────────────────────────────────────────────────────
+
+    def generate_text(self, system_prompt: str, user_prompt: str, max_tokens: Optional[int] = None) -> str:
+        params = self._prepare_params(system_prompt, user_prompt, max_tokens)
 
         try:
             completion = self.client.chat.completions.create(**params)
@@ -121,20 +133,7 @@ class OpenAICompatibleProvider(LLMProvider):
             raise
 
     def generate_json(self, system_prompt: str, user_prompt: str, max_tokens: Optional[int] = None) -> Dict[str, Any]:
-        params = {
-            "model": self.model,
-            "messages": [
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_prompt},
-            ],
-            "max_tokens": max_tokens or self.max_tokens,
-            "temperature": self.temperature,
-            "top_p": self.top_p,
-        }
-
-        # JSON Mode — skip for deepseek thinking where it's not supported
-        if not (self.provider_name == "deepseek" and self.thinking):
-             params["response_format"] = {"type": "json_object"}
+        params = self._prepare_params(system_prompt, user_prompt, max_tokens, for_json=True)
 
         try:
             completion = self.client.chat.completions.create(**params)
@@ -150,20 +149,7 @@ class OpenAICompatibleProvider(LLMProvider):
             raise
 
     async def generate_text_async(self, system_prompt: str, user_prompt: str, max_tokens: Optional[int] = None) -> str:
-        params = {
-            "model": self.model,
-            "messages": [
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_prompt},
-            ],
-            "max_tokens": max_tokens or self.max_tokens,
-            "temperature": self.temperature,
-            "top_p": self.top_p,
-        }
-
-        if self.provider_name == "deepseek" and self.thinking:
-            params.pop("temperature", None)
-            params.pop("top_p", None)
+        params = self._prepare_params(system_prompt, user_prompt, max_tokens)
 
         try:
             completion = await self.async_client.chat.completions.create(**params)
@@ -179,19 +165,7 @@ class OpenAICompatibleProvider(LLMProvider):
             raise
 
     async def generate_json_async(self, system_prompt: str, user_prompt: str, max_tokens: Optional[int] = None) -> Dict[str, Any]:
-        params = {
-            "model": self.model,
-            "messages": [
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_prompt},
-            ],
-            "max_tokens": max_tokens or self.max_tokens,
-            "temperature": self.temperature,
-            "top_p": self.top_p,
-        }
-
-        if not (self.provider_name == "deepseek" and self.thinking):
-             params["response_format"] = {"type": "json_object"}
+        params = self._prepare_params(system_prompt, user_prompt, max_tokens, for_json=True)
 
         try:
             completion = await self.async_client.chat.completions.create(**params)

@@ -117,6 +117,10 @@ class ProfileService:
             update_data["cached_cv_summary"] = None
             update_data["profile_normalization_fingerprint"] = None
 
+        if any(field in update_data for field in ("role_description", "search_strategy")):
+            update_data["profile_normalization_fingerprint"] = None
+            update_data["profile_normalization_status"] = "pending"
+
         if any(field in update_data for field in _QUERY_CACHE_INVALIDATION_FIELDS) or (
             advanced_preferences is not None
         ):
@@ -155,7 +159,11 @@ class ProfileService:
             raise HTTPException(status_code=403, detail="Not authorized")
 
         from backend.services.scheduler import remove_schedule
+        from backend.services.search_status import clear_status, release_task
         remove_schedule(profile_id)
+        # Release any in-flight reservation so the profile_id slot doesn't block forever
+        release_task(profile_id)
+        clear_status(profile_id)
 
         self.repo.delete(profile_id)
 

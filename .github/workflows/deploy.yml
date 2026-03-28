@@ -101,7 +101,7 @@ jobs:
               run: |
                   echo "Waiting for app to start..."
                   for i in $(seq 1 30); do
-                    if curl -sf http://localhost:8000/ > /dev/null 2>&1; then
+                    if python3 -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/', timeout=2)" 2>/dev/null; then
                       echo "App is healthy!"
                       exit 0
                     fi
@@ -114,14 +114,14 @@ jobs:
 
             - name: Verify health endpoint
               run: |
-                  response=$(curl -sf http://localhost:8000/)
-                  echo "Health response: $response"
-                  echo "$response" | python3 -c "
-                  import sys, json
-                  data = json.load(sys.stdin)
+                  python3 -c "
+                  import urllib.request, json
+                  response = urllib.request.urlopen('http://localhost:8000/', timeout=10)
+                  data = json.loads(response.read())
+                  print('Health response:', data)
                   assert 'message' in data, 'Missing message field'
                   assert 'database' in data, 'Missing database field'
-                  print('✅ Health check passed')
+                  print('Health check passed')
                   "
 
             - name: Cleanup

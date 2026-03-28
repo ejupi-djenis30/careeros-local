@@ -78,6 +78,14 @@ def _cleanup_stale_reservations(now: float | None = None):
     ]
     for profile_id in stale:
         _reserved_tasks.pop(profile_id, None)
+    # Also evict active_tasks slots where the asyncio Task has already finished.
+    done_tasks = [
+        profile_id
+        for profile_id, task in _active_tasks.items()
+        if hasattr(task, "done") and task.done()
+    ]
+    for profile_id in done_tasks:
+        _active_tasks.pop(profile_id, None)
 
 
 def init_status(profile_id: int, total_searches: int = 0, searches: Optional[List[Dict]] = None, user_id: Optional[int] = None):
@@ -205,6 +213,28 @@ def _merge_with_file(memory: Dict[int, Dict[str, Any]]) -> Dict[int, Dict[str, A
     return merged
 
 
+def _prune_old_terminal_statuses(statuses: Dict[int, Dict[str, Any]], max_age_seconds: float = 86400.0) -> Dict[int, Dict[str, Any]]:
+    """Remove terminal status entries whose ``finished_at`` timestamp is older than max_age_seconds."""
+    cutoff = datetime.now(timezone.utc).timestamp() - max_age_seconds
+    pruned: Dict[int, Dict[str, Any]] = {}
+    for pid, entry in statuses.items():
+        if entry.get("state") not in _TERMINAL_STATES:
+            pruned[pid] = entry
+            continue
+        finished_at = entry.get("finished_at")
+        if not finished_at:
+            pruned[pid] = entry
+            continue
+        try:
+            finished_ts = datetime.fromisoformat(finished_at).timestamp()
+            if finished_ts >= cutoff:
+                pruned[pid] = entry
+            # else: expired terminal entry — silently drop it
+        except (ValueError, TypeError):
+            pruned[pid] = entry  # keep entries with unparseable timestamps
+    return pruned
+
+
 def get_status(profile_id: int) -> Dict[str, Any]:
     """Get current status for a profile."""
     with _lock:
@@ -220,9 +250,14 @@ def get_all_statuses(user_id: Optional[int] = None) -> Dict[int, Dict[str, Any]]
 
     Merges in-memory state with the shared JSON file so that searches
     started on a different Gunicorn worker process are also visible.
+    Terminal entries older than 24 hours are pruned on each call.
     """
     with _lock:
         merged = _merge_with_file(dict(_statuses))
+
+    # Prune stale terminal entries (>24h old) to prevent unbounded file growth.
+    merged = _prune_old_terminal_statuses(merged)
+
     if user_id is None:
         return merged
     return {k: v for k, v in merged.items() if v.get("user_id") == user_id}
@@ -239,10 +274,29 @@ def clear_status(profile_id: int):
         _save_statuses(force=True, statuses_snapshot=snapshot)
 
 def register_task(profile_id: int, task: Any):
-    """Register an active search task."""
+    """Register an active search task.
+
+    Guards against a second worker overwriting an already-active task for the
+    same profile_id (cross-worker race).  If the slot is already occupied by a
+    live task the call is a no-op and returns False so the caller can abort.
+    """
     with _lock:
         _reserved_tasks.pop(profile_id, None)
+        existing = _active_tasks.get(profile_id)
+        if existing is not None:
+            # Check if the existing task is still alive before refusing.
+            import asyncio
+            try:
+                if not existing.done():
+                    logger.warning(
+                        "register_task: profile %d already has an active task — ignoring duplicate registration",
+                        profile_id,
+                    )
+                    return False
+            except Exception:
+                pass  # Non-asyncio task object — treat as replaced
         _active_tasks[profile_id] = task
+        return True
 
 
 def unregister_task(profile_id: int):
@@ -252,12 +306,48 @@ def unregister_task(profile_id: int):
         _active_tasks.pop(profile_id, None)
 
 
+def get_all_active_tasks() -> dict:
+    """Return a snapshot of {profile_id: task} for graceful shutdown."""
+    with _lock:
+        return dict(_active_tasks)
+
+
 def reserve_task(profile_id: int) -> bool:
-    """Reserve a profile before the background task is registered."""
+    """Reserve a profile before the background task is registered.
+
+    Cross-worker safe: in addition to checking the in-process task registries
+    this also inspects the shared JSON status file so that a reservation made
+    by a sibling Gunicorn worker is honoured.  A non-terminal status entry
+    whose ``started_at`` was created after this worker booted means another
+    worker already owns (or just started) the search.
+    """
     with _lock:
         _cleanup_stale_reservations()
         if profile_id in _active_tasks or profile_id in _reserved_tasks:
             return False
+
+        # Cross-worker guard: check the shared status file.
+        try:
+            file_data = _load_statuses()
+            file_entry = file_data.get(profile_id)
+            if file_entry:
+                file_state = file_entry.get("state", "unknown")
+                file_started = file_entry.get("started_at") or ""
+                # Non-terminal status that was started AFTER this worker booted
+                # means another live worker owns this profile's search.
+                if (
+                    file_state not in _TERMINAL_STATES
+                    and file_state != "unknown"
+                    and file_started >= _WORKER_BOOT_TIME
+                ):
+                    logger.info(
+                        "reserve_task: profile %d is already running on another worker (state=%s, started=%s)",
+                        profile_id, file_state, file_started,
+                    )
+                    return False
+        except Exception as exc:
+            logger.warning("reserve_task: failed to read status file for cross-worker check: %s", exc)
+
         _reserved_tasks[profile_id] = time.time()
         return True
 
@@ -277,3 +367,8 @@ def cancel_task(profile_id: int):
             task.cancel()
             return True
     return False
+
+
+# Prune stale terminal statuses from prior server runs at module load so the
+# status file does not grow unboundedly across restarts.
+_statuses = _prune_old_terminal_statuses(_statuses)

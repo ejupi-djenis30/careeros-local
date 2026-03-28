@@ -1,0 +1,2051 @@
+{
+  "_metadata": {
+    "version": "2.0",
+    "description": "Weighted skill taxonomy for semantic job-candidate matching. Each entry maps a canonical skill to its aliases and related skills with weights (0-1). Weight=1.0 means equivalent/identical. Weight=0.7 means strongly related (same ecosystem). Weight=0.4 means moderately related. Weight=0.2 means weakly related. v2.0: expanded with Swiss market domains (medical, legal, construction, finance), multilingual DE/FR/IT aliases, and Phase 1 embedding-tier support."
+  },
+  "skills": {
+    "python": {
+      "aliases": ["python3", "python 3", "py", "cpython"],
+      "related": {
+        "django": 0.75,
+        "fastapi": 0.8,
+        "flask": 0.75,
+        "aiohttp": 0.65,
+        "celery": 0.55,
+        "pandas": 0.6,
+        "numpy": 0.55,
+        "scikit-learn": 0.5,
+        "tensorflow": 0.4,
+        "pytorch": 0.4,
+        "pydantic": 0.65,
+        "sqlalchemy": 0.6,
+        "asyncio": 0.65,
+        "jupyter": 0.5
+      }
+    },
+    "javascript": {
+      "aliases": ["js", "vanilla js", "ecmascript", "es6", "es2015"],
+      "related": {
+        "typescript": 0.85,
+        "react": 0.7,
+        "vue": 0.7,
+        "angular": 0.65,
+        "nodejs": 0.75,
+        "nextjs": 0.7,
+        "nuxtjs": 0.65,
+        "jquery": 0.6,
+        "webpack": 0.55,
+        "vite": 0.55,
+        "html": 0.6,
+        "css": 0.55
+      }
+    },
+    "typescript": {
+      "aliases": ["ts"],
+      "related": {
+        "javascript": 0.9,
+        "react": 0.75,
+        "angular": 0.7,
+        "nodejs": 0.75,
+        "nextjs": 0.75,
+        "nestjs": 0.7,
+        "vue": 0.65
+      }
+    },
+    "react": {
+      "aliases": ["react.js", "reactjs", "react js"],
+      "related": {
+        "javascript": 0.75,
+        "typescript": 0.75,
+        "nextjs": 0.85,
+        "redux": 0.75,
+        "react native": 0.7,
+        "vue": 0.5,
+        "angular": 0.45,
+        "html": 0.55,
+        "css": 0.5,
+        "graphql": 0.5
+      }
+    },
+    "angular": {
+      "aliases": ["angular.js", "angularjs"],
+      "related": {
+        "typescript": 0.8,
+        "javascript": 0.7,
+        "rxjs": 0.8,
+        "react": 0.45,
+        "vue": 0.45
+      }
+    },
+    "vue": {
+      "aliases": ["vue.js", "vuejs", "vue js"],
+      "related": {
+        "javascript": 0.75,
+        "typescript": 0.7,
+        "nuxtjs": 0.85,
+        "react": 0.5,
+        "angular": 0.45
+      }
+    },
+    "nodejs": {
+      "aliases": ["node.js", "node js", "node"],
+      "related": {
+        "javascript": 0.85,
+        "typescript": 0.8,
+        "express": 0.85,
+        "nestjs": 0.75,
+        "fastapi": 0.35,
+        "npm": 0.65,
+        "yarn": 0.55
+      }
+    },
+    "java": {
+      "aliases": [],
+      "related": {
+        "spring": 0.8,
+        "spring boot": 0.8,
+        "kotlin": 0.75,
+        "maven": 0.65,
+        "gradle": 0.6,
+        "hibernate": 0.65,
+        "microservices": 0.5,
+        "jvm": 0.8
+      }
+    },
+    "spring": {
+      "aliases": ["spring framework"],
+      "related": {
+        "java": 0.9,
+        "spring boot": 0.95,
+        "kotlin": 0.65,
+        "hibernate": 0.7,
+        "maven": 0.6
+      }
+    },
+    "kotlin": {
+      "aliases": [],
+      "related": {
+        "java": 0.8,
+        "spring boot": 0.65,
+        "android": 0.7,
+        "jvm": 0.75
+      }
+    },
+    "csharp": {
+      "aliases": ["c#", "c sharp"],
+      "related": {
+        "dotnet": 0.9,
+        ".net core": 0.85,
+        "azure": 0.55,
+        "asp.net": 0.85,
+        "unity": 0.5,
+        "visual studio": 0.6
+      }
+    },
+    "dotnet": {
+      "aliases": [".net", "dot net", ".net core", "asp.net"],
+      "related": {
+        "csharp": 0.9,
+        "azure": 0.6,
+        "sql server": 0.55
+      }
+    },
+    "golang": {
+      "aliases": ["go", "go lang"],
+      "related": {
+        "docker": 0.5,
+        "kubernetes": 0.5,
+        "microservices": 0.55,
+        "grpc": 0.6
+      }
+    },
+    "rust": {
+      "aliases": ["rust lang"],
+      "related": {
+        "c++": 0.5,
+        "systems programming": 0.7,
+        "webassembly": 0.5
+      }
+    },
+    "php": {
+      "aliases": [],
+      "related": {
+        "laravel": 0.85,
+        "symfony": 0.75,
+        "wordpress": 0.65,
+        "mysql": 0.55,
+        "html": 0.5
+      }
+    },
+    "ruby": {
+      "aliases": [],
+      "related": {
+        "rails": 0.9,
+        "ruby on rails": 0.9
+      }
+    },
+    "postgresql": {
+      "aliases": ["postgres", "pg", "psql"],
+      "related": {
+        "sql": 0.85,
+        "mysql": 0.65,
+        "database": 0.7,
+        "sqlalchemy": 0.55,
+        "stored procedures": 0.6
+      }
+    },
+    "mysql": {
+      "aliases": ["mariadb"],
+      "related": {
+        "sql": 0.85,
+        "postgresql": 0.65,
+        "database": 0.7,
+        "phpmyadmin": 0.5
+      }
+    },
+    "sql": {
+      "aliases": ["structured query language"],
+      "related": {
+        "postgresql": 0.8,
+        "mysql": 0.8,
+        "sql server": 0.75,
+        "oracle": 0.7,
+        "t-sql": 0.85,
+        "plsql": 0.75,
+        "database": 0.75,
+        "data warehousing": 0.55
+      }
+    },
+    "mongodb": {
+      "aliases": ["mongo"],
+      "related": {
+        "nosql": 0.85,
+        "elasticsearch": 0.45,
+        "redis": 0.45,
+        "database": 0.65
+      }
+    },
+    "redis": {
+      "aliases": [],
+      "related": {
+        "caching": 0.8,
+        "nosql": 0.65,
+        "message queue": 0.5,
+        "database": 0.55
+      }
+    },
+    "elasticsearch": {
+      "aliases": ["elastic"],
+      "related": {
+        "kibana": 0.85,
+        "logstash": 0.75,
+        "elk stack": 0.85,
+        "search": 0.7,
+        "opensearch": 0.85
+      }
+    },
+    "aws": {
+      "aliases": ["amazon web services", "amazon aws"],
+      "related": {
+        "cloud": 0.8,
+        "terraform": 0.65,
+        "kubernetes": 0.6,
+        "docker": 0.6,
+        "devops": 0.65,
+        "lambda": 0.75,
+        "s3": 0.75,
+        "ec2": 0.75,
+        "rds": 0.65,
+        "cloudformation": 0.7
+      }
+    },
+    "gcp": {
+      "aliases": ["google cloud", "google cloud platform"],
+      "related": {
+        "cloud": 0.8,
+        "terraform": 0.6,
+        "kubernetes": 0.65,
+        "bigquery": 0.75,
+        "firebase": 0.55,
+        "devops": 0.6
+      }
+    },
+    "azure": {
+      "aliases": ["microsoft azure"],
+      "related": {
+        "cloud": 0.8,
+        "csharp": 0.55,
+        "dotnet": 0.6,
+        "terraform": 0.6,
+        "kubernetes": 0.6,
+        "devops": 0.65,
+        "azure devops": 0.85,
+        "power bi": 0.5
+      }
+    },
+    "docker": {
+      "aliases": ["containerization", "containers"],
+      "related": {
+        "kubernetes": 0.8,
+        "devops": 0.75,
+        "cicd": 0.7,
+        "aws": 0.55,
+        "gcp": 0.55,
+        "azure": 0.55,
+        "microservices": 0.65
+      }
+    },
+    "kubernetes": {
+      "aliases": ["k8s"],
+      "related": {
+        "docker": 0.8,
+        "devops": 0.75,
+        "helm": 0.75,
+        "cicd": 0.65,
+        "cloud": 0.7,
+        "microservices": 0.65
+      }
+    },
+    "devops": {
+      "aliases": ["dev ops"],
+      "related": {
+        "cicd": 0.85,
+        "docker": 0.8,
+        "kubernetes": 0.75,
+        "terraform": 0.75,
+        "ansible": 0.7,
+        "jenkins": 0.65,
+        "github actions": 0.65,
+        "linux": 0.6,
+        "aws": 0.65,
+        "azure devops": 0.75
+      }
+    },
+    "cicd": {
+      "aliases": ["ci/cd", "continuous integration", "continuous deployment"],
+      "related": {
+        "devops": 0.85,
+        "jenkins": 0.8,
+        "github actions": 0.8,
+        "gitlab ci": 0.8,
+        "docker": 0.7,
+        "kubernetes": 0.65,
+        "terraform": 0.6
+      }
+    },
+    "terraform": {
+      "aliases": ["infrastructure as code", "iac"],
+      "related": {
+        "aws": 0.65,
+        "gcp": 0.6,
+        "azure": 0.6,
+        "devops": 0.75,
+        "ansible": 0.65,
+        "kubernetes": 0.55
+      }
+    },
+    "machine learning": {
+      "aliases": ["ml", "machine-learning"],
+      "related": {
+        "deep learning": 0.8,
+        "python": 0.75,
+        "tensorflow": 0.75,
+        "pytorch": 0.75,
+        "scikit-learn": 0.8,
+        "data science": 0.8,
+        "neural networks": 0.8,
+        "nlp": 0.65,
+        "computer vision": 0.6,
+        "statistics": 0.55
+      }
+    },
+    "data science": {
+      "aliases": ["data analysis", "data analytics"],
+      "related": {
+        "machine learning": 0.8,
+        "python": 0.75,
+        "pandas": 0.8,
+        "numpy": 0.7,
+        "sql": 0.65,
+        "r": 0.65,
+        "statistics": 0.75,
+        "tableau": 0.55,
+        "power bi": 0.55,
+        "jupyter": 0.65
+      }
+    },
+    "project management": {
+      "aliases": ["projektmanagement", "projektleitung", "gestion de projet", "gestione progetto"],
+      "related": {
+        "agile": 0.75,
+        "scrum": 0.75,
+        "kanban": 0.65,
+        "pmp": 0.75,
+        "prince2": 0.7,
+        "stakeholder management": 0.7,
+        "risk management": 0.65,
+        "budget management": 0.6,
+        "team leadership": 0.65,
+        "planning": 0.65
+      }
+    },
+    "agile": {
+      "aliases": ["agile methodology", "agile development"],
+      "related": {
+        "scrum": 0.9,
+        "kanban": 0.8,
+        "sprint": 0.8,
+        "project management": 0.75,
+        "jira": 0.65,
+        "retrospective": 0.65
+      }
+    },
+    "team leadership": {
+      "aliases": ["führung", "teamführung", "gestion d'équipe"],
+      "related": {
+        "management": 0.8,
+        "project management": 0.7,
+        "mentoring": 0.75,
+        "coaching": 0.65,
+        "communication": 0.6,
+        "stakeholder management": 0.6
+      }
+    },
+    "accounting": {
+      "aliases": ["buchhalter", "buchführung", "rechnungswesen", "comptabilité", "contabilità"],
+      "related": {
+        "financial reporting": 0.85,
+        "sap": 0.65,
+        "controlling": 0.75,
+        "tax": 0.7,
+        "audit": 0.7,
+        "excel": 0.6,
+        "finance": 0.75,
+        "budgeting": 0.65
+      }
+    },
+    "sap": {
+      "aliases": ["sap erp", "sap s/4hana"],
+      "related": {
+        "erp": 0.85,
+        "accounting": 0.6,
+        "supply chain": 0.5,
+        "fi/co": 0.75,
+        "sap fi": 0.85,
+        "sap mm": 0.75,
+        "sap sd": 0.75
+      }
+    },
+    "microsoft office": {
+      "aliases": ["ms office", "office 365", "microsoft 365"],
+      "related": {
+        "excel": 0.85,
+        "word": 0.75,
+        "powerpoint": 0.75,
+        "outlook": 0.7,
+        "teams": 0.65,
+        "sharepoint": 0.6
+      }
+    },
+    "excel": {
+      "aliases": ["microsoft excel"],
+      "related": {
+        "microsoft office": 0.85,
+        "vba": 0.7,
+        "pivot tables": 0.75,
+        "power bi": 0.55,
+        "data analysis": 0.55,
+        "google sheets": 0.7
+      }
+    },
+    "forklift": {
+      "aliases": ["gabelstapler", "staplerfahrer", "fork lift", "forklift operator"],
+      "related": {
+        "warehouse": 0.8,
+        "logistics": 0.75,
+        "driving license": 0.5,
+        "heavy lifting": 0.5
+      }
+    },
+    "warehouse": {
+      "aliases": ["lagermitarbeiter", "lagerist", "lagerhaltung", "magasinier"],
+      "related": {
+        "forklift": 0.75,
+        "logistics": 0.8,
+        "inventory management": 0.75,
+        "order picking": 0.8,
+        "packing": 0.75,
+        "shipping": 0.65
+      }
+    },
+    "customer service": {
+      "aliases": ["kundendienst", "kundenbetreuung", "service client", "servizio clienti", "customer support"],
+      "related": {
+        "communication": 0.75,
+        "helpdesk": 0.65,
+        "crm": 0.6,
+        "complaint handling": 0.75,
+        "sales": 0.55
+      }
+    },
+    "linux": {
+      "aliases": ["unix", "linux administration"],
+      "related": {
+        "bash": 0.8,
+        "shell scripting": 0.8,
+        "devops": 0.65,
+        "server administration": 0.7,
+        "docker": 0.55,
+        "networking": 0.5
+      }
+    },
+    "networking": {
+      "aliases": ["network engineering", "netzwerk"],
+      "related": {
+        "cisco": 0.75,
+        "tcp/ip": 0.8,
+        "vpn": 0.7,
+        "firewall": 0.7,
+        "routing": 0.8,
+        "switching": 0.75,
+        "linux": 0.5,
+        "cybersecurity": 0.6
+      }
+    },
+    "cybersecurity": {
+      "aliases": ["information security", "infosec", "security", "it security"],
+      "related": {
+        "penetration testing": 0.8,
+        "networking": 0.65,
+        "firewall": 0.7,
+        "siem": 0.75,
+        "vulnerability management": 0.8,
+        "linux": 0.55,
+        "cloud": 0.5
+      }
+    },
+    "git": {
+      "aliases": ["version control", "github", "gitlab", "bitbucket", "source control", "svn"],
+      "related": {
+        "devops": 0.55,
+        "cicd": 0.6,
+        "github actions": 0.6,
+        "gitlab ci": 0.55
+      }
+    },
+    "graphql": {
+      "aliases": ["graph ql"],
+      "related": {
+        "rest api": 0.6,
+        "nodejs": 0.55,
+        "react": 0.55,
+        "apollo": 0.85,
+        "api design": 0.65
+      }
+    },
+    "testing": {
+      "aliases": ["unit testing", "tdd", "test driven development", "automated testing", "qa engineer", "quality assurance", "integration testing"],
+      "related": {
+        "selenium": 0.75,
+        "playwright": 0.8,
+        "jest": 0.7,
+        "pytest": 0.75,
+        "junit": 0.7,
+        "cicd": 0.6,
+        "devops": 0.5
+      }
+    },
+    "power bi": {
+      "aliases": ["powerbi", "power bi desktop", "microsoft power bi"],
+      "related": {
+        "tableau": 0.75,
+        "data visualization": 0.85,
+        "excel": 0.6,
+        "sql": 0.55,
+        "azure": 0.5,
+        "data science": 0.55,
+        "reporting": 0.75
+      }
+    },
+    "tableau": {
+      "aliases": ["tableau desktop", "tableau server"],
+      "related": {
+        "power bi": 0.75,
+        "data visualization": 0.85,
+        "data science": 0.6,
+        "sql": 0.55,
+        "reporting": 0.7
+      }
+    },
+    "kafka": {
+      "aliases": ["apache kafka", "event streaming", "message streaming"],
+      "related": {
+        "rabbitmq": 0.65,
+        "message queue": 0.8,
+        "microservices": 0.65,
+        "java": 0.5,
+        "scala": 0.55,
+        "devops": 0.45
+      }
+    },
+    "ansible": {
+      "aliases": ["configuration management", "infrastructure automation"],
+      "related": {
+        "devops": 0.8,
+        "terraform": 0.7,
+        "linux": 0.65,
+        "docker": 0.55,
+        "cicd": 0.6,
+        "puppet": 0.7,
+        "chef": 0.7
+      }
+    },
+    "c++": {
+      "aliases": ["cpp", "c plus plus", "c/c++"],
+      "related": {
+        "c": 0.85,
+        "rust": 0.55,
+        "systems programming": 0.75,
+        "embedded": 0.7,
+        "game development": 0.5,
+        "java": 0.4
+      }
+    },
+    "swift": {
+      "aliases": ["swift language", "ios development"],
+      "related": {
+        "ios": 0.9,
+        "macos": 0.7,
+        "kotlin": 0.6,
+        "objective-c": 0.75,
+        "xcode": 0.85,
+        "mobile": 0.8
+      }
+    },
+    "scala": {
+      "aliases": [],
+      "related": {
+        "java": 0.75,
+        "spark": 0.8,
+        "kafka": 0.55,
+        "jvm": 0.8,
+        "functional programming": 0.65,
+        "data engineering": 0.6
+      }
+    },
+    "r": {
+      "aliases": ["r language", "r programming", "rstudio"],
+      "related": {
+        "statistics": 0.85,
+        "data science": 0.8,
+        "machine learning": 0.65,
+        "python": 0.6,
+        "tableau": 0.45,
+        "power bi": 0.45
+      }
+    },
+    "selenium": {
+      "aliases": ["selenium webdriver", "test automation"],
+      "related": {
+        "testing": 0.85,
+        "playwright": 0.8,
+        "cypress": 0.75,
+        "java": 0.5,
+        "python": 0.5,
+        "cicd": 0.55
+      }
+    },
+    "salesforce": {
+      "aliases": ["sfdc", "salesforce crm", "salesforce platform"],
+      "related": {
+        "crm": 0.85,
+        "apex": 0.8,
+        "sales": 0.6,
+        "marketing": 0.45,
+        "cloud": 0.45
+      }
+    },
+    "firebase": {
+      "aliases": ["google firebase"],
+      "related": {
+        "gcp": 0.65,
+        "nosql": 0.6,
+        "mobile": 0.6,
+        "react": 0.45,
+        "nodejs": 0.5,
+        "authentication": 0.65
+      }
+    },
+    "communication": {
+      "aliases": ["kommunikation", "communication skills", "interpersonal skills", "verbal communication", "written communication"],
+      "related": {
+        "presentation": 0.8,
+        "teamwork": 0.7,
+        "customer service": 0.65,
+        "negotiation": 0.6,
+        "team leadership": 0.55
+      }
+    },
+    "problem solving": {
+      "aliases": ["analytical thinking", "critical thinking", "analytical skills", "analytisches denken", "résolution de problèmes"],
+      "related": {
+        "communication": 0.5,
+        "teamwork": 0.55,
+        "time management": 0.5,
+        "project management": 0.55
+      }
+    },
+    "teamwork": {
+      "aliases": ["collaboration", "team player", "zusammenarbeit", "travail en équipe", "cooperative"],
+      "related": {
+        "communication": 0.75,
+        "team leadership": 0.65,
+        "agile": 0.55,
+        "problem solving": 0.55,
+        "project management": 0.5
+      }
+    },
+    "time management": {
+      "aliases": ["organization", "prioritization", "organisationstalent", "gestion du temps", "planning"],
+      "related": {
+        "project management": 0.65,
+        "teamwork": 0.5,
+        "problem solving": 0.5
+      }
+    },
+    "presentation": {
+      "aliases": ["public speaking", "präsentation", "pitching", "powerpoint presentations", "präsentationsfähigkeiten"],
+      "related": {
+        "communication": 0.85,
+        "microsoft office": 0.55,
+        "sales": 0.6,
+        "negotiation": 0.5
+      }
+    },
+    "negotiation": {
+      "aliases": ["verhandlung", "verhandlungsführung", "négociation", "contract negotiation"],
+      "related": {
+        "sales": 0.8,
+        "communication": 0.75,
+        "procurement": 0.6,
+        "team leadership": 0.45
+      }
+    },
+    "sales": {
+      "aliases": ["verkauf", "vertrieb", "vente", "vendita", "business development", "b2b sales", "b2c sales", "account management"],
+      "related": {
+        "negotiation": 0.8,
+        "customer service": 0.7,
+        "crm": 0.65,
+        "marketing": 0.65,
+        "salesforce": 0.55,
+        "communication": 0.65
+      }
+    },
+    "marketing": {
+      "aliases": ["marketing management", "brand management", "branding"],
+      "related": {
+        "digital marketing": 0.85,
+        "social media": 0.7,
+        "sales": 0.65,
+        "copywriting": 0.65,
+        "seo": 0.6,
+        "content marketing": 0.75,
+        "email marketing": 0.65
+      }
+    },
+    "digital marketing": {
+      "aliases": ["online marketing", "performance marketing", "growth marketing", "inbound marketing"],
+      "related": {
+        "marketing": 0.9,
+        "seo": 0.8,
+        "social media": 0.8,
+        "google ads": 0.8,
+        "email marketing": 0.75,
+        "content marketing": 0.75,
+        "analytics": 0.65
+      }
+    },
+    "hr": {
+      "aliases": ["human resources", "personalwesen", "ressources humaines", "risorse umane", "people management", "hr management"],
+      "related": {
+        "recruiting": 0.85,
+        "payroll": 0.65,
+        "labor law": 0.65,
+        "team leadership": 0.55,
+        "training": 0.65,
+        "employer branding": 0.6
+      }
+    },
+    "recruiting": {
+      "aliases": ["talent acquisition", "talent management", "recruitment", "staffing"],
+      "related": {
+        "hr": 0.9,
+        "headhunting": 0.8,
+        "sourcing": 0.75,
+        "employer branding": 0.65,
+        "communication": 0.55
+      }
+    },
+    "quality management": {
+      "aliases": ["qualitätsmanagement", "qualitätssicherung", "iso", "qm", "qc", "quality control", "iso 9001", "iso 14001"],
+      "related": {
+        "lean": 0.75,
+        "six sigma": 0.8,
+        "process improvement": 0.8,
+        "audit": 0.65,
+        "testing": 0.5
+      }
+    },
+    "lean": {
+      "aliases": ["lean management", "lean manufacturing", "six sigma", "kaizen", "continuous improvement", "5s"],
+      "related": {
+        "quality management": 0.8,
+        "supply chain": 0.65,
+        "project management": 0.55,
+        "process improvement": 0.85,
+        "warehouse": 0.5
+      }
+    },
+    "supply chain": {
+      "aliases": ["supply chain management", "scm", "procurement", "purchasing", "einkauf", "beschaffung", "approvisionnement"],
+      "related": {
+        "logistics": 0.8,
+        "lean": 0.6,
+        "sap": 0.55,
+        "warehouse": 0.65,
+        "inventory management": 0.8,
+        "import export": 0.65,
+        "negotiation": 0.5
+      }
+    },
+    "cad": {
+      "aliases": ["autocad", "technical drawing", "technisches zeichnen", "solidworks", "catia", "autocad 2d", "autocad 3d"],
+      "related": {
+        "engineering": 0.75,
+        "mechanical engineering": 0.75,
+        "architecture": 0.6,
+        "revit": 0.75,
+        "3d modeling": 0.75,
+        "bim": 0.65
+      }
+    },
+    "healthcare": {
+      "aliases": ["pflege", "nursing", "krankenpflege", "soins infirmiers", "infermieristica", "medical care", "clinical", "pflegefachkraft"],
+      "related": {
+        "patient care": 0.9,
+        "first aid": 0.7,
+        "medical documentation": 0.75,
+        "elderly care": 0.75,
+        "pharmacy": 0.55,
+        "physiotherapy": 0.55
+      }
+    },
+    "teaching": {
+      "aliases": ["lehrer", "lehrerin", "unterricht", "enseignement", "education", "trainer", "instructor", "ausbilder"],
+      "related": {
+        "coaching": 0.75,
+        "communication": 0.7,
+        "curriculum development": 0.75,
+        "e-learning": 0.65,
+        "assessment": 0.65,
+        "team leadership": 0.45
+      }
+    },
+    "german": {
+      "aliases": ["deutsch", "allemand", "tedesco", "german language", "deutschkenntnisse", "muttersprache deutsch"],
+      "related": {
+        "communication": 0.55,
+        "english": 0.35,
+        "french": 0.3,
+        "italian": 0.3
+      }
+    },
+    "english": {
+      "aliases": ["englisch", "anglais", "inglese", "english language", "business english", "english proficiency"],
+      "related": {
+        "communication": 0.6,
+        "german": 0.35,
+        "french": 0.3,
+        "italian": 0.3
+      }
+    },
+    "french": {
+      "aliases": ["französisch", "français", "francese", "french language", "french proficiency"],
+      "related": {
+        "communication": 0.55,
+        "english": 0.3,
+        "german": 0.3,
+        "italian": 0.35
+      }
+    },
+    "italian": {
+      "aliases": ["italienisch", "italiano", "italien", "italian language"],
+      "related": {
+        "communication": 0.55,
+        "english": 0.3,
+        "german": 0.3,
+        "french": 0.35
+      }
+    },
+    "driving license": {
+      "aliases": ["führerschein", "permis de conduire", "patente di guida", "driver's license", "fahrerlaubnis", "cat. b", "category b"],
+      "related": {
+        "forklift": 0.45,
+        "logistics": 0.5,
+        "field service": 0.6,
+        "warehouse": 0.4
+      }
+    },
+    "spark": {
+      "aliases": ["apache spark", "pyspark", "spark streaming"],
+      "related": {
+        "scala": 0.75,
+        "hadoop": 0.65,
+        "data engineering": 0.85,
+        "python": 0.55,
+        "kafka": 0.55,
+        "airflow": 0.6,
+        "databricks": 0.75
+      }
+    },
+    "data engineering": {
+      "aliases": ["data pipeline", "big data", "dataops", "etl developer"],
+      "related": {
+        "spark": 0.85,
+        "airflow": 0.8,
+        "dbt": 0.75,
+        "etl": 0.9,
+        "sql": 0.65,
+        "python": 0.65,
+        "kafka": 0.6,
+        "data science": 0.65
+      }
+    },
+    "etl": {
+      "aliases": ["extract transform load", "data integration", "ssis", "talend", "informatica"],
+      "related": {
+        "data engineering": 0.9,
+        "sql": 0.7,
+        "spark": 0.65,
+        "airflow": 0.7,
+        "data warehousing": 0.8,
+        "dbt": 0.7
+      }
+    },
+    "airflow": {
+      "aliases": ["apache airflow", "workflow orchestration"],
+      "related": {
+        "data engineering": 0.85,
+        "etl": 0.75,
+        "spark": 0.65,
+        "python": 0.7,
+        "dbt": 0.7,
+        "kubernetes": 0.5
+      }
+    },
+    "dbt": {
+      "aliases": ["dbt core", "data build tool"],
+      "related": {
+        "data engineering": 0.8,
+        "sql": 0.75,
+        "etl": 0.75,
+        "airflow": 0.65,
+        "snowflake": 0.65
+      }
+    },
+    "rest api": {
+      "aliases": ["restful api", "api development", "rest", "web services", "openapi", "swagger"],
+      "related": {
+        "graphql": 0.7,
+        "microservices": 0.7,
+        "nodejs": 0.6,
+        "python": 0.55,
+        "java": 0.55,
+        "fastapi": 0.7
+      }
+    },
+    "microservices": {
+      "aliases": ["microservice architecture", "distributed systems"],
+      "related": {
+        "docker": 0.75,
+        "kubernetes": 0.75,
+        "rest api": 0.7,
+        "kafka": 0.65,
+        "devops": 0.65,
+        "golang": 0.6
+      }
+    },
+    "flutter": {
+      "aliases": ["flutter sdk", "dart", "flutter dart"],
+      "related": {
+        "mobile": 0.9,
+        "android": 0.7,
+        "ios": 0.7,
+        "react native": 0.75
+      }
+    },
+    "android": {
+      "aliases": ["android development", "android sdk", "android studio"],
+      "related": {
+        "kotlin": 0.85,
+        "java": 0.7,
+        "mobile": 0.9,
+        "flutter": 0.7,
+        "react native": 0.65,
+        "ios": 0.55
+      }
+    },
+    "ios": {
+      "aliases": ["ios development", "iphone development"],
+      "related": {
+        "swift": 0.9,
+        "objective-c": 0.75,
+        "mobile": 0.9,
+        "flutter": 0.65,
+        "android": 0.55
+      }
+    },
+    "embedded systems": {
+      "aliases": ["embedded software", "firmware", "rtos", "microcontroller", "embedded c"],
+      "related": {
+        "c++": 0.75,
+        "c": 0.8,
+        "plc": 0.55,
+        "linux": 0.55,
+        "matlab": 0.5
+      }
+    },
+    "plc": {
+      "aliases": ["programmable logic controller", "siemens s7", "tia portal", "industrial automation", "codesys", "step 7"],
+      "related": {
+        "embedded systems": 0.6,
+        "electrical engineering": 0.7,
+        "scada": 0.75,
+        "hmi": 0.7
+      }
+    },
+    "matlab": {
+      "aliases": ["simulink", "matlab simulink"],
+      "related": {
+        "embedded systems": 0.55,
+        "signal processing": 0.75,
+        "machine learning": 0.5,
+        "python": 0.5,
+        "r": 0.45
+      }
+    },
+    "ui ux design": {
+      "aliases": ["ux design", "ui design", "user experience", "user interface", "product design", "ux ui", "interaction design"],
+      "related": {
+        "figma": 0.85,
+        "adobe creative suite": 0.6,
+        "prototyping": 0.8,
+        "wireframing": 0.85,
+        "css": 0.5
+      }
+    },
+    "figma": {
+      "aliases": ["figma design"],
+      "related": {
+        "ui ux design": 0.9,
+        "prototyping": 0.8,
+        "wireframing": 0.8,
+        "adobe creative suite": 0.5,
+        "sketch": 0.75
+      }
+    },
+    "adobe creative suite": {
+      "aliases": ["photoshop", "illustrator", "indesign", "adobe photoshop", "adobe illustrator", "lightroom", "premiere pro", "after effects"],
+      "related": {
+        "ui ux design": 0.65,
+        "graphic design": 0.9,
+        "video editing": 0.6,
+        "photography": 0.55,
+        "figma": 0.5
+      }
+    },
+    "graphic design": {
+      "aliases": ["grafikdesign", "design grafiko", "visual design", "graphic designer"],
+      "related": {
+        "adobe creative suite": 0.9,
+        "ui ux design": 0.65,
+        "figma": 0.55,
+        "branding": 0.7,
+        "illustration": 0.65
+      }
+    },
+    "wordpress": {
+      "aliases": ["cms", "content management system", "woocommerce", "drupal", "joomla"],
+      "related": {
+        "php": 0.75,
+        "html": 0.65,
+        "css": 0.6,
+        "seo": 0.55,
+        "web development": 0.65
+      }
+    },
+    "shopify": {
+      "aliases": ["ecommerce platform", "prestashop", "magento", "bigcommerce"],
+      "related": {
+        "e-commerce management": 0.85,
+        "digital marketing": 0.6,
+        "seo": 0.55,
+        "php": 0.45
+      }
+    },
+    "itil": {
+      "aliases": ["itil 4", "itsm", "it service management", "service desk", "incident management"],
+      "related": {
+        "it support": 0.85,
+        "helpdesk": 0.8,
+        "servicenow": 0.7,
+        "devops": 0.55
+      }
+    },
+    "it support": {
+      "aliases": ["helpdesk", "technical support", "user support", "servicedesk", "first level support", "desktop support"],
+      "related": {
+        "itil": 0.8,
+        "networking": 0.6,
+        "windows": 0.65,
+        "linux": 0.5,
+        "cybersecurity": 0.45,
+        "microsoft office": 0.5
+      }
+    },
+    "jira": {
+      "aliases": ["jira software", "atlassian", "confluence", "issue tracking"],
+      "related": {
+        "agile": 0.75,
+        "scrum": 0.7,
+        "project management": 0.65,
+        "devops": 0.5
+      }
+    },
+    "microsoft dynamics": {
+      "aliases": ["dynamics 365", "dynamics crm", "ms dynamics", "d365"],
+      "related": {
+        "crm": 0.85,
+        "erp": 0.75,
+        "azure": 0.6,
+        "salesforce": 0.55,
+        "sap": 0.5
+      }
+    },
+    "administration": {
+      "aliases": ["office management", "office administration", "verwaltung", "büroverwaltung", "back office", "front office", "segreteria"],
+      "related": {
+        "microsoft office": 0.75,
+        "data entry": 0.65,
+        "communication": 0.65,
+        "reception": 0.7,
+        "time management": 0.65
+      }
+    },
+    "reception": {
+      "aliases": ["front desk", "receptionist", "empfang", "accueil", "accoglienza", "concierge"],
+      "related": {
+        "administration": 0.8,
+        "customer service": 0.8,
+        "communication": 0.7,
+        "microsoft office": 0.55
+      }
+    },
+    "data entry": {
+      "aliases": ["dateneingabe", "saisie de données", "inserimento dati", "typing", "data input"],
+      "related": {
+        "administration": 0.7,
+        "microsoft office": 0.6,
+        "excel": 0.65
+      }
+    },
+    "cashier": {
+      "aliases": ["kassierer", "kassiererin", "caissier", "cassiere", "cash handling", "pos system", "kasse", "kasseabrechnung"],
+      "related": {
+        "retail": 0.8,
+        "customer service": 0.75,
+        "cash management": 0.85
+      }
+    },
+    "hospitality": {
+      "aliases": ["hotel management", "hotellerie", "gastgewerbe", "hôtellerie", "alberghiero", "hospitality management"],
+      "related": {
+        "tourism": 0.8,
+        "customer service": 0.8,
+        "food service": 0.7,
+        "event management": 0.65,
+        "communication": 0.6
+      }
+    },
+    "food service": {
+      "aliases": ["restauration", "ristorazione", "gastronomie", "waiter", "waitress", "kellner", "serveur", "service en salle"],
+      "related": {
+        "hospitality": 0.8,
+        "customer service": 0.75,
+        "cooking": 0.65
+      }
+    },
+    "cooking": {
+      "aliases": ["chef", "koch", "küchenchef", "cuisinier", "cuoco", "pastry chef", "barista", "culinary"],
+      "related": {
+        "food service": 0.75,
+        "hospitality": 0.65,
+        "haccp": 0.7,
+        "food safety": 0.75
+      }
+    },
+    "cleaning": {
+      "aliases": ["reinigung", "nettoyage", "pulizie", "housekeeping", "facility management", "janitor", "gebäudereinigung"],
+      "related": {
+        "facility management": 0.75,
+        "health and safety": 0.55
+      }
+    },
+    "security guard": {
+      "aliases": ["sicherheitsdienst", "sécurité privée", "sicurezza privata", "security officer", "bewachung", "doorman", "portiere"],
+      "related": {
+        "surveillance": 0.8,
+        "emergency response": 0.65,
+        "communication": 0.5,
+        "driving license": 0.4
+      }
+    },
+    "electrical engineering": {
+      "aliases": ["elektrotechnik", "electrician", "électricien", "elettricista", "electrical installation", "elv", "elektroinstallation"],
+      "related": {
+        "plc": 0.65,
+        "cad": 0.55,
+        "embedded systems": 0.5,
+        "networking": 0.4
+      }
+    },
+    "mechanical engineering": {
+      "aliases": ["maschinenbau", "génie mécanique", "ingegneria meccanica", "mechanical design", "maintenance engineer"],
+      "related": {
+        "cad": 0.85,
+        "lean": 0.55,
+        "quality management": 0.55,
+        "matlab": 0.5,
+        "plc": 0.5
+      }
+    },
+    "civil engineering": {
+      "aliases": ["bauingenieur", "génie civil", "ingegneria civile", "site engineer", "structural engineering"],
+      "related": {
+        "cad": 0.75,
+        "architecture": 0.65,
+        "project management": 0.65
+      }
+    },
+    "construction": {
+      "aliases": ["bau", "bauarbeiter", "chantier", "cantiere", "site management", "maurer", "mason", "bricklayer"],
+      "related": {
+        "civil engineering": 0.7,
+        "architecture": 0.55,
+        "project management": 0.5,
+        "driving license": 0.4
+      }
+    },
+    "welding": {
+      "aliases": ["schweißen", "soudage", "saldatura", "welder", "schlosser", "metalworking", "lavorazione metalli"],
+      "related": {
+        "mechanical engineering": 0.55,
+        "construction": 0.5
+      }
+    },
+    "real estate": {
+      "aliases": ["immobilien", "immobilier", "immobiliare", "property management", "hausverwaltung", "real estate agent", "makler"],
+      "related": {
+        "sales": 0.7,
+        "negotiation": 0.75,
+        "legal": 0.5,
+        "customer service": 0.5
+      }
+    },
+    "legal": {
+      "aliases": ["law", "recht", "droit", "diritto", "rechtsanwalt", "avocat", "avvocato", "jurist", "compliance"],
+      "related": {
+        "compliance": 0.85,
+        "contract management": 0.8,
+        "labor law": 0.8,
+        "tax": 0.65,
+        "paralegal": 0.8
+      }
+    },
+    "social work": {
+      "aliases": ["sozialarbeit", "sozialarbeiter", "travail social", "assistente sociale", "sozialpädagogik"],
+      "related": {
+        "counseling": 0.75,
+        "psychology": 0.65,
+        "childcare": 0.65,
+        "elderly care": 0.65,
+        "communication": 0.6
+      }
+    },
+    "psychology": {
+      "aliases": ["psychologie", "psychologist", "psychological support", "psicologia", "beratung"],
+      "related": {
+        "counseling": 0.85,
+        "social work": 0.65,
+        "coaching": 0.65,
+        "hr": 0.5,
+        "communication": 0.55
+      }
+    },
+    "childcare": {
+      "aliases": ["kinderpflege", "kita", "kindergarten", "educator", "erzieher", "erzieherin", "éducateur", "asilo nido"],
+      "related": {
+        "teaching": 0.8,
+        "social work": 0.65,
+        "elderly care": 0.5,
+        "communication": 0.55
+      }
+    },
+    "elderly care": {
+      "aliases": ["altenpflege", "altenpfleger", "aide-soignant", "geriatria", "caregiver", "seniorenbetreuung"],
+      "related": {
+        "healthcare": 0.85,
+        "social work": 0.65,
+        "patient care": 0.85,
+        "communication": 0.55
+      }
+    },
+    "architecture": {
+      "aliases": ["architektur", "architekt", "architecte", "architettura", "architectural design"],
+      "related": {
+        "cad": 0.8,
+        "civil engineering": 0.65,
+        "revit": 0.8,
+        "interior design": 0.7,
+        "bim": 0.75
+      }
+    },
+    "interior design": {
+      "aliases": ["innenarchitektur", "design d'intérieur", "architettura d'interni", "interior designer"],
+      "related": {
+        "architecture": 0.75,
+        "cad": 0.65,
+        "graphic design": 0.5
+      }
+    },
+    "tourism": {
+      "aliases": ["travel", "tourismus", "tourisme", "turismo", "tour guide", "travel agent", "reisebüro"],
+      "related": {
+        "hospitality": 0.85,
+        "event management": 0.6,
+        "customer service": 0.65,
+        "communication": 0.6
+      }
+    },
+    "event management": {
+      "aliases": ["event planning", "eventmanagement", "organisation d'événements", "organizzazione eventi", "event coordinator"],
+      "related": {
+        "project management": 0.8,
+        "hospitality": 0.7,
+        "marketing": 0.65,
+        "communication": 0.65
+      }
+    },
+    "fitness": {
+      "aliases": ["personal trainer", "sports coach", "sports science", "sportlehrer", "fitness trainer"],
+      "related": {
+        "coaching": 0.75,
+        "teaching": 0.65,
+        "healthcare": 0.5,
+        "communication": 0.55
+      }
+    },
+    "copywriting": {
+      "aliases": ["content writing", "redaktion", "rédaction", "copywriter", "content creator", "blog writing", "testo pubblicitario"],
+      "related": {
+        "marketing": 0.75,
+        "digital marketing": 0.7,
+        "seo": 0.7,
+        "social media": 0.65,
+        "journalism": 0.75
+      }
+    },
+    "journalism": {
+      "aliases": ["journalist", "reporter", "redakteur", "journaliste", "giornalismo", "media"],
+      "related": {
+        "copywriting": 0.75,
+        "communication": 0.7,
+        "public relations": 0.65,
+        "social media": 0.6
+      }
+    },
+    "public relations": {
+      "aliases": ["pr", "öffentlichkeitsarbeit", "relations publiques", "media relations", "press relations", "corporate communications"],
+      "related": {
+        "marketing": 0.75,
+        "communication": 0.8,
+        "social media": 0.7,
+        "journalism": 0.6
+      }
+    },
+    "photography": {
+      "aliases": ["fotografie", "photographie", "fotografia", "photographer", "fotograf"],
+      "related": {
+        "video editing": 0.65,
+        "adobe creative suite": 0.65,
+        "graphic design": 0.5
+      }
+    },
+    "video editing": {
+      "aliases": ["video produktion", "montage vidéo", "montaggio video", "filmmaking", "videographer", "davinci resolve", "premiere pro"],
+      "related": {
+        "photography": 0.65,
+        "adobe creative suite": 0.7,
+        "social media": 0.55,
+        "marketing": 0.5
+      }
+    },
+    "retail": {
+      "aliases": ["einzelhandel", "commerce de détail", "dettaglio", "shop assistant", "verkäufer", "vendeur", "addetto vendita", "store manager"],
+      "related": {
+        "sales": 0.85,
+        "customer service": 0.8,
+        "cashier": 0.7,
+        "visual merchandising": 0.65,
+        "inventory management": 0.6
+      }
+    },
+    "e-commerce management": {
+      "aliases": ["ecommerce", "online shop", "webshop", "online store management", "amazon seller", "marketplace management"],
+      "related": {
+        "digital marketing": 0.75,
+        "shopify": 0.8,
+        "seo": 0.65,
+        "logistics": 0.55,
+        "customer service": 0.55
+      }
+    },
+    "insurance": {
+      "aliases": ["versicherung", "assurance", "assicurazione", "insurance broker", "versicherungsberater", "underwriting"],
+      "related": {
+        "sales": 0.7,
+        "financial analysis": 0.65,
+        "customer service": 0.6,
+        "banking": 0.55
+      }
+    },
+    "banking": {
+      "aliases": ["bank", "banque", "banca", "financial services", "retail banking", "corporate banking", "relationship manager"],
+      "related": {
+        "finance": 0.85,
+        "financial analysis": 0.8,
+        "accounting": 0.65,
+        "insurance": 0.55,
+        "investment": 0.75
+      }
+    },
+    "financial analysis": {
+      "aliases": ["finanzanalyse", "analyse financière", "analisi finanziaria", "financial modeling", "fp&a", "controlling finance"],
+      "related": {
+        "accounting": 0.75,
+        "excel": 0.7,
+        "banking": 0.75,
+        "power bi": 0.5,
+        "budgeting": 0.75
+      }
+    },
+    "tax": {
+      "aliases": ["steuer", "steuerberatung", "fiscalité", "fiscale", "tax advisory", "umsatzsteuer", "mwst", "iva", "tva"],
+      "related": {
+        "accounting": 0.85,
+        "legal": 0.7,
+        "financial analysis": 0.6,
+        "audit": 0.65
+      }
+    },
+    "payroll": {
+      "aliases": ["lohnbuchhaltung", "paie", "elaborazione paghe", "payroll processing", "gehaltsbuchhaltung"],
+      "related": {
+        "hr": 0.85,
+        "accounting": 0.75,
+        "labor law": 0.7,
+        "sap": 0.55,
+        "excel": 0.5
+      }
+    },
+    "logistics": {
+      "aliases": ["logistik", "logistique", "logistica", "freight", "spedition", "transport management", "transport"],
+      "related": {
+        "supply chain": 0.85,
+        "warehouse": 0.75,
+        "forklift": 0.6,
+        "import export": 0.7,
+        "driving license": 0.5,
+        "sap": 0.5
+      }
+    },
+    "import export": {
+      "aliases": ["customs", "zoll", "douane", "dogana", "international trade", "freight forwarding", "spedizioniere"],
+      "related": {
+        "logistics": 0.85,
+        "supply chain": 0.75,
+        "legal": 0.5,
+        "negotiation": 0.5
+      }
+    },
+    "change management": {
+      "aliases": ["organizational change", "transformation", "change leadership", "reorganisation"],
+      "related": {
+        "project management": 0.75,
+        "team leadership": 0.7,
+        "communication": 0.7,
+        "coaching": 0.6,
+        "agile": 0.55
+      }
+    },
+    "process management": {
+      "aliases": ["bpm", "business process management", "process optimization", "process improvement", "prozessmanagement"],
+      "related": {
+        "lean": 0.85,
+        "quality management": 0.8,
+        "project management": 0.7,
+        "change management": 0.65
+      }
+    },
+    "social media": {
+      "aliases": ["social media marketing", "instagram", "linkedin", "facebook", "tiktok", "social media management", "community management"],
+      "related": {
+        "digital marketing": 0.85,
+        "marketing": 0.8,
+        "copywriting": 0.65,
+        "public relations": 0.6,
+        "photography": 0.5
+      }
+    },
+    "seo": {
+      "aliases": ["search engine optimization", "sem", "google analytics", "google search console", "search engine marketing"],
+      "related": {
+        "digital marketing": 0.85,
+        "copywriting": 0.65,
+        "wordpress": 0.55,
+        "google ads": 0.75,
+        "social media": 0.55
+      }
+    },
+    "spanish": {
+      "aliases": ["spanisch", "espagnol", "spagnolo", "español", "spanish language"],
+      "related": {
+        "communication": 0.55,
+        "english": 0.3,
+        "italian": 0.35,
+        "french": 0.35,
+        "portuguese": 0.55
+      }
+    },
+    "portuguese": {
+      "aliases": ["portugiesisch", "portugais", "portoghese", "português", "brazilian portuguese"],
+      "related": {
+        "communication": 0.55,
+        "spanish": 0.55,
+        "english": 0.3
+      }
+    },
+    "chinese": {
+      "aliases": ["mandarin", "mandarin chinese", "chinesisch", "chinois", "cinese", "cantonese"],
+      "related": {
+        "communication": 0.55,
+        "english": 0.3
+      }
+    },
+    "arabic": {
+      "aliases": ["arabisch", "arabe", "arabo", "arabic language"],
+      "related": {
+        "communication": 0.55,
+        "english": 0.3
+      }
+    },
+    "russian": {
+      "aliases": ["russisch", "russe", "russo", "russian language"],
+      "related": {
+        "communication": 0.55,
+        "english": 0.3
+      }
+    },
+    "adaptability": {
+      "aliases": ["flexibility", "flexibilität", "flexibilité", "flessibilità", "resilience", "stress resistance", "belastbarkeit"],
+      "related": {
+        "problem solving": 0.6,
+        "communication": 0.5,
+        "teamwork": 0.55,
+        "change management": 0.65
+      }
+    },
+    "coaching": {
+      "aliases": ["mentoring", "people development", "ausbilder", "mentor"],
+      "related": {
+        "team leadership": 0.8,
+        "psychology": 0.65,
+        "teaching": 0.75,
+        "hr": 0.6,
+        "communication": 0.65
+      }
+    },
+
+    "nursing": {
+      "aliases": [
+        "pflege", "krankenpflege", "altenpflege", "pflegefachmann", "pflegefachfrau",
+        "ota", "medizinische pflege", "soins infirmiers", "soins", "infirmier",
+        "infirmière", "cure infermieristiche", "infermiere", "infermiera",
+        "registered nurse", "rn", "licensed practical nurse", "lpn",
+        "fachmann gesundheit", "fachfrau gesundheit", "facha gesundheit"
+      ],
+      "related": {
+        "healthcare": 1.0,
+        "elderly care": 0.85,
+        "social work": 0.6,
+        "childcare": 0.5,
+        "psychology": 0.45
+      }
+    },
+    "medical assistant": {
+      "aliases": [
+        "medizinische praxisassistenz", "mpa", "arztassistenz", "arztassistentin",
+        "assistante médicale", "assistente medica", "medical practice assistant",
+        "praxisassistentin", "ambulatorycare"
+      ],
+      "related": {
+        "healthcare": 0.95,
+        "nursing": 0.75,
+        "administration": 0.5
+      }
+    },
+    "medical technology": {
+      "aliases": [
+        "medizintechnik", "medizintechniker", "biomedizintechnik", "gerätetechnik medizin",
+        "technologie médicale", "tecnologia medica", "medical devices", "biomedical engineering",
+        "biomedical technician"
+      ],
+      "related": {
+        "healthcare": 0.85,
+        "electrical engineering": 0.7,
+        "mechanical engineering": 0.65
+      }
+    },
+    "pharmacy": {
+      "aliases": [
+        "pharmazie", "pharmazeutische industrie", "pharmaassistentin",
+        "drogist", "drogistin", "pharmacie", "farmacia",
+        "pharmaceutical", "pharmacist", "drug regulatory"
+      ],
+      "related": {
+        "healthcare": 0.85,
+        "chemistry": 0.8,
+        "regulatory affairs": 0.75
+      }
+    },
+    "chemistry": {
+      "aliases": [
+        "chemie", "chemiker", "chemielaborant", "laborant", "analytische chemie",
+        "chimie", "chimica", "biochemistry", "biochemie", "organic chemistry",
+        "quality control lab", "laboranalyse"
+      ],
+      "related": {
+        "pharmacy": 0.8,
+        "medical technology": 0.65,
+        "laboratory": 0.9
+      }
+    },
+    "laboratory": {
+      "aliases": [
+        "labor", "laborarbeit", "laborant fachrichtung", "laboratorio", "laboratoire",
+        "lab technician", "labortechniker", "diagnostics", "laboratory analysis"
+      ],
+      "related": {
+        "chemistry": 0.9,
+        "pharmacy": 0.75,
+        "healthcare": 0.7
+      }
+    },
+    "radiography": {
+      "aliases": [
+        "röntgen", "röntgenassistenz", "radiologie", "mrt", "ct", "radiographer",
+        "medical imaging", "radiotechnologue", "radiologia"
+      ],
+      "related": {
+        "healthcare": 0.9,
+        "medical technology": 0.8
+      }
+    },
+    "physiotherapy": {
+      "aliases": [
+        "physiotherapie", "physiotherapeut", "physiothérapeute", "fisioterapia",
+        "physical therapy", "rehabilitation", "rehab", "bewegungstherapie",
+        "ergotherapie", "ergotherapy"
+      ],
+      "related": {
+        "healthcare": 0.9,
+        "sports science": 0.7,
+        "nursing": 0.6
+      }
+    },
+    "compliance": {
+      "aliases": [
+        "regulatory compliance", "rechtliche compliance", "gesetzeskonformität",
+        "conformité réglementaire", "conformità normativa", "grc",
+        "governance risk compliance", "finma", "regulatory affairs",
+        "compliance officer", "compliance management"
+      ],
+      "related": {
+        "legal": 0.9,
+        "banking": 0.8,
+        "audit": 0.75,
+        "risk management": 0.8
+      }
+    },
+    "audit": {
+      "aliases": [
+        "revision", "revisor", "wirtschaftsprüfung", "wirtschaftsprüfer",
+        "audit interne", "internal audit", "external audit", "réviseur",
+        "revisione", "auditeur", "cia"
+      ],
+      "related": {
+        "accounting": 0.85,
+        "financial analysis": 0.8,
+        "compliance": 0.75,
+        "tax": 0.7
+      }
+    },
+    "risk management": {
+      "aliases": [
+        "risikomanagement", "risk assessment", "risikoanalyse", "gestion des risques",
+        "gestione del rischio", "operational risk", "credit risk", "market risk",
+        "risk officer", "risk analyst"
+      ],
+      "related": {
+        "compliance": 0.8,
+        "banking": 0.75,
+        "financial analysis": 0.7,
+        "insurance": 0.75
+      }
+    },
+    "treuhand": {
+      "aliases": [
+        "treuhandwesen", "treuhänder", "treuhänderin", "fiduciaire",
+        "fiduciary", "trustee services", "fiduciaria svizzera",
+        "treuhand ag", "buchführung und treuhand"
+      ],
+      "related": {
+        "accounting": 0.9,
+        "tax": 0.85,
+        "audit": 0.75,
+        "financial analysis": 0.7
+      }
+    },
+    "ifrs": {
+      "aliases": [
+        "international financial reporting standards", "ias", "us gaap", "gaap",
+        "swiss gaap fer", "ifrs reporting", "normes ifrs", "rechnungslegung ifrs"
+      ],
+      "related": {
+        "accounting": 0.9,
+        "financial analysis": 0.85,
+        "audit": 0.8,
+        "treuhand": 0.75
+      }
+    },
+    "controlling": {
+      "aliases": [
+        "finanzcontrolling", "unternehmenscontrolling", "controller", "contrôle de gestion",
+        "management control", "financial controlling", "business controlling",
+        "budget controlling", "cost controlling"
+      ],
+      "related": {
+        "financial analysis": 0.9,
+        "accounting": 0.8,
+        "ifrs": 0.7,
+        "treuhand": 0.65
+      }
+    },
+    "contract law": {
+      "aliases": [
+        "vertragsrecht", "vertragsgestaltung", "droit des contrats",
+        "diritto contrattuale", "contract drafting", "legal contracts",
+        "commercial law", "handelsrecht", "droit commercial"
+      ],
+      "related": {
+        "legal": 0.95,
+        "compliance": 0.75,
+        "negotiation": 0.6
+      }
+    },
+    "labour law": {
+      "aliases": [
+        "arbeitsrecht", "droit du travail", "diritto del lavoro",
+        "employment law", "hr law", "personal recht", "tariffvertrag"
+      ],
+      "related": {
+        "legal": 0.95,
+        "hr": 0.8,
+        "compliance": 0.65
+      }
+    },
+    "structural engineering": {
+      "aliases": [
+        "tragwerkplanung", "tragwerksplanung", "tiefbau", "hochbau", "stahlbau",
+        "bauwesen", "bauingenieur", "bauingenieurwesen", "génie civil",
+        "civil structural", "reinforced concrete", "stahlbeton", "bausatik"
+      ],
+      "related": {
+        "civil engineering": 0.95,
+        "construction": 0.9,
+        "cad": 0.6,
+        "architecture": 0.7
+      }
+    },
+    "building technology": {
+      "aliases": [
+        "gebäudetechnik", "haustechnik", "hvac", "heizung lüftung klima",
+        "sanitär heizung klima", "hlk", "technologie du bâtiment",
+        "technica degli edifici", "building services", "fm facility management",
+        "glx", "bms"
+      ],
+      "related": {
+        "mechanical engineering": 0.75,
+        "electrical engineering": 0.7,
+        "construction": 0.8
+      }
+    },
+    "electrical installation": {
+      "aliases": [
+        "elektroinstallation", "elektroinstallateur", "elektromonteur",
+        "installation électrique", "installazione elettrica",
+        "low voltage", "niederspannung", "high voltage", "hochspannung",
+        "elektrik", "electrician"
+      ],
+      "related": {
+        "electrical engineering": 0.95,
+        "building technology": 0.7,
+        "construction": 0.7
+      }
+    },
+    "automation": {
+      "aliases": [
+        "automatisierungstechnik", "automatisierung", "steuerungstechnik",
+        "automatisation", "automazione", "process automation", "rpa",
+        "industrial automation", "plc programming"
+      ],
+      "related": {
+        "plc": 0.9,
+        "embedded systems": 0.8,
+        "electrical engineering": 0.8,
+        "mechanical engineering": 0.65
+      }
+    },
+    "supply chain management": {
+      "aliases": [
+        "lieferkettenverwaltung", "supply chain", "scm", "logistikmanagement",
+        "gestion de la chaîne d'approvisionnement", "gestione della catena di fornitura",
+        "procurement", "beschaffung", "einkauf", "purchasing", "verkehr und logistik"
+      ],
+      "related": {
+        "supply chain": 1.0,
+        "logistics": 0.95,
+        "import export": 0.8,
+        "warehouse": 0.7
+      }
+    },
+    "sap mm": {
+      "aliases": [
+        "sap materials management", "sap mm modul", "sap procurement", "sap einkauf"
+      ],
+      "related": {
+        "sap": 0.95,
+        "supply chain management": 0.75,
+        "erp": 0.8
+      }
+    },
+    "sap fi": {
+      "aliases": [
+        "sap financial accounting", "sap fi/co", "sap finance", "sap accounting"
+      ],
+      "related": {
+        "sap": 0.95,
+        "accounting": 0.8,
+        "controlling": 0.75,
+        "erp": 0.8
+      }
+    },
+    "sap hr": {
+      "aliases": [
+        "sap hcm", "sap human capital management", "sap personnel", "sap payroll"
+      ],
+      "related": {
+        "sap": 0.95,
+        "hr": 0.85,
+        "payroll": 0.8,
+        "erp": 0.8
+      }
+    },
+    "data analysis": {
+      "aliases": [
+        "datenanalyse", "analyse de données", "analisi dei dati",
+        "data analytics", "business analytics", "statistical analysis",
+        "descriptive analytics", "kpi reporting", "reporting"
+      ],
+      "related": {
+        "data science": 0.85,
+        "machine learning": 0.7,
+        "power bi": 0.75,
+        "tableau": 0.75,
+        "sql": 0.65,
+        "excel": 0.6
+      }
+    },
+    "product management": {
+      "aliases": [
+        "produktmanagement", "product owner", "gestion de produit",
+        "gestione del prodotto", "product manager", "po", "roadmap",
+        "product strategy", "feature prioritization"
+      ],
+      "related": {
+        "agile": 0.8,
+        "project management": 0.75,
+        "ux design": 0.6,
+        "team leadership": 0.6
+      }
+    },
+    "ux design": {
+      "aliases": [
+        "user experience", "ux", "ui design", "user interface", "usability",
+        "interaction design", "service design", "design thinking",
+        "nutzererfahrung", "conception ux"
+      ],
+      "related": {
+        "ui ux design": 1.0,
+        "figma": 0.85,
+        "graphic design": 0.7,
+        "product management": 0.6
+      }
+    },
+    "business development": {
+      "aliases": [
+        "geschäftsentwicklung", "business dev", "biz dev",
+        "développement commercial", "sviluppo commerciale",
+        "new business", "partnership development"
+      ],
+      "related": {
+        "sales": 0.85,
+        "marketing": 0.7,
+        "negotiation": 0.75,
+        "project management": 0.6
+      }
+    },
+    "key account management": {
+      "aliases": [
+        "key account", "kam", "großkundenbetreuung", "gestion grands comptes",
+        "customer account management", "account manager", "kundenpflege"
+      ],
+      "related": {
+        "sales": 0.9,
+        "customer service": 0.8,
+        "negotiation": 0.7,
+        "crm": 0.7
+      }
+    },
+    "crm": {
+      "aliases": [
+        "customer relationship management", "kundenpflege software",
+        "salesforce crm", "zoho crm", "hubspot", "microsoft dynamics crm",
+        "gestion relation client"
+      ],
+      "related": {
+        "salesforce": 0.85,
+        "customer service": 0.75,
+        "key account management": 0.7,
+        "sales": 0.7
+      }
+    },
+    "german language": {
+      "aliases": [
+        "deutsch", "hochdeutsch", "schweizerdeutsch", "german b2", "german c1",
+        "german c2", "deutschkenntnisse", "langue allemande", "tedesco"
+      ],
+      "related": {
+        "german": 1.0,
+        "communication": 0.4
+      }
+    },
+    "french language": {
+      "aliases": [
+        "französisch", "français", "francese", "french b2", "french c1",
+        "langue française", "connaissance du français"
+      ],
+      "related": {
+        "french": 1.0,
+        "communication": 0.4
+      }
+    },
+    "italian language": {
+      "aliases": [
+        "italienisch", "italiano", "italian b2", "italian c1",
+        "connaissance de l'italien", "kenntnisse italienisch"
+      ],
+      "related": {
+        "italian": 1.0,
+        "communication": 0.4
+      }
+    },
+    "sports science": {
+      "aliases": [
+        "sportwissenschaft", "sporttrainer", "personal trainer", "fitnesstrainer",
+        "sportcoach", "bewegungswissenschaft", "sportpädagogik"
+      ],
+      "related": {
+        "fitness": 0.9,
+        "coaching": 0.7,
+        "physiotherapy": 0.65
+      }
+    },
+    "food safety": {
+      "aliases": [
+        "lebensmittelhygiene", "haccp", "food hygiene", "lebensmittelsicherheit",
+        "hygiène alimentaire", "sicurezza alimentare", "lebensmittelkontrolle"
+      ],
+      "related": {
+        "cooking": 0.8,
+        "food service": 0.85,
+        "quality management": 0.7
+      }
+    },
+    "barista": {
+      "aliases": [
+        "kaffee", "kaffeespezialitäten", "espresso", "specialty coffee",
+        "café", "caffè", "coffee preparation", "latte art"
+      ],
+      "related": {
+        "food service": 0.9,
+        "hospitality": 0.85,
+        "cooking": 0.5
+      }
+    },
+    "property management": {
+      "aliases": [
+        "immobilienverwaltung", "liegenschaftsverwaltung", "mietverwaltung",
+        "gestion immobilière", "gestione immobiliare",
+        "facility management", "bewirtschaftung"
+      ],
+      "related": {
+        "real estate": 0.9,
+        "administration": 0.7,
+        "accounting": 0.6
+      }
+    },
+    "german work permit": {
+      "aliases": [
+        "schweizer arbeitsbewilligung", "aufenthaltsbewilligung", "eu citizen",
+        "permit b", "permit c", "permit l", "bewilligung b", "bewilligung c",
+        "autorisation de travail suisse", "permesso di lavoro svizzero",
+        "work permit switzerland", "ch work permit", "swiss permit"
+      ],
+      "related": {
+        "german language": 0.3
+      }
+    }
+  }
+}
