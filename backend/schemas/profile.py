@@ -5,6 +5,34 @@ from typing import Any, List, Optional
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 # ═══════════════════════════════════════
+# Shared validation helpers
+# ═══════════════════════════════════════
+
+def _validate_profile_ranges(obj: Any) -> None:
+    """Validate numeric range fields shared by SearchProfileBase and SearchProfileUpdate."""
+    if getattr(obj, "workload_min", None) is not None and not 0 <= obj.workload_min <= 100:
+        raise ValueError("workload_min must be between 0 and 100")
+    if getattr(obj, "workload_max", None) is not None and not 0 <= obj.workload_max <= 100:
+        raise ValueError("workload_max must be between 0 and 100")
+    if (
+        getattr(obj, "workload_min", None) is not None
+        and getattr(obj, "workload_max", None) is not None
+        and obj.workload_min > obj.workload_max
+    ):
+        raise ValueError("workload_min cannot be greater than workload_max")
+    if getattr(obj, "salary_min_chf", None) is not None and obj.salary_min_chf < 0:
+        raise ValueError("salary_min_chf must be non-negative")
+    if getattr(obj, "hard_max_distance_km", None) is not None and obj.hard_max_distance_km < 0:
+        raise ValueError("hard_max_distance_km must be non-negative")
+    if getattr(obj, "max_distance", None) is not None and not 0 <= obj.max_distance <= 500:
+        raise ValueError("max_distance must be between 0 and 500 km")
+    if getattr(obj, "posted_within_days", None) is not None and not 1 <= obj.posted_within_days <= 365:
+        raise ValueError("posted_within_days must be between 1 and 365 days")
+    if getattr(obj, "schedule_interval_hours", None) is not None and obj.schedule_interval_hours < 1:
+        raise ValueError("schedule_interval_hours must be at least 1")
+
+
+# ═══════════════════════════════════════
 # Search Profile Schemas
 # ═══════════════════════════════════════
 
@@ -135,20 +163,7 @@ class SearchProfileBase(BaseModel):
 
     @model_validator(mode="after")
     def validate_hard_filter_ranges(self):
-        if self.workload_min is not None and not 0 <= self.workload_min <= 100:
-            raise ValueError("workload_min must be between 0 and 100")
-        if self.workload_max is not None and not 0 <= self.workload_max <= 100:
-            raise ValueError("workload_max must be between 0 and 100")
-        if self.workload_min is not None and self.workload_max is not None and self.workload_min > self.workload_max:
-            raise ValueError("workload_min cannot be greater than workload_max")
-        if self.salary_min_chf is not None and self.salary_min_chf < 0:
-            raise ValueError("salary_min_chf must be non-negative")
-        if self.hard_max_distance_km is not None and self.hard_max_distance_km < 0:
-            raise ValueError("hard_max_distance_km must be non-negative")
-        if self.max_distance is not None and not 0 <= self.max_distance <= 500:
-            raise ValueError("max_distance must be between 0 and 500 km")
-        if self.posted_within_days is not None and not 1 <= self.posted_within_days <= 365:
-            raise ValueError("posted_within_days must be between 1 and 365 days")
+        _validate_profile_ranges(self)
         return self
 
 
@@ -186,26 +201,7 @@ class SearchProfileUpdate(BaseModel):
 
     @model_validator(mode="after")
     def validate_update_ranges(self):
-        if self.workload_min is not None and not 0 <= self.workload_min <= 100:
-            raise ValueError("workload_min must be between 0 and 100")
-        if self.workload_max is not None and not 0 <= self.workload_max <= 100:
-            raise ValueError("workload_max must be between 0 and 100")
-        if (
-            self.workload_min is not None
-            and self.workload_max is not None
-            and self.workload_min > self.workload_max
-        ):
-            raise ValueError("workload_min cannot be greater than workload_max")
-        if self.salary_min_chf is not None and self.salary_min_chf < 0:
-            raise ValueError("salary_min_chf must be non-negative")
-        if self.hard_max_distance_km is not None and self.hard_max_distance_km < 0:
-            raise ValueError("hard_max_distance_km must be non-negative")
-        if self.max_distance is not None and not 0 <= self.max_distance <= 500:
-            raise ValueError("max_distance must be between 0 and 500 km")
-        if self.posted_within_days is not None and not 1 <= self.posted_within_days <= 365:
-            raise ValueError("posted_within_days must be between 1 and 365 days")
-        if self.schedule_interval_hours is not None and self.schedule_interval_hours < 1:
-            raise ValueError("schedule_interval_hours must be at least 1")
+        _validate_profile_ranges(self)
         return self
 
 

@@ -171,7 +171,6 @@ async def stop_search(
     if profile.user_id != user_id:
         raise HTTPException(status_code=403, detail="Unauthorized profile access")
 
-    profile.is_stopped = True
     profile_repo.update(profile, {"is_stopped": True})
 
     # Also update the in-memory status so frontend sees it immediately

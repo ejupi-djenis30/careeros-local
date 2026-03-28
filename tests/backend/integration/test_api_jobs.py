@@ -159,6 +159,16 @@ def test_jobs_crud_flow(client, auth_headers: dict):
     assert response.status_code == 200
     assert response.json()["total"] == 0
 
+
+@pytest.mark.parametrize("params,expected_detail", [
+    ("min_score=80&max_score=20", "min_score cannot be greater than max_score"),
+    ("min_distance=100&max_distance=10", "min_distance cannot be greater than max_distance"),
+])
+def test_jobs_list_score_distance_cross_validation(client, auth_headers, params, expected_detail):
+    response = client.get(f"/api/v1/jobs/?{params}", headers=auth_headers)
+    assert response.status_code == 422
+    assert expected_detail in response.json()["detail"]
+
     # 2. Create a job
     job_data = {
         "title": "Integration Test Job",

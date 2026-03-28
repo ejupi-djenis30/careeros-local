@@ -116,7 +116,7 @@ jobs:
               run: |
                   python3 -c "
                   import urllib.request, json
-                  response = urllib.request.urlopen('http://localhost:8000/')
+                  response = urllib.request.urlopen('http://localhost:8000/', timeout=10)
                   data = json.loads(response.read())
                   print('Health response:', data)
                   assert 'message' in data, 'Missing message field'
