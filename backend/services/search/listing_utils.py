@@ -6,12 +6,43 @@ return plain Python values. Because they are side-effect-free they are safe
 to import and call from anywhere without worrying about circular imports.
 """
 
+import json
 import logging
+import os
 import re
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 logger = logging.getLogger(__name__)
+
+
+# ─── Skill taxonomy loader ────────────────────────────────────────────────────
+
+def _load_skill_taxonomy() -> Dict[str, Any]:
+    """Load the skill taxonomy JSON from backend/data/skill_taxonomy.json."""
+    try:
+        _here = os.path.dirname(os.path.abspath(__file__))
+        taxonomy_path = os.path.join(_here, "..", "..", "data", "skill_taxonomy.json")
+        with open(taxonomy_path, encoding="utf-8") as f:
+            return json.load(f)
+    except Exception as exc:
+        logger.warning("[SKILL_TAXONOMY] Could not load skill_taxonomy.json: %s", exc)
+        return {}
+
+
+_TAXONOMY: Dict[str, Any] = _load_skill_taxonomy()
+# Pre-built lookup: alias → canonical skill name
+_ALIAS_TO_CANONICAL: Dict[str, str] = {}
+# Pre-built lookup: canonical → related {skill: weight}
+_CANONICAL_RELATED: Dict[str, Dict[str, float]] = {}
+
+for _canonical, _entry in (_TAXONOMY.get("skills") or {}).items():
+    _ALIAS_TO_CANONICAL[_canonical] = _canonical
+    for _alias in (_entry.get("aliases") or []):
+        _ALIAS_TO_CANONICAL[_alias.lower()] = _canonical
+    _CANONICAL_RELATED[_canonical] = {
+        k.lower(): float(v) for k, v in (_entry.get("related") or {}).items()
+    }
 
 
 def normalized_text_token(value: Any) -> str:
@@ -516,3 +547,299 @@ def bootstrap_normalized_job_data(
             "qualification_codes": qualification_codes,
         },
     }
+
+
+# ─── Semantic skill score ─────────────────────────────────────────────────────
+
+
+def semantic_skills_score(
+    job_skills: List[str], profile_skills: List[str]
+) -> float:
+    """Weighted semantic skill overlap using the skill taxonomy.
+
+    Unlike ``skills_overlap`` (which is binary), this accounts for related skills:
+    - Exact match → weight 1.0
+    - Alias match → weight 1.0
+    - Related skill from taxonomy → weight from taxonomy (e.g., 0.5–0.9)
+    - String containment fallback → weight 0.5
+
+    Returns a float 0.0–1.0 representing the *weighted* coverage of the job's
+    required skills with the candidate's profile skills.
+    """
+    if not job_skills or not profile_skills:
+        return 0.0
+
+    profile_canonical_set = {
+        _ALIAS_TO_CANONICAL.get(normalized_text_token(s), normalized_text_token(s))
+        for s in profile_skills if s
+    }
+
+    total_weight = 0.0
+    matched_weight = 0.0
+
+    for js in job_skills:
+        if not js:
+            continue
+        total_weight += 1.0
+        job_token = normalized_text_token(js)
+        job_canon = _ALIAS_TO_CANONICAL.get(job_token, job_token)
+
+        # Tier 1: exact canonical match
+        if job_canon in profile_canonical_set:
+            matched_weight += 1.0
+            continue
+
+        # Tier 2: taxonomy-weighted related skill match
+        best_related_weight = 0.0
+        related_map = _CANONICAL_RELATED.get(job_canon, {})
+        for prof_canon in profile_canonical_set:
+            w = related_map.get(prof_canon, 0.0)
+            if w > best_related_weight:
+                best_related_weight = w
+            rev_related = _CANONICAL_RELATED.get(prof_canon, {})
+            w_rev = rev_related.get(job_canon, 0.0)
+            if w_rev > best_related_weight:
+                best_related_weight = w_rev
+
+        if best_related_weight > 0.0:
+            matched_weight += best_related_weight
+            continue
+
+        # Tier 3: string containment fallback
+        job_raw = normalized_text_token(js)
+        for prof_canon in profile_canonical_set:
+            if prof_canon and (
+                _word_bounded_substring(job_raw, prof_canon)
+                or _word_bounded_substring(prof_canon, job_raw)
+            ):
+                matched_weight += 0.5
+                break
+
+    return matched_weight / total_weight if total_weight > 0 else 0.0
+
+
+# ─── Structured pre-score ─────────────────────────────────────────────────────
+
+
+def compute_prescore(job_norm: Dict[str, Any], profile_norm: Dict[str, Any]) -> float:
+    """Compute a continuous pre-score (0–100) from normalized structured fields.
+
+    This runs BEFORE the expensive LLM MATCH step and acts as a lightweight gate.
+    It only uses fields available after normalization.
+
+    Score breakdown (total 100):
+    - Domain alignment (20 pts)
+    - Seniority fit (15 pts)
+    - Semantic skill overlap (25 pts)
+    - Experience years fit (15 pts)
+    - Entry barrier vs. qualifications (10 pts)
+    - Language requirements (10 pts)
+    - Qualification level match (5 pts)
+    """
+    score = 0.0
+
+    try:
+        from backend.data.domain_affinity import get_domain_affinity  # type: ignore
+    except Exception:
+        get_domain_affinity = None  # type: ignore
+
+    # 1. Domain alignment (0–20 pts)
+    job_domain = (job_norm.get("normalized_domain") or "").lower().strip()
+    profile_domains = profile_norm.get("target_domains") or profile_norm.get("normalized_domains") or []
+    if isinstance(profile_domains, str):
+        profile_domains = [profile_domains]
+    if job_domain and profile_domains:
+        best_domain_aff = 0.0
+        for pd in profile_domains:
+            pd_str = (pd or "").lower().strip()
+            if pd_str:
+                if get_domain_affinity:
+                    aff = get_domain_affinity(job_domain, pd_str)
+                else:
+                    aff = 1.0 if job_domain == pd_str else 0.0
+                best_domain_aff = max(best_domain_aff, aff)
+        score += best_domain_aff * 20.0
+    elif not job_domain:
+        score += 10.0  # neutral if domain unknown
+
+    # 2. Seniority fit (0–15 pts)
+    job_seniority = (job_norm.get("normalized_seniority") or "").lower()
+    profile_seniority = (
+        profile_norm.get("seniority")
+        or profile_norm.get("target_seniority")
+        or ""
+    ).lower()
+    _SENIORITY_SCORES: Dict[Tuple[str, str], float] = {
+        ("junior", "junior"): 1.0, ("mid", "mid"): 1.0, ("senior", "senior"): 1.0,
+        ("junior", "mid"): 0.6, ("mid", "junior"): 0.6,
+        ("mid", "senior"): 0.6, ("senior", "mid"): 0.5,
+        ("senior", "junior"): 0.1, ("junior", "senior"): 0.2,
+    }
+    if job_seniority and profile_seniority:
+        seniority_fit = _SENIORITY_SCORES.get((job_seniority, profile_seniority), 0.5)
+        score += seniority_fit * 15.0
+    else:
+        score += 7.5  # neutral
+
+    # 3. Semantic skill overlap (0–25 pts)
+    job_skills: List[str] = job_norm.get("normalized_required_skills") or []
+    profile_skills: List[str] = (
+        profile_norm.get("skills") or profile_norm.get("normalized_skills") or []
+    )
+    if job_skills and profile_skills:
+        sem_score = semantic_skills_score(job_skills, profile_skills)
+        score += sem_score * 25.0
+    else:
+        score += 12.5  # neutral if missing
+
+    # 4. Experience years fit (0–15 pts)
+    job_exp_min = job_norm.get("normalized_experience_min_years")
+    job_exp_max = job_norm.get("normalized_experience_max_years")
+    profile_exp = profile_norm.get("experience_years") or profile_norm.get("years_of_experience")
+    if profile_exp is not None and (job_exp_min is not None or job_exp_max is not None):
+        try:
+            p_exp = float(profile_exp)
+            j_min = float(job_exp_min) if job_exp_min is not None else 0.0
+            j_max = float(job_exp_max) if job_exp_max is not None else j_min + 10.0
+            if j_min <= p_exp <= j_max:
+                score += 15.0
+            elif p_exp < j_min:
+                gap = j_min - p_exp
+                score += max(0.0, 15.0 - gap * 3.0)
+            else:
+                score += 10.0  # slightly over-qualified
+        except (TypeError, ValueError):
+            score += 7.5  # neutral
+    else:
+        score += 7.5  # neutral
+
+    # 5. Entry barrier vs. qualifications (0–10 pts)
+    job_barrier = (job_norm.get("normalized_entry_barrier") or "").lower()
+    profile_qualification = (
+        profile_norm.get("qualification_level")
+        or profile_norm.get("normalized_qualification_level")
+        or ""
+    ).lower()
+    _BARRIER_QUAL_FIT: Dict[Tuple[str, str], float] = {
+        ("none", "none"): 1.0, ("none", "low"): 1.0, ("none", "medium"): 1.0, ("none", "high"): 1.0,
+        ("low", "none"): 0.8, ("low", "low"): 1.0, ("low", "medium"): 1.0, ("low", "high"): 1.0,
+        ("medium", "none"): 0.4, ("medium", "low"): 0.7, ("medium", "medium"): 1.0, ("medium", "high"): 1.0,
+        ("high", "none"): 0.1, ("high", "low"): 0.4, ("high", "medium"): 0.8, ("high", "high"): 1.0,
+    }
+    if job_barrier and profile_qualification:
+        fit = _BARRIER_QUAL_FIT.get((job_barrier, profile_qualification), 0.5)
+        score += fit * 10.0
+    else:
+        score += 5.0  # neutral
+
+    # 6. Language requirements (0–10 pts)
+    job_langs: List[Dict] = job_norm.get("normalized_required_languages") or []
+    profile_langs = profile_norm.get("languages") or profile_norm.get("normalized_languages") or []
+    if job_langs and profile_langs:
+        profile_lang_codes = set()
+        for lang_item in profile_langs:
+            if isinstance(lang_item, dict):
+                code = (lang_item.get("code") or "").lower()
+            else:
+                code = str(lang_item).lower()
+            if code:
+                profile_lang_codes.add(code)
+        matched_langs = sum(
+            1 for jl in job_langs if (jl.get("code") or "").lower() in profile_lang_codes
+        )
+        lang_ratio = matched_langs / len(job_langs) if job_langs else 1.0
+        score += lang_ratio * 10.0
+    else:
+        score += 5.0  # neutral
+
+    # 7. Qualification level match (0–5 pts)
+    job_qual = (job_norm.get("normalized_qualification_level") or "").lower()
+    if profile_qualification and job_qual:
+        _QUAL_RANK = {"none": 0, "low": 1, "medium": 2, "high": 3, "bachelor": 2, "master": 3, "phd": 4}
+        p_rank = _QUAL_RANK.get(profile_qualification, 1)
+        j_rank = _QUAL_RANK.get(job_qual, 1)
+        if p_rank >= j_rank:
+            score += 5.0
+        else:
+            score += max(0.0, 5.0 - (j_rank - p_rank) * 2.0)
+    else:
+        score += 2.5  # neutral
+
+    return min(100.0, max(0.0, score))
+
+
+# ─── Job posting quality ──────────────────────────────────────────────────────
+
+
+def compute_posting_quality(description: str) -> float:
+    """Rate the information quality of a job description (0.0–1.0).
+
+    Higher score = better structured, more informative posting.
+    Used to down-weight jobs that lack detail (making MATCH less reliable).
+
+    Signals:
+    - Length (>= 300 words = max signal)
+    - Salary/compensation mentioned
+    - CEFR language level mentioned
+    - Explicit skills/requirements section
+    - Structured sections (responsibilities, requirements, etc.)
+    - Contact info / application process described
+    """
+    if not description:
+        return 0.1
+
+    score = 0.0
+    text = description.lower()
+    word_count = len(description.split())
+
+    # 1. Length (0.0–0.30)
+    if word_count >= 300:
+        score += 0.30
+    elif word_count >= 150:
+        score += 0.15 + 0.15 * ((word_count - 150) / 150)
+    elif word_count >= 50:
+        score += 0.05 + 0.10 * ((word_count - 50) / 100)
+    else:
+        score += 0.02
+
+    # 2. Salary / compensation (0.0–0.20)
+    _salary_patterns = [
+        r"chf\s*\d", r"\d+\s*chf", r"salary", r"lohn", r"gehalt", r"salaire",
+        r"\d+[kK]\s*[-\u2013]\s*\d+[kK]", r"\bcompensation\b", r"\bverg.tung\b",
+        r"per\s+(?:year|month|annum|jahr|monat)", r"j.hrlich", r"monatlich",
+    ]
+    if any(re.search(p, text) for p in _salary_patterns):
+        score += 0.20
+
+    # 3. CEFR language levels (0.0–0.10)
+    if re.search(r"\b[abc][12]\b", text):
+        score += 0.10
+
+    # 4. Explicit skills/requirements section (0.0–0.15)
+    _req_signals = [
+        "requirements", "anforderungen", "qualifications", "qualifikationen",
+        "your profile", "ihr profil", "we require", "you have", "you bring",
+        "sie bringen", "must have", "experience with", "erfahrung mit", "kenntnisse",
+    ]
+    req_hits = sum(1 for sig in _req_signals if sig in text)
+    score += min(0.15, req_hits * 0.05)
+
+    # 5. Structured sections (0.0–0.15)
+    _section_markers = [
+        "responsibilities", "aufgaben", "your tasks", "what you will do",
+        "we offer", "wir bieten", "benefits", "key responsibilities",
+        "about the role", "what we expect",
+    ]
+    section_hits = sum(1 for m in _section_markers if m in text)
+    score += min(0.15, section_hits * 0.05)
+
+    # 6. Application / contact info (0.0–0.10)
+    _apply_signals = [
+        "apply", "bewerben", "postuler", "candidature",
+        "send your cv", "send your resume", "contact us",
+        "application deadline", "bewerbungsfrist", "@",
+    ]
+    if any(sig in text for sig in _apply_signals):
+        score += 0.10
+
+    return min(1.0, score)

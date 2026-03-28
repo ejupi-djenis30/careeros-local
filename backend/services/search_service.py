@@ -20,6 +20,8 @@ from backend.services.search.listing_utils import (
     bootstrap_normalized_job_data,
     coerce_int,
     coerce_string_list,
+    compute_posting_quality,
+    compute_prescore,
     extract_company_name,
     extract_listing_description_text,
     extract_listing_location_string,
@@ -31,6 +33,7 @@ from backend.services.search.listing_utils import (
     listing_url_token,
     normalized_text_token,
     parse_listing_publication_date,
+    semantic_skills_score,
     skills_overlap,
 )
 from backend.services.search.search_validator import build_search_request
@@ -309,6 +312,14 @@ class SearchService:
             metadata = scraped_job.normalized_metadata or {}
             metadata.update({"llm_normalized": True, "source": "llm_normalizer"})
             scraped_job.normalized_metadata = metadata
+
+            # ── Phase 4.1: Compute and store posting quality score ────────
+            if scraped_job.posting_quality is None and scraped_job.description:
+                try:
+                    scraped_job.posting_quality = compute_posting_quality(scraped_job.description)
+                except Exception:
+                    pass
+
             upgraded += 1
 
         self.db.commit()
@@ -554,11 +565,30 @@ class SearchService:
     )
 
     def _domains_are_related(self, domain_a: str, domain_b: str) -> bool:
-        """Return True when two domains are in the same related group."""
-        for group in self._RELATED_DOMAIN_GROUPS:
-            if domain_a in group and domain_b in group:
-                return True
-        return False
+        """Return True when two domains are in the same related group.
+
+        Uses the continuous domain affinity matrix (threshold 0.40) when available,
+        falling back to the legacy group-based check.
+        """
+        try:
+            from backend.data.domain_affinity import domains_are_related  # type: ignore
+            return domains_are_related(domain_a, domain_b, threshold=0.40)
+        except Exception:
+            # Legacy fallback
+            for group in self._RELATED_DOMAIN_GROUPS:
+                if domain_a in group and domain_b in group:
+                    return True
+            return False
+
+    def _domain_affinity_score(self, domain_a: str, domain_b: str) -> float:
+        """Return a continuous 0.0–1.0 affinity score between two domains."""
+        try:
+            from backend.data.domain_affinity import get_domain_affinity  # type: ignore
+            return get_domain_affinity(domain_a, domain_b)
+        except Exception:
+            if domain_a == domain_b:
+                return 1.0
+            return 0.5 if self._domains_are_related(domain_a, domain_b) else 0.0
 
     def _domain_distance(self, domain_a: str, domain_b: str) -> int:
         """Return 0 (same), 1 (related), or 2 (unrelated) for two domain strings."""
@@ -773,9 +803,21 @@ class SearchService:
                 *[s for s in (profile_norm.get("transferable_skills") or []) if s],
             })
             if len(job_skills) >= 3 and len(profile_skills) >= 3:
-                overlap = skills_overlap(job_skills, profile_skills)
+                overlap = semantic_skills_score(job_skills, profile_skills)
                 if overlap == 0.0:
                     return False, "norm_skills_disjoint"
+
+        # ─── 7. Continuous pre-score gate (optional) ──────────────────────────
+        # Runs after structural filters pass. Uses compute_prescore() to get a
+        # 0-100 multi-signal score and rejects jobs that are very unlikely matches.
+        if getattr(settings, "STRUCTURED_PRESCORE_ENABLED", False):
+            try:
+                threshold = float(getattr(settings, "STRUCTURED_PRESCORE_THRESHOLD", 20.0))
+                prescore = compute_prescore(job_norm, profile_norm)
+                if prescore < threshold:
+                    return False, f"norm_prescore_low:{prescore:.1f}"
+            except Exception:
+                pass  # If prescore computation fails, allow the job through
 
         return True, "ok"
 
@@ -1702,6 +1744,81 @@ class SearchService:
 
         jobs_to_persist = [item for batch_result in results for item in batch_result]
 
+        # ── Phase 3.2: Two-pass critique for borderline scores ─────────────
+        critique_enabled = getattr(settings, "MATCH_CRITIQUE_ENABLED", False)
+        critique_min = int(getattr(settings, "MATCH_CRITIQUE_SCORE_RANGE_MIN", 40))
+        critique_max = int(getattr(settings, "MATCH_CRITIQUE_SCORE_RANGE_MAX", 80))
+        if critique_enabled and jobs_to_persist:
+            borderline = [
+                (i, job, analysis)
+                for i, (job, analysis) in enumerate(jobs_to_persist)
+                if critique_min <= analysis.get("affinity_score", 0) <= critique_max
+            ]
+            if borderline:
+                try:
+                    borderline_indices = [idx for idx, _, _ in borderline]
+                    borderline_jobs_meta = []
+                    for _, job, _ in borderline:
+                        desc_text = ""
+                        descs = getattr(job, "descriptions", [])
+                        if descs:
+                            desc_text = descs[0].description if hasattr(descs[0], "description") else (descs[0].get("description", "") if isinstance(descs[0], dict) else "")
+                        raw_norm = getattr(job, "_normalized_job_data", None) or {}
+                        borderline_jobs_meta.append({
+                            "title": getattr(job, "title", "Unknown"),
+                            "company": extract_company_name(job),
+                            "description": desc_text,
+                            "normalized_data": raw_norm,
+                        })
+                    borderline_analyses = [analysis for _, _, analysis in borderline]
+                    critiqued = await llm_service.critique_job_batch(borderline_jobs_meta, borderline_analyses, profile_dict)
+                    for orig_idx, critiqued_analysis in zip(borderline_indices, critiqued):
+                        jobs_to_persist[orig_idx] = (jobs_to_persist[orig_idx][0], critiqued_analysis)
+                    add_log(profile_id, f"Critique pass refined {len(borderline)} borderline jobs.")
+                except Exception as exc:
+                    logger.warning("[CRITIQUE] Critique pass failed: %s", exc)
+
+        # ── Phase 3.4: Comparative re-ranking of top-N jobs ────────────────
+        rerank_enabled = getattr(settings, "MATCH_RERANK_ENABLED", False)
+        rerank_top_n = int(getattr(settings, "MATCH_RERANK_TOP_N", 20))
+        if rerank_enabled and len(jobs_to_persist) >= 3:
+            try:
+                scored_with_index = sorted(
+                    enumerate(jobs_to_persist),
+                    key=lambda x: x[1][1].get("affinity_score", 0),
+                    reverse=True,
+                )[:rerank_top_n]
+                top_entries = []
+                for orig_idx, (job, analysis) in scored_with_index:
+                    desc_text = ""
+                    descs = getattr(job, "descriptions", [])
+                    if descs:
+                        desc_text = descs[0].description if hasattr(descs[0], "description") else (descs[0].get("description", "") if isinstance(descs[0], dict) else "")
+                    raw_norm = getattr(job, "_normalized_job_data", None) or {}
+                    top_entries.append({
+                        "job_index": orig_idx,
+                        "current_score": analysis.get("affinity_score", 0),
+                        "job_metadata": {
+                            "title": getattr(job, "title", "Unknown"),
+                            "company": extract_company_name(job),
+                            "description": desc_text,
+                            "normalized_data": raw_norm,
+                        },
+                    })
+                reranked = await llm_service.rerank_top_jobs(top_entries, profile_dict)
+                for rerank_result in reranked:
+                    orig_idx = rerank_result.get("job_index", -1)
+                    final_score = rerank_result.get("final_score")
+                    if orig_idx >= 0 and final_score is not None and 0 <= orig_idx < len(jobs_to_persist):
+                        job, analysis = jobs_to_persist[orig_idx]
+                        updated = dict(analysis)
+                        updated["affinity_score"] = final_score
+                        updated["worth_applying"] = bool(analysis.get("worth_applying", False)) and final_score >= 65
+                        jobs_to_persist[orig_idx] = (job, updated)
+                add_log(profile_id, f"Re-ranked top {len(reranked)} jobs for calibration.")
+            except Exception as exc:
+                logger.warning("[RERANK] Re-rank pass failed: %s", exc)
+
         saved_count = 0
         for job, analysis in jobs_to_persist:
             try:
@@ -1766,6 +1883,8 @@ class SearchService:
             location_match_score=analysis.get("location_match_score"),
             transferability_score=analysis.get("transferability_score"),
             qualification_gap_score=analysis.get("qualification_gap_score"),
+            analysis_structured=analysis.get("analysis_structured"),
+            red_flags=analysis.get("red_flags"),
         )
         self.db.add(new_job)
         if commit:

@@ -1,0 +1,528 @@
+{
+  "_metadata": {
+    "version": "1.0",
+    "description": "Weighted skill taxonomy for semantic job-candidate matching. Each entry maps a canonical skill to its aliases and related skills with weights (0-1). Weight=1.0 means equivalent/identical. Weight=0.7 means strongly related (same ecosystem). Weight=0.4 means moderately related. Weight=0.2 means weakly related."
+  },
+  "skills": {
+    "python": {
+      "aliases": ["python3", "python 3", "py", "cpython"],
+      "related": {
+        "django": 0.75,
+        "fastapi": 0.8,
+        "flask": 0.75,
+        "aiohttp": 0.65,
+        "celery": 0.55,
+        "pandas": 0.6,
+        "numpy": 0.55,
+        "scikit-learn": 0.5,
+        "tensorflow": 0.4,
+        "pytorch": 0.4,
+        "pydantic": 0.65,
+        "sqlalchemy": 0.6,
+        "asyncio": 0.65,
+        "jupyter": 0.5
+      }
+    },
+    "javascript": {
+      "aliases": ["js", "vanilla js", "ecmascript", "es6", "es2015"],
+      "related": {
+        "typescript": 0.85,
+        "react": 0.7,
+        "vue": 0.7,
+        "angular": 0.65,
+        "nodejs": 0.75,
+        "nextjs": 0.7,
+        "nuxtjs": 0.65,
+        "jquery": 0.6,
+        "webpack": 0.55,
+        "vite": 0.55,
+        "html": 0.6,
+        "css": 0.55
+      }
+    },
+    "typescript": {
+      "aliases": ["ts"],
+      "related": {
+        "javascript": 0.9,
+        "react": 0.75,
+        "angular": 0.7,
+        "nodejs": 0.75,
+        "nextjs": 0.75,
+        "nestjs": 0.7,
+        "vue": 0.65
+      }
+    },
+    "react": {
+      "aliases": ["react.js", "reactjs", "react js"],
+      "related": {
+        "javascript": 0.75,
+        "typescript": 0.75,
+        "nextjs": 0.85,
+        "redux": 0.75,
+        "react native": 0.7,
+        "vue": 0.5,
+        "angular": 0.45,
+        "html": 0.55,
+        "css": 0.5,
+        "graphql": 0.5
+      }
+    },
+    "angular": {
+      "aliases": ["angular.js", "angularjs"],
+      "related": {
+        "typescript": 0.8,
+        "javascript": 0.7,
+        "rxjs": 0.8,
+        "react": 0.45,
+        "vue": 0.45
+      }
+    },
+    "vue": {
+      "aliases": ["vue.js", "vuejs", "vue js"],
+      "related": {
+        "javascript": 0.75,
+        "typescript": 0.7,
+        "nuxtjs": 0.85,
+        "react": 0.5,
+        "angular": 0.45
+      }
+    },
+    "nodejs": {
+      "aliases": ["node.js", "node js", "node"],
+      "related": {
+        "javascript": 0.85,
+        "typescript": 0.8,
+        "express": 0.85,
+        "nestjs": 0.75,
+        "fastapi": 0.35,
+        "npm": 0.65,
+        "yarn": 0.55
+      }
+    },
+    "java": {
+      "aliases": [],
+      "related": {
+        "spring": 0.8,
+        "spring boot": 0.8,
+        "kotlin": 0.75,
+        "maven": 0.65,
+        "gradle": 0.6,
+        "hibernate": 0.65,
+        "microservices": 0.5,
+        "jvm": 0.8
+      }
+    },
+    "spring": {
+      "aliases": ["spring framework"],
+      "related": {
+        "java": 0.9,
+        "spring boot": 0.95,
+        "kotlin": 0.65,
+        "hibernate": 0.7,
+        "maven": 0.6
+      }
+    },
+    "kotlin": {
+      "aliases": [],
+      "related": {
+        "java": 0.8,
+        "spring boot": 0.65,
+        "android": 0.7,
+        "jvm": 0.75
+      }
+    },
+    "csharp": {
+      "aliases": ["c#", "c sharp"],
+      "related": {
+        "dotnet": 0.9,
+        ".net core": 0.85,
+        "azure": 0.55,
+        "asp.net": 0.85,
+        "unity": 0.5,
+        "visual studio": 0.6
+      }
+    },
+    "dotnet": {
+      "aliases": [".net", "dot net", ".net core", "asp.net"],
+      "related": {
+        "csharp": 0.9,
+        "azure": 0.6,
+        "sql server": 0.55
+      }
+    },
+    "golang": {
+      "aliases": ["go", "go lang"],
+      "related": {
+        "docker": 0.5,
+        "kubernetes": 0.5,
+        "microservices": 0.55,
+        "grpc": 0.6
+      }
+    },
+    "rust": {
+      "aliases": ["rust lang"],
+      "related": {
+        "c++": 0.5,
+        "systems programming": 0.7,
+        "webassembly": 0.5
+      }
+    },
+    "php": {
+      "aliases": [],
+      "related": {
+        "laravel": 0.85,
+        "symfony": 0.75,
+        "wordpress": 0.65,
+        "mysql": 0.55,
+        "html": 0.5
+      }
+    },
+    "ruby": {
+      "aliases": [],
+      "related": {
+        "rails": 0.9,
+        "ruby on rails": 0.9
+      }
+    },
+    "postgresql": {
+      "aliases": ["postgres", "pg", "psql"],
+      "related": {
+        "sql": 0.85,
+        "mysql": 0.65,
+        "database": 0.7,
+        "sqlalchemy": 0.55,
+        "stored procedures": 0.6
+      }
+    },
+    "mysql": {
+      "aliases": ["mariadb"],
+      "related": {
+        "sql": 0.85,
+        "postgresql": 0.65,
+        "database": 0.7,
+        "phpmyadmin": 0.5
+      }
+    },
+    "sql": {
+      "aliases": ["structured query language"],
+      "related": {
+        "postgresql": 0.8,
+        "mysql": 0.8,
+        "sql server": 0.75,
+        "oracle": 0.7,
+        "t-sql": 0.85,
+        "plsql": 0.75,
+        "database": 0.75,
+        "data warehousing": 0.55
+      }
+    },
+    "mongodb": {
+      "aliases": ["mongo"],
+      "related": {
+        "nosql": 0.85,
+        "elasticsearch": 0.45,
+        "redis": 0.45,
+        "database": 0.65
+      }
+    },
+    "redis": {
+      "aliases": [],
+      "related": {
+        "caching": 0.8,
+        "nosql": 0.65,
+        "message queue": 0.5,
+        "database": 0.55
+      }
+    },
+    "elasticsearch": {
+      "aliases": ["elastic"],
+      "related": {
+        "kibana": 0.85,
+        "logstash": 0.75,
+        "elk stack": 0.85,
+        "search": 0.7,
+        "opensearch": 0.85
+      }
+    },
+    "aws": {
+      "aliases": ["amazon web services", "amazon aws"],
+      "related": {
+        "cloud": 0.8,
+        "terraform": 0.65,
+        "kubernetes": 0.6,
+        "docker": 0.6,
+        "devops": 0.65,
+        "lambda": 0.75,
+        "s3": 0.75,
+        "ec2": 0.75,
+        "rds": 0.65,
+        "cloudformation": 0.7
+      }
+    },
+    "gcp": {
+      "aliases": ["google cloud", "google cloud platform"],
+      "related": {
+        "cloud": 0.8,
+        "terraform": 0.6,
+        "kubernetes": 0.65,
+        "bigquery": 0.75,
+        "firebase": 0.55,
+        "devops": 0.6
+      }
+    },
+    "azure": {
+      "aliases": ["microsoft azure"],
+      "related": {
+        "cloud": 0.8,
+        "csharp": 0.55,
+        "dotnet": 0.6,
+        "terraform": 0.6,
+        "kubernetes": 0.6,
+        "devops": 0.65,
+        "azure devops": 0.85,
+        "power bi": 0.5
+      }
+    },
+    "docker": {
+      "aliases": ["containerization", "containers"],
+      "related": {
+        "kubernetes": 0.8,
+        "devops": 0.75,
+        "cicd": 0.7,
+        "aws": 0.55,
+        "gcp": 0.55,
+        "azure": 0.55,
+        "microservices": 0.65
+      }
+    },
+    "kubernetes": {
+      "aliases": ["k8s"],
+      "related": {
+        "docker": 0.8,
+        "devops": 0.75,
+        "helm": 0.75,
+        "cicd": 0.65,
+        "cloud": 0.7,
+        "microservices": 0.65
+      }
+    },
+    "devops": {
+      "aliases": ["dev ops"],
+      "related": {
+        "cicd": 0.85,
+        "docker": 0.8,
+        "kubernetes": 0.75,
+        "terraform": 0.75,
+        "ansible": 0.7,
+        "jenkins": 0.65,
+        "github actions": 0.65,
+        "linux": 0.6,
+        "aws": 0.65,
+        "azure devops": 0.75
+      }
+    },
+    "cicd": {
+      "aliases": ["ci/cd", "continuous integration", "continuous deployment"],
+      "related": {
+        "devops": 0.85,
+        "jenkins": 0.8,
+        "github actions": 0.8,
+        "gitlab ci": 0.8,
+        "docker": 0.7,
+        "kubernetes": 0.65,
+        "terraform": 0.6
+      }
+    },
+    "terraform": {
+      "aliases": ["infrastructure as code", "iac"],
+      "related": {
+        "aws": 0.65,
+        "gcp": 0.6,
+        "azure": 0.6,
+        "devops": 0.75,
+        "ansible": 0.65,
+        "kubernetes": 0.55
+      }
+    },
+    "machine learning": {
+      "aliases": ["ml", "machine-learning"],
+      "related": {
+        "deep learning": 0.8,
+        "python": 0.75,
+        "tensorflow": 0.75,
+        "pytorch": 0.75,
+        "scikit-learn": 0.8,
+        "data science": 0.8,
+        "neural networks": 0.8,
+        "nlp": 0.65,
+        "computer vision": 0.6,
+        "statistics": 0.55
+      }
+    },
+    "data science": {
+      "aliases": ["data analysis", "data analytics"],
+      "related": {
+        "machine learning": 0.8,
+        "python": 0.75,
+        "pandas": 0.8,
+        "numpy": 0.7,
+        "sql": 0.65,
+        "r": 0.65,
+        "statistics": 0.75,
+        "tableau": 0.55,
+        "power bi": 0.55,
+        "jupyter": 0.65
+      }
+    },
+    "project management": {
+      "aliases": ["projektmanagement", "projektleitung", "gestion de projet", "gestione progetto"],
+      "related": {
+        "agile": 0.75,
+        "scrum": 0.75,
+        "kanban": 0.65,
+        "pmp": 0.75,
+        "prince2": 0.7,
+        "stakeholder management": 0.7,
+        "risk management": 0.65,
+        "budget management": 0.6,
+        "team leadership": 0.65,
+        "planning": 0.65
+      }
+    },
+    "agile": {
+      "aliases": ["agile methodology", "agile development"],
+      "related": {
+        "scrum": 0.9,
+        "kanban": 0.8,
+        "sprint": 0.8,
+        "project management": 0.75,
+        "jira": 0.65,
+        "retrospective": 0.65
+      }
+    },
+    "team leadership": {
+      "aliases": ["führung", "teamführung", "gestion d'équipe"],
+      "related": {
+        "management": 0.8,
+        "project management": 0.7,
+        "mentoring": 0.75,
+        "coaching": 0.65,
+        "communication": 0.6,
+        "stakeholder management": 0.6
+      }
+    },
+    "accounting": {
+      "aliases": ["buchhalter", "buchführung", "rechnungswesen", "comptabilité", "contabilità"],
+      "related": {
+        "financial reporting": 0.85,
+        "sap": 0.65,
+        "controlling": 0.75,
+        "tax": 0.7,
+        "audit": 0.7,
+        "excel": 0.6,
+        "finance": 0.75,
+        "budgeting": 0.65
+      }
+    },
+    "sap": {
+      "aliases": ["sap erp", "sap s/4hana"],
+      "related": {
+        "erp": 0.85,
+        "accounting": 0.6,
+        "supply chain": 0.5,
+        "fi/co": 0.75,
+        "sap fi": 0.85,
+        "sap mm": 0.75,
+        "sap sd": 0.75
+      }
+    },
+    "microsoft office": {
+      "aliases": ["ms office", "office 365", "microsoft 365"],
+      "related": {
+        "excel": 0.85,
+        "word": 0.75,
+        "powerpoint": 0.75,
+        "outlook": 0.7,
+        "teams": 0.65,
+        "sharepoint": 0.6
+      }
+    },
+    "excel": {
+      "aliases": ["microsoft excel"],
+      "related": {
+        "microsoft office": 0.85,
+        "vba": 0.7,
+        "pivot tables": 0.75,
+        "power bi": 0.55,
+        "data analysis": 0.55,
+        "google sheets": 0.7
+      }
+    },
+    "forklift": {
+      "aliases": ["gabelstapler", "staplerfahrer", "fork lift", "forklift operator"],
+      "related": {
+        "warehouse": 0.8,
+        "logistics": 0.75,
+        "driving license": 0.5,
+        "heavy lifting": 0.5
+      }
+    },
+    "warehouse": {
+      "aliases": ["lagermitarbeiter", "lagerist", "lagerhaltung", "magasinier"],
+      "related": {
+        "forklift": 0.75,
+        "logistics": 0.8,
+        "inventory management": 0.75,
+        "order picking": 0.8,
+        "packing": 0.75,
+        "shipping": 0.65
+      }
+    },
+    "customer service": {
+      "aliases": ["kundendienst", "kundenbetreuung", "service client", "servizio clienti", "customer support"],
+      "related": {
+        "communication": 0.75,
+        "helpdesk": 0.65,
+        "crm": 0.6,
+        "complaint handling": 0.75,
+        "sales": 0.55
+      }
+    },
+    "linux": {
+      "aliases": ["unix", "linux administration"],
+      "related": {
+        "bash": 0.8,
+        "shell scripting": 0.8,
+        "devops": 0.65,
+        "server administration": 0.7,
+        "docker": 0.55,
+        "networking": 0.5
+      }
+    },
+    "networking": {
+      "aliases": ["network engineering", "netzwerk"],
+      "related": {
+        "cisco": 0.75,
+        "tcp/ip": 0.8,
+        "vpn": 0.7,
+        "firewall": 0.7,
+        "routing": 0.8,
+        "switching": 0.75,
+        "linux": 0.5,
+        "cybersecurity": 0.6
+      }
+    },
+    "cybersecurity": {
+      "aliases": ["information security", "infosec", "security", "it security"],
+      "related": {
+        "penetration testing": 0.8,
+        "networking": 0.65,
+        "firewall": 0.7,
+        "siem": 0.75,
+        "vulnerability management": 0.8,
+        "linux": 0.55,
+        "cloud": 0.5
+      }
+    }
+  }
+}

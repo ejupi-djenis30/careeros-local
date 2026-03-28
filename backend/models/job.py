@@ -75,6 +75,9 @@ class ScrapedJob(BaseModel, TimestampMixin):
     normalized_key_requirements = Column(JSON, nullable=True)
     normalized_metadata = Column(JSON, nullable=True)
 
+    # Job posting quality score (0.0–1.0), computed from description richness (Phase 4)
+    posting_quality = Column(Float, nullable=True)
+
     # Keep track of where it originally came from (optional but useful)
     source_query = Column(String, nullable=True)
 
@@ -144,6 +147,12 @@ class Job(BaseModel, TimestampMixin):
     location_match_score = Column(Float, nullable=True)     # 0-100: location/remote preference fit
     transferability_score = Column(Float, nullable=True)    # 0-100: how well existing skills transfer to this job
     qualification_gap_score = Column(Float, nullable=True)  # 0-100: qualification relevance for this specific job
+
+    # Structured per-dimension analysis and gap analysis (Phase 5)
+    analysis_structured = Column(JSON, nullable=True)       # {strengths, weaknesses, gaps, verdict, evidence_citations}
+
+    # Red flags detected in job description (Phase 4)
+    red_flags = Column(JSON, nullable=True)                 # list of flag strings / {type, description} dicts
 
     # Distance from search origin (km)
     distance_km = Column(Float, nullable=True)

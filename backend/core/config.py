@@ -171,6 +171,62 @@ class Settings(BaseSettings):
     # E.g. user has 3 yrs → jobs requiring up to 3+2=5 yrs min still pass.
     SEARCH_NORMALIZATION_EXPERIENCE_TOLERANCE: int = 3
 
+    # ─── Normalization quality & confidence-tiered re-normalization ───────────
+    # When enabled, low-confidence jobs get a second targeted normalization pass.
+    NORMALIZATION_RENORMALIZE_ENABLED: bool = True
+    # Jobs with confidence >= TIER1 are accepted as-is.
+    NORMALIZATION_CONFIDENCE_TIER1_THRESHOLD: float = 0.70
+    # Jobs with confidence >= TIER2 (and < TIER1) are accepted but flagged.
+    # Jobs below TIER2 get a second-pass re-normalization call.
+    NORMALIZATION_CONFIDENCE_TIER2_THRESHOLD: float = 0.40
+
+    # ─── Structured pre-score gate (runs before expensive MATCH step) ─────────
+    # When enabled, jobs must reach STRUCTURED_PRESCORE_THRESHOLD to pass to MATCH.
+    STRUCTURED_PRESCORE_ENABLED: bool = True
+    # Minimum composite pre-score (0–100) required to pass to the MATCH step.
+    STRUCTURED_PRESCORE_THRESHOLD: float = 20.0
+
+    # ─── MATCH quality improvements ───────────────────────────────────────────
+    # Evidence-grounded MATCH: prompt requires citing specific text from job description.
+    MATCH_EVIDENCE_GROUNDED: bool = True
+    # Two-pass critique: re-analyze borderline jobs (45–80 score range).
+    MATCH_CRITIQUE_ENABLED: bool = True
+    MATCH_CRITIQUE_SCORE_RANGE_MIN: int = 40
+    MATCH_CRITIQUE_SCORE_RANGE_MAX: int = 80
+    # Comparative re-ranking of the top-N jobs after individual scoring.
+    MATCH_RERANK_ENABLED: bool = True
+    MATCH_RERANK_TOP_N: int = 20
+
+    # ─── Job intelligence ─────────────────────────────────────────────────────
+    # Detect and store red flags in job descriptions.
+    RED_FLAGS_DETECTION_ENABLED: bool = True
+    # Apply posting publication-date decay to final scores.
+    RECENCY_WEIGHTING_ENABLED: bool = True
+    # Number of days after which a job starts losing score due to age.
+    RECENCY_DECAY_HALFLIFE_DAYS: int = 30
+
+    # ─── Per-step LLM overrides: CRITIQUE step ────────────────────────────────
+    LLM_CRITIQUE_PROVIDER: str = ""
+    LLM_CRITIQUE_MODEL: str = ""
+    LLM_CRITIQUE_API_KEY: str = ""
+    LLM_CRITIQUE_BASE_URL: str = ""
+    LLM_CRITIQUE_TEMPERATURE: Optional[float] = None
+    LLM_CRITIQUE_TOP_P: Optional[float] = None
+    LLM_CRITIQUE_MAX_TOKENS: Optional[int] = None
+
+    # ─── Per-step LLM overrides: RERANK step ─────────────────────────────────
+    LLM_RERANK_PROVIDER: str = ""
+    LLM_RERANK_MODEL: str = ""
+    LLM_RERANK_API_KEY: str = ""
+    LLM_RERANK_BASE_URL: str = ""
+    LLM_RERANK_TEMPERATURE: Optional[float] = None
+    LLM_RERANK_TOP_P: Optional[float] = None
+    LLM_RERANK_MAX_TOKENS: Optional[int] = None
+
+    # ─── Per-step timeouts: new steps ─────────────────────────────────────────
+    LLM_CALL_TIMEOUT_CRITIQUE: int = 90
+    LLM_CALL_TIMEOUT_RERANK: int = 60
+
     # Logging
     LOG_LEVEL: str = "INFO"
 

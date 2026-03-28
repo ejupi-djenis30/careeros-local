@@ -759,6 +759,23 @@ DIMENSIONAL SCORING: Also produce sub-scores (0-100 each):
 - `transferability_score`: How well candidate's transferable skills + cross-domain experience apply to this specific job (0=no overlap, 100=perfect transferable fit)
 - `qualification_gap_score`: How relevant candidate's qualification is for THIS job — consider domain relevance (a CS bachelor for warehouse work = low relevance but high accessibility if entry_barrier=none)
 
+EVIDENCE-GROUNDED STRUCTURED ANALYSIS:
+For each job also produce `analysis_structured` with:
+- `strengths`: list of ≤5 concrete advantages, EACH backed by a verbatim excerpt from the job text in parentheses e.g. "Skill X matches (job requires 'exact phrase')"
+- `weaknesses`: list of ≤5 genuine mismatches backed by job evidence
+- `gaps`: list of skills/qualifications the candidate lacks that job explicitly requires
+- `verdict`: one-sentence summary (max 200 chars)
+- `evidence_citations`: list of ≤4 objects {{type, job_evidence (exact quote ≤80 chars), candidate_evidence}}
+
+HARD-TO-MISS SIGNAL — RED FLAGS: For each job also detect `red_flags` — list warning signals:
+- Very high workload with no salary transparency → "no_salary_disclosed"
+- Vague role with no real requirements → "vague_requirements"
+- Unrealistic experience/education combo → "unrealistic_requirements"
+- Job requires skills not aligned with listed domain → "domain_skills_mismatch"
+- Mass-hiring / temporary placement language → "temp_agency"
+- Signs of discriminatory language → "discriminatory_language"
+Leave empty list [] if none detected.
+
 Return ONLY JSON with a "results" array, one entry per job, IN ORDER:
 {{
     "results": [
@@ -772,7 +789,17 @@ Return ONLY JSON with a "results" array, one entry per job, IN ORDER:
             "language_match_score": 100,
             "location_match_score": 75,
             "transferability_score": 70,
-            "qualification_gap_score": 50
+            "qualification_gap_score": 50,
+            "analysis_structured": {{
+                "strengths": ["Python expertise matches (job requires 'proficiency in Python')"],
+                "weaknesses": ["No AWS experience (job requires 'AWS certification')"],
+                "gaps": ["AWS certification", "Docker experience"],
+                "verdict": "Strong backend fit, cloud gap is manageable.",
+                "evidence_citations": [
+                    {{"type": "skill_match", "job_evidence": "proficiency in Python", "candidate_evidence": "5 years Python"}}
+                ]
+            }},
+            "red_flags": []
         }}
     ]
 }}"""
@@ -795,6 +822,8 @@ Return ONLY JSON with a "results" array, one entry per job, IN ORDER:
                         "location_match_score": None,
                         "transferability_score": None,
                         "qualification_gap_score": None,
+                        "analysis_structured": None,
+                        "red_flags": None,
                     }
                 )
                 continue
@@ -814,6 +843,27 @@ Return ONLY JSON with a "results" array, one entry per job, IN ORDER:
                     return None
 
             worth_applying = bool(item.get("worth_applying", False)) and score >= 65
+
+            # Extract evidence-grounded structured analysis
+            raw_structured = item.get("analysis_structured")
+            analysis_structured: Optional[Dict[str, Any]] = None
+            if isinstance(raw_structured, dict):
+                analysis_structured = {
+                    "strengths": raw_structured.get("strengths") or [],
+                    "weaknesses": raw_structured.get("weaknesses") or [],
+                    "gaps": raw_structured.get("gaps") or [],
+                    "verdict": sanitize_prompt_text(str(raw_structured.get("verdict") or ""), max_chars=250),
+                    "evidence_citations": raw_structured.get("evidence_citations") or [],
+                }
+
+            # Extract red flags
+            raw_red_flags = item.get("red_flags")
+            red_flags: Optional[List[str]] = None
+            if isinstance(raw_red_flags, list):
+                red_flags = [str(f).strip() for f in raw_red_flags if f and str(f).strip()]
+                if not red_flags:
+                    red_flags = None
+
             normalized_results.append(
                 {
                     "affinity_score": score,
@@ -826,6 +876,8 @@ Return ONLY JSON with a "results" array, one entry per job, IN ORDER:
                     "location_match_score": _coerce_sub_score(item.get("location_match_score")),
                     "transferability_score": _coerce_sub_score(item.get("transferability_score")),
                     "qualification_gap_score": _coerce_sub_score(item.get("qualification_gap_score")),
+                    "analysis_structured": analysis_structured,
+                    "red_flags": red_flags,
                 }
             )
 
@@ -842,6 +894,8 @@ Return ONLY JSON with a "results" array, one entry per job, IN ORDER:
                     "location_match_score": None,
                     "transferability_score": None,
                     "qualification_gap_score": None,
+                    "analysis_structured": None,
+                    "red_flags": None,
                 }
             )
 
@@ -1142,7 +1196,276 @@ Return ONLY JSON:
                 }
             )
 
+        # ── Phase 1.1: Post-LLM validation: catch hallucinated enum values ────
+        try:
+            from backend.services.search.normalization_validator import validate_normalized_batch
+            normalized_rows, indices_needing_review = validate_normalized_batch(normalized_rows)
+            if indices_needing_review:
+                logger.debug(
+                    "[NORMALIZE] Validator corrected %d/%d rows (indices: %s)",
+                    len(indices_needing_review), len(normalized_rows), indices_needing_review,
+                )
+        except Exception as _ve:
+            logger.warning("[NORMALIZE] normalization_validator call failed: %s", _ve)
+
         return normalized_rows
+
+
+    # ─── Phase 3.2: Two-pass critique for borderline scores ──────────────────
+
+    async def critique_job_batch(
+        self,
+        jobs_metadata: List[Dict[str, Any]],
+        initial_results: List[Dict[str, Any]],
+        profile: Dict[str, Any],
+    ) -> List[Dict[str, Any]]:
+        """Second-pass critique pass for jobs with uncertain borderline scores.
+
+        Takes jobs that fell in the configured CRITIQUE_SCORE_RANGE (default 40-80)
+        and re-evaluates them with a challenger prompt that looks for over-scoring
+        (missed hard blockers, optimism bias in first pass) or under-scoring
+        (missed transferable skills, missed career-changer signals).
+
+        Returns only the updated results for the passed-in jobs.
+        Input ``jobs_metadata`` and ``initial_results`` must be the SAME length.
+        """
+        if not jobs_metadata or not initial_results:
+            return initial_results
+
+        provider = self._get_provider("critique")
+
+        jobs_text = ""
+        initial_text = ""
+        for i, (job, init) in enumerate(zip(jobs_metadata, initial_results)):
+            jobs_text += f"\n--- JOB {i+1} ---\n"
+            jobs_text += f"Title: {job.get('title')}\n"
+            jobs_text += f"Company: {job.get('company')}\n"
+            jobs_text += f"Description: {sanitize_prompt_text(job.get('description') or '', max_chars=4000)}\n"
+            job_norm = job.get("normalized_data") or {}
+            if job_norm:
+                jobs_text += (
+                    f"[Normalized] Domain: {job_norm.get('domain')} | Seniority: {job_norm.get('seniority')}"
+                    f" | Entry barrier: {job_norm.get('entry_barrier')}"
+                    f" | Career-changer friendly: {job_norm.get('career_changer_friendly')}"
+                    f" | Hard blockers: {job_norm.get('hard_blockers')}\n"
+                )
+            initial_text += (
+                f"\nJOB {i+1} INITIAL SCORE: {init.get('affinity_score')}\n"
+                f"Initial analysis: {init.get('affinity_analysis', '')[:500]}\n"
+            )
+
+        profile_norm = profile.get("profile_normalization") or {}
+        candidate_block = (
+            f"Role: {profile.get('role_description')}\n"
+            f"CV summary: {sanitize_prompt_text(profile.get('cv_summary') or '', max_chars=800)}\n"
+            f"Domain: {profile_norm.get('domain')} | Skills: {profile_norm.get('skills')}\n"
+            f"Intent domain: {profile_norm.get('intent_domain')} | Open to unrelated: {profile_norm.get('open_to_unrelated')}\n"
+            f"Dealbreakers: {profile_norm.get('dealbreakers') or 'None'}\n"
+        )
+
+        system_prompt = (
+            "You are a second-opinion career coach reviewing initial job-fit scores. "
+            "Your job is to CHALLENGE the initial assessment: look for over-scoring (optimism bias, "
+            "ignored hard blockers, missed language gaps) AND under-scoring (missed transferable skills, "
+            "missed career-changer signals, underestimated adaptability). "
+            "Be calibrated: only change the score if you have concrete evidence for it. "
+            "If the initial score seems correct, keep it. Never adjust by more than ±20 without strong evidence."
+        )
+        user_prompt = f"""Review and potentially correct these initial job-match scores.
+
+CANDIDATE:
+{candidate_block}
+
+INITIAL SCORES:
+{initial_text}
+
+JOB DETAILS:
+{jobs_text}
+
+CRITIQUE RULES:
+1. Check for MISSED HARD BLOCKERS: did the first pass miss a language requirement, work permit, or mandatory certification?
+2. Check for OPTIMISM BIAS: was the first pass too generous about transferable skills or entry barriers?
+3. Check for PESSIMISM BIAS: was the first pass too strict about domain match when the job is career-changer friendly?
+4. Check for DEALBREAKER MISSES: re-verify all stated candidate dealbreakers against each job.
+5. Sub-score CONSISTENCY: does the overall affinity_score make sense given the sub-scores? Fix inconsistencies.
+6. If the initial score is justified, set the revised score to the same value.
+
+Return ONLY JSON with a "results" array, one entry per job, IN ORDER:
+{{
+    "results": [
+        {{
+            "affinity_score": 72,
+            "worth_applying": true,
+            "critique_notes": "Initial score was correct. No missed blockers found.",
+            "score_changed": false
+        }}
+    ]
+}}"""
+
+        try:
+            result = await self._call_provider_json(provider, "critique", system_prompt, user_prompt)
+        except Exception as exc:
+            logger.warning("[CRITIQUE] LLM critique call failed: %s. Returning initial results.", exc)
+            return initial_results
+
+        critique_rows = result.get("results", []) if isinstance(result, dict) else []
+        updated_results: List[Dict[str, Any]] = []
+
+        for i, init in enumerate(initial_results):
+            critique = critique_rows[i] if i < len(critique_rows) and isinstance(critique_rows[i], dict) else {}
+            if not critique:
+                updated_results.append(init)
+                continue
+
+            try:
+                new_score = max(0, min(100, int(critique.get("affinity_score", init["affinity_score"]))))
+            except Exception:
+                new_score = init["affinity_score"]
+
+            # Only accept score changes that are within ±20; otherwise keep original
+            score_delta = abs(new_score - init["affinity_score"])
+            if score_delta > 20:
+                logger.debug("[CRITIQUE] Job %d: score change %d→%d exceeds ±20 cap; clamping.", i+1, init["affinity_score"], new_score)
+                if new_score > init["affinity_score"]:
+                    new_score = init["affinity_score"] + 20
+                else:
+                    new_score = init["affinity_score"] - 20
+                new_score = max(0, min(100, new_score))
+
+            critique_notes = sanitize_prompt_text(str(critique.get("critique_notes") or ""), max_chars=500)
+            updated = dict(init)
+            updated["affinity_score"] = new_score
+            updated["worth_applying"] = bool(critique.get("worth_applying", False)) and new_score >= 65
+            if critique_notes:
+                # Append critique notes to the existing analysis (truncated to keep total under limit)
+                existing_analysis = updated.get("affinity_analysis", "")
+                if critique_notes and critique_notes.lower() not in existing_analysis.lower():
+                    combined = f"{existing_analysis}\n\n[Critique] {critique_notes}"
+                    updated["affinity_analysis"] = combined[:2000]
+            updated_results.append(updated)
+
+        # Pad if model returned fewer rows
+        while len(updated_results) < len(initial_results):
+            updated_results.append(initial_results[len(updated_results)])
+
+        return updated_results
+
+    # ─── Phase 3.4: Comparative re-ranking of top-N jobs ─────────────────────
+
+    async def rerank_top_jobs(
+        self,
+        top_jobs: List[Dict[str, Any]],
+        profile: Dict[str, Any],
+    ) -> List[Dict[str, Any]]:
+        """Comparative re-ranking pass on the top-N jobs.
+
+        Instead of scoring each job in isolation (which biases scores up),
+        this pass gives the LLM ALL top jobs at once and asks it to
+        produce a relative ranking with final calibrated scores.
+
+        ``top_jobs`` is a list of dicts, each with keys:
+        "job_index" (original 0-based index), "job_metadata" (full job dict),
+        "current_score" (current affinity_score).
+
+        Returns a list of dicts {job_index, final_score, rank_notes} in the
+        same order as ``top_jobs``.
+        """
+        if not top_jobs:
+            return []
+
+        provider = self._get_provider("rerank")
+        profile_norm = profile.get("profile_normalization") or {}
+
+        candidate_block = (
+            f"Role: {profile.get('role_description')}\n"
+            f"CV: {sanitize_prompt_text(profile.get('cv_summary') or '', max_chars=600)}\n"
+            f"Intent domain: {profile_norm.get('intent_domain')} | Skills: {profile_norm.get('skills')}\n"
+        )
+
+        jobs_text = ""
+        for i, entry in enumerate(top_jobs):
+            job = entry.get("job_metadata") or {}
+            jobs_text += f"\n--- JOB {i+1} (current score: {entry.get('current_score')}) ---\n"
+            jobs_text += f"Title: {job.get('title')} @ {job.get('company')}\n"
+            jobs_text += f"Description: {sanitize_prompt_text(job.get('description') or '', max_chars=2000)}\n"
+            job_norm = job.get("normalized_data") or {}
+            if job_norm:
+                jobs_text += (
+                    f"[Normalized] Domain: {job_norm.get('domain')} | Seniority: {job_norm.get('seniority')}"
+                    f" | Required skills: {job_norm.get('required_skills')}\n"
+                )
+
+        system_prompt = (
+            "You are a calibrated career advisor. You have already scored each job individually. "
+            "Now compare them ALL together and produce final calibrated scores. "
+            "Eliminate score compression: the best job should actually score highest, worst should score lowest. "
+            "Maintain relative ordering unless you find a strong reason to swap. "
+            "Small adjustments (±5) are fine for calibration. Large changes require specific justification."
+        )
+        user_prompt = f"""Calibrate final scores for these pre-scored jobs by comparing them against each other.
+
+CANDIDATE:
+{candidate_block}
+
+JOBS TO COMPARE (already individually scored):
+{jobs_text}
+
+RERANKING RULES:
+1. Compare jobs HEAD-TO-HEAD to find which is genuinely a better fit.
+2. Spread scores: if jobs scored 82, 83, 84, they should not all be 83 — differentiate them.
+3. The best job overall gets the highest score (but still ≤ the original ± 10).
+4. If a job was over-scored relative to others, down-adjust with justification.
+5. Keep original_score as reference; only adjust when comparative evidence supports it.
+
+Return ONLY JSON with a "results" array, one entry per job, IN ORDER:
+{{
+    "results": [
+        {{
+            "final_score": 85,
+            "rank": 1,
+            "rank_notes": "Best domain fit; outperforms other jobs on skill match."
+        }}
+    ]
+}}"""
+
+        try:
+            result = await self._call_provider_json(provider, "rerank", system_prompt, user_prompt)
+        except Exception as exc:
+            logger.warning("[RERANK] LLM rerank call failed: %s. Returning original scores.", exc)
+            return [
+                {"job_index": e.get("job_index", i), "final_score": e.get("current_score", 0)}
+                for i, e in enumerate(top_jobs)
+            ]
+
+        rerank_rows = result.get("results", []) if isinstance(result, dict) else []
+        output: List[Dict[str, Any]] = []
+
+        for i, entry in enumerate(top_jobs):
+            row = rerank_rows[i] if i < len(rerank_rows) and isinstance(rerank_rows[i], dict) else {}
+            orig_score = entry.get("current_score", 0)
+            try:
+                final_score = max(0, min(100, int(row.get("final_score", orig_score))))
+            except Exception:
+                final_score = orig_score
+
+            # Cap adjustment at ±15 to prevent drastic changes
+            adjustment = final_score - orig_score
+            if abs(adjustment) > 15:
+                final_score = orig_score + (15 if adjustment > 0 else -15)
+                final_score = max(0, min(100, final_score))
+
+            output.append({
+                "job_index": entry.get("job_index", i),
+                "final_score": final_score,
+                "rank_notes": sanitize_prompt_text(str(row.get("rank_notes") or ""), max_chars=300),
+            })
+
+        # Pad missing entries
+        while len(output) < len(top_jobs):
+            entry = top_jobs[len(output)]
+            output.append({"job_index": entry.get("job_index", len(output)), "final_score": entry.get("current_score", 0)})
+
+        return output
 
 
 llm_service = LLMService()
