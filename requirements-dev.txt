@@ -14,6 +14,7 @@ pytest-mock>=3.14.0
 
 # ─── Linting ───
 ruff>=0.9.0
+mypy>=1.10.0
 
 # ─── Security Auditing ───
 pip-audit>=2.7.0

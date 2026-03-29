@@ -1,8 +1,13 @@
 import React from "react";
 
-export function TargetQueue({ state, analyzedJobs, searches_generated, current_search_index, activeItemRef, jobs_analyzed, jobs_analyze_total }) {
+export function TargetQueue({ state, analyzedJobs, searches_generated, active_search_indices, completed_search_indices, activeItemRef, jobs_analyzed, jobs_analyze_total }) {
     // During searching, show analysis count badge if analysis is already running concurrently.
     const showAnalysisBadge = state === "searching" && (jobs_analyzed || 0) > 0;
+    const activeIndices = new Set(active_search_indices || []);
+    const completedIndices = new Set(completed_search_indices || []);
+    const highestActiveIndex = (active_search_indices || []).length > 0
+        ? Math.max(...active_search_indices)
+        : null;
     return (
         <div className="col-lg-5 d-flex flex-column h-100">
             <div className="glass-panel p-0 h-100 overflow-hidden d-flex flex-column">
@@ -40,12 +45,12 @@ export function TargetQueue({ state, analyzedJobs, searches_generated, current_s
                             })
                         ) : (
                             searches_generated?.map((s, i) => {
-                                const currentIndex = (current_search_index || 1) - 1;
-                                const isDone = i < currentIndex;
-                                const isCurrent = i === currentIndex;
+                                const searchIndex = i + 1;
+                                const isDone = completedIndices.has(searchIndex);
+                                const isCurrent = activeIndices.has(searchIndex);
 
                                 return (
-                                    <li key={i} ref={isCurrent ? activeItemRef : null} className={`list-group-item bg-transparent border-bottom border-white-5 px-3 py-3 d-flex gap-3 ${isCurrent ? 'bg-primary-10' : ''}`}>
+                                    <li key={i} ref={isCurrent && searchIndex === highestActiveIndex ? activeItemRef : null} className={`list-group-item bg-transparent border-bottom border-white-5 px-3 py-3 d-flex gap-3 ${isCurrent ? 'bg-primary-10' : ''}`}>
                                         <div className="mt-1">
                                             {isDone ? (
                                                 <i className="bi bi-check-circle-fill text-success"></i>

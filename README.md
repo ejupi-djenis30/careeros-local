@@ -212,9 +212,6 @@ The system relies on a strictly relational schema, managed by SQLAlchemy ORM.
    - Advanced Fields: `affinity_score` (Integer), `affinity_analysis` (Text), `worth_applying` (Boolean).
    - Relationship: Every job is linked to the User and to a `scraped_job_id`, preserving shared catalog reuse across profiles.
 
-5. **Search History (`search_histories` table)**:
-   - Audit ledger recording every time a search execution occurs, how many jobs were queried, new uniquely discover jobs, and duplicates encountered.
-
 ---
 
 ## 6. Technology Stack
@@ -233,11 +230,11 @@ The system relies on a strictly relational schema, managed by SQLAlchemy ORM.
 - **Build Tool**: Vite
 - **Styling**: Vanilla CSS with Bootstrap 5 utility classes and Bootstrap Icons
 - **Routing**: React Router DOM v6
-- **HTTP Client**: Axios (wrapped in an interception `ApiClient` for JWT injection)
+- **HTTP Client**: Custom `ApiClient` (Fetch API wrapper with JWT injection and transparent token refresh)
 
 ### DevOps & Infrastructure
 - **Containerization**: Docker & Docker Compose
-- **Default Database in Container**: PostgreSQL 15
+- **Default Database in Container**: PostgreSQL 16
 - **Default Database Local**: SQLite 3
 
 ---
@@ -309,6 +306,7 @@ If you are actively developing and modifying the codebase, you may prefer runnin
    ```bash
    uvicorn backend.main:app --reload --host 0.0.0.0 --port 8000
    ```
+   > **Tip**: `run.py` in the project root is a convenience wrapper that calls the same command (`uvicorn … --reload`), binding only to `localhost`. The Docker container uses Gunicorn with a Uvicorn worker class instead — this is intentional; `--reload` is for development only.
 
 4. **Start the Frontend Development Server**:
    Open a completely new terminal window.

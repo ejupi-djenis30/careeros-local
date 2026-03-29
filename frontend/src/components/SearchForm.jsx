@@ -71,6 +71,12 @@ export function SearchForm({ onStartSearch, isLoading, prefill }) {
     const handleCVUpload = async (e) => {
         const file = e.target.files[0];
         if (!file) return;
+        const MAX_CV_SIZE = 10 * 1024 * 1024; // 10 MB — must match backend MAX_UPLOAD_FILE_SIZE
+        if (file.size > MAX_CV_SIZE) {
+            showToast(`CV file is too large (${(file.size / (1024 * 1024)).toFixed(1)} MB). Maximum allowed size is 10 MB.`);
+            e.target.value = "";
+            return;
+        }
         try {
             const { text } = await SearchService.uploadCV(file);
             setProfile(prev => ({ ...prev, cv_content: text }));

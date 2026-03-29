@@ -274,8 +274,9 @@ async def test_analyze_and_save_stopped_and_truncation(mock_service):
     profile_dict = {"id": 1, "user_id": 1, "latitude": 47.0, "longitude": 8.0}
 
     from types import SimpleNamespace
+    long_desc = "A" * 5000
 
-    # Description within limits — no LLM compression needed; still needs geocoding
+    # Long descriptions should be compressed before analysis and still persist correctly.
     job1 = SimpleNamespace(
         id="1",
         source="test",
@@ -286,14 +287,17 @@ async def test_analyze_and_save_stopped_and_truncation(mock_service):
         application=None,
         external_url="x",
         publication=None,
-        descriptions=[SimpleNamespace(description="Short job description")],
+        descriptions=[SimpleNamespace(description=long_desc)],
     )
 
     mock_session = mock_service.job_repo.db
     mock_session.query.return_value.filter.return_value.all.return_value = []
 
-    with patch("backend.services.search_service.llm_service.analyze_job_batch") as mock_analyze:
+    with patch("backend.services.search_service.settings.MAX_DESCRIPTION_CHARS", 100), \
+         patch("backend.services.search_service.llm_service.analyze_job_batch") as mock_analyze, \
+         patch("backend.services.search_service.llm_service._compress_description_if_needed", new_callable=AsyncMock) as mock_compress:
         mock_analyze.return_value = [{"relevant": True, "affinity_score": 50, "worth_applying": False}]
+        mock_compress.return_value = "compressed"
 
         with patch("backend.services.search_service.geocode_location") as mock_geocode, \
              patch("backend.services.search_service.get_status", return_value={"state": "searching"}):
@@ -303,6 +307,7 @@ async def test_analyze_and_save_stopped_and_truncation(mock_service):
             assert saved == 1
             assert skipped == 0
             mock_session.commit.assert_called_once()
+            mock_compress.assert_awaited_once_with(long_desc, 100)
 
 async def test_analyze_and_save_length_mismatch(mock_service):
     with patch("backend.services.search_service.get_status", return_value={"state": "searching"}), \
@@ -472,7 +477,15 @@ async def test_persist_scraped_job_catalog_commits_before_analysis(mock_service)
 
     mock_session = mock_service.job_repo.db
     mock_session.query.return_value.filter.return_value.first.return_value = None
-    mock_session.flush.side_effect = lambda: setattr(mock_session.add.call_args.args[0], "id", 321)
+
+    # New savepoint-based insert: savepoint.commit() fires instead of session.flush().
+    # Simulate the database assigning an auto-increment id on commit.
+    savepoint_mock = MagicMock()
+    def _set_id_on_savepoint_commit():
+        added_obj = mock_session.add.call_args.args[0]
+        added_obj.id = 321
+    savepoint_mock.commit.side_effect = _set_id_on_savepoint_commit
+    mock_session.begin_nested.return_value = savepoint_mock
 
     created, updated = await mock_service._persist_scraped_job_catalog(1, [listing])
 
@@ -732,10 +745,43 @@ async def test_run_search_done_terminal_reason_no_results(mock_service):
     with patch.object(mock_service, "_generate_plan", new=AsyncMock(return_value=[{"query": "dev"}])), \
          patch.object(mock_service, "_search_and_produce", new=AsyncMock(return_value=(0, 0))), \
          patch.object(mock_service, "_processing_consumer", new=AsyncMock(return_value=(0, []))), \
+         patch.object(mock_service, "_normalize_user_profile", new=AsyncMock(return_value={})), \
          patch("backend.services.search_service.update_status") as mock_update:
         await mock_service.run_search(1)
 
     mock_update.assert_any_call(1, state="done", terminal_reason="no_results")
+
+
+async def test_run_search_sets_error_when_all_provider_searches_fail(mock_service):
+    profile = MagicMock(
+        id=1,
+        user_id=1,
+        cv_content=None,
+        role_description="dev",
+        search_strategy="",
+        latitude=None,
+        longitude=None,
+        cached_queries=None,
+        max_queries=5,
+        max_occupation_queries=None,
+        max_keyword_queries=None,
+    )
+    mock_service.profile_repo.get = MagicMock(return_value=profile)
+
+    with patch.object(mock_service, "_generate_plan", new=AsyncMock(return_value=[{"query": "dev"}])), \
+         patch.object(mock_service, "_search_and_produce", new=AsyncMock(return_value=(0, 0))), \
+         patch.object(mock_service, "_processing_consumer", new=AsyncMock(return_value=(0, []))), \
+         patch.object(mock_service, "_normalize_user_profile", new=AsyncMock(return_value={})), \
+         patch.object(mock_service, "_status_metrics", return_value={"errors": 1, "provider_failures": 2, "provider_successes": 0}), \
+         patch("backend.services.search_service.update_status") as mock_update:
+        await mock_service.run_search(1)
+
+    mock_update.assert_any_call(
+        1,
+        state="error",
+        terminal_reason="search_execution_failed",
+        error="All provider searches failed before any jobs could be processed.",
+    )
 
 
 async def test_run_search_done_terminal_reason_all_duplicates(mock_service):
@@ -788,6 +834,225 @@ async def test_run_search_done_terminal_reason_no_jobs_after_structured_filters(
         await mock_service.run_search(1)
 
         mock_update.assert_any_call(1, state="done", terminal_reason="no_jobs_after_structured_filters", jobs_found=3, jobs_duplicates=0, jobs_skipped=3)
+
+
+async def test_run_search_sets_error_when_processing_fails_before_analysis(mock_service):
+    profile = MagicMock(
+        id=1,
+        user_id=1,
+        cv_content=None,
+        role_description="dev",
+        search_strategy="",
+        latitude=None,
+        longitude=None,
+        cached_queries=None,
+        max_queries=5,
+        max_occupation_queries=None,
+        max_keyword_queries=None,
+    )
+    mock_service.profile_repo.get = MagicMock(return_value=profile)
+
+    with patch.object(mock_service, "_generate_plan", new=AsyncMock(return_value=[{"query": "dev"}])), \
+         patch.object(mock_service, "_search_and_produce", new=AsyncMock(return_value=(3, 0))), \
+         patch.object(mock_service, "_processing_consumer", new=AsyncMock(return_value=(1, []))), \
+         patch.object(mock_service, "_normalize_user_profile", new=AsyncMock(return_value={})), \
+         patch.object(mock_service, "_status_metrics", return_value={"errors": 1, "provider_failures": 0, "provider_successes": 1}), \
+         patch("backend.services.search_service.update_status") as mock_update:
+        await mock_service.run_search(1)
+
+    mock_update.assert_any_call(
+        1,
+        state="error",
+        terminal_reason="pipeline_processing_failed",
+        jobs_found=3,
+        jobs_duplicates=0,
+        jobs_skipped=1,
+        error="Jobs were fetched but pipeline processing failed before analysis completed.",
+    )
+
+
+# ─── _upsert_scraped_job conflict-safety tests ────────────────────────────────
+
+def _make_listing(source="job_room", job_id="abc123", title="Developer"):
+    """Helper to create a minimal listing SimpleNamespace."""
+    from types import SimpleNamespace
+    listing = SimpleNamespace(
+        source=source,
+        id=job_id,
+        platform_job_id=None,
+        title=title,
+        company=SimpleNamespace(name="Acme"),
+        descriptions=[SimpleNamespace(description="A job")],
+        location=SimpleNamespace(city="Zurich", coordinates=SimpleNamespace(lat=47.37, lon=8.54)),
+        employment=SimpleNamespace(workload_min=80, workload_max=100),
+        application=None,
+        external_url="https://example.com/job",
+        publication=None,
+        language_skills=[],
+        occupations=[],
+    )
+    return listing
+
+
+def _make_mock_service_with_real_upsert():
+    """Return a SearchService backed by a MagicMock session for upsert tests."""
+    mock_job_repo = MagicMock()
+    mock_profile_repo = MagicMock()
+    service = SearchService(job_repo=mock_job_repo, profile_repo=mock_profile_repo)
+    return service
+
+
+def test_upsert_scraped_job_creates_new_when_not_exists():
+    """Happy path: first time we see a job, it should be added to the session."""
+    from sqlalchemy.exc import IntegrityError as SaIntegrityError
+
+    service = _make_mock_service_with_real_upsert()
+    db = service.db
+    db.query.return_value.filter.return_value.first.return_value = None  # no existing record
+
+    # Savepoint mock: commit succeeds
+    savepoint_mock = MagicMock()
+    db.begin_nested.return_value = savepoint_mock
+
+    listing = _make_listing()
+
+    with patch("backend.services.search_service.bootstrap_normalized_job_data", return_value={}), \
+         patch("backend.services.search_service.extract_listing_description_text", return_value="desc"), \
+         patch("backend.services.search_service.extract_company_name", return_value="Acme"), \
+         patch("backend.services.search_service.extract_listing_location_string", return_value="Zurich"), \
+         patch("backend.services.search_service.extract_listing_workload_string", return_value="80-100"), \
+         patch("backend.services.search_service.parse_listing_publication_date", return_value=None):
+        sj, created = service._upsert_scraped_job(listing)
+
+    assert created is True
+    db.add.assert_called_once()
+    savepoint_mock.commit.assert_called_once()
+    savepoint_mock.rollback.assert_not_called()
+
+
+def test_upsert_scraped_job_recovers_from_integrity_error():
+    """
+    Concurrent insert race: flush raises IntegrityError.
+    The savepoint must be rolled back and the existing record re-fetched
+    without losing the outer transaction.
+    """
+    from sqlalchemy.exc import IntegrityError as SaIntegrityError
+
+    service = _make_mock_service_with_real_upsert()
+    db = service.db
+
+    # First call: no existing record (race not yet detected)
+    existing_sj = MagicMock()
+    existing_sj.id = 99
+    existing_sj.normalization_status = "normalized"
+    db.query.return_value.filter.return_value.first.side_effect = [
+        None,        # initial check → no record
+        existing_sj, # re-fetch after IntegrityError
+    ]
+
+    # Savepoint raises IntegrityError on commit
+    savepoint_mock = MagicMock()
+    savepoint_mock.commit.side_effect = SaIntegrityError("UNIQUE constraint failed", None, None)
+    db.begin_nested.return_value = savepoint_mock
+
+    listing = _make_listing()
+
+    with patch("backend.services.search_service.bootstrap_normalized_job_data", return_value={}), \
+         patch("backend.services.search_service.extract_listing_description_text", return_value="desc"), \
+         patch("backend.services.search_service.extract_company_name", return_value="Acme"), \
+         patch("backend.services.search_service.extract_listing_location_string", return_value="Zurich"), \
+         patch("backend.services.search_service.extract_listing_workload_string", return_value="80-100"), \
+         patch("backend.services.search_service.parse_listing_publication_date", return_value=None):
+        sj, created = service._upsert_scraped_job(listing)
+
+    # created must be False — we recovered the existing record
+    assert created is False
+    # Savepoint was rolled back (not committed successfully)
+    savepoint_mock.rollback.assert_called_once()
+    # The re-fetched record is returned
+    assert sj is existing_sj
+
+
+def test_upsert_scraped_job_updates_existing_record():
+    """When a record already exists, it should be updated in-place (not re-inserted)."""
+    service = _make_mock_service_with_real_upsert()
+    db = service.db
+
+    existing_sj = MagicMock()
+    existing_sj.normalization_status = None
+    existing_sj.description = None
+    existing_sj.location = None
+    existing_sj.application_url = None
+    existing_sj.application_email = None
+    existing_sj.workload = None
+    existing_sj.publication_date = None
+    existing_sj.source_query = None
+    db.query.return_value.filter.return_value.first.return_value = existing_sj
+
+    listing = _make_listing()
+
+    with patch("backend.services.search_service.bootstrap_normalized_job_data", return_value={"normalized_domain": "IT"}), \
+         patch("backend.services.search_service.extract_listing_description_text", return_value="Updated desc"), \
+         patch("backend.services.search_service.extract_company_name", return_value="Acme"), \
+         patch("backend.services.search_service.extract_listing_location_string", return_value="Bern"), \
+         patch("backend.services.search_service.extract_listing_workload_string", return_value="100"), \
+         patch("backend.services.search_service.parse_listing_publication_date", return_value=None):
+        sj, created = service._upsert_scraped_job(listing)
+
+    assert created is False
+    # begin_nested must NOT be called (we took the update path, not the insert path)
+    db.begin_nested.assert_not_called()
+    # Fields that were None should have been back-filled
+    assert existing_sj.description == "Updated desc"
+    assert existing_sj.location == "Bern"
+
+
+
+async def test_run_search_sets_error_when_all_persistence_fails_after_analysis(mock_service):
+    profile = MagicMock(
+        id=1,
+        user_id=1,
+        cv_content=None,
+        role_description="dev",
+        search_strategy="",
+        latitude=None,
+        longitude=None,
+        cached_queries=None,
+        max_queries=5,
+        max_occupation_queries=None,
+        max_keyword_queries=None,
+    )
+    mock_service.profile_repo.get = MagicMock(return_value=profile)
+    analyzed_pairs = [(MagicMock(), {"affinity_score": 70, "worth_applying": True})]
+
+    with patch.object(mock_service, "_generate_plan", new=AsyncMock(return_value=[{"query": "dev"}])), \
+         patch.object(mock_service, "_search_and_produce", new=AsyncMock(return_value=(3, 0))), \
+         patch.object(mock_service, "_processing_consumer", new=AsyncMock(return_value=(1, analyzed_pairs))), \
+         patch.object(mock_service, "_normalize_user_profile", new=AsyncMock(return_value={})), \
+         patch.object(mock_service, "_finalize_and_save", new=AsyncMock(return_value=(0, 1))), \
+         patch.object(
+             mock_service,
+             "_status_metrics",
+             side_effect=[
+                 {"errors": 0, "provider_failures": 0, "provider_successes": 1},
+                 {"errors": 0, "provider_failures": 0, "provider_successes": 1},
+                 {"errors": 1, "provider_failures": 0, "provider_successes": 1},
+             ],
+         ), \
+         patch("backend.services.search_service.update_status") as mock_update:
+        await mock_service.run_search(1)
+
+    persistence_error_call = next(
+        call.kwargs
+        for call in mock_update.call_args_list
+        if call.kwargs.get("terminal_reason") == "job_persistence_failed"
+    )
+    assert persistence_error_call["state"] == "error"
+    assert persistence_error_call["jobs_found"] == 3
+    assert persistence_error_call["jobs_duplicates"] == 0
+    assert persistence_error_call["jobs_skipped"] == 2
+    assert persistence_error_call["error"] == "Jobs were analyzed but none could be persisted."
+    assert persistence_error_call["finished_at"]
 
 
 # ─── MATCH Payload Completeness ──────────────────────────────────────────────

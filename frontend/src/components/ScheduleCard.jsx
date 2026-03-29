@@ -1,6 +1,18 @@
-import React from 'react';
+import React, { useState } from 'react';
 
 export function ScheduleCard({ profile, onToggle, onChangeInterval, onDelete }) {
+    const [isTogglePending, setIsTogglePending] = useState(false);
+
+    const handleToggle = async () => {
+        if (isTogglePending) return;
+        setIsTogglePending(true);
+        try {
+            await onToggle(profile.id, profile.schedule_enabled, profile.schedule_interval_hours);
+        } finally {
+            setIsTogglePending(false);
+        }
+    };
+
     return (
         <div className="col-12 col-md-6 col-xl-4">
             <div className="glass-panel p-4 h-100 d-flex flex-column hover-y-2 transition-transform shadow-sm">
@@ -45,9 +57,10 @@ export function ScheduleCard({ profile, onToggle, onChangeInterval, onDelete }) 
                                 className="form-check-input"
                                 type="checkbox"
                                 checked={profile.schedule_enabled || false}
-                                onChange={() => onToggle(profile.id, profile.schedule_enabled, profile.schedule_interval_hours)}
-                                style={{ cursor: 'pointer', transform: 'scale(1.1)' }}
-                                title="Toggle Schedule"
+                                onChange={handleToggle}
+                                disabled={isTogglePending}
+                                style={{ cursor: isTogglePending ? 'wait' : 'pointer', transform: 'scale(1.1)' }}
+                                title={isTogglePending ? 'Updating…' : 'Toggle Schedule'}
                             />
                         </div>
                     </div>

@@ -55,6 +55,13 @@ jobs:
         run: |
           ruff check backend/
 
+      - name: Type-check backend (mypy)
+        env:
+          SECRET_KEY: ci-test-secret-key-not-for-production
+          DATABASE_URL: sqlite:///./test.db
+        run: |
+          mypy backend/services backend/schemas backend/repositories --ignore-missing-imports --no-error-summary
+
       - name: Validate Alembic migrations (SQLite)
         env:
           SECRET_KEY: ci-test-secret-key-not-for-production
