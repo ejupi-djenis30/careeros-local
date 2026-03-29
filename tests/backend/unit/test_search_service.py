@@ -1,7 +1,9 @@
+import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from backend.providers.circuit_breaker import CircuitOpenError
 from backend.services.search_service import SearchService, get_compatible_providers
 
 # ─── Domain Router Tests ───
@@ -620,3 +622,129 @@ def test_check_language_level_mismatch_direct(search_service):
         user_languages=[],
     )
     assert ok is True
+
+
+@pytest.mark.asyncio
+async def test_processing_consumer_updates_jobs_skipped_realtime(search_service):
+    kept_job = MagicMock()
+    dropped_job = MagicMock()
+    job_queue = asyncio.Queue()
+    await job_queue.put([kept_job, dropped_job])
+    await job_queue.put(None)
+
+    with (
+        patch(
+            "backend.services.search_service.get_status",
+            return_value={"state": "searching", "errors": 0},
+        ),
+        patch("backend.services.search_service.update_status") as mock_update,
+        patch("backend.services.search_service.add_log"),
+        patch.object(search_service, "_normalize_persisted_jobs", new=AsyncMock(return_value=0)),
+        patch.object(search_service, "_apply_structured_filters", return_value=[kept_job]),
+        patch.object(
+            search_service, "_run_analysis_batches", new=AsyncMock(return_value=[(kept_job, {})])
+        ),
+        patch.object(search_service, "_increment_status_errors") as mock_increment_errors,
+        patch(
+            "backend.services.search_service.llm_service.is_analysis_circuit_open",
+            return_value=False,
+        ),
+    ):
+        search_service._save_single_job = AsyncMock(side_effect=Exception("save failed"))
+
+        result = await search_service._processing_consumer(
+            1,
+            {"latitude": None, "longitude": None},
+            {},
+            job_queue,
+        )
+
+    assert result == (1, 0, [(kept_job, {})], 0, 1, 0)
+    mock_increment_errors.assert_called_once_with(1)
+    mock_update.assert_any_call(1, jobs_skipped=1)
+    mock_update.assert_any_call(
+        1,
+        jobs_analyze_total=1,
+        jobs_analyzed=1,
+        jobs_new=0,
+        jobs_skipped=2,
+    )
+
+
+@pytest.mark.asyncio
+async def test_processing_consumer_skips_analysis_when_circuit_open(search_service):
+    job_a = MagicMock()
+    job_b = MagicMock()
+    job_queue = asyncio.Queue()
+    await job_queue.put([job_a, job_b])
+    await job_queue.put(None)
+
+    with (
+        patch(
+            "backend.services.search_service.get_status",
+            return_value={"state": "searching", "errors": 0},
+        ),
+        patch("backend.services.search_service.update_status") as mock_update,
+        patch("backend.services.search_service.add_log") as mock_add_log,
+        patch.object(search_service, "_normalize_persisted_jobs", new=AsyncMock(return_value=0)),
+        patch.object(search_service, "_apply_structured_filters", return_value=[job_a, job_b]),
+        patch.object(search_service, "_run_analysis_batches", new=AsyncMock()) as mock_run_batches,
+        patch.object(search_service, "_increment_status_errors") as mock_increment_errors,
+        patch(
+            "backend.services.search_service.llm_service.is_analysis_circuit_open",
+            return_value=True,
+        ),
+    ):
+        result = await search_service._processing_consumer(
+            1,
+            {"latitude": None, "longitude": None},
+            {},
+            job_queue,
+        )
+
+    assert result == (0, 2, [], 0, 0, 2)
+    mock_run_batches.assert_not_awaited()
+    mock_increment_errors.assert_not_called()
+    mock_update.assert_any_call(
+        1,
+        jobs_analyze_total=2,
+        jobs_analyzed=0,
+        jobs_new=0,
+        jobs_skipped=2,
+    )
+    assert any(
+        "MATCH circuit breaker is open" in call.args[1] for call in mock_add_log.call_args_list
+    )
+
+
+@pytest.mark.asyncio
+async def test_run_analysis_batches_does_not_increment_errors_for_circuit_open(search_service):
+    job = MagicMock()
+    job.title = "Backend Engineer"
+    job.descriptions = [MagicMock(description="Python role")]
+    job.occupations = []
+    job.company = MagicMock(name="ACME")
+    job.location = MagicMock(city="Zurich")
+    job.employment = MagicMock(workload_min=80, workload_max=100)
+    job.language_skills = []
+    job._normalized_job_data = {}
+
+    with (
+        patch(
+            "backend.services.search_service.get_status",
+            return_value={"state": "searching", "errors": 0},
+        ),
+        patch.object(search_service, "_increment_status_errors") as mock_increment_errors,
+        patch(
+            "backend.services.search_service.llm_service.analyze_job_batch",
+            new=AsyncMock(side_effect=CircuitOpenError("match", 60)),
+        ),
+        patch(
+            "backend.services.search_service.llm_service._compress_description_if_needed",
+            new=AsyncMock(return_value="Python role"),
+        ),
+    ):
+        result = await search_service._run_analysis_batches(1, {}, [job])
+
+    assert result == []
+    mock_increment_errors.assert_not_called()

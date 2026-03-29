@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 
 from backend.core.config import settings
 from backend.models import Job, ScrapedJob, SearchProfile
+from backend.providers.circuit_breaker import CircuitOpenError
 from backend.providers.jobs.jobroom.client import JobRoomProvider
 from backend.providers.jobs.swissdevjobs.client import SwissDevJobsProvider
 from backend.repositories.job_repository import JobRepository
@@ -250,13 +251,25 @@ class SearchService:
 
         created = 0
         updated = 0
+        failed = 0
         try:
             for listing in jobs:
-                _, was_created = self._upsert_scraped_job(listing)
-                if was_created:
-                    created += 1
-                else:
-                    updated += 1
+                savepoint = self.db.begin_nested()
+                try:
+                    _, was_created = self._upsert_scraped_job(listing)
+                    savepoint.commit()
+                    if was_created:
+                        created += 1
+                    else:
+                        updated += 1
+                except Exception as exc:
+                    failed += 1
+                    savepoint.rollback()
+                    logger.warning(
+                        "Failed to persist scraped job catalog entry for profile %s: %s",
+                        profile_id,
+                        exc,
+                    )
             self.db.commit()
         except Exception as exc:
             self.db.rollback()
@@ -265,9 +278,15 @@ class SearchService:
             )
             raise
 
+        if created == 0 and updated == 0 and failed > 0:
+            raise RuntimeError(
+                f"Failed to persist all {failed} scraped catalog job entries for profile {profile_id}"
+            )
+
         add_log(
             profile_id,
-            f"Persisted shared job catalog entries before filtering: {created} created, {updated} refreshed",
+            "Persisted shared job catalog entries before filtering: "
+            f"{created} created, {updated} refreshed" + (f", {failed} failed" if failed else ""),
         )
         return created, updated
 
@@ -1464,15 +1483,31 @@ class SearchService:
         # The producer streams unique-per-query batches; the consumer normalizes,
         # filters, analyzes, and immediately persists each batch as it arrives.
         job_queue: asyncio.Queue = asyncio.Queue()
-        (
-            (total_found, total_duplicates),
-            (total_filtered, analysis_failed, analyzed_pairs, consumer_saved, consumer_skipped),
-        ) = await asyncio.gather(
+        (producer_result, consumer_result) = await asyncio.gather(
             self._search_and_produce(
                 profile_id, profile, searches, provider_infos, job_queue, profile_history
             ),
             self._processing_consumer(profile_id, profile_dict, profile_preferences, job_queue),
         )
+        total_found, total_duplicates = producer_result
+        if len(consumer_result) == 5:
+            (
+                total_filtered,
+                analysis_failed,
+                analyzed_pairs,
+                consumer_saved,
+                consumer_skipped,
+            ) = consumer_result
+            analysis_skipped = 0
+        else:
+            (
+                total_filtered,
+                analysis_failed,
+                analyzed_pairs,
+                consumer_saved,
+                consumer_skipped,
+                analysis_skipped,
+            ) = consumer_result
         status_metrics = self._status_metrics(profile_id)
 
         if total_found == 0:
@@ -1540,7 +1575,7 @@ class SearchService:
                     terminal_reason="pipeline_processing_failed",
                     jobs_found=total_found,
                     jobs_duplicates=total_duplicates,
-                    jobs_skipped=total_filtered,
+                    jobs_skipped=total_filtered + analysis_skipped,
                     error="Jobs were fetched but pipeline processing failed before analysis completed.",
                 )
             else:
@@ -1555,7 +1590,7 @@ class SearchService:
                     terminal_reason="no_jobs_after_structured_filters",
                     jobs_found=total_found,
                     jobs_duplicates=total_duplicates,
-                    jobs_skipped=total_filtered,
+                    jobs_skipped=total_filtered + analysis_skipped,
                 )
             return
 
@@ -1575,7 +1610,7 @@ class SearchService:
                 finished_at=datetime.now(timezone.utc).isoformat(),
                 jobs_found=total_found,
                 jobs_duplicates=total_duplicates,
-                jobs_skipped=total_filtered + consumer_skipped,
+                jobs_skipped=total_filtered + consumer_skipped + analysis_skipped,
                 error="Jobs were analyzed but none could be persisted.",
             )
             return
@@ -1597,7 +1632,7 @@ class SearchService:
             await self._finalize_and_save(profile_id, profile_dict, analyzed_pairs)
 
         saved_count = consumer_saved
-        total_skipped = total_filtered + consumer_skipped
+        total_skipped = total_filtered + consumer_skipped + analysis_skipped
         add_log(
             profile_id, f"✓ Search complete – {saved_count} jobs saved, {consumer_skipped} skipped"
         )
@@ -2696,6 +2731,12 @@ class SearchService:
 
                     total_duplicates += len(found_jobs) - len(new_unique)
 
+                    update_status(
+                        profile_id,
+                        jobs_found=total_found,
+                        jobs_duplicates=total_duplicates,
+                    )
+
                     if not new_unique:
                         return
 
@@ -2761,19 +2802,21 @@ class SearchService:
         profile_dict: dict,
         profile_preferences: dict,
         job_queue: asyncio.Queue,
-    ) -> tuple[int, int, list, int, int]:
+    ) -> tuple[int, int, list, int, int, int]:
         """Consume job batches from the queue; run normalize → filter → LLM analysis
         on each batch immediately as it arrives, overlapping with ongoing searches.
         Each analyzed batch is persisted to the Job table immediately — before the
         next batch is even started — so new jobs appear in the DB and in the UI
         while the search is still running.
 
-        Returns (total_filtered_count, analysis_failed_count, analyzed_pairs, total_saved, total_save_skipped) where:
+        Returns (total_filtered_count, analysis_failed_count, analyzed_pairs, total_saved,
+        total_save_skipped, total_analysis_skipped) where:
         - total_filtered_count: jobs dropped by structured filters
         - analysis_failed_count: jobs that passed filters but were lost due to LLM analysis errors
         - analyzed_pairs: list of (job_listing, analysis_dict) — kept for optional final passes
         - total_saved: jobs successfully persisted
         - total_save_skipped: jobs lost due to persistence errors
+        - total_analysis_skipped: jobs intentionally skipped because MATCH analysis could not run
         """
         total_filtered = 0
         analysis_failed = 0
@@ -2781,6 +2824,8 @@ class SearchService:
         cumulative_to_analyze = 0
         total_saved = 0
         total_save_skipped = 0
+        total_analysis_skipped = 0
+        cumulative_skipped = 0
 
         # Pre-compute origin_coords once so every batch save call can calculate distance.
         origin_coords = None
@@ -2823,7 +2868,12 @@ class SearchService:
             filtered_batch = self._apply_structured_filters(
                 profile_id, profile_dict, batch, profile_preferences
             )
-            total_filtered += pre_filter - len(filtered_batch)
+            filtered_out = pre_filter - len(filtered_batch)
+            total_filtered += filtered_out
+            cumulative_skipped += filtered_out
+
+            if filtered_out:
+                update_status(profile_id, jobs_skipped=cumulative_skipped)
 
             if not filtered_batch:
                 continue
@@ -2833,10 +2883,30 @@ class SearchService:
             # frontend never sees a completed ratio (analyzed == total) for just the
             # first batch while more searches are still running.  Both counters are written
             # in a single update_status call to keep the ratio coherent.
+            analysis_input_count = len(filtered_batch)
+            if llm_service.is_analysis_circuit_open():
+                analysis_failed += analysis_input_count
+                total_analysis_skipped += analysis_input_count
+                cumulative_to_analyze += analysis_input_count
+                cumulative_skipped += analysis_input_count
+                add_log(
+                    profile_id,
+                    "⚠ MATCH circuit breaker is open — skipping analysis for "
+                    f"{analysis_input_count} job(s) until the recovery window elapses.",
+                )
+                update_status(
+                    profile_id,
+                    jobs_analyze_total=cumulative_to_analyze,
+                    jobs_analyzed=len(analyzed_pairs),
+                    jobs_new=total_saved,
+                    jobs_skipped=cumulative_skipped,
+                )
+                continue
+
             batch_pairs = await self._run_analysis_batches(profile_id, profile_dict, filtered_batch)
             # Track jobs that passed filters but were lost due to analysis errors.
-            analysis_failed += len(filtered_batch) - len(batch_pairs)
-            cumulative_to_analyze += len(filtered_batch)
+            analysis_failed += analysis_input_count - len(batch_pairs)
+            cumulative_to_analyze += analysis_input_count
             analyzed_pairs.extend(batch_pairs)
 
             # ── Save immediately (progressive persistence) ──
@@ -2863,15 +2933,24 @@ class SearchService:
 
             total_saved += batch_saved
             total_save_skipped += batch_skipped
+            cumulative_skipped += batch_skipped
 
             update_status(
                 profile_id,
                 jobs_analyze_total=cumulative_to_analyze,
                 jobs_analyzed=len(analyzed_pairs),
                 jobs_new=total_saved,
+                jobs_skipped=cumulative_skipped,
             )
 
-        return total_filtered, analysis_failed, analyzed_pairs, total_saved, total_save_skipped
+        return (
+            total_filtered,
+            analysis_failed,
+            analyzed_pairs,
+            total_saved,
+            total_save_skipped,
+            total_analysis_skipped,
+        )
 
     async def _run_analysis_batches(self, profile_id: int, profile_dict: dict, jobs: list) -> list:
         """Run LLM match analysis on a list of jobs using concurrent internal batches.
@@ -2968,6 +3047,13 @@ class SearchService:
                 try:
                     results = await llm_service.analyze_job_batch(jobs_metadata, profile_dict)
                     return list(zip(batch, results))
+                except CircuitOpenError as exc:
+                    logger.warning(
+                        "Analysis batch skipped for profile %s because match circuit is open: %s",
+                        profile_id,
+                        exc,
+                    )
+                    return []
                 except Exception as e:
                     self._increment_status_errors(profile_id)
                     logger.error(f"Analysis batch failed: {e}")

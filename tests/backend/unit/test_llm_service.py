@@ -3,6 +3,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from tenacity import RetryError
 
+from backend.providers.circuit_breaker import CircuitState
 from backend.services.llm_service import LLMService
 
 
@@ -272,6 +273,15 @@ async def test_normalize_job_batch_pads_invalid_rows(mock_provider):
     assert len(results) == 2
     assert results[0]["domain"] == "general"
     assert results[1]["domain"] == "general"
+
+
+def test_is_analysis_circuit_open_reads_match_breaker_state(mock_provider):
+    with patch("backend.services.llm_service.get_provider_for_step", return_value=mock_provider):
+        service = LLMService()
+        mock_breaker = MagicMock(state=CircuitState.OPEN)
+
+        with patch("backend.services.llm_service.circuit_registry.get", return_value=mock_breaker):
+            assert service.is_analysis_circuit_open() is True
 
 
 # ─── Feature 4: Query Count Retry Enforcement Tests ───────────────────────────

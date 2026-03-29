@@ -4,7 +4,7 @@ from typing import Any, Dict, List, Optional
 from tenacity import RetryError, retry, stop_after_attempt, wait_exponential
 
 from backend.core.config import settings
-from backend.providers.circuit_breaker import circuit_registry
+from backend.providers.circuit_breaker import CircuitState, circuit_registry
 from backend.providers.llm.factory import get_provider_for_step
 from backend.services.search.query_contracts import (
     compute_plan_input_fingerprint,
@@ -60,6 +60,18 @@ class LLMService:
     def clear_provider_cache(self):
         """Force reload of all LLM providers (e.g. if config changes)."""
         self._provider_cache.clear()
+
+    def is_step_circuit_open(self, step: str) -> bool:
+        provider = self._get_provider(step)
+        cb = circuit_registry.get(
+            provider.model_id,
+            failure_threshold=settings.CIRCUIT_BREAKER_FAILURE_THRESHOLD,
+            recovery_seconds=float(settings.CIRCUIT_BREAKER_RECOVERY_SECONDS),
+        )
+        return cb.state == CircuitState.OPEN
+
+    def is_analysis_circuit_open(self) -> bool:
+        return self.is_step_circuit_open("match")
 
     async def _call_provider_json(
         self,
