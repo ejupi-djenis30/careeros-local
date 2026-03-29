@@ -1,14 +1,21 @@
 import React from "react";
 
-export function TargetQueue({ state, analyzedJobs, searches_generated, current_search_index, activeItemRef }) {
+export function TargetQueue({ state, analyzedJobs, searches_generated, current_search_index, activeItemRef, jobs_analyzed, jobs_analyze_total }) {
+    // During searching, show analysis count badge if analysis is already running concurrently.
+    const showAnalysisBadge = state === "searching" && (jobs_analyzed || 0) > 0;
     return (
         <div className="col-lg-5 d-flex flex-column h-100">
             <div className="glass-panel p-0 h-100 overflow-hidden d-flex flex-column">
-                <div className="p-3 border-bottom border-white-10 bg-white-5">
+                <div className="p-3 border-bottom border-white-10 bg-white-5 d-flex align-items-center justify-content-between">
                     <h6 className="mb-0 fw-bold text-white small text-uppercase tracking-wide">
                         <i className={`bi ${state === "analyzing" ? "bi-search" : "bi-diagram-3"} me-2 text-primary`}></i>
                         {state === "analyzing" ? "Analysis Queue" : "Tactical Plan"}
                     </h6>
+                    {showAnalysisBadge && (
+                        <span className="badge bg-primary-10 text-primary border border-primary-20 rounded-pill font-monospace x-small">
+                            {jobs_analyzed}/{jobs_analyze_total || '?'} analyzed
+                        </span>
+                    )}
                 </div>
                 <div className="flex-grow-1 overflow-y-auto custom-scrollbar p-0">
                     <ul className="list-group list-group-flush mb-0">

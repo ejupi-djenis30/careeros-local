@@ -1270,72 +1270,66 @@ class SearchService:
         except Exception:
             profile_dict["preference_signals"] = {}
 
-        # ── Step 2: Execute searches with domain routing (Feature 4) ──
+        # ── Steps 2-6: Streaming pipeline — search, normalize, filter, analyze, save ──
+        # Each query's results flow through the full pipeline immediately after the
+        # query completes, overlapping with still-ongoing searches.
         update_status(profile_id, state="searching")
-        add_log(profile_id, "Step 2: Executing scraper queries...")
-        all_jobs = await self._execute_searches(profile_id, profile, searches, provider_infos)
-        if not all_jobs:
+        add_log(profile_id, "Step 2+: Streaming search with real-time normalization and analysis...")
+
+        # Pre-load profile job history for incremental deduplication inside the producer.
+        profile_history = self._load_profile_dedup_history(profile_id, user_id)
+
+        # The producer streams unique-per-query batches; the consumer normalizes,
+        # filters, and runs LLM analysis on each batch as it arrives.
+        job_queue: asyncio.Queue = asyncio.Queue()
+        (total_found, total_duplicates), (total_filtered, analyzed_pairs) = await asyncio.gather(
+            self._search_and_produce(
+                profile_id, profile, searches, provider_infos, job_queue, profile_history
+            ),
+            self._processing_consumer(
+                profile_id, profile_dict, profile_preferences, job_queue
+            ),
+        )
+
+        if total_found == 0:
             add_log(profile_id, "No jobs found across all queries.")
             add_log(profile_id, f"[LLM_DEBUG] state=done terminal_reason=no_results profile_id={profile_id}")
             update_status(profile_id, state="done", terminal_reason="no_results")
             return
 
-        # ── Step 3: Deduplication & Feature 2 (Cross-Profile Applied) ──
-        add_log(profile_id, "Step 3: Deduplicating and checking cross-profile status...")
-        unique_jobs, duplicates = self._deduplicate(profile, all_jobs)
-        add_log(profile_id, f"After dedup: {len(unique_jobs)} new, {duplicates} duplicates")
-
-        if not unique_jobs:
+        unique_total = total_found - total_duplicates
+        if unique_total == 0:
             add_log(profile_id, "All found jobs are already in profile history.")
             add_log(profile_id, f"[LLM_DEBUG] state=done terminal_reason=all_duplicates profile_id={profile_id}")
-            update_status(profile_id, state="done", terminal_reason="all_duplicates")
+            update_status(
+                profile_id, state="done", terminal_reason="all_duplicates",
+                jobs_found=total_found, jobs_duplicates=total_duplicates,
+            )
             return
 
-        # ── Step 4: Persist every unique scraped job before any gating ──
-        add_log(profile_id, f"Step 4: Persisting {len(unique_jobs)} unique fetched jobs into the shared catalog...")
-        await self._persist_scraped_job_catalog(profile_id, unique_jobs)
-
-        # ── Step 4.5: Upgrade provider bootstrap normalization with LLM normalization ──
-        try:
-            await self._normalize_persisted_jobs(profile_id, unique_jobs)
-        except Exception as normalize_error:
-            from backend.services.llm_service import _unwrap_retry_error
-            _, _norm_err_msg = _unwrap_retry_error(normalize_error)
-            logger.error(
-                "LLM normalization failed for profile %s — jobs will proceed without normalized fields: %s",
-                profile_id,
-                _norm_err_msg,
-                exc_info=True,
-            )
-            add_log(
-                profile_id,
-                f"Normalization error (jobs will be passed to match step without field-level filtering): {_norm_err_msg}",
-            )
-
-        # ── Step 5: Structured filtering based on persisted job facts ──
-        pre_filter_count = len(unique_jobs)
-        unique_jobs = self._apply_structured_filters(profile_id, profile_dict, unique_jobs, profile_preferences)
-        filtered_out_count = pre_filter_count - len(unique_jobs)
-
-        if not unique_jobs:
-            add_log(profile_id, "No jobs left after structured filtering.")
+        if not analyzed_pairs:
+            add_log(profile_id, "No jobs passed structured filtering and analysis.")
             add_log(profile_id, f"[LLM_DEBUG] state=done terminal_reason=no_jobs_after_structured_filters profile_id={profile_id}")
-            update_status(profile_id, state="done", terminal_reason="no_jobs_after_structured_filters")
+            update_status(
+                profile_id, state="done",
+                terminal_reason="no_jobs_after_structured_filters",
+                jobs_found=total_found, jobs_duplicates=total_duplicates, jobs_skipped=total_filtered,
+            )
             return
 
-        update_status(
-            profile_id,
-            state="analyzing",
-            jobs_found=len(all_jobs),
-            jobs_new=len(unique_jobs),
-            jobs_duplicates=duplicates,
-            jobs_skipped=filtered_out_count,
+        # ── Step 6b: Optional final passes (critique, rerank) then save ──
+        needs_final_pass = (
+            getattr(settings, "MATCH_CRITIQUE_ENABLED", False)
+            or getattr(settings, "MATCH_RERANK_ENABLED", False)
         )
+        if needs_final_pass:
+            add_log(profile_id, f"Step 6b: Running final analysis passes ({len(analyzed_pairs)} jobs)...")
+            update_status(profile_id, state="analyzing")
 
-        # ── Step 6: Analyze & save each structurally eligible job (Parallel) ──
-        add_log(profile_id, f"Step 6: Detailed analysis and match scoring ({len(unique_jobs)} jobs)...")
-        saved_count, skipped_count = await self._analyze_and_save(profile_id, profile_dict, unique_jobs)
-        total_skipped = filtered_out_count + skipped_count
+        saved_count, skipped_count = await self._finalize_and_save(
+            profile_id, profile_dict, analyzed_pairs
+        )
+        total_skipped = total_filtered + skipped_count
 
         add_log(profile_id, f"✓ Search complete – {saved_count} jobs saved, {skipped_count} skipped")
         add_log(profile_id, f"[LLM_DEBUG] state=done terminal_reason=completed profile_id={profile_id} jobs_saved={saved_count} jobs_skipped={skipped_count}")
@@ -1344,10 +1338,10 @@ class SearchService:
             state="done",
             terminal_reason="completed",
             finished_at=datetime.now(timezone.utc).isoformat(),
-            jobs_found=len(all_jobs),
+            jobs_found=total_found,
             jobs_new=saved_count,
-            jobs_duplicates=duplicates,
-            jobs_skipped=total_skipped
+            jobs_duplicates=total_duplicates,
+            jobs_skipped=total_skipped,
         )
 
     # ───────────────────────── helper methods ─────────────────────────
@@ -2022,6 +2016,551 @@ class SearchService:
                     exc,
                 )
                 raise
+
+
+    # ─── Streaming pipeline helpers ───────────────────────────────────────
+
+    def _load_profile_dedup_history(self, profile_id: int, user_id: Optional[int]) -> dict:
+        """Pre-load profile job history sets for incremental deduplication in the producer."""
+        existing_identifiers = self.job_repo.get_profile_job_identifiers(profile_id)
+        applied_scraped_ids = (
+            self.job_repo.get_applied_scraped_job_ids(user_id)
+            if user_id is not None
+            else set()
+        )
+        return {
+            "existing_keys": {listing_identity_key(r) for r in existing_identifiers if listing_identity_key(r)},
+            "existing_urls": {listing_url_token(r) for r in existing_identifiers if listing_url_token(r)},
+            "existing_fuzzy_keys": {listing_fuzzy_key(r) for r in existing_identifiers if listing_fuzzy_key(r)},
+            "applied_scraped_ids": applied_scraped_ids,
+        }
+
+    async def _search_and_produce(
+        self,
+        profile_id: int,
+        profile,
+        searches: list,
+        provider_infos: dict,
+        job_queue: asyncio.Queue,
+        profile_history: dict,
+    ) -> tuple[int, int]:
+        """Execute all search queries, deduplicate incrementally, persist each batch, and
+        push it to job_queue for the consumer to normalize+filter+analyze concurrently.
+
+        Returns (total_found, total_duplicates).
+        """
+        total_found = 0
+        total_duplicates = 0
+        execution_metrics = {
+            "queries_without_provider": 0,
+            "provider_failures": 0,
+            "provider_successes": 0,
+            "avam_fallback_count": 0,
+        }
+        execution_mode = (settings.SEARCH_EXECUTION_MODE or "sequential").strip().lower()
+        query_concurrency = settings.SEARCH_CONCURRENCY if execution_mode == "immediate" else 1
+        semaphore = asyncio.Semaphore(max(1, query_concurrency))
+        provider_parallel = execution_mode == "immediate"
+        add_log(profile_id, f"Execution mode: {execution_mode}")
+
+        # Mutable dedup state — shared across concurrent coroutines.
+        # Safe in asyncio: check+add is always synchronous (no await between).
+        seen_identity_keys: set = set()
+        seen_url_tokens: set = set()
+        seen_fuzzy_keys: set = set()
+        seen_desc_fingerprints: set = set()
+
+        # Profile-history sets — mutated in-place so cross-query history dedup is cumulative.
+        existing_keys: set = profile_history["existing_keys"]
+        existing_urls: set = profile_history["existing_urls"]
+        existing_fuzzy_keys: set = profile_history["existing_fuzzy_keys"]
+        applied_scraped_ids: set = profile_history["applied_scraped_ids"]
+
+        async def execute_and_push(idx: int, search: dict):
+            nonlocal total_found, total_duplicates
+
+            async with semaphore:
+                status_data = get_status(profile_id)
+                if status_data.get("state") in STOP_STATES:
+                    return
+
+                normalized_search, _ = normalize_search_item(search)
+                if not normalized_search:
+                    add_log(profile_id, f"⚠ Skipping invalid query payload at index {idx + 1}")
+                    return
+
+                query = normalized_search.get("query", "")
+                domain = normalized_search.get("domain", "general")
+                query_type = normalized_search.get("type", "keyword")
+                query_language = normalized_search.get("language", "en")
+
+                profession_codes = []
+                avam_fallback_keyword = False
+                if query_type == "occupation":
+                    profession_codes = await avam_mapper.resolve(query)
+                    if not profession_codes:
+                        avam_fallback_keyword = True
+                        execution_metrics["avam_fallback_count"] += 1
+                        add_log(profile_id, f"  ℹ AVAM found no codes for «{query}», JobRoom will use keyword fallback")
+
+                compatible = route_provider_names(normalized_search, self.providers, provider_infos)
+                if not compatible:
+                    execution_metrics["queries_without_provider"] += 1
+                    add_log(profile_id, f"⚠ No providers accept domain '{domain}' for «{query}»")
+                    return
+
+                update_status(profile_id, current_search_index=idx + 1, current_query=f"«{query}» ({domain})")
+                add_log(profile_id, f"Running query {idx+1}/{len(searches)}: «{query}» on {', '.join(compatible)}")
+
+                async def search_provider(provider_name: str, req: JobSearchRequest):
+                    provider = self.providers[provider_name]
+                    if not provider:
+                        return provider_name, [], None
+                    provider_jobs = []
+                    try:
+                        current_page = 0
+                        while True:
+                            page_size = 50
+                            if hasattr(provider, "capabilities") and hasattr(provider.capabilities, "max_page_size"):
+                                page_size = provider.capabilities.max_page_size
+                            page_req = req.model_copy(update={"page": current_page, "page_size": page_size})
+                            result = await provider.search(page_req)
+                            page_items = list(getattr(result, "items", []) or [])
+                            for item in page_items:
+                                if hasattr(item, "_source_query"):
+                                    item._source_query = query
+                                else:
+                                    setattr(item, "_source_query", query)
+                            provider_jobs.extend(page_items)
+                            if not page_items:
+                                break
+                            total_pages = getattr(result, "total_pages", 1)
+                            total_count = getattr(result, "total_count", None)
+                            if total_pages and current_page >= total_pages - 1:
+                                break
+                            if total_count is not None and total_count >= 0 and len(provider_jobs) >= total_count:
+                                break
+                            current_page += 1
+                            if provider.throttle_delay > 0:
+                                await asyncio.sleep(provider.throttle_delay)
+                            status_data = get_status(profile_id)
+                            if status_data.get("state") in STOP_STATES:
+                                break
+                        return provider_name, provider_jobs, None
+                    except Exception as e:
+                        return provider_name, provider_jobs, e
+
+                p_tasks = []
+                for p_name in compatible:
+                    provider = self.providers[p_name]
+                    page_size = 50
+                    if hasattr(provider, "capabilities") and hasattr(provider.capabilities, "max_page_size"):
+                        page_size = provider.capabilities.max_page_size
+                    if p_name == "job_room" and avam_fallback_keyword:
+                        req_fallback = build_search_request(
+                            profile, query, [],
+                            language=supported_request_language(query_language, provider),
+                            page_size=page_size, provider=provider,
+                        )
+                        p_tasks.append(search_provider(p_name, req_fallback))
+                    else:
+                        req = build_search_request(
+                            profile, query, profession_codes,
+                            language=supported_request_language(query_language, provider),
+                            page_size=page_size, provider=provider,
+                        )
+                        p_tasks.append(search_provider(p_name, req))
+
+                if provider_parallel:
+                    p_results = await asyncio.gather(*p_tasks)
+                else:
+                    p_results = []
+                    for task in p_tasks:
+                        p_results.append(await task)
+
+                found_jobs = []
+                for p_name, items, error in p_results:
+                    if error:
+                        execution_metrics["provider_failures"] += 1
+                        add_log(profile_id, f"  ⚠ {p_name} failed: {str(error)[:100]}")
+                    else:
+                        execution_metrics["provider_successes"] += 1
+                        found_jobs.extend(items)
+                        add_log(profile_id, f"  ↳ {p_name}: {len(items)} jobs")
+
+                total_found += len(found_jobs)
+
+                # ── Incremental dedup: cross-query (T1-T3) + profile history ──
+                # All check+add operations are synchronous — no await between, so atomically safe.
+                new_unique: list = []
+                for job in found_jobs:
+                    key = listing_identity_key(job)
+                    url = listing_url_token(job)
+                    fuzzy = listing_fuzzy_key(job)
+                    desc_fp = listing_description_fingerprint(job)
+
+                    if key and (key in seen_identity_keys or key in existing_keys):
+                        continue
+                    if url and (url in seen_url_tokens or (url in existing_urls and key not in existing_keys)):
+                        continue
+                    if fuzzy and (fuzzy in seen_fuzzy_keys or fuzzy in existing_fuzzy_keys):
+                        continue
+                    if desc_fp and desc_fp in seen_desc_fingerprints:
+                        continue
+
+                    if key:
+                        seen_identity_keys.add(key)
+                        existing_keys.add(key)
+                    if url:
+                        seen_url_tokens.add(url)
+                        existing_urls.add(url)
+                    if fuzzy:
+                        seen_fuzzy_keys.add(fuzzy)
+                        existing_fuzzy_keys.add(fuzzy)
+                    if desc_fp:
+                        seen_desc_fingerprints.add(desc_fp)
+
+                    new_unique.append(job)
+
+                total_duplicates += len(found_jobs) - len(new_unique)
+
+                if not new_unique:
+                    return
+
+                # ── Persist this query's unique batch to the shared catalog ──
+                try:
+                    await self._persist_scraped_job_catalog(profile_id, new_unique)
+                except Exception as persist_err:
+                    logger.error(
+                        "Failed to persist job batch for profile %s: %s", profile_id, persist_err
+                    )
+                    return
+
+                # ── Set _applied_elsewhere flag (scraped_job_id is now assigned) ──
+                for job in new_unique:
+                    scraped_id = getattr(job, "_scraped_job_id", None)
+                    setattr(
+                        job, "_applied_elsewhere",
+                        scraped_id is not None and scraped_id in applied_scraped_ids,
+                    )
+
+                # Push batch to the consumer for normalization + filtering + analysis.
+                await job_queue.put(new_unique)
+
+        try:
+            await asyncio.gather(*(execute_and_push(i, q) for i, q in enumerate(searches)))
+        finally:
+            # Always signal end-of-stream to unblock the consumer, even on error/stop.
+            await job_queue.put(None)
+
+        update_status(
+            profile_id,
+            queries_without_provider=execution_metrics["queries_without_provider"],
+            provider_failures=execution_metrics["provider_failures"],
+            provider_successes=execution_metrics["provider_successes"],
+            avam_fallback_count=execution_metrics["avam_fallback_count"],
+        )
+        if total_duplicates > 0:
+            add_log(
+                profile_id,
+                f"Deduplication: {total_found} found, {total_duplicates} duplicates, "
+                f"{total_found - total_duplicates} unique",
+            )
+        return total_found, total_duplicates
+
+    async def _processing_consumer(
+        self,
+        profile_id: int,
+        profile_dict: dict,
+        profile_preferences: dict,
+        job_queue: asyncio.Queue,
+    ) -> tuple[int, list]:
+        """Consume job batches from the queue; run normalize → filter → LLM analysis
+        on each batch immediately as it arrives, overlapping with ongoing searches.
+
+        Returns (total_filtered_count, analyzed_pairs) where analyzed_pairs is a list of
+        (job_listing, analysis_dict).  Critique and reranking are deferred to _finalize_and_save.
+        """
+        total_filtered = 0
+        analyzed_pairs: list = []
+        cumulative_to_analyze = 0
+
+        while True:
+            batch = await job_queue.get()
+            if batch is None:
+                # Sentinel: producer finished.
+                break
+
+            status_data = get_status(profile_id)
+            if status_data.get("state") in STOP_STATES:
+                break
+
+            # ── Normalize ──
+            try:
+                await self._normalize_persisted_jobs(profile_id, batch)
+            except Exception as norm_err:
+                from backend.services.llm_service import _unwrap_retry_error
+                _, err_msg = _unwrap_retry_error(norm_err)
+                logger.error(
+                    "LLM normalization failed for profile %s batch — proceeding without full normalization: %s",
+                    profile_id, err_msg,
+                )
+                add_log(
+                    profile_id,
+                    f"Normalization error (batch proceeds without field-level filtering): {err_msg}",
+                )
+
+            # ── Filter ──
+            pre_filter = len(batch)
+            filtered_batch = self._apply_structured_filters(
+                profile_id, profile_dict, batch, profile_preferences
+            )
+            total_filtered += pre_filter - len(filtered_batch)
+
+            if not filtered_batch:
+                continue
+
+            # Update running total so the frontend can show analysis progress in real time.
+            cumulative_to_analyze += len(filtered_batch)
+            update_status(profile_id, jobs_analyze_total=cumulative_to_analyze)
+
+            # ── LLM analysis (batch-parallel, no critique/rerank yet) ──
+            batch_pairs = await self._run_analysis_batches(profile_id, profile_dict, filtered_batch)
+            analyzed_pairs.extend(batch_pairs)
+            update_status(profile_id, jobs_analyzed=len(analyzed_pairs))
+
+        return total_filtered, analyzed_pairs
+
+    async def _run_analysis_batches(self, profile_id: int, profile_dict: dict, jobs: list) -> list:
+        """Run LLM match analysis on a list of jobs using concurrent internal batches.
+
+        Returns a list of (job_listing, analysis_dict) pairs.
+        Critique, reranking, and salary benchmark are *not* applied here —
+        they are handled once across all batches by _finalize_and_save.
+        """
+        semaphore = asyncio.Semaphore(settings.ANALYSIS_CONCURRENCY)
+        batch_size = settings.ANALYSIS_BATCH_SIZE
+        batches = [jobs[i:i + batch_size] for i in range(0, len(jobs), batch_size)]
+
+        async def analyze_batch(batch):
+            async with semaphore:
+                status_data = get_status(profile_id)
+                if status_data.get("state") in STOP_STATES:
+                    return []
+
+                jobs_metadata = []
+                for job in batch:
+                    desc_text = ""
+                    descs = getattr(job, "descriptions", [])
+                    if descs:
+                        desc_text = (
+                            descs[0].description
+                            if hasattr(descs[0], "description")
+                            else (descs[0].get("description", "") if isinstance(descs[0], dict) else "")
+                        )
+
+                    education_info = []
+                    for occ in getattr(job, "occupations", []):
+                        if getattr(occ, "education_code", None):
+                            education_info.append(f"Edu: {occ.education_code}")
+
+                    company_obj = getattr(job, "company", None)
+                    company_name = company_obj.name if hasattr(company_obj, "name") else "Unknown"
+
+                    raw_norm = getattr(job, "_normalized_job_data", None) or {}
+                    normalized_data = {
+                        "domain": raw_norm.get("domain"),
+                        "role_type": raw_norm.get("role_type") or raw_norm.get("normalized_role_type"),
+                        "industry_sector": raw_norm.get("industry_sector") or raw_norm.get("normalized_industry_sector"),
+                        "seniority": raw_norm.get("seniority"),
+                        "qualification_level": raw_norm.get("qualification_level"),
+                        "required_skills": raw_norm.get("required_skills"),
+                        "preferred_skills": raw_norm.get("preferred_skills"),
+                        "experience_min_years": raw_norm.get("experience_min_years"),
+                        "experience_max_years": raw_norm.get("experience_max_years"),
+                        "required_languages": raw_norm.get("required_languages"),
+                        "entry_barrier": raw_norm.get("entry_barrier"),
+                        "career_changer_friendly": raw_norm.get("career_changer_friendly"),
+                        "hard_blockers": raw_norm.get("hard_blockers"),
+                        "education_levels": raw_norm.get("education_levels"),
+                        "key_requirements": raw_norm.get("key_requirements"),
+                        "physical_requirements": raw_norm.get("physical_requirements"),
+                        "soft_skills": raw_norm.get("soft_skills"),
+                    }
+                    jobs_metadata.append({
+                        "title": getattr(job, "title", "Unknown"),
+                        "description": await llm_service._compress_description_if_needed(
+                            desc_text, settings.MAX_DESCRIPTION_CHARS
+                        ),
+                        "location": job.location.city if getattr(job, "location", None) else "Unknown",
+                        "workload": (
+                            f"{job.employment.workload_min}-{job.employment.workload_max}%"
+                            if getattr(job, "employment", None) else "Unknown"
+                        ),
+                        "languages": (
+                            [f"{s.language_code} ({s.spoken_level})" for s in getattr(job, "language_skills", [])]
+                            if getattr(job, "language_skills", None) else []
+                        ),
+                        "education": ", ".join(education_info) if education_info else "None specified",
+                        "company": company_name,
+                        "normalized_data": normalized_data,
+                    })
+
+                try:
+                    results = await llm_service.analyze_job_batch(jobs_metadata, profile_dict)
+                    return list(zip(batch, results))
+                except Exception as e:
+                    logger.error(f"Analysis batch failed: {e}")
+                    return []
+
+        tasks = [analyze_batch(b) for b in batches]
+        results = await asyncio.gather(*tasks)
+        return [item for batch_result in results for item in batch_result]
+
+    async def _finalize_and_save(
+        self,
+        profile_id: int,
+        profile_dict: dict,
+        analyzed_pairs: list,
+    ) -> tuple[int, int]:
+        """Apply optional critique, reranking, and salary benchmark; then persist all jobs.
+
+        Receives (job, analysis) pairs that have already been through LLM analysis
+        (produced by _processing_consumer → _run_analysis_batches).
+        """
+        post_status = get_status(profile_id)
+        if post_status.get("state") in STOP_STATES:
+            add_log(profile_id, "Search was stopped during analysis — discarding results.")
+            return 0, len(analyzed_pairs)
+
+        origin_coords = None
+        if profile_dict.get("latitude") and profile_dict.get("longitude"):
+            origin_coords = (profile_dict["latitude"], profile_dict["longitude"])
+
+        jobs_to_persist = list(analyzed_pairs)
+
+        # ── Phase: Two-pass critique for borderline scores ────────────────
+        critique_enabled = getattr(settings, "MATCH_CRITIQUE_ENABLED", False)
+        critique_min = int(getattr(settings, "MATCH_CRITIQUE_SCORE_RANGE_MIN", 40))
+        critique_max = int(getattr(settings, "MATCH_CRITIQUE_SCORE_RANGE_MAX", 80))
+        if critique_enabled and jobs_to_persist:
+            borderline = [
+                (i, job, analysis)
+                for i, (job, analysis) in enumerate(jobs_to_persist)
+                if critique_min <= analysis.get("affinity_score", 0) <= critique_max
+            ]
+            if borderline:
+                try:
+                    borderline_indices = [idx for idx, _, _ in borderline]
+                    borderline_jobs_meta = []
+                    for _, job, _ in borderline:
+                        desc_text = ""
+                        descs = getattr(job, "descriptions", [])
+                        if descs:
+                            desc_text = (
+                                descs[0].description
+                                if hasattr(descs[0], "description")
+                                else (descs[0].get("description", "") if isinstance(descs[0], dict) else "")
+                            )
+                        raw_norm = getattr(job, "_normalized_job_data", None) or {}
+                        borderline_jobs_meta.append({
+                            "title": getattr(job, "title", "Unknown"),
+                            "company": extract_company_name(job),
+                            "description": desc_text,
+                            "normalized_data": raw_norm,
+                        })
+                    borderline_analyses = [analysis for _, _, analysis in borderline]
+                    critiqued = await llm_service.critique_job_batch(
+                        borderline_jobs_meta, borderline_analyses, profile_dict
+                    )
+                    for orig_idx, critiqued_analysis in zip(borderline_indices, critiqued):
+                        jobs_to_persist[orig_idx] = (jobs_to_persist[orig_idx][0], critiqued_analysis)
+                    add_log(profile_id, f"Critique pass refined {len(borderline)} borderline jobs.")
+                except Exception as exc:
+                    logger.warning("[CRITIQUE] Critique pass failed: %s", exc)
+
+        # ── Phase: Comparative re-ranking of top-N jobs ──────────────────
+        rerank_enabled = getattr(settings, "MATCH_RERANK_ENABLED", False)
+        rerank_top_n = int(getattr(settings, "MATCH_RERANK_TOP_N", 20))
+        if rerank_enabled and len(jobs_to_persist) >= 3:
+            try:
+                scored_with_index = sorted(
+                    enumerate(jobs_to_persist),
+                    key=lambda x: x[1][1].get("affinity_score", 0),
+                    reverse=True,
+                )[:rerank_top_n]
+                top_entries = []
+                for orig_idx, (job, analysis) in scored_with_index:
+                    desc_text = ""
+                    descs = getattr(job, "descriptions", [])
+                    if descs:
+                        desc_text = (
+                            descs[0].description
+                            if hasattr(descs[0], "description")
+                            else (descs[0].get("description", "") if isinstance(descs[0], dict) else "")
+                        )
+                    raw_norm = getattr(job, "_normalized_job_data", None) or {}
+                    top_entries.append({
+                        "job_index": orig_idx,
+                        "current_score": analysis.get("affinity_score", 0),
+                        "job_metadata": {
+                            "title": getattr(job, "title", "Unknown"),
+                            "company": extract_company_name(job),
+                            "description": desc_text,
+                            "normalized_data": raw_norm,
+                        },
+                    })
+                reranked = await llm_service.rerank_top_jobs(top_entries, profile_dict)
+                for rerank_result in reranked:
+                    orig_idx = rerank_result.get("job_index", -1)
+                    final_score = rerank_result.get("final_score")
+                    if orig_idx >= 0 and final_score is not None and 0 <= orig_idx < len(jobs_to_persist):
+                        job, analysis = jobs_to_persist[orig_idx]
+                        updated = dict(analysis)
+                        updated["affinity_score"] = final_score
+                        updated["worth_applying"] = bool(analysis.get("worth_applying", False)) and final_score >= 65
+                        jobs_to_persist[orig_idx] = (job, updated)
+                add_log(profile_id, f"Re-ranked top {len(reranked)} jobs for calibration.")
+            except Exception as exc:
+                logger.warning("[RERANK] Re-rank pass failed: %s", exc)
+
+        # ── Phase: Deterministic salary_below_market red flag injection ──
+        if getattr(settings, "SALARY_BENCHMARK_ENABLED", False):
+            try:
+                from backend.services.preference_service import compute_salary_benchmark
+                for idx, (job, analysis) in enumerate(jobs_to_persist):
+                    job_norm_data = getattr(job, "_normalized_job_data", None) or {}
+                    job_salary_max = job_norm_data.get("salary_max_chf")
+                    if not job_salary_max:
+                        continue
+                    benchmark = compute_salary_benchmark(
+                        domain=job_norm_data.get("domain"),
+                        seniority=job_norm_data.get("seniority"),
+                        db=self.db,
+                    )
+                    if benchmark and benchmark["p25"] and job_salary_max < benchmark["p25"]:
+                        updated = dict(analysis)
+                        flags = list(updated.get("red_flags") or [])
+                        if "salary_below_market" not in flags:
+                            flags.append("salary_below_market")
+                            updated["red_flags"] = flags
+                            jobs_to_persist[idx] = (job, updated)
+            except Exception:
+                logger.debug("salary_below_market check skipped (non-critical)")
+
+        saved_count = 0
+        for job, analysis in jobs_to_persist:
+            try:
+                await self._save_single_job(job, analysis, profile_dict, origin_coords, commit=True)
+                saved_count += 1
+            except Exception as exc:
+                logger.warning(
+                    "Skipping job due to persistence error (profile %s): %s",
+                    profile_dict.get("id"), exc,
+                )
+
+        skipped_count = len(analyzed_pairs) - saved_count
+        return saved_count, skipped_count
 
 
 def get_search_service(db: Session) -> SearchService:
