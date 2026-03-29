@@ -40,7 +40,8 @@ def _resolve_step_config(step: str) -> dict:
         step_temp = getattr(settings, f"{prefix}TEMPERATURE", None)
         step_top_p = getattr(settings, f"{prefix}TOP_P", None)
         step_max_tok = getattr(settings, f"{prefix}MAX_TOKENS", None)
-        step_thinking = getattr(settings, f"{prefix}THINKING", False)
+        # Use None as sentinel so explicit False overrides are respected.
+        step_thinking = getattr(settings, f"{prefix}THINKING", None)
         step_thinking_level = getattr(settings, f"{prefix}THINKING_LEVEL", "")
     else:
         # Unknown step or "default" — everything falls through to globals
@@ -48,7 +49,7 @@ def _resolve_step_config(step: str) -> dict:
         step_temp = None
         step_top_p = None
         step_max_tok = None
-        step_thinking = False
+        step_thinking = None
         step_thinking_level = ""
 
     return {
@@ -60,7 +61,9 @@ def _resolve_step_config(step: str) -> dict:
         "temperature": step_temp if step_temp is not None else settings.LLM_TEMPERATURE,
         "top_p": step_top_p if step_top_p is not None else settings.LLM_TOP_P,
         "max_tokens": step_max_tok if step_max_tok is not None else settings.LLM_MAX_TOKENS,
-        "thinking": step_thinking if step_thinking else settings.LLM_THINKING,
+        # Preserve explicit per-step False: only fall back when the per-step
+        # value is unset (None).
+        "thinking": step_thinking if step_thinking is not None else settings.LLM_THINKING,
         "thinking_level": step_thinking_level or settings.LLM_THINKING_LEVEL,
     }
 

@@ -101,7 +101,7 @@ class Settings(BaseSettings):
     LLM_PLAN_TEMPERATURE: Optional[float] = None
     LLM_PLAN_TOP_P: Optional[float] = None
     LLM_PLAN_MAX_TOKENS: Optional[int] = None
-    LLM_PLAN_THINKING: bool = False
+    LLM_PLAN_THINKING: Optional[bool] = None
     LLM_PLAN_THINKING_LEVEL: str = ""
 
     # Step: MATCH  (analyze_job_match)
@@ -112,7 +112,7 @@ class Settings(BaseSettings):
     LLM_MATCH_TEMPERATURE: Optional[float] = None
     LLM_MATCH_TOP_P: Optional[float] = None
     LLM_MATCH_MAX_TOKENS: Optional[int] = None
-    LLM_MATCH_THINKING: bool = False
+    LLM_MATCH_THINKING: Optional[bool] = None
     LLM_MATCH_THINKING_LEVEL: str = ""
 
     # Step: NORMALIZE  (normalize_job_batch)
@@ -123,7 +123,7 @@ class Settings(BaseSettings):
     LLM_NORMALIZE_TEMPERATURE: Optional[float] = None
     LLM_NORMALIZE_TOP_P: Optional[float] = None
     LLM_NORMALIZE_MAX_TOKENS: Optional[int] = None
-    LLM_NORMALIZE_THINKING: bool = False
+    LLM_NORMALIZE_THINKING: Optional[bool] = None
     LLM_NORMALIZE_THINKING_LEVEL: str = ""
 
     # Step: NORMALIZE_PROFILE  (normalize_user_profile — extract structured candidate data from CV + role_description)
@@ -134,7 +134,7 @@ class Settings(BaseSettings):
     LLM_NORMALIZE_PROFILE_TEMPERATURE: Optional[float] = None
     LLM_NORMALIZE_PROFILE_TOP_P: Optional[float] = None
     LLM_NORMALIZE_PROFILE_MAX_TOKENS: Optional[int] = None
-    LLM_NORMALIZE_PROFILE_THINKING: bool = False
+    LLM_NORMALIZE_PROFILE_THINKING: Optional[bool] = None
     LLM_NORMALIZE_PROFILE_THINKING_LEVEL: str = ""
 
     # Scraping
