@@ -42,7 +42,7 @@ export const DesktopJobRow = memo(function DesktopJobRow({ job, isGlobalView, on
                         {job.affinity_score != null ? (
                             <ScoreBadge score={Math.round(job.affinity_score)} />
                         ) : <span className="text-muted opacity-25">—</span>}
-                        
+
                         <div className="d-flex flex-wrap gap-1 align-items-center">
                             {job.worth_applying && (
                                 <span className="bg-success rounded-circle d-inline-flex align-items-center justify-content-center sz-18" title="Top Pick">
@@ -55,7 +55,7 @@ export const DesktopJobRow = memo(function DesktopJobRow({ job, isGlobalView, on
                                 </span>
                             )}
                             {job.affinity_analysis && (
-                                <button 
+                                <button
                                     className="btn btn-sm btn-icon btn-secondary rounded-circle d-flex align-items-center justify-content-center border-0 bg-white-5 hover-bg-white-10 ms-1 sz-28"
                                         onClick={() => onViewAnalysis(job)}
                                     title="View Analysis"

@@ -14,150 +14,219 @@ logger = logging.getLogger(__name__)
 AVAM_MAPPING: Dict[str, List[str]] = {
     # Software Engineering & IT
     "27114004": [
-        "software engineer", "softwareentwickler", "ingénieur logiciel", "sviluppatore software",
-        "software developer", "developer", "entwickler", "programmeur", "software", "programmer"
+        "software engineer",
+        "softwareentwickler",
+        "ingénieur logiciel",
+        "sviluppatore software",
+        "software developer",
+        "developer",
+        "entwickler",
+        "programmeur",
+        "software",
+        "programmer",
     ],
     "27114014": [
-        "devops engineer", "devops-ingenieur", "devops", "site reliability engineer", "sre"
+        "devops engineer",
+        "devops-ingenieur",
+        "devops",
+        "site reliability engineer",
+        "sre",
     ],
     "27114003": [
-        "web developer", "webentwickler", "développeur web", "frontend developer",
-        "backend developer", "fullstack developer", "full stack", "web"
+        "web developer",
+        "webentwickler",
+        "développeur web",
+        "frontend developer",
+        "backend developer",
+        "fullstack developer",
+        "full stack",
+        "web",
     ],
     "27111001": [
-        "system administrator", "systemadministrator", "administrateur système", "sysadmin",
-        "it administrator", "system engineer", "it support"
+        "system administrator",
+        "systemadministrator",
+        "administrateur système",
+        "sysadmin",
+        "it administrator",
+        "system engineer",
+        "it support",
     ],
     "27115001": [
-        "data scientist", "data engineer", "datenwissenschaftler", "data analyst", "datenanalyst"
+        "data scientist",
+        "data engineer",
+        "datenwissenschaftler",
+        "data analyst",
+        "datenanalyst",
     ],
     "27113002": [
-        "it project manager", "it projektleiter", "chef de projet it", "scrum master", "agile coach", "project manager"
+        "it project manager",
+        "it projektleiter",
+        "chef de projet it",
+        "scrum master",
+        "agile coach",
+        "project manager",
     ],
     "27113003": [
-        "it consultant", "it berater", "consultant en informatique", "business analyst", "consultant"
+        "it consultant",
+        "it berater",
+        "consultant en informatique",
+        "business analyst",
+        "consultant",
     ],
     "27114016": [
-        "security engineer", "it security", "cyber security", "sicherheitsexperte", "security"
+        "security engineer",
+        "it security",
+        "cyber security",
+        "sicherheitsexperte",
+        "security",
     ],
     "27114013": [
-        "cloud engineer", "cloud architect", "aws engineer", "azure engineer", "cloud computing"
+        "cloud engineer",
+        "cloud architect",
+        "aws engineer",
+        "azure engineer",
+        "cloud computing",
     ],
-
     # Finance & Management
-    "33100": [
-        "financial analyst", "finanzanalyst", "analyste financier", "finance"
-    ],
-    "33101": [
-        "accountant", "buchhalter", "comptable", "controller", "controlling"
-    ],
-    "34101": [
-        "sales manager", "sales", "verkauf", "account manager", "key account manager"
-    ],
+    "33100": ["financial analyst", "finanzanalyst", "analyste financier", "finance"],
+    "33101": ["accountant", "buchhalter", "comptable", "controller", "controlling"],
+    "34101": ["sales manager", "sales", "verkauf", "account manager", "key account manager"],
     "41103": [
-        "hr manager", "human resources", "personalverantwortlicher", "recruiter", "talent acquisition"
+        "hr manager",
+        "human resources",
+        "personalverantwortlicher",
+        "recruiter",
+        "talent acquisition",
     ],
-    "61002": [
-        "marketing manager", "marketing", "digital marketing"
-    ],
-
+    "61002": ["marketing manager", "marketing", "digital marketing"],
     # Retail & Sales
-    "52202": [
-        "cashier", "kassierer", "caissier", "cassiere", "kasse"
-    ],
+    "52202": ["cashier", "kassierer", "caissier", "cassiere", "kasse"],
     "52201": [
-        "shop assistant", "sales assistant", "verkäufer", "detailhandelsfachmann", "vendeur", "commesso", "retail"
+        "shop assistant",
+        "sales assistant",
+        "verkäufer",
+        "detailhandelsfachmann",
+        "vendeur",
+        "commesso",
+        "retail",
     ],
-    "52203": [
-        "store manager", "filialleiter", "gérant de magasin", "direttore di negozio"
-    ],
-
+    "52203": ["store manager", "filialleiter", "gérant de magasin", "direttore di negozio"],
     # Hospitality & Gastronomy
     "51202": [
-        "waiter", "waitress", "kellner", "servicemitarbeiter", "serveur", "cameriere", "service"
+        "waiter",
+        "waitress",
+        "kellner",
+        "servicemitarbeiter",
+        "serveur",
+        "cameriere",
+        "service",
     ],
-    "51201": [
-        "chef", "cook", "koch", "cuisinier", "cuoco", "küchenhilfe", "commis de cuisine"
-    ],
-    "51101": [
-        "receptionist", "rezeptionist", "réceptionniste", "reception"
-    ],
-    "51301": [
-        "bartender", "barkeeper", "barista", "barman"
-    ],
-
+    "51201": ["chef", "cook", "koch", "cuisinier", "cuoco", "küchenhilfe", "commis de cuisine"],
+    "51101": ["receptionist", "rezeptionist", "réceptionniste", "reception"],
+    "51301": ["bartender", "barkeeper", "barista", "barman"],
     # Construction & Manual Labor
-    "71101": [
-        "bricklayer", "mason", "maurer", "maçon", "muratore"
-    ],
-    "71201": [
-        "carpenter", "zimmermann", "schreiner", "charpentier", "falegname"
-    ],
-    "71301": [
-        "electrician", "elektriker", "électricien", "elettricista"
-    ],
-    "71401": [
-        "painter", "maler", "peintre", "pittore"
-    ],
-    "71302": [
-        "plumber", "sanitärinstallateur", "plombier", "idraulico"
-    ],
+    "71101": ["bricklayer", "mason", "maurer", "maçon", "muratore"],
+    "71201": ["carpenter", "zimmermann", "schreiner", "charpentier", "falegname"],
+    "71301": ["electrician", "elektriker", "électricien", "elettricista"],
+    "71401": ["painter", "maler", "peintre", "pittore"],
+    "71302": ["plumber", "sanitärinstallateur", "plombier", "idraulico"],
     "93101": [
-        "unskilled worker", "laborer", "hilfsarbeiter", "bauarbeiter", "manoeuvre", "operaio edile", "construction worker"
+        "unskilled worker",
+        "laborer",
+        "hilfsarbeiter",
+        "bauarbeiter",
+        "manoeuvre",
+        "operaio edile",
+        "construction worker",
     ],
-
     # Logistics & Transport
     "83201": [
-        "warehouse worker", "lagerist", "logistiker", "magasinier", "magazziniere", "warehouse"
+        "warehouse worker",
+        "lagerist",
+        "logistiker",
+        "magasinier",
+        "magazziniere",
+        "warehouse",
     ],
     "83301": [
-        "driver", "chauffeur", "fahrer", "conducteur", "autista", "delivery driver", "kurier"
+        "driver",
+        "chauffeur",
+        "fahrer",
+        "conducteur",
+        "autista",
+        "delivery driver",
+        "kurier",
     ],
-    "83302": [
-        "forklift driver", "staplerfahrer", "cariste", "carrellista"
-    ],
-
+    "83302": ["forklift driver", "staplerfahrer", "cariste", "carrellista"],
     # Cleaning & Facility Management
     "91102": [
-        "cleaner", "reinigungspersonal", "reinigungsmitarbeiter", "nettoyeur", "femme de ménage", "addetto alle pulizie", "cleaning"
+        "cleaner",
+        "reinigungspersonal",
+        "reinigungsmitarbeiter",
+        "nettoyeur",
+        "femme de ménage",
+        "addetto alle pulizie",
+        "cleaning",
     ],
-    "91101": [
-        "janitor", "hauswart", "concierge", "custode", "facility manager"
-    ],
-
+    "91101": ["janitor", "hauswart", "concierge", "custode", "facility manager"],
     # Healthcare & Nursing
     "32201": [
-        "nurse", "pflegefachfrau", "pflegefachkrankenschwester", "infirmière", "infermiere", "registered nurse"
+        "nurse",
+        "pflegefachfrau",
+        "pflegefachkrankenschwester",
+        "infirmière",
+        "infermiere",
+        "registered nurse",
     ],
     "53201": [
-        "care assistant", "pflegehelfer", "aide-soignant", "operatore socio-sanitario", "caregiver"
+        "care assistant",
+        "pflegehelfer",
+        "aide-soignant",
+        "operatore socio-sanitario",
+        "caregiver",
     ],
     "32101": [
-        "medical assistant", "medizinischer praxisassistent", "mpa", "assistante médicale", "assistente medico"
+        "medical assistant",
+        "medizinischer praxisassistent",
+        "mpa",
+        "assistante médicale",
+        "assistente medico",
     ],
-
     # Manufacturing & Production
     "81001": [
-        "production worker", "produktionsmitarbeiter", "ouvrier de production", "operaio di produzione", "factory worker", "assembler"
+        "production worker",
+        "produktionsmitarbeiter",
+        "ouvrier de production",
+        "operaio di produzione",
+        "factory worker",
+        "assembler",
     ],
     "81002": [
-        "machine operator", "maschinenführer", "opérateur de machine", "operatore di macchina"
+        "machine operator",
+        "maschinenführer",
+        "opérateur de machine",
+        "operatore di macchina",
     ],
-    "72101": [
-        "mechanic", "mechaniker", "mechanicien", "meccanico"
-    ],
-
+    "72101": ["mechanic", "mechaniker", "mechanicien", "meccanico"],
     # Administration & Clerical
     "41101": [
-        "clerk", "administrative assistant", "kaufmännischer angestellter", "employé de commerce", "impiegato di commercio", "admin assistant"
+        "clerk",
+        "administrative assistant",
+        "kaufmännischer angestellter",
+        "employé de commerce",
+        "impiegato di commercio",
+        "admin assistant",
     ],
-    "41201": [
-        "secretary", "sekretär", "secrétaire", "segretario"
-    ],
+    "41201": ["secretary", "sekretär", "secrétaire", "segretario"],
     "42201": [
-        "customer service", "kundendienst", "service client", "servizio clienti", "call center"
-    ]
+        "customer service",
+        "kundendienst",
+        "service client",
+        "servizio clienti",
+        "call center",
+    ],
 }
+
 
 class AVAMProfessionMapper:
     """
@@ -224,7 +293,9 @@ class AVAMProfessionMapper:
         try:
             api_codes = await self._fetch_from_api(title)
             if api_codes:
-                logger.info(f"Dynamically mapped occupation '{title}' via API to AVAM codes: {api_codes}")
+                logger.info(
+                    f"Dynamically mapped occupation '{title}' via API to AVAM codes: {api_codes}"
+                )
             else:
                 logger.debug(f"No AVAM mapping found for occupation '{title}' via API.")
             # Cache result (including empty) to prevent re-querying dead-ends; evict oldest if at capacity
@@ -237,5 +308,6 @@ class AVAMProfessionMapper:
             logger.warning(f"Failed to fetch dynamic AVAM codes for '{title}': {e}")
 
         return []
+
 
 avam_mapper = AVAMProfessionMapper()

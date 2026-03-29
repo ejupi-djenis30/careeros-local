@@ -4,7 +4,7 @@ export function SearchFormAdvanced({ profile, handleChange, setProfile, existing
     // A profile is considered "existing" (re-run) when it has a non-null id
     const isRerun = profile.id != null;
     const nameIsDuplicate = profile.name.trim() && existingNames.includes(profile.name.trim().toLowerCase());
-    
+
     return (
         <div className="col-xl-3 col-lg-12 d-flex flex-column gap-3">
             <div className="p-3 bg-white-5 rounded-3 border border-white-5">
@@ -22,7 +22,7 @@ export function SearchFormAdvanced({ profile, handleChange, setProfile, existing
                         style={{cursor: 'pointer'}}
                     />
                 </div>
-                
+
                 {profile.schedule_enabled && (
                     <div className="d-flex align-items-center justify-content-between border-top border-white-10 pt-3 opacity-animation">
                         <span className="x-small text-secondary fw-bold text-uppercase">Interval</span>
@@ -62,7 +62,7 @@ export function SearchFormAdvanced({ profile, handleChange, setProfile, existing
             {/* Query Controls */}
             <div className="p-3 bg-white-5 rounded-3 border border-white-5">
                 <div className="x-small text-secondary fw-bold text-uppercase mb-3">Query Generation</div>
-                
+
                 <div className="row g-2 mb-2">
                     <div className="col-12">
                         <label className="form-label text-white x-small fw-semibold mb-1">Max Queries (Total)</label>
@@ -77,7 +77,7 @@ export function SearchFormAdvanced({ profile, handleChange, setProfile, existing
                         />
                     </div>
                 </div>
-                
+
                 <div className="row g-2">
                     <div className="col-6">
                         <label className="form-label text-secondary x-small mb-1">

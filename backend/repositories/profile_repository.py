@@ -12,9 +12,17 @@ class ProfileRepository(BaseRepository[SearchProfile]):
         super().__init__(SearchProfile, db)
 
     def get_by_user(self, user_id: int, skip: int = 0, limit: int = 100) -> List[SearchProfile]:
-        return self.db.query(self.model).filter(self.model.user_id == user_id).offset(skip).limit(limit).all()
+        return (
+            self.db.query(self.model)
+            .filter(self.model.user_id == user_id)
+            .offset(skip)
+            .limit(limit)
+            .all()
+        )
 
-    def update_cache(self, profile_id: int, cv_summary: Optional[str] = None, queries_json: Optional[str] = None):
+    def update_cache(
+        self, profile_id: int, cv_summary: Optional[str] = None, queries_json: Optional[str] = None
+    ):
         """Update caching layer fields for a profile."""
         profile = self.get(profile_id)
         if not profile:
@@ -70,15 +78,21 @@ class ProfileRepository(BaseRepository[SearchProfile]):
         profile.profile_search_intent_domain = normalized_data.get("intent_domain")
         profile.profile_search_intent_seniority = normalized_data.get("intent_seniority")
         profile.profile_search_intent_role_family = normalized_data.get("intent_role_family")
-        profile.profile_search_intent_qualification_level = normalized_data.get("intent_qualification_level")
+        profile.profile_search_intent_qualification_level = normalized_data.get(
+            "intent_qualification_level"
+        )
         profile.profile_search_intent_skills = normalized_data.get("intent_skills") or []
-        profile.profile_search_intent_open_to_unrelated = bool(normalized_data.get("open_to_unrelated", False))
+        profile.profile_search_intent_open_to_unrelated = bool(
+            normalized_data.get("open_to_unrelated", False)
+        )
         profile.profile_search_intent_keywords = normalized_data.get("intent_keywords") or []
 
         # V2 enhanced candidate profile fields
         profile.profile_normalized_role_type = normalized_data.get("role_type")
         profile.profile_normalized_industry_sectors = normalized_data.get("industry_sectors") or []
-        profile.profile_normalized_transferable_skills = normalized_data.get("transferable_skills") or []
+        profile.profile_normalized_transferable_skills = (
+            normalized_data.get("transferable_skills") or []
+        )
 
         # V2 enhanced search intent fields
         profile.profile_search_intent_role_type = normalized_data.get("intent_role_type")
@@ -95,4 +109,3 @@ class ProfileRepository(BaseRepository[SearchProfile]):
             self.db.rollback()
             raise
         return profile
-

@@ -19,9 +19,9 @@ export function NewSearchPage() {
       // Navigate to progress page, passing the newly started profile id
       navigate(`/progress?pid=${pid}`);
     } catch (error) {
-      if (error.message === "UNAUTHORIZED") { 
+      if (error.message === "UNAUTHORIZED") {
          // AuthContext intercepts globally via event
-         return; 
+         return;
       }
       showToast("Failed to start search: " + error.message);
     } finally {

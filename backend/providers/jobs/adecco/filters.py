@@ -1,6 +1,7 @@
 """
 Query string builder and in-memory filters for Adecco API.
 """
+
 from typing import List
 
 from backend.providers.jobs.models import ContractType, JobListing, JobSearchRequest, SortOrder
@@ -41,6 +42,7 @@ def build_query_string(request: JobSearchRequest) -> str:
 
     return "".join(parts)
 
+
 def filter_jobs(jobs: List[JobListing], request: JobSearchRequest) -> List[JobListing]:
     """
     Apply in-memory filters for fields not supported by Adecco server-side.
@@ -49,7 +51,7 @@ def filter_jobs(jobs: List[JobListing], request: JobSearchRequest) -> List[JobLi
 
     # Pre-calculate filter values
     req_contract = request.contract_type
-    req_workforms = [wf.value if hasattr(wf, 'value') else str(wf) for wf in request.work_forms]
+    req_workforms = [wf.value if hasattr(wf, "value") else str(wf) for wf in request.work_forms]
     has_remote_filter = "home_office" in req_workforms or "remote" in req_workforms
 
     for job in jobs:

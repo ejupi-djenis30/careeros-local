@@ -1,0 +1,46 @@
+# See https://pre-commit.com for more information
+# See https://pre-commit.com/hooks.html for more hooks
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+        args: [--allow-multiple-documents]
+      - id: check-added-large-files
+        args: [--maxkb=500]
+      - id: debug-statements
+
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.9.9
+    hooks:
+      - id: ruff
+        args: [--fix, --exit-non-zero-on-fix]
+      - id: ruff-format
+
+  - repo: https://github.com/pre-commit/mirrors-mypy
+    rev: v1.15.0
+    hooks:
+      - id: mypy
+        # Match CI: mypy backend/services backend/schemas backend/repositories --ignore-missing-imports --no-error-summary
+        args: [
+          --ignore-missing-imports,
+          --no-error-summary,
+          --config-file=pyproject.toml
+        ]
+        files: ^backend/(services|schemas|repositories)/
+        additional_dependencies: [
+          "pydantic>=2.0.0",
+          "sqlalchemy>=2.0.0",
+          "types-requests"
+        ]
+
+  - repo: local
+    hooks:
+      - id: frontend-lint
+        name: Frontend Lint (ESLint)
+        entry: bash -c "cd frontend && npm run lint"
+        language: system
+        files: ^frontend/src/.*\.(js|jsx|ts|tsx)$
+        pass_filenames: false

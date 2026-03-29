@@ -4,7 +4,7 @@ Welcome, AI Agent. Follow these rules to keep implementations reliable, testable
 
 ## **1. Absolute Objectivity, Truthfulness, and Completeness (CRITICAL)**
 
-*   **Do not invent success:** If a test fails, state clearly that it failed. NEVER hallucinate or pretend that tests passed when they did not. 
+*   **Do not invent success:** If a test fails, state clearly that it failed. NEVER hallucinate or pretend that tests passed when they did not.
 *   **Do not invent functionality:** If something is broken, report it as broken. Do not assume an implementation works without verification.
 *   **Do not invent skills:** If you lack the necessary context to develop a specific feature safely, explicitly state "I cannot do this reliably."
 *   **No placeholders:** Never use placeholders like `// ...` or `TODO` instead of real implementation.
@@ -55,7 +55,7 @@ Job Hunter AI employs a strict separation of concerns. Monolithic files are stri
 ### **Frontend (React 19 & Vite)**
 *   **Component Structure**: We use React with Vite. Keep components extremely small and functionally focused (Single Responsibility). If a component exceeds 15KB or ~150 lines, plan to extract its sub-elements.
 *   **State Management**: Use the Context API (`AuthContext`, `SearchContext`) for global polling and state propagation.
-*   **Styling**: Rely heavily on vanilla CSS architecture or existing UI frameworks imported within the project, aiming for modern glassmorphism or sleek, responsive standard designs. 
+*   **Styling**: Rely heavily on vanilla CSS architecture or existing UI frameworks imported within the project, aiming for modern glassmorphism or sleek, responsive standard designs.
 
 ## **6. General Working Rules**
 

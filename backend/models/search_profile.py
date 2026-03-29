@@ -17,9 +17,7 @@ from backend.models.base_model import BaseModel, TimestampMixin
 
 class SearchProfile(BaseModel, TimestampMixin):
     __tablename__ = "search_profiles"
-    __table_args__ = (
-        Index('ix_search_profile_user_schedule', 'user_id', 'schedule_enabled'),
-    )
+    __table_args__ = (Index("ix_search_profile_user_schedule", "user_id", "schedule_enabled"),)
 
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
     name = Column(String, default="")
@@ -61,38 +59,62 @@ class SearchProfile(BaseModel, TimestampMixin):
     # ── Normalized user / candidate profile (mirrors ScrapedJob normalization) ──
     # Extracted once per profile (CV + role_description) via LLM, cached until inputs change.
     # Used for deterministic field-vs-field matching against normalized ScrapedJob data.
-    profile_normalization_status = Column(String, nullable=True, default="pending")  # pending | normalized
+    profile_normalization_status = Column(
+        String, nullable=True, default="pending"
+    )  # pending | normalized
     profile_normalized_at = Column(DateTime(timezone=True), nullable=True)
     profile_normalization_fingerprint = Column(String, nullable=True)  # cache invalidation key
-    profile_normalized_seniority = Column(String, nullable=True)        # junior | mid | senior
-    profile_normalized_domain = Column(String, nullable=True)           # general | it | finance | ...
-    profile_normalized_role_family = Column(String, nullable=True)      # normalised role name
-    profile_normalized_qualification_level = Column(String, nullable=True)  # none | vocational | bachelor | master | phd
-    profile_normalized_experience_years = Column(Integer, nullable=True)    # candidate's total years
-    profile_normalized_languages = Column(JSON, nullable=True)          # [{code, level}, ...]
-    profile_normalized_skills = Column(JSON, nullable=True)             # ["Python", "React", ...]
+    profile_normalized_seniority = Column(String, nullable=True)  # junior | mid | senior
+    profile_normalized_domain = Column(String, nullable=True)  # general | it | finance | ...
+    profile_normalized_role_family = Column(String, nullable=True)  # normalised role name
+    profile_normalized_qualification_level = Column(
+        String, nullable=True
+    )  # none | vocational | bachelor | master | phd
+    profile_normalized_experience_years = Column(Integer, nullable=True)  # candidate's total years
+    profile_normalized_languages = Column(JSON, nullable=True)  # [{code, level}, ...]
+    profile_normalized_skills = Column(JSON, nullable=True)  # ["Python", "React", ...]
 
     # ── Enhanced candidate profile — v2 additions ──
-    profile_normalized_role_type = Column(String, nullable=True)             # technical|manual|administrative|creative|managerial|service|professional
-    profile_normalized_industry_sectors = Column(JSON, nullable=True)        # industries candidate has worked in e.g. ["web development", "fintech"]
-    profile_normalized_transferable_skills = Column(JSON, nullable=True)     # domain-agnostic skills e.g. ["project management", "team leadership"]
+    profile_normalized_role_type = Column(
+        String, nullable=True
+    )  # technical|manual|administrative|creative|managerial|service|professional
+    profile_normalized_industry_sectors = Column(
+        JSON, nullable=True
+    )  # industries candidate has worked in e.g. ["web development", "fintech"]
+    profile_normalized_transferable_skills = Column(
+        JSON, nullable=True
+    )  # domain-agnostic skills e.g. ["project management", "team leadership"]
 
     # ── Search intent — what the user WANTS to find (may differ from CV domain) ──
     # Derived from role_description + search_strategy at the same LLM call as candidate profile.
     # The structured filtering layer uses these as the PRIMARY comparison axis against jobs.
-    profile_search_intent_domain = Column(String, nullable=True)             # target domain
-    profile_search_intent_seniority = Column(String, nullable=True)          # target seniority
-    profile_search_intent_role_family = Column(String, nullable=True)        # target role
-    profile_search_intent_qualification_level = Column(String, nullable=True) # acceptable qualification
-    profile_search_intent_skills = Column(JSON, nullable=True)               # target skills
-    profile_search_intent_open_to_unrelated = Column(Boolean, nullable=True, default=False)  # cross-domain search
-    profile_search_intent_keywords = Column(JSON, nullable=True)             # free-form intent keywords
+    profile_search_intent_domain = Column(String, nullable=True)  # target domain
+    profile_search_intent_seniority = Column(String, nullable=True)  # target seniority
+    profile_search_intent_role_family = Column(String, nullable=True)  # target role
+    profile_search_intent_qualification_level = Column(
+        String, nullable=True
+    )  # acceptable qualification
+    profile_search_intent_skills = Column(JSON, nullable=True)  # target skills
+    profile_search_intent_open_to_unrelated = Column(
+        Boolean, nullable=True, default=False
+    )  # cross-domain search
+    profile_search_intent_keywords = Column(JSON, nullable=True)  # free-form intent keywords
     # ── Enhanced search intent — v2 additions ──
-    profile_search_intent_role_type = Column(String, nullable=True)          # target role type (manual|technical|etc.)
-    profile_search_intent_seniority_min = Column(String, nullable=True)      # acceptable lower seniority bound
-    profile_search_intent_seniority_max = Column(String, nullable=True)      # acceptable upper seniority bound
-    profile_search_intent_dealbreakers = Column(JSON, nullable=True)         # absolute no-gos e.g. ["night shifts", "requires German C2"]
-    profile_search_intent_flexibility = Column(JSON, nullable=True)          # {"domain": true, "seniority": true, "qualification": false, "location": false}
+    profile_search_intent_role_type = Column(
+        String, nullable=True
+    )  # target role type (manual|technical|etc.)
+    profile_search_intent_seniority_min = Column(
+        String, nullable=True
+    )  # acceptable lower seniority bound
+    profile_search_intent_seniority_max = Column(
+        String, nullable=True
+    )  # acceptable upper seniority bound
+    profile_search_intent_dealbreakers = Column(
+        JSON, nullable=True
+    )  # absolute no-gos e.g. ["night shifts", "requires German C2"]
+    profile_search_intent_flexibility = Column(
+        JSON, nullable=True
+    )  # {"domain": true, "seniority": true, "qualification": false, "location": false}
 
     user = relationship("User", back_populates="profiles")
     jobs = relationship("Job", back_populates="search_profile", cascade="all, delete-orphan")

@@ -54,9 +54,7 @@ def build_search_payload(request: JobSearchRequest, mapper: BFSLocationMapper) -
         "companyName": request.company_name,
         "onlineSince": request.posted_within_days,
         "displayRestricted": request.display_restricted,
-        "professionCodes": [
-            {"type": "AVAM", "value": code} for code in request.profession_codes
-        ],
+        "professionCodes": [{"type": "AVAM", "value": code} for code in request.profession_codes],
         "keywords": keywords if keywords else [],
         "communalCodes": communal_codes if communal_codes else [],
         "cantonCodes": list(request.canton_codes) if request.canton_codes else [],

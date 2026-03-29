@@ -19,7 +19,7 @@ class JobRepository(BaseRepository[Job]):
                 ScrapedJob.platform_job_id,
                 ScrapedJob.external_url,
                 ScrapedJob.title,
-                ScrapedJob.company
+                ScrapedJob.company,
             )
             .join(self.model.scraped_job)
             .filter(self.model.user_id == user_id)
@@ -34,7 +34,7 @@ class JobRepository(BaseRepository[Job]):
                 ScrapedJob.platform_job_id,
                 ScrapedJob.external_url,
                 ScrapedJob.title,
-                ScrapedJob.company
+                ScrapedJob.company,
             )
             .join(self.model.scraped_job)
             .filter(self.model.search_profile_id == profile_id)
@@ -197,16 +197,13 @@ class JobRepository(BaseRepository[Job]):
 
         stats = q.with_entities(
             func.sum(case((self.model.applied.is_(True), 1), else_=0)),
-            func.avg(self.model.affinity_score)
+            func.avg(self.model.affinity_score),
         ).first()
 
         applied_count = stats[0] if stats and stats[0] else 0
         avg_score = stats[1] if stats and stats[1] else 0.0
 
-        return {
-            "total_applied": int(applied_count),
-            "avg_score": float(avg_score)
-        }
+        return {"total_applied": int(applied_count), "avg_score": float(avg_score)}
 
     def get_count_and_stats_by_user_filtered(
         self,

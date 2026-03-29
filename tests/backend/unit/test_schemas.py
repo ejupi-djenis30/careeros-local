@@ -1,8 +1,13 @@
 import pytest
 from pydantic import ValidationError
-from datetime import datetime
-from backend.schemas.job import JobCreate, JobUpdate, JobPaginationResponse, JobResponse, NormalizedJobData
-from backend.schemas.profile import SearchProfileCreate, SearchProfileUpdate, ScheduleToggle
+
+from backend.schemas.job import (
+    JobCreate,
+    JobUpdate,
+    NormalizedJobData,
+)
+from backend.schemas.profile import ScheduleToggle, SearchProfileCreate, SearchProfileUpdate
+
 
 def test_job_create_schema_valid():
     payload = {
@@ -18,16 +23,19 @@ def test_job_create_schema_valid():
     assert job.worth_applying is False
     assert job.affinity_score is None
 
+
 def test_job_create_schema_missing_required():
     with pytest.raises(ValidationError):
         JobCreate(title="No Company or URL")
 
+
 def test_job_update_schema():
     update = JobUpdate(applied=True)
     assert update.applied is True
-    
+
     update = JobUpdate()
     assert update.applied is None
+
 
 def test_profile_create_defaults():
     profile = SearchProfileCreate()
@@ -39,6 +47,7 @@ def test_profile_create_defaults():
     assert profile.preferred_languages is None
     assert profile.preferred_domains is None
     assert profile.remote_only is False
+
 
 def test_profile_create_custom():
     payload = {
@@ -67,13 +76,14 @@ def test_profile_create_custom():
     assert profile.workload_max == 100
     assert profile.hard_max_distance_km == 30
 
+
 def test_schedule_toggle_schema():
     toggle = ScheduleToggle(enabled=True, interval_hours=48)
     assert toggle.enabled is True
     assert toggle.interval_hours == 48
 
     with pytest.raises(ValidationError):
-        ScheduleToggle() # missing 'enabled' boolean
+        ScheduleToggle()  # missing 'enabled' boolean
 
 
 def test_profile_create_invalid_workload_range():
@@ -83,20 +93,24 @@ def test_profile_create_invalid_workload_range():
 
 # ── SearchProfileBase range validators (now via shared helper) ──────────────
 
-@pytest.mark.parametrize("field,value", [
-    ("workload_min", -2),     # only -1 is the sentinel; other negatives are invalid
-    ("workload_min", 101),
-    ("workload_max", -2),
-    ("workload_max", 101),
-    ("salary_min_chf", -2),   # -1 is coerced to None (sentinel); -2 is genuinely invalid
-    ("hard_max_distance_km", -2),
-    ("max_distance", -1),
-    ("max_distance", 501),
-    ("posted_within_days", 0),
-    ("posted_within_days", 366),
-    ("schedule_interval_hours", 0),
-    ("schedule_interval_hours", -5),
-])
+
+@pytest.mark.parametrize(
+    "field,value",
+    [
+        ("workload_min", -2),  # only -1 is the sentinel; other negatives are invalid
+        ("workload_min", 101),
+        ("workload_max", -2),
+        ("workload_max", 101),
+        ("salary_min_chf", -2),  # -1 is coerced to None (sentinel); -2 is genuinely invalid
+        ("hard_max_distance_km", -2),
+        ("max_distance", -1),
+        ("max_distance", 501),
+        ("posted_within_days", 0),
+        ("posted_within_days", 366),
+        ("schedule_interval_hours", 0),
+        ("schedule_interval_hours", -5),
+    ],
+)
 def test_profile_create_invalid_ranges(field, value):
     with pytest.raises(ValidationError):
         SearchProfileCreate(**{field: value})
@@ -104,19 +118,23 @@ def test_profile_create_invalid_ranges(field, value):
 
 # ── SearchProfileUpdate range validators (same shared helper) ───────────────
 
-@pytest.mark.parametrize("field,value", [
-    ("workload_min", -1),
-    ("workload_min", 101),
-    ("workload_max", -1),
-    ("workload_max", 101),
-    ("salary_min_chf", -1),
-    ("hard_max_distance_km", -1),
-    ("max_distance", 501),
-    ("posted_within_days", 0),
-    ("posted_within_days", 366),
-    ("schedule_interval_hours", 0),
-    ("schedule_interval_hours", -5),
-])
+
+@pytest.mark.parametrize(
+    "field,value",
+    [
+        ("workload_min", -1),
+        ("workload_min", 101),
+        ("workload_max", -1),
+        ("workload_max", 101),
+        ("salary_min_chf", -1),
+        ("hard_max_distance_km", -1),
+        ("max_distance", 501),
+        ("posted_within_days", 0),
+        ("posted_within_days", 366),
+        ("schedule_interval_hours", 0),
+        ("schedule_interval_hours", -5),
+    ],
+)
 def test_profile_update_invalid_ranges(field, value):
     with pytest.raises(ValidationError):
         SearchProfileUpdate(**{field: value})

@@ -3,7 +3,7 @@ import React from "react";
 export function ScoreBadge({ score }) {
     let colorClass = "badge-secondary";
     let icon = "bi-dash";
-    
+
     if (score >= 85) {
         colorClass = "badge-success";
         icon = "bi-check-lg";

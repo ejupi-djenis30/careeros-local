@@ -4,56 +4,74 @@ Revision ID: 7d76134d9a36
 Revises: a1b2c3d4e5f6
 Create Date: 2026-02-22 02:18:30.032780
 """
+
 from typing import Sequence, Union
 
-from alembic import op
 import sqlalchemy as sa
 
+from alembic import op
 
 # revision identifiers, used by Alembic.
-revision: str = '7d76134d9a36'
-down_revision: Union[str, None] = 'a1b2c3d4e5f6'
+revision: str = "7d76134d9a36"
+down_revision: Union[str, None] = "a1b2c3d4e5f6"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
     bind = op.get_bind()
-    is_sqlite = bind.dialect.name == 'sqlite'
+    is_sqlite = bind.dialect.name == "sqlite"
 
     # 1. Create scraped_jobs table
-    op.create_table('scraped_jobs',
-        sa.Column('id', sa.Integer(), nullable=False),
-        sa.Column('platform', sa.String(), nullable=False),
-        sa.Column('platform_job_id', sa.String(), nullable=False),
-        sa.Column('title', sa.String(), nullable=False),
-        sa.Column('company', sa.String(), nullable=False),
-        sa.Column('description', sa.Text(), nullable=True),
-        sa.Column('location', sa.String(), nullable=True),
-        sa.Column('external_url', sa.String(), nullable=False),
-        sa.Column('application_url', sa.String(), nullable=True),
-        sa.Column('application_email', sa.String(), nullable=True),
-        sa.Column('workload', sa.String(), nullable=True),
-        sa.Column('publication_date', sa.DateTime(timezone=True), nullable=True),
-        sa.Column('raw_metadata', sa.JSON(), nullable=True),
-        sa.Column('source_query', sa.String(), nullable=True),
-        sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('(CURRENT_TIMESTAMP)'), nullable=False),
-        sa.Column('updated_at', sa.DateTime(timezone=True), server_default=sa.text('(CURRENT_TIMESTAMP)'), nullable=False),
-        sa.PrimaryKeyConstraint('id')
+    op.create_table(
+        "scraped_jobs",
+        sa.Column("id", sa.Integer(), nullable=False),
+        sa.Column("platform", sa.String(), nullable=False),
+        sa.Column("platform_job_id", sa.String(), nullable=False),
+        sa.Column("title", sa.String(), nullable=False),
+        sa.Column("company", sa.String(), nullable=False),
+        sa.Column("description", sa.Text(), nullable=True),
+        sa.Column("location", sa.String(), nullable=True),
+        sa.Column("external_url", sa.String(), nullable=False),
+        sa.Column("application_url", sa.String(), nullable=True),
+        sa.Column("application_email", sa.String(), nullable=True),
+        sa.Column("workload", sa.String(), nullable=True),
+        sa.Column("publication_date", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("raw_metadata", sa.JSON(), nullable=True),
+        sa.Column("source_query", sa.String(), nullable=True),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("(CURRENT_TIMESTAMP)"),
+            nullable=False,
+        ),
+        sa.Column(
+            "updated_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("(CURRENT_TIMESTAMP)"),
+            nullable=False,
+        ),
+        sa.PrimaryKeyConstraint("id"),
     )
-    op.create_index(op.f('ix_scraped_jobs_platform'), 'scraped_jobs', ['platform'], unique=False)
-    op.create_index(op.f('ix_scraped_jobs_platform_job_id'), 'scraped_jobs', ['platform_job_id'], unique=False)
-    op.create_index(op.f('ix_scraped_jobs_title'), 'scraped_jobs', ['title'], unique=False)
-    op.create_index(op.f('ix_scraped_jobs_company'), 'scraped_jobs', ['company'], unique=False)
-    op.create_index(op.f('ix_scraped_jobs_location'), 'scraped_jobs', ['location'], unique=False)
-    op.create_index(op.f('ix_scraped_jobs_external_url'), 'scraped_jobs', ['external_url'], unique=False)
+    op.create_index(op.f("ix_scraped_jobs_platform"), "scraped_jobs", ["platform"], unique=False)
+    op.create_index(
+        op.f("ix_scraped_jobs_platform_job_id"), "scraped_jobs", ["platform_job_id"], unique=False
+    )
+    op.create_index(op.f("ix_scraped_jobs_title"), "scraped_jobs", ["title"], unique=False)
+    op.create_index(op.f("ix_scraped_jobs_company"), "scraped_jobs", ["company"], unique=False)
+    op.create_index(op.f("ix_scraped_jobs_location"), "scraped_jobs", ["location"], unique=False)
+    op.create_index(
+        op.f("ix_scraped_jobs_external_url"), "scraped_jobs", ["external_url"], unique=False
+    )
 
     # 2. Add scraped_job_id to jobs (nullable initially)
-    op.add_column('jobs', sa.Column('scraped_job_id', sa.Integer(), nullable=True))
+    op.add_column("jobs", sa.Column("scraped_job_id", sa.Integer(), nullable=True))
 
     # FK constraint — SQLite does not support ALTER ADD CONSTRAINT
     if not is_sqlite:
-        op.create_foreign_key('fk_jobs_scraped_job_id', 'jobs', 'scraped_jobs', ['scraped_job_id'], ['id'])
+        op.create_foreign_key(
+            "fk_jobs_scraped_job_id", "jobs", "scraped_jobs", ["scraped_job_id"], ["id"]
+        )
 
     # 3. Data migration — uses PostgreSQL-specific syntax (DISTINCT ON, ::text cast).
     # Skipped on SQLite because CI always starts from a clean database with no existing rows.
@@ -102,32 +120,42 @@ def upgrade() -> None:
     # 'external_url' in migration a1b2c3d4e5f6 SQLite preserved the index under its old
     # name still referencing external_url. batch_alter_table would try to recreate it on
     # the now-dropped column, so we must drop it explicitly here.
-    op.drop_index('ix_jobs_url', table_name='jobs')
-    op.drop_index('ix_jobs_title', table_name='jobs')
-    op.drop_index('ix_jobs_company', table_name='jobs')
-    op.drop_index('ix_jobs_location', table_name='jobs')
-    op.drop_index('ix_jobs_external_url', table_name='jobs')
-    op.drop_index('ix_jobs_platform', table_name='jobs')
-    op.drop_index('ix_jobs_platform_job_id', table_name='jobs')
+    op.drop_index("ix_jobs_url", table_name="jobs")
+    op.drop_index("ix_jobs_title", table_name="jobs")
+    op.drop_index("ix_jobs_company", table_name="jobs")
+    op.drop_index("ix_jobs_location", table_name="jobs")
+    op.drop_index("ix_jobs_external_url", table_name="jobs")
+    op.drop_index("ix_jobs_platform", table_name="jobs")
+    op.drop_index("ix_jobs_platform_job_id", table_name="jobs")
 
     # 5. Make scraped_job_id non-nullable and drop old columns.
     # SQLite does not support ALTER COLUMN; use batch_alter_table (copy-and-move strategy).
     _old_cols = [
-        'title', 'company', 'description', 'location', 'external_url',
-        'application_url', 'application_email', 'workload', 'publication_date',
-        'platform', 'platform_job_id', 'raw_metadata', 'source_query',
+        "title",
+        "company",
+        "description",
+        "location",
+        "external_url",
+        "application_url",
+        "application_email",
+        "workload",
+        "publication_date",
+        "platform",
+        "platform_job_id",
+        "raw_metadata",
+        "source_query",
     ]
     if is_sqlite:
-        with op.batch_alter_table('jobs') as batch_op:
-            batch_op.alter_column('scraped_job_id', existing_type=sa.Integer(), nullable=False)
+        with op.batch_alter_table("jobs") as batch_op:
+            batch_op.alter_column("scraped_job_id", existing_type=sa.Integer(), nullable=False)
             for col in _old_cols:
                 batch_op.drop_column(col)
     else:
-        op.alter_column('jobs', 'scraped_job_id', existing_type=sa.Integer(), nullable=False)
+        op.alter_column("jobs", "scraped_job_id", existing_type=sa.Integer(), nullable=False)
         for col in _old_cols:
-            op.drop_column('jobs', col)
+            op.drop_column("jobs", col)
 
-    op.create_index(op.f('ix_jobs_scraped_job_id'), 'jobs', ['scraped_job_id'], unique=False)
+    op.create_index(op.f("ix_jobs_scraped_job_id"), "jobs", ["scraped_job_id"], unique=False)
 
 
 def downgrade() -> None:

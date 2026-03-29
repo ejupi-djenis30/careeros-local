@@ -1,11 +1,22 @@
-import pytest
 from unittest.mock import MagicMock, patch
-from backend.services.search_status import (
-    init_status, add_log, update_status, get_status, 
-    get_all_statuses, clear_status, register_task, 
-    unregister_task, cancel_task, reserve_task, release_task
-)
+
+import pytest
+
 import backend.services.search_status as ss
+from backend.services.search_status import (
+    add_log,
+    cancel_task,
+    clear_status,
+    get_all_statuses,
+    get_status,
+    init_status,
+    register_task,
+    release_task,
+    reserve_task,
+    unregister_task,
+    update_status,
+)
+
 
 @pytest.fixture(autouse=True)
 def reset_status_registry():
@@ -15,6 +26,7 @@ def reset_status_registry():
         ss._active_tasks.clear()
         ss._reserved_tasks.clear()
     yield
+
 
 def test_init_status():
     init_status(1, total_searches=5, searches=[{"q": "test"}])
@@ -28,6 +40,7 @@ def test_init_status():
     assert len(status["searches_generated"]) == 1
     assert "started_at" in status
 
+
 def test_add_log():
     init_status(1)
     add_log(1, "First log")
@@ -37,6 +50,7 @@ def test_add_log():
     assert status["log"][0]["message"] == "First log"
     assert status["log"][1]["message"] == "Second log"
 
+
 def test_add_log_overflow():
     init_status(1)
     for i in range(110):
@@ -44,6 +58,7 @@ def test_add_log_overflow():
     status = get_status(1)
     assert len(status["log"]) == 100
     assert status["log"][-1]["message"] == "Log 109"
+
 
 def test_update_status():
     init_status(1)
@@ -64,9 +79,11 @@ def test_update_status():
     assert status["active_search_indices"] == [3]
     assert status["completed_search_indices"] == [1, 2]
 
+
 def test_get_status_unknown():
     status = get_status(999)
     assert status == {"state": "unknown"}
+
 
 def test_get_all_statuses():
     init_status(1)
@@ -76,22 +93,25 @@ def test_get_all_statuses():
     assert 1 in all_s
     assert 2 in all_s
 
+
 def test_clear_status():
     init_status(1)
     clear_status(1)
     assert get_status(1) == {"state": "unknown"}
 
+
 def test_task_lifecycle():
     mock_task = MagicMock()
     register_task(1, mock_task)
-    
+
     # cancel_task
     assert cancel_task(1) is True
     mock_task.cancel.assert_called_once()
-    
+
     # unregister_task
     unregister_task(1)
     assert cancel_task(1) is False
+
 
 def test_cancel_task_non_existent():
     assert cancel_task(999) is False
@@ -104,6 +124,7 @@ def test_task_reservation_lifecycle():
     release_task(123)
     assert reserve_task(123) is True
 
+
 def test_save_statuses_logs_warning_on_write_failure(caplog):
     caplog.set_level("WARNING")
     with patch("backend.services.search_status.open", side_effect=OSError("disk full")):
@@ -113,11 +134,11 @@ def test_save_statuses_logs_warning_on_write_failure(caplog):
 
 # ── Cross-worker reserve_task tests ─────────────────────────────────────
 
+
 def test_reserve_task_blocked_by_file_active_state():
     """reserve_task must reject when the shared JSON file shows a non-terminal
     state with a started_at AFTER the current worker's boot time."""
     from datetime import datetime, timezone
-    import backend.services.search_status as ss_mod
 
     # Simulate a file entry started *after* the worker booted (cross-worker case)
     future_started = datetime.now(timezone.utc).isoformat()  # strictly after _WORKER_BOOT_TIME
@@ -150,7 +171,6 @@ def test_reserve_task_allowed_when_file_shows_terminal_state():
 
 def test_reserve_task_allowed_when_file_shows_stale_state():
     """reserve_task must allow when the file entry pre-dates the current worker boot."""
-    import backend.services.search_status as ss_mod
     # Use a started_at that is definitely before _WORKER_BOOT_TIME
     old_started = "2000-01-01T00:00:00+00:00"
     file_data = {
@@ -167,12 +187,14 @@ def test_reserve_task_allowed_when_file_shows_stale_state():
 
 # ── register_task guard tests ────────────────────────────────────────────
 
+
 def test_register_task_rejects_overwrite_of_live_task():
     """register_task must refuse to overwrite an existing live asyncio task."""
     import asyncio
 
     loop = asyncio.new_event_loop()
     try:
+
         async def _dummy():
             await asyncio.sleep(10)
 
@@ -204,6 +226,7 @@ def test_register_task_allows_registration_after_task_done():
 
     loop = asyncio.new_event_loop()
     try:
+
         async def _immediate():
             pass
 

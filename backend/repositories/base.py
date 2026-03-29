@@ -11,6 +11,7 @@ ModelType = TypeVar("ModelType")
 CreateSchemaType = TypeVar("CreateSchemaType", bound=PydanticBaseModel)
 UpdateSchemaType = TypeVar("UpdateSchemaType", bound=PydanticBaseModel)
 
+
 class BaseRepository(Generic[ModelType]):
     def __init__(self, model: Type[ModelType], db: Session):
         self.model = model
@@ -44,9 +45,7 @@ class BaseRepository(Generic[ModelType]):
         return db_obj
 
     def update(
-        self,
-        db_obj: ModelType,
-        obj_in: Union[UpdateSchemaType, Dict[str, Any]]
+        self, db_obj: ModelType, obj_in: Union[UpdateSchemaType, Dict[str, Any]]
     ) -> ModelType:
         if isinstance(obj_in, dict):
             update_data = obj_in
@@ -63,11 +62,21 @@ class BaseRepository(Generic[ModelType]):
             self.db.refresh(db_obj)
         except IntegrityError as exc:
             self.db.rollback()
-            logger.warning("Integrity violation updating %s id=%s: %s", self.model.__name__, getattr(db_obj, 'id', '?'), exc.orig)
+            logger.warning(
+                "Integrity violation updating %s id=%s: %s",
+                self.model.__name__,
+                getattr(db_obj, "id", "?"),
+                exc.orig,
+            )
             raise
         except Exception as exc:
             self.db.rollback()
-            logger.error("Unexpected DB error updating %s id=%s: %s", self.model.__name__, getattr(db_obj, 'id', '?'), exc)
+            logger.error(
+                "Unexpected DB error updating %s id=%s: %s",
+                self.model.__name__,
+                getattr(db_obj, "id", "?"),
+                exc,
+            )
             raise
         return db_obj
 
@@ -79,10 +88,14 @@ class BaseRepository(Generic[ModelType]):
                 self.db.commit()
             except IntegrityError as exc:
                 self.db.rollback()
-                logger.warning("Integrity violation deleting %s id=%s: %s", self.model.__name__, id, exc.orig)
+                logger.warning(
+                    "Integrity violation deleting %s id=%s: %s", self.model.__name__, id, exc.orig
+                )
                 raise
             except Exception as exc:
                 self.db.rollback()
-                logger.error("Unexpected DB error deleting %s id=%s: %s", self.model.__name__, id, exc)
+                logger.error(
+                    "Unexpected DB error deleting %s id=%s: %s", self.model.__name__, id, exc
+                )
                 raise
         return obj

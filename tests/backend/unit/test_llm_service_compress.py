@@ -1,6 +1,8 @@
 """Tests for LLMService._compress_description_if_needed."""
-import pytest
+
 from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
 
 from backend.services.llm_service import LLMService
 
@@ -78,7 +80,9 @@ async def test_compress_uses_compress_step_provider(llm_service):
     mock_provider = MagicMock()
     mock_provider.generate_text_async = AsyncMock(return_value="Compressed output " + "D" * 60)
 
-    with patch.object(llm_service, "_get_provider", return_value=mock_provider) as mock_get_provider:
+    with patch.object(
+        llm_service, "_get_provider", return_value=mock_provider
+    ) as mock_get_provider:
         await llm_service._compress_description_if_needed(long_desc, max_chars=8000)
 
     mock_get_provider.assert_called_once_with("compress")

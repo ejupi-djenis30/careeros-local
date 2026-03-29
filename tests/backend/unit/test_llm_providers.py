@@ -1,8 +1,7 @@
-import pytest
-from unittest.mock import patch, MagicMock
-from backend.providers.llm.base import LLMProvider
-from backend.providers.llm.openai_compatible import OpenAICompatibleProvider
+from unittest.mock import MagicMock, patch
+
 from backend.providers.llm.ollama import OllamaProvider
+from backend.providers.llm.openai_compatible import OpenAICompatibleProvider
 
 
 def test_openai_compatible_provider_initialization():
@@ -99,6 +98,7 @@ def test_ollama_provider_initialization():
 
 
 # ─── Factory Tests ────────────────────────────────────────────────────────────
+
 
 def test_factory_default_returns_global_provider():
     from backend.providers.llm.factory import get_llm_provider, get_provider_for_step
@@ -197,10 +197,12 @@ def test_factory_gemini_provider():
         mock_settings.LLM_MATCH_THINKING_LEVEL = ""
 
         with patch("backend.providers.llm.gemini.genai", create=True):
-            with patch("backend.providers.llm.gemini.GeminiProvider.__init__", return_value=None) as mock_init:
+            with patch(
+                "backend.providers.llm.gemini.GeminiProvider.__init__", return_value=None
+            ) as mock_init:
                 mock_init.return_value = None
                 # We can't fully test Gemini without the SDK, but we test resolution
                 try:
-                    provider = get_provider_for_step("match")
+                    _ = get_provider_for_step("match")
                 except Exception:
                     pass  # Gemini SDK not installed, but resolution was correct

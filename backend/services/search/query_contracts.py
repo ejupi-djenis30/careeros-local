@@ -99,7 +99,9 @@ _SKILL_HINTS = {
     "trasportare",
 }
 
-_QUERY_NOISE_PATTERN = re.compile(r"(?<!\w)(m/w/d|f/m/d|m/f/d|\d{1,3}(?:-\d{1,3})?%)(?!\w)", re.IGNORECASE)
+_QUERY_NOISE_PATTERN = re.compile(
+    r"(?<!\w)(m/w/d|f/m/d|m/f/d|\d{1,3}(?:-\d{1,3})?%)(?!\w)", re.IGNORECASE
+)
 _QUERY_CLEAN_PATTERN = re.compile(r"[^\w\s+#./-]")
 _WHITESPACE_PATTERN = re.compile(r"\s+")
 
@@ -244,7 +246,9 @@ def compute_plan_input_fingerprint(
     max_keyword_queries: Optional[int],
 ) -> str:
     payload = {
-        "role_description": sanitize_prompt_text(profile.get("role_description", ""), max_chars=4000),
+        "role_description": sanitize_prompt_text(
+            profile.get("role_description", ""), max_chars=4000
+        ),
         "search_strategy": sanitize_prompt_text(profile.get("search_strategy", ""), max_chars=4000),
         "cv_content": sanitize_prompt_text(profile.get("cv_content", ""), max_chars=12000),
         "max_queries": _coerce_optional_int(max_queries),

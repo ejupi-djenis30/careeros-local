@@ -38,7 +38,7 @@ export function DismissDialog({ open, jobTitle, onDismiss, onClose }) {
                         <h6 className="text-white fw-bold mb-1">Not interested?</h6>
                         {jobTitle && <div className="text-secondary x-small text-truncate w-100">{jobTitle}</div>}
                     </div>
-                    <button 
+                    <button
                         onClick={onClose}
                         className="btn btn-sm btn-icon btn-secondary rounded-circle flex-shrink-0"
                     >

@@ -5,6 +5,7 @@ maps common hallucinations to their correct canonical values. Returns a
 corrected dict along with a list of field names that required correction
 (useful for triggering targeted re-normalization on low-confidence results).
 """
+
 from __future__ import annotations
 
 import logging
@@ -15,18 +16,39 @@ logger = logging.getLogger(__name__)
 
 # ─── Allowlist enums ──────────────────────────────────────────────────────────
 
-VALID_DOMAINS = frozenset({
-    "general", "it", "finance", "medical", "engineering", "hospitality",
-    "sales", "logistics", "administration", "legal", "education",
-    "marketing", "consulting", "pharma", "construction",
-})
+VALID_DOMAINS = frozenset(
+    {
+        "general",
+        "it",
+        "finance",
+        "medical",
+        "engineering",
+        "hospitality",
+        "sales",
+        "logistics",
+        "administration",
+        "legal",
+        "education",
+        "marketing",
+        "consulting",
+        "pharma",
+        "construction",
+    }
+)
 
 VALID_SENIORITY = frozenset({"junior", "mid", "senior"})
 
-VALID_ROLE_TYPES = frozenset({
-    "technical", "manual", "administrative", "creative",
-    "managerial", "service", "professional",
-})
+VALID_ROLE_TYPES = frozenset(
+    {
+        "technical",
+        "manual",
+        "administrative",
+        "creative",
+        "managerial",
+        "service",
+        "professional",
+    }
+)
 
 VALID_EMPLOYMENT_MODES = frozenset({"remote", "hybrid", "on-site"})
 
@@ -41,96 +63,187 @@ VALID_ENTRY_BARRIERS = frozenset({"none", "low", "medium", "high"})
 
 _SENIORITY_MAP: Dict[str, str] = {
     # English expansions
-    "entry": "junior", "entry-level": "junior", "entry level": "junior",
-    "graduate": "junior", "intern": "junior", "trainee": "junior",
-    "apprentice": "junior", "beginner": "junior",
-    "intermediate": "mid", "experienced": "mid", "associate": "mid",
-    "professional": "mid", "specialist": "mid",
-    "lead": "senior", "principal": "senior", "staff": "senior",
-    "head": "senior", "director": "senior", "manager": "senior",
-    "expert": "senior", "architect": "senior",
+    "entry": "junior",
+    "entry-level": "junior",
+    "entry level": "junior",
+    "graduate": "junior",
+    "intern": "junior",
+    "trainee": "junior",
+    "apprentice": "junior",
+    "beginner": "junior",
+    "intermediate": "mid",
+    "experienced": "mid",
+    "associate": "mid",
+    "professional": "mid",
+    "specialist": "mid",
+    "lead": "senior",
+    "principal": "senior",
+    "staff": "senior",
+    "head": "senior",
+    "director": "senior",
+    "manager": "senior",
+    "expert": "senior",
+    "architect": "senior",
     # German
-    "berufseinsteiger": "junior", "einsteiger": "junior",
-    "berufserfahren": "mid", "erfahren": "mid",
-    "leitend": "senior", "führungskraft": "senior",
+    "berufseinsteiger": "junior",
+    "einsteiger": "junior",
+    "berufserfahren": "mid",
+    "erfahren": "mid",
+    "leitend": "senior",
+    "führungskraft": "senior",
 }
 
 _DOMAIN_MAP: Dict[str, str] = {
     # Common expansions → canonical
-    "information technology": "it", "software": "it", "tech": "it",
-    "software development": "it", "it/tech": "it", "data science": "it",
-    "fintech": "finance", "banking": "finance", "accounting": "finance",
-    "healthcare": "medical", "health": "medical", "nursing": "medical",
-    "pharmaceutical": "pharma", "drug development": "pharma",
-    "mechanical engineering": "engineering", "electrical engineering": "engineering",
-    "civil engineering": "engineering", "chemical engineering": "engineering",
-    "warehouse": "logistics", "shipping": "logistics", "supply chain": "logistics",
-    "restaurant": "hospitality", "hotel": "hospitality", "cleaning": "hospitality",
-    "retail": "sales", "customer service": "sales",
-    "hr": "administration", "human resources": "administration",
-    "office": "administration", "secretarial": "administration",
-    "law": "legal", "legal services": "legal",
-    "teaching": "education", "academic": "education",
-    "digital marketing": "marketing", "advertising": "marketing",
-    "management consulting": "consulting", "strategy": "consulting",
-    "construction work": "construction", "building": "construction",
+    "information technology": "it",
+    "software": "it",
+    "tech": "it",
+    "software development": "it",
+    "it/tech": "it",
+    "data science": "it",
+    "fintech": "finance",
+    "banking": "finance",
+    "accounting": "finance",
+    "healthcare": "medical",
+    "health": "medical",
+    "nursing": "medical",
+    "pharmaceutical": "pharma",
+    "drug development": "pharma",
+    "mechanical engineering": "engineering",
+    "electrical engineering": "engineering",
+    "civil engineering": "engineering",
+    "chemical engineering": "engineering",
+    "warehouse": "logistics",
+    "shipping": "logistics",
+    "supply chain": "logistics",
+    "restaurant": "hospitality",
+    "hotel": "hospitality",
+    "cleaning": "hospitality",
+    "retail": "sales",
+    "customer service": "sales",
+    "hr": "administration",
+    "human resources": "administration",
+    "office": "administration",
+    "secretarial": "administration",
+    "law": "legal",
+    "legal services": "legal",
+    "teaching": "education",
+    "academic": "education",
+    "digital marketing": "marketing",
+    "advertising": "marketing",
+    "management consulting": "consulting",
+    "strategy": "consulting",
+    "construction work": "construction",
+    "building": "construction",
 }
 
 _ROLE_TYPE_MAP: Dict[str, str] = {
-    "physical": "manual", "hands-on": "manual", "labor": "manual",
-    "labourer": "manual", "handwork": "manual",
-    "it": "technical", "engineering": "technical", "developer": "technical",
-    "office": "administrative", "clerical": "administrative",
-    "customer-facing": "service", "hospitality": "service",
-    "specialist": "professional", "expert": "professional",
-    "leadership": "managerial", "supervisory": "managerial",
-    "design": "creative", "artistic": "creative",
+    "physical": "manual",
+    "hands-on": "manual",
+    "labor": "manual",
+    "labourer": "manual",
+    "handwork": "manual",
+    "it": "technical",
+    "engineering": "technical",
+    "developer": "technical",
+    "office": "administrative",
+    "clerical": "administrative",
+    "customer-facing": "service",
+    "hospitality": "service",
+    "specialist": "professional",
+    "expert": "professional",
+    "leadership": "managerial",
+    "supervisory": "managerial",
+    "design": "creative",
+    "artistic": "creative",
 }
 
 _QUALIFICATION_MAP: Dict[str, str] = {
     # None tier
-    "no qualification": "none", "no degree": "none", "none required": "none",
-    "not required": "none", "any": "none",
+    "no qualification": "none",
+    "no degree": "none",
+    "none required": "none",
+    "not required": "none",
+    "any": "none",
     # Vocational
-    "apprenticeship": "vocational", "vocational training": "vocational",
-    "eidg. dipl.": "vocational", "eidg dipl": "vocational",
-    "fachausweis": "vocational", "berufslehre": "vocational",
-    "certificate": "vocational", "diploma": "vocational",
+    "apprenticeship": "vocational",
+    "vocational training": "vocational",
+    "eidg. dipl.": "vocational",
+    "eidg dipl": "vocational",
+    "fachausweis": "vocational",
+    "berufslehre": "vocational",
+    "certificate": "vocational",
+    "diploma": "vocational",
     "associate": "vocational",
     # Bachelor
-    "university": "bachelor", "college": "bachelor", "degree": "bachelor",
-    "bachelor's": "bachelor", "b.sc.": "bachelor", "b.a.": "bachelor",
+    "university": "bachelor",
+    "college": "bachelor",
+    "degree": "bachelor",
+    "bachelor's": "bachelor",
+    "b.sc.": "bachelor",
+    "b.a.": "bachelor",
     "undergraduate": "bachelor",
     # Master
-    "master's": "master", "m.sc.": "master", "m.a.": "master",
-    "mba": "master", "postgraduate": "master",
+    "master's": "master",
+    "m.sc.": "master",
+    "m.a.": "master",
+    "mba": "master",
+    "postgraduate": "master",
     # PhD
-    "doctorate": "phd", "ph.d.": "phd", "dr.": "phd",
+    "doctorate": "phd",
+    "ph.d.": "phd",
+    "dr.": "phd",
     "doctoral": "phd",
 }
 
 _ENTRY_BARRIER_MAP: Dict[str, str] = {
-    "no barrier": "none", "open": "none", "accessible": "none",
-    "entry level": "low", "beginner friendly": "low", "basic": "low",
-    "moderate": "medium", "standard": "medium", "intermediate": "medium",
-    "strict": "high", "expert only": "high", "highly specialized": "high",
+    "no barrier": "none",
+    "open": "none",
+    "accessible": "none",
+    "entry level": "low",
+    "beginner friendly": "low",
+    "basic": "low",
+    "moderate": "medium",
+    "standard": "medium",
+    "intermediate": "medium",
+    "strict": "high",
+    "expert only": "high",
+    "highly specialized": "high",
 }
 
 _EMPLOYMENT_MODE_MAP: Dict[str, str] = {
-    "full remote": "remote", "home office": "remote", "telework": "remote",
-    "teletravail": "remote", "telelavoro": "remote", "fully remote": "remote",
-    "partially remote": "hybrid", "occasional home office": "hybrid",
-    "on site": "on-site", "office": "on-site", "in-person": "on-site",
-    "in person": "on-site", "presence": "on-site",
+    "full remote": "remote",
+    "home office": "remote",
+    "telework": "remote",
+    "teletravail": "remote",
+    "telelavoro": "remote",
+    "fully remote": "remote",
+    "partially remote": "hybrid",
+    "occasional home office": "hybrid",
+    "on site": "on-site",
+    "office": "on-site",
+    "in-person": "on-site",
+    "in person": "on-site",
+    "presence": "on-site",
 }
 
 _CONTRACT_TYPE_MAP: Dict[str, str] = {
-    "fixed-term": "temporary", "fix-term": "temporary", "befristet": "temporary",
-    "zeitlich begrenzt": "temporary", "temp": "temporary", "contractor": "temporary",
-    "unbefristet": "permanent", "open-ended": "permanent", "indefinite": "permanent",
-    "festanstellung": "permanent", "full-time": "permanent",
-    "self-employed": "freelance", "independent": "freelance",
-    "trainee": "internship", "praktikum": "internship", "stage": "internship",
+    "fixed-term": "temporary",
+    "fix-term": "temporary",
+    "befristet": "temporary",
+    "zeitlich begrenzt": "temporary",
+    "temp": "temporary",
+    "contractor": "temporary",
+    "unbefristet": "permanent",
+    "open-ended": "permanent",
+    "indefinite": "permanent",
+    "festanstellung": "permanent",
+    "full-time": "permanent",
+    "self-employed": "freelance",
+    "independent": "freelance",
+    "trainee": "internship",
+    "praktikum": "internship",
+    "stage": "internship",
 }
 
 
@@ -140,7 +253,9 @@ def _remap(value: str, mapping: Dict[str, str]) -> Optional[str]:
     return mapping.get(v)
 
 
-def validate_normalized_job(raw: Dict[str, Any], job_index: int = 0) -> Tuple[Dict[str, Any], List[str]]:
+def validate_normalized_job(
+    raw: Dict[str, Any], job_index: int = 0
+) -> Tuple[Dict[str, Any], List[str]]:
     """Validate and coerce a single normalized job dict.
 
     Checks every enum field against its allowlist. Invalid values are:
@@ -172,14 +287,19 @@ def validate_normalized_job(raw: Dict[str, Any], job_index: int = 0) -> Tuple[Di
         if remapped and remapped in valid_set:
             logger.debug(
                 "[NORM_VALIDATE] job[%d] field=%s: '%s' → '%s' (remapped)",
-                job_index, field, val, remapped,
+                job_index,
+                field,
+                val,
+                remapped,
             )
             corrected[field] = remapped
             corrected_fields.append(field)
         else:
             logger.warning(
                 "[NORM_VALIDATE] job[%d] field=%s: '%s' is invalid and cannot be remapped — nulling",
-                job_index, field, val,
+                job_index,
+                field,
+                val,
             )
             corrected[field] = None
             corrected_fields.append(field)
@@ -204,9 +324,14 @@ def validate_normalized_job(raw: Dict[str, Any], job_index: int = 0) -> Tuple[Di
             corrected_fields.append("confidence")
 
     # Validate integer fields are non-negative
-    for int_field in ("experience_min_years", "experience_max_years",
-                      "workload_min", "workload_max",
-                      "salary_min_chf", "salary_max_chf"):
+    for int_field in (
+        "experience_min_years",
+        "experience_max_years",
+        "workload_min",
+        "workload_max",
+        "salary_min_chf",
+        "salary_max_chf",
+    ):
         val = corrected.get(int_field)
         if val is not None:
             try:
@@ -246,7 +371,9 @@ def validate_normalized_batch(rows: List[Dict[str, Any]]) -> Tuple[List[Dict[str
             indices_needing_review.append(i)
             logger.info(
                 "[NORM_VALIDATE] job[%d] corrected %d fields: %s",
-                i, len(corrected_fields), corrected_fields,
+                i,
+                len(corrected_fields),
+                corrected_fields,
             )
 
     return corrected_rows, indices_needing_review

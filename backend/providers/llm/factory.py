@@ -33,15 +33,15 @@ def _resolve_step_config(step: str) -> dict:
 
     if step in _KNOWN_STEPS:
         prefix = f"LLM_{step.upper()}_"
-        step_provider       = getattr(settings, f"{prefix}PROVIDER", "")
-        step_model           = getattr(settings, f"{prefix}MODEL", "")
-        step_api_key         = getattr(settings, f"{prefix}API_KEY", "")
-        step_base_url        = getattr(settings, f"{prefix}BASE_URL", "")
-        step_temp            = getattr(settings, f"{prefix}TEMPERATURE", None)
-        step_top_p           = getattr(settings, f"{prefix}TOP_P", None)
-        step_max_tok         = getattr(settings, f"{prefix}MAX_TOKENS", None)
-        step_thinking        = getattr(settings, f"{prefix}THINKING", False)
-        step_thinking_level  = getattr(settings, f"{prefix}THINKING_LEVEL", "")
+        step_provider = getattr(settings, f"{prefix}PROVIDER", "")
+        step_model = getattr(settings, f"{prefix}MODEL", "")
+        step_api_key = getattr(settings, f"{prefix}API_KEY", "")
+        step_base_url = getattr(settings, f"{prefix}BASE_URL", "")
+        step_temp = getattr(settings, f"{prefix}TEMPERATURE", None)
+        step_top_p = getattr(settings, f"{prefix}TOP_P", None)
+        step_max_tok = getattr(settings, f"{prefix}MAX_TOKENS", None)
+        step_thinking = getattr(settings, f"{prefix}THINKING", False)
+        step_thinking_level = getattr(settings, f"{prefix}THINKING_LEVEL", "")
     else:
         # Unknown step or "default" — everything falls through to globals
         step_provider = step_model = step_api_key = step_base_url = ""
@@ -52,15 +52,15 @@ def _resolve_step_config(step: str) -> dict:
         step_thinking_level = ""
 
     return {
-        "provider":       step_provider or settings.LLM_PROVIDER,
-        "model":          step_model or settings.LLM_MODEL,
-        "api_key":        step_api_key or settings.LLM_API_KEY,
-        "base_url":       step_base_url or settings.LLM_BASE_URL,
+        "provider": step_provider or settings.LLM_PROVIDER,
+        "model": step_model or settings.LLM_MODEL,
+        "api_key": step_api_key or settings.LLM_API_KEY,
+        "base_url": step_base_url or settings.LLM_BASE_URL,
         # None means "not set for this step" → use global default
-        "temperature":    step_temp if step_temp is not None else settings.LLM_TEMPERATURE,
-        "top_p":          step_top_p if step_top_p is not None else settings.LLM_TOP_P,
-        "max_tokens":     step_max_tok if step_max_tok is not None else settings.LLM_MAX_TOKENS,
-        "thinking":       step_thinking if step_thinking else settings.LLM_THINKING,
+        "temperature": step_temp if step_temp is not None else settings.LLM_TEMPERATURE,
+        "top_p": step_top_p if step_top_p is not None else settings.LLM_TOP_P,
+        "max_tokens": step_max_tok if step_max_tok is not None else settings.LLM_MAX_TOKENS,
+        "thinking": step_thinking if step_thinking else settings.LLM_THINKING,
         "thinking_level": step_thinking_level or settings.LLM_THINKING_LEVEL,
     }
 
@@ -88,8 +88,8 @@ def _build_provider(cfg: dict) -> LLMProvider:
 
     if provider_name == "ollama":
         base_url = cfg["base_url"] or settings.OLLAMA_BASE_URL
-        api_key  = cfg["api_key"] or "ollama"
-        model    = cfg["model"] or settings.OLLAMA_MODEL
+        api_key = cfg["api_key"] or "ollama"
+        model = cfg["model"] or settings.OLLAMA_MODEL
         return OllamaProvider(
             api_key=api_key,
             base_url=base_url,
@@ -113,6 +113,7 @@ def _build_provider(cfg: dict) -> LLMProvider:
 
 
 # ─── public API ──────────────────────────────────────────────────────────────
+
 
 def get_provider_for_step(step: str = "default") -> LLMProvider:
     """Resolve and instantiate the LLM provider for a pipeline *step*.

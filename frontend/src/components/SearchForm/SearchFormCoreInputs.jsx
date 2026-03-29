@@ -29,7 +29,7 @@ export function SearchFormCoreInputs({ profile, handleChange, handleLocationChan
                     onLocationChange={handleLocationChange}
                 />
             </div>
-             
+
             <div className="p-3 rounded-3 border border-dashed border-secondary border-opacity-25 bg-black-20 hover-bg-white-5 transition-all mb-3 mb-lg-0">
                 <label className="d-flex align-items-center justify-content-between cursor-pointer mb-0 w-100">
                     <div className="d-flex align-items-center gap-3">

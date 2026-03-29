@@ -11,6 +11,7 @@ Usage::
     affinity = get_domain_affinity("it", "it")           # → 1.0
     affinity = get_domain_affinity("it", "construction") # → 0.05
 """
+
 from typing import Dict
 
 # Affinity matrix: symmetric, values 0.0–1.0
@@ -24,11 +25,11 @@ _AFFINITY_MATRIX: Dict[str, Dict[str, float]] = {
     "it": {
         "engineering": 0.55,
         "consulting": 0.5,
-        "marketing": 0.45,    # digital marketing / growth engineering
-        "finance": 0.35,      # fintech overlap
+        "marketing": 0.45,  # digital marketing / growth engineering
+        "finance": 0.35,  # fintech overlap
         "administration": 0.3,
         "education": 0.3,
-        "pharma": 0.25,       # bioinformatics, data science
+        "pharma": 0.25,  # bioinformatics, data science
         "medical": 0.2,
         "logistics": 0.2,
         "sales": 0.2,
@@ -125,7 +126,7 @@ _AFFINITY_MATRIX: Dict[str, Dict[str, float]] = {
         "education": 0.35,
         "finance": 0.25,
         "legal": 0.2,
-        "hospitality": 0.2,    # events marketing
+        "hospitality": 0.2,  # events marketing
         "medical": 0.15,
         "pharma": 0.2,
         "logistics": 0.1,

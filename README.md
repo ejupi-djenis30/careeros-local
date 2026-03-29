@@ -57,7 +57,7 @@ This project is actively maintained and has recently undergone a massive archite
 
 ## 1. Project Overview & Philosophy
 
-Finding a job is a full-time job. You have to check multiple sites daily, filter through hundreds of entirely irrelevant or slightly off-target listings, read lengthy requirements, and tailor your CV for every single application. 
+Finding a job is a full-time job. You have to check multiple sites daily, filter through hundreds of entirely irrelevant or slightly off-target listings, read lengthy requirements, and tailor your CV for every single application.
 
 **Job Hunter AI** solves this systemic inefficiency by operating on a simple philosophy: Let machines do the reading, searching, and filtering, while the human makes the final executive decision.
 
@@ -159,7 +159,7 @@ The backend (`backend/`) is divided into distinct, isolated responsibility layer
 
 4. **Provider Layer (`backend/providers/`)**:
     - **Responsibility**: External world interfaces (Adapter Pattern).
-    - **Submodules**: 
+    - **Submodules**:
       - `llm/`: Contains concrete classes for Groq, DeepSeek, Gemini.
       - `jobs/`: Connects to `job-room.ch` APIs, formatting their proprietary JSON into internal systemic Request models.
 
@@ -283,15 +283,15 @@ If you are actively developing and modifying the codebase, you may prefer runnin
    ```bash
    git clone https://github.com/ejupi-djenis30/job-hunter-ai.git
    cd job-hunter-ai
-   
+
    # Create Virtual Environment
    python -m venv venv
-   
+
    # Activate Environment (Windows)
    .\venv\Scripts\activate
    # Activate Environment (macOS/Linux)
    source venv/bin/activate
-   
+
    # Install Dependencies
    pip install -r requirements.txt
    ```
@@ -469,7 +469,7 @@ Switch over to the **Dashboard** (Jobs) tab.
 
 - Look at the top **Filter Bar**. You can choose to view the "Global Dashboard" (everything you've ever found) or drill down to the specific Search Profile you just created.
 - Review the Cards:
-  - **Score Badge**: Indicates algorithmic compatibility. 
+  - **Score Badge**: Indicates algorithmic compatibility.
   - **Worth Applying Marker**: If the AI flagged it, there's a glowing indicator. These are the jobs you should prioritize reading first.
 - Click a card to expand it and read the AI's personalized 2-sentence rationale regarding your fit for the role.
 - If you intend to apply, click the external link button, then click the **Mark Applied** toggle in your dashboard to move the card out of your pending queue and into your metrics.
@@ -534,25 +534,25 @@ There is a dedicated file titled `AGENTS.md` located in the root directory. **An
 
 ### 1. 🐞 "Axios Network Error / Connection Refused"
 **Symptom**: The frontend loads, but attempting to login or save a profile throws a red toast notification saying `Network Error` or the browser console shows CORS Policy blockages.
-**Resolution**: 
+**Resolution**:
 - If running manually: Ensure your backend terminal is running without crash loops.
 - If using Docker: Ensure you navigated to `http://localhost:5173` absolutely perfectly. Navigating to `127.0.0.1:5173` might fail CORS policies depending on your browser. Check the `.env` file to ensure `CORS_ORIGINS` explicitly includes the exact URI you are typing into the address bar.
 
 ### 2. 🐞 "Search Progress is stuck at 'Connecting...'"
 **Symptom**: You execute a search, but the progress bar does not move and no logs are printed to the frontend UI.
-**Resolution**: The frontend relies on HTTP polling (every 1.5 seconds) to `GET /search/status/all`. Open your browser's Developer Tools (F12) -> Network tab. 
+**Resolution**: The frontend relies on HTTP polling (every 1.5 seconds) to `GET /search/status/all`. Open your browser's Developer Tools (F12) -> Network tab.
 - Are the `/status/all` requests failing with 500s? Your backend has crashed (likely an LLM timeout). Check the backend Docker logs: `docker logs job-hunter-ai-backend-1`.
 - If the requests are completing and returning `{}` (empty brace), there is an in-memory state desynchronization. Ensure your Docker compose file is running Gunicorn with exactly **1 worker thread**. Multiple threads will result in the state locking memory in an isolated thread inaccessible to the poller.
 
 ### 3. 🐞 "Database Integrity / Missing Columns Exception"
 **Symptom**: `sqlalchemy.exc.OperationalError: no such column: ...`
-**Resolution**: A backend structural change (like adding `search_profile_id`) occurred but your database file/volume has old schema definitions. 
+**Resolution**: A backend structural change (like adding `search_profile_id`) occurred but your database file/volume has old schema definitions.
 - Docker: Stop the containers and violently wipe the volumes: `docker-compose down -v`, then `docker-compose up -d --build`.
 - Manual: Delete `job_hunter.db` and restart `uvicorn`.
 
 ### 4. 🐞 "LLM Generation Failed / Returned 0 Keywords"
 **Symptom**: The search completes instantly and says "Generated 0 queries".
-**Resolution**: 
+**Resolution**:
 - Your `LLM_API_KEY` is likely invalid, expired, or out of credits.
 - Double-check the exact provider name. If using a local ollama network instance, ensure the Docker bridge network allows the backend container to reach the host port 11434.
 

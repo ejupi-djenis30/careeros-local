@@ -15,7 +15,7 @@ const mockProfile = {
 describe('ScheduleCard', () => {
     it('renders profile details and custom name correctly', () => {
         render(<ScheduleCard profile={mockProfile} onToggle={vi.fn()} onChangeInterval={vi.fn()} onDelete={vi.fn()} />);
-        
+
         expect(screen.getByText('Custom Campaign Name')).toBeInTheDocument();
         expect(screen.getByText('Frontend Developer')).toBeInTheDocument();
         expect(screen.getByText('Berlin')).toBeInTheDocument();
@@ -25,7 +25,7 @@ describe('ScheduleCard', () => {
     it('renders default name and falsy fallbacks when profile is missing info', () => {
         const profileMissingInfo = { ...mockProfile, name: '', location_filter: '', schedule_interval_hours: null };
         render(<ScheduleCard profile={profileMissingInfo} onToggle={vi.fn()} onChangeInterval={vi.fn()} onDelete={vi.fn()} />);
-        
+
         expect(screen.getByText('Campaign #10')).toBeInTheDocument();
         expect(screen.getByText('Any Location')).toBeInTheDocument();
         const select = screen.getByRole('combobox');
@@ -35,13 +35,13 @@ describe('ScheduleCard', () => {
     it('calls onToggle when schedule switch is clicked', () => {
         const onToggle = vi.fn();
         render(<ScheduleCard profile={mockProfile} onToggle={onToggle} onChangeInterval={vi.fn()} onDelete={vi.fn()} />);
-        
+
         const toggleSwitch = screen.getByRole('checkbox');
         // Initial state
         expect(toggleSwitch).toBeChecked();
 
         fireEvent.click(toggleSwitch);
-        
+
         // Ensure the handler was called with the correct previous state
         expect(onToggle).toHaveBeenCalledWith(mockProfile.id, true, 12);
     });
@@ -49,22 +49,22 @@ describe('ScheduleCard', () => {
     it('calls onChangeInterval when select value changes', () => {
         const onChangeInterval = vi.fn();
         render(<ScheduleCard profile={mockProfile} onToggle={vi.fn()} onChangeInterval={onChangeInterval} onDelete={vi.fn()} />);
-        
+
         const select = screen.getByRole('combobox');
         expect(select.value).toBe('12');
 
         fireEvent.change(select, { target: { value: '24' } });
-        
+
         expect(onChangeInterval).toHaveBeenCalledWith(mockProfile.id, '24');
     });
 
     it('calls onDelete when delete button is clicked', () => {
         const onDelete = vi.fn();
         render(<ScheduleCard profile={mockProfile} onToggle={vi.fn()} onChangeInterval={vi.fn()} onDelete={onDelete} />);
-        
+
         const deleteBtn = screen.getByTitle('Delete Campaign');
         fireEvent.click(deleteBtn);
-        
+
         expect(onDelete).toHaveBeenCalledWith(mockProfile.id);
     });
 

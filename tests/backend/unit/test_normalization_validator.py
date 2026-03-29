@@ -5,15 +5,14 @@ Covers:
   invalid values nulled, confidence clamped, int fields coerced/clamped
 - validate_normalized_batch: batch wrapper + indices_needing_review tracking
 """
-import pytest
 
 from backend.services.search.normalization_validator import (
-    validate_normalized_job,
     validate_normalized_batch,
+    validate_normalized_job,
 )
 
-
 # ─── validate_normalized_job ──────────────────────────────────────────────────
+
 
 class TestValidateNormalizedJob:
     def test_valid_values_pass_through_unchanged(self):
@@ -151,6 +150,7 @@ class TestValidateNormalizedJob:
 
 # ─── validate_normalized_batch ────────────────────────────────────────────────
 
+
 class TestValidateNormalizedBatch:
     def test_batch_returns_corrected_rows(self):
         rows = [
@@ -164,8 +164,8 @@ class TestValidateNormalizedBatch:
 
     def test_batch_indices_needing_review_populated(self):
         rows = [
-            {"seniority": "junior"},          # valid → no correction
-            {"seniority": "entry-level"},      # hallucination → corrected
+            {"seniority": "junior"},  # valid → no correction
+            {"seniority": "entry-level"},  # hallucination → corrected
         ]
         _, indices = validate_normalized_batch(rows)
         assert 1 in indices

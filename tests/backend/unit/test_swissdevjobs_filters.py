@@ -4,21 +4,19 @@ Covers:
 - filter_jobs: keyword filtering, location text, radius, company name,
   workload, language, work form, contract type
 """
-import pytest
-from unittest.mock import MagicMock
 
 from backend.providers.jobs.models import (
     ContractType,
+    Coordinates,
     JobSearchRequest,
-    WorkForm,
     LanguageSkillRequest,
     RadiusSearchRequest,
-    Coordinates,
+    WorkForm,
 )
 from backend.providers.jobs.swissdevjobs.filters import filter_jobs
 
-
 # ─── helpers ──────────────────────────────────────────────────────────────────
+
 
 def _job(
     name="Python Developer",
@@ -68,6 +66,7 @@ def _req(
 
 # ─── Keyword filtering ────────────────────────────────────────────────────────
 
+
 class TestKeywordFiltering:
     def test_no_query_includes_all_jobs(self):
         jobs = [_job("Backend Engineer"), _job("Frontend Dev")]
@@ -103,6 +102,7 @@ class TestKeywordFiltering:
 
 # ─── Location text filtering ──────────────────────────────────────────────────
 
+
 class TestLocationFiltering:
     def test_no_location_includes_all(self):
         jobs = [_job(actual_city="Zurich"), _job(actual_city="Geneva")]
@@ -126,6 +126,7 @@ class TestLocationFiltering:
 
 
 # ─── Radius search ────────────────────────────────────────────────────────────
+
 
 class TestRadiusFiltering:
     def _radius_req(self, lat, lon, distance_km):
@@ -158,6 +159,7 @@ class TestRadiusFiltering:
 
 # ─── Company name filtering ───────────────────────────────────────────────────
 
+
 class TestCompanyFiltering:
     def test_matching_company_passes(self):
         jobs = [_job(company="TechCorp AG")]
@@ -176,6 +178,7 @@ class TestCompanyFiltering:
 
 
 # ─── Workload filtering ───────────────────────────────────────────────────────
+
 
 class TestWorkloadFiltering:
     def test_looking_for_full_time_excludes_part_time(self):
@@ -196,20 +199,17 @@ class TestWorkloadFiltering:
 
 # ─── Language filtering ───────────────────────────────────────────────────────
 
+
 class TestLanguageFiltering:
     def test_matching_language_passes(self):
         jobs = [_job(language="german")]
-        req = JobSearchRequest(
-            language_skills=[LanguageSkillRequest(language_code="de")]
-        )
+        req = JobSearchRequest(language_skills=[LanguageSkillRequest(language_code="de")])
         result = filter_jobs(jobs, req)
         assert len(result) == 1
 
     def test_non_matching_language_excluded(self):
         jobs = [_job(language="french")]
-        req = JobSearchRequest(
-            language_skills=[LanguageSkillRequest(language_code="de")]
-        )
+        req = JobSearchRequest(language_skills=[LanguageSkillRequest(language_code="de")])
         result = filter_jobs(jobs, req)
         assert len(result) == 0
 
@@ -220,6 +220,7 @@ class TestLanguageFiltering:
 
 
 # ─── Work form filtering ──────────────────────────────────────────────────────
+
 
 class TestWorkFormFiltering:
     def test_home_office_filter_excludes_office_only(self):
@@ -242,6 +243,7 @@ class TestWorkFormFiltering:
 
 
 # ─── Contract type filtering ──────────────────────────────────────────────────
+
 
 class TestContractTypeFiltering:
     def test_any_contract_includes_all(self):

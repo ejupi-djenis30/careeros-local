@@ -6,14 +6,16 @@ Covers:
 - SearchService._normalize_user_profile()
 - LLMService.normalize_user_profile()
 """
+
+from unittest.mock import AsyncMock, MagicMock, patch
+
 import pytest
-from unittest.mock import MagicMock, patch, AsyncMock
 
-from backend.services.search_service import SearchService
 from backend.services.llm_service import LLMService
-
+from backend.services.search_service import SearchService
 
 # ─── Fixtures ───────────────────────────────────────────────────────────────
+
 
 @pytest.fixture
 def service():
@@ -26,6 +28,7 @@ def llm():
 
 
 # ─── _compute_profile_norm_fingerprint ──────────────────────────────────────
+
 
 class TestComputeProfileNormFingerprint:
     def test_reproducible(self, service):
@@ -58,67 +61,50 @@ class TestComputeProfileNormFingerprint:
 
 # ─── _passes_normalization_filters ──────────────────────────────────────────
 
+
 class TestPassesNormalizationFilters:
     """Test each of the 4 filter checks independently."""
 
     # ── 1. Domain ────────────────────────────────────────────────────────────
 
     def test_domain_both_general_passes(self, service):
-        ok, _ = service._passes_normalization_filters(
-            {"domain": "general"}, {"domain": "general"}
-        )
+        ok, _ = service._passes_normalization_filters({"domain": "general"}, {"domain": "general"})
         assert ok
 
     def test_domain_same_non_general_passes(self, service):
-        ok, _ = service._passes_normalization_filters(
-            {"domain": "it"}, {"domain": "it"}
-        )
+        ok, _ = service._passes_normalization_filters({"domain": "it"}, {"domain": "it"})
         assert ok
 
     def test_domain_mismatch_rejected(self, service):
-        ok, reason = service._passes_normalization_filters(
-            {"domain": "it"}, {"domain": "finance"}
-        )
+        ok, reason = service._passes_normalization_filters({"domain": "it"}, {"domain": "finance"})
         assert not ok
         assert reason == "norm_domain_mismatch"
 
     def test_domain_related_domains_passes(self, service):
-        ok, _ = service._passes_normalization_filters(
-            {"domain": "engineering"}, {"domain": "it"}
-        )
+        ok, _ = service._passes_normalization_filters({"domain": "engineering"}, {"domain": "it"})
         assert ok
 
     def test_domain_unrelated_domains_rejected(self, service):
-        ok, reason = service._passes_normalization_filters(
-            {"domain": "medical"}, {"domain": "it"}
-        )
+        ok, reason = service._passes_normalization_filters({"domain": "medical"}, {"domain": "it"})
         assert not ok
         assert reason == "norm_domain_mismatch"
 
     def test_domain_user_general_skips_check(self, service):
         """When the user is 'general', any job domain should pass."""
-        ok, _ = service._passes_normalization_filters(
-            {"domain": "finance"}, {"domain": "general"}
-        )
+        ok, _ = service._passes_normalization_filters({"domain": "finance"}, {"domain": "general"})
         assert ok
 
     def test_domain_job_general_skips_check(self, service):
         """When the job is 'general', any user domain should pass."""
-        ok, _ = service._passes_normalization_filters(
-            {"domain": "general"}, {"domain": "finance"}
-        )
+        ok, _ = service._passes_normalization_filters({"domain": "general"}, {"domain": "finance"})
         assert ok
 
     def test_domain_missing_on_job_passes(self, service):
-        ok, _ = service._passes_normalization_filters(
-            {}, {"domain": "it"}
-        )
+        ok, _ = service._passes_normalization_filters({}, {"domain": "it"})
         assert ok
 
     def test_domain_missing_on_profile_passes(self, service):
-        ok, _ = service._passes_normalization_filters(
-            {"domain": "it"}, {}
-        )
+        ok, _ = service._passes_normalization_filters({"domain": "it"}, {})
         assert ok
 
     # ── 2. Seniority ─────────────────────────────────────────────────────────
@@ -236,15 +222,11 @@ class TestPassesNormalizationFilters:
         assert reason == "norm_qualification_mismatch"
 
     def test_qualification_missing_on_job_passes(self, service):
-        ok, _ = service._passes_normalization_filters(
-            {}, {"qualification_level": "bachelor"}
-        )
+        ok, _ = service._passes_normalization_filters({}, {"qualification_level": "bachelor"})
         assert ok
 
     def test_qualification_missing_on_profile_passes(self, service):
-        ok, _ = service._passes_normalization_filters(
-            {"qualification_level": "master"}, {}
-        )
+        ok, _ = service._passes_normalization_filters({"qualification_level": "master"}, {})
         assert ok
 
     def test_qualification_unknown_string_passes(self, service):
@@ -321,6 +303,7 @@ class TestPassesNormalizationFilters:
 
 # ─── _normalize_user_profile ────────────────────────────────────────────────
 
+
 @pytest.mark.asyncio
 class TestNormalizeUserProfile:
     async def test_returns_empty_when_no_cv_and_no_role(self, service):
@@ -362,9 +345,13 @@ class TestNormalizeUserProfile:
         profile_dict = {"cv_content": "My CV text", "role_description": "Python developer"}
 
         normalized_result = {
-            "seniority": "mid", "domain": "it", "role_family": "Backend Dev",
-            "qualification_level": "bachelor", "experience_years": 4,
-            "languages": [], "skills": ["Python"],
+            "seniority": "mid",
+            "domain": "it",
+            "role_family": "Backend Dev",
+            "qualification_level": "bachelor",
+            "experience_years": 4,
+            "languages": [],
+            "skills": ["Python"],
         }
 
         with patch("backend.services.search_service.llm_service") as mock_llm:
@@ -384,13 +371,19 @@ class TestNormalizeUserProfile:
         profile.profile_normalization_status = "normalized"
         profile.profile_normalization_fingerprint = fp
         profile_dict = {"cv_content": cv, "role_description": role}
-        normalized_result = {"seniority": "junior", "domain": "it", "role_family": "Dev",
-                             "qualification_level": "none", "experience_years": 1,
-                             "languages": [], "skills": []}
+        normalized_result = {
+            "seniority": "junior",
+            "domain": "it",
+            "role_family": "Dev",
+            "qualification_level": "none",
+            "experience_years": 1,
+            "languages": [],
+            "skills": [],
+        }
 
         with patch("backend.services.search_service.llm_service") as mock_llm:
             mock_llm.normalize_user_profile = AsyncMock(return_value=normalized_result)
-            result = await service._normalize_user_profile(1, profile, profile_dict, force=True)
+            _ = await service._normalize_user_profile(1, profile, profile_dict, force=True)
 
         mock_llm.normalize_user_profile.assert_called_once()
 
@@ -408,6 +401,7 @@ class TestNormalizeUserProfile:
 
 
 # ─── LLMService.normalize_user_profile ──────────────────────────────────────
+
 
 @pytest.mark.asyncio
 class TestLLMServiceNormalizeUserProfile:
@@ -515,6 +509,7 @@ class TestLLMServiceNormalizeUserProfile:
 
 # ─── Intent-aware normalization filter tests ────────────────────────────────
 
+
 class TestIntentAwareFilters:
     """Tests for the intent-first behavior of _passes_normalization_filters."""
 
@@ -525,7 +520,8 @@ class TestIntentAwareFilters:
         ok, reason = service._passes_normalization_filters(
             {"domain": "logistics", "required_skills": ["forklift", "packing", "warehouse"]},
             {
-                "domain": "it", "skills": ["Python", "React", "Docker"],
+                "domain": "it",
+                "skills": ["Python", "React", "Docker"],
                 "open_to_unrelated": True,
                 "intent_domain": "logistics",
                 "intent_skills": ["forklift"],
@@ -538,7 +534,8 @@ class TestIntentAwareFilters:
         ok, reason = service._passes_normalization_filters(
             {"domain": "hospitality", "required_skills": ["cooking", "cleaning", "service"]},
             {
-                "domain": "it", "skills": ["Python", "FastAPI", "PostgreSQL"],
+                "domain": "it",
+                "skills": ["Python", "FastAPI", "PostgreSQL"],
                 "open_to_unrelated": True,
                 "intent_domain": "hospitality",
                 "intent_skills": [],
@@ -598,8 +595,8 @@ class TestIntentAwareFilters:
             {"domain": "logistics", "required_skills": ["excel", "sap", "logistics"]},
             {
                 "domain": "it",
-                "skills": ["Python", "React", "Docker"],   # no overlap with job
-                "intent_skills": ["excel", "logistics"],   # overlap with job!
+                "skills": ["Python", "React", "Docker"],  # no overlap with job
+                "intent_skills": ["excel", "logistics"],  # overlap with job!
                 "open_to_unrelated": False,
                 "intent_domain": "logistics",
             },
@@ -689,6 +686,7 @@ class TestIntentAwareFilters:
 
 
 # ─── V2 Advanced Matching Tests ─────────────────────────────────────────────
+
 
 class TestV2AdvancedMatching:
     """Tests for V2 features: role_type, dealbreakers, transferable skills,
@@ -871,7 +869,7 @@ class TestV2AdvancedMatching:
             },
             {
                 "domain": "administration",
-                "skills": ["Python", "FastAPI", "Docker"],          # no direct overlap
+                "skills": ["Python", "FastAPI", "Docker"],  # no direct overlap
                 "intent_skills": [],
                 "transferable_skills": ["project management", "excel", "communication"],
                 "open_to_unrelated": False,
@@ -985,5 +983,3 @@ class TestV2AdvancedMatching:
             {"qualification_level": "none"},
         )
         assert ok, f"Expected entry_barrier=none to skip qual check but got: {reason}"
-
-

@@ -25,4 +25,3 @@ class JobProvider(ABC):
     async def search(self, request: JobSearchRequest) -> "JobSearchResponse":  # noqa: F821
         """Search for jobs."""
         pass
-

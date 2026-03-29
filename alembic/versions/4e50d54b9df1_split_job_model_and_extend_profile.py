@@ -4,12 +4,12 @@ Revision ID: 4e50d54b9df1
 Revises: c1d2e3f4g5h6
 Create Date: 2026-03-24 21:39:57.557028
 """
+
 from typing import Sequence, Union
 
-
 # revision identifiers, used by Alembic.
-revision: str = '4e50d54b9df1'
-down_revision: Union[str, None] = 'c1d2e3f4g5h6'
+revision: str = "4e50d54b9df1"
+down_revision: Union[str, None] = "c1d2e3f4g5h6"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 

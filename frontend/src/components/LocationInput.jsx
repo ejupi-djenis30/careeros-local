@@ -61,7 +61,7 @@ export function LocationInput({
             const formattedSuggestions = normalizedData.map((item) => {
                 const address = item.address || {};
                 const parts = [];
-                
+
                 let street = address.road || address.pedestrian || address.highway || "";
                 if (street && address.house_number) {
                     street += ` ${address.house_number}`;
@@ -153,7 +153,7 @@ export function LocationInput({
                     }
                     const data = await response.json();
                     const displayName = data.display_name || `Lat: ${latitude.toFixed(4)}, Lon: ${longitude.toFixed(4)}`;
-                    
+
                     setQuery(displayName);
                     onLocationChange({
                         name: displayName,

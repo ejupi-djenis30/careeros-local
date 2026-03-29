@@ -67,8 +67,8 @@ export function History({ onStartSearch, onStartSearchWithOptions, onUseAsTempla
     return (
         <div className="animate-fade-in h-100 d-flex flex-column">
             <div className="d-flex justify-content-end align-items-center mb-4">
-                <button 
-                    onClick={loadProfiles} 
+                <button
+                    onClick={loadProfiles}
                     className="btn btn-icon btn-secondary rounded-circle shadow-sm"
                     title="Refresh List"
                 >

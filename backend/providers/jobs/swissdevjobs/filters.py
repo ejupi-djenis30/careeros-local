@@ -6,6 +6,7 @@ from backend.services.utils import haversine_distance
 
 logger = logging.getLogger(__name__)
 
+
 def filter_jobs(all_jobs: list[dict[str, Any]], request: JobSearchRequest) -> list[dict[str, Any]]:
     """
     Applies in-memory filters to a list of job search results from SwissDevJobs.
@@ -44,12 +45,13 @@ def filter_jobs(all_jobs: list[dict[str, Any]], request: JobSearchRequest) -> li
                 dist = haversine_distance(
                     request.radius_search.geo_point.lat,
                     request.radius_search.geo_point.lon,
-                    float(lat), float(lon)
+                    float(lat),
+                    float(lon),
                 )
                 if dist > request.radius_search.distance:
                     continue
             else:
-                continue # Skip jobs with no location when radius search is active
+                continue  # Skip jobs with no location when radius search is active
 
         # 4. Filter by company Name
         if request.company_name:
@@ -60,9 +62,9 @@ def filter_jobs(all_jobs: list[dict[str, Any]], request: JobSearchRequest) -> li
         # 5. Filter by Workload
         job_type = job.get("jobType", "").lower()
         if "part-time" in job_type and request.workload_min >= 90:
-            continue # Exclude part time if looking for >=90%
+            continue  # Exclude part time if looking for >=90%
         if "full-time" in job_type and request.workload_max <= 80:
-            continue # Exclude full time if looking for <=80%
+            continue  # Exclude full time if looking for <=80%
 
         # 6. Filter by Language
         if request.language_skills:
@@ -85,12 +87,18 @@ def filter_jobs(all_jobs: list[dict[str, Any]], request: JobSearchRequest) -> li
         if request.contract_type != ContractType.ANY:
             # SwissDevJobs exposes temporary vs permanent info mostly in jobType or tags
             tags_lower = [t.lower() for t in job.get("filterTags", [])]
-            is_temp = "freelance" in job_type or "freelance" in tags_lower or "temporary" in job_type or "consulting" in job_type or "contractor" in tags_lower
+            is_temp = (
+                "freelance" in job_type
+                or "freelance" in tags_lower
+                or "temporary" in job_type
+                or "consulting" in job_type
+                or "contractor" in tags_lower
+            )
 
             if request.contract_type == ContractType.PERMANENT and is_temp:
                 continue
             if request.contract_type == ContractType.TEMPORARY and not is_temp:
-                 continue
+                continue
 
         filtered_jobs.append(job)
 

@@ -37,10 +37,7 @@ class CircuitOpenError(RuntimeError):
     def __init__(self, service: str, retry_after: float):
         self.service = service
         self.retry_after = retry_after
-        super().__init__(
-            f"Circuit breaker OPEN for '{service}'. "
-            f"Retry after {retry_after:.0f}s."
-        )
+        super().__init__(f"Circuit breaker OPEN for '{service}'. Retry after {retry_after:.0f}s.")
 
 
 class CircuitBreaker:
@@ -131,8 +128,7 @@ class CircuitBreaker:
             self._state = CircuitState.OPEN
             if prev_state != CircuitState.OPEN:
                 logger.warning(
-                    "Circuit breaker '%s' TRIPPED to OPEN after %d failure(s). "
-                    "Last error: %s",
+                    "Circuit breaker '%s' TRIPPED to OPEN after %d failure(s). Last error: %s",
                     self._service,
                     self._failure_count,
                     exc,
@@ -156,6 +152,7 @@ class CircuitBreaker:
 
 
 # ── Registry ───────────────────────────────────────────────────────────────
+
 
 class CircuitBreakerRegistry:
     """Global registry — one CircuitBreaker instance per service name."""

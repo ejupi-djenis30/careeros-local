@@ -5,20 +5,22 @@ Covers:
 - _build_provider: gemini, ollama, openai-compatible, missing API key error
 - get_provider_for_step: end-to-end instantiation for each known step
 """
+
+from unittest.mock import MagicMock, patch
+
 import pytest
-from unittest.mock import patch, MagicMock
 
 from backend.providers.llm.factory import (
-    _resolve_step_config,
     _build_provider,
+    _resolve_step_config,
     get_provider_for_step,
 )
 from backend.providers.llm.gemini import GeminiProvider
 from backend.providers.llm.ollama import OllamaProvider
 from backend.providers.llm.openai_compatible import OpenAICompatibleProvider
 
-
 # ─── _resolve_step_config ─────────────────────────────────────────────────────
+
 
 class TestResolveStepConfig:
     def _mock_settings(self, **overrides):
@@ -33,24 +35,53 @@ class TestResolveStepConfig:
             LLM_THINKING=False,
             LLM_THINKING_LEVEL="",
             # step-specific defaults (empty = use global)
-            LLM_PLAN_PROVIDER="", LLM_PLAN_MODEL="", LLM_PLAN_API_KEY="",
-            LLM_PLAN_BASE_URL="", LLM_PLAN_TEMPERATURE=None, LLM_PLAN_TOP_P=None,
-            LLM_PLAN_MAX_TOKENS=None, LLM_PLAN_THINKING=False, LLM_PLAN_THINKING_LEVEL="",
-            LLM_MATCH_PROVIDER="", LLM_MATCH_MODEL="", LLM_MATCH_API_KEY="",
-            LLM_MATCH_BASE_URL="", LLM_MATCH_TEMPERATURE=None, LLM_MATCH_TOP_P=None,
-            LLM_MATCH_MAX_TOKENS=None, LLM_MATCH_THINKING=False, LLM_MATCH_THINKING_LEVEL="",
-            LLM_NORMALIZE_PROVIDER="", LLM_NORMALIZE_MODEL="", LLM_NORMALIZE_API_KEY="",
-            LLM_NORMALIZE_BASE_URL="", LLM_NORMALIZE_TEMPERATURE=None, LLM_NORMALIZE_TOP_P=None,
-            LLM_NORMALIZE_MAX_TOKENS=None, LLM_NORMALIZE_THINKING=False, LLM_NORMALIZE_THINKING_LEVEL="",
-            LLM_NORMALIZE_PROFILE_PROVIDER="", LLM_NORMALIZE_PROFILE_MODEL="",
-            LLM_NORMALIZE_PROFILE_API_KEY="", LLM_NORMALIZE_PROFILE_BASE_URL="",
-            LLM_NORMALIZE_PROFILE_TEMPERATURE=None, LLM_NORMALIZE_PROFILE_TOP_P=None,
-            LLM_NORMALIZE_PROFILE_MAX_TOKENS=None, LLM_NORMALIZE_PROFILE_THINKING=False,
+            LLM_PLAN_PROVIDER="",
+            LLM_PLAN_MODEL="",
+            LLM_PLAN_API_KEY="",
+            LLM_PLAN_BASE_URL="",
+            LLM_PLAN_TEMPERATURE=None,
+            LLM_PLAN_TOP_P=None,
+            LLM_PLAN_MAX_TOKENS=None,
+            LLM_PLAN_THINKING=False,
+            LLM_PLAN_THINKING_LEVEL="",
+            LLM_MATCH_PROVIDER="",
+            LLM_MATCH_MODEL="",
+            LLM_MATCH_API_KEY="",
+            LLM_MATCH_BASE_URL="",
+            LLM_MATCH_TEMPERATURE=None,
+            LLM_MATCH_TOP_P=None,
+            LLM_MATCH_MAX_TOKENS=None,
+            LLM_MATCH_THINKING=False,
+            LLM_MATCH_THINKING_LEVEL="",
+            LLM_NORMALIZE_PROVIDER="",
+            LLM_NORMALIZE_MODEL="",
+            LLM_NORMALIZE_API_KEY="",
+            LLM_NORMALIZE_BASE_URL="",
+            LLM_NORMALIZE_TEMPERATURE=None,
+            LLM_NORMALIZE_TOP_P=None,
+            LLM_NORMALIZE_MAX_TOKENS=None,
+            LLM_NORMALIZE_THINKING=False,
+            LLM_NORMALIZE_THINKING_LEVEL="",
+            LLM_NORMALIZE_PROFILE_PROVIDER="",
+            LLM_NORMALIZE_PROFILE_MODEL="",
+            LLM_NORMALIZE_PROFILE_API_KEY="",
+            LLM_NORMALIZE_PROFILE_BASE_URL="",
+            LLM_NORMALIZE_PROFILE_TEMPERATURE=None,
+            LLM_NORMALIZE_PROFILE_TOP_P=None,
+            LLM_NORMALIZE_PROFILE_MAX_TOKENS=None,
+            LLM_NORMALIZE_PROFILE_THINKING=False,
             LLM_NORMALIZE_PROFILE_THINKING_LEVEL="",
-            LLM_COMPRESS_PROVIDER="", LLM_COMPRESS_MODEL="", LLM_COMPRESS_API_KEY="",
-            LLM_COMPRESS_BASE_URL="", LLM_COMPRESS_TEMPERATURE=None, LLM_COMPRESS_TOP_P=None,
-            LLM_COMPRESS_MAX_TOKENS=None, LLM_COMPRESS_THINKING=False, LLM_COMPRESS_THINKING_LEVEL="",
-            OLLAMA_BASE_URL="http://localhost:11434", OLLAMA_MODEL="mistral",
+            LLM_COMPRESS_PROVIDER="",
+            LLM_COMPRESS_MODEL="",
+            LLM_COMPRESS_API_KEY="",
+            LLM_COMPRESS_BASE_URL="",
+            LLM_COMPRESS_TEMPERATURE=None,
+            LLM_COMPRESS_TOP_P=None,
+            LLM_COMPRESS_MAX_TOKENS=None,
+            LLM_COMPRESS_THINKING=False,
+            LLM_COMPRESS_THINKING_LEVEL="",
+            OLLAMA_BASE_URL="http://localhost:11434",
+            OLLAMA_MODEL="mistral",
         )
         defaults.update(overrides)
         m = MagicMock()
@@ -72,12 +103,15 @@ class TestResolveStepConfig:
         assert cfg["temperature"] == 0.2
 
     def test_known_step_plan_overrides_when_step_fields_set(self):
-        with patch("backend.providers.llm.factory.settings", self._mock_settings(
-            LLM_PLAN_PROVIDER="gemini",
-            LLM_PLAN_MODEL="gemini-pro",
-            LLM_PLAN_API_KEY="plan-key",
-            LLM_PLAN_TEMPERATURE=0.5,
-        )):
+        with patch(
+            "backend.providers.llm.factory.settings",
+            self._mock_settings(
+                LLM_PLAN_PROVIDER="gemini",
+                LLM_PLAN_MODEL="gemini-pro",
+                LLM_PLAN_API_KEY="plan-key",
+                LLM_PLAN_TEMPERATURE=0.5,
+            ),
+        ):
             cfg = _resolve_step_config("plan")
         assert cfg["provider"] == "gemini"
         assert cfg["model"] == "gemini-pro"
@@ -85,10 +119,13 @@ class TestResolveStepConfig:
         assert cfg["temperature"] == 0.5
 
     def test_step_temperature_none_falls_back_to_global(self):
-        with patch("backend.providers.llm.factory.settings", self._mock_settings(
-            LLM_MATCH_TEMPERATURE=None,
-            LLM_TEMPERATURE=0.7,
-        )):
+        with patch(
+            "backend.providers.llm.factory.settings",
+            self._mock_settings(
+                LLM_MATCH_TEMPERATURE=None,
+                LLM_TEMPERATURE=0.7,
+            ),
+        ):
             cfg = _resolve_step_config("match")
         assert cfg["temperature"] == 0.7
 
@@ -100,6 +137,7 @@ class TestResolveStepConfig:
 
 
 # ─── _build_provider ──────────────────────────────────────────────────────────
+
 
 class TestBuildProvider:
     def _base_cfg(self, **overrides):
@@ -151,6 +189,7 @@ class TestBuildProvider:
 
 
 # ─── get_provider_for_step ────────────────────────────────────────────────────
+
 
 class TestGetProviderForStep:
     def _patched_settings(self):

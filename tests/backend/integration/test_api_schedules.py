@@ -1,5 +1,5 @@
-import pytest
 from fastapi.testclient import TestClient
+
 
 def test_schedules_api(client: TestClient, auth_headers: dict):
     # 1. Get scheduler status

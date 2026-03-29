@@ -83,6 +83,7 @@ class JobRoomProvider(BaseJobProvider):
 
     def get_provider_info(self) -> "ProviderInfo":  # noqa: F821
         from backend.providers.jobs.models import ProviderInfo
+
         return ProviderInfo(
             name=self.name,
             description="Generalist Swiss federal job portal. Contains jobs across all industries and professions (IT, construction, hospitality, medical, etc.). Good default choice.",
@@ -160,14 +161,10 @@ class JobRoomProvider(BaseJobProvider):
                 jobs = data
                 total_count = len(jobs)
             elif isinstance(data, dict):
-                jobs = cast(
-                    list[Any], data.get("content", data.get("jobAdvertisements", []))
-                )
+                jobs = cast(list[Any], data.get("content", data.get("jobAdvertisements", [])))
                 total_count = data.get("totalElements", len(jobs))
             else:
-                raise ResponseParseError(
-                    self.name, f"Unexpected response format: {type(data)}"
-                )
+                raise ResponseParseError(self.name, f"Unexpected response format: {type(data)}")
 
             items = [transform_job_data(job, self.name, self._include_raw_data) for job in jobs]
 
@@ -186,6 +183,7 @@ class JobRoomProvider(BaseJobProvider):
 
         except Exception as e:
             from backend.providers.jobs.exceptions import format_provider_error
+
             err_msg = format_provider_error(e)
             logger.error(f"Search failed: {err_msg}")
             raise ProviderError(self.name, err_msg) from e
@@ -215,6 +213,7 @@ class JobRoomProvider(BaseJobProvider):
 
         except Exception as e:
             from backend.providers.jobs.exceptions import format_provider_error
+
             err_msg = format_provider_error(e)
             logger.error(f"Failed to get job details: {err_msg}")
             raise ProviderError(self.name, err_msg) from e
@@ -258,5 +257,3 @@ class JobRoomProvider(BaseJobProvider):
                 latency_ms=latency_ms,
                 message=str(e),
             )
-
-

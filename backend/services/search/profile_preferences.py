@@ -1,5 +1,3 @@
-
-
 def get_profile_preference(profile, key: str, default=None):
     """Return a profile preference from direct attributes or advanced preferences.
 

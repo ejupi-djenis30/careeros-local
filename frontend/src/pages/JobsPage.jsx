@@ -6,7 +6,7 @@ import { useJobs } from '../hooks/useJobs';
 
 const StatCard = ({ label, value, color, icon, isLoading }) => (
   <div className="glass-panel p-4 d-flex align-items-center hover-card h-100">
-    <div className={`rounded-circle d-flex align-items-center justify-content-center me-3 bg-${color}-10 text-${color}`} 
+    <div className={`rounded-circle d-flex align-items-center justify-content-center me-3 bg-${color}-10 text-${color}`}
          style={{ width: 48, height: 48 }}>
       <i className={`bi ${icon} fs-4`}></i>
     </div>
@@ -25,7 +25,7 @@ const StatCard = ({ label, value, color, icon, isLoading }) => (
 
 export function JobsPage() {
   const { logout } = useAuth();
-  
+
   const {
     jobs,
     pagination,

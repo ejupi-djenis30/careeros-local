@@ -49,7 +49,7 @@ export function SearchFormParameters({ profile, handleChange, setProfile }) {
                     </select>
                 </div>
             </div>
-            
+
             <div className="row g-3">
                 <div className="col-12">
                     <label className="form-label text-white small fw-bold text-uppercase x-small mb-2">Posted</label>
@@ -67,21 +67,21 @@ export function SearchFormParameters({ profile, handleChange, setProfile }) {
                     </select>
                 </div>
             </div>
-            
+
             <div>
                 <div className="d-flex justify-content-between mb-2">
                     <label className="form-label text-white small fw-bold text-uppercase x-small mb-0">Max Distance</label>
                     <span className="x-small text-info fw-bold">{profile.max_distance} km</span>
                 </div>
-                <input 
-                    type="range" 
-                    name="max_distance" 
-                    min="5" 
-                    max="100" 
-                    step="5" 
-                    value={profile.max_distance} 
-                    onChange={handleChange} 
-                    className="form-range" 
+                <input
+                    type="range"
+                    name="max_distance"
+                    min="5"
+                    max="100"
+                    step="5"
+                    value={profile.max_distance}
+                    onChange={handleChange}
+                    className="form-range"
                 />
             </div>
 

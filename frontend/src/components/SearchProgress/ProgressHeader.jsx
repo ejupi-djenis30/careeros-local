@@ -1,15 +1,15 @@
 import React from "react";
 
-export function ProgressHeader({ 
-    isDone, 
-    isError, 
-    isRunning, 
-    state, 
+export function ProgressHeader({
+    isDone,
+    isError,
+    isRunning,
+    state,
     searches_completed,
     active_search_indices,
-    total_searches, 
-    handleStop, 
-    onClear 
+    total_searches,
+    handleStop,
+    onClear
 }) {
     const completedCount = searches_completed || 0;
     const activeCount = (active_search_indices || []).length;

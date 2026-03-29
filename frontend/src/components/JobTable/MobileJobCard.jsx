@@ -29,7 +29,7 @@ export const MobileJobCard = memo(function MobileJobCard({ job, isGlobalView, on
                     )}
 
                     {!isGlobalView && job.affinity_analysis && (
-                        <button 
+                        <button
                             className="btn btn-sm btn-icon btn-secondary rounded-circle d-flex align-items-center justify-content-center border-0 bg-white-5 sz-24"
                             onClick={() => onViewAnalysis(job)}
                             title="View Analysis"
@@ -86,7 +86,7 @@ export const MobileJobCard = memo(function MobileJobCard({ job, isGlobalView, on
                         </button>
                     )}
                 </div>
-                
+
                 <div className="d-flex flex-column align-items-end gap-1">
                     <div className="form-check form-switch m-0">
                         <input

@@ -96,10 +96,10 @@ describe('DesktopJobRow', () => {
                 </tbody>
             </table>
         );
-        
+
         const toggleBtn = screen.getByTitle('View Analysis');
         fireEvent.click(toggleBtn);
-        
+
         expect(onViewAnalysis).toHaveBeenCalledWith(mockJob);
     });
 

@@ -47,7 +47,7 @@ export function SearchProvider({ children }) {
                 const runningIds = Object.entries(res)
                     .filter(([, status]) => status && ['generating', 'searching', 'analyzing'].includes(status.state))
                     .map(([id]) => String(id));
-                
+
                 // Merge server-confirmed running IDs with any IDs pending first server acknowledgement
                 // (the brief window between addProfileId() being called and the first poll returning it).
                 // IDs that the server has never seen past PENDING_ID_TTL_MS are dropped.
@@ -71,7 +71,7 @@ export function SearchProvider({ children }) {
                     if (JSON.stringify(next) === JSON.stringify(prevSorted)) return prev;
                     return next;
                 });
-                
+
                 pollingInterval = runningIds.length > 0 ? 1500 : 15000;
             } catch (e) {
                 if (e.name === 'AbortError') return;

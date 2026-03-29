@@ -10,24 +10,30 @@ import sys
 from logging.config import fileConfig
 
 from sqlalchemy import engine_from_config, pool
+
 from alembic import context
 
 # Add project root to path so we can import backend modules
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from dotenv import load_dotenv
+
 load_dotenv()
 load_dotenv("backend/.env")
 
-from backend.db.base import Base
-from backend.core.config import settings
+from backend.core.config import settings  # noqa: E402
+from backend.db.base import Base  # noqa: E402
 
-DATABASE_URL = settings.DATABASE_URL.replace("sqlite:///", "postgresql+psycopg2://") if "postgres" in settings.DATABASE_URL else settings.DATABASE_URL
+DATABASE_URL = (
+    settings.DATABASE_URL.replace("sqlite:///", "postgresql+psycopg2://")
+    if "postgres" in settings.DATABASE_URL
+    else settings.DATABASE_URL
+)
 # Make sure we use psycopg2 driver for postgres in alembic context if needed, though usually handled by connection string
 # Actually, let's just use settings.DATABASE_URL directly, assuming correct driver is installed or string format is correct.
 DATABASE_URL = settings.DATABASE_URL
 
-from backend import models  # noqa: F401
+from backend import models  # noqa: E402, F401
 
 config = context.config
 

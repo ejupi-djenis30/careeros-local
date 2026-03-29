@@ -29,7 +29,9 @@ def safe_int(value: Any, default: int = 0) -> int:
         return default
 
 
-def transform_job_data(raw: dict[str, Any], source_name: str, include_raw_data: bool = False) -> JobListing:
+def transform_job_data(
+    raw: dict[str, Any], source_name: str, include_raw_data: bool = False
+) -> JobListing:
     """Transform job-room.ch response to generalized JobListing."""
     job = raw.get("jobAdvertisement", raw)
     content = job.get("jobContent", {})
@@ -191,18 +193,14 @@ def transform_job_data(raw: dict[str, Any], source_name: str, include_raw_data: 
     created_at = None
     if job.get("createdTime"):
         try:
-            created_at = datetime.fromisoformat(
-                job["createdTime"].replace("Z", "+00:00")
-            )
+            created_at = datetime.fromisoformat(job["createdTime"].replace("Z", "+00:00"))
         except (ValueError, TypeError) as exc:
             logger.warning("Invalid job-room createdTime %r: %s", job.get("createdTime"), exc)
 
     updated_at = None
     if job.get("updatedTime"):
         try:
-            updated_at = datetime.fromisoformat(
-                job["updatedTime"].replace("Z", "+00:00")
-            )
+            updated_at = datetime.fromisoformat(job["updatedTime"].replace("Z", "+00:00"))
         except (ValueError, TypeError) as exc:
             logger.warning("Invalid job-room updatedTime %r: %s", job.get("updatedTime"), exc)
 
@@ -214,7 +212,9 @@ def transform_job_data(raw: dict[str, Any], source_name: str, include_raw_data: 
         stellennummer_avam=job.get("stellennummerAvam"),
         title=title,
         descriptions=descriptions,
-        external_url=f"https://www.job-room.ch/job-search/{job.get('id')}" if job.get("id") else None,
+        external_url=f"https://www.job-room.ch/job-search/{job.get('id')}"
+        if job.get("id")
+        else None,
         company=company,
         location=location,
         number_of_positions=safe_int(content.get("numberOfJobs"), 1),

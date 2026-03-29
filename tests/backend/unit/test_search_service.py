@@ -1,10 +1,11 @@
+from unittest.mock import AsyncMock, MagicMock, patch
+
 import pytest
-import asyncio
-from unittest.mock import MagicMock, patch, AsyncMock
+
 from backend.services.search_service import SearchService, get_compatible_providers
 
-
 # ─── Domain Router Tests ───
+
 
 def test_get_compatible_providers_generalist():
     """Generalist providers (*) accept any domain."""
@@ -43,21 +44,26 @@ def test_get_compatible_providers_no_match():
 
 # ─── SearchService Tests ───
 
+
 @pytest.fixture
 def mock_job_repo():
     return MagicMock()
+
 
 @pytest.fixture
 def mock_profile_repo():
     return MagicMock()
 
+
 @pytest.fixture
 def mock_db():
     return MagicMock()
 
+
 @pytest.fixture
 def search_service(mock_db, mock_job_repo, mock_profile_repo):
     return SearchService(db=mock_db, job_repo=mock_job_repo, profile_repo=mock_profile_repo)
+
 
 @pytest.mark.asyncio
 async def test_run_search_success(search_service, mock_profile_repo, mock_job_repo, mock_db):
@@ -81,13 +87,13 @@ async def test_run_search_success(search_service, mock_profile_repo, mock_job_re
     mock_profile.max_occupation_queries = None
     mock_profile.max_keyword_queries = None
     mock_profile_repo.get.return_value = mock_profile
-    
+
     mock_db.query.return_value.filter.return_value.first.return_value = None
-    
+
     mock_job_repo.get_user_job_identifiers.return_value = []
     mock_job_repo.get_profile_job_identifiers.return_value = []
     mock_job_repo.get_applied_scraped_job_ids.return_value = set()
-    
+
     def make_mock_listing(job_id, url):
         m = MagicMock()
         m.id = job_id
@@ -111,36 +117,47 @@ async def test_run_search_success(search_service, mock_profile_repo, mock_job_re
     mock_response = MagicMock(items=[make_mock_listing("job1", "url1")])
     mock_response.total_pages = 1
     mock_provider.search = AsyncMock(return_value=mock_response)
-    
-    with patch("backend.services.search_service.llm_service") as mock_llm, \
-         patch("backend.services.search_service.init_status"), \
-         patch("backend.services.search_service.add_log"), \
-         patch("backend.services.search_service.update_status"), \
-         patch("backend.services.search_service.JobRoomProvider"), \
-         patch("backend.services.search_service.SwissDevJobsProvider"), \
-         patch("backend.services.search_service.AdeccoProvider"), \
-         patch("backend.services.search_service.LocalDbProvider"):
-        
+
+    with (
+        patch("backend.services.search_service.llm_service") as mock_llm,
+        patch("backend.services.search_service.init_status"),
+        patch("backend.services.search_service.add_log"),
+        patch("backend.services.search_service.update_status"),
+        patch("backend.services.search_service.JobRoomProvider"),
+        patch("backend.services.search_service.SwissDevJobsProvider"),
+        patch("backend.services.search_service.AdeccoProvider"),
+        patch("backend.services.search_service.LocalDbProvider"),
+    ):
         # Now create service so internal providers are mocked
         svc = SearchService(db=mock_db, job_repo=mock_job_repo, profile_repo=mock_profile_repo)
-        
+
         # Inject provider mocks into the created service
         svc.providers = {
             "job_room": mock_provider,
             "swissdevjobs": mock_provider,
             "adecco": mock_provider,
-            "local_db": mock_provider
+            "local_db": mock_provider,
         }
-        
-        mock_llm.generate_search_plan = AsyncMock(return_value=[
-            {"domain": "it", "query": "Software Engineer", "type": "occupation", "language": "en"}
-        ])
+
+        mock_llm.generate_search_plan = AsyncMock(
+            return_value=[
+                {
+                    "domain": "it",
+                    "query": "Software Engineer",
+                    "type": "occupation",
+                    "language": "en",
+                }
+            ]
+        )
         mock_llm.summarize_cv = AsyncMock(return_value="Condensed CV")
-        mock_llm.analyze_job_batch = AsyncMock(return_value=[{"affinity_score": 80, "worth_applying": True}])
-        
+        mock_llm.analyze_job_batch = AsyncMock(
+            return_value=[{"affinity_score": 80, "worth_applying": True}]
+        )
+
         await svc.run_search(1)
-        
+
         mock_llm.generate_search_plan.assert_called_once()
+
 
 @pytest.mark.asyncio
 async def test_run_search_stopped_by_user(search_service, mock_profile_repo, mock_db):
@@ -148,17 +165,19 @@ async def test_run_search_stopped_by_user(search_service, mock_profile_repo, moc
     mock_profile.is_stopped = True
     mock_profile_repo.get.return_value = mock_profile
     mock_db.query.return_value.filter.return_value.first.return_value = None
-    
-    with patch("backend.services.search_service.init_status"), \
-         patch("backend.services.search_service.add_log"), \
-         patch("backend.services.search_service.JobRoomProvider"), \
-         patch("backend.services.search_service.SwissDevJobsProvider"), \
-         patch("backend.services.search_service.AdeccoProvider"), \
-         patch("backend.services.search_service.LocalDbProvider"), \
-         patch("backend.services.search_service.update_status") as mock_update, \
-         patch.object(search_service, "_normalize_user_profile", new=AsyncMock(return_value={})):
-        
+
+    with (
+        patch("backend.services.search_service.init_status"),
+        patch("backend.services.search_service.add_log"),
+        patch("backend.services.search_service.JobRoomProvider"),
+        patch("backend.services.search_service.SwissDevJobsProvider"),
+        patch("backend.services.search_service.AdeccoProvider"),
+        patch("backend.services.search_service.LocalDbProvider"),
+        patch("backend.services.search_service.update_status"),
+        patch.object(search_service, "_normalize_user_profile", new=AsyncMock(return_value={})),
+    ):
         await search_service.run_search(1)
+
 
 @pytest.mark.asyncio
 async def test_run_search_no_plan(search_service, mock_profile_repo, mock_db):
@@ -177,22 +196,28 @@ async def test_run_search_no_plan(search_service, mock_profile_repo, mock_db):
     mock_profile.cached_cv_summary = None
     mock_profile_repo.get.return_value = mock_profile
     mock_db.query.return_value.filter.return_value.first.return_value = None
-    with patch("backend.services.search_service.llm_service") as mock_llm, \
-            patch("backend.services.search_service.settings.SEARCH_ENABLE_DEGRADED_PLAN_FALLBACK", False), \
-         patch("backend.services.search_service.init_status"), \
-         patch("backend.services.search_service.add_log"), \
-         patch("backend.services.search_service.JobRoomProvider"), \
-         patch("backend.services.search_service.SwissDevJobsProvider"), \
-         patch("backend.services.search_service.AdeccoProvider"), \
-         patch("backend.services.search_service.LocalDbProvider"), \
-         patch("backend.services.search_service.update_status") as mock_update:
+    with (
+        patch("backend.services.search_service.llm_service") as mock_llm,
+        patch(
+            "backend.services.search_service.settings.SEARCH_ENABLE_DEGRADED_PLAN_FALLBACK", False
+        ),
+        patch("backend.services.search_service.init_status"),
+        patch("backend.services.search_service.add_log"),
+        patch("backend.services.search_service.JobRoomProvider"),
+        patch("backend.services.search_service.SwissDevJobsProvider"),
+        patch("backend.services.search_service.AdeccoProvider"),
+        patch("backend.services.search_service.LocalDbProvider"),
+        patch("backend.services.search_service.update_status") as mock_update,
+    ):
         mock_llm.generate_search_plan = AsyncMock(return_value=[])
         await search_service.run_search(1)
         mock_update.assert_any_call(1, state="done", terminal_reason="no_queries")
 
 
 @pytest.mark.asyncio
-async def test_run_search_keeps_error_state_when_plan_failed(search_service, mock_profile_repo, mock_db):
+async def test_run_search_keeps_error_state_when_plan_failed(
+    search_service, mock_profile_repo, mock_db
+):
     mock_profile = MagicMock()
     mock_profile.id = 1
     mock_profile.user_id = 42
@@ -209,21 +234,27 @@ async def test_run_search_keeps_error_state_when_plan_failed(search_service, moc
     mock_profile_repo.get.return_value = mock_profile
     mock_db.query.return_value.filter.return_value.first.return_value = None
 
-    with patch("backend.services.search_service.init_status"), \
-         patch("backend.services.search_service.add_log"), \
-         patch("backend.services.search_service.JobRoomProvider"), \
-         patch("backend.services.search_service.SwissDevJobsProvider"), \
-         patch("backend.services.search_service.AdeccoProvider"), \
-         patch("backend.services.search_service.LocalDbProvider"), \
-         patch.object(search_service, "_generate_plan", AsyncMock(return_value=[])), \
-         patch("backend.services.search_service.get_status", return_value={"state": "error", "terminal_reason": "llm_plan_error"}), \
-         patch("backend.services.search_service.update_status") as mock_update:
+    with (
+        patch("backend.services.search_service.init_status"),
+        patch("backend.services.search_service.add_log"),
+        patch("backend.services.search_service.JobRoomProvider"),
+        patch("backend.services.search_service.SwissDevJobsProvider"),
+        patch("backend.services.search_service.AdeccoProvider"),
+        patch("backend.services.search_service.LocalDbProvider"),
+        patch.object(search_service, "_generate_plan", AsyncMock(return_value=[])),
+        patch(
+            "backend.services.search_service.get_status",
+            return_value={"state": "error", "terminal_reason": "llm_plan_error"},
+        ),
+        patch("backend.services.search_service.update_status") as mock_update,
+    ):
         await search_service.run_search(1)
 
         unexpected = [
             call
             for call in mock_update.call_args_list
-            if call.kwargs.get("state") == "done" and call.kwargs.get("terminal_reason") == "no_queries"
+            if call.kwargs.get("state") == "done"
+            and call.kwargs.get("terminal_reason") == "no_queries"
         ]
         assert unexpected == []
 
@@ -237,8 +268,10 @@ def test_build_degraded_fallback_plan_generates_minimal_queries(search_service):
         "cv_content": "5 years Python, Docker, SQL",
     }
 
-    with patch("backend.services.search_service.settings.SEARCH_DEGRADED_PLAN_MAX_QUERIES", 3), \
-         patch("backend.services.search_service.settings.SEARCH_DEGRADED_PLAN_MAX_KEYWORDS", 2):
+    with (
+        patch("backend.services.search_service.settings.SEARCH_DEGRADED_PLAN_MAX_QUERIES", 3),
+        patch("backend.services.search_service.settings.SEARCH_DEGRADED_PLAN_MAX_KEYWORDS", 2),
+    ):
         plan = search_service._build_degraded_fallback_plan(profile_dict, profile)
 
     assert len(plan) == 2
@@ -247,7 +280,9 @@ def test_build_degraded_fallback_plan_generates_minimal_queries(search_service):
 
 
 @pytest.mark.asyncio
-async def test_run_search_uses_degraded_fallback_plan_when_enabled(search_service, mock_profile_repo, mock_db):
+async def test_run_search_uses_degraded_fallback_plan_when_enabled(
+    search_service, mock_profile_repo, mock_db
+):
     mock_profile = MagicMock()
     mock_profile.id = 1
     mock_profile.user_id = 42
@@ -264,18 +299,31 @@ async def test_run_search_uses_degraded_fallback_plan_when_enabled(search_servic
     mock_profile_repo.get.return_value = mock_profile
     mock_db.query.return_value.filter.return_value.first.return_value = None
 
-    fallback_plan = [{"query": "Backend Developer", "type": "occupation", "domain": "general", "language": "en"}]
+    fallback_plan = [
+        {"query": "Backend Developer", "type": "occupation", "domain": "general", "language": "en"}
+    ]
 
-    with patch.object(search_service, "_generate_plan", new=AsyncMock(return_value=[])), \
-         patch.object(search_service, "_build_degraded_fallback_plan", return_value=fallback_plan), \
-         patch.object(search_service, "_search_and_produce", new=AsyncMock(return_value=(0, 0))) as mock_prod, \
-         patch.object(search_service, "_processing_consumer", new=AsyncMock(return_value=(0, 0, [], 0, 0))) as mock_cons, \
-         patch.object(search_service, "_normalize_user_profile", new=AsyncMock(return_value={})), \
-         patch("backend.services.search_service.llm_service.summarize_cv", new=AsyncMock(return_value="")), \
-         patch("backend.services.search_service.add_log"), \
-         patch("backend.services.search_service.init_status"), \
-         patch("backend.services.search_service.update_status") as mock_update, \
-         patch("backend.services.search_service.settings.SEARCH_ENABLE_DEGRADED_PLAN_FALLBACK", True):
+    with (
+        patch.object(search_service, "_generate_plan", new=AsyncMock(return_value=[])),
+        patch.object(search_service, "_build_degraded_fallback_plan", return_value=fallback_plan),
+        patch.object(
+            search_service, "_search_and_produce", new=AsyncMock(return_value=(0, 0))
+        ) as mock_prod,
+        patch.object(
+            search_service, "_processing_consumer", new=AsyncMock(return_value=(0, 0, [], 0, 0))
+        ),
+        patch.object(search_service, "_normalize_user_profile", new=AsyncMock(return_value={})),
+        patch(
+            "backend.services.search_service.llm_service.summarize_cv",
+            new=AsyncMock(return_value=""),
+        ),
+        patch("backend.services.search_service.add_log"),
+        patch("backend.services.search_service.init_status"),
+        patch("backend.services.search_service.update_status") as mock_update,
+        patch(
+            "backend.services.search_service.settings.SEARCH_ENABLE_DEGRADED_PLAN_FALLBACK", True
+        ),
+    ):
         await search_service.run_search(1)
 
     mock_prod.assert_awaited_once()
@@ -313,7 +361,7 @@ def test_apply_query_preferences_language_not_filtered_domain_is(search_service)
     queries = [s["query"] for s in filtered]
     assert "Software Engineer" in queries
     assert "Java Entwickler" in queries
-    assert stats["dropped_language"] == 0   # language filter no longer applied
+    assert stats["dropped_language"] == 0  # language filter no longer applied
     assert stats["dropped_domain"] == 1
 
 
@@ -390,6 +438,7 @@ def test_apply_structured_filters_uses_profile_workload_filter(search_service):
 
 
 # ─── CEFR Language Level Filter Tests ────────────────────────────────────────
+
 
 def test_language_level_mismatch_drops_job_with_large_gap(search_service):
     """Job requires de C2, user has de A2 (4-tier gap) → filtered out."""
@@ -531,6 +580,7 @@ def test_language_level_check_language_not_in_user_profile_skips_level_check(sea
 
 
 # ─── MATCH Payload Completeness Tests ────────────────────────────────────────
+
 
 def test_check_language_level_mismatch_direct(search_service):
     """Unit test for the _check_language_level_mismatch helper directly."""

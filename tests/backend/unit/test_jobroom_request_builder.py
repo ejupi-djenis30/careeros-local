@@ -5,8 +5,10 @@ Covers:
   radius search, language skills, workload fields
 - build_search_url: sort order, language param, pagination
 """
-import pytest
+
 from unittest.mock import MagicMock
+
+import pytest
 
 from backend.providers.jobs.jobroom.request_builder import (
     build_search_payload,
@@ -14,11 +16,11 @@ from backend.providers.jobs.jobroom.request_builder import (
 )
 from backend.providers.jobs.models import (
     ContractType,
-    JobSearchRequest,
-    LanguageSkillRequest,
-    LanguageLevel,
-    RadiusSearchRequest,
     Coordinates,
+    JobSearchRequest,
+    LanguageLevel,
+    LanguageSkillRequest,
+    RadiusSearchRequest,
     SortOrder,
 )
 
@@ -30,6 +32,7 @@ def _make_mapper(resolved=None):
 
 
 # ─── build_search_payload ─────────────────────────────────────────────────────
+
 
 class TestBuildSearchPayload:
     def test_basic_payload_has_required_keys(self):
@@ -133,6 +136,7 @@ class TestBuildSearchPayload:
 
 
 # ─── build_search_url ─────────────────────────────────────────────────────────
+
 
 class TestBuildSearchUrl:
     def test_url_contains_page_and_size(self):

@@ -8,20 +8,24 @@ The ``is_scraped`` column on the ``jobs`` table was never set or read by
 any production code path — all jobs originate from scraping.  Removing it
 reduces dead columns and schema noise.
 """
+
 import sqlalchemy as sa
+
 from alembic import op
 
-revision = 'l2m3n4o5p6q7'
-down_revision = 'k1l2m3n4o5p6'
+revision = "l2m3n4o5p6q7"
+down_revision = "k1l2m3n4o5p6"
 branch_labels = None
 depends_on = None
 
 
 def upgrade() -> None:
-    with op.batch_alter_table('jobs', schema=None) as batch_op:
-        batch_op.drop_column('is_scraped')
+    with op.batch_alter_table("jobs", schema=None) as batch_op:
+        batch_op.drop_column("is_scraped")
 
 
 def downgrade() -> None:
-    with op.batch_alter_table('jobs', schema=None) as batch_op:
-        batch_op.add_column(sa.Column('is_scraped', sa.Boolean(), nullable=True, server_default=sa.false()))
+    with op.batch_alter_table("jobs", schema=None) as batch_op:
+        batch_op.add_column(
+            sa.Column("is_scraped", sa.Boolean(), nullable=True, server_default=sa.false())
+        )

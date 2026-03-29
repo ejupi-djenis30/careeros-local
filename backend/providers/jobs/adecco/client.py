@@ -64,7 +64,7 @@ class AdeccoProvider(BaseJobProvider):
             "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:125.0) Gecko/20100101 Firefox/125.0",
             "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:124.0) Gecko/20100101 Firefox/124.0",
             "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Safari/605.1.15",
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36 Edg/124.0.0.0"
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36 Edg/124.0.0.0",
         ]
 
         self._headers = {
@@ -76,7 +76,7 @@ class AdeccoProvider(BaseJobProvider):
             "Sec-Fetch-Dest": "empty",
             "Sec-Fetch-Mode": "cors",
             "Sec-Fetch-Site": "same-origin",
-            "Connection": "keep-alive"
+            "Connection": "keep-alive",
         }
 
     @property
@@ -94,6 +94,7 @@ class AdeccoProvider(BaseJobProvider):
 
     def get_provider_info(self) -> Any:
         from backend.providers.jobs.models import ProviderInfo
+
         return ProviderInfo(
             name=self.name,
             description="Generalist job board covering all sectors in Switzerland. Adecco acts as an agency for many roles.",
@@ -136,7 +137,14 @@ class AdeccoProvider(BaseJobProvider):
             self._client = httpx.AsyncClient(timeout=30.0, headers=self._headers)
         return self._client
 
-    async def _execute_with_retry(self, func: Callable, *args, max_retries: int = 10, sem: asyncio.Semaphore | None = None, **kwargs) -> httpx.Response:
+    async def _execute_with_retry(
+        self,
+        func: Callable,
+        *args,
+        max_retries: int = 10,
+        sem: asyncio.Semaphore | None = None,
+        **kwargs,
+    ) -> httpx.Response:
         """Execute HTTP request with 429-aware retry logic and exponential backoff.
 
         ``sem``: if provided, the semaphore is acquired only around the raw HTTP
@@ -152,7 +160,9 @@ class AdeccoProvider(BaseJobProvider):
                 else:
                     response = await func(*args, **kwargs)
                 if response.status_code == 429:
-                    raise httpx.HTTPStatusError("429 Too Many Requests", request=response.request, response=response)
+                    raise httpx.HTTPStatusError(
+                        "429 Too Many Requests", request=response.request, response=response
+                    )
                 response.raise_for_status()
                 return response
             except httpx.HTTPStatusError as e:
@@ -166,7 +176,9 @@ class AdeccoProvider(BaseJobProvider):
                         else:
                             try:
                                 dt = email.utils.parsedate_to_datetime(retry_after)
-                                sleep_time = max(0, (dt - datetime.now(timezone.utc)).total_seconds())
+                                sleep_time = max(
+                                    0, (dt - datetime.now(timezone.utc)).total_seconds()
+                                )
                             except (TypeError, ValueError) as parse_error:
                                 logger.warning(
                                     "Adecco Retry-After header %r is invalid: %s",
@@ -178,20 +190,26 @@ class AdeccoProvider(BaseJobProvider):
                         # Stricter backoff for 429 than other errors: 4s, then 8s, capped at 30s
                         sleep_time = min(30.0, random.uniform(4.0, 7.0) * (attempt + 1))
 
-                    logger.warning(f"Adecco 429 Too Many Requests. Retrying in {sleep_time:.1f}s (Attempt {attempt + 1}/{max_retries})")
+                    logger.warning(
+                        f"Adecco 429 Too Many Requests. Retrying in {sleep_time:.1f}s (Attempt {attempt + 1}/{max_retries})"
+                    )
                     await asyncio.sleep(sleep_time)
                     continue
                 # Retry on transient server errors
                 elif status in (500, 502, 503, 504) and attempt < max_retries - 1:
                     sleep_time = min(30.0, random.uniform(2.0, 5.0) * (attempt + 1))
-                    logger.warning(f"Adecco {status} Error. Retrying in {sleep_time:.1f}s (Attempt {attempt + 1}/{max_retries})")
+                    logger.warning(
+                        f"Adecco {status} Error. Retrying in {sleep_time:.1f}s (Attempt {attempt + 1}/{max_retries})"
+                    )
                     await asyncio.sleep(sleep_time)
                     continue
                 raise
             except (httpx.RequestError, asyncio.TimeoutError) as e:
                 if attempt < max_retries - 1:
                     sleep_time = min(30.0, random.uniform(2.0, 5.0) * (attempt + 1))
-                    logger.warning(f"Adecco transient error {type(e).__name__}. Retrying in {sleep_time:.1f}s (Attempt {attempt + 1}/{max_retries})")
+                    logger.warning(
+                        f"Adecco transient error {type(e).__name__}. Retrying in {sleep_time:.1f}s (Attempt {attempt + 1}/{max_retries})"
+                    )
                     await asyncio.sleep(sleep_time)
                     continue
                 raise
@@ -227,7 +245,9 @@ class AdeccoProvider(BaseJobProvider):
             summary_data = resp.json()
 
             if not isinstance(summary_data, dict) or "jobs" not in summary_data:
-                raise ResponseParseError(self.name, "Unexpected response format from summarized API")
+                raise ResponseParseError(
+                    self.name, "Unexpected response format from summarized API"
+                )
 
             jobs_light = summary_data["jobs"]
             total_count = summary_data.get("pagination", {}).get("total", len(jobs_light))
@@ -270,17 +290,16 @@ class AdeccoProvider(BaseJobProvider):
                             raise
 
                     job_listing = transform_job_data(
-                        light_job,
-                        detail_data,
-                        self.name,
-                        self._include_raw_data
+                        light_job, detail_data, self.name, self._include_raw_data
                     )
                     return job_listing
                 except Exception as e:
                     logger.warning(f"Failed to fetch details for {job_id} on {self.name}: {e}")
                     # Fallback to transform without details if detail fetch fails
                     try:
-                        return transform_job_data(light_job, None, self.name, self._include_raw_data)
+                        return transform_job_data(
+                            light_job, None, self.name, self._include_raw_data
+                        )
                     except Exception as fallback_error:
                         logger.warning(
                             "Failed to transform Adecco job %s without details: %s",
@@ -321,6 +340,7 @@ class AdeccoProvider(BaseJobProvider):
 
         except Exception as e:
             from backend.providers.jobs.exceptions import format_provider_error
+
             err_msg = format_provider_error(e)
             logger.error(f"Search failed: {err_msg}")
             raise ProviderError(self.name, err_msg) from e

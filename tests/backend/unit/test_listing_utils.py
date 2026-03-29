@@ -2,17 +2,14 @@
 
 These are all the pure utility helpers that had zero test coverage.
 """
+
 from datetime import datetime
 from types import SimpleNamespace
-from unittest.mock import MagicMock
-
-import pytest
 
 from backend.services.search.listing_utils import (
     _canonicalize_skill,
     bootstrap_normalized_job_data,
     coerce_int,
-    coerce_string_list,
     extract_listing_location_string,
     extract_listing_workload_string,
     extract_salary_max_chf,
@@ -24,8 +21,8 @@ from backend.services.search.listing_utils import (
     skills_overlap,
 )
 
-
 # ─── normalized_text_token ───────────────────────────────────────────────────
+
 
 class TestNormalizedTextToken:
     def test_lowercases(self):
@@ -49,6 +46,7 @@ class TestNormalizedTextToken:
 
 # ─── _canonicalize_skill ─────────────────────────────────────────────────────
 
+
 class TestCanonicalizeSkill:
     def test_known_alias_js(self):
         assert _canonicalize_skill("js") == "javascript"
@@ -71,6 +69,7 @@ class TestCanonicalizeSkill:
 
 
 # ─── skills_overlap ──────────────────────────────────────────────────────────
+
 
 class TestSkillsOverlap:
     def test_empty_lists_return_zero(self):
@@ -109,6 +108,7 @@ class TestSkillsOverlap:
 
 # ─── coerce_int ──────────────────────────────────────────────────────────────
 
+
 class TestCoerceInt:
     def test_int_passthrough(self):
         assert coerce_int(42) == 42
@@ -136,6 +136,7 @@ class TestCoerceInt:
 
 
 # ─── listing_identity_key ────────────────────────────────────────────────────
+
 
 class TestListingIdentityKey:
     def _make(self, source=None, platform=None, id_=None, platform_job_id=None):
@@ -169,6 +170,7 @@ class TestListingIdentityKey:
 
 # ─── listing_fuzzy_key ───────────────────────────────────────────────────────
 
+
 class TestListingFuzzyKey:
     def _make(self, title="", company_name=""):
         obj = SimpleNamespace()
@@ -194,6 +196,7 @@ class TestListingFuzzyKey:
 
 # ─── listing_is_remote ───────────────────────────────────────────────────────
 
+
 class TestListingIsRemote:
     def _make(self, work_forms=None, title="", desc=""):
         employment = SimpleNamespace(work_forms=work_forms or [])
@@ -214,10 +217,16 @@ class TestListingIsRemote:
         assert listing_is_remote(self._make(desc="This is a hybrid role")) is True
 
     def test_not_remote(self):
-        assert listing_is_remote(self._make(title="Office Based Role", desc="Come to the office every day")) is False
+        assert (
+            listing_is_remote(
+                self._make(title="Office Based Role", desc="Come to the office every day")
+            )
+            is False
+        )
 
 
 # ─── extract_salary_max_chf ──────────────────────────────────────────────────
+
 
 class TestExtractSalaryMaxChf:
     def _make(self, desc=""):
@@ -247,6 +256,7 @@ class TestExtractSalaryMaxChf:
 
 # ─── extract_listing_workload_string ─────────────────────────────────────────
 
+
 class TestExtractListingWorkloadString:
     def _make(self, workload_min=None, workload_max=None):
         employment = SimpleNamespace(workload_min=workload_min, workload_max=workload_max)
@@ -267,6 +277,7 @@ class TestExtractListingWorkloadString:
 
 
 # ─── parse_listing_publication_date ─────────────────────────────────────────
+
 
 class TestParseListingPublicationDate:
     def _make(self, start_date=None):
@@ -299,6 +310,7 @@ class TestParseListingPublicationDate:
 
 # ─── extract_listing_location_string ─────────────────────────────────────────
 
+
 class TestExtractListingLocationString:
     def test_city_from_location_object(self):
         location = SimpleNamespace(city="Zurich")
@@ -312,8 +324,11 @@ class TestExtractListingLocationString:
 
 # ─── bootstrap_normalized_job_data ───────────────────────────────────────────
 
+
 class TestBootstrapNormalizedJobData:
-    def _make_listing(self, title="Software Engineer", desc="5 years experience. CHF 120000. Remote."):
+    def _make_listing(
+        self, title="Software Engineer", desc="5 years experience. CHF 120000. Remote."
+    ):
         description = SimpleNamespace(description=desc)
         employment = SimpleNamespace(workload_min=80, workload_max=100, work_forms=[])
         location = SimpleNamespace(city="Zurich")

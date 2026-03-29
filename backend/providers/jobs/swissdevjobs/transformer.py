@@ -14,11 +14,9 @@ from backend.providers.jobs.models import (
 
 logger = logging.getLogger(__name__)
 
+
 def transform_job_data(
-    detail: dict[str, Any],
-    light: dict[str, Any],
-    source_name: str,
-    include_raw_data: bool
+    detail: dict[str, Any], light: dict[str, Any], source_name: str, include_raw_data: bool
 ) -> JobListing | None:
     """Transform JSON from SwissDevJobs into a standard JobListing model."""
     try:
@@ -39,15 +37,15 @@ def transform_job_data(
 
         contact_email = None
         if detail.get("candidateContactWay") == "Email":
-             contact_email = detail.get("personEmail")
+            contact_email = detail.get("personEmail")
 
         description_html = detail.get("description", "")
 
         # Enrich description with tech tags if available
         techs = detail.get("technologies") or light.get("technologies", [])
         if techs:
-             tech_str = ", ".join(techs)
-             description_html += f"\\n\\nTechnologies: {tech_str}"
+            tech_str = ", ".join(techs)
+            description_html += f"\\n\\nTechnologies: {tech_str}"
 
         # Location handling
         lat = detail.get("latitude") or light.get("latitude")
@@ -58,21 +56,21 @@ def transform_job_data(
             coordinates = Coordinates(lat=float(lat), lon=float(lon))
 
         location = JobLocation(
-            city=detail.get("actualCity") or light.get("actualCity") or detail.get("cityCategory") or "",
+            city=detail.get("actualCity")
+            or light.get("actualCity")
+            or detail.get("cityCategory")
+            or "",
             postal_code=detail.get("postalCode") or light.get("postalCode"),
             country_code="CH",
-            coordinates=coordinates
+            coordinates=coordinates,
         )
 
         company = CompanyInfo(
             name=company_name,
-            website=detail.get("companyWebsiteLink") or light.get("companyWebsiteLink")
+            website=detail.get("companyWebsiteLink") or light.get("companyWebsiteLink"),
         )
 
-        application = ApplicationChannel(
-            email=contact_email,
-            form_url=application_url
-        )
+        application = ApplicationChannel(email=contact_email, form_url=application_url)
 
         # Date
         created_at = None
@@ -81,7 +79,9 @@ def transform_job_data(
             try:
                 created_at = datetime.fromisoformat(active_from.replace("Z", "+00:00"))
             except (ValueError, TypeError) as e:
-                logger.warning(f"Invalid activeFrom for SwissDevJobs job {light.get('jobUrl')}: {e}")
+                logger.warning(
+                    f"Invalid activeFrom for SwissDevJobs job {light.get('jobUrl')}: {e}"
+                )
 
         return JobListing(
             id=str(job_id),

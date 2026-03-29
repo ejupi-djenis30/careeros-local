@@ -137,12 +137,14 @@ def get_all_schedules(user_id: int = None, db: Session = None) -> list[dict]:
             except ValueError:
                 continue
 
-            jobs.append({
-                "id": job.id,
-                "name": job.name,
-                "next_run": job.next_run_time.isoformat() if job.next_run_time else None,
-                "trigger": str(job.trigger),
-            })
+            jobs.append(
+                {
+                    "id": job.id,
+                    "name": job.name,
+                    "next_run": job.next_run_time.isoformat() if job.next_run_time else None,
+                    "trigger": str(job.trigger),
+                }
+            )
     return jobs
 
 
@@ -155,14 +157,14 @@ def start_scheduler():
     # Load saved schedules from DB
     db: Session = SessionLocal()
     try:
-        profiles = db.query(SearchProfile).filter(
-            SearchProfile.schedule_enabled.is_(True)
-        ).all()
+        profiles = db.query(SearchProfile).filter(SearchProfile.schedule_enabled.is_(True)).all()
 
         for profile in profiles:
             interval = profile.schedule_interval_hours or 24
             add_schedule(profile.id, interval)
-            logger.info(f"[Scheduler] Restored schedule for profile {profile.id} (every {interval}h)")
+            logger.info(
+                f"[Scheduler] Restored schedule for profile {profile.id} (every {interval}h)"
+            )
     except Exception as e:
         logger.error(f"[Scheduler] Error loading schedules: {e}")
     finally:

@@ -83,7 +83,12 @@ async def start_search(
         for k, v in request_data.items()
         if k not in _TRANSIENT_FIELDS and k not in _PREFERENCE_FIELDS
     }
-    numeric_fields = ["max_queries", "posted_within_days", "max_distance", "schedule_interval_hours"]
+    numeric_fields = [
+        "max_queries",
+        "posted_within_days",
+        "max_distance",
+        "schedule_interval_hours",
+    ]
     for field in numeric_fields:
         val = getattr(profile_request, field, None)
         if val == "":
@@ -99,7 +104,9 @@ async def start_search(
         # the profile in an inconsistent state (is_stopped=False) if the slot
         # is already taken by a concurrent run.
         if not reserve_task(profile.id):
-            raise HTTPException(status_code=409, detail="A search is already running for this profile")
+            raise HTTPException(
+                status_code=409, detail="A search is already running for this profile"
+            )
         # Update existing if needed (e.g. if settings changed before re-run)
         # Profile fields such as role, location, etc., are meant to be immutable.
         # Just reset the stopped flag so it can run again.
@@ -113,7 +120,11 @@ async def start_search(
             key: value for key, value in preference_data.items() if value is not None
         } or None
         # If it doesn't have a name, give it a timestamped one
-        if not profile_data.get("name") or profile_data["name"] in ["", "Default Profile", "My Profile"]:
+        if not profile_data.get("name") or profile_data["name"] in [
+            "",
+            "Default Profile",
+            "My Profile",
+        ]:
             timestamp = datetime.now().strftime("%Y-%m-%d %H:%M")
             profile_data["name"] = f"Search {timestamp}"
 
@@ -121,7 +132,9 @@ async def start_search(
         profile = profile_repo.create(profile_data)
 
         if not reserve_task(profile.id):
-            raise HTTPException(status_code=409, detail="A search is already running for this profile")
+            raise HTTPException(
+                status_code=409, detail="A search is already running for this profile"
+            )
 
     # Extract force-regeneration flags from the original request (not stored in DB)
     force_regen_cv = profile_request.force_regenerate_cv_summary
@@ -189,6 +202,7 @@ def get_all_search_statuses(
     user_id: int = Depends(get_current_user_id),
 ):
     return get_all_statuses(user_id=user_id)
+
 
 @router.get("/status/{profile_id}")
 @limiter.limit("60/minute")

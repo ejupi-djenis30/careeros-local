@@ -10,15 +10,18 @@ class SortOrder(str, Enum):
     DATE_ASC = "date_asc"
     RELEVANCE = "relevance"
 
+
 class ContractType(str, Enum):
     PERMANENT = "permanent"
     TEMPORARY = "temporary"
     ANY = "any"
 
+
 class WorkForm(str, Enum):
     DIVERSE = "diverse"
     HOME_OFFICE = "home_office"
     # Add others as needed
+
 
 class LanguageLevel(str, Enum):
     PROFICIENT = "proficient"
@@ -26,18 +29,22 @@ class LanguageLevel(str, Enum):
     BASIC = "basic"
     NONE = "none"
 
+
 class LanguageSkillRequest(BaseModel):
     language_code: str
     spoken_level: Optional[LanguageLevel] = None
     written_level: Optional[LanguageLevel] = None
 
+
 class Coordinates(BaseModel):
     lat: float
     lon: float
 
+
 class RadiusSearchRequest(BaseModel):
     geo_point: Coordinates
     distance: int
+
 
 class JobSearchRequest(BaseModel):
     query: str = ""
@@ -61,7 +68,9 @@ class JobSearchRequest(BaseModel):
     page_size: int = 20
     sort: SortOrder = SortOrder.DATE_DESC
 
+
 # Response Models
+
 
 class CompanyInfo(BaseModel):
     name: Optional[str] = None
@@ -76,7 +85,6 @@ class CompanyInfo(BaseModel):
     is_agency: bool = False
 
 
-
 class JobLocation(BaseModel):
     city: str
     postal_code: Optional[str] = None
@@ -86,6 +94,7 @@ class JobLocation(BaseModel):
     country_code: str = "CH"
     coordinates: Optional[Coordinates] = None
     remarks: Optional[str] = None
+
 
 class EmploymentDetails(BaseModel):
     start_date: Optional[str] = None
@@ -98,17 +107,18 @@ class EmploymentDetails(BaseModel):
     work_forms: List[str] = []
 
 
-
 class Occupation(BaseModel):
     avam_code: str
     work_experience: Optional[str] = None
     education_code: Optional[str] = None
     qualification_code: Optional[str] = None
 
+
 class LanguageSkill(BaseModel):
     language_code: str
     spoken_level: Optional[str] = None
     written_level: Optional[str] = None
+
 
 class ContactInfo(BaseModel):
     salutation: Optional[str] = None
@@ -117,12 +127,14 @@ class ContactInfo(BaseModel):
     phone: Optional[str] = None
     email: Optional[str] = None
 
+
 class ApplicationChannel(BaseModel):
     email: Optional[str] = None
     phone: Optional[str] = None
     form_url: Optional[str] = None
     post_address: Optional[str] = None
     additional_info: Optional[str] = None
+
 
 class PublicationInfo(BaseModel):
     start_date: str
@@ -132,10 +144,12 @@ class PublicationInfo(BaseModel):
     company_anonymous: bool = False
     restricted_display: bool = False
 
+
 class JobDescription(BaseModel):
     language_code: str
     title: str
     description: str
+
 
 class JobListing(BaseModel):
     id: str
@@ -162,6 +176,7 @@ class JobListing(BaseModel):
     reporting_obligation_end_date: Optional[str] = None
     raw_data: Optional[Dict[str, Any]] = None
 
+
 class JobSearchResponse(BaseModel):
     items: List[JobListing]
     total_count: int
@@ -172,14 +187,18 @@ class JobSearchResponse(BaseModel):
     search_time_ms: int
     request: JobSearchRequest
 
+
 class ProviderInfo(BaseModel):
     name: str = Field(description="The unique identifier/name of the provider")
-    description: str = Field(description="Detailed description of what kind of jobs this provider has (e.g. IT only, generalist, remote only, etc.)")
+    description: str = Field(
+        description="Detailed description of what kind of jobs this provider has (e.g. IT only, generalist, remote only, etc.)"
+    )
     domain: str = Field(description="The domain of the job board")
     accepted_domains: List[str] = Field(
         default=["*"],
-        description="Job domains this provider accepts. ['*'] = generalist (all domains). ['it'] = IT-only."
+        description="Job domains this provider accepts. ['*'] = generalist (all domains). ['it'] = IT-only.",
     )
+
 
 class ProviderCapabilities(BaseModel):
     supports_radius_search: bool = False
@@ -192,11 +211,13 @@ class ProviderCapabilities(BaseModel):
     supported_languages: List[str] = ["en"]
     supported_sort_orders: List[str] = ["date_desc"]
 
+
 class ProviderStatus(str, Enum):
     HEALTHY = "healthy"
     DEGRADED = "degraded"
     UNAVAILABLE = "unavailable"
     UNKNOWN = "unknown"
+
 
 class ProviderHealth(BaseModel):
     provider: str

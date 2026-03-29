@@ -63,7 +63,7 @@ describe('useJobs', () => {
 
   it('toggles applied status correctly', async () => {
     const { result } = renderHook(() => useJobs());
-    
+
     await waitFor(() => expect(result.current.isLoading).toBe(false));
 
     const updatedJob = { ...mockJobs[0], applied: true };
@@ -131,9 +131,9 @@ describe('useJobs', () => {
   it('refetches jobs on visibility change', async () => {
     const { result } = renderHook(() => useJobs());
     await waitFor(() => expect(result.current.jobs.length).toBe(2));
-    
+
     JobService.getAll.mockClear();
-    
+
     await act(async () => {
       Object.defineProperty(document, 'visibilityState', { value: 'visible', configurable: true });
       document.dispatchEvent(new Event('visibilitychange'));
@@ -146,7 +146,7 @@ describe('useJobs', () => {
   it('calls logout on UNAUTHORIZED error in fetchJobs', async () => {
     const logout = vi.fn();
     JobService.getAll.mockRejectedValue(new Error('UNAUTHORIZED'));
-    
+
     renderHook(() => useJobs(logout));
 
     await waitFor(() => {
@@ -157,7 +157,7 @@ describe('useJobs', () => {
   it('logs error on generic fetchJobs failure', async () => {
     const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
     JobService.getAll.mockRejectedValue(new Error('API ERROR'));
-    
+
     renderHook(() => useJobs());
 
     await waitFor(() => {
@@ -211,7 +211,7 @@ describe('useJobs', () => {
   it('logs error on getProfiles failure', async () => {
     const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
     SearchService.getProfiles.mockRejectedValue(new Error('PROFILE ERROR'));
-    
+
     renderHook(() => useJobs());
 
     await waitFor(() => {
@@ -226,13 +226,13 @@ describe('useJobs', () => {
         mockActiveProfileIds = ['1'];
         renderHook(() => useJobs());
         await waitFor(() => expect(JobService.getAll).toHaveBeenCalledTimes(1));
-        
+
         JobService.getAll.mockClear();
-        
+
         await act(async () => {
             vi.advanceTimersByTime(5500);
         });
-        
+
         await waitFor(() => expect(JobService.getAll).toHaveBeenCalledTimes(1));
     } finally {
         vi.useRealTimers();

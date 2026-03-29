@@ -127,7 +127,7 @@ export function SearchForm({ onStartSearch, isLoading, prefill }) {
         <div className="animate-fade-in w-100 h-100 d-flex flex-column">
             <div className="glass-panel p-3 p-lg-4 h-100 d-flex flex-column">
                 <form onSubmit={handleSubmit} className="d-flex flex-column h-100">
-                    
+
                     {/* Header */}
                     <div className="d-flex flex-column flex-md-row align-items-md-center justify-content-between mb-4 pb-3 border-bottom border-white-10 gap-3">
                         <div className="d-flex align-items-center gap-3">
@@ -139,7 +139,7 @@ export function SearchForm({ onStartSearch, isLoading, prefill }) {
                                 <div className="text-secondary x-small">Describe the role once, then tune only the essential constraints</div>
                             </div>
                         </div>
-                        
+
                         <div className="d-flex align-items-center gap-2 align-self-stretch align-self-md-auto">
                              <button
                                 type="submit"
@@ -158,26 +158,26 @@ export function SearchForm({ onStartSearch, isLoading, prefill }) {
 
                     {/* Main Grid content */}
                     <div className="row g-4 flex-grow-1 align-content-start">
-                        
+
                         {/* Column 1: Core Inputs */}
-                        <SearchFormCoreInputs 
-                            profile={profile} 
-                            handleChange={handleChange} 
-                            handleLocationChange={handleLocationChange} 
-                            handleCVUpload={handleCVUpload} 
+                        <SearchFormCoreInputs
+                            profile={profile}
+                            handleChange={handleChange}
+                            handleLocationChange={handleLocationChange}
+                            handleCVUpload={handleCVUpload}
                         />
 
                         {/* Column 2: Parameters */}
-                        <SearchFormParameters 
-                            profile={profile} 
+                        <SearchFormParameters
+                            profile={profile}
                             handleChange={handleChange}
                             setProfile={setProfile}
                         />
 
                          {/* Column 3: Advanced & Logistics */}
-                         <SearchFormAdvanced 
-                            profile={profile} 
-                            handleChange={handleChange} 
+                         <SearchFormAdvanced
+                            profile={profile}
+                            handleChange={handleChange}
                             setProfile={setProfile}
                             existingNames={existingNames}
                         />

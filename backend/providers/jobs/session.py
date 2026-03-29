@@ -7,10 +7,10 @@ from tenacity import retry, stop_after_attempt, wait_exponential
 
 logger = logging.getLogger(__name__)
 
+
 class ExecutionMode(str, Enum):
     STEALTH = "stealth"
     FAST = "fast"
-
 
 
 class ScraperSession:
@@ -25,7 +25,9 @@ class ScraperSession:
         self.csrf_token: Optional[str] = None
 
     async def start(self):
-        self.client = httpx.AsyncClient(headers=self.headers, verify=True, follow_redirects=True, timeout=30.0)
+        self.client = httpx.AsyncClient(
+            headers=self.headers, verify=True, follow_redirects=True, timeout=30.0
+        )
 
     async def close(self):
         if self.client:
@@ -54,7 +56,9 @@ class ScraperSession:
                 break
 
     @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=10))
-    async def with_retry_csrf(self, method: str, url: str, csrf_refresh_url: str, json: Optional[Dict] = None):
+    async def with_retry_csrf(
+        self, method: str, url: str, csrf_refresh_url: str, json: Optional[Dict] = None
+    ):
         if not self.client:
             await self.start()
 
@@ -74,4 +78,3 @@ class ScraperSession:
         except httpx.HTTPError as e:
             logger.error(f"HTTP Request failed: {e}")
             raise
-

@@ -15,6 +15,7 @@ Usage
 The function is idempotent and cheap (<100 ms for typical users); call it
 after any job interaction (apply / dismiss) and on demand.
 """
+
 from __future__ import annotations
 
 import logging
@@ -33,6 +34,7 @@ logger = logging.getLogger(__name__)
 # ──────────────────────────────────────────────────────────────────────────────
 # Public API
 # ──────────────────────────────────────────────────────────────────────────────
+
 
 def compute_and_save_preferences(user_id: int, db: Session) -> Dict[str, Any]:
     """Compute preference signals from all of a user's jobs and persist them.
@@ -64,13 +66,9 @@ def get_preference_signals(user_id: int, db: Session) -> Optional[Dict[str, Any]
 # Internal helpers
 # ──────────────────────────────────────────────────────────────────────────────
 
+
 def _compute(user_id: int, db: Session) -> Dict[str, Any]:
-    jobs = (
-        db.query(Job)
-        .join(Job.scraped_job)
-        .filter(Job.user_id == user_id)
-        .all()
-    )
+    jobs = db.query(Job).join(Job.scraped_job).filter(Job.user_id == user_id).all()
 
     applied_jobs = [j for j in jobs if j.applied]
     dismissed_jobs = [j for j in jobs if j.dismissed]
@@ -93,8 +91,7 @@ def _compute(user_id: int, db: Session) -> Dict[str, Any]:
     preferred_domains = [d for d, _ in domain_apply.most_common(5)]
 
     avoided_domains = [
-        d for d in domain_dismiss
-        if _dismiss_rate(domain_apply.get(d, 0), domain_dismiss[d]) > 0.75
+        d for d in domain_dismiss if _dismiss_rate(domain_apply.get(d, 0), domain_dismiss[d]) > 0.75
     ]
 
     # ── Role-type preferences ─────────────────────────────────────────────────
@@ -110,7 +107,7 @@ def _compute(user_id: int, db: Session) -> Dict[str, Any]:
     for j in applied_jobs:
         sj = j.scraped_job
         if sj:
-            for skill in (sj.normalized_required_skills or []):
+            for skill in sj.normalized_required_skills or []:
                 if isinstance(skill, str) and skill.strip():
                     skill_counts[skill.strip().lower()] += 1
     preferred_skills = [s for s, _ in skill_counts.most_common(15)]
@@ -149,7 +146,9 @@ def _compute(user_id: int, db: Session) -> Dict[str, Any]:
     dealbreaker_patterns: Dict[str, int] = {}
     for j in dismissed_jobs:
         if j.feedback_signal:
-            dealbreaker_patterns[j.feedback_signal] = dealbreaker_patterns.get(j.feedback_signal, 0) + 1
+            dealbreaker_patterns[j.feedback_signal] = (
+                dealbreaker_patterns.get(j.feedback_signal, 0) + 1
+            )
 
     return {
         "preferred_domains": preferred_domains,
@@ -196,12 +195,9 @@ def compute_salary_benchmark(
         return None
 
     try:
-        q = (
-            db.query(ScrapedJob.normalized_salary_max_chf)
-            .filter(
-                ScrapedJob.normalized_salary_max_chf.isnot(None),
-                ScrapedJob.normalized_domain == domain,
-            )
+        q = db.query(ScrapedJob.normalized_salary_max_chf).filter(
+            ScrapedJob.normalized_salary_max_chf.isnot(None),
+            ScrapedJob.normalized_domain == domain,
         )
         if seniority:
             q = q.filter(ScrapedJob.normalized_seniority == seniority)
@@ -218,7 +214,9 @@ def compute_salary_benchmark(
         p75 = values[int(n * 0.75)]
         return {"p25": p25, "median": median, "p75": p75, "n": n}
     except Exception:
-        logger.exception("compute_salary_benchmark: failed for domain=%s seniority=%s", domain, seniority)
+        logger.exception(
+            "compute_salary_benchmark: failed for domain=%s seniority=%s", domain, seniority
+        )
         return None
 
 

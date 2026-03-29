@@ -19,6 +19,7 @@ class DismissRequest(BaseModel):
             raise ValueError(f"feedback_signal must be one of {sorted(FEEDBACK_SIGNAL_VALUES)}")
         return v
 
+
 router = APIRouter()
 
 
@@ -34,7 +35,9 @@ def read_jobs(
     max_distance: Optional[float] = Query(None, ge=0),
     include_dismissed: Optional[bool] = Query(None),
     # ── Sorting ──
-    sort_by: Literal["created_at", "affinity_score", "distance_km", "title", "publication_date"] = Query("created_at"),
+    sort_by: Literal[
+        "created_at", "affinity_score", "distance_km", "title", "publication_date"
+    ] = Query("created_at"),
     sort_order: Literal["asc", "desc"] = Query("desc"),
     # ── Pagination ──
     page: int = Query(1, ge=1),
@@ -58,7 +61,9 @@ def read_jobs(
     if min_score is not None and max_score is not None and min_score > max_score:
         raise HTTPException(status_code=422, detail="min_score cannot be greater than max_score")
     if min_distance is not None and max_distance is not None and min_distance > max_distance:
-        raise HTTPException(status_code=422, detail="min_distance cannot be greater than max_distance")
+        raise HTTPException(
+            status_code=422, detail="min_distance cannot be greater than max_distance"
+        )
     return job_service.get_jobs_by_user(user_id, page, page_size, filters)
 
 
@@ -79,6 +84,7 @@ def update_job(
     job_service: JobService = Depends(job_service_dep),
 ):
     return job_service.update_job(user_id, job_id, updates)
+
 
 @router.delete("/{job_id}", status_code=204)
 def delete_job(

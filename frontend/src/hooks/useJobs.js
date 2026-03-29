@@ -127,16 +127,16 @@ export function useJobs(logout) {
   useEffect(() => {
     fetchJobs();
   }, [fetchJobs]);
-  
+
   // OPT-3: Background polling intervals - adjusted based on activity
   useEffect(() => {
     const isSearching = activeProfileIds.length > 0;
     const intervalTime = isSearching ? 5000 : 30000; // 5s if searching, 30s if idle
-    
+
     const interval = setInterval(() => {
       fetchJobs(true);
     }, intervalTime);
-    
+
     return () => clearInterval(interval);
   }, [fetchJobs, activeProfileIds.length]);
 

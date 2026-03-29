@@ -37,6 +37,7 @@ def _optional_int_attr(value, default=None):
             return default
     return default
 
+
 def build_search_request(
     profile,
     query: str,
@@ -48,8 +49,12 @@ def build_search_request(
 ) -> JobSearchRequest:
     """Create a JobSearchRequest from profile settings and a keyword query."""
     workload_min, workload_max = 0, 100
-    hard_workload_min = _optional_int_attr(get_profile_preference(profile, "workload_min", None), None)
-    hard_workload_max = _optional_int_attr(get_profile_preference(profile, "workload_max", None), None)
+    hard_workload_min = _optional_int_attr(
+        get_profile_preference(profile, "workload_min", None), None
+    )
+    hard_workload_max = _optional_int_attr(
+        get_profile_preference(profile, "workload_max", None), None
+    )
 
     if hard_workload_min is not None or hard_workload_max is not None:
         workload_min = hard_workload_min if hard_workload_min is not None else 0
@@ -70,22 +75,23 @@ def build_search_request(
     if isinstance(latitude, (int, float)) and isinstance(longitude, (int, float)):
         # Default to 50km if not specified, or use profile preference if available
         dist = 50
-        hard_max_distance = _optional_int_attr(get_profile_preference(profile, "hard_max_distance_km", None), None)
+        hard_max_distance = _optional_int_attr(
+            get_profile_preference(profile, "hard_max_distance_km", None), None
+        )
         max_distance = _optional_int_attr(getattr(profile, "max_distance", None), 50)
         if hard_max_distance is not None:
             max_distance = hard_max_distance
         if max_distance:
-             dist = max_distance
+            dist = max_distance
 
         radius_request = RadiusSearchRequest(
-            geo_point=Coordinates(lat=latitude, lon=longitude),
-            distance=dist
+            geo_point=Coordinates(lat=latitude, lon=longitude), distance=dist
         )
 
     contract_type_mapping = {
         "permanent": ContractType.PERMANENT,
         "temporary": ContractType.TEMPORARY,
-        "any": ContractType.ANY
+        "any": ContractType.ANY,
     }
 
     contract_val = _string_attr(getattr(profile, "contract_type", "any"), "any")
@@ -108,7 +114,7 @@ def build_search_request(
         page_size=page_size,
         sort=SortOrder.DATE_DESC,
         radius_search=radius_request,
-        communal_codes=[], # Clear communal codes if using radius to avoid conflict? usually they can coexist or radius overrides.
+        communal_codes=[],  # Clear communal codes if using radius to avoid conflict? usually they can coexist or radius overrides.
         profession_codes=profession_codes or [],
         keywords=[normalized_query] if normalized_query else [],
         language=request_language,

@@ -26,14 +26,11 @@ class JobService:
         return f"manual-{digest[:24]}"
 
     def get_jobs_by_user(
-        self, user_id: int, page: int, page_size: int,
-        filters: Dict[str, Any]
+        self, user_id: int, page: int, page_size: int, filters: Dict[str, Any]
     ) -> Dict[str, Any]:
         skip = (page - 1) * page_size
 
-        items = self.repo.get_by_user_filtered(
-            user_id, skip=skip, limit=page_size, **filters
-        )
+        items = self.repo.get_by_user_filtered(user_id, skip=skip, limit=page_size, **filters)
 
         # Feature 2: populate applied_elsewhere badge
         # Get all ScrapedJob IDs where this user has applied=True (across all profiles)
@@ -43,10 +40,7 @@ class JobService:
 
         # Attach applied_elsewhere as a Python attribute so Pydantic can read it
         for item in items:
-            item.applied_elsewhere = (
-                not item.applied
-                and item.scraped_job_id in applied_scraped_ids
-            )
+            item.applied_elsewhere = not item.applied and item.scraped_job_id in applied_scraped_ids
 
         # Remove pagination/sorting params before passing to count/stats
         stats_filters = filters.copy()
@@ -61,9 +55,8 @@ class JobService:
             "page": page,
             "pages": (agg["total"] + page_size - 1) // page_size,
             "total_applied": agg["total_applied"],
-            "avg_score": agg["avg_score"]
+            "avg_score": agg["avg_score"],
         }
-
 
     def create_job(self, user_id: int, job_in: JobCreate):
         from backend.models import ScrapedJob
@@ -84,7 +77,8 @@ class JobService:
             "title": job_dict.get("title", ""),
             "company": job_dict.get("company", ""),
             "platform": job_dict.get("platform") or "manual",
-            "platform_job_id": job_dict.get("platform_job_id", None) or self._stable_manual_platform_job_id(job_dict),
+            "platform_job_id": job_dict.get("platform_job_id", None)
+            or self._stable_manual_platform_job_id(job_dict),
             "external_url": job_dict.get("external_url", None),
             "description": job_dict.get("description", None),
             "location": job_dict.get("location", None),
@@ -137,6 +131,7 @@ class JobService:
         # Recompute preference signals after any interaction that carries signal
         if "applied" in update_data or "dismissed" in update_data:
             from backend.services.preference_service import compute_and_save_preferences
+
             compute_and_save_preferences(user_id, self.repo.db)
 
         return result
@@ -159,10 +154,13 @@ class JobService:
             raise HTTPException(status_code=404, detail="Job not found")
         if job.user_id != user_id:
             raise HTTPException(status_code=403, detail="Not authorized")
-        self.repo.update(job, {
-            "dismissed": True,
-            "dismissed_at": datetime.now(timezone.utc),
-        })
+        self.repo.update(
+            job,
+            {
+                "dismissed": True,
+                "dismissed_at": datetime.now(timezone.utc),
+            },
+        )
 
 
 def get_job_service(db: Session) -> JobService:

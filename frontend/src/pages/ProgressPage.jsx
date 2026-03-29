@@ -50,7 +50,7 @@ export function ProgressPage() {
   const handleClearSearch = (profileId) => {
     const next = activeProfileIds.filter(id => id !== String(profileId));
     removeProfileId(profileId);
-    
+
     // Clear search param if needed so it doesn't automatically remount
     if (searchParams.get('pid') === String(profileId)) {
       searchParams.delete('pid');

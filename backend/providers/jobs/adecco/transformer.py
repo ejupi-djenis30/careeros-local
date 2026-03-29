@@ -1,6 +1,7 @@
 """
 Transformer for Adecco API data.
 """
+
 import logging
 from datetime import datetime
 from typing import Any, Dict, Optional
@@ -19,6 +20,7 @@ from backend.providers.jobs.models import (
 
 logger = logging.getLogger(__name__)
 
+
 def parse_date(date_str: str | None) -> Optional[datetime]:
     if not date_str:
         return None
@@ -29,11 +31,12 @@ def parse_date(date_str: str | None) -> Optional[datetime]:
     except ValueError:
         return None
 
+
 def transform_job_data(
     light_job: Dict[str, Any],
     detail_job: Optional[Dict[str, Any]],
     source_name: str,
-    include_raw_data: bool = False
+    include_raw_data: bool = False,
 ) -> JobListing | None:
     """
     Transforms Adecco API JSON dictionaries into a standardized JobListing.
@@ -51,10 +54,14 @@ def transform_job_data(
         # 2. Company Info
         # Adecco often hides the company or acts as the agency.
         company_name = primary_source.get("companyName")
-        company = CompanyInfo(
-            name=company_name,
-            is_agency=True  # Adecco is an agency
-        ) if company_name else CompanyInfo(name="Adecco", is_agency=True)
+        company = (
+            CompanyInfo(
+                name=company_name,
+                is_agency=True,  # Adecco is an agency
+            )
+            if company_name
+            else CompanyInfo(name="Adecco", is_agency=True)
+        )
 
         # 3. Location
         country_raw = light_job.get("countryId", "CH")
@@ -97,7 +104,7 @@ def transform_job_data(
             start_date=start_date,
             work_forms=work_forms,
             workload_min=wmin,
-            workload_max=wmax
+            workload_max=wmax,
         )
 
         # 5. Descriptions
@@ -108,11 +115,7 @@ def transform_job_data(
             lang = lang_code_str.split("-")[0] if "-" in lang_code_str else "en"
 
             descriptions.append(
-                JobDescription(
-                    language_code=lang,
-                    title="Job Description",
-                    description=desc_html
-                )
+                JobDescription(language_code=lang, title="Job Description", description=desc_html)
             )
 
         # 6. Contact and Application
@@ -124,9 +127,7 @@ def transform_job_data(
             last = parts[1] if len(parts) > 1 else None
 
             contact = ContactInfo(
-                first_name=first,
-                last_name=last,
-                email=primary_source.get("recruiterEmail")
+                first_name=first, last_name=last, email=primary_source.get("recruiterEmail")
             )
 
         application = None
@@ -139,10 +140,7 @@ def transform_job_data(
 
         raw_data = None
         if include_raw_data:
-            raw_data = {
-                "light": light_job,
-                "detail": detail_job
-            }
+            raw_data = {"light": light_job, "detail": detail_job}
 
         return JobListing(
             id=job_id,
@@ -157,7 +155,7 @@ def transform_job_data(
             contact=contact,
             application=application,
             created_at=created_at,
-            raw_data=raw_data
+            raw_data=raw_data,
         )
     except ValidationError as e:
         logger.warning(f"Validation error transforming Adecco job {job_id}: {e}")

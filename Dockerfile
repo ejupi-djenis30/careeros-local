@@ -54,7 +54,7 @@ USER appuser
 EXPOSE 8000
 
 # Run with gunicorn for production, uvicorn worker
-# NOTE: Workers must be set to 1! If increased, APScheduler will spawn 
+# NOTE: Workers must be set to 1! If increased, APScheduler will spawn
 # duplicate search jobs in each worker process, leading to repeated queries.
 CMD ["gunicorn", "backend.main:app", \
     "--worker-class", "uvicorn.workers.UvicornWorker", \

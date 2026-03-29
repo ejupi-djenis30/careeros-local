@@ -6,22 +6,25 @@ Covers:
 - compute_salary_benchmark: not enough data returns None, statistics
 - _persist: missing user is a no-op
 """
-import pytest
-from unittest.mock import MagicMock, patch, call
-from collections import Counter
+
+from unittest.mock import MagicMock
 
 from backend.services.preference_service import (
     compute_and_save_preferences,
-    get_preference_signals,
     compute_salary_benchmark,
+    get_preference_signals,
 )
-
 
 # ─── Helpers ─────────────────────────────────────────────────────────────────
 
+
 def _make_scraped_job(
-    domain=None, role_type=None, seniority=None,
-    salary_min=None, salary_max=None, required_skills=None
+    domain=None,
+    role_type=None,
+    seniority=None,
+    salary_min=None,
+    salary_max=None,
+    required_skills=None,
 ):
     sj = MagicMock()
     sj.normalized_domain = domain
@@ -34,8 +37,11 @@ def _make_scraped_job(
 
 
 def _make_job(
-    applied=False, dismissed=False,
-    feedback_signal=None, distance_km=None, scraped_job=None,
+    applied=False,
+    dismissed=False,
+    feedback_signal=None,
+    distance_km=None,
+    scraped_job=None,
 ):
     job = MagicMock()
     job.applied = applied
@@ -62,8 +68,8 @@ def _make_db(jobs=None, user=None):
     user_query.first.return_value = user
 
     def _query_side_effect(model):
-        from backend.models.job import Job
         from backend.models.user import User
+
         if model is User:
             return user_query
         return query_chain
@@ -73,6 +79,7 @@ def _make_db(jobs=None, user=None):
 
 
 # ─── compute_and_save_preferences ─────────────────────────────────────────────
+
 
 class TestComputeAndSavePreferences:
     def test_returns_signals_dict(self):
@@ -124,8 +131,9 @@ class TestComputeAndSavePreferences:
 
     def test_dealbreaker_patterns_from_dismissed_jobs(self):
         jobs = [
-            _make_job(dismissed=True, feedback_signal="bad_salary",
-                      scraped_job=_make_scraped_job()),
+            _make_job(
+                dismissed=True, feedback_signal="bad_salary", scraped_job=_make_scraped_job()
+            ),
         ]
         user = MagicMock()
         db = _make_db(jobs=jobs, user=user)
@@ -167,6 +175,7 @@ class TestComputeAndSavePreferences:
 
 # ─── get_preference_signals ────────────────────────────────────────────────────
 
+
 class TestGetPreferenceSignals:
     def test_returns_none_when_user_not_found(self):
         db = MagicMock()
@@ -177,7 +186,6 @@ class TestGetPreferenceSignals:
         assert get_preference_signals(999, db) is None
 
     def test_returns_none_when_signal_count_below_min(self):
-        from backend.core.config import settings
         user = MagicMock()
         user.preference_signals = {"signal_count": 0}
         db = MagicMock()
@@ -190,6 +198,7 @@ class TestGetPreferenceSignals:
 
     def test_returns_signals_when_count_meets_min(self):
         from backend.core.config import settings
+
         user = MagicMock()
         min_count = settings.PREFERENCE_MIN_SIGNAL_COUNT
         user.preference_signals = {"signal_count": min_count, "preferred_domains": ["it"]}
@@ -204,6 +213,7 @@ class TestGetPreferenceSignals:
 
 
 # ─── compute_salary_benchmark ─────────────────────────────────────────────────
+
 
 class TestComputeSalaryBenchmark:
     def _make_db_with_salaries(self, salaries):

@@ -1,7 +1,10 @@
+from unittest.mock import AsyncMock, MagicMock, patch
+
 import pytest
-from unittest.mock import MagicMock, AsyncMock, patch
 from tenacity import RetryError
+
 from backend.services.llm_service import LLMService
+
 
 @pytest.fixture
 def mock_provider():
@@ -13,10 +16,12 @@ def mock_provider():
     provider.generate_json_async_with_timeout = provider.generate_json_async
     return provider
 
+
 @pytest.fixture
 def llm_service(mock_provider):
     with patch("backend.services.llm_service.get_provider_for_step", return_value=mock_provider):
         return LLMService()
+
 
 @pytest.mark.asyncio
 async def test_generate_search_plan_success(mock_provider):
@@ -28,7 +33,11 @@ async def test_generate_search_plan_success(mock_provider):
 
     with patch("backend.services.llm_service.get_provider_for_step", return_value=mock_provider):
         service = LLMService()
-        profile = {"role_description": "Dev", "search_strategy": "Be aggressive", "cv_content": "Experienced"}
+        profile = {
+            "role_description": "Dev",
+            "search_strategy": "Be aggressive",
+            "cv_content": "Experienced",
+        }
         providers = [{"name": "swissdevjobs", "description": "IT jobs"}]
 
         plan = await service.generate_search_plan(profile, providers, max_queries=1)
@@ -36,6 +45,7 @@ async def test_generate_search_plan_success(mock_provider):
         assert len(plan) == 1
         assert plan[0]["query"] == "Software Engineer"
         mock_provider.generate_json_async.assert_called_once()
+
 
 @pytest.mark.asyncio
 async def test_generate_search_plan_error(mock_provider):
@@ -52,16 +62,30 @@ async def test_each_method_calls_correct_step(mock_provider):
     """Verify each method dispatches to the correct pipeline step."""
     mock_provider.generate_json_async.return_value = {"searches": []}
 
-    with patch("backend.services.llm_service.get_provider_for_step", return_value=mock_provider) as mock_factory:
+    with patch(
+        "backend.services.llm_service.get_provider_for_step", return_value=mock_provider
+    ) as mock_factory:
         service = LLMService()
 
-        await service.generate_search_plan({"role_description": "X", "search_strategy": "", "cv_content": ""}, [])
+        await service.generate_search_plan(
+            {"role_description": "X", "search_strategy": "", "cv_content": ""}, []
+        )
         mock_factory.assert_called_with("plan")
 
         mock_factory.reset_mock()
-        mock_provider.generate_json_async.return_value = {"results": [{"relevant": True, "affinity_score": 50, "affinity_analysis": "", "worth_applying": False}]}
+        mock_provider.generate_json_async.return_value = {
+            "results": [
+                {
+                    "relevant": True,
+                    "affinity_score": 50,
+                    "affinity_analysis": "",
+                    "worth_applying": False,
+                }
+            ]
+        }
         await service.analyze_job_batch([{}], {})
         mock_factory.assert_called_with("match")
+
 
 @pytest.mark.asyncio
 async def test_generate_search_plan_respects_max_queries(mock_provider):
@@ -77,6 +101,7 @@ async def test_generate_search_plan_respects_max_queries(mock_provider):
         service = LLMService()
         plan = await service.generate_search_plan({}, [], max_queries=3)
         assert len(plan) == 3
+
 
 @pytest.mark.asyncio
 async def test_generate_search_plan_single_shot_returns_all(mock_provider):
@@ -102,6 +127,7 @@ async def test_generate_search_plan_single_shot_returns_all(mock_provider):
         assert len(plan) == 4
         assert mock_provider.generate_json_async.call_count == 1
 
+
 @pytest.mark.asyncio
 async def test_generate_search_plan_partial_result_accepted(mock_provider):
     """When LLM returns fewer queries than requested, the partial result is accepted."""
@@ -124,64 +150,67 @@ async def test_generate_search_plan_partial_result_accepted(mock_provider):
         assert len(plan) == 1
         assert mock_provider.generate_json_async.call_count == 1
 
+
 @pytest.mark.asyncio
 async def test_summarize_cv_success(mock_provider):
     mock_provider.generate_text_async.return_value = "- Experience: 5 years\n- Skills: Python"
-    
+
     with patch("backend.services.llm_service.get_provider_for_step", return_value=mock_provider):
         service = LLMService()
         summary = await service.summarize_cv("Lorem ipsum CV content...")
-        
+
         assert summary == "- Experience: 5 years\n- Skills: Python"
-        
+
         call_args = mock_provider.generate_text_async.call_args[0]
         sys_prompt = call_args[0]
         user_prompt = call_args[1]
-        
+
         assert "HR analyst" in sys_prompt
         assert "Lorem ipsum" in user_prompt
         assert "Education" in user_prompt
+
 
 @pytest.mark.asyncio
 async def test_analyze_job_batch_success(mock_provider):
     mock_provider.generate_json_async.return_value = {
         "results": [
             {"affinity_score": 85, "worth_applying": True},
-            {"affinity_score": 10, "worth_applying": False}
+            {"affinity_score": 10, "worth_applying": False},
         ]
     }
-    
+
     with patch("backend.services.llm_service.get_provider_for_step", return_value=mock_provider):
         service = LLMService()
         jobs = [
             {"title": "Dev", "company": "A", "location": "Remote", "description": "Good job"},
-            {"title": "Chef", "company": "B", "location": "Paris", "description": "Cooking"}
+            {"title": "Chef", "company": "B", "location": "Paris", "description": "Cooking"},
         ]
         profile = {
             "role_description": "Developer",
             "search_strategy": "Only remote",
-            "cv_summary": "5 years dev"
+            "cv_summary": "5 years dev",
         }
-        
+
         results = await service.analyze_job_batch(jobs, profile)
-        
+
         assert len(results) == 2
         assert results[0]["affinity_score"] == 85
         assert results[1]["affinity_score"] == 10
-        
+
         call_args = mock_provider.generate_json_async.call_args[0]
         sys_prompt = call_args[0]
         user_prompt = call_args[1]
-        
+
         assert "career coach AI" in sys_prompt
         assert "Only remote" in user_prompt
         assert "Good job" in user_prompt
         assert "Cooking" in user_prompt
 
+
 @pytest.mark.asyncio
 async def test_analyze_job_batch_fallback_empty_dict(mock_provider):
-    mock_provider.generate_json_async.return_value = {} # Malformed response
-    
+    mock_provider.generate_json_async.return_value = {}  # Malformed response
+
     with patch("backend.services.llm_service.get_provider_for_step", return_value=mock_provider):
         service = LLMService()
         results = await service.analyze_job_batch([{"title": "T"}], {"role_description": "R"})
@@ -217,9 +246,9 @@ async def test_normalize_job_batch_success(mock_provider):
 
     with patch("backend.services.llm_service.get_provider_for_step", return_value=mock_provider):
         service = LLMService()
-        results = await service.normalize_job_batch([
-            {"title": "Senior Backend Engineer", "description": "Python FastAPI role"}
-        ])
+        results = await service.normalize_job_batch(
+            [{"title": "Senior Backend Engineer", "description": "Python FastAPI role"}]
+        )
 
     assert len(results) == 1
     assert results[0]["domain"] == "it"
@@ -233,16 +262,20 @@ async def test_normalize_job_batch_pads_invalid_rows(mock_provider):
 
     with patch("backend.services.llm_service.get_provider_for_step", return_value=mock_provider):
         service = LLMService()
-        results = await service.normalize_job_batch([
-            {"title": "A", "description": "x"},
-            {"title": "B", "description": "y"},
-        ])
+        results = await service.normalize_job_batch(
+            [
+                {"title": "A", "description": "x"},
+                {"title": "B", "description": "y"},
+            ]
+        )
 
     assert len(results) == 2
     assert results[0]["domain"] == "general"
     assert results[1]["domain"] == "general"
 
+
 # ─── Feature 4: Query Count Retry Enforcement Tests ───────────────────────────
+
 
 @pytest.mark.asyncio
 async def test_generate_search_plan_with_strict_occupation_keyword_split(mock_provider):
@@ -254,7 +287,7 @@ async def test_generate_search_plan_with_strict_occupation_keyword_split(mock_pr
             {"domain": "it", "type": "keyword", "query": "Python"},
         ]
     }
-    
+
     with patch("backend.services.llm_service.get_provider_for_step", return_value=mock_provider):
         service = LLMService()
         plan = await service.generate_search_plan(
@@ -263,13 +296,14 @@ async def test_generate_search_plan_with_strict_occupation_keyword_split(mock_pr
             max_occupation_queries=2,
             max_keyword_queries=1,
         )
-        
+
         assert len(plan) == 3
-        
+
         call_args = mock_provider.generate_json_async.call_args[0]
         user_prompt = call_args[1]
         assert "EXACTLY 2" in user_prompt
         assert "EXACTLY 1" in user_prompt
+
 
 @pytest.mark.asyncio
 async def test_generate_search_plan_accepts_wrong_counts_without_retry(mock_provider):
@@ -282,43 +316,48 @@ async def test_generate_search_plan_accepts_wrong_counts_without_retry(mock_prov
         ]
     }
     mock_provider.generate_json_async.return_value = wrong_response
-    
+
     with patch("backend.services.llm_service.get_provider_for_step", return_value=mock_provider):
         service = LLMService()
-        
+
         plan = await service.generate_search_plan(
             {"role_description": "Dev", "search_strategy": "", "cv_content": ""},
             [],
             max_occupation_queries=2,
             max_keyword_queries=1,
         )
-        
+
         assert mock_provider.generate_json_async.call_count == 1
         assert len(plan) == 3
+
 
 @pytest.mark.asyncio
 async def test_generate_search_plan_accepts_first_attempt(mock_provider):
     """Verify that the system accepts the first result even if counts are wrong, skipping retries."""
-    wrong_call = {"searches": [
-        {"domain": "it", "type": "occupation", "query": "Dev 1"},
-        {"domain": "it", "type": "occupation", "query": "Dev 2"},
-    ]}
-    correct_call = {"searches": [
-        {"domain": "it", "type": "occupation", "query": "Dev 1"},
-        {"domain": "it", "type": "keyword", "query": "Python"},
-    ]}
+    wrong_call = {
+        "searches": [
+            {"domain": "it", "type": "occupation", "query": "Dev 1"},
+            {"domain": "it", "type": "occupation", "query": "Dev 2"},
+        ]
+    }
+    correct_call = {
+        "searches": [
+            {"domain": "it", "type": "occupation", "query": "Dev 1"},
+            {"domain": "it", "type": "keyword", "query": "Python"},
+        ]
+    }
     mock_provider.generate_json_async.side_effect = [wrong_call, correct_call]
-    
+
     with patch("backend.services.llm_service.get_provider_for_step", return_value=mock_provider):
         service = LLMService()
-        
+
         plan = await service.generate_search_plan(
             {"role_description": "Dev", "search_strategy": "", "cv_content": ""},
             [],
             max_occupation_queries=1,
             max_keyword_queries=1,
         )
-        
+
         # Should stop after 1st call even if it technically didn't meet the split ratio
         # (Though in this specific case, total_target is 2, and it got 2 results, so it stops)
         assert mock_provider.generate_json_async.call_count == 1
@@ -346,7 +385,9 @@ async def test_call_generate_search_plan_accepts_queries_alias(mock_provider):
 
 
 @pytest.mark.asyncio
-async def test_call_generate_search_plan_prefers_canonical_searches_over_legacy_alias(mock_provider):
+async def test_call_generate_search_plan_prefers_canonical_searches_over_legacy_alias(
+    mock_provider,
+):
     """Use canonical 'searches' when both canonical and legacy keys are present."""
     mock_provider.generate_json_async.return_value = {
         "searches": [
@@ -409,21 +450,30 @@ async def test_call_generate_search_plan_raises_on_invalid_payload(mock_provider
 @pytest.mark.asyncio
 async def test_generate_search_plan_returns_partial_if_later_batch_fails(mock_provider):
     """If a later batch fails (rate limit/error), return already collected queries instead of raising."""
-    with patch("backend.services.llm_service.get_provider_for_step", return_value=mock_provider), \
-         patch("backend.services.llm_service.settings") as mock_settings:
+    with (
+        patch("backend.services.llm_service.get_provider_for_step", return_value=mock_provider),
+        patch("backend.services.llm_service.settings") as mock_settings,
+    ):
         mock_settings.LLM_SUMMARY_PROVIDER = ""
         mock_settings.LLM_SUMMARY_API_KEY = ""
         mock_settings.LLM_SUMMARY_MODEL = ""
         mock_settings.SEARCH_PLAN_BATCH_SIZE = 2
 
         service = LLMService()
-        service._call_generate_search_plan = AsyncMock(side_effect=[
-            [
-                {"domain": "it", "language": "en", "type": "occupation", "query": "Backend Engineer"},
-                {"domain": "it", "language": "en", "type": "keyword", "query": "Python"},
-            ],
-            Exception("rate_limit_exceeded"),
-        ])
+        service._call_generate_search_plan = AsyncMock(
+            side_effect=[
+                [
+                    {
+                        "domain": "it",
+                        "language": "en",
+                        "type": "occupation",
+                        "query": "Backend Engineer",
+                    },
+                    {"domain": "it", "language": "en", "type": "keyword", "query": "Python"},
+                ],
+                Exception("rate_limit_exceeded"),
+            ]
+        )
 
         plan = await service.generate_search_plan(
             {"role_description": "Python developer", "search_strategy": "", "cv_content": "Python"},
@@ -438,21 +488,30 @@ async def test_generate_search_plan_returns_partial_if_later_batch_fails(mock_pr
 @pytest.mark.asyncio
 async def test_generate_search_plan_uses_best_partial_batch_on_error(mock_provider):
     """If current batch has a best candidate set then a later retry fails, keep the best batch instead of raising."""
-    with patch("backend.services.llm_service.get_provider_for_step", return_value=mock_provider), \
-         patch("backend.services.llm_service.settings") as mock_settings:
+    with (
+        patch("backend.services.llm_service.get_provider_for_step", return_value=mock_provider),
+        patch("backend.services.llm_service.settings") as mock_settings,
+    ):
         mock_settings.LLM_SUMMARY_PROVIDER = ""
         mock_settings.LLM_SUMMARY_API_KEY = ""
         mock_settings.LLM_SUMMARY_MODEL = ""
         mock_settings.SEARCH_PLAN_BATCH_SIZE = 2
 
         service = LLMService()
-        service._call_generate_search_plan = AsyncMock(side_effect=[
-            [
-                {"domain": "it", "language": "en", "type": "occupation", "query": "Backend Engineer"},
-                {"domain": "it", "language": "en", "type": "keyword", "query": "Python"},
-            ],
-            Exception("rate_limit_exceeded"),
-        ])
+        service._call_generate_search_plan = AsyncMock(
+            side_effect=[
+                [
+                    {
+                        "domain": "it",
+                        "language": "en",
+                        "type": "occupation",
+                        "query": "Backend Engineer",
+                    },
+                    {"domain": "it", "language": "en", "type": "keyword", "query": "Python"},
+                ],
+                Exception("rate_limit_exceeded"),
+            ]
+        )
 
         plan = await service.generate_search_plan(
             {"role_description": "Python developer", "search_strategy": "", "cv_content": "Python"},
@@ -467,8 +526,18 @@ async def test_generate_search_plan_uses_best_partial_batch_on_error(mock_provid
 
 def test_normalize_searches_infers_type_and_normalizes_fields(llm_service):
     searches = [
-        {"query": "  React  Developer 100% ", "type": "", "domain": "IT / Software", "language": "English"},
-        {"query": "React Developer", "type": "occupation", "domain": "it-software", "language": "en"},
+        {
+            "query": "  React  Developer 100% ",
+            "type": "",
+            "domain": "IT / Software",
+            "language": "English",
+        },
+        {
+            "query": "React Developer",
+            "type": "occupation",
+            "domain": "it-software",
+            "language": "en",
+        },
     ]
 
     normalized = llm_service._normalize_searches(searches)
@@ -508,8 +577,10 @@ def test_normalize_searches_loose_dedup_can_be_disabled(llm_service):
 @pytest.mark.asyncio
 async def test_generate_search_plan_batch_stops_after_stall(mock_provider):
     """Verify the system terminates early if a batch produces no new unique queries, instead of rescuing."""
-    with patch("backend.services.llm_service.get_provider_for_step", return_value=mock_provider), \
-         patch("backend.services.llm_service.settings") as mock_settings:
+    with (
+        patch("backend.services.llm_service.get_provider_for_step", return_value=mock_provider),
+        patch("backend.services.llm_service.settings") as mock_settings,
+    ):
         mock_settings.SEARCH_PLAN_BATCH_SIZE = 2
         mock_settings.SEARCH_PLAN_ENABLE_LOOSE_DEDUP = True
 
@@ -529,6 +600,7 @@ async def test_generate_search_plan_batch_stops_after_stall(mock_provider):
 
 
 # ─── Dual-signal normalize_user_profile tests ────────────────────────────────
+
 
 @pytest.mark.asyncio
 async def test_normalize_user_profile_dual_signal_output(mock_provider):
@@ -623,6 +695,7 @@ async def test_normalize_user_profile_open_to_unrelated_defaults_false(mock_prov
 
 # ─── analyze_job_batch dimensional sub-score tests ───────────────────────────
 
+
 @pytest.mark.asyncio
 async def test_analyze_job_batch_returns_dimensional_subscores(mock_provider):
     """analyze_job_batch must propagate all 5 dimensional sub-scores from LLM output."""
@@ -681,6 +754,7 @@ async def test_analyze_job_batch_subscores_default_to_none_on_fallback(mock_prov
 
 # ─── normalize_job_batch role_type and industry_sector tests ─────────────────
 
+
 @pytest.mark.asyncio
 async def test_normalize_job_batch_returns_role_type_and_industry_sector(mock_provider):
     """normalize_job_batch must propagate role_type and industry_sector from LLM output."""
@@ -712,9 +786,9 @@ async def test_normalize_job_batch_returns_role_type_and_industry_sector(mock_pr
 
     with patch("backend.services.llm_service.get_provider_for_step", return_value=mock_provider):
         service = LLMService()
-        results = await service.normalize_job_batch([
-            {"title": "Warehouse Packer", "description": "Packing boxes in a warehouse"}
-        ])
+        results = await service.normalize_job_batch(
+            [{"title": "Warehouse Packer", "description": "Packing boxes in a warehouse"}]
+        )
 
     assert len(results) == 1
     assert results[0]["role_type"] == "manual"
@@ -752,8 +826,8 @@ async def test_normalize_job_batch_invalid_role_type_coerced_to_none(mock_provid
 
     with patch("backend.services.llm_service.get_provider_for_step", return_value=mock_provider):
         service = LLMService()
-        results = await service.normalize_job_batch([
-            {"title": "Specialist", "description": "unclear role"}
-        ])
+        results = await service.normalize_job_batch(
+            [{"title": "Specialist", "description": "unclear role"}]
+        )
 
     assert results[0].get("role_type") is None

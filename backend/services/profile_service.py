@@ -70,7 +70,9 @@ def _coerce_preference_value(field: str, value: Any) -> Any:
     return None
 
 
-def _extract_advanced_preferences(data: Dict[str, Any], existing: Dict[str, Any] | None = None) -> tuple[Dict[str, Any], Dict[str, Any] | None]:
+def _extract_advanced_preferences(
+    data: Dict[str, Any], existing: Dict[str, Any] | None = None
+) -> tuple[Dict[str, Any], Dict[str, Any] | None]:
     base = dict(existing or {})
     extracted: Dict[str, Any] = {}
     for field in _PREFERENCE_FIELDS:
@@ -102,7 +104,9 @@ class ProfileService:
         if name:
             existing = self.repo.get_by_user(user_id)
             if any(p.name and p.name.strip().lower() == name.lower() for p in existing):
-                raise HTTPException(status_code=409, detail=f"A search with the name '{name}' already exists.")
+                raise HTTPException(
+                    status_code=409, detail=f"A search with the name '{name}' already exists."
+                )
 
         return self.repo.create(data)
 
@@ -151,6 +155,7 @@ class ProfileService:
 
         # Actually add/remove the APScheduler job
         from backend.services.scheduler import add_schedule, remove_schedule
+
         if schedule.enabled:
             interval = schedule.interval_hours or updated_profile.schedule_interval_hours or 24
             add_schedule(profile_id, interval)
@@ -168,12 +173,14 @@ class ProfileService:
 
         from backend.services.scheduler import remove_schedule
         from backend.services.search_status import clear_status, release_task
+
         remove_schedule(profile_id)
         # Release any in-flight reservation so the profile_id slot doesn't block forever
         release_task(profile_id)
         clear_status(profile_id)
 
         self.repo.delete(profile_id)
+
 
 def get_profile_service(db: Session) -> ProfileService:
     return ProfileService(db)

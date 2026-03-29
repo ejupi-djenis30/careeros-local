@@ -1,4 +1,3 @@
-
 from sqlalchemy import (
     JSON,
     Boolean,
@@ -20,7 +19,7 @@ from backend.models.base_model import BaseModel, TimestampMixin
 class ScrapedJob(BaseModel, TimestampMixin):
     __tablename__ = "scraped_jobs"
     __table_args__ = (
-        UniqueConstraint('platform', 'platform_job_id', name='uq_scraped_job_platform_id'),
+        UniqueConstraint("platform", "platform_job_id", name="uq_scraped_job_platform_id"),
     )
 
     platform = Column(String, index=True, nullable=False)
@@ -51,8 +50,10 @@ class ScrapedJob(BaseModel, TimestampMixin):
     normalized_title = Column(String, nullable=True)
     normalized_role_family = Column(String, nullable=True, index=True)
     normalized_domain = Column(String, nullable=True, index=True)
-    normalized_industry_sector = Column(String, nullable=True)          # granular sector within domain
-    normalized_role_type = Column(String, nullable=True, index=True)    # technical | manual | administrative | creative | managerial | service | professional
+    normalized_industry_sector = Column(String, nullable=True)  # granular sector within domain
+    normalized_role_type = Column(
+        String, nullable=True, index=True
+    )  # technical | manual | administrative | creative | managerial | service | professional
     normalized_seniority = Column(String, nullable=True, index=True)
     normalized_employment_mode = Column(String, nullable=True, index=True)
     normalized_contract_type = Column(String, nullable=True, index=True)
@@ -65,12 +66,20 @@ class ScrapedJob(BaseModel, TimestampMixin):
     normalized_salary_max_chf = Column(Integer, nullable=True)
     normalized_required_languages = Column(JSON, nullable=True)
     normalized_required_skills = Column(JSON, nullable=True)
-    normalized_preferred_skills = Column(JSON, nullable=True)        # nice-to-have skills ("von Vorteil", "ideally")
-    normalized_soft_skills = Column(JSON, nullable=True)             # interpersonal/organizational skills
-    normalized_physical_requirements = Column(JSON, nullable=True)   # physical demands for manual jobs
-    normalized_entry_barrier = Column(String, nullable=True)         # none|low|medium|high — overall accessibility
-    normalized_career_changer_friendly = Column(Boolean, nullable=True)  # true if Quereinsteiger willkommen / training provided
-    normalized_hard_blockers = Column(JSON, nullable=True)           # absolute non-negotiable requirements
+    normalized_preferred_skills = Column(
+        JSON, nullable=True
+    )  # nice-to-have skills ("von Vorteil", "ideally")
+    normalized_soft_skills = Column(JSON, nullable=True)  # interpersonal/organizational skills
+    normalized_physical_requirements = Column(
+        JSON, nullable=True
+    )  # physical demands for manual jobs
+    normalized_entry_barrier = Column(
+        String, nullable=True
+    )  # none|low|medium|high — overall accessibility
+    normalized_career_changer_friendly = Column(
+        Boolean, nullable=True
+    )  # true if Quereinsteiger willkommen / training provided
+    normalized_hard_blockers = Column(JSON, nullable=True)  # absolute non-negotiable requirements
     normalized_education_levels = Column(JSON, nullable=True)
     normalized_key_requirements = Column(JSON, nullable=True)
     normalized_metadata = Column(JSON, nullable=True)
@@ -126,13 +135,17 @@ class ScrapedJob(BaseModel, TimestampMixin):
 class Job(BaseModel, TimestampMixin):
     __tablename__ = "jobs"
     __table_args__ = (
-        UniqueConstraint('user_id', 'scraped_job_id', 'search_profile_id', name='uq_job_user_scraped_profile'),
-        Index('ix_job_user_profile', 'user_id', 'search_profile_id'),
+        UniqueConstraint(
+            "user_id", "scraped_job_id", "search_profile_id", name="uq_job_user_scraped_profile"
+        ),
+        Index("ix_job_user_profile", "user_id", "search_profile_id"),
     )
 
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
     search_profile_id = Column(Integer, ForeignKey("search_profiles.id"), nullable=True, index=True)
-    scraped_job_id = Column(Integer, ForeignKey("scraped_jobs.id", ondelete="CASCADE"), nullable=False, index=True)
+    scraped_job_id = Column(
+        Integer, ForeignKey("scraped_jobs.id", ondelete="CASCADE"), nullable=False, index=True
+    )
 
     # AI Analysis (User-specific match)
     affinity_score = Column(Float)
@@ -140,19 +153,25 @@ class Job(BaseModel, TimestampMixin):
     worth_applying = Column(Boolean, default=False)
 
     # Dimensional sub-scores (from advanced MATCH step)
-    skill_match_score = Column(Float, nullable=True)        # 0-100: technical/domain skill alignment
-    experience_match_score = Column(Float, nullable=True)   # 0-100: experience level fit
-    intent_match_score = Column(Float, nullable=True)       # 0-100: job fits what the user WANTS
-    language_match_score = Column(Float, nullable=True)     # 0-100: language requirements fit
-    location_match_score = Column(Float, nullable=True)     # 0-100: location/remote preference fit
-    transferability_score = Column(Float, nullable=True)    # 0-100: how well existing skills transfer to this job
-    qualification_gap_score = Column(Float, nullable=True)  # 0-100: qualification relevance for this specific job
+    skill_match_score = Column(Float, nullable=True)  # 0-100: technical/domain skill alignment
+    experience_match_score = Column(Float, nullable=True)  # 0-100: experience level fit
+    intent_match_score = Column(Float, nullable=True)  # 0-100: job fits what the user WANTS
+    language_match_score = Column(Float, nullable=True)  # 0-100: language requirements fit
+    location_match_score = Column(Float, nullable=True)  # 0-100: location/remote preference fit
+    transferability_score = Column(
+        Float, nullable=True
+    )  # 0-100: how well existing skills transfer to this job
+    qualification_gap_score = Column(
+        Float, nullable=True
+    )  # 0-100: qualification relevance for this specific job
 
     # Structured per-dimension analysis and gap analysis (Phase 5)
-    analysis_structured = Column(JSON, nullable=True)       # {strengths, weaknesses, gaps, verdict, evidence_citations}
+    analysis_structured = Column(
+        JSON, nullable=True
+    )  # {strengths, weaknesses, gaps, verdict, evidence_citations}
 
     # Red flags detected in job description (Phase 4)
-    red_flags = Column(JSON, nullable=True)                 # list of flag strings / {type, description} dicts
+    red_flags = Column(JSON, nullable=True)  # list of flag strings / {type, description} dicts
 
     # Distance from search origin (km)
     distance_km = Column(Float, nullable=True)

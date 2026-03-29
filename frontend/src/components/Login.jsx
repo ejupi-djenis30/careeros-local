@@ -41,8 +41,8 @@ export function Login() {
 
             <div className="glass-panel p-5 animate-slide-up position-relative" style={{ width: "100%", maxWidth: 420 }}>
                 <div className="text-center mb-5">
-                    <div className="d-inline-flex align-items-center justify-content-center rounded-circle mb-4" 
-                         style={{ 
+                    <div className="d-inline-flex align-items-center justify-content-center rounded-circle mb-4"
+                         style={{
                              width: 80, height: 80,
                              background: 'linear-gradient(135deg, rgba(79, 70, 229, 0.2), rgba(139, 92, 246, 0.2))',
                              border: '1px solid rgba(255,255,255,0.1)',

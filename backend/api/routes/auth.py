@@ -20,7 +20,9 @@ router = APIRouter()
 
 @router.post("/register", response_model=Token)
 @limiter.limit("5/minute")
-def register(request: Request, response: Response, user_in: UserCreate, db: Session = Depends(get_db)):
+def register(
+    request: Request, response: Response, user_in: UserCreate, db: Session = Depends(get_db)
+):
     user_repo = UserRepository(db)
     if user_repo.get_by_username(user_in.username):
         raise HTTPException(
@@ -46,7 +48,12 @@ def register(request: Request, response: Response, user_in: UserCreate, db: Sess
 
 @router.post("/login", response_model=Token)
 @limiter.limit("10/minute")
-def login(request: Request, response: Response, form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
+def login(
+    request: Request,
+    response: Response,
+    form_data: OAuth2PasswordRequestForm = Depends(),
+    db: Session = Depends(get_db),
+):
     user_repo = UserRepository(db)
     user = user_repo.get_by_username(form_data.username)
     # Always call verify_password even when user is None to prevent username
@@ -76,7 +83,12 @@ def login(request: Request, response: Response, form_data: OAuth2PasswordRequest
 
 @router.post("/refresh", response_model=Token)
 @limiter.limit("20/minute")
-def refresh(request: Request, response: Response, jh_refresh_token: str | None = Cookie(None), db: Session = Depends(get_db)):
+def refresh(
+    request: Request,
+    response: Response,
+    jh_refresh_token: str | None = Cookie(None),
+    db: Session = Depends(get_db),
+):
     if not jh_refresh_token:
         raise HTTPException(status_code=401, detail="Refresh token missing")
     payload = decode_refresh_token(jh_refresh_token)
@@ -105,5 +117,10 @@ def refresh(request: Request, response: Response, jh_refresh_token: str | None =
 
 @router.post("/logout")
 def logout(response: Response):
-    response.delete_cookie("jh_refresh_token", httponly=True, samesite="lax", secure=settings.ENVIRONMENT == "production")
+    response.delete_cookie(
+        "jh_refresh_token",
+        httponly=True,
+        samesite="lax",
+        secure=settings.ENVIRONMENT == "production",
+    )
     return {"message": "Logged out successfully"}

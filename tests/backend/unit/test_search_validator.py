@@ -1,6 +1,7 @@
-import pytest
 from types import SimpleNamespace
+
 from backend.services.search.search_validator import build_search_request
+
 
 def test_build_search_request_workload_and_distance():
     profile = SimpleNamespace(
@@ -10,14 +11,15 @@ def test_build_search_request_workload_and_distance():
         max_distance="20",
         contract_type="temporary",
         location_filter="Bern",
-        posted_within_days=7
+        posted_within_days=7,
     )
     req = build_search_request(profile, "dev", ["123"])
     assert req.workload_min == 80
     assert req.workload_max == 100
     assert req.radius_search.distance == 20
     assert req.contract_type.value == "temporary"
-    
+
+
 def test_build_search_request_workload_single_and_no_max_distance():
     profile = SimpleNamespace(
         workload_filter="50",
@@ -25,17 +27,18 @@ def test_build_search_request_workload_single_and_no_max_distance():
         longitude=8.0,
         contract_type="unknown",
         location_filter=None,
-        posted_within_days=None
+        posted_within_days=None,
     )
     # Simulate missing max_distance
     # Profile created without max_distance
-    
+
     req = build_search_request(profile, "dev")
     assert req.workload_min == 50
     assert req.workload_max == 50
-    assert req.radius_search.distance == 50 # default
+    assert req.radius_search.distance == 50  # default
     assert req.contract_type.value == "any"
-    
+
+
 def test_build_search_request_workload_value_error():
     profile = SimpleNamespace(
         workload_filter="invalid-string",
@@ -44,10 +47,10 @@ def test_build_search_request_workload_value_error():
         contract_type=None,
         location_filter=None,
         posted_within_days=None,
-        max_distance=None
+        max_distance=None,
     )
     req = build_search_request(profile, "dev")
-    assert req.workload_min == 0 # Default fallback
+    assert req.workload_min == 0  # Default fallback
 
 
 def test_build_search_request_hard_preferences_override_defaults():

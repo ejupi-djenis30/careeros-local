@@ -7,6 +7,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 # Job Schemas
 # ═══════════════════════════════════════
 
+
 class JobBase(BaseModel):
     title: str
     company: str
@@ -45,13 +46,20 @@ class JobCreate(JobBase):
 
 
 FEEDBACK_SIGNAL_VALUES = {
-    "too_senior", "too_junior", "wrong_domain", "bad_salary",
-    "bad_location", "not_interested", "already_applied", "other",
+    "too_senior",
+    "too_junior",
+    "wrong_domain",
+    "bad_salary",
+    "bad_location",
+    "not_interested",
+    "already_applied",
+    "other",
 }
 
 
 class JobUpdate(BaseModel):
     """Update schema — only allows updating user-specific interaction flags."""
+
     applied: Optional[bool] = None
     dismissed: Optional[bool] = None
     feedback_signal: Optional[str] = None

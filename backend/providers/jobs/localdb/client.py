@@ -18,6 +18,7 @@ from backend.providers.jobs.models import (
 
 logger = logging.getLogger(__name__)
 
+
 class LocalDbProvider(JobProvider):
     def __init__(self, db: Session):
         self.db = db
@@ -43,14 +44,10 @@ class LocalDbProvider(JobProvider):
             if "-" in w_str:
                 parts = w_str.split("-")
                 employment = EmploymentDetails(
-                    workload_min=int(parts[0]),
-                    workload_max=int(parts[1])
+                    workload_min=int(parts[0]), workload_max=int(parts[1])
                 )
             elif w_str.isdigit():
-                employment = EmploymentDetails(
-                    workload_min=int(w_str),
-                    workload_max=int(w_str)
-                )
+                employment = EmploymentDetails(workload_min=int(w_str), workload_max=int(w_str))
 
         location = None
         if db_job.location:
@@ -86,7 +83,7 @@ class LocalDbProvider(JobProvider):
                     or_(
                         ScrapedJob.title.ilike(ilike_term),
                         ScrapedJob.description.ilike(ilike_term),
-                        ScrapedJob.company.ilike(ilike_term)
+                        ScrapedJob.company.ilike(ilike_term),
                     )
                 )
 

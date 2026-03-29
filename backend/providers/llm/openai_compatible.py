@@ -75,7 +75,7 @@ class OpenAICompatibleProvider(LLMProvider):
                 continue
             try:
                 _, end = decoder.raw_decode(text[idx:])
-                return text[idx:idx + end].strip()
+                return text[idx : idx + end].strip()
             except Exception:
                 continue
 
@@ -84,7 +84,7 @@ class OpenAICompatibleProvider(LLMProvider):
         end_idx_list = text.rfind("]")
         end_idx = max(end_idx_dict, end_idx_list)
         if end_idx != -1 and end_idx < len(text) - 1:
-            text = text[:end_idx + 1]
+            text = text[: end_idx + 1]
 
         return text.strip()
 
@@ -123,7 +123,9 @@ class OpenAICompatibleProvider(LLMProvider):
 
     # ── public API ─────────────────────────────────────────────────────────
 
-    def generate_text(self, system_prompt: str, user_prompt: str, max_tokens: Optional[int] = None) -> str:
+    def generate_text(
+        self, system_prompt: str, user_prompt: str, max_tokens: Optional[int] = None
+    ) -> str:
         params = self._prepare_params(system_prompt, user_prompt, max_tokens)
 
         try:
@@ -139,7 +141,9 @@ class OpenAICompatibleProvider(LLMProvider):
             logger.error(f"LLM Error ({self.model_id}): {e}")
             raise
 
-    def generate_json(self, system_prompt: str, user_prompt: str, max_tokens: Optional[int] = None) -> Dict[str, Any]:
+    def generate_json(
+        self, system_prompt: str, user_prompt: str, max_tokens: Optional[int] = None
+    ) -> Dict[str, Any]:
         params = self._prepare_params(system_prompt, user_prompt, max_tokens, for_json=True)
 
         try:
@@ -149,13 +153,17 @@ class OpenAICompatibleProvider(LLMProvider):
             try:
                 return json.loads(clean_text)
             except Exception as parse_err:
-                logger.error(f"Failed to parse JSON from {self.model_id}. Raw output:\n{content}\nCleaned:\n{clean_text}")
+                logger.error(
+                    f"Failed to parse JSON from {self.model_id}. Raw output:\n{content}\nCleaned:\n{clean_text}"
+                )
                 raise parse_err
         except Exception as e:
             logger.error(f"LLM JSON Error ({self.model_id}): {e}")
             raise
 
-    async def generate_text_async(self, system_prompt: str, user_prompt: str, max_tokens: Optional[int] = None) -> str:
+    async def generate_text_async(
+        self, system_prompt: str, user_prompt: str, max_tokens: Optional[int] = None
+    ) -> str:
         params = self._prepare_params(system_prompt, user_prompt, max_tokens)
 
         try:
@@ -171,7 +179,9 @@ class OpenAICompatibleProvider(LLMProvider):
             logger.error(f"Async LLM Error ({self.model_id}): {e}")
             raise
 
-    async def generate_json_async(self, system_prompt: str, user_prompt: str, max_tokens: Optional[int] = None) -> Dict[str, Any]:
+    async def generate_json_async(
+        self, system_prompt: str, user_prompt: str, max_tokens: Optional[int] = None
+    ) -> Dict[str, Any]:
         params = self._prepare_params(system_prompt, user_prompt, max_tokens, for_json=True)
 
         try:
@@ -181,7 +191,9 @@ class OpenAICompatibleProvider(LLMProvider):
             try:
                 return json.loads(clean_text)
             except Exception as parse_err:
-                logger.error(f"Failed to parse JSON from {self.model_id}. Raw output:\n{content}\nCleaned:\n{clean_text}")
+                logger.error(
+                    f"Failed to parse JSON from {self.model_id}. Raw output:\n{content}\nCleaned:\n{clean_text}"
+                )
                 raise parse_err
         except Exception as e:
             logger.error(f"Async LLM JSON Error ({self.model_id}): {e}")

@@ -9,15 +9,16 @@ Covers:
 - listing_utils.infer_implicit_language
 - listing_utils.compute_prescore with preference_signals
 """
+
 from datetime import datetime, timezone
 from unittest.mock import MagicMock, patch
 
 import pytest
 
-from backend.schemas.job import JobUpdate, FEEDBACK_SIGNAL_VALUES
-
+from backend.schemas.job import FEEDBACK_SIGNAL_VALUES, JobUpdate
 
 # ─── JobUpdate schema ─────────────────────────────────────────────────────────
+
 
 class TestJobUpdateSchema:
     def test_valid_applied_only(self):
@@ -33,6 +34,7 @@ class TestJobUpdateSchema:
 
     def test_invalid_feedback_signal_raises(self):
         from pydantic import ValidationError
+
         with pytest.raises(ValidationError):
             JobUpdate(feedback_signal="flying_saucer")
 
@@ -44,10 +46,12 @@ class TestJobUpdateSchema:
 
 # ─── JobService — dismissed_at auto-timestamping ─────────────────────────────
 
+
 class TestJobServiceDismiss:
     @pytest.fixture
     def service(self):
         from backend.services.job_service import JobService
+
         svc = JobService(MagicMock())
         svc.repo = MagicMock()
         return svc
@@ -88,6 +92,7 @@ class TestJobServiceDismiss:
 
     def test_unauthorized_raises(self, service):
         from fastapi import HTTPException
+
         job = self._make_job(user_id=2)
         service.repo.get.return_value = job
 
@@ -97,6 +102,7 @@ class TestJobServiceDismiss:
 
     def test_not_found_raises(self, service):
         from fastapi import HTTPException
+
         service.repo.get.return_value = None
 
         with pytest.raises(HTTPException) as exc_info:
@@ -108,12 +114,14 @@ class TestJobServiceRecordView:
     @pytest.fixture
     def service(self):
         from backend.services.job_service import JobService
+
         svc = JobService(MagicMock())
         svc.repo = MagicMock()
         return svc
 
     def test_record_view_sets_viewed_at_when_null(self):
         from backend.services.job_service import JobService
+
         svc = JobService(MagicMock())
         svc.repo = MagicMock()
 
@@ -130,6 +138,7 @@ class TestJobServiceRecordView:
 
     def test_record_view_idempotent_when_already_viewed(self):
         from backend.services.job_service import JobService
+
         svc = JobService(MagicMock())
         svc.repo = MagicMock()
 
@@ -145,6 +154,7 @@ class TestJobServiceRecordView:
 class TestJobServiceSoftDelete:
     def test_delete_job_sets_dismissed(self):
         from backend.services.job_service import JobService
+
         svc = JobService(MagicMock())
         svc.repo = MagicMock()
 
@@ -164,6 +174,7 @@ class TestJobServiceSoftDelete:
 
 # ─── preference_service ───────────────────────────────────────────────────────
 
+
 class TestPreferenceService:
     def _make_scraped_job(self, domain, seniority, salary_max=None, skills=None):
         sj = MagicMock()
@@ -175,7 +186,9 @@ class TestPreferenceService:
         sj.normalized_role_type = None
         return sj
 
-    def _make_job(self, user_id, applied, dismissed, feedback_signal=None, scraped_job=None, distance_km=None):
+    def _make_job(
+        self, user_id, applied, dismissed, feedback_signal=None, scraped_job=None, distance_km=None
+    ):
         j = MagicMock()
         j.user_id = user_id
         j.applied = applied
@@ -242,9 +255,11 @@ class TestPreferenceService:
 
 # ─── listing_utils.infer_implicit_language ───────────────────────────────────
 
+
 class TestInferImplicitLanguage:
     def _call(self, location):
         from backend.services.search.listing_utils import infer_implicit_language
+
         return infer_implicit_language(location)
 
     def test_zurich_returns_de(self):
@@ -271,6 +286,7 @@ class TestInferImplicitLanguage:
 
 
 # ─── listing_utils.compute_prescore with preferences ─────────────────────────
+
 
 class TestComputePrescoreWithPreferences:
     def _make_job_norm(self, domain="it", seniority="mid", skills=None):
@@ -301,9 +317,7 @@ class TestComputePrescoreWithPreferences:
         score_with = compute_prescore(
             self._make_job_norm(), self._make_profile_norm(), pref_signals
         )
-        score_without = compute_prescore(
-            self._make_job_norm(), self._make_profile_norm(), None
-        )
+        score_without = compute_prescore(self._make_job_norm(), self._make_profile_norm(), None)
         # Preferred domain should give a bonus
         assert score_with >= score_without
 
@@ -345,7 +359,5 @@ class TestComputePrescoreWithPreferences:
         score_with = compute_prescore(
             self._make_job_norm(), self._make_profile_norm(), pref_signals
         )
-        score_without = compute_prescore(
-            self._make_job_norm(), self._make_profile_norm(), None
-        )
+        score_without = compute_prescore(self._make_job_norm(), self._make_profile_norm(), None)
         assert score_with == score_without

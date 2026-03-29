@@ -26,14 +26,14 @@ Object.defineProperty(window, 'matchMedia', {
 describe('JobTable', () => {
     it('renders the empty state when no jobs are provided', () => {
         render(<JobTable jobs={[]} isGlobalView={false} onToggleApplied={vi.fn()} pagination={{}} onPageChange={vi.fn()} />);
-        
+
         expect(screen.getByText("No jobs found")).toBeInTheDocument();
         expect(screen.getByText("Try adjusting your filters or starting a new search to find opportunities.")).toBeInTheDocument();
     });
 
     it('renders desktop table headers when rendered with jobs', () => {
         const mockJobs = [{
-            id: '1', title: 'Software Engineer', company: 'Google', location: 'Zurich', 
+            id: '1', title: 'Software Engineer', company: 'Google', location: 'Zurich',
             affinity_score: 90, match_reason: 'Good match', is_applied: false
         }];
 
@@ -74,9 +74,9 @@ describe('JobTable', () => {
         const mockJobs = [{ id: '1', title: 'Job 1', company: 'C1' }];
         const mockPagination = { page: 1, pages: 2, total: 40 };
         const onPageChange = vi.fn();
-        
+
         render(<JobTable jobs={mockJobs} pagination={mockPagination} onPageChange={onPageChange} />);
-        
+
         const nextBtn = document.querySelector('.bi-chevron-right').closest('button');
         fireEvent.click(nextBtn);
         expect(onPageChange).toHaveBeenCalledWith(2);
@@ -86,9 +86,9 @@ describe('JobTable', () => {
         const mockJobs = [{ id: '1', title: 'Job 1', company: 'C1' }];
         const mockPagination = { page: 2, pages: 2, total: 40 };
         const onPageChange = vi.fn();
-        
+
         render(<JobTable jobs={mockJobs} pagination={mockPagination} onPageChange={onPageChange} />);
-        
+
         const prevBtn = document.querySelector('.bi-chevron-left').closest('button');
         fireEvent.click(prevBtn);
         expect(onPageChange).toHaveBeenCalledWith(1);
@@ -96,18 +96,18 @@ describe('JobTable', () => {
 
     it('copies job details to clipboard when copy is triggered', async () => {
         const mockJobs = [{
-            id: '1', title: 'Software Engineer', company: 'Google', location: 'Zurich', 
+            id: '1', title: 'Software Engineer', company: 'Google', location: 'Zurich',
             description: 'Test desc', external_url: 'http://test.com'
         }];
         const mockPagination = { page: 1, pages: 1, total: 1 };
-        
+
         const writeTextMock = vi.fn().mockResolvedValue();
         Object.assign(navigator, {
             clipboard: { writeText: writeTextMock }
         });
 
         render(<JobTable jobs={mockJobs} pagination={mockPagination} onPageChange={vi.fn()} isGlobalView={false} />);
-        
+
         // Desktop button title is "Copy Details"
         const copyBtn = screen.getByTitle('Copy Details');
         fireEvent.click(copyBtn);
@@ -124,7 +124,7 @@ describe('JobTable', () => {
         const mockPagination = { page: 1, pages: 1, total: 1 };
 
         render(<JobTable jobs={mockJobs} pagination={mockPagination} onPageChange={vi.fn()} isGlobalView={false} />);
-        
+
         // Desktop button title is "View Analysis", but it's also in MobileCard
         const viewBtns = screen.getAllByTitle('View Analysis');
         // Mobile is rendered first in DOM, Desktop second
@@ -147,7 +147,7 @@ describe('JobTable', () => {
 
         // We wrap in a constrained width to ensure mobile logic if needed, but react testing library renders both.
         render(<JobTable jobs={mockJobs} pagination={mockPagination} onPageChange={vi.fn()} isGlobalView={false} />);
-        
+
         // Trigger the mobile View Analysis button
         const viewBtns = screen.getAllByTitle('View Analysis');
         fireEvent.click(viewBtns[0]); // Mobile variant is rendered first

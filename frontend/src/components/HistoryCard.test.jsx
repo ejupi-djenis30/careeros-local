@@ -15,7 +15,7 @@ const mockProfile = {
 describe('HistoryCard', () => {
     it('renders profile details correctly', () => {
         render(<HistoryCard profile={mockProfile} />);
-        
+
         expect(screen.getByText('Software Engineer')).toBeInTheDocument();
         expect(screen.getByText('Remote')).toBeInTheDocument();
         expect(screen.getByText('Last 7 days')).toBeInTheDocument();
@@ -25,24 +25,24 @@ describe('HistoryCard', () => {
     it('renders default location text when location is missing', () => {
         const profileWithoutLocation = { ...mockProfile, location_filter: '' };
         render(<HistoryCard profile={profileWithoutLocation} />);
-        
+
         expect(screen.getByText('Any Location')).toBeInTheDocument();
     });
 
     it('does not display schedule info if schedule is disabled', () => {
         const profileUnscheduled = { ...mockProfile, schedule_enabled: false };
         render(<HistoryCard profile={profileUnscheduled} />);
-        
+
         expect(screen.queryByText(/Auto-runs every/)).not.toBeInTheDocument();
     });
 
     it('calls onStartSearch when Run button is clicked', () => {
         const onStartSearch = vi.fn();
         render(<HistoryCard profile={mockProfile} onStartSearch={onStartSearch} />);
-        
+
         const runButton = screen.getByTitle('Rerun Search');
         fireEvent.click(runButton);
-        
+
         expect(onStartSearch).toHaveBeenCalledWith(mockProfile);
     });
 
@@ -69,7 +69,7 @@ describe('HistoryCard', () => {
         const onSaveAsSchedule = vi.fn();
         const profileUnscheduled = { ...mockProfile, schedule_enabled: false };
         render(<HistoryCard profile={profileUnscheduled} onSaveAsSchedule={onSaveAsSchedule} />);
-        
+
         const scheduleButton = screen.getByTitle('Add to Schedule');
         fireEvent.click(scheduleButton);
         expect(onSaveAsSchedule).toHaveBeenCalledWith(profileUnscheduled);
@@ -85,7 +85,7 @@ describe('HistoryCard', () => {
 
         const profileUnscheduled = { ...mockProfile, schedule_enabled: false };
         const { getByTitle: getByTitleUnsched } = render(<HistoryCard profile={profileUnscheduled} />);
-        
+
         const scheduleButton = getByTitleUnsched('Add to Schedule');
         fireEvent.click(scheduleButton);
         // Should not crash

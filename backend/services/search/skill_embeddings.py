@@ -49,6 +49,7 @@ def is_available() -> bool:
 
 # ─── singleton model cache ────────────────────────────────────────────────────
 
+
 class _EmbeddingCache:
     """Thread-safe singleton that holds the loaded model and an LRU skill cache."""
 
@@ -101,10 +102,12 @@ def _get_model():
     if not _SENTENCE_TRANSFORMERS_AVAILABLE:
         return None
     from backend.core.config import settings
+
     return _cache.get_model(settings.SKILL_EMBEDDING_MODEL)
 
 
 # ─── per-process skill embedding LRU ─────────────────────────────────────────
+
 
 @lru_cache(maxsize=2048)
 def _embed_skill(skill_text: str, model_name: str):
@@ -134,6 +137,7 @@ def _cosine(a, b) -> float:
 
 # ─── public API ───────────────────────────────────────────────────────────────
 
+
 def embedding_skill_similarity(skill_a: str, skill_b: str) -> float:
     """Return cosine similarity (0.0–1.0) between two skill strings.
 
@@ -156,6 +160,7 @@ def embedding_skill_similarity(skill_a: str, skill_b: str) -> float:
         return 1.0
 
     from backend.core.config import settings
+
     model_name = settings.SKILL_EMBEDDING_MODEL
 
     vec_a = _embed_skill(sa, model_name)
@@ -231,6 +236,7 @@ def preload_taxonomy_embeddings(taxonomy_skills: List[str], model_name: str = ""
         return
     if not model_name:
         from backend.core.config import settings
+
         model_name = settings.SKILL_EMBEDDING_MODEL
     model = _cache.get_model(model_name)
     if model is None:

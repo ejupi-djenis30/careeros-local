@@ -2,6 +2,7 @@
 
 Covers UserRepository.get_by_username against an in-memory SQLite database.
 """
+
 import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
@@ -11,8 +12,8 @@ from backend.models.user import User
 from backend.repositories.user_repository import UserRepository
 from backend.services.auth import get_password_hash
 
-
 # ─── Fixtures ─────────────────────────────────────────────────────────────────
+
 
 @pytest.fixture(scope="function")
 def db_session():
@@ -47,6 +48,7 @@ def existing_user(db_session):
 
 # ─── get_by_username ──────────────────────────────────────────────────────────
 
+
 class TestUserRepositoryGetByUsername:
     def test_returns_user_when_found(self, user_repo, existing_user):
         result = user_repo.get_by_username("alice")
@@ -69,6 +71,7 @@ class TestUserRepositoryGetByUsername:
 
 
 # ─── Inherited BaseRepository methods ─────────────────────────────────────────
+
 
 class TestUserRepositoryBaseInheritance:
     def test_get_by_id(self, user_repo, existing_user):

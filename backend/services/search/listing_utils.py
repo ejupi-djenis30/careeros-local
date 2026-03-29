@@ -22,6 +22,7 @@ logger = logging.getLogger(__name__)
 
 # ─── Skill taxonomy loader ────────────────────────────────────────────────────
 
+
 def _load_skill_taxonomy() -> Dict[str, Any]:
     """Load the skill taxonomy JSON from backend/data/skill_taxonomy.json."""
     try:
@@ -42,7 +43,7 @@ _CANONICAL_RELATED: Dict[str, Dict[str, float]] = {}
 
 for _canonical, _entry in (_TAXONOMY.get("skills") or {}).items():
     _ALIAS_TO_CANONICAL[_canonical] = _canonical
-    for _alias in (_entry.get("aliases") or []):
+    for _alias in _entry.get("aliases") or []:
         _ALIAS_TO_CANONICAL[_alias.lower()] = _canonical
     _CANONICAL_RELATED[_canonical] = {
         k.lower(): float(v) for k, v in (_entry.get("related") or {}).items()
@@ -62,83 +63,170 @@ def normalized_text_token(value: Any) -> str:
 # Matching is done after normalizing both sides to their canonical form.
 _SKILL_ALIASES: Dict[str, str] = {
     # JavaScript ecosystem
-    "js": "javascript", "javascript": "javascript", "ecmascript": "javascript",
-    "ts": "typescript", "typescript": "typescript",
-    "react.js": "react", "reactjs": "react", "react": "react",
-    "vue.js": "vue", "vuejs": "vue", "vue": "vue",
-    "angular.js": "angular", "angularjs": "angular", "angular": "angular",
-    "node.js": "nodejs", "nodejs": "nodejs", "node": "nodejs",
-    "next.js": "nextjs", "nextjs": "nextjs",
-    "nuxt.js": "nuxtjs", "nuxtjs": "nuxtjs",
+    "js": "javascript",
+    "javascript": "javascript",
+    "ecmascript": "javascript",
+    "ts": "typescript",
+    "typescript": "typescript",
+    "react.js": "react",
+    "reactjs": "react",
+    "react": "react",
+    "vue.js": "vue",
+    "vuejs": "vue",
+    "vue": "vue",
+    "angular.js": "angular",
+    "angularjs": "angular",
+    "angular": "angular",
+    "node.js": "nodejs",
+    "nodejs": "nodejs",
+    "node": "nodejs",
+    "next.js": "nextjs",
+    "nextjs": "nextjs",
+    "nuxt.js": "nuxtjs",
+    "nuxtjs": "nuxtjs",
     # Python / ML
-    "python": "python", "py": "python",
-    "ml": "machine learning", "machine learning": "machine learning",
-    "ai": "artificial intelligence", "artificial intelligence": "artificial intelligence",
-    "dl": "deep learning", "deep learning": "deep learning",
-    "sklearn": "scikit-learn", "scikit-learn": "scikit-learn",
-    "tf": "tensorflow", "tensorflow": "tensorflow",
-    "pytorch": "pytorch", "torch": "pytorch",
+    "python": "python",
+    "py": "python",
+    "ml": "machine learning",
+    "machine learning": "machine learning",
+    "ai": "artificial intelligence",
+    "artificial intelligence": "artificial intelligence",
+    "dl": "deep learning",
+    "deep learning": "deep learning",
+    "sklearn": "scikit-learn",
+    "scikit-learn": "scikit-learn",
+    "tf": "tensorflow",
+    "tensorflow": "tensorflow",
+    "pytorch": "pytorch",
+    "torch": "pytorch",
     # Data / DB
-    "sql": "sql", "postgresql": "postgresql", "postgres": "postgresql",
-    "mysql": "mysql", "mssql": "sql server", "sql server": "sql server",
-    "mongodb": "mongodb", "mongo": "mongodb",
-    "elasticsearch": "elasticsearch", "elastic": "elasticsearch",
+    "sql": "sql",
+    "postgresql": "postgresql",
+    "postgres": "postgresql",
+    "mysql": "mysql",
+    "mssql": "sql server",
+    "sql server": "sql server",
+    "mongodb": "mongodb",
+    "mongo": "mongodb",
+    "elasticsearch": "elasticsearch",
+    "elastic": "elasticsearch",
     # Cloud / DevOps
-    "aws": "aws", "amazon web services": "aws",
-    "gcp": "gcp", "google cloud": "gcp",
-    "azure": "azure", "microsoft azure": "azure",
-    "k8s": "kubernetes", "kubernetes": "kubernetes",
+    "aws": "aws",
+    "amazon web services": "aws",
+    "gcp": "gcp",
+    "google cloud": "gcp",
+    "azure": "azure",
+    "microsoft azure": "azure",
+    "k8s": "kubernetes",
+    "kubernetes": "kubernetes",
     "docker": "docker",
-    "ci/cd": "cicd", "cicd": "cicd", "devops": "devops",
+    "ci/cd": "cicd",
+    "cicd": "cicd",
+    "devops": "devops",
     # Java / JVM
-    "java": "java", "kotlin": "kotlin", "scala": "scala",
-    "spring": "spring", "spring boot": "spring boot",
+    "java": "java",
+    "kotlin": "kotlin",
+    "scala": "scala",
+    "spring": "spring",
+    "spring boot": "spring boot",
     # .NET
-    "c#": "csharp", "csharp": "csharp", ".net": "dotnet", "dotnet": "dotnet",
+    "c#": "csharp",
+    "csharp": "csharp",
+    ".net": "dotnet",
+    "dotnet": "dotnet",
     # Other languages
-    "go": "golang", "golang": "golang",
-    "rust": "rust", "ruby": "ruby", "php": "php", "swift": "swift",
-    "c++": "cpp", "cpp": "cpp", "c": "c",
+    "go": "golang",
+    "golang": "golang",
+    "rust": "rust",
+    "ruby": "ruby",
+    "php": "php",
+    "swift": "swift",
+    "c++": "cpp",
+    "cpp": "cpp",
+    "c": "c",
     # Manual / physical work
-    "staplerfahrer": "forklift", "gabelstapler": "forklift", "forklift": "forklift",
-    "führerschein": "driving license", "driving license": "driving license",
-    "führerschein b": "driving license b", "driving license b": "driving license b",
+    "staplerfahrer": "forklift",
+    "gabelstapler": "forklift",
+    "forklift": "forklift",
+    "führerschein": "driving license",
+    "driving license": "driving license",
+    "führerschein b": "driving license b",
+    "driving license b": "driving license b",
     # Hospitality
-    "housekeeping": "housekeeping", "zimmerreinigung": "housekeeping",
-    "küche": "kitchen", "kitchen": "kitchen", "gastro": "gastronomy",
+    "housekeeping": "housekeeping",
+    "zimmerreinigung": "housekeeping",
+    "küche": "kitchen",
+    "kitchen": "kitchen",
+    "gastro": "gastronomy",
     # Transferable / management skills (multilingual)
-    "project management": "project management", "projektleitung": "project management",
-    "projektmanagement": "project management", "gestion de projet": "project management",
+    "project management": "project management",
+    "projektleitung": "project management",
+    "projektmanagement": "project management",
+    "gestion de projet": "project management",
     "gestione del progetto": "project management",
-    "team leadership": "team leadership", "teamführung": "team leadership",
-    "führung": "leadership", "leadership": "leadership",
-    "kommunikation": "communication", "communication": "communication",
-    "teamwork": "teamwork", "teamarbeit": "teamwork",
-    "customer service": "customer service", "kundendienst": "customer service",
-    "kundenbetreuung": "customer service", "service client": "customer service",
-    "problem solving": "problem solving", "problemlösung": "problem solving",
-    "organisation": "organisation", "organization": "organisation",
-    "time management": "time management", "zeitmanagement": "time management",
-    "accounting": "accounting", "buchhaltung": "accounting", "rechnungswesen": "accounting",
-    "comptabilité": "accounting", "contabilità": "accounting",
+    "team leadership": "team leadership",
+    "teamführung": "team leadership",
+    "führung": "leadership",
+    "leadership": "leadership",
+    "kommunikation": "communication",
+    "communication": "communication",
+    "teamwork": "teamwork",
+    "teamarbeit": "teamwork",
+    "customer service": "customer service",
+    "kundendienst": "customer service",
+    "kundenbetreuung": "customer service",
+    "service client": "customer service",
+    "problem solving": "problem solving",
+    "problemlösung": "problem solving",
+    "organisation": "organisation",
+    "organization": "organisation",
+    "time management": "time management",
+    "zeitmanagement": "time management",
+    "accounting": "accounting",
+    "buchhaltung": "accounting",
+    "rechnungswesen": "accounting",
+    "comptabilité": "accounting",
+    "contabilità": "accounting",
     # Manual / logistics / warehousing
-    "lagermitarbeiter": "warehouse worker", "lagerist": "warehouse worker",
-    "warehouse worker": "warehouse worker", "warehouse": "warehouse",
-    "montage": "assembly", "monteur": "assembly technician", "assembly": "assembly",
-    "lieferant": "delivery", "lieferfahrer": "delivery driver",
-    "delivery driver": "delivery driver", "fahrer": "driver", "driver": "driver",
-    "reinigung": "cleaning", "cleaning": "cleaning", "haushaltsführung": "housekeeping",
-    "hilfsarbeiter": "general helper", "aushilfe": "general helper",
-    "handwerk": "skilled trade", "handwerker": "skilled tradesperson",
-    "elektrik": "electrical work", "elektriker": "electrician", "electrician": "electrician",
-    "sanitär": "plumbing", "klempner": "plumber", "plumber": "plumber",
-    "maler": "painting", "painter": "painting",
+    "lagermitarbeiter": "warehouse worker",
+    "lagerist": "warehouse worker",
+    "warehouse worker": "warehouse worker",
+    "warehouse": "warehouse",
+    "montage": "assembly",
+    "monteur": "assembly technician",
+    "assembly": "assembly",
+    "lieferant": "delivery",
+    "lieferfahrer": "delivery driver",
+    "delivery driver": "delivery driver",
+    "fahrer": "driver",
+    "driver": "driver",
+    "reinigung": "cleaning",
+    "cleaning": "cleaning",
+    "haushaltsführung": "housekeeping",
+    "hilfsarbeiter": "general helper",
+    "aushilfe": "general helper",
+    "handwerk": "skilled trade",
+    "handwerker": "skilled tradesperson",
+    "elektrik": "electrical work",
+    "elektriker": "electrician",
+    "electrician": "electrician",
+    "sanitär": "plumbing",
+    "klempner": "plumber",
+    "plumber": "plumber",
+    "maler": "painting",
+    "painter": "painting",
     # Office / administrative
-    "ms office": "microsoft office", "microsoft office": "microsoft office",
-    "excel": "excel", "word": "word", "powerpoint": "powerpoint",
-    "sap": "sap", "erp": "erp",
-    "verwaltung": "administration", "administration": "administration",
-    "datenerfassung": "data entry", "data entry": "data entry",
+    "ms office": "microsoft office",
+    "microsoft office": "microsoft office",
+    "excel": "excel",
+    "word": "word",
+    "powerpoint": "powerpoint",
+    "sap": "sap",
+    "erp": "erp",
+    "verwaltung": "administration",
+    "administration": "administration",
+    "datenerfassung": "data entry",
+    "data entry": "data entry",
 }
 
 
@@ -187,12 +275,20 @@ def skills_overlap(job_skills: List[str], profile_skills: List[str]) -> float:
             matched += 1
             continue
         # Tier 2: substring containment with word boundaries (prevents "java" ⊂ "javascript")
-        if any(_word_bounded_substring(jc, pc) or _word_bounded_substring(pc, jc) for pc in profile_canonical if pc):
+        if any(
+            _word_bounded_substring(jc, pc) or _word_bounded_substring(pc, jc)
+            for pc in profile_canonical
+            if pc
+        ):
             matched += 1
             continue
         # Tier 3: raw token substring with word boundaries
         job_raw = normalized_text_token(jc)
-        if any(_word_bounded_substring(job_raw, pt) or _word_bounded_substring(pt, job_raw) for pt in profile_raw_tokens if pt):
+        if any(
+            _word_bounded_substring(job_raw, pt) or _word_bounded_substring(pt, job_raw)
+            for pt in profile_raw_tokens
+            if pt
+        ):
             matched += 1
 
     return matched / len(job_canonical) if job_canonical else 0.0
@@ -489,27 +585,81 @@ def bootstrap_normalized_job_data(
     # "Warehouse Manager" → managerial (not manual) and "Senior Engineer" → technical (not manual).
     role_type: Optional[str] = None
     _ROLE_TYPE_PRIORITY = [
-        ("managerial", [
-            "manager", "head of", "director", "chief", "vp ", "vice president",
-            "leiter", "leiterin", "führungskraft", "teamleiter", "teamleiterin",
-        ]),
-        ("technical", [
-            "engineer", "developer", "entwickler", "ingenieur", "programmer", "analyst",
-            "devops", "architect",
-        ]),
-        ("administrative", [
-            "administrator", "secretary", "receptionist", "sachbearbeiter", "assistant",
-            "koordinator", "buchhalter",
-        ]),
-        ("service", [
-            "customer service", "waitress", "waiter", "kellner",
-            "servicemitarbeiter", "barista",
-        ]),
-        ("manual", [
-            "warehouse", "lager", "cleaning", "reinigung", "delivery", "driver", "fahrer",
-            "packer", "sortierer", "lagermitarbeiter", "construction", "bauarbeiter",
-            "helper", "hilfsarbeiter", "courier", "kurier", "forklift", "gabelstapler",
-        ]),
+        (
+            "managerial",
+            [
+                "manager",
+                "head of",
+                "director",
+                "chief",
+                "vp ",
+                "vice president",
+                "leiter",
+                "leiterin",
+                "führungskraft",
+                "teamleiter",
+                "teamleiterin",
+            ],
+        ),
+        (
+            "technical",
+            [
+                "engineer",
+                "developer",
+                "entwickler",
+                "ingenieur",
+                "programmer",
+                "analyst",
+                "devops",
+                "architect",
+            ],
+        ),
+        (
+            "administrative",
+            [
+                "administrator",
+                "secretary",
+                "receptionist",
+                "sachbearbeiter",
+                "assistant",
+                "koordinator",
+                "buchhalter",
+            ],
+        ),
+        (
+            "service",
+            [
+                "customer service",
+                "waitress",
+                "waiter",
+                "kellner",
+                "servicemitarbeiter",
+                "barista",
+            ],
+        ),
+        (
+            "manual",
+            [
+                "warehouse",
+                "lager",
+                "cleaning",
+                "reinigung",
+                "delivery",
+                "driver",
+                "fahrer",
+                "packer",
+                "sortierer",
+                "lagermitarbeiter",
+                "construction",
+                "bauarbeiter",
+                "helper",
+                "hilfsarbeiter",
+                "courier",
+                "kurier",
+                "forklift",
+                "gabelstapler",
+            ],
+        ),
     ]
     for rt, keywords in _ROLE_TYPE_PRIORITY:
         if any(kw in title_lower for kw in keywords):
@@ -522,10 +672,21 @@ def bootstrap_normalized_job_data(
     # ─── Heuristic: career_changer_friendly (confidence 0.35) ────────────
     desc_lower = (desc_text or "").lower()
     _career_changer_signals = [
-        "quereinsteiger", "quereinstieg", "career changer", "career change",
-        "training provided", "einarbeitung", "keine erfahrung", "no experience required",
-        "no experience needed", "will train", "we train", "wir bilden aus",
-        "auch ohne erfahrung", "reconversion", "reconversion professionnelle",
+        "quereinsteiger",
+        "quereinstieg",
+        "career changer",
+        "career change",
+        "training provided",
+        "einarbeitung",
+        "keine erfahrung",
+        "no experience required",
+        "no experience needed",
+        "will train",
+        "we train",
+        "wir bilden aus",
+        "auch ohne erfahrung",
+        "reconversion",
+        "reconversion professionnelle",
         "anche senza esperienza",
     ]
     career_changer_friendly = any(sig in desc_lower for sig in _career_changer_signals)
@@ -550,17 +711,22 @@ def bootstrap_normalized_job_data(
 
     # ─── Heuristic: physical_requirements ────────────────────────────────
     _physical_signals = [
-        ("heavy lifting", "heavy lifting"), ("schweres heben", "heavy lifting"),
-        ("körperlich", "physically demanding"), ("physically demanding", "physically demanding"),
-        ("stehen", "prolonged standing"), ("standing", "prolonged standing"),
-        ("outdoor", "outdoor work"), ("im freien", "outdoor work"),
-        ("heben", "lifting"), ("lifting", "lifting"),
-        ("tragen", "carrying"), ("carrying", "carrying"),
+        ("heavy lifting", "heavy lifting"),
+        ("schweres heben", "heavy lifting"),
+        ("körperlich", "physically demanding"),
+        ("physically demanding", "physically demanding"),
+        ("stehen", "prolonged standing"),
+        ("standing", "prolonged standing"),
+        ("outdoor", "outdoor work"),
+        ("im freien", "outdoor work"),
+        ("heben", "lifting"),
+        ("lifting", "lifting"),
+        ("tragen", "carrying"),
+        ("carrying", "carrying"),
     ]
-    physical_requirements = list({
-        canonical for signal, canonical in _physical_signals
-        if signal in desc_lower
-    })
+    physical_requirements = list(
+        {canonical for signal, canonical in _physical_signals if signal in desc_lower}
+    )
 
     return {
         "normalization_status": "provider_bootstrap",
@@ -587,7 +753,9 @@ def bootstrap_normalized_job_data(
         "normalized_soft_skills": None,
         "normalized_physical_requirements": physical_requirements or None,
         "normalized_entry_barrier": entry_barrier,
-        "normalized_career_changer_friendly": career_changer_friendly if career_changer_friendly else None,
+        "normalized_career_changer_friendly": career_changer_friendly
+        if career_changer_friendly
+        else None,
         "normalized_hard_blockers": None,
         "normalized_education_levels": education_levels or None,
         "normalized_key_requirements": None,
@@ -605,9 +773,7 @@ def bootstrap_normalized_job_data(
 # ─── Semantic skill score ─────────────────────────────────────────────────────
 
 
-def semantic_skills_score(
-    job_skills: List[str], profile_skills: List[str]
-) -> float:
+def semantic_skills_score(job_skills: List[str], profile_skills: List[str]) -> float:
     """Weighted semantic skill overlap using the skill taxonomy + embeddings.
 
     Four-tier matching strategy (Phase 1 upgrade):
@@ -630,6 +796,7 @@ def semantic_skills_score(
     _best_embedding_match = None
     try:
         from backend.core.config import settings as _settings
+
         if getattr(_settings, "SKILL_EMBEDDING_ENABLED", True):
             from backend.services.search.skill_embeddings import (  # type: ignore
                 best_embedding_match as _best_embedding_match,
@@ -637,6 +804,7 @@ def semantic_skills_score(
             from backend.services.search.skill_embeddings import (
                 is_available as _emb_is_available,
             )
+
             _emb_available = _emb_is_available()
             _emb_threshold = float(getattr(_settings, "SKILL_EMBEDDING_THRESHOLD", 0.65))
     except Exception:
@@ -644,7 +812,8 @@ def semantic_skills_score(
 
     profile_canonical_set = {
         _ALIAS_TO_CANONICAL.get(normalized_text_token(s), normalized_text_token(s))
-        for s in profile_skills if s
+        for s in profile_skills
+        if s
     }
     # Build a plain list for embedding comparison (use raw tokens, not canonical only)
     profile_raw_list: List[str] = [normalized_text_token(s) for s in profile_skills if s]
@@ -733,7 +902,9 @@ def compute_prescore(
 
     # 1. Domain alignment (0–20 pts)
     job_domain = (job_norm.get("normalized_domain") or "").lower().strip()
-    profile_domains = profile_norm.get("target_domains") or profile_norm.get("normalized_domains") or []
+    profile_domains = (
+        profile_norm.get("target_domains") or profile_norm.get("normalized_domains") or []
+    )
     if isinstance(profile_domains, str):
         profile_domains = [profile_domains]
     if job_domain and profile_domains:
@@ -753,15 +924,18 @@ def compute_prescore(
     # 2. Seniority fit (0–15 pts)
     job_seniority = (job_norm.get("normalized_seniority") or "").lower()
     profile_seniority = (
-        profile_norm.get("seniority")
-        or profile_norm.get("target_seniority")
-        or ""
+        profile_norm.get("seniority") or profile_norm.get("target_seniority") or ""
     ).lower()
     _SENIORITY_SCORES: Dict[Tuple[str, str], float] = {
-        ("junior", "junior"): 1.0, ("mid", "mid"): 1.0, ("senior", "senior"): 1.0,
-        ("junior", "mid"): 0.6, ("mid", "junior"): 0.6,
-        ("mid", "senior"): 0.6, ("senior", "mid"): 0.5,
-        ("senior", "junior"): 0.1, ("junior", "senior"): 0.2,
+        ("junior", "junior"): 1.0,
+        ("mid", "mid"): 1.0,
+        ("senior", "senior"): 1.0,
+        ("junior", "mid"): 0.6,
+        ("mid", "junior"): 0.6,
+        ("mid", "senior"): 0.6,
+        ("senior", "mid"): 0.5,
+        ("senior", "junior"): 0.1,
+        ("junior", "senior"): 0.2,
     }
     if job_seniority and profile_seniority:
         seniority_fit = _SENIORITY_SCORES.get((job_seniority, profile_seniority), 0.5)
@@ -825,10 +999,22 @@ def compute_prescore(
         or ""
     ).lower()
     _BARRIER_QUAL_FIT: Dict[Tuple[str, str], float] = {
-        ("none", "none"): 1.0, ("none", "low"): 1.0, ("none", "medium"): 1.0, ("none", "high"): 1.0,
-        ("low", "none"): 0.8, ("low", "low"): 1.0, ("low", "medium"): 1.0, ("low", "high"): 1.0,
-        ("medium", "none"): 0.4, ("medium", "low"): 0.7, ("medium", "medium"): 1.0, ("medium", "high"): 1.0,
-        ("high", "none"): 0.1, ("high", "low"): 0.4, ("high", "medium"): 0.8, ("high", "high"): 1.0,
+        ("none", "none"): 1.0,
+        ("none", "low"): 1.0,
+        ("none", "medium"): 1.0,
+        ("none", "high"): 1.0,
+        ("low", "none"): 0.8,
+        ("low", "low"): 1.0,
+        ("low", "medium"): 1.0,
+        ("low", "high"): 1.0,
+        ("medium", "none"): 0.4,
+        ("medium", "low"): 0.7,
+        ("medium", "medium"): 1.0,
+        ("medium", "high"): 1.0,
+        ("high", "none"): 0.1,
+        ("high", "low"): 0.4,
+        ("high", "medium"): 0.8,
+        ("high", "high"): 1.0,
     }
     if job_barrier and profile_qualification:
         fit = _BARRIER_QUAL_FIT.get((job_barrier, profile_qualification), 0.5)
@@ -859,7 +1045,15 @@ def compute_prescore(
     # 7. Qualification level match (0–5 pts)
     job_qual = (job_norm.get("normalized_qualification_level") or "").lower()
     if profile_qualification and job_qual:
-        _QUAL_RANK = {"none": 0, "low": 1, "medium": 2, "high": 3, "bachelor": 2, "master": 3, "phd": 4}
+        _QUAL_RANK = {
+            "none": 0,
+            "low": 1,
+            "medium": 2,
+            "high": 3,
+            "bachelor": 2,
+            "master": 3,
+            "phd": 4,
+        }
         p_rank = _QUAL_RANK.get(profile_qualification, 1)
         j_rank = _QUAL_RANK.get(job_qual, 1)
         if p_rank >= j_rank:
@@ -878,9 +1072,9 @@ def compute_prescore(
         try:
             pq = float(posting_quality)
             if pq >= 0.6:
-                score += 5.0   # well-structured, informative posting
+                score += 5.0  # well-structured, informative posting
             elif pq < 0.3:
-                score -= 8.0   # sparse / template / spam posting
+                score -= 8.0  # sparse / template / spam posting
             # between 0.3 and 0.6: no adjustment (neutral)
         except (TypeError, ValueError):
             pass
@@ -888,6 +1082,7 @@ def compute_prescore(
     # 9. User preference alignment (−5 to +5 pts bonus, gated by signal_count)
     try:
         from backend.core.config import settings as _cfg
+
         if (
             _cfg.PREFERENCE_PRESCORE_ENABLED
             and preference_signals
@@ -899,7 +1094,9 @@ def compute_prescore(
             job_skills_set = {s.lower() for s in (job_norm.get("normalized_required_skills") or [])}
 
             # +3 if domain is in top preferred domains
-            preferred_domains = [d.lower() for d in (preference_signals.get("preferred_domains") or [])]
+            preferred_domains = [
+                d.lower() for d in (preference_signals.get("preferred_domains") or [])
+            ]
             avoided_domains = [d.lower() for d in (preference_signals.get("avoided_domains") or [])]
             if job_domain and job_domain in preferred_domains[:3]:
                 pref_delta += 3.0
@@ -907,12 +1104,16 @@ def compute_prescore(
                 pref_delta -= 4.0  # penalise consistently-avoided domains
 
             # +2 if seniority is preferred
-            preferred_seniority = [s.lower() for s in (preference_signals.get("preferred_seniority") or [])]
+            preferred_seniority = [
+                s.lower() for s in (preference_signals.get("preferred_seniority") or [])
+            ]
             if job_seniority and job_seniority in preferred_seniority:
                 pref_delta += 2.0
 
             # +2 if ≥2 preferred skills overlap
-            preferred_skills = {s.lower() for s in (preference_signals.get("preferred_skills") or [])}
+            preferred_skills = {
+                s.lower() for s in (preference_signals.get("preferred_skills") or [])
+            }
             overlap = job_skills_set & preferred_skills
             if len(overlap) >= 2:
                 pref_delta += min(2.0, len(overlap) * 0.5)
@@ -932,9 +1133,17 @@ def compute_prescore(
                 if count < tier1:
                     continue
                 penalty = -3.0 if count < tier2 else (-5.0 if count < tier3 else -8.0)
-                if signal == "too_senior" and job_seniority == "senior" and profile_seniority in ("junior", "mid"):
+                if (
+                    signal == "too_senior"
+                    and job_seniority == "senior"
+                    and profile_seniority in ("junior", "mid")
+                ):
                     pref_delta += penalty
-                elif signal == "too_junior" and job_seniority == "junior" and profile_seniority in ("senior", "mid"):
+                elif (
+                    signal == "too_junior"
+                    and job_seniority == "junior"
+                    and profile_seniority in ("senior", "mid")
+                ):
                     pref_delta += penalty
                 elif signal == "wrong_domain" and job_domain and job_domain in avoided_domains:
                     pref_delta += penalty
@@ -951,43 +1160,95 @@ def compute_prescore(
 # Canton → primary administrative language code (ISO 639-1)
 _CANTON_LANGUAGE_MAP: Dict[str, str] = {
     # German-speaking cantons
-    "zurich": "de", "zürich": "de", "zh": "de",
-    "bern": "de", "be": "de",
-    "lucerne": "de", "luzern": "de", "lu": "de",
-    "uri": "de", "ur": "de",
-    "schwyz": "de", "sz": "de",
-    "obwalden": "de", "ow": "de",
-    "nidwalden": "de", "nw": "de",
-    "glarus": "de", "gl": "de",
-    "zug": "de", "zg": "de",
-    "solothurn": "de", "so": "de",
-    "basel-stadt": "de", "basel": "de", "bs": "de",
-    "basel-landschaft": "de", "baselland": "de", "bl": "de",
-    "schaffhausen": "de", "sh": "de",
-    "appenzell": "de", "ar": "de", "ai": "de",
-    "st. gallen": "de", "st gallen": "de", "sg": "de",
-    "graubünden": "de", "graubuenden": "de", "gr": "de",
-    "aargau": "de", "ag": "de",
-    "thurgau": "de", "tg": "de",
+    "zurich": "de",
+    "zürich": "de",
+    "zh": "de",
+    "bern": "de",
+    "be": "de",
+    "lucerne": "de",
+    "luzern": "de",
+    "lu": "de",
+    "uri": "de",
+    "ur": "de",
+    "schwyz": "de",
+    "sz": "de",
+    "obwalden": "de",
+    "ow": "de",
+    "nidwalden": "de",
+    "nw": "de",
+    "glarus": "de",
+    "gl": "de",
+    "zug": "de",
+    "zg": "de",
+    "solothurn": "de",
+    "so": "de",
+    "basel-stadt": "de",
+    "basel": "de",
+    "bs": "de",
+    "basel-landschaft": "de",
+    "baselland": "de",
+    "bl": "de",
+    "schaffhausen": "de",
+    "sh": "de",
+    "appenzell": "de",
+    "ar": "de",
+    "ai": "de",
+    "st. gallen": "de",
+    "st gallen": "de",
+    "sg": "de",
+    "graubünden": "de",
+    "graubuenden": "de",
+    "gr": "de",
+    "aargau": "de",
+    "ag": "de",
+    "thurgau": "de",
+    "tg": "de",
     # French-speaking cantons (Romandy)
-    "geneva": "fr", "genève": "fr", "genf": "fr", "ge": "fr",
-    "vaud": "fr", "vd": "fr",
-    "neuchâtel": "fr", "neuchatel": "fr", "ne": "fr",
-    "jura": "fr", "ju": "fr",
-    "fribourg": "fr", "freiburg": "fr", "fr": "fr",
+    "geneva": "fr",
+    "genève": "fr",
+    "genf": "fr",
+    "ge": "fr",
+    "vaud": "fr",
+    "vd": "fr",
+    "neuchâtel": "fr",
+    "neuchatel": "fr",
+    "ne": "fr",
+    "jura": "fr",
+    "ju": "fr",
+    "fribourg": "fr",
+    "freiburg": "fr",
+    "fr": "fr",
     # Italian-speaking canton
-    "ticino": "it", "ti": "it",
+    "ticino": "it",
+    "ti": "it",
     # Valais / Wallis: bilingual (de/fr) — default German
-    "valais": "fr", "wallis": "de", "vs": "de",
+    "valais": "fr",
+    "wallis": "de",
+    "vs": "de",
 }
 
 _CITY_LANGUAGE_MAP: Dict[str, str] = {
-    "zürich": "de", "zurich": "de", "bern": "de", "basel": "de",
-    "winterthur": "de", "lucerne": "de", "luzern": "de", "st. gallen": "de",
-    "biel": "de", "thun": "de", "köniz": "de", "uster": "de",
-    "genf": "fr", "geneva": "fr", "genève": "fr",
-    "lausanne": "fr", "fribourg": "fr", "biel/bienne": "fr",
-    "lugano": "it", "bellinzona": "it", "locarno": "it",
+    "zürich": "de",
+    "zurich": "de",
+    "bern": "de",
+    "basel": "de",
+    "winterthur": "de",
+    "lucerne": "de",
+    "luzern": "de",
+    "st. gallen": "de",
+    "biel": "de",
+    "thun": "de",
+    "köniz": "de",
+    "uster": "de",
+    "genf": "fr",
+    "geneva": "fr",
+    "genève": "fr",
+    "lausanne": "fr",
+    "fribourg": "fr",
+    "biel/bienne": "fr",
+    "lugano": "it",
+    "bellinzona": "it",
+    "locarno": "it",
 }
 
 
@@ -1003,6 +1264,7 @@ def infer_implicit_language(location_str: Optional[str]) -> Optional[str]:
     """
     try:
         from backend.core.config import settings as _cfg
+
         if not _cfg.SWISS_IMPLICIT_LANGUAGE_ENABLED:
             return None
     except Exception:
@@ -1016,12 +1278,12 @@ def infer_implicit_language(location_str: Optional[str]) -> Optional[str]:
     # City lookup (highest precision) — use word boundaries to avoid
     # partial-word false positives (e.g. "bern" inside "berlin").
     for city, lang in _CITY_LANGUAGE_MAP.items():
-        if re.search(r'\b' + re.escape(city) + r'\b', text):
+        if re.search(r"\b" + re.escape(city) + r"\b", text):
             return lang
 
     # Canton lookup
     for canton, lang in _CANTON_LANGUAGE_MAP.items():
-        if re.search(r'\b' + re.escape(canton) + r'\b', text):
+        if re.search(r"\b" + re.escape(canton) + r"\b", text):
             return lang
 
     return None
@@ -1063,9 +1325,18 @@ def compute_posting_quality(description: str) -> float:
 
     # 2. Salary / compensation (0.0–0.20)
     _salary_patterns = [
-        r"chf\s*\d", r"\d+\s*chf", r"salary", r"lohn", r"gehalt", r"salaire",
-        r"\d+[kK]\s*[-\u2013]\s*\d+[kK]", r"\bcompensation\b", r"\bverg.tung\b",
-        r"per\s+(?:year|month|annum|jahr|monat)", r"j.hrlich", r"monatlich",
+        r"chf\s*\d",
+        r"\d+\s*chf",
+        r"salary",
+        r"lohn",
+        r"gehalt",
+        r"salaire",
+        r"\d+[kK]\s*[-\u2013]\s*\d+[kK]",
+        r"\bcompensation\b",
+        r"\bverg.tung\b",
+        r"per\s+(?:year|month|annum|jahr|monat)",
+        r"j.hrlich",
+        r"monatlich",
     ]
     if any(re.search(p, text) for p in _salary_patterns):
         score += 0.20
@@ -1076,27 +1347,52 @@ def compute_posting_quality(description: str) -> float:
 
     # 4. Explicit skills/requirements section (0.0–0.15)
     _req_signals = [
-        "requirements", "anforderungen", "qualifications", "qualifikationen",
-        "your profile", "ihr profil", "we require", "you have", "you bring",
-        "sie bringen", "must have", "experience with", "erfahrung mit", "kenntnisse",
+        "requirements",
+        "anforderungen",
+        "qualifications",
+        "qualifikationen",
+        "your profile",
+        "ihr profil",
+        "we require",
+        "you have",
+        "you bring",
+        "sie bringen",
+        "must have",
+        "experience with",
+        "erfahrung mit",
+        "kenntnisse",
     ]
     req_hits = sum(1 for sig in _req_signals if sig in text)
     score += min(0.15, req_hits * 0.05)
 
     # 5. Structured sections (0.0–0.15)
     _section_markers = [
-        "responsibilities", "aufgaben", "your tasks", "what you will do",
-        "we offer", "wir bieten", "benefits", "key responsibilities",
-        "about the role", "what we expect",
+        "responsibilities",
+        "aufgaben",
+        "your tasks",
+        "what you will do",
+        "we offer",
+        "wir bieten",
+        "benefits",
+        "key responsibilities",
+        "about the role",
+        "what we expect",
     ]
     section_hits = sum(1 for m in _section_markers if m in text)
     score += min(0.15, section_hits * 0.05)
 
     # 6. Application / contact info (0.0–0.10)
     _apply_signals = [
-        "apply", "bewerben", "postuler", "candidature",
-        "send your cv", "send your resume", "contact us",
-        "application deadline", "bewerbungsfrist", "@",
+        "apply",
+        "bewerben",
+        "postuler",
+        "candidature",
+        "send your cv",
+        "send your resume",
+        "contact us",
+        "application deadline",
+        "bewerbungsfrist",
+        "@",
     ]
     if any(sig in text for sig in _apply_signals):
         score += 0.10

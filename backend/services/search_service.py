@@ -1,4 +1,4 @@
-﻿import asyncio
+import asyncio
 import hashlib
 import inspect
 import json
@@ -84,6 +84,7 @@ STOP_STATES = {"stopped", "cancelled", "finished", "failed"}
 
 # ─────────────────────── Domain Router ───────────────────────
 
+
 def get_compatible_providers(
     query_domain: str,
     providers: Dict[str, Any],
@@ -103,25 +104,32 @@ class SearchService:
         self.providers = {
             "job_room": JobRoomProvider(),
             "swissdevjobs": SwissDevJobsProvider(),
-            "local_db": LocalDbProvider(self.db) if self.db else None
+            "local_db": LocalDbProvider(self.db) if self.db else None,
         }
         if AdeccoProvider:
             self.providers["adecco"] = AdeccoProvider()
 
-
     def _profile_preferences(self, profile) -> Dict[str, Any]:
         remote_pref = get_profile_preference(profile, "remote_only", False)
         return {
-            "preferred_languages": coerce_string_list(get_profile_preference(profile, "preferred_languages"), normalize_language),
-            "preferred_domains": coerce_string_list(get_profile_preference(profile, "preferred_domains"), normalize_domain),
+            "preferred_languages": coerce_string_list(
+                get_profile_preference(profile, "preferred_languages"), normalize_language
+            ),
+            "preferred_domains": coerce_string_list(
+                get_profile_preference(profile, "preferred_domains"), normalize_domain
+            ),
             "remote_only": remote_pref if isinstance(remote_pref, bool) else False,
             "salary_min_chf": coerce_int(get_profile_preference(profile, "salary_min_chf"), None),
             "workload_min": coerce_int(get_profile_preference(profile, "workload_min"), None),
             "workload_max": coerce_int(get_profile_preference(profile, "workload_max"), None),
-            "hard_max_distance_km": coerce_int(get_profile_preference(profile, "hard_max_distance_km"), None),
+            "hard_max_distance_km": coerce_int(
+                get_profile_preference(profile, "hard_max_distance_km"), None
+            ),
         }
 
-    def _apply_query_preferences(self, searches: List[Dict[str, Any]], preferences: Dict[str, Any]) -> tuple[List[Dict[str, Any]], Dict[str, int]]:
+    def _apply_query_preferences(
+        self, searches: List[Dict[str, Any]], preferences: Dict[str, Any]
+    ) -> tuple[List[Dict[str, Any]], Dict[str, int]]:
         # NOTE: preferred_languages intentionally NOT used here.
         # Queries are always generated in all core languages (en, de, fr, it) so that
         # jobs written in any language are discovered — a job posting in German may still
@@ -142,21 +150,18 @@ class SearchService:
             filtered.append(search)
         return filtered, stats
 
-
-
-
-
-
-
-
     def _upsert_scraped_job(self, listing) -> tuple[ScrapedJob, bool]:
         platform = getattr(listing, "source", None) or getattr(listing, "platform", "unknown")
         platform_id = str(getattr(listing, "id", "") or getattr(listing, "platform_job_id", ""))
 
-        existing_sj = self.db.query(ScrapedJob).filter(
-            ScrapedJob.platform == platform,
-            ScrapedJob.platform_job_id == platform_id,
-        ).first()
+        existing_sj = (
+            self.db.query(ScrapedJob)
+            .filter(
+                ScrapedJob.platform == platform,
+                ScrapedJob.platform_job_id == platform_id,
+            )
+            .first()
+        )
 
         desc_text = extract_listing_description_text(listing)
         company_name = extract_company_name(listing) or "Unknown"
@@ -179,9 +184,15 @@ class SearchService:
                 company=company_name,
                 description=clean_html_tags(desc_text) if desc_text else None,
                 location=location_str,
-                external_url=getattr(listing, "external_url", None) or getattr(listing, "url", None) or platform_id,
-                application_url=getattr(listing, "application", None).form_url if getattr(listing, "application", None) else None,
-                application_email=getattr(listing, "application", None).email if getattr(listing, "application", None) else None,
+                external_url=getattr(listing, "external_url", None)
+                or getattr(listing, "url", None)
+                or platform_id,
+                application_url=getattr(listing, "application", None).form_url
+                if getattr(listing, "application", None)
+                else None,
+                application_email=getattr(listing, "application", None).email
+                if getattr(listing, "application", None)
+                else None,
                 workload=workload_str or None,
                 publication_date=pub_date,
                 source_query=getattr(listing, "_source_query", "Unknown"),
@@ -197,16 +208,24 @@ class SearchService:
                 savepoint.rollback()
                 # Another concurrent worker inserted the same job between our query
                 # and our insert — re-fetch the winner without losing the batch.
-                existing_sj = self.db.query(ScrapedJob).filter(
-                    ScrapedJob.platform == platform,
-                    ScrapedJob.platform_job_id == platform_id,
-                ).first()
+                existing_sj = (
+                    self.db.query(ScrapedJob)
+                    .filter(
+                        ScrapedJob.platform == platform,
+                        ScrapedJob.platform_job_id == platform_id,
+                    )
+                    .first()
+                )
         else:
             refresh_fields = {
                 "description": clean_html_tags(desc_text) if desc_text else None,
                 "location": location_str or None,
-                "application_url": getattr(listing, "application", None).form_url if getattr(listing, "application", None) else None,
-                "application_email": getattr(listing, "application", None).email if getattr(listing, "application", None) else None,
+                "application_url": getattr(listing, "application", None).form_url
+                if getattr(listing, "application", None)
+                else None,
+                "application_email": getattr(listing, "application", None).email
+                if getattr(listing, "application", None)
+                else None,
                 "workload": workload_str or None,
                 "publication_date": pub_date,
                 "source_query": getattr(listing, "_source_query", None),
@@ -241,10 +260,15 @@ class SearchService:
             self.db.commit()
         except Exception as exc:
             self.db.rollback()
-            logger.error("Failed to persist scraped job catalog for profile %s: %s", profile_id, exc)
+            logger.error(
+                "Failed to persist scraped job catalog for profile %s: %s", profile_id, exc
+            )
             raise
 
-        add_log(profile_id, f"Persisted shared job catalog entries before filtering: {created} created, {updated} refreshed")
+        add_log(
+            profile_id,
+            f"Persisted shared job catalog entries before filtering: {created} created, {updated} refreshed",
+        )
         return created, updated
 
     async def _normalize_persisted_jobs(self, profile_id: int, jobs: List[Any]) -> int:
@@ -255,10 +279,7 @@ class SearchService:
         candidate_records: List[ScrapedJob] = []
 
         # Batch-load all referenced ScrapedJob records in a single IN query
-        all_scraped_ids = [
-            getattr(listing, "_scraped_job_id", None)
-            for listing in jobs
-        ]
+        all_scraped_ids = [getattr(listing, "_scraped_job_id", None) for listing in jobs]
         all_scraped_ids = [sid for sid in all_scraped_ids if sid is not None]
         scraped_jobs_by_id: Dict[int, ScrapedJob] = {}
         if all_scraped_ids:
@@ -295,14 +316,17 @@ class SearchService:
         batch_size = max(1, settings.NORMALIZE_BATCH_SIZE)
         normalized_rows: List[Dict[str, Any]] = []
         for chunk_start in range(0, len(candidates), batch_size):
-            chunk = candidates[chunk_start: chunk_start + batch_size]
+            chunk = candidates[chunk_start : chunk_start + batch_size]
             try:
                 chunk_result = await llm_service.normalize_job_batch(chunk)
                 normalized_rows.extend(chunk_result)
             except Exception as batch_err:
                 logger.warning(
                     "[NORMALIZE] Batch %d-%d failed for profile %s, skipping chunk: %s",
-                    chunk_start, chunk_start + len(chunk) - 1, profile_id, batch_err,
+                    chunk_start,
+                    chunk_start + len(chunk) - 1,
+                    profile_id,
+                    batch_err,
                 )
                 # Pad with empty dicts so indices stay aligned with candidate_records
                 normalized_rows.extend([{} for _ in chunk])
@@ -336,9 +360,13 @@ class SearchService:
             # V2 enhanced job normalization fields
             scraped_job.normalized_preferred_skills = normalized.get("preferred_skills") or None
             scraped_job.normalized_soft_skills = normalized.get("soft_skills") or None
-            scraped_job.normalized_physical_requirements = normalized.get("physical_requirements") or None
+            scraped_job.normalized_physical_requirements = (
+                normalized.get("physical_requirements") or None
+            )
             scraped_job.normalized_entry_barrier = normalized.get("entry_barrier")
-            scraped_job.normalized_career_changer_friendly = normalized.get("career_changer_friendly")
+            scraped_job.normalized_career_changer_friendly = normalized.get(
+                "career_changer_friendly"
+            )
             scraped_job.normalized_hard_blockers = normalized.get("hard_blockers") or None
 
             metadata = scraped_job.normalized_metadata or {}
@@ -367,13 +395,17 @@ class SearchService:
                 setattr(listing, "_normalized_job_data", scraped_job.normalized_job_data)
 
         if upgraded > 0:
-            add_log(profile_id, f"Normalized {upgraded} persisted jobs with LLM structured extraction.")
+            add_log(
+                profile_id, f"Normalized {upgraded} persisted jobs with LLM structured extraction."
+            )
         return upgraded
 
     # ─── Step 1.5: User/Candidate Profile Normalization ──────────────
 
     @staticmethod
-    def _compute_profile_norm_fingerprint(cv_content: str, role_description: str, search_strategy: str) -> str:
+    def _compute_profile_norm_fingerprint(
+        cv_content: str, role_description: str, search_strategy: str
+    ) -> str:
         payload = {
             "cv": str(cv_content or "")[:12000],
             "role": str(role_description or "")[:4000],
@@ -383,7 +415,9 @@ class SearchService:
             json.dumps(payload, sort_keys=True, ensure_ascii=True).encode("utf-8")
         ).hexdigest()
 
-    async def _normalize_user_profile(self, profile_id: int, profile: SearchProfile, profile_dict: dict, force: bool = False) -> dict:
+    async def _normalize_user_profile(
+        self, profile_id: int, profile: SearchProfile, profile_dict: dict, force: bool = False
+    ) -> dict:
         """Extract/retrieve the dual-signal normalized candidate profile.
 
         Retrieves from cache when fingerprint matches; otherwise calls the LLM.
@@ -397,7 +431,9 @@ class SearchService:
         if not cv_content and not role_description:
             return {}
 
-        current_fp = self._compute_profile_norm_fingerprint(cv_content, role_description, search_strategy)
+        current_fp = self._compute_profile_norm_fingerprint(
+            cv_content, role_description, search_strategy
+        )
         cached_fp = getattr(profile, "profile_normalization_fingerprint", None)
         already_normalized = (
             getattr(profile, "profile_normalization_status", None) == "normalized"
@@ -425,12 +461,20 @@ class SearchService:
                 "intent_keywords": profile.profile_search_intent_keywords or [],
                 # V2 enhanced candidate profile fields
                 "role_type": getattr(profile, "profile_normalized_role_type", None),
-                "industry_sectors": getattr(profile, "profile_normalized_industry_sectors", None) or [],
-                "transferable_skills": getattr(profile, "profile_normalized_transferable_skills", None) or [],
+                "industry_sectors": getattr(profile, "profile_normalized_industry_sectors", None)
+                or [],
+                "transferable_skills": getattr(
+                    profile, "profile_normalized_transferable_skills", None
+                )
+                or [],
                 # V2 enhanced search intent fields
                 "intent_role_type": getattr(profile, "profile_search_intent_role_type", None),
-                "intent_seniority_min": getattr(profile, "profile_search_intent_seniority_min", None),
-                "intent_seniority_max": getattr(profile, "profile_search_intent_seniority_max", None),
+                "intent_seniority_min": getattr(
+                    profile, "profile_search_intent_seniority_min", None
+                ),
+                "intent_seniority_max": getattr(
+                    profile, "profile_search_intent_seniority_max", None
+                ),
                 "dealbreakers": getattr(profile, "profile_search_intent_dealbreakers", None) or [],
                 "flexibility": getattr(profile, "profile_search_intent_flexibility", None) or {},
             }
@@ -460,15 +504,27 @@ class SearchService:
         except Exception as exc:
             # Unwrap tenacity RetryError so the real API error is visible in logs.
             from backend.services.llm_service import _unwrap_retry_error
+
             _, error_msg = _unwrap_retry_error(exc)
             logger.error(
                 "Profile normalization failed for profile %s: %s",
-                profile_id, error_msg, exc_info=True,
+                profile_id,
+                error_msg,
+                exc_info=True,
             )
-            add_log(profile_id, f"⚠ Profile normalization failed (normalization filters will be skipped): {error_msg}")
+            add_log(
+                profile_id,
+                f"⚠ Profile normalization failed (normalization filters will be skipped): {error_msg}",
+            )
             return {}
 
-    def _apply_structured_filters(self, profile_id: int, profile_dict: Dict[str, Any], jobs: List[Any], preferences: Dict[str, Any]) -> List[Any]:
+    def _apply_structured_filters(
+        self,
+        profile_id: int,
+        profile_dict: Dict[str, Any],
+        jobs: List[Any],
+        preferences: Dict[str, Any],
+    ) -> List[Any]:
         if not jobs:
             return jobs
 
@@ -483,23 +539,36 @@ class SearchService:
 
         dropped_total = len(jobs) - len(kept)
         if dropped_total > 0:
-            reasons_text = ", ".join([f"{key}:{value}" for key, value in sorted(dropped_reasons.items())])
+            reasons_text = ", ".join(
+                [f"{key}:{value}" for key, value in sorted(dropped_reasons.items())]
+            )
             add_log(
                 profile_id,
                 f"Structured filtering dropped {dropped_total}/{len(jobs)} jobs. Reasons: {reasons_text}",
             )
         if kept:
-            add_log(profile_id, f"Structured filtering kept {len(kept)} / {len(jobs)} jobs using persisted job facts and deterministic constraints.")
+            add_log(
+                profile_id,
+                f"Structured filtering kept {len(kept)} / {len(jobs)} jobs using persisted job facts and deterministic constraints.",
+            )
         return kept
 
-    def _passes_structured_filters(self, listing, preferences: Dict[str, Any], profile_dict: Dict[str, Any]) -> tuple[bool, str]:
+    def _passes_structured_filters(
+        self, listing, preferences: Dict[str, Any], profile_dict: Dict[str, Any]
+    ) -> tuple[bool, str]:
         normalized = getattr(listing, "_normalized_job_data", None)
         if not isinstance(normalized, dict):
             normalized = {}
 
         if preferences.get("remote_only"):
             mode_token = normalized_text_token(normalized.get("employment_mode", ""))
-            is_remote_like = mode_token in {"remote", "hybrid", "home office", "telework", "teletravail"}
+            is_remote_like = mode_token in {
+                "remote",
+                "hybrid",
+                "home office",
+                "telework",
+                "teletravail",
+            }
             if mode_token:
                 if not is_remote_like:
                     return False, "remote_only"
@@ -514,7 +583,9 @@ class SearchService:
             if normalized_salary_max is None or normalized_salary_max < salary_min:
                 return False, "salary_min_chf"
 
-        required_min, required_max = self._resolve_required_workload_range(profile_dict, preferences)
+        required_min, required_max = self._resolve_required_workload_range(
+            profile_dict, preferences
+        )
         if required_min is not None or required_max is not None:
             listing_min = coerce_int(normalized.get("workload_min"), None)
             listing_max = coerce_int(normalized.get("workload_max"), None)
@@ -568,7 +639,9 @@ class SearchService:
             profile_norm = profile_dict.get("profile_normalization") or {}
             if profile_norm:
                 preference_signals = profile_dict.get("preference_signals") or {}
-                ok, reason = self._passes_normalization_filters(normalized, profile_norm, preference_signals)
+                ok, reason = self._passes_normalization_filters(
+                    normalized, profile_norm, preference_signals
+                )
                 if not ok:
                     return False, reason
 
@@ -588,13 +661,13 @@ class SearchService:
     _RELATED_DOMAIN_GROUPS: tuple[frozenset[str], ...] = (
         frozenset({"it", "engineering"}),
         frozenset({"it", "consulting"}),
-        frozenset({"it", "marketing"}),           # digital marketing / growth
+        frozenset({"it", "marketing"}),  # digital marketing / growth
         frozenset({"finance", "administration"}),
         frozenset({"finance", "consulting"}),
         frozenset({"medical", "pharma"}),
-        frozenset({"medical", "education"}),      # healthcare training
+        frozenset({"medical", "education"}),  # healthcare training
         frozenset({"sales", "marketing"}),
-        frozenset({"sales", "hospitality"}),      # client-facing service
+        frozenset({"sales", "hospitality"}),  # client-facing service
         frozenset({"engineering", "construction"}),
         frozenset({"logistics", "construction"}),
         frozenset({"logistics", "general"}),
@@ -611,6 +684,7 @@ class SearchService:
         """
         try:
             from backend.data.domain_affinity import domains_are_related  # type: ignore
+
             return domains_are_related(domain_a, domain_b, threshold=0.40)
         except Exception:
             # Legacy fallback
@@ -623,6 +697,7 @@ class SearchService:
         """Return a continuous 0.0–1.0 affinity score between two domains."""
         try:
             from backend.data.domain_affinity import get_domain_affinity  # type: ignore
+
             return get_domain_affinity(domain_a, domain_b)
         except Exception:
             if domain_a == domain_b:
@@ -639,7 +714,9 @@ class SearchService:
 
     # Ordered seniority levels for range-based comparison
     _SENIORITY_ORDER: Dict[str, int] = {
-        "intern": 0, "trainee": 0, "entry": 0,
+        "intern": 0,
+        "trainee": 0,
+        "entry": 0,
         "junior": 1,
         "mid": 2,
         "senior": 3,
@@ -712,15 +789,20 @@ class SearchService:
 
         # ─── 0.5. Dealbreaker rejection ──────────────────────────────────
         # Absolute no-gos from the search intent take effect before any other filter.
-        dealbreakers = [str(d).lower().strip() for d in (profile_norm.get("dealbreakers") or []) if d]
+        dealbreakers = [
+            str(d).lower().strip() for d in (profile_norm.get("dealbreakers") or []) if d
+        ]
         if dealbreakers:
-            hard_blockers_raw = list(job_norm.get("hard_blockers") or []) + list(job_norm.get("key_requirements") or [])
+            hard_blockers_raw = list(job_norm.get("hard_blockers") or []) + list(
+                job_norm.get("key_requirements") or []
+            )
             hard_blockers = [normalized_text_token(str(b)) for b in hard_blockers_raw if b]
             for dk in dealbreakers:
                 dk_token = normalized_text_token(dk)
                 if dk_token and any(
                     _word_bounded_substring(dk_token, hb) or _word_bounded_substring(hb, dk_token)
-                    for hb in hard_blockers if hb
+                    for hb in hard_blockers
+                    if hb
                 ):
                     return False, "norm_dealbreaker_hit"
 
@@ -731,26 +813,48 @@ class SearchService:
         if preference_signals:
             _t3 = int(getattr(settings, "DEALBREAKER_ESCALATION_TIER3", 10))
             _dealbreaker_patterns = preference_signals.get("dealbreaker_patterns") or {}
-            _job_seniority_esc = str(job_norm.get("seniority") or job_norm.get("normalized_seniority") or "").lower()
+            _job_seniority_esc = str(
+                job_norm.get("seniority") or job_norm.get("normalized_seniority") or ""
+            ).lower()
             _profile_seniority_esc = str(
                 profile_norm.get("intent_seniority") or profile_norm.get("seniority") or ""
             ).lower()
-            _job_domain_esc = str(job_norm.get("domain") or job_norm.get("normalized_domain") or "general").lower()
-            _avoided_domains_esc = [d.lower() for d in (preference_signals.get("avoided_domains") or [])]
+            _job_domain_esc = str(
+                job_norm.get("domain") or job_norm.get("normalized_domain") or "general"
+            ).lower()
+            _avoided_domains_esc = [
+                d.lower() for d in (preference_signals.get("avoided_domains") or [])
+            ]
             for _sig, _cnt in _dealbreaker_patterns.items():
                 if _cnt < _t3:
                     continue
-                if _sig == "too_senior" and _job_seniority_esc == "senior" and _profile_seniority_esc in ("junior", "mid"):
+                if (
+                    _sig == "too_senior"
+                    and _job_seniority_esc == "senior"
+                    and _profile_seniority_esc in ("junior", "mid")
+                ):
                     return False, "norm_escalated_dealbreaker:too_senior"
-                if _sig == "too_junior" and _job_seniority_esc == "junior" and _profile_seniority_esc in ("senior", "mid"):
+                if (
+                    _sig == "too_junior"
+                    and _job_seniority_esc == "junior"
+                    and _profile_seniority_esc in ("senior", "mid")
+                ):
                     return False, "norm_escalated_dealbreaker:too_junior"
-                if _sig == "wrong_domain" and _job_domain_esc and _job_domain_esc in _avoided_domains_esc:
+                if (
+                    _sig == "wrong_domain"
+                    and _job_domain_esc
+                    and _job_domain_esc in _avoided_domains_esc
+                ):
                     return False, "norm_escalated_dealbreaker:wrong_domain"
 
         # ─── 1. Domain match ─────────────────────────────────────────────
         # Skip for low-confidence normalizations — the extracted domain may be wrong.
         # Primary: use search intent domain; fallback to CV domain
-        intent_domain = str(profile_norm.get("intent_domain") or profile_norm.get("domain") or "general").strip().lower()
+        intent_domain = (
+            str(profile_norm.get("intent_domain") or profile_norm.get("domain") or "general")
+            .strip()
+            .lower()
+        )
         job_domain = str(job_norm.get("domain") or "general").strip().lower()
 
         if not low_confidence and not open_to_unrelated:
@@ -779,7 +883,16 @@ class SearchService:
 
         # ─── Manual-work gate (keyword fallback when intent_role_type not extracted yet) ─
         intent_keywords = [str(k).lower() for k in (profile_norm.get("intent_keywords") or []) if k]
-        _manual_signals = {"manual", "warehouse", "cleaning", "physical", "handwerk", "lager", "reinigung", "manuell"}
+        _manual_signals = {
+            "manual",
+            "warehouse",
+            "cleaning",
+            "physical",
+            "handwerk",
+            "lager",
+            "reinigung",
+            "manuell",
+        }
         searching_manual = (
             (intent_role_type in {"manual", "service"})
             or open_to_unrelated
@@ -789,8 +902,12 @@ class SearchService:
         # ─── 3. Seniority range match ─────────────────────────────────────
         # Use intent_seniority_min/max range; fall back to single intent_seniority or CV seniority.
         # Skip for low-confidence normalizations — the extracted seniority may be wrong.
-        intent_seniority_min = str(profile_norm.get("intent_seniority_min") or "").strip().lower() or None
-        intent_seniority_max = str(profile_norm.get("intent_seniority_max") or "").strip().lower() or None
+        intent_seniority_min = (
+            str(profile_norm.get("intent_seniority_min") or "").strip().lower() or None
+        )
+        intent_seniority_max = (
+            str(profile_norm.get("intent_seniority_max") or "").strip().lower() or None
+        )
         has_range = intent_seniority_min or intent_seniority_max
         job_seniority = str(job_norm.get("seniority") or "").strip().lower()
 
@@ -807,19 +924,29 @@ class SearchService:
                         # Job requires higher seniority than max tolerance — check exp gap
                         user_exp = coerce_int(profile_norm.get("experience_years"), None)
                         job_exp_min = coerce_int(job_norm.get("experience_min_years"), None)
-                        tolerance = int(getattr(settings, "SEARCH_NORMALIZATION_EXPERIENCE_TOLERANCE", 2))
-                        if job_exp_min is not None and user_exp is not None and job_exp_min > user_exp + tolerance:
+                        tolerance = int(
+                            getattr(settings, "SEARCH_NORMALIZATION_EXPERIENCE_TOLERANCE", 2)
+                        )
+                        if (
+                            job_exp_min is not None
+                            and user_exp is not None
+                            and job_exp_min > user_exp + tolerance
+                        ):
                             return False, "norm_seniority_overqualified"
         elif not low_confidence and job_seniority:
             # Legacy single-point seniority check
-            effective_seniority = str(
-                profile_norm.get("intent_seniority") or profile_norm.get("seniority") or ""
-            ).strip().lower()
+            effective_seniority = (
+                str(profile_norm.get("intent_seniority") or profile_norm.get("seniority") or "")
+                .strip()
+                .lower()
+            )
             if effective_seniority:
                 if effective_seniority == "junior" and job_seniority == "senior":
                     job_exp_min = coerce_int(job_norm.get("experience_min_years"), None)
                     user_exp = coerce_int(profile_norm.get("experience_years"), None)
-                    tolerance = int(getattr(settings, "SEARCH_NORMALIZATION_EXPERIENCE_TOLERANCE", 2))
+                    tolerance = int(
+                        getattr(settings, "SEARCH_NORMALIZATION_EXPERIENCE_TOLERANCE", 2)
+                    )
                     if (
                         job_exp_min is not None
                         and user_exp is not None
@@ -839,9 +966,15 @@ class SearchService:
         # ─── 4. Qualification level ───────────────────────────────────────
         # Use intent qualification (what the user is willing to meet); fall back to CV level.
         # Skip for low-confidence normalizations — the extracted qualification may be wrong.
-        effective_ql = str(
-            profile_norm.get("intent_qualification_level") or profile_norm.get("qualification_level") or ""
-        ).strip().lower()
+        effective_ql = (
+            str(
+                profile_norm.get("intent_qualification_level")
+                or profile_norm.get("qualification_level")
+                or ""
+            )
+            .strip()
+            .lower()
+        )
         job_ql = str(job_norm.get("qualification_level") or "").strip().lower()
 
         if not low_confidence and effective_ql and job_ql:
@@ -875,11 +1008,13 @@ class SearchService:
         if not low_confidence and not searching_manual and not career_changer_friendly:
             job_skills = [s for s in (job_norm.get("required_skills") or []) if s]
             # Combine CV skills + intent target skills + transferable skills as the candidate pool
-            profile_skills = list({
-                *[s for s in (profile_norm.get("skills") or []) if s],
-                *[s for s in (profile_norm.get("intent_skills") or []) if s],
-                *[s for s in (profile_norm.get("transferable_skills") or []) if s],
-            })
+            profile_skills = list(
+                {
+                    *[s for s in (profile_norm.get("skills") or []) if s],
+                    *[s for s in (profile_norm.get("intent_skills") or []) if s],
+                    *[s for s in (profile_norm.get("transferable_skills") or []) if s],
+                }
+            )
             if len(job_skills) >= 3 and len(profile_skills) >= 3:
                 overlap = semantic_skills_score(job_skills, profile_skills)
                 if overlap == 0.0:
@@ -892,11 +1027,12 @@ class SearchService:
             try:
                 threshold = float(getattr(settings, "STRUCTURED_PRESCORE_THRESHOLD", 30.0))
                 # Dynamic threshold: stricter when user has established preference signals
-                if (
-                    preference_signals
-                    and preference_signals.get("signal_count", 0) >= getattr(settings, "PREFERENCE_MIN_SIGNAL_COUNT", 10)
+                if preference_signals and preference_signals.get("signal_count", 0) >= getattr(
+                    settings, "PREFERENCE_MIN_SIGNAL_COUNT", 10
                 ):
-                    threshold = float(getattr(settings, "STRUCTURED_PRESCORE_THRESHOLD_WITH_PREFS", 35.0))
+                    threshold = float(
+                        getattr(settings, "STRUCTURED_PRESCORE_THRESHOLD_WITH_PREFS", 35.0)
+                    )
                 # Low-confidence penalty: unreliable normalization must clear a higher bar
                 if low_confidence:
                     threshold += 15.0
@@ -908,7 +1044,9 @@ class SearchService:
 
         return True, "ok"
 
-    def _resolve_required_workload_range(self, profile_dict: Dict[str, Any], preferences: Dict[str, Any]) -> tuple[Optional[int], Optional[int]]:
+    def _resolve_required_workload_range(
+        self, profile_dict: Dict[str, Any], preferences: Dict[str, Any]
+    ) -> tuple[Optional[int], Optional[int]]:
         min_pref = preferences.get("workload_min")
         max_pref = preferences.get("workload_max")
         if min_pref is not None or max_pref is not None:
@@ -968,6 +1106,7 @@ class SearchService:
         if not level:
             return level
         import re as _re
+
         # Strip trailing +/- modifiers
         normalized = _re.sub(r"[+\-]+$", "", level.strip().lower())
         # For range formats (b2/c1 or b2-c1), keep only the lower (first) level
@@ -1064,7 +1203,16 @@ class SearchService:
                     }
                 )
 
-        keyword_pool = ["python", "java", "javascript", "typescript", "react", "docker", "sql", "aws"]
+        keyword_pool = [
+            "python",
+            "java",
+            "javascript",
+            "typescript",
+            "react",
+            "docker",
+            "sql",
+            "aws",
+        ]
         lower_text = f"{role_description} {search_strategy} {cv_content}".lower()
         for kw in keyword_pool:
             if kw in lower_text:
@@ -1113,7 +1261,9 @@ class SearchService:
 
         try:
             await asyncio.wait_for(
-                self._run_pipeline(profile_id, force_regenerate_cv_summary, force_regenerate_queries),
+                self._run_pipeline(
+                    profile_id, force_regenerate_cv_summary, force_regenerate_queries
+                ),
                 timeout=settings.SEARCH_PIPELINE_TIMEOUT_SECONDS,
             )
         except asyncio.TimeoutError:
@@ -1134,7 +1284,9 @@ class SearchService:
                 error=f"Pipeline timed out after {settings.SEARCH_PIPELINE_TIMEOUT_SECONDS}s",
             )
         except Exception as e:
-            logger.error(f"Unexpected error in run_search for profile {profile_id}: {e}", exc_info=True)
+            logger.error(
+                f"Unexpected error in run_search for profile {profile_id}: {e}", exc_info=True
+            )
             update_status(profile_id, state="error", error=f"Unexpected error: {e}")
         finally:
             for provider_name, provider in self.providers.items():
@@ -1155,7 +1307,9 @@ class SearchService:
                         if asyncio.iscoroutine(close_result):
                             await close_result
                 except Exception as close_error:
-                    logger.warning("Failed to close provider %s cleanly: %s", provider_name, close_error)
+                    logger.warning(
+                        "Failed to close provider %s cleanly: %s", provider_name, close_error
+                    )
 
             unregister_task(profile_id)
 
@@ -1190,9 +1344,7 @@ class SearchService:
         init_status(profile_id, user_id=user_id)
         add_log(profile_id, "Step 1: Generating/Retrieving search plan...")
 
-        provider_infos = {
-            name: p.get_provider_info() for name, p in self.providers.items() if p
-        }
+        provider_infos = {name: p.get_provider_info() for name, p in self.providers.items() if p}
 
         searches = await self._generate_plan(profile_id, profile_dict, profile, provider_infos)
         if not searches:
@@ -1207,7 +1359,9 @@ class SearchService:
                 )
                 return
 
-            enable_degraded_fallback = bool(getattr(settings, "SEARCH_ENABLE_DEGRADED_PLAN_FALLBACK", False))
+            enable_degraded_fallback = bool(
+                getattr(settings, "SEARCH_ENABLE_DEGRADED_PLAN_FALLBACK", False)
+            )
             if enable_degraded_fallback:
                 degraded_searches = self._build_degraded_fallback_plan(profile_dict, profile)
                 if degraded_searches:
@@ -1228,17 +1382,25 @@ class SearchService:
                         searches_generated=searches,
                     )
                 else:
-                    add_log(profile_id, "Degraded fallback plan did not produce executable queries.")
+                    add_log(
+                        profile_id, "Degraded fallback plan did not produce executable queries."
+                    )
 
             if searches:
                 add_log(profile_id, "Continuing search with degraded fallback plan.")
             else:
                 terminal_reason = status_reason or "no_queries"
                 if terminal_reason == "no_valid_queries_after_filter":
-                    add_log(profile_id, "LLM generated plan candidates, but all were filtered out as invalid/duplicates.")
+                    add_log(
+                        profile_id,
+                        "LLM generated plan candidates, but all were filtered out as invalid/duplicates.",
+                    )
                 else:
                     add_log(profile_id, "No valid search queries were generated.")
-                add_log(profile_id, f"[LLM_DEBUG] state=done terminal_reason={terminal_reason} profile_id={profile_id}")
+                add_log(
+                    profile_id,
+                    f"[LLM_DEBUG] state=done terminal_reason={terminal_reason} profile_id={profile_id}",
+                )
                 update_status(profile_id, state="done", terminal_reason=terminal_reason)
                 return
 
@@ -1283,6 +1445,7 @@ class SearchService:
         # ── Step 1.6: Load user preference signals for prescore gating ──
         try:
             from backend.services.preference_service import get_preference_signals
+
             profile_dict["preference_signals"] = get_preference_signals(user_id, self.db) or {}
         except Exception:
             profile_dict["preference_signals"] = {}
@@ -1291,7 +1454,9 @@ class SearchService:
         # Each query's results flow through the full pipeline immediately after the
         # query completes, overlapping with still-ongoing searches.
         update_status(profile_id, state="searching")
-        add_log(profile_id, "Step 2+: Streaming search with real-time normalization and analysis...")
+        add_log(
+            profile_id, "Step 2+: Streaming search with real-time normalization and analysis..."
+        )
 
         # Pre-load profile job history for incremental deduplication inside the producer.
         profile_history = self._load_profile_dedup_history(profile_id, user_id)
@@ -1299,20 +1464,29 @@ class SearchService:
         # The producer streams unique-per-query batches; the consumer normalizes,
         # filters, analyzes, and immediately persists each batch as it arrives.
         job_queue: asyncio.Queue = asyncio.Queue()
-        (total_found, total_duplicates), (total_filtered, analysis_failed, analyzed_pairs, consumer_saved, consumer_skipped) = await asyncio.gather(
+        (
+            (total_found, total_duplicates),
+            (total_filtered, analysis_failed, analyzed_pairs, consumer_saved, consumer_skipped),
+        ) = await asyncio.gather(
             self._search_and_produce(
                 profile_id, profile, searches, provider_infos, job_queue, profile_history
             ),
-            self._processing_consumer(
-                profile_id, profile_dict, profile_preferences, job_queue
-            ),
+            self._processing_consumer(profile_id, profile_dict, profile_preferences, job_queue),
         )
         status_metrics = self._status_metrics(profile_id)
 
         if total_found == 0:
-            if status_metrics["provider_failures"] > 0 and status_metrics["provider_successes"] == 0:
-                add_log(profile_id, "All provider searches failed before any jobs could be processed.")
-                add_log(profile_id, f"[LLM_DEBUG] state=error terminal_reason=search_execution_failed profile_id={profile_id}")
+            if (
+                status_metrics["provider_failures"] > 0
+                and status_metrics["provider_successes"] == 0
+            ):
+                add_log(
+                    profile_id, "All provider searches failed before any jobs could be processed."
+                )
+                add_log(
+                    profile_id,
+                    f"[LLM_DEBUG] state=error terminal_reason=search_execution_failed profile_id={profile_id}",
+                )
                 update_status(
                     profile_id,
                     state="error",
@@ -1321,17 +1495,26 @@ class SearchService:
                 )
                 return
             add_log(profile_id, "No jobs found across all queries.")
-            add_log(profile_id, f"[LLM_DEBUG] state=done terminal_reason=no_results profile_id={profile_id}")
+            add_log(
+                profile_id,
+                f"[LLM_DEBUG] state=done terminal_reason=no_results profile_id={profile_id}",
+            )
             update_status(profile_id, state="done", terminal_reason="no_results")
             return
 
         unique_total = total_found - total_duplicates
         if unique_total == 0:
             add_log(profile_id, "All found jobs are already in profile history.")
-            add_log(profile_id, f"[LLM_DEBUG] state=done terminal_reason=all_duplicates profile_id={profile_id}")
+            add_log(
+                profile_id,
+                f"[LLM_DEBUG] state=done terminal_reason=all_duplicates profile_id={profile_id}",
+            )
             update_status(
-                profile_id, state="done", terminal_reason="all_duplicates",
-                jobs_found=total_found, jobs_duplicates=total_duplicates,
+                profile_id,
+                state="done",
+                terminal_reason="all_duplicates",
+                jobs_found=total_found,
+                jobs_duplicates=total_duplicates,
             )
             return
 
@@ -1343,8 +1526,14 @@ class SearchService:
             # pipeline_processing_failed terminal state.
             unexplained_unique = max(0, unique_total - total_filtered - analysis_failed)
             if status_metrics["errors"] > 0 and unexplained_unique > 0:
-                add_log(profile_id, "Jobs were fetched but pipeline processing failed before analysis completed.")
-                add_log(profile_id, f"[LLM_DEBUG] state=error terminal_reason=pipeline_processing_failed profile_id={profile_id}")
+                add_log(
+                    profile_id,
+                    "Jobs were fetched but pipeline processing failed before analysis completed.",
+                )
+                add_log(
+                    profile_id,
+                    f"[LLM_DEBUG] state=error terminal_reason=pipeline_processing_failed profile_id={profile_id}",
+                )
                 update_status(
                     profile_id,
                     state="error",
@@ -1356,11 +1545,17 @@ class SearchService:
                 )
             else:
                 add_log(profile_id, "No jobs passed structured filtering and analysis.")
-                add_log(profile_id, f"[LLM_DEBUG] state=done terminal_reason=no_jobs_after_structured_filters profile_id={profile_id}")
+                add_log(
+                    profile_id,
+                    f"[LLM_DEBUG] state=done terminal_reason=no_jobs_after_structured_filters profile_id={profile_id}",
+                )
                 update_status(
-                    profile_id, state="done",
+                    profile_id,
+                    state="done",
                     terminal_reason="no_jobs_after_structured_filters",
-                    jobs_found=total_found, jobs_duplicates=total_duplicates, jobs_skipped=total_filtered,
+                    jobs_found=total_found,
+                    jobs_duplicates=total_duplicates,
+                    jobs_skipped=total_filtered,
                 )
             return
 
@@ -1369,7 +1564,10 @@ class SearchService:
         pre_finalize_errors = self._status_metrics(profile_id)["errors"]
         if consumer_saved == 0 and analyzed_pairs and pre_finalize_errors > 0:
             add_log(profile_id, "Jobs were analyzed but none could be persisted.")
-            add_log(profile_id, f"[LLM_DEBUG] state=error terminal_reason=job_persistence_failed profile_id={profile_id}")
+            add_log(
+                profile_id,
+                f"[LLM_DEBUG] state=error terminal_reason=job_persistence_failed profile_id={profile_id}",
+            )
             update_status(
                 profile_id,
                 state="error",
@@ -1391,14 +1589,22 @@ class SearchService:
             or getattr(settings, "SALARY_BENCHMARK_ENABLED", False)
         )
         if needs_final_pass and analyzed_pairs:
-            add_log(profile_id, f"Step 6b: Running final refinement passes ({len(analyzed_pairs)} jobs)...")
+            add_log(
+                profile_id,
+                f"Step 6b: Running final refinement passes ({len(analyzed_pairs)} jobs)...",
+            )
             update_status(profile_id, state="analyzing")
             await self._finalize_and_save(profile_id, profile_dict, analyzed_pairs)
 
         saved_count = consumer_saved
         total_skipped = total_filtered + consumer_skipped
-        add_log(profile_id, f"✓ Search complete – {saved_count} jobs saved, {consumer_skipped} skipped")
-        add_log(profile_id, f"[LLM_DEBUG] state=done terminal_reason=completed profile_id={profile_id} jobs_saved={saved_count} jobs_skipped={consumer_skipped}")
+        add_log(
+            profile_id, f"✓ Search complete – {saved_count} jobs saved, {consumer_skipped} skipped"
+        )
+        add_log(
+            profile_id,
+            f"[LLM_DEBUG] state=done terminal_reason=completed profile_id={profile_id} jobs_saved={saved_count} jobs_skipped={consumer_skipped}",
+        )
         update_status(
             profile_id,
             state="done",
@@ -1412,7 +1618,9 @@ class SearchService:
 
     # ───────────────────────── helper methods ─────────────────────────
 
-    async def _generate_plan(self, profile_id: int, profile_dict: dict, profile, provider_infos) -> list:
+    async def _generate_plan(
+        self, profile_id: int, profile_dict: dict, profile, provider_infos
+    ) -> list:
         preferences = self._profile_preferences(profile)
         # Feature 3: check cached queries
         force_regen_q = profile_dict.get("force_regenerate_queries", False)
@@ -1454,12 +1662,16 @@ class SearchService:
         if not searches:
             try:
                 searches = await llm_service.generate_search_plan(
-                    profile_dict, list(provider_infos.values()),
+                    profile_dict,
+                    list(provider_infos.values()),
                     max_queries=profile.max_queries,
                     max_occupation_queries=profile.max_occupation_queries,
                     max_keyword_queries=profile.max_keyword_queries,
                 )
-                add_log(profile_id, f"[LLM_DEBUG] plan_raw_output_count={len(searches) if searches else 0}")
+                add_log(
+                    profile_id,
+                    f"[LLM_DEBUG] plan_raw_output_count={len(searches) if searches else 0}",
+                )
                 update_status(profile_id, plan_raw_count=len(searches) if searches else 0)
             except Exception as e:
                 logger.error(f"LLM keyword generation failed: {e}")
@@ -1467,7 +1679,9 @@ class SearchService:
                 terminal_reason = "llm_plan_error"
                 if "rate limit" in error_text or "rate_limit" in error_text:
                     terminal_reason = "llm_plan_rate_limited"
-                update_status(profile_id, state="error", terminal_reason=terminal_reason, error=str(e))
+                update_status(
+                    profile_id, state="error", terminal_reason=terminal_reason, error=str(e)
+                )
                 return []
 
             if not searches:
@@ -1540,7 +1754,9 @@ class SearchService:
             )
         return unique_searches
 
-    async def _execute_searches(self, profile_id: int, profile, searches: list, provider_infos) -> list:
+    async def _execute_searches(
+        self, profile_id: int, profile, searches: list, provider_infos
+    ) -> list:
         all_jobs: list = []
         execution_metrics = {
             "queries_without_provider": 0,
@@ -1578,7 +1794,10 @@ class SearchService:
                     if not profession_codes:
                         avam_fallback_keyword = True
                         execution_metrics["avam_fallback_count"] += 1
-                        add_log(profile_id, f"  ℹ AVAM found no codes for «{query}», JobRoom will use keyword fallback")
+                        add_log(
+                            profile_id,
+                            f"  ℹ AVAM found no codes for «{query}», JobRoom will use keyword fallback",
+                        )
 
                 compatible = route_provider_names(normalized_search, self.providers, provider_infos)
                 if not compatible:
@@ -1587,8 +1806,13 @@ class SearchService:
                     return []
 
                 # Update status
-                update_status(profile_id, current_search_index=idx + 1, current_query=f"«{query}» ({domain})")
-                add_log(profile_id, f"Running query {idx+1}/{len(searches)}: «{query}» on {', '.join(compatible)}")
+                update_status(
+                    profile_id, current_search_index=idx + 1, current_query=f"«{query}» ({domain})"
+                )
+                add_log(
+                    profile_id,
+                    f"Running query {idx + 1}/{len(searches)}: «{query}» on {', '.join(compatible)}",
+                )
 
                 async def search_provider(provider_name: str, req: JobSearchRequest):
                     provider = self.providers[provider_name]
@@ -1600,10 +1824,14 @@ class SearchService:
                         current_page = 0
                         while True:
                             page_size = 50
-                            if hasattr(provider, "capabilities") and hasattr(provider.capabilities, "max_page_size"):
+                            if hasattr(provider, "capabilities") and hasattr(
+                                provider.capabilities, "max_page_size"
+                            ):
                                 page_size = provider.capabilities.max_page_size
 
-                            page_req = req.model_copy(update={"page": current_page, "page_size": page_size})
+                            page_req = req.model_copy(
+                                update={"page": current_page, "page_size": page_size}
+                            )
                             result = await provider.search(page_req)
                             page_items = list(getattr(result, "items", []) or [])
 
@@ -1623,13 +1851,19 @@ class SearchService:
                             total_count = getattr(result, "total_count", None)
                             if total_pages and current_page >= total_pages - 1:
                                 break
-                            if total_count is not None and total_count >= 0 and len(provider_jobs) >= total_count:
+                            if (
+                                total_count is not None
+                                and total_count >= 0
+                                and len(provider_jobs) >= total_count
+                            ):
                                 break
 
                             current_page += 1
 
                             if provider.throttle_delay > 0:
-                                await asyncio.sleep(provider.throttle_delay)  # Provider-level throttling
+                                await asyncio.sleep(
+                                    provider.throttle_delay
+                                )  # Provider-level throttling
 
                             # Abort check
                             status_data = get_status(profile_id)
@@ -1644,7 +1878,9 @@ class SearchService:
                 for p_name in compatible:
                     provider = self.providers[p_name]
                     page_size = 50
-                    if hasattr(provider, "capabilities") and hasattr(provider.capabilities, "max_page_size"):
+                    if hasattr(provider, "capabilities") and hasattr(
+                        provider.capabilities, "max_page_size"
+                    ):
                         page_size = provider.capabilities.max_page_size
 
                     if p_name == "job_room" and avam_fallback_keyword:
@@ -1688,7 +1924,9 @@ class SearchService:
 
                 return found_jobs
 
-        results = await asyncio.gather(*(execute_single_search(i, q) for i, q in enumerate(searches)))
+        results = await asyncio.gather(
+            *(execute_single_search(i, q) for i, q in enumerate(searches))
+        )
 
         seen_identity_keys: set[str] = set()
         seen_url_tokens: set[str] = set()
@@ -1741,16 +1979,13 @@ class SearchService:
         )
 
         existing_keys = {
-            listing_identity_key(row) for row in existing_identifiers
-            if listing_identity_key(row)
+            listing_identity_key(row) for row in existing_identifiers if listing_identity_key(row)
         }
         existing_urls = {
-            listing_url_token(row) for row in existing_identifiers
-            if listing_url_token(row)
+            listing_url_token(row) for row in existing_identifiers if listing_url_token(row)
         }
         existing_fuzzy_keys = {
-            listing_fuzzy_key(row) for row in existing_identifiers
-            if listing_fuzzy_key(row)
+            listing_fuzzy_key(row) for row in existing_identifiers if listing_fuzzy_key(row)
         }
 
         # Batch-load existing ScrapedJob records for "applied elsewhere" check.
@@ -1765,12 +2000,14 @@ class SearchService:
                     pairs_by_platform.setdefault(p, []).append(pid)
 
             for platform_name, platform_ids in pairs_by_platform.items():
-                batch_sjs = self.db.query(
-                    ScrapedJob.id, ScrapedJob.platform, ScrapedJob.platform_job_id
-                ).filter(
-                    ScrapedJob.platform == platform_name,
-                    ScrapedJob.platform_job_id.in_(platform_ids),
-                ).all()
+                batch_sjs = (
+                    self.db.query(ScrapedJob.id, ScrapedJob.platform, ScrapedJob.platform_job_id)
+                    .filter(
+                        ScrapedJob.platform == platform_name,
+                        ScrapedJob.platform_job_id.in_(platform_ids),
+                    )
+                    .all()
+                )
                 for sj_id, sj_platform, sj_platform_id in batch_sjs:
                     if sj_id in applied_scraped_ids:
                         applied_scraped_id_by_pair[(sj_platform, sj_platform_id)] = sj_id
@@ -1783,9 +2020,10 @@ class SearchService:
             url = listing_url_token(listing)
             fuzzy_key = listing_fuzzy_key(listing)
 
-            if (platform and platform_id and (key in seen_keys or key in existing_keys)) or \
-               (url and (url in existing_urls and key not in existing_keys)):
-                   continue
+            if (platform and platform_id and (key in seen_keys or key in existing_keys)) or (
+                url and (url in existing_urls and key not in existing_keys)
+            ):
+                continue
 
             if fuzzy_key and (fuzzy_key in existing_fuzzy_keys or fuzzy_key in seen_fuzzy_keys):
                 continue
@@ -1796,7 +2034,9 @@ class SearchService:
             if desc_fp and desc_fp in seen_desc_fingerprints:
                 logger.debug(
                     "[DEDUP][T4] Skipping cross-provider repost: %s/%s (desc_fp=%s…)",
-                    platform, platform_id, desc_fp[:8],
+                    platform,
+                    platform_id,
+                    desc_fp[:8],
                 )
                 continue
 
@@ -1818,14 +2058,16 @@ class SearchService:
         duplicates = len(all_jobs) - len(unique_jobs)
         return unique_jobs, duplicates
 
-    async def _analyze_and_save(self, profile_id: int, profile_dict: dict, unique_jobs: list) -> tuple[int, int]:
+    async def _analyze_and_save(
+        self, profile_id: int, profile_dict: dict, unique_jobs: list
+    ) -> tuple[int, int]:
         semaphore = asyncio.Semaphore(settings.ANALYSIS_CONCURRENCY)
         batch_size = settings.ANALYSIS_BATCH_SIZE
-        batches = [unique_jobs[i:i+batch_size] for i in range(0, len(unique_jobs), batch_size)]
+        batches = [unique_jobs[i : i + batch_size] for i in range(0, len(unique_jobs), batch_size)]
 
         origin_coords = None
         if profile_dict.get("latitude") and profile_dict.get("longitude"):
-             origin_coords = (profile_dict["latitude"], profile_dict["longitude"])
+            origin_coords = (profile_dict["latitude"], profile_dict["longitude"])
 
         async def analyze_batch(batch):
             async with semaphore:
@@ -1838,7 +2080,15 @@ class SearchService:
                     desc_text = ""
                     descs = getattr(job, "descriptions", [])
                     if descs:
-                        desc_text = descs[0].description if hasattr(descs[0], "description") else (descs[0].get("description", "") if isinstance(descs[0], dict) else "")
+                        desc_text = (
+                            descs[0].description
+                            if hasattr(descs[0], "description")
+                            else (
+                                descs[0].get("description", "")
+                                if isinstance(descs[0], dict)
+                                else ""
+                            )
+                        )
 
                     education_info = []
                     for occ in getattr(job, "occupations", []):
@@ -1853,8 +2103,10 @@ class SearchService:
                     raw_norm = getattr(job, "_normalized_job_data", None) or {}
                     normalized_data = {
                         "domain": raw_norm.get("domain"),
-                        "role_type": raw_norm.get("role_type") or raw_norm.get("normalized_role_type"),
-                        "industry_sector": raw_norm.get("industry_sector") or raw_norm.get("normalized_industry_sector"),
+                        "role_type": raw_norm.get("role_type")
+                        or raw_norm.get("normalized_role_type"),
+                        "industry_sector": raw_norm.get("industry_sector")
+                        or raw_norm.get("normalized_industry_sector"),
                         "seniority": raw_norm.get("seniority"),
                         "qualification_level": raw_norm.get("qualification_level"),
                         "required_skills": raw_norm.get("required_skills"),
@@ -1871,18 +2123,31 @@ class SearchService:
                         "soft_skills": raw_norm.get("soft_skills"),
                     }
 
-                    jobs_metadata.append({
-                        "title": getattr(job, "title", "Unknown"),
-                        "description": await llm_service._compress_description_if_needed(
-                            desc_text, settings.MAX_DESCRIPTION_CHARS
-                        ),
-                        "location": job.location.city if getattr(job, "location", None) else "Unknown",
-                        "workload": f"{job.employment.workload_min}-{job.employment.workload_max}%" if getattr(job, "employment", None) else "Unknown",
-                        "languages": [f"{s.language_code} ({s.spoken_level})" for s in getattr(job, "language_skills", [])] if getattr(job, "language_skills", None) else [],
-                        "education": ", ".join(education_info) if education_info else "None specified",
-                        "company": company_name,
-                        "normalized_data": normalized_data,
-                    })
+                    jobs_metadata.append(
+                        {
+                            "title": getattr(job, "title", "Unknown"),
+                            "description": await llm_service._compress_description_if_needed(
+                                desc_text, settings.MAX_DESCRIPTION_CHARS
+                            ),
+                            "location": job.location.city
+                            if getattr(job, "location", None)
+                            else "Unknown",
+                            "workload": f"{job.employment.workload_min}-{job.employment.workload_max}%"
+                            if getattr(job, "employment", None)
+                            else "Unknown",
+                            "languages": [
+                                f"{s.language_code} ({s.spoken_level})"
+                                for s in getattr(job, "language_skills", [])
+                            ]
+                            if getattr(job, "language_skills", None)
+                            else [],
+                            "education": ", ".join(education_info)
+                            if education_info
+                            else "None specified",
+                            "company": company_name,
+                            "normalized_data": normalized_data,
+                        }
+                    )
 
                 try:
                     results = await llm_service.analyze_job_batch(jobs_metadata, profile_dict)
@@ -1921,18 +2186,33 @@ class SearchService:
                         desc_text = ""
                         descs = getattr(job, "descriptions", [])
                         if descs:
-                            desc_text = descs[0].description if hasattr(descs[0], "description") else (descs[0].get("description", "") if isinstance(descs[0], dict) else "")
+                            desc_text = (
+                                descs[0].description
+                                if hasattr(descs[0], "description")
+                                else (
+                                    descs[0].get("description", "")
+                                    if isinstance(descs[0], dict)
+                                    else ""
+                                )
+                            )
                         raw_norm = getattr(job, "_normalized_job_data", None) or {}
-                        borderline_jobs_meta.append({
-                            "title": getattr(job, "title", "Unknown"),
-                            "company": extract_company_name(job),
-                            "description": desc_text,
-                            "normalized_data": raw_norm,
-                        })
+                        borderline_jobs_meta.append(
+                            {
+                                "title": getattr(job, "title", "Unknown"),
+                                "company": extract_company_name(job),
+                                "description": desc_text,
+                                "normalized_data": raw_norm,
+                            }
+                        )
                     borderline_analyses = [analysis for _, _, analysis in borderline]
-                    critiqued = await llm_service.critique_job_batch(borderline_jobs_meta, borderline_analyses, profile_dict)
+                    critiqued = await llm_service.critique_job_batch(
+                        borderline_jobs_meta, borderline_analyses, profile_dict
+                    )
                     for orig_idx, critiqued_analysis in zip(borderline_indices, critiqued):
-                        jobs_to_persist[orig_idx] = (jobs_to_persist[orig_idx][0], critiqued_analysis)
+                        jobs_to_persist[orig_idx] = (
+                            jobs_to_persist[orig_idx][0],
+                            critiqued_analysis,
+                        )
                     add_log(profile_id, f"Critique pass refined {len(borderline)} borderline jobs.")
                 except Exception as exc:
                     logger.warning("[CRITIQUE] Critique pass failed: %s", exc)
@@ -1952,27 +2232,43 @@ class SearchService:
                     desc_text = ""
                     descs = getattr(job, "descriptions", [])
                     if descs:
-                        desc_text = descs[0].description if hasattr(descs[0], "description") else (descs[0].get("description", "") if isinstance(descs[0], dict) else "")
+                        desc_text = (
+                            descs[0].description
+                            if hasattr(descs[0], "description")
+                            else (
+                                descs[0].get("description", "")
+                                if isinstance(descs[0], dict)
+                                else ""
+                            )
+                        )
                     raw_norm = getattr(job, "_normalized_job_data", None) or {}
-                    top_entries.append({
-                        "job_index": orig_idx,
-                        "current_score": analysis.get("affinity_score", 0),
-                        "job_metadata": {
-                            "title": getattr(job, "title", "Unknown"),
-                            "company": extract_company_name(job),
-                            "description": desc_text,
-                            "normalized_data": raw_norm,
-                        },
-                    })
+                    top_entries.append(
+                        {
+                            "job_index": orig_idx,
+                            "current_score": analysis.get("affinity_score", 0),
+                            "job_metadata": {
+                                "title": getattr(job, "title", "Unknown"),
+                                "company": extract_company_name(job),
+                                "description": desc_text,
+                                "normalized_data": raw_norm,
+                            },
+                        }
+                    )
                 reranked = await llm_service.rerank_top_jobs(top_entries, profile_dict)
                 for rerank_result in reranked:
                     orig_idx = rerank_result.get("job_index", -1)
                     final_score = rerank_result.get("final_score")
-                    if orig_idx >= 0 and final_score is not None and 0 <= orig_idx < len(jobs_to_persist):
+                    if (
+                        orig_idx >= 0
+                        and final_score is not None
+                        and 0 <= orig_idx < len(jobs_to_persist)
+                    ):
                         job, analysis = jobs_to_persist[orig_idx]
                         updated = dict(analysis)
                         updated["affinity_score"] = final_score
-                        updated["worth_applying"] = bool(analysis.get("worth_applying", False)) and final_score >= 65
+                        updated["worth_applying"] = (
+                            bool(analysis.get("worth_applying", False)) and final_score >= 65
+                        )
                         jobs_to_persist[orig_idx] = (job, updated)
                 add_log(profile_id, f"Re-ranked top {len(reranked)} jobs for calibration.")
             except Exception as exc:
@@ -1983,6 +2279,7 @@ class SearchService:
         if getattr(settings, "SALARY_BENCHMARK_ENABLED", False):
             try:
                 from backend.services.preference_service import compute_salary_benchmark
+
                 for idx, (job, analysis) in enumerate(jobs_to_persist):
                     job_norm_data = getattr(job, "_normalized_job_data", None) or {}
                     job_salary_max = job_norm_data.get("salary_max_chf")
@@ -2017,7 +2314,9 @@ class SearchService:
         skipped_count = len(unique_jobs) - saved_count
         return saved_count, skipped_count
 
-    async def _save_single_job(self, listing, analysis, profile_dict, origin_coords, commit: bool = True):
+    async def _save_single_job(
+        self, listing, analysis, profile_dict, origin_coords, commit: bool = True
+    ):
         platform = getattr(listing, "source", None) or getattr(listing, "platform", "unknown")
         platform_id = str(getattr(listing, "id", "") or getattr(listing, "platform_job_id", ""))
 
@@ -2034,7 +2333,9 @@ class SearchService:
             if not coords and location_str:
                 coords = await geocode_location(location_str)
                 if coords:
-                    logger.info("Resolved missing coordinates for %s via geocoding fallback", location_str)
+                    logger.info(
+                        "Resolved missing coordinates for %s via geocoding fallback", location_str
+                    )
                 else:
                     logger.warning(
                         "Could not resolve coordinates for %s/%s with location %r",
@@ -2045,8 +2346,7 @@ class SearchService:
 
             if coords:
                 distance_km = haversine_distance(
-                    origin_coords[0], origin_coords[1],
-                    coords.lat, coords.lon
+                    origin_coords[0], origin_coords[1], coords.lat, coords.lon
                 )
 
         # 3. Job — upsert (preserve user-action fields on existing rows).
@@ -2067,11 +2367,15 @@ class SearchService:
             "analysis_structured": analysis.get("analysis_structured"),
             "red_flags": analysis.get("red_flags"),
         }
-        existing_job = self.db.query(Job).filter(
-            Job.user_id == profile_dict["user_id"],
-            Job.scraped_job_id == existing_sj.id,
-            Job.search_profile_id == profile_dict.get("id"),
-        ).first()
+        existing_job = (
+            self.db.query(Job)
+            .filter(
+                Job.user_id == profile_dict["user_id"],
+                Job.scraped_job_id == existing_sj.id,
+                Job.search_profile_id == profile_dict.get("id"),
+            )
+            .first()
+        )
         if existing_job:
             for _f, _v in _analysis_fields.items():
                 setattr(existing_job, _f, _v)
@@ -2090,11 +2394,15 @@ class SearchService:
             except IntegrityError:
                 _sp.rollback()
                 # Concurrent save of the same job won the race — reload and update.
-                existing_job = self.db.query(Job).filter(
-                    Job.user_id == profile_dict["user_id"],
-                    Job.scraped_job_id == existing_sj.id,
-                    Job.search_profile_id == profile_dict.get("id"),
-                ).first()
+                existing_job = (
+                    self.db.query(Job)
+                    .filter(
+                        Job.user_id == profile_dict["user_id"],
+                        Job.scraped_job_id == existing_sj.id,
+                        Job.search_profile_id == profile_dict.get("id"),
+                    )
+                    .first()
+                )
                 if existing_job:
                     for _f, _v in _analysis_fields.items():
                         setattr(existing_job, _f, _v)
@@ -2135,21 +2443,24 @@ class SearchService:
         update_status(profile_id, errors=next_errors)
         return next_errors
 
-
     # ─── Streaming pipeline helpers ───────────────────────────────────────
 
     def _load_profile_dedup_history(self, profile_id: int, user_id: Optional[int]) -> dict:
         """Pre-load profile job history sets for incremental deduplication in the producer."""
         existing_identifiers = self.job_repo.get_profile_job_identifiers(profile_id)
         applied_scraped_ids = (
-            self.job_repo.get_applied_scraped_job_ids(user_id)
-            if user_id is not None
-            else set()
+            self.job_repo.get_applied_scraped_job_ids(user_id) if user_id is not None else set()
         )
         return {
-            "existing_keys": {listing_identity_key(r) for r in existing_identifiers if listing_identity_key(r)},
-            "existing_urls": {listing_url_token(r) for r in existing_identifiers if listing_url_token(r)},
-            "existing_fuzzy_keys": {listing_fuzzy_key(r) for r in existing_identifiers if listing_fuzzy_key(r)},
+            "existing_keys": {
+                listing_identity_key(r) for r in existing_identifiers if listing_identity_key(r)
+            },
+            "existing_urls": {
+                listing_url_token(r) for r in existing_identifiers if listing_url_token(r)
+            },
+            "existing_fuzzy_keys": {
+                listing_fuzzy_key(r) for r in existing_identifiers if listing_fuzzy_key(r)
+            },
             "applied_scraped_ids": applied_scraped_ids,
         }
 
@@ -2224,12 +2535,19 @@ class SearchService:
                         if not profession_codes:
                             avam_fallback_keyword = True
                             execution_metrics["avam_fallback_count"] += 1
-                            add_log(profile_id, f"  ℹ AVAM found no codes for «{query}», JobRoom will use keyword fallback")
+                            add_log(
+                                profile_id,
+                                f"  ℹ AVAM found no codes for «{query}», JobRoom will use keyword fallback",
+                            )
 
-                    compatible = route_provider_names(normalized_search, self.providers, provider_infos)
+                    compatible = route_provider_names(
+                        normalized_search, self.providers, provider_infos
+                    )
                     if not compatible:
                         execution_metrics["queries_without_provider"] += 1
-                        add_log(profile_id, f"⚠ No providers accept domain '{domain}' for «{query}»")
+                        add_log(
+                            profile_id, f"⚠ No providers accept domain '{domain}' for «{query}»"
+                        )
                         return
 
                     active_query_indices.add(query_idx)
@@ -2242,7 +2560,10 @@ class SearchService:
                         searches_completed=len(completed_query_indices),
                         completed_search_indices=sorted(completed_query_indices),
                     )
-                    add_log(profile_id, f"Running query {query_idx}/{len(searches)}: «{query}» on {', '.join(compatible)}")
+                    add_log(
+                        profile_id,
+                        f"Running query {query_idx}/{len(searches)}: «{query}» on {', '.join(compatible)}",
+                    )
 
                     async def search_provider(provider_name: str, req: JobSearchRequest):
                         provider = self.providers[provider_name]
@@ -2253,9 +2574,13 @@ class SearchService:
                             current_page = 0
                             while True:
                                 page_size = 50
-                                if hasattr(provider, "capabilities") and hasattr(provider.capabilities, "max_page_size"):
+                                if hasattr(provider, "capabilities") and hasattr(
+                                    provider.capabilities, "max_page_size"
+                                ):
                                     page_size = provider.capabilities.max_page_size
-                                page_req = req.model_copy(update={"page": current_page, "page_size": page_size})
+                                page_req = req.model_copy(
+                                    update={"page": current_page, "page_size": page_size}
+                                )
                                 result = await provider.search(page_req)
                                 page_items = list(getattr(result, "items", []) or [])
                                 for item in page_items:
@@ -2270,7 +2595,11 @@ class SearchService:
                                 total_count = getattr(result, "total_count", None)
                                 if total_pages and current_page >= total_pages - 1:
                                     break
-                                if total_count is not None and total_count >= 0 and len(provider_jobs) >= total_count:
+                                if (
+                                    total_count is not None
+                                    and total_count >= 0
+                                    and len(provider_jobs) >= total_count
+                                ):
                                     break
                                 current_page += 1
                                 if provider.throttle_delay > 0:
@@ -2286,20 +2615,28 @@ class SearchService:
                     for p_name in compatible:
                         provider = self.providers[p_name]
                         page_size = 50
-                        if hasattr(provider, "capabilities") and hasattr(provider.capabilities, "max_page_size"):
+                        if hasattr(provider, "capabilities") and hasattr(
+                            provider.capabilities, "max_page_size"
+                        ):
                             page_size = provider.capabilities.max_page_size
                         if p_name == "job_room" and avam_fallback_keyword:
                             req_fallback = build_search_request(
-                                profile, query, [],
+                                profile,
+                                query,
+                                [],
                                 language=supported_request_language(query_language, provider),
-                                page_size=page_size, provider=provider,
+                                page_size=page_size,
+                                provider=provider,
                             )
                             p_tasks.append(search_provider(p_name, req_fallback))
                         else:
                             req = build_search_request(
-                                profile, query, profession_codes,
+                                profile,
+                                query,
+                                profession_codes,
                                 language=supported_request_language(query_language, provider),
-                                page_size=page_size, provider=provider,
+                                page_size=page_size,
+                                provider=provider,
                             )
                             p_tasks.append(search_provider(p_name, req))
 
@@ -2333,7 +2670,10 @@ class SearchService:
 
                         if key and (key in seen_identity_keys or key in existing_keys):
                             continue
-                        if url and (url in seen_url_tokens or (url in existing_urls and key not in existing_keys)):
+                        if url and (
+                            url in seen_url_tokens
+                            or (url in existing_urls and key not in existing_keys)
+                        ):
                             continue
                         if fuzzy and (fuzzy in seen_fuzzy_keys or fuzzy in existing_fuzzy_keys):
                             continue
@@ -2365,7 +2705,9 @@ class SearchService:
                     except Exception as persist_err:
                         self._increment_status_errors(profile_id)
                         logger.error(
-                            "Failed to persist job batch for profile %s: %s", profile_id, persist_err
+                            "Failed to persist job batch for profile %s: %s",
+                            profile_id,
+                            persist_err,
                         )
                         add_log(profile_id, f"Persistence error for streamed batch: {persist_err}")
                         return
@@ -2374,7 +2716,8 @@ class SearchService:
                     for job in new_unique:
                         scraped_id = getattr(job, "_scraped_job_id", None)
                         setattr(
-                            job, "_applied_elsewhere",
+                            job,
+                            "_applied_elsewhere",
                             scraped_id is not None and scraped_id in applied_scraped_ids,
                         )
 
@@ -2463,10 +2806,12 @@ class SearchService:
                 await self._normalize_persisted_jobs(profile_id, batch)
             except Exception as norm_err:
                 from backend.services.llm_service import _unwrap_retry_error
+
                 _, err_msg = _unwrap_retry_error(norm_err)
                 logger.warning(
                     "LLM normalization failed for profile %s batch — proceeding without full normalization: %s",
-                    profile_id, err_msg,
+                    profile_id,
+                    err_msg,
                 )
                 add_log(
                     profile_id,
@@ -2511,7 +2856,8 @@ class SearchService:
                     self._increment_status_errors(profile_id)
                     logger.warning(
                         "Progressive save failed for profile %s: %s",
-                        profile_id, save_exc,
+                        profile_id,
+                        save_exc,
                     )
                     batch_skipped += 1
 
@@ -2536,7 +2882,7 @@ class SearchService:
         """
         semaphore = asyncio.Semaphore(settings.ANALYSIS_CONCURRENCY)
         batch_size = settings.ANALYSIS_BATCH_SIZE
-        batches = [jobs[i:i + batch_size] for i in range(0, len(jobs), batch_size)]
+        batches = [jobs[i : i + batch_size] for i in range(0, len(jobs), batch_size)]
 
         async def analyze_batch(batch):
             async with semaphore:
@@ -2552,7 +2898,11 @@ class SearchService:
                         desc_text = (
                             descs[0].description
                             if hasattr(descs[0], "description")
-                            else (descs[0].get("description", "") if isinstance(descs[0], dict) else "")
+                            else (
+                                descs[0].get("description", "")
+                                if isinstance(descs[0], dict)
+                                else ""
+                            )
                         )
 
                     education_info = []
@@ -2566,8 +2916,10 @@ class SearchService:
                     raw_norm = getattr(job, "_normalized_job_data", None) or {}
                     normalized_data = {
                         "domain": raw_norm.get("domain"),
-                        "role_type": raw_norm.get("role_type") or raw_norm.get("normalized_role_type"),
-                        "industry_sector": raw_norm.get("industry_sector") or raw_norm.get("normalized_industry_sector"),
+                        "role_type": raw_norm.get("role_type")
+                        or raw_norm.get("normalized_role_type"),
+                        "industry_sector": raw_norm.get("industry_sector")
+                        or raw_norm.get("normalized_industry_sector"),
                         "seniority": raw_norm.get("seniority"),
                         "qualification_level": raw_norm.get("qualification_level"),
                         "required_skills": raw_norm.get("required_skills"),
@@ -2583,24 +2935,35 @@ class SearchService:
                         "physical_requirements": raw_norm.get("physical_requirements"),
                         "soft_skills": raw_norm.get("soft_skills"),
                     }
-                    jobs_metadata.append({
-                        "title": getattr(job, "title", "Unknown"),
-                        "description": await llm_service._compress_description_if_needed(
-                            desc_text, settings.MAX_DESCRIPTION_CHARS
-                        ),
-                        "location": job.location.city if getattr(job, "location", None) else "Unknown",
-                        "workload": (
-                            f"{job.employment.workload_min}-{job.employment.workload_max}%"
-                            if getattr(job, "employment", None) else "Unknown"
-                        ),
-                        "languages": (
-                            [f"{s.language_code} ({s.spoken_level})" for s in getattr(job, "language_skills", [])]
-                            if getattr(job, "language_skills", None) else []
-                        ),
-                        "education": ", ".join(education_info) if education_info else "None specified",
-                        "company": company_name,
-                        "normalized_data": normalized_data,
-                    })
+                    jobs_metadata.append(
+                        {
+                            "title": getattr(job, "title", "Unknown"),
+                            "description": await llm_service._compress_description_if_needed(
+                                desc_text, settings.MAX_DESCRIPTION_CHARS
+                            ),
+                            "location": job.location.city
+                            if getattr(job, "location", None)
+                            else "Unknown",
+                            "workload": (
+                                f"{job.employment.workload_min}-{job.employment.workload_max}%"
+                                if getattr(job, "employment", None)
+                                else "Unknown"
+                            ),
+                            "languages": (
+                                [
+                                    f"{s.language_code} ({s.spoken_level})"
+                                    for s in getattr(job, "language_skills", [])
+                                ]
+                                if getattr(job, "language_skills", None)
+                                else []
+                            ),
+                            "education": ", ".join(education_info)
+                            if education_info
+                            else "None specified",
+                            "company": company_name,
+                            "normalized_data": normalized_data,
+                        }
+                    )
 
                 try:
                     results = await llm_service.analyze_job_batch(jobs_metadata, profile_dict)
@@ -2666,15 +3029,21 @@ class SearchService:
                             desc_text = (
                                 descs[0].description
                                 if hasattr(descs[0], "description")
-                                else (descs[0].get("description", "") if isinstance(descs[0], dict) else "")
+                                else (
+                                    descs[0].get("description", "")
+                                    if isinstance(descs[0], dict)
+                                    else ""
+                                )
                             )
                         raw_norm = getattr(job, "_normalized_job_data", None) or {}
-                        borderline_jobs_meta.append({
-                            "title": getattr(job, "title", "Unknown"),
-                            "company": extract_company_name(job),
-                            "description": desc_text,
-                            "normalized_data": raw_norm,
-                        })
+                        borderline_jobs_meta.append(
+                            {
+                                "title": getattr(job, "title", "Unknown"),
+                                "company": extract_company_name(job),
+                                "description": desc_text,
+                                "normalized_data": raw_norm,
+                            }
+                        )
                     borderline_analyses = [analysis for _, _, analysis in borderline]
                     critiqued = await llm_service.critique_job_batch(
                         borderline_jobs_meta, borderline_analyses, profile_dict
@@ -2703,28 +3072,40 @@ class SearchService:
                         desc_text = (
                             descs[0].description
                             if hasattr(descs[0], "description")
-                            else (descs[0].get("description", "") if isinstance(descs[0], dict) else "")
+                            else (
+                                descs[0].get("description", "")
+                                if isinstance(descs[0], dict)
+                                else ""
+                            )
                         )
                     raw_norm = getattr(job, "_normalized_job_data", None) or {}
-                    top_entries.append({
-                        "job_index": orig_idx,
-                        "current_score": analysis.get("affinity_score", 0),
-                        "job_metadata": {
-                            "title": getattr(job, "title", "Unknown"),
-                            "company": extract_company_name(job),
-                            "description": desc_text,
-                            "normalized_data": raw_norm,
-                        },
-                    })
+                    top_entries.append(
+                        {
+                            "job_index": orig_idx,
+                            "current_score": analysis.get("affinity_score", 0),
+                            "job_metadata": {
+                                "title": getattr(job, "title", "Unknown"),
+                                "company": extract_company_name(job),
+                                "description": desc_text,
+                                "normalized_data": raw_norm,
+                            },
+                        }
+                    )
                 reranked = await llm_service.rerank_top_jobs(top_entries, profile_dict)
                 for rerank_result in reranked:
                     orig_idx = rerank_result.get("job_index", -1)
                     final_score = rerank_result.get("final_score")
-                    if orig_idx >= 0 and final_score is not None and 0 <= orig_idx < len(jobs_to_refine):
+                    if (
+                        orig_idx >= 0
+                        and final_score is not None
+                        and 0 <= orig_idx < len(jobs_to_refine)
+                    ):
                         job, analysis = jobs_to_refine[orig_idx]
                         updated = dict(analysis)
                         updated["affinity_score"] = final_score
-                        updated["worth_applying"] = bool(analysis.get("worth_applying", False)) and final_score >= 65
+                        updated["worth_applying"] = (
+                            bool(analysis.get("worth_applying", False)) and final_score >= 65
+                        )
                         jobs_to_refine[orig_idx] = (job, updated)
                 add_log(profile_id, f"Re-ranked top {len(reranked)} jobs for calibration.")
             except Exception as exc:
@@ -2734,6 +3115,7 @@ class SearchService:
         if getattr(settings, "SALARY_BENCHMARK_ENABLED", False):
             try:
                 from backend.services.preference_service import compute_salary_benchmark
+
                 for idx, (job, analysis) in enumerate(jobs_to_refine):
                     job_norm_data = getattr(job, "_normalized_job_data", None) or {}
                     job_salary_max = job_norm_data.get("salary_max_chf")
@@ -2764,24 +3146,50 @@ class SearchService:
             if scraped_job_id is None:
                 continue
             try:
-                existing_job = self.db.query(Job).filter(
-                    Job.user_id == profile_dict["user_id"],
-                    Job.scraped_job_id == scraped_job_id,
-                    Job.search_profile_id == profile_dict.get("id"),
-                ).first()
+                existing_job = (
+                    self.db.query(Job)
+                    .filter(
+                        Job.user_id == profile_dict["user_id"],
+                        Job.scraped_job_id == scraped_job_id,
+                        Job.search_profile_id == profile_dict.get("id"),
+                    )
+                    .first()
+                )
                 if not existing_job:
                     continue
-                existing_job.affinity_score = analysis.get("affinity_score", existing_job.affinity_score)
-                existing_job.affinity_analysis = analysis.get("affinity_analysis", existing_job.affinity_analysis)
-                existing_job.worth_applying = analysis.get("worth_applying", existing_job.worth_applying)
-                existing_job.skill_match_score = analysis.get("skill_match_score", existing_job.skill_match_score)
-                existing_job.experience_match_score = analysis.get("experience_match_score", existing_job.experience_match_score)
-                existing_job.intent_match_score = analysis.get("intent_match_score", existing_job.intent_match_score)
-                existing_job.language_match_score = analysis.get("language_match_score", existing_job.language_match_score)
-                existing_job.location_match_score = analysis.get("location_match_score", existing_job.location_match_score)
-                existing_job.transferability_score = analysis.get("transferability_score", existing_job.transferability_score)
-                existing_job.qualification_gap_score = analysis.get("qualification_gap_score", existing_job.qualification_gap_score)
-                existing_job.analysis_structured = analysis.get("analysis_structured", existing_job.analysis_structured)
+                existing_job.affinity_score = analysis.get(
+                    "affinity_score", existing_job.affinity_score
+                )
+                existing_job.affinity_analysis = analysis.get(
+                    "affinity_analysis", existing_job.affinity_analysis
+                )
+                existing_job.worth_applying = analysis.get(
+                    "worth_applying", existing_job.worth_applying
+                )
+                existing_job.skill_match_score = analysis.get(
+                    "skill_match_score", existing_job.skill_match_score
+                )
+                existing_job.experience_match_score = analysis.get(
+                    "experience_match_score", existing_job.experience_match_score
+                )
+                existing_job.intent_match_score = analysis.get(
+                    "intent_match_score", existing_job.intent_match_score
+                )
+                existing_job.language_match_score = analysis.get(
+                    "language_match_score", existing_job.language_match_score
+                )
+                existing_job.location_match_score = analysis.get(
+                    "location_match_score", existing_job.location_match_score
+                )
+                existing_job.transferability_score = analysis.get(
+                    "transferability_score", existing_job.transferability_score
+                )
+                existing_job.qualification_gap_score = analysis.get(
+                    "qualification_gap_score", existing_job.qualification_gap_score
+                )
+                existing_job.analysis_structured = analysis.get(
+                    "analysis_structured", existing_job.analysis_structured
+                )
                 existing_job.red_flags = analysis.get("red_flags", existing_job.red_flags)
                 self.db.commit()
                 updated_count += 1
@@ -2790,7 +3198,9 @@ class SearchService:
                 self._increment_status_errors(profile_id)
                 logger.warning(
                     "Final-pass update failed for scraped_job_id %s (profile %s): %s",
-                    scraped_job_id, profile_dict.get("id"), exc,
+                    scraped_job_id,
+                    profile_dict.get("id"),
+                    exc,
                 )
 
         if updated_count > 0:

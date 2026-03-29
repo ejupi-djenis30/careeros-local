@@ -28,6 +28,7 @@ class GeminiProvider(LLMProvider):
         try:
             from google import genai
             from google.genai import types
+
             self.client = genai.Client(api_key=api_key)
             self.types = types
         except ImportError:
@@ -46,7 +47,12 @@ class GeminiProvider(LLMProvider):
     def model_id(self) -> str:
         return f"gemini/{self.model}"
 
-    def _get_config(self, json_mode: bool = False, max_tokens: Optional[int] = None, system_instruction: Optional[str] = None):
+    def _get_config(
+        self,
+        json_mode: bool = False,
+        max_tokens: Optional[int] = None,
+        system_instruction: Optional[str] = None,
+    ):
         gen_config_kwargs = {
             "temperature": self.temperature,
             "max_output_tokens": max_tokens or self.max_tokens,
@@ -69,8 +75,12 @@ class GeminiProvider(LLMProvider):
 
     # ── public API ─────────────────────────────────────────────────────────
 
-    def generate_text(self, system_prompt: str, user_prompt: str, max_tokens: Optional[int] = None) -> str:
-        config = self._get_config(json_mode=False, max_tokens=max_tokens, system_instruction=system_prompt)
+    def generate_text(
+        self, system_prompt: str, user_prompt: str, max_tokens: Optional[int] = None
+    ) -> str:
+        config = self._get_config(
+            json_mode=False, max_tokens=max_tokens, system_instruction=system_prompt
+        )
 
         try:
             response = self.client.models.generate_content(
@@ -80,11 +90,15 @@ class GeminiProvider(LLMProvider):
             )
             return response.text or ""
         except Exception as e:
-             logger.error(f"Gemini Error ({self.model_id}): {e}")
-             raise
+            logger.error(f"Gemini Error ({self.model_id}): {e}")
+            raise
 
-    def generate_json(self, system_prompt: str, user_prompt: str, max_tokens: Optional[int] = None) -> Dict[str, Any]:
-        config = self._get_config(json_mode=True, max_tokens=max_tokens, system_instruction=system_prompt)
+    def generate_json(
+        self, system_prompt: str, user_prompt: str, max_tokens: Optional[int] = None
+    ) -> Dict[str, Any]:
+        config = self._get_config(
+            json_mode=True, max_tokens=max_tokens, system_instruction=system_prompt
+        )
 
         try:
             response = self.client.models.generate_content(
@@ -94,11 +108,15 @@ class GeminiProvider(LLMProvider):
             )
             return json.loads(response.text or "{}")
         except Exception as e:
-             logger.error(f"Gemini JSON Error ({self.model_id}): {e}")
-             raise
+            logger.error(f"Gemini JSON Error ({self.model_id}): {e}")
+            raise
 
-    async def generate_text_async(self, system_prompt: str, user_prompt: str, max_tokens: Optional[int] = None) -> str:
+    async def generate_text_async(
+        self, system_prompt: str, user_prompt: str, max_tokens: Optional[int] = None
+    ) -> str:
         return await asyncio.to_thread(self.generate_text, system_prompt, user_prompt, max_tokens)
 
-    async def generate_json_async(self, system_prompt: str, user_prompt: str, max_tokens: Optional[int] = None) -> Dict[str, Any]:
+    async def generate_json_async(
+        self, system_prompt: str, user_prompt: str, max_tokens: Optional[int] = None
+    ) -> Dict[str, Any]:
         return await asyncio.to_thread(self.generate_json, system_prompt, user_prompt, max_tokens)

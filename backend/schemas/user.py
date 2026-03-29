@@ -6,6 +6,7 @@ from pydantic import BaseModel, field_validator
 # Auth Schemas
 # ═══════════════════════════════════════
 
+
 class UserCreate(BaseModel):
     username: str
     password: str
@@ -30,9 +31,11 @@ class UserCreate(BaseModel):
             raise ValueError("Password must contain at least one digit")
         return v
 
+
 class UserLogin(BaseModel):
     username: str
     password: str
+
 
 class Token(BaseModel):
     access_token: str

@@ -2,39 +2,60 @@ import asyncio
 import math
 import re
 from collections import OrderedDict
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
+
+if TYPE_CHECKING:
+    import httpx
 
 import fitz  # PyMuPDF
+import httpx
 from fastapi import HTTPException, UploadFile
 
 _MAX_GEOCODE_CACHE = 1024
 _geocode_cache: OrderedDict = OrderedDict()
 _geocode_cache_lock = asyncio.Lock()
 
+
 def clean_html_tags(text: str) -> str:
     """Remove HTML tags like <em>, &nbsp;, etc. from text."""
     if not text:
         return ""
     # Remove HTML tags
-    clean = re.sub(r'<[^>]+>', '', text)
+    clean = re.sub(r"<[^>]+>", "", text)
     # Decode HTML entities
-    clean = clean.replace("&nbsp;", " ").replace("&amp;", "&").replace("&lt;", "<").replace("&gt;", ">")
+    clean = (
+        clean.replace("&nbsp;", " ").replace("&amp;", "&").replace("&lt;", "<").replace("&gt;", ">")
+    )
     # Normalize whitespace
     return " ".join(clean.split())
+
 
 _ALLOWED_EXTENSIONS = {".pdf", ".txt", ".md"}
 # Content types that are explicitly NOT allowed regardless of extension.
 # Empty/None and generic "application/octet-stream" are permitted since many
 # clients and OS file pickers omit or genericize the content-type header.
 _BLOCKED_CONTENT_TYPES = {
-    "image/jpeg", "image/png", "image/gif", "image/webp", "image/bmp",
-    "video/mp4", "video/avi", "video/quicktime",
-    "audio/mpeg", "audio/wav",
-    "application/zip", "application/x-rar-compressed",
-    "application/x-msdownload", "application/x-executable",
-    "application/javascript", "text/javascript",
-    "application/x-sh", "application/x-csh", "application/x-python-code",
+    "image/jpeg",
+    "image/png",
+    "image/gif",
+    "image/webp",
+    "image/bmp",
+    "video/mp4",
+    "video/avi",
+    "video/quicktime",
+    "audio/mpeg",
+    "audio/wav",
+    "application/zip",
+    "application/x-rar-compressed",
+    "application/x-msdownload",
+    "application/x-executable",
+    "application/javascript",
+    "text/javascript",
+    "application/x-sh",
+    "application/x-csh",
+    "application/x-python-code",
 }
+
 
 async def extract_text_from_file(file: UploadFile) -> str:
     content_type = (file.content_type or "").split(";")[0].strip().lower()
@@ -42,7 +63,9 @@ async def extract_text_from_file(file: UploadFile) -> str:
     ext = next((e for e in _ALLOWED_EXTENSIONS if filename.endswith(e)), None)
 
     if ext is None:
-        raise HTTPException(status_code=400, detail="Unsupported file type. Please upload PDF, TXT, or MD.")
+        raise HTTPException(
+            status_code=400, detail="Unsupported file type. Please upload PDF, TXT, or MD."
+        )
 
     # Block content types that are explicitly mismatched (e.g. images, executables).
     # Empty or generic content-type is allowed since OS/browsers often omit it.
@@ -64,6 +87,7 @@ async def extract_text_from_file(file: UploadFile) -> str:
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Failed to process file: {str(e)}")
 
+
 def _extract_from_pdf(content: bytes) -> str:
     try:
         doc = fitz.open(stream=content, filetype="pdf")
@@ -82,9 +106,7 @@ def haversine_distance(lat1: float, lon1: float, lat2: float, lon2: float) -> fl
     d_lon = math.radians(lon2 - lon1)
     a = (
         math.sin(d_lat / 2) ** 2
-        + math.cos(math.radians(lat1))
-        * math.cos(math.radians(lat2))
-        * math.sin(d_lon / 2) ** 2
+        + math.cos(math.radians(lat1)) * math.cos(math.radians(lat2)) * math.sin(d_lon / 2) ** 2
     )
     return R * 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
 
@@ -94,7 +116,9 @@ def calculate_distance(coords1: tuple, coords2: tuple) -> float:
     return haversine_distance(coords1[0], coords1[1], coords2[0], coords2[1])
 
 
-async def geocode_location(city: str, client: Optional["httpx.AsyncClient"] = None) -> Optional["Coordinates"]:  # noqa: F821
+async def geocode_location(
+    city: str, client: Optional["httpx.AsyncClient"] = None
+) -> Optional["Coordinates"]:  # noqa: F821
     """
     Resolve a city name to Coordinates (lat, lon).
     Uses a local cache for major Swiss cities, an in-memory dynamic cache, and falls back to Nominatim API.
@@ -151,27 +175,17 @@ async def geocode_location(city: str, client: Optional["httpx.AsyncClient"] = No
             return _geocode_cache[normalized]
 
     # 2. Nominatim Fallback
-    import httpx
     try:
         url = "https://nominatim.openstreetmap.org/search"
-        params = {
-            "q": f"{city}, Switzerland",
-            "format": "json",
-            "limit": 1
-        }
-        headers = {
-            "User-Agent": "JobHunterAI/1.0 (contact: info@jobhunterai.ch)"
-        }
+        params = {"q": f"{city}, Switzerland", "format": "json", "limit": 1}
+        headers = {"User-Agent": "JobHunterAI/1.0 (contact: info@jobhunterai.ch)"}
 
         async def fetch(c):
             resp = await c.get(url, params=params, headers=headers, timeout=5.0)
             if resp.status_code == 200:
                 data = resp.json()
                 if data and len(data) > 0:
-                    coords = Coordinates(
-                        lat=float(data[0]["lat"]),
-                        lon=float(data[0]["lon"])
-                    )
+                    coords = Coordinates(lat=float(data[0]["lat"]), lon=float(data[0]["lon"]))
                     async with _geocode_cache_lock:
                         _geocode_cache[normalized] = coords
                         _geocode_cache.move_to_end(normalized)
@@ -187,6 +201,7 @@ async def geocode_location(city: str, client: Optional["httpx.AsyncClient"] = No
                 return await fetch(c)
     except Exception as e:
         import logging
+
         logging.getLogger(__name__).warning(f"Geocoding failed for {city}: {e}")
 
     return None

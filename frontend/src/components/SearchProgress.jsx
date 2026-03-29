@@ -172,27 +172,27 @@ export function SearchProgress({ profileId, status, onStateChange, onClear }) {
             <div className="glass-panel p-4 mb-4 position-relative overflow-hidden">
                 {/* Background Ambient Glow Removed */}
 
-                <ProgressHeader 
-                    isDone={isDone} 
-                    isError={isError} 
-                    isRunning={isRunning} 
-                    state={state} 
+                <ProgressHeader
+                    isDone={isDone}
+                    isError={isError}
+                    isRunning={isRunning}
+                    state={state}
                     current_search_index={current_search_index}
                     searches_completed={searches_completed}
                     active_search_indices={active_search_indices}
-                    total_searches={total_searches} 
-                    handleStop={handleStop} 
-                    onClear={onClear} 
+                    total_searches={total_searches}
+                    handleStop={handleStop}
+                    onClear={onClear}
                 />
 
-                <ProgressBar 
-                    state={state} 
-                    isDone={isDone} 
-                    isError={isError} 
-                    isRunning={isRunning} 
-                    progressPct={progressPct} 
-                    analyzingText={analyzingText} 
-                    current_query={current_query} 
+                <ProgressBar
+                    state={state}
+                    isDone={isDone}
+                    isError={isError}
+                    isRunning={isRunning}
+                    progressPct={progressPct}
+                    analyzingText={analyzingText}
+                    current_query={current_query}
                 />
 
                 {statusNotice && (
@@ -236,11 +236,11 @@ export function SearchProgress({ profileId, status, onStateChange, onClear }) {
             </div>
 
             <div className="row g-4 flex-grow-1" style={{ minHeight: '400px', height: '500px', maxHeight: '50vh' }}>
-                <TargetQueue 
-                    state={state} 
-                    analyzedJobs={analyzedJobs} 
-                    searches_generated={searches_generated} 
-                    current_search_index={current_search_index} 
+                <TargetQueue
+                    state={state}
+                    analyzedJobs={analyzedJobs}
+                    searches_generated={searches_generated}
+                    current_search_index={current_search_index}
                     active_search_indices={active_search_indices}
                     completed_search_indices={completed_search_indices}
                     activeItemRef={activeItemRef}
@@ -248,9 +248,9 @@ export function SearchProgress({ profileId, status, onStateChange, onClear }) {
                     jobs_analyze_total={jobs_analyze_total}
                 />
 
-                <LiveLogs 
-                    log={log} 
-                    logEndRef={logEndRef} 
+                <LiveLogs
+                    log={log}
+                    logEndRef={logEndRef}
                 />
             </div>
         </div>

@@ -91,7 +91,6 @@ class LLMService:
 
         return await cb.call(_do_call())
 
-
     def _extract_searches_payload(self, result: Any) -> tuple[List[Dict[str, Any]], str, bool]:
         """Extract search list using strict-first parsing with legacy fallback.
 
@@ -105,7 +104,9 @@ class LLMService:
                     return value, "searches", True
                 if isinstance(value, dict):
                     return [value], "searches", True
-                logger.warning("[PLAN] Canonical 'searches' key had invalid type: %s", type(value).__name__)
+                logger.warning(
+                    "[PLAN] Canonical 'searches' key had invalid type: %s", type(value).__name__
+                )
 
             for key in ("queries", "results"):
                 if key not in result:
@@ -276,7 +277,9 @@ Return ONLY JSON — no markdown, no explanations:
   }}
 }}"""
 
-        result = await self._call_provider_json(provider, "normalize_profile", system_prompt, user_prompt)
+        result = await self._call_provider_json(
+            provider, "normalize_profile", system_prompt, user_prompt
+        )
 
         if not isinstance(result, dict):
             return {}
@@ -295,7 +298,15 @@ Return ONLY JSON — no markdown, no explanations:
 
         role_family = str(cp.get("role_family") or "").strip() or None
 
-        _valid_role_types = {"technical", "manual", "administrative", "creative", "managerial", "service", "professional"}
+        _valid_role_types = {
+            "technical",
+            "manual",
+            "administrative",
+            "creative",
+            "managerial",
+            "service",
+            "professional",
+        }
         role_type_raw = str(cp.get("role_type") or "").strip().lower()
         role_type = role_type_raw if role_type_raw in _valid_role_types else None
 
@@ -326,25 +337,37 @@ Return ONLY JSON — no markdown, no explanations:
         intent_domain = intent_domain_raw or domain
 
         intent_seniority_raw = str(si.get("target_seniority") or "").strip().lower()
-        intent_seniority = intent_seniority_raw if intent_seniority_raw in {"junior", "mid", "senior"} else seniority
+        intent_seniority = (
+            intent_seniority_raw
+            if intent_seniority_raw in {"junior", "mid", "senior"}
+            else seniority
+        )
 
         # Seniority range
         _all_seniorities = {"junior", "mid", "senior"}
         seniority_min_raw = str(si.get("target_seniority_min") or "").strip().lower()
-        intent_seniority_min = seniority_min_raw if seniority_min_raw in _all_seniorities else intent_seniority
+        intent_seniority_min = (
+            seniority_min_raw if seniority_min_raw in _all_seniorities else intent_seniority
+        )
 
         seniority_max_raw = str(si.get("target_seniority_max") or "").strip().lower()
-        intent_seniority_max = seniority_max_raw if seniority_max_raw in _all_seniorities else intent_seniority
+        intent_seniority_max = (
+            seniority_max_raw if seniority_max_raw in _all_seniorities else intent_seniority
+        )
 
         intent_role_family = str(si.get("target_role_family") or role_family or "").strip() or None
 
         intent_ql_raw = str(si.get("target_qualification_level") or "").strip().lower()
-        intent_qualification_level = intent_ql_raw if intent_ql_raw in ql_valid else qualification_level
+        intent_qualification_level = (
+            intent_ql_raw if intent_ql_raw in ql_valid else qualification_level
+        )
 
         intent_skills = self._dedupe_string_list(si.get("target_skills"))
 
         intent_role_type_raw = str(si.get("target_role_type") or "").strip().lower()
-        intent_role_type = intent_role_type_raw if intent_role_type_raw in _valid_role_types else None
+        intent_role_type = (
+            intent_role_type_raw if intent_role_type_raw in _valid_role_types else None
+        )
 
         open_to_unrelated = bool(si.get("open_to_unrelated", False))
         # Safety: only accept open_to_unrelated=True when intent domain actually differs from candidate domain
@@ -435,7 +458,9 @@ Return ONLY JSON — no markdown, no explanations:
                 and max_keyword_queries is not None
                 and (max_occupation_queries + max_keyword_queries) > max_queries
             ):
-                raise ValueError("The sum of occupation and keyword query limits cannot exceed max_queries")
+                raise ValueError(
+                    "The sum of occupation and keyword query limits cannot exceed max_queries"
+                )
 
         searches = await self._call_generate_search_plan(
             profile,
@@ -470,7 +495,9 @@ Return ONLY JSON — no markdown, no explanations:
                 elif reason == "empty_query":
                     dropped_empty_query += 1
                 continue
-            original_type = str(search.get("type", "")).strip().lower() if isinstance(search, dict) else ""
+            original_type = (
+                str(search.get("type", "")).strip().lower() if isinstance(search, dict) else ""
+            )
             if original_type not in {"occupation", "keyword"}:
                 normalized_type_count += 1
             fingerprint = _query_fingerprint(candidate)
@@ -497,7 +524,9 @@ Return ONLY JSON — no markdown, no explanations:
                 dropped_duplicates,
                 dropped_soft_duplicates,
             )
-        elif dropped_non_dict or dropped_empty_query or dropped_duplicates or dropped_soft_duplicates:
+        elif (
+            dropped_non_dict or dropped_empty_query or dropped_duplicates or dropped_soft_duplicates
+        ):
             logger.info(
                 "[PLAN] Query normalization dropped entries (non_dict=%s empty_query=%s duplicates=%s soft_duplicates=%s type_inferred=%s kept=%s)",
                 dropped_non_dict,
@@ -548,19 +577,33 @@ Return ONLY JSON — no markdown, no explanations:
         provider_lines = []
         for info in providers_info:
             name = getattr(info, "name", None) if not isinstance(info, dict) else info.get("name")
-            description = getattr(info, "description", None) if not isinstance(info, dict) else info.get("description")
-            accepted_domains = getattr(info, "accepted_domains", None) if not isinstance(info, dict) else info.get("accepted_domains")
+            description = (
+                getattr(info, "description", None)
+                if not isinstance(info, dict)
+                else info.get("description")
+            )
+            accepted_domains = (
+                getattr(info, "accepted_domains", None)
+                if not isinstance(info, dict)
+                else info.get("accepted_domains")
+            )
             if name:
                 domains = ", ".join(accepted_domains or ["*"])
-                provider_lines.append(f"- {name}: domains [{domains}] | {description or 'No description'}")
+                provider_lines.append(
+                    f"- {name}: domains [{domains}] | {description or 'No description'}"
+                )
 
-        providers_block = "\n".join(provider_lines) if provider_lines else "- General routing handles provider selection automatically."
+        providers_block = (
+            "\n".join(provider_lines)
+            if provider_lines
+            else "- General routing handles provider selection automatically."
+        )
 
         # Build count instructions
         if max_occupation_queries is not None and max_keyword_queries is not None:
             limit_instruction = (
-                f"You MUST generate EXACTLY {max_occupation_queries} queries of type \"occupation\" "
-                f"and EXACTLY {max_keyword_queries} queries of type \"keyword\". "
+                f'You MUST generate EXACTLY {max_occupation_queries} queries of type "occupation" '
+                f'and EXACTLY {max_keyword_queries} queries of type "keyword". '
                 f"Total: {max_occupation_queries + max_keyword_queries} queries. "
                 "Each query MUST be unique. Do NOT generate more or fewer of either type. "
                 "This requirement is MANDATORY and non-negotiable."
@@ -568,13 +611,13 @@ Return ONLY JSON — no markdown, no explanations:
         elif max_occupation_queries is not None:
             total_info = f" (total: at most {max_queries})" if max_queries else ""
             limit_instruction = (
-                f"You MUST generate EXACTLY {max_occupation_queries} queries of type \"occupation\"{total_info}. "
+                f'You MUST generate EXACTLY {max_occupation_queries} queries of type "occupation"{total_info}. '
                 "Keywords can be generated freely. Each query MUST be unique."
             )
         elif max_keyword_queries is not None:
             total_info = f" (total: at most {max_queries})" if max_queries else ""
             limit_instruction = (
-                f"You MUST generate EXACTLY {max_keyword_queries} queries of type \"keyword\"{total_info}. "
+                f'You MUST generate EXACTLY {max_keyword_queries} queries of type "keyword"{total_info}. '
                 "Occupations can be generated freely. Each query MUST be unique."
             )
         elif max_queries is None:
@@ -593,9 +636,9 @@ Return ONLY JSON — no markdown, no explanations:
 You do NOT need to assign queries to specific job boards — the system routes them automatically.
 
 PROFILE:
-- Role / What they are looking for: {role_description or 'Unknown'}
-- Strategy / AI Instructions: {search_strategy or 'None'}
-- CV Evidence Extract: {cv_content or 'Unavailable'}
+- Role / What they are looking for: {role_description or "Unknown"}
+- Strategy / AI Instructions: {search_strategy or "None"}
+- CV Evidence Extract: {cv_content or "Unavailable"}
 
 AVAILABLE PROVIDERS:
 {providers_block}
@@ -647,7 +690,9 @@ Return ONLY pure JSON with a 'searches' list. Example:
 
         normalized_searches = self._normalize_searches(searches)
         if searches and not normalized_searches:
-            raise ValueError("LLM plan payload had candidates but all were invalid after normalization")
+            raise ValueError(
+                "LLM plan payload had candidates but all were invalid after normalization"
+            )
 
         if searches:
             logger.info(
@@ -667,7 +712,6 @@ Return ONLY pure JSON with a 'searches' list. Example:
         return searches
 
     # ─── Step 3: Job Match Analysis ───────────────────────────────────────
-
 
     @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=10))
     async def analyze_job_batch(
@@ -691,14 +735,16 @@ Return ONLY pure JSON with a 'searches' list. Example:
         MATCH_DESC_LIMIT = 6000
         # Compress descriptions that exceed the limit before building the batch prompt.
         # Keeps the MATCH step within context limits while preserving all explicit requirements.
-        descriptions = await _asyncio.gather(*[
-            self._compress_description_if_needed(job.get("description") or "", MATCH_DESC_LIMIT)
-            for job in jobs_metadata
-        ])
+        descriptions = await _asyncio.gather(
+            *[
+                self._compress_description_if_needed(job.get("description") or "", MATCH_DESC_LIMIT)
+                for job in jobs_metadata
+            ]
+        )
 
         jobs_text = ""
         for i, (job, desc) in enumerate(zip(jobs_metadata, descriptions)):
-            jobs_text += f"\n--- JOB {i+1} ---\n"
+            jobs_text += f"\n--- JOB {i + 1} ---\n"
             jobs_text += f"Title: {job.get('title')}\n"
             jobs_text += f"Company: {job.get('company')}\n"
             jobs_text += f"Location: {job.get('location')}\n"
@@ -724,13 +770,14 @@ Return ONLY pure JSON with a 'searches' list. Example:
             if not job.get("languages"):
                 try:
                     from backend.services.search.listing_utils import infer_implicit_language
+
                     implicit_lang = infer_implicit_language(job.get("location"))
                     if implicit_lang:
                         jobs_text += f"[Implicit Language Hint] Location suggests primary language: {implicit_lang} — consider this when scoring language fit.\n"
                 except Exception:
                     pass
 
-        strategy = profile.get('search_strategy')
+        strategy = profile.get("search_strategy")
         strategy_block = f"\n- Extra AI Instructions / Preferences: {strategy}" if strategy else ""
 
         # Build structured profile context from normalized data
@@ -747,8 +794,8 @@ Return ONLY pure JSON with a 'searches' list. Example:
                 f"\n- Industry Sectors (CV): {profile_norm.get('industry_sectors')}"
                 f"\n- CV Languages: {profile_norm.get('languages')}"
             )
-            dealbreakers = profile_norm.get('dealbreakers') or []
-            flexibility = profile_norm.get('flexibility') or {}
+            dealbreakers = profile_norm.get("dealbreakers") or []
+            flexibility = profile_norm.get("flexibility") or {}
             intent_structured = (
                 f"\n- Target Domain: {profile_norm.get('intent_domain')}"
                 f" | Target Role Type: {profile_norm.get('intent_role_type')}"
@@ -786,16 +833,26 @@ Return ONLY pure JSON with a 'searches' list. Example:
 
                 signal_lines = []
                 if preferred_domains:
-                    signal_lines.append(f"- Preferred domains (user has applied to): {', '.join(preferred_domains[:3])}")
+                    signal_lines.append(
+                        f"- Preferred domains (user has applied to): {', '.join(preferred_domains[:3])}"
+                    )
                 if avoided_domains:
-                    signal_lines.append(f"- Domains user consistently dismisses (treat as soft negative): {', '.join(avoided_domains[:3])}")
+                    signal_lines.append(
+                        f"- Domains user consistently dismisses (treat as soft negative): {', '.join(avoided_domains[:3])}"
+                    )
                 if preferred_role_types:
-                    signal_lines.append(f"- Preferred role types: {', '.join(preferred_role_types)}")
+                    signal_lines.append(
+                        f"- Preferred role types: {', '.join(preferred_role_types)}"
+                    )
                 if preferred_skills:
-                    signal_lines.append(f"- Skills the user actively engages with: {', '.join(preferred_skills)}")
+                    signal_lines.append(
+                        f"- Skills the user actively engages with: {', '.join(preferred_skills)}"
+                    )
                 if dealbreaker_patterns:
                     top_reasons = sorted(dealbreaker_patterns.items(), key=lambda x: -x[1])[:3]
-                    signal_lines.append(f"- Frequent dismissal reasons: {', '.join(f'{r}({c})' for r, c in top_reasons)}")
+                    signal_lines.append(
+                        f"- Frequent dismissal reasons: {', '.join(f'{r}({c})' for r, c in top_reasons)}"
+                    )
                 if typical_salary.get("typical_min_chf"):
                     signal_lines.append(
                         f"- Typical salary bracket the user applies to: "
@@ -814,8 +871,8 @@ Return ONLY pure JSON with a 'searches' list. Example:
         user_prompt = f"""Analyze the match between this candidate and each job below.
 
 CANDIDATE PROFILE:
-- Expected Role: {profile.get('role_description')}{strategy_block}
-- Experience Context: {profile.get('cv_summary') or profile.get('cv_content')}{candidate_structured}
+- Expected Role: {profile.get("role_description")}{strategy_block}
+- Experience Context: {profile.get("cv_summary") or profile.get("cv_content")}{candidate_structured}
 
 SEARCH INTENT:{intent_structured if intent_structured else " (use role description above)"}{preference_block}
 
@@ -903,7 +960,7 @@ Return ONLY JSON with a "results" array, one entry per job, IN ORDER:
         results = result.get("results", []) if isinstance(result, dict) else []
         normalized_results: List[Dict[str, Any]] = []
 
-        for item in results[:len(jobs_metadata)]:
+        for item in results[: len(jobs_metadata)]:
             if not isinstance(item, dict):
                 normalized_results.append(
                     {
@@ -947,7 +1004,9 @@ Return ONLY JSON with a "results" array, one entry per job, IN ORDER:
                     "strengths": raw_structured.get("strengths") or [],
                     "weaknesses": raw_structured.get("weaknesses") or [],
                     "gaps": raw_structured.get("gaps") or [],
-                    "verdict": sanitize_prompt_text(str(raw_structured.get("verdict") or ""), max_chars=250),
+                    "verdict": sanitize_prompt_text(
+                        str(raw_structured.get("verdict") or ""), max_chars=250
+                    ),
                     "evidence_citations": raw_structured.get("evidence_citations") or [],
                 }
 
@@ -962,7 +1021,10 @@ Return ONLY JSON with a "results" array, one entry per job, IN ORDER:
             normalized_results.append(
                 {
                     "affinity_score": score,
-                    "affinity_analysis": sanitize_prompt_text(item.get("affinity_analysis", ""), max_chars=1500) or "No analysis returned.",
+                    "affinity_analysis": sanitize_prompt_text(
+                        item.get("affinity_analysis", ""), max_chars=1500
+                    )
+                    or "No analysis returned.",
                     "worth_applying": worth_applying,
                     "skill_match_score": _coerce_sub_score(item.get("skill_match_score")),
                     "experience_match_score": _coerce_sub_score(item.get("experience_match_score")),
@@ -970,7 +1032,9 @@ Return ONLY JSON with a "results" array, one entry per job, IN ORDER:
                     "language_match_score": _coerce_sub_score(item.get("language_match_score")),
                     "location_match_score": _coerce_sub_score(item.get("location_match_score")),
                     "transferability_score": _coerce_sub_score(item.get("transferability_score")),
-                    "qualification_gap_score": _coerce_sub_score(item.get("qualification_gap_score")),
+                    "qualification_gap_score": _coerce_sub_score(
+                        item.get("qualification_gap_score")
+                    ),
                     "analysis_structured": analysis_structured,
                     "red_flags": red_flags,
                 }
@@ -1076,7 +1140,8 @@ Return ONLY JSON with a "results" array, one entry per job, IN ORDER:
 
         logger.info(
             "[COMPRESS] Description (%d chars) exceeds %d — compressing with LLM",
-            len(description), max_chars,
+            len(description),
+            max_chars,
         )
         provider = self._get_provider("compress")
         system_prompt = (
@@ -1107,7 +1172,9 @@ Return ONLY JSON with a "results" array, one entry per job, IN ORDER:
                 logger.info("[COMPRESS] Compressed %d → %d chars", len(description), len(result))
                 return result
         except Exception as exc:
-            logger.warning("[COMPRESS] LLM compression failed (%s); falling back to hard truncation", exc)
+            logger.warning(
+                "[COMPRESS] LLM compression failed (%s); falling back to hard truncation", exc
+            )
         return description[:max_chars]
 
     @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=5))
@@ -1122,14 +1189,18 @@ Return ONLY JSON with a "results" array, one entry per job, IN ORDER:
         NORMALIZE_DESC_LIMIT = 8000
         # Compress descriptions that exceed the limit in parallel before building the batch text.
         # Lossless: the compressor preserves all factual requirements, removes only marketing filler.
-        descriptions = await _asyncio.gather(*[
-            self._compress_description_if_needed(job.get("description") or "", NORMALIZE_DESC_LIMIT)
-            for job in jobs
-        ])
+        descriptions = await _asyncio.gather(
+            *[
+                self._compress_description_if_needed(
+                    job.get("description") or "", NORMALIZE_DESC_LIMIT
+                )
+                for job in jobs
+            ]
+        )
 
         jobs_text = ""
         for i, (job, desc) in enumerate(zip(jobs, descriptions)):
-            jobs_text += f"\n--- JOB {i+1} ---\n"
+            jobs_text += f"\n--- JOB {i + 1} ---\n"
             jobs_text += f"Title: {sanitize_prompt_text(job.get('title'), max_chars=180)}\n"
             jobs_text += f"Company: {sanitize_prompt_text(job.get('company'), max_chars=120)}\n"
             jobs_text += f"Location: {sanitize_prompt_text(job.get('location'), max_chars=120)}\n"
@@ -1236,7 +1307,15 @@ Return ONLY JSON:
         rows = result.get("results", []) if isinstance(result, dict) else []
         normalized_rows: List[Dict[str, Any]] = []
 
-        _valid_role_types = {"technical", "manual", "administrative", "creative", "managerial", "service", "professional"}
+        _valid_role_types = {
+            "technical",
+            "manual",
+            "administrative",
+            "creative",
+            "managerial",
+            "service",
+            "professional",
+        }
 
         for idx in range(len(jobs)):
             row = rows[idx] if idx < len(rows) and isinstance(rows[idx], dict) else {}
@@ -1263,25 +1342,38 @@ Return ONLY JSON:
             normalized_rows.append(
                 {
                     "title": str(row.get("title") or jobs[idx].get("title") or "").strip() or None,
-                    "role_family": str(row.get("role_family") or row.get("title") or jobs[idx].get("title") or "").strip() or None,
+                    "role_family": str(
+                        row.get("role_family") or row.get("title") or jobs[idx].get("title") or ""
+                    ).strip()
+                    or None,
                     "domain": self._normalize_job_domain_token(row.get("domain") or "general"),
                     "industry_sector": industry_sector,
                     "role_type": role_type,
                     "seniority": str(row.get("seniority") or "").strip().lower() or None,
-                    "employment_mode": str(row.get("employment_mode") or "").strip().lower() or None,
+                    "employment_mode": str(row.get("employment_mode") or "").strip().lower()
+                    or None,
                     "contract_type": str(row.get("contract_type") or "").strip().lower() or None,
-                    "qualification_level": str(row.get("qualification_level") or "").strip().lower() or None,
-                    "experience_min_years": self._coerce_nullable_int(row.get("experience_min_years")),
-                    "experience_max_years": self._coerce_nullable_int(row.get("experience_max_years")),
+                    "qualification_level": str(row.get("qualification_level") or "").strip().lower()
+                    or None,
+                    "experience_min_years": self._coerce_nullable_int(
+                        row.get("experience_min_years")
+                    ),
+                    "experience_max_years": self._coerce_nullable_int(
+                        row.get("experience_max_years")
+                    ),
                     "workload_min": self._coerce_nullable_int(row.get("workload_min")),
                     "workload_max": self._coerce_nullable_int(row.get("workload_max")),
                     "salary_min_chf": self._coerce_nullable_int(row.get("salary_min_chf")),
                     "salary_max_chf": self._coerce_nullable_int(row.get("salary_max_chf")),
-                    "required_languages": self._normalize_required_languages(row.get("required_languages")),
+                    "required_languages": self._normalize_required_languages(
+                        row.get("required_languages")
+                    ),
                     "required_skills": self._dedupe_string_list(row.get("required_skills")),
                     "preferred_skills": self._dedupe_string_list(row.get("preferred_skills")),
                     "soft_skills": self._dedupe_string_list(row.get("soft_skills")),
-                    "physical_requirements": self._dedupe_string_list(row.get("physical_requirements")),
+                    "physical_requirements": self._dedupe_string_list(
+                        row.get("physical_requirements")
+                    ),
                     "entry_barrier": entry_barrier,
                     "career_changer_friendly": career_changer_friendly,
                     "education_levels": self._dedupe_string_list(row.get("education_levels")),
@@ -1294,17 +1386,19 @@ Return ONLY JSON:
         # ── Phase 1.1: Post-LLM validation: catch hallucinated enum values ────
         try:
             from backend.services.search.normalization_validator import validate_normalized_batch
+
             normalized_rows, indices_needing_review = validate_normalized_batch(normalized_rows)
             if indices_needing_review:
                 logger.debug(
                     "[NORMALIZE] Validator corrected %d/%d rows (indices: %s)",
-                    len(indices_needing_review), len(normalized_rows), indices_needing_review,
+                    len(indices_needing_review),
+                    len(normalized_rows),
+                    indices_needing_review,
                 )
         except Exception as _ve:
             logger.warning("[NORMALIZE] normalization_validator call failed: %s", _ve)
 
         return normalized_rows
-
 
     # ─── Phase 3.2: Two-pass critique for borderline scores ──────────────────
 
@@ -1332,7 +1426,7 @@ Return ONLY JSON:
         jobs_text = ""
         initial_text = ""
         for i, (job, init) in enumerate(zip(jobs_metadata, initial_results)):
-            jobs_text += f"\n--- JOB {i+1} ---\n"
+            jobs_text += f"\n--- JOB {i + 1} ---\n"
             jobs_text += f"Title: {job.get('title')}\n"
             jobs_text += f"Company: {job.get('company')}\n"
             jobs_text += f"Description: {sanitize_prompt_text(job.get('description') or '', max_chars=4000)}\n"
@@ -1345,7 +1439,7 @@ Return ONLY JSON:
                     f" | Hard blockers: {job_norm.get('hard_blockers')}\n"
                 )
             initial_text += (
-                f"\nJOB {i+1} INITIAL SCORE: {init.get('affinity_score')}\n"
+                f"\nJOB {i + 1} INITIAL SCORE: {init.get('affinity_score')}\n"
                 f"Initial analysis: {init.get('affinity_analysis', '')[:500]}\n"
             )
 
@@ -1398,39 +1492,58 @@ Return ONLY JSON with a "results" array, one entry per job, IN ORDER:
 }}"""
 
         try:
-            result = await self._call_provider_json(provider, "critique", system_prompt, user_prompt)
+            result = await self._call_provider_json(
+                provider, "critique", system_prompt, user_prompt
+            )
         except Exception as exc:
-            logger.warning("[CRITIQUE] LLM critique call failed: %s. Returning initial results.", exc)
+            logger.warning(
+                "[CRITIQUE] LLM critique call failed: %s. Returning initial results.", exc
+            )
             return initial_results
 
         critique_rows = result.get("results", []) if isinstance(result, dict) else []
         updated_results: List[Dict[str, Any]] = []
 
         for i, init in enumerate(initial_results):
-            critique = critique_rows[i] if i < len(critique_rows) and isinstance(critique_rows[i], dict) else {}
+            critique = (
+                critique_rows[i]
+                if i < len(critique_rows) and isinstance(critique_rows[i], dict)
+                else {}
+            )
             if not critique:
                 updated_results.append(init)
                 continue
 
             try:
-                new_score = max(0, min(100, int(critique.get("affinity_score", init["affinity_score"]))))
+                new_score = max(
+                    0, min(100, int(critique.get("affinity_score", init["affinity_score"])))
+                )
             except Exception:
                 new_score = init["affinity_score"]
 
             # Only accept score changes that are within ±20; otherwise keep original
             score_delta = abs(new_score - init["affinity_score"])
             if score_delta > 20:
-                logger.debug("[CRITIQUE] Job %d: score change %d→%d exceeds ±20 cap; clamping.", i+1, init["affinity_score"], new_score)
+                logger.debug(
+                    "[CRITIQUE] Job %d: score change %d→%d exceeds ±20 cap; clamping.",
+                    i + 1,
+                    init["affinity_score"],
+                    new_score,
+                )
                 if new_score > init["affinity_score"]:
                     new_score = init["affinity_score"] + 20
                 else:
                     new_score = init["affinity_score"] - 20
                 new_score = max(0, min(100, new_score))
 
-            critique_notes = sanitize_prompt_text(str(critique.get("critique_notes") or ""), max_chars=500)
+            critique_notes = sanitize_prompt_text(
+                str(critique.get("critique_notes") or ""), max_chars=500
+            )
             updated = dict(init)
             updated["affinity_score"] = new_score
-            updated["worth_applying"] = bool(critique.get("worth_applying", False)) and new_score >= 65
+            updated["worth_applying"] = (
+                bool(critique.get("worth_applying", False)) and new_score >= 65
+            )
             if critique_notes:
                 # Append critique notes to the existing analysis (truncated to keep total under limit)
                 existing_analysis = updated.get("affinity_analysis", "")
@@ -1480,7 +1593,7 @@ Return ONLY JSON with a "results" array, one entry per job, IN ORDER:
         jobs_text = ""
         for i, entry in enumerate(top_jobs):
             job = entry.get("job_metadata") or {}
-            jobs_text += f"\n--- JOB {i+1} (current score: {entry.get('current_score')}) ---\n"
+            jobs_text += f"\n--- JOB {i + 1} (current score: {entry.get('current_score')}) ---\n"
             jobs_text += f"Title: {job.get('title')} @ {job.get('company')}\n"
             jobs_text += f"Description: {sanitize_prompt_text(job.get('description') or '', max_chars=2000)}\n"
             job_norm = job.get("normalized_data") or {}
@@ -1536,7 +1649,9 @@ Return ONLY JSON with a "results" array, one entry per job, IN ORDER:
         output: List[Dict[str, Any]] = []
 
         for i, entry in enumerate(top_jobs):
-            row = rerank_rows[i] if i < len(rerank_rows) and isinstance(rerank_rows[i], dict) else {}
+            row = (
+                rerank_rows[i] if i < len(rerank_rows) and isinstance(rerank_rows[i], dict) else {}
+            )
             orig_score = entry.get("current_score", 0)
             try:
                 final_score = max(0, min(100, int(row.get("final_score", orig_score))))
@@ -1549,16 +1664,25 @@ Return ONLY JSON with a "results" array, one entry per job, IN ORDER:
                 final_score = orig_score + (15 if adjustment > 0 else -15)
                 final_score = max(0, min(100, final_score))
 
-            output.append({
-                "job_index": entry.get("job_index", i),
-                "final_score": final_score,
-                "rank_notes": sanitize_prompt_text(str(row.get("rank_notes") or ""), max_chars=300),
-            })
+            output.append(
+                {
+                    "job_index": entry.get("job_index", i),
+                    "final_score": final_score,
+                    "rank_notes": sanitize_prompt_text(
+                        str(row.get("rank_notes") or ""), max_chars=300
+                    ),
+                }
+            )
 
         # Pad missing entries
         while len(output) < len(top_jobs):
             entry = top_jobs[len(output)]
-            output.append({"job_index": entry.get("job_index", len(output)), "final_score": entry.get("current_score", 0)})
+            output.append(
+                {
+                    "job_index": entry.get("job_index", len(output)),
+                    "final_score": entry.get("current_score", 0),
+                }
+            )
 
         return output
 

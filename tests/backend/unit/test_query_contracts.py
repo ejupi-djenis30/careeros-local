@@ -1,6 +1,5 @@
 from backend.services.search.query_contracts import (
     build_plan_cache_payload,
-    canonicalize_query_text,
     compute_plan_input_fingerprint,
     exact_query_fingerprint,
     is_cached_plan_compatible,
@@ -26,8 +25,12 @@ def test_normalize_search_item_infers_keyword_and_normalizes_language():
 
 
 def test_exact_query_fingerprint_preserves_order_distinctions():
-    left = exact_query_fingerprint({"query": "React Developer", "type": "occupation", "domain": "it", "language": "en"})
-    right = exact_query_fingerprint({"query": "Developer React", "type": "occupation", "domain": "it", "language": "en"})
+    left = exact_query_fingerprint(
+        {"query": "React Developer", "type": "occupation", "domain": "it", "language": "en"}
+    )
+    right = exact_query_fingerprint(
+        {"query": "Developer React", "type": "occupation", "domain": "it", "language": "en"}
+    )
 
     assert left != right
 

@@ -8,6 +8,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 # Shared validation helpers
 # ═══════════════════════════════════════
 
+
 def _validate_profile_ranges(obj: Any) -> None:
     """Validate numeric range fields shared by SearchProfileBase and SearchProfileUpdate."""
     if getattr(obj, "workload_min", None) is not None and not 0 <= obj.workload_min <= 100:
@@ -26,15 +27,22 @@ def _validate_profile_ranges(obj: Any) -> None:
         raise ValueError("hard_max_distance_km must be non-negative")
     if getattr(obj, "max_distance", None) is not None and not 0 <= obj.max_distance <= 500:
         raise ValueError("max_distance must be between 0 and 500 km")
-    if getattr(obj, "posted_within_days", None) is not None and not 1 <= obj.posted_within_days <= 365:
+    if (
+        getattr(obj, "posted_within_days", None) is not None
+        and not 1 <= obj.posted_within_days <= 365
+    ):
         raise ValueError("posted_within_days must be between 1 and 365 days")
-    if getattr(obj, "schedule_interval_hours", None) is not None and obj.schedule_interval_hours < 1:
+    if (
+        getattr(obj, "schedule_interval_hours", None) is not None
+        and obj.schedule_interval_hours < 1
+    ):
         raise ValueError("schedule_interval_hours must be at least 1")
 
 
 # ═══════════════════════════════════════
 # Search Profile Schemas
 # ═══════════════════════════════════════
+
 
 class SearchProfileBase(BaseModel):
     name: str = ""
@@ -256,5 +264,6 @@ class SearchProfile(SearchProfileBase):
 
 class ScheduleToggle(BaseModel):
     """Toggle schedule on/off for a profile."""
+
     enabled: bool
     interval_hours: Optional[int] = None

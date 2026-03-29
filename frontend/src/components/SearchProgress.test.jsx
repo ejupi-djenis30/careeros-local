@@ -227,4 +227,3 @@ describe('SearchProgress', () => {
     expect(pct).toBeLessThanOrEqual(65);
   });
 });
-

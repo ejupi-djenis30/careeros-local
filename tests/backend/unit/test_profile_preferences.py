@@ -2,10 +2,9 @@
 
 This module had zero test coverage.
 """
+
 from types import SimpleNamespace
 from unittest.mock import MagicMock
-
-import pytest
 
 from backend.services.search.profile_preferences import get_profile_preference
 

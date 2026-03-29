@@ -73,7 +73,7 @@ export function FilterBar({ filters = DEFAULT_FILTERS, onChange, searchProfiles 
                     </div>
 
                     {/* Filter Toggle: Top Picks */}
-                    <button 
+                    <button
                         type="button"
                         className={`btn btn-sm rounded-pill px-3 d-flex align-items-center gap-2 border transition-all ${safeFilters.worth_applying ? 'bg-primary-10 border-primary text-primary' : 'bg-white-5 border-white-5 text-secondary hover-bg-white-10'}`}
                         onClick={() => handleChange("worth_applying", !safeFilters.worth_applying)}
@@ -83,7 +83,7 @@ export function FilterBar({ filters = DEFAULT_FILTERS, onChange, searchProfiles 
                     </button>
 
                     {/* Show Dismissed toggle */}
-                    <button 
+                    <button
                         type="button"
                         className={`btn btn-sm rounded-pill px-3 d-flex align-items-center gap-2 border transition-all ${safeFilters.include_dismissed ? 'bg-danger-10 border-danger text-danger fw-semibold' : 'bg-white-5 border-white-10 text-white-50 hover-bg-white-10'}`}
                         onClick={() => handleChange("include_dismissed", !safeFilters.include_dismissed)}

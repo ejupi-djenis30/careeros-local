@@ -2,6 +2,7 @@
 In-memory search status tracker.
 Stores real-time progress of search workflows for frontend polling.
 """
+
 import json
 import logging
 import os
@@ -18,16 +19,39 @@ os.makedirs(_DATA_DIR, exist_ok=True)
 _STATUS_FILE = os.path.join(_DATA_DIR, "job_hunter_statuses.json")
 
 _VALID_STATUS_KEYS = {
-    "user_id", "state", "total_searches", "current_search_index",
-    "searches_completed", "active_search_indices", "completed_search_indices",
-    "current_query", "searches_generated", "jobs_found", "jobs_new",
-    "jobs_duplicates", "jobs_skipped", "errors", "log",
-    "started_at", "finished_at", "error",
-    "jobs_analyzed", "jobs_analyze_total", "terminal_reason", "degraded_mode",
-    "plan_cache_hit", "plan_cache_miss", "plan_raw_count", "plan_unique_count",
-    "queries_without_provider", "provider_failures", "provider_successes", "avam_fallback_count",
+    "user_id",
+    "state",
+    "total_searches",
+    "current_search_index",
+    "searches_completed",
+    "active_search_indices",
+    "completed_search_indices",
+    "current_query",
+    "searches_generated",
+    "jobs_found",
+    "jobs_new",
+    "jobs_duplicates",
+    "jobs_skipped",
+    "errors",
+    "log",
+    "started_at",
+    "finished_at",
+    "error",
+    "jobs_analyzed",
+    "jobs_analyze_total",
+    "terminal_reason",
+    "degraded_mode",
+    "plan_cache_hit",
+    "plan_cache_miss",
+    "plan_raw_count",
+    "plan_unique_count",
+    "queries_without_provider",
+    "provider_failures",
+    "provider_successes",
+    "avam_fallback_count",
 }
 _TERMINAL_STATES = {"done", "error", "stopped", "cancelled"}
+
 
 def _load_statuses() -> Dict[int, Dict[str, Any]]:
     if os.path.exists(_STATUS_FILE):
@@ -39,9 +63,11 @@ def _load_statuses() -> Dict[int, Dict[str, Any]]:
             logger.warning("Failed to load search statuses from %s: %s", _STATUS_FILE, exc)
     return {}
 
+
 _last_save_time = 0.0
 _SAVE_DEBOUNCE_INTERVAL = 1.5
 _RESERVATION_TTL_SECONDS = 30.0
+
 
 def _save_statuses(force: bool = False, statuses_snapshot: Dict[int, Dict[str, Any]] | None = None):
     global _last_save_time
@@ -60,8 +86,9 @@ def _save_statuses(force: bool = False, statuses_snapshot: Dict[int, Dict[str, A
     except Exception as exc:
         logger.warning("Failed to persist search statuses to %s: %s", _STATUS_FILE, exc)
 
+
 _statuses: Dict[int, Dict[str, Any]] = _load_statuses()
-_active_tasks: Dict[int, Any] = {} # profile_id -> asyncio.Task
+_active_tasks: Dict[int, Any] = {}  # profile_id -> asyncio.Task
 _reserved_tasks: Dict[int, float] = {}
 # ISO-8601 timestamp captured once when this worker process starts.
 # Used in _merge_with_file to distinguish live cross-worker search entries
@@ -89,7 +116,12 @@ def _cleanup_stale_reservations(now: float | None = None):
         _active_tasks.pop(profile_id, None)
 
 
-def init_status(profile_id: int, total_searches: int = 0, searches: Optional[List[Dict]] = None, user_id: Optional[int] = None):
+def init_status(
+    profile_id: int,
+    total_searches: int = 0,
+    searches: Optional[List[Dict]] = None,
+    user_id: Optional[int] = None,
+):
     """Initialize or reset status when search begins."""
     with _lock:
         _statuses[profile_id] = {
@@ -132,10 +164,12 @@ def add_log(profile_id: int, message: str):
         s = _statuses.get(profile_id)
         snapshot = None
         if s:
-            s["log"].append({
-                "time": datetime.now(timezone.utc).isoformat(),
-                "message": message,
-            })
+            s["log"].append(
+                {
+                    "time": datetime.now(timezone.utc).isoformat(),
+                    "message": message,
+                }
+            )
             # Keep last 100 entries
             if len(s["log"]) > 100:
                 s["log"] = s["log"][-100:]
@@ -149,6 +183,7 @@ def update_status(profile_id: int, **kwargs):
     invalid = set(kwargs.keys()) - _VALID_STATUS_KEYS
     if invalid:
         import logging
+
         logging.getLogger(__name__).warning(f"update_status called with unknown keys: {invalid}")
     with _lock:
         s = _statuses.get(profile_id)
@@ -183,6 +218,7 @@ def _merge_with_file(memory: Dict[int, Dict[str, Any]]) -> Dict[int, Dict[str, A
     worker (cross-process case).
     """
     import copy
+
     merged: Dict[int, Dict[str, Any]] = {}
     try:
         file_data = _load_statuses()
@@ -217,7 +253,9 @@ def _merge_with_file(memory: Dict[int, Dict[str, Any]]) -> Dict[int, Dict[str, A
     return merged
 
 
-def _prune_old_terminal_statuses(statuses: Dict[int, Dict[str, Any]], max_age_seconds: float = 86400.0) -> Dict[int, Dict[str, Any]]:
+def _prune_old_terminal_statuses(
+    statuses: Dict[int, Dict[str, Any]], max_age_seconds: float = 86400.0
+) -> Dict[int, Dict[str, Any]]:
     """Remove terminal status entries whose ``finished_at`` timestamp is older than max_age_seconds."""
     cutoff = datetime.now(timezone.utc).timestamp() - max_age_seconds
     pruned: Dict[int, Dict[str, Any]] = {}
@@ -276,6 +314,7 @@ def clear_status(profile_id: int):
             snapshot = dict(_statuses)
     if snapshot is not None:
         _save_statuses(force=True, statuses_snapshot=snapshot)
+
 
 def register_task(profile_id: int, task: Any):
     """Register an active search task.
@@ -345,11 +384,15 @@ def reserve_task(profile_id: int) -> bool:
                 ):
                     logger.info(
                         "reserve_task: profile %d is already running on another worker (state=%s, started=%s)",
-                        profile_id, file_state, file_started,
+                        profile_id,
+                        file_state,
+                        file_started,
                     )
                     return False
         except Exception as exc:
-            logger.warning("reserve_task: failed to read status file for cross-worker check: %s", exc)
+            logger.warning(
+                "reserve_task: failed to read status file for cross-worker check: %s", exc
+            )
 
         _reserved_tasks[profile_id] = time.time()
         return True

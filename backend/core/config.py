@@ -12,7 +12,9 @@ class Settings(BaseSettings):
     PROJECT_NAME: str = "Job Hunter AI"
 
     # CORS
-    CORS_ORIGINS: Optional[str] = "http://localhost:5173,http://127.0.0.1:5173,http://localhost:8000"
+    CORS_ORIGINS: Optional[str] = (
+        "http://localhost:5173,http://127.0.0.1:5173,http://localhost:8000"
+    )
     CORS_ALLOW_ORIGIN_REGEX: str = r"^https?://(localhost|127\.0\.0\.1)(:\d+)?$"
 
     @property
@@ -21,6 +23,7 @@ class Settings(BaseSettings):
             return []
         if self.CORS_ORIGINS.startswith("["):
             import json
+
             try:
                 return json.loads(self.CORS_ORIGINS)
             except Exception as exc:
@@ -46,6 +49,7 @@ class Settings(BaseSettings):
         if isinstance(v, str):
             if v.startswith("["):
                 import json
+
                 try:
                     return json.loads(v)
                 except Exception as exc:
@@ -60,6 +64,7 @@ class Settings(BaseSettings):
     def validate_secret_key(cls, v: str) -> str:
         import logging
         import os
+
         if v in ("changeme", ""):
             if os.getenv("ENVIRONMENT", "development").lower() == "production":
                 raise ValueError(
@@ -69,9 +74,10 @@ class Settings(BaseSettings):
                 "CRITICAL: Default SECRET_KEY is in use! Set SECRET_KEY in .env for production."
             )
         return v
+
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 15  # 15 minutes
-    REFRESH_TOKEN_EXPIRE_DAYS: int = 7     # 7 days
+    REFRESH_TOKEN_EXPIRE_DAYS: int = 7  # 7 days
     # ─── Global LLM (used as fallback for all steps) ───────────────────────────
     LLM_PROVIDER: str = "groq"
     LLM_API_KEY: str = ""
@@ -273,10 +279,7 @@ class Settings(BaseSettings):
     OLLAMA_BASE_URL: str = "http://localhost:11434/v1"
     OLLAMA_MODEL: str = "llama3"
 
-    model_config = SettingsConfigDict(
-        case_sensitive=True,
-        env_file=".env",
-        extra="ignore"
-    )
+    model_config = SettingsConfigDict(case_sensitive=True, env_file=".env", extra="ignore")
+
 
 settings = Settings()

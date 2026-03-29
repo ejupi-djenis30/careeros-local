@@ -98,11 +98,11 @@ function DashboardLayout() {
         <div className="animated-bg-blob blob-2"></div>
         <div className="animated-bg-blob blob-3"></div>
       </div>
-      
+
       <div className="d-flex min-vh-100 position-relative overflow-hidden">
         <div className={`sidebar-backdrop ${isSidebarOpen ? 'show' : ''}`} onClick={() => setIsSidebarOpen(false)} />
 
-        <Sidebar 
+        <Sidebar
           username={user}
           onLogout={logout}
           isOpen={isSidebarOpen}

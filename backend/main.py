@@ -50,7 +50,12 @@ async def lifespan(app: FastAPI):
             try:
                 if not task.done():
                     task.cancel()
-                    update_status(pid, state="error", terminal_reason="server_shutdown", error="Server shutdown")
+                    update_status(
+                        pid,
+                        state="error",
+                        terminal_reason="server_shutdown",
+                        error="Server shutdown",
+                    )
             except Exception:
                 pass
         # Give tasks a moment to handle CancelledError and run their finally blocks
@@ -69,6 +74,7 @@ app = FastAPI(
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
+
 @app.middleware("http")
 async def add_security_headers(request, call_next):
     response = await call_next(request)
@@ -76,6 +82,7 @@ async def add_security_headers(request, call_next):
     response.headers["X-Frame-Options"] = "DENY"
     response.headers["X-XSS-Protection"] = "1; mode=block"
     return response
+
 
 # ─── Basic Production Middlewares ───
 app.add_middleware(GZipMiddleware, minimum_size=1000)
@@ -124,6 +131,7 @@ async def http_exception_handler(request, exc):
 @app.exception_handler(RequestValidationError)
 async def validation_exception_handler(request, exc):
     from fastapi.encoders import jsonable_encoder
+
     logger.error(f"Validation error: {exc.errors()}")
     return JSONResponse(
         status_code=422,
@@ -162,6 +170,7 @@ def _check_db_status() -> str:
     from sqlalchemy import text
 
     from backend.db.base import SessionLocal
+
     try:
         db = SessionLocal()
         try:
@@ -182,6 +191,7 @@ def health():
     db_status = _check_db_status()
     if db_status != "connected":
         from fastapi.responses import JSONResponse
+
         return JSONResponse(status_code=503, content={"status": "degraded", "database": db_status})
     return {"status": "ok", "database": db_status}
 

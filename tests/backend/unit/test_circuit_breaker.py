@@ -5,8 +5,8 @@ Covers:
 - CircuitOpenError fast-fail when OPEN
 - CircuitBreakerRegistry singleton behaviour
 """
+
 import asyncio
-import time
 
 import pytest
 
@@ -17,8 +17,8 @@ from backend.providers.circuit_breaker import (
     CircuitState,
 )
 
-
 # ─── helpers ──────────────────────────────────────────────────────────────────
+
 
 async def _ok(value=42):
     return value
@@ -29,6 +29,7 @@ async def _fail(exc_type: type[Exception] = RuntimeError, msg: str = "boom"):
 
 
 # ─── Basic CLOSED state ────────────────────────────────────────────────────────
+
 
 class TestCircuitBreakerClosed:
     @pytest.mark.asyncio
@@ -68,6 +69,7 @@ class TestCircuitBreakerClosed:
 
 
 # ─── CLOSED → OPEN transition ─────────────────────────────────────────────────
+
 
 class TestCircuitBreakerTrip:
     @pytest.mark.asyncio
@@ -116,6 +118,7 @@ class TestCircuitBreakerTrip:
 
 # ─── OPEN → HALF_OPEN → CLOSED recovery ───────────────────────────────────────
 
+
 class TestCircuitBreakerRecovery:
     @pytest.mark.asyncio
     async def test_half_open_after_recovery_window(self):
@@ -162,6 +165,7 @@ class TestCircuitBreakerRecovery:
 
 # ─── repr ─────────────────────────────────────────────────────────────────────
 
+
 class TestCircuitBreakerRepr:
     def test_repr_contains_state_and_service(self):
         cb = CircuitBreaker("groq", failure_threshold=5, recovery_seconds=60)
@@ -171,6 +175,7 @@ class TestCircuitBreakerRepr:
 
 
 # ─── CircuitBreakerRegistry ───────────────────────────────────────────────────
+
 
 class TestCircuitBreakerRegistry:
     def test_get_returns_circuit_breaker(self):

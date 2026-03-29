@@ -18,6 +18,7 @@ limiter = Limiter(key_func=get_remote_address, enabled=not is_testing)
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login")
 logger = logging.getLogger(__name__)
 
+
 def get_current_user_id(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)) -> int:
     try:
         payload = decode_access_token(token)
@@ -38,10 +39,14 @@ def get_current_user_id(token: str = Depends(oauth2_scheme), db: Session = Depen
         raise HTTPException(status_code=401, detail="User not found")
     return user.id
 
+
 def job_service_dep(db: Session = Depends(get_db)):
     from backend.services.job_service import get_job_service
+
     return get_job_service(db)
+
 
 def profile_service_dep(db: Session = Depends(get_db)):
     from backend.services.profile_service import get_profile_service
+
     return get_profile_service(db)
