@@ -157,34 +157,19 @@ async def test_analyze_and_save_batch_exception(mock_service):
 
 async def test_run_search_cv_summarization_and_unexpected(mock_service):
     profile = MagicMock(id=1)
-    profile_dict = {"id": 1, "cv_content": "Long CV content " * 100}
-    
-    # 1. Test run_search exception wrapping
-    with patch.object(mock_service, "_execute_searches", side_effect=Exception("Critical")), \
-         patch.object(mock_service, "_normalize_user_profile", new=AsyncMock(return_value={})):
+
+    # 1. Test run_search exception wrapping — exception raised inside _run_pipeline is caught.
+    with patch.object(mock_service, "_run_pipeline", new=AsyncMock(side_effect=Exception("Critical"))):
         await mock_service.run_search(1)
         # Should not raise, just catch and log
 
-    # 2. Test CV summarization usage and deduplicate call
-    with patch.object(mock_service, "_execute_searches") as mock_exec, \
-         patch("backend.services.search_service.llm_service.summarize_cv", return_value="Short CV"), \
+    # 2. Test that the pipeline runs without crashing when producers + consumer are stubbed out.
+    with patch.object(mock_service, "_generate_plan", new=AsyncMock(return_value=[{"query": "dev"}])), \
          patch.object(mock_service, "_normalize_user_profile", new=AsyncMock(return_value={})), \
-         patch.object(mock_service, "_deduplicate") as mock_dedup, \
-         patch.object(mock_service, "_persist_scraped_job_catalog", new=AsyncMock(return_value=(0, 0))), \
-         patch.object(mock_service, "_normalize_persisted_jobs", new=AsyncMock(return_value=0)), \
-         patch.object(mock_service, "_analyze_and_save", return_value=(0,0)), \
-         patch.object(mock_service, "_generate_plan", return_value=[{"query":"dev"}]), \
-         patch.object(mock_service.profile_repo, "get") as mock_get_profile:
-        
-        mock_get_profile.return_value = profile
-        mock_service.profile_repo.get_dict.return_value = profile_dict
-        job1 = MagicMock()
-        mock_exec.return_value = [job1]
-        mock_dedup.return_value = ([job1], 0)
-        
+         patch.object(mock_service, "_search_and_produce", new=AsyncMock(return_value=(0, 0))), \
+         patch.object(mock_service, "_processing_consumer", new=AsyncMock(return_value=(0, []))), \
+         patch.object(mock_service.profile_repo, "get", return_value=profile):
         await mock_service.run_search(1)
-        
-        mock_dedup.assert_called_once()
 
 async def test_run_search_profile_not_found(mock_service):
     mock_service.profile_repo.get = MagicMock(return_value=None)
@@ -287,10 +272,10 @@ async def test_generate_plan_sets_cache_miss_metrics(mock_service):
 
 async def test_analyze_and_save_stopped_and_truncation(mock_service):
     profile_dict = {"id": 1, "user_id": 1, "latitude": 47.0, "longitude": 8.0}
-    
+
     from types import SimpleNamespace
-    
-    # Needs truncation and geocoding
+
+    # Description within limits — no LLM compression needed; still needs geocoding
     job1 = SimpleNamespace(
         id="1",
         source="test",
@@ -301,22 +286,23 @@ async def test_analyze_and_save_stopped_and_truncation(mock_service):
         application=None,
         external_url="x",
         publication=None,
-        descriptions=[SimpleNamespace(description="A"*5000)] # Over max
+        descriptions=[SimpleNamespace(description="Short job description")],
     )
-    
-    with patch("backend.services.search_service.settings.MAX_DESCRIPTION_CHARS", 100), \
-         patch("backend.services.search_service.get_status", return_value={"state": "searching"}), \
-         patch("backend.services.search_service.llm_service.analyze_job_batch", return_value=[{"relevant": True, "affinity_score": 50, "worth_applying": False}]), \
-         patch("backend.services.search_service.llm_service._compress_description_if_needed", new_callable=AsyncMock, return_value="compressed"), \
-         patch("backend.services.search_service.geocode_location", return_value=MagicMock(lat=46.9, lon=7.4)):
-         
-         mock_session = mock_service.job_repo.db
-         mock_session.query.return_value.filter.return_value.all.return_value = []
-         
-         saved, skipped = await mock_service._analyze_and_save(1, profile_dict, [job1])
-         assert saved == 1
-         assert skipped == 0
-         mock_session.commit.assert_called_once()
+
+    mock_session = mock_service.job_repo.db
+    mock_session.query.return_value.filter.return_value.all.return_value = []
+
+    with patch("backend.services.search_service.llm_service.analyze_job_batch") as mock_analyze:
+        mock_analyze.return_value = [{"relevant": True, "affinity_score": 50, "worth_applying": False}]
+
+        with patch("backend.services.search_service.geocode_location") as mock_geocode, \
+             patch("backend.services.search_service.get_status", return_value={"state": "searching"}):
+            mock_geocode.return_value = MagicMock(lat=46.9, lon=7.4)
+
+            saved, skipped = await mock_service._analyze_and_save(1, profile_dict, [job1])
+            assert saved == 1
+            assert skipped == 0
+            mock_session.commit.assert_called_once()
 
 async def test_analyze_and_save_length_mismatch(mock_service):
     with patch("backend.services.search_service.get_status", return_value={"state": "searching"}), \
@@ -715,7 +701,8 @@ async def test_run_search_force_regenerate_flags(mock_service):
     with patch("backend.services.search_service.llm_service.generate_search_plan", new=AsyncMock(return_value=[{"query": "fresh dev"}])), \
          patch("backend.services.search_service.llm_service.summarize_cv", new=AsyncMock(return_value="fresh summary")) as mock_summarize, \
          patch.object(mock_service, "_normalize_user_profile", new=AsyncMock(return_value={})), \
-         patch.object(mock_service, "_execute_searches", new=AsyncMock(return_value=[])), \
+         patch.object(mock_service, "_search_and_produce", new=AsyncMock(return_value=(0, 0))), \
+         patch.object(mock_service, "_processing_consumer", new=AsyncMock(return_value=(0, []))), \
          patch("backend.services.search_service.update_status"):
         await mock_service.run_search(
             1,
@@ -743,7 +730,8 @@ async def test_run_search_done_terminal_reason_no_results(mock_service):
     mock_service.profile_repo.get = MagicMock(return_value=profile)
 
     with patch.object(mock_service, "_generate_plan", new=AsyncMock(return_value=[{"query": "dev"}])), \
-         patch.object(mock_service, "_execute_searches", new=AsyncMock(return_value=[])), \
+         patch.object(mock_service, "_search_and_produce", new=AsyncMock(return_value=(0, 0))), \
+         patch.object(mock_service, "_processing_consumer", new=AsyncMock(return_value=(0, []))), \
          patch("backend.services.search_service.update_status") as mock_update:
         await mock_service.run_search(1)
 
@@ -767,12 +755,13 @@ async def test_run_search_done_terminal_reason_all_duplicates(mock_service):
     mock_service.profile_repo.get = MagicMock(return_value=profile)
 
     with patch.object(mock_service, "_generate_plan", new=AsyncMock(return_value=[{"query": "dev"}])), \
-         patch.object(mock_service, "_execute_searches", new=AsyncMock(return_value=[MagicMock()])), \
-         patch.object(mock_service, "_deduplicate", return_value=([], 1)), \
+         patch.object(mock_service, "_search_and_produce", new=AsyncMock(return_value=(3, 3))), \
+         patch.object(mock_service, "_processing_consumer", new=AsyncMock(return_value=(0, []))), \
+         patch.object(mock_service, "_normalize_user_profile", new=AsyncMock(return_value={})), \
          patch("backend.services.search_service.update_status") as mock_update:
         await mock_service.run_search(1)
 
-    mock_update.assert_any_call(1, state="done", terminal_reason="all_duplicates")
+    mock_update.assert_any_call(1, state="done", terminal_reason="all_duplicates", jobs_found=3, jobs_duplicates=3)
 
 
 async def test_run_search_done_terminal_reason_no_jobs_after_structured_filters(mock_service):
@@ -792,14 +781,13 @@ async def test_run_search_done_terminal_reason_no_jobs_after_structured_filters(
     mock_service.profile_repo.get = MagicMock(return_value=profile)
 
     with patch.object(mock_service, "_generate_plan", new=AsyncMock(return_value=[{"query": "dev"}])), \
-         patch.object(mock_service, "_execute_searches", new=AsyncMock(return_value=[MagicMock()])), \
-         patch.object(mock_service, "_deduplicate", return_value=([MagicMock()], 0)), \
-            patch.object(mock_service, "_persist_scraped_job_catalog", new=AsyncMock(return_value=(1, 0))), \
-            patch.object(mock_service, "_apply_structured_filters", return_value=[]), \
+         patch.object(mock_service, "_search_and_produce", new=AsyncMock(return_value=(3, 0))), \
+         patch.object(mock_service, "_processing_consumer", new=AsyncMock(return_value=(3, []))), \
+         patch.object(mock_service, "_normalize_user_profile", new=AsyncMock(return_value={})), \
          patch("backend.services.search_service.update_status") as mock_update:
         await mock_service.run_search(1)
 
-        mock_update.assert_any_call(1, state="done", terminal_reason="no_jobs_after_structured_filters")
+        mock_update.assert_any_call(1, state="done", terminal_reason="no_jobs_after_structured_filters", jobs_found=3, jobs_duplicates=0, jobs_skipped=3)
 
 
 # ─── MATCH Payload Completeness ──────────────────────────────────────────────

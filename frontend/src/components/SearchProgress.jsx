@@ -52,7 +52,7 @@ export function SearchProgress({ profileId, status, onStateChange, onClear }) {
         </div>
     );
 
-    const { state, total_searches, current_search_index, current_query, searches_generated, jobs_new, jobs_duplicates, jobs_skipped, errors, log, terminal_reason } = displayStatus;
+    const { state, total_searches, current_search_index, current_query, searches_generated, jobs_new, jobs_duplicates, jobs_skipped, jobs_analyzed, jobs_analyze_total, errors, log, terminal_reason } = displayStatus;
     const isRunning = state === "generating" || state === "searching" || state === "analyzing";
     const isDone = state === "done";
     const isError = state === "error" || state === "stopped";
@@ -68,34 +68,29 @@ export function SearchProgress({ profileId, status, onStateChange, onClear }) {
     const debugTerminalReason = terminal_reason || "n/a";
     const debugLabel = `LLM_DEBUG state=${state} terminal_reason=${debugTerminalReason} profile_id=${profileId}`;
 
-    // Enhanced Progress calculation
+    // Progress calculation — analysis may run concurrently during the searching phase.
     let progressPct = 0;
     let analyzingText = "ANALYZING TARGETS...";
+    const analysisRunning = (jobs_analyzed || 0) > 0 && (jobs_analyze_total || 0) > 0;
 
     if (state === "generating") {
         progressPct = 5;
     } else if (state === "searching" && total_searches > 0) {
-        // Searching phase accounts for 5% to 50%
-        progressPct = 5 + Math.round((current_search_index / total_searches) * 45);
+        // Searching phase: 5% → 90% (extended range to accommodate concurrent analysis)
+        const searchPct = 5 + Math.round((current_search_index / total_searches) * 85);
+        // If analysis is also running, let the higher progress win so the bar never goes backward.
+        const analysisPct = analysisRunning
+            ? 5 + Math.round((jobs_analyzed / jobs_analyze_total) * 85)
+            : 0;
+        progressPct = Math.max(searchPct, analysisPct);
+        if (analysisRunning) {
+            analyzingText = `ANALYZING TARGETS (${jobs_analyzed}/${jobs_analyze_total})...`;
+        }
     } else if (state === "analyzing") {
-        progressPct = 50;
-        if (log && log.length > 0) {
-            // Find the most recent "Analyzing X/Y" log entry
-            for (let i = log.length - 1; i >= 0; i--) {
-                const msg = log[i].message;
-                if (msg.startsWith("Analyzing ")) {
-                    const match = msg.match(/Analyzing (\d+)\/(\d+)/);
-                    if (match) {
-                        const current = parseInt(match[1], 10);
-                        const total = parseInt(match[2], 10);
-                        if (total > 0) {
-                            progressPct = 50 + Math.round((current / total) * 50);
-                            analyzingText = `ANALYZING TARGETS (${current}/${total})...`;
-                        }
-                    }
-                    break;
-                }
-            }
+        progressPct = 90;
+        if (analysisRunning) {
+            progressPct = 90 + Math.round((jobs_analyzed / jobs_analyze_total) * 10);
+            analyzingText = `ANALYZING TARGETS (${jobs_analyzed}/${jobs_analyze_total})...`;
         }
     } else if (isDone) {
         progressPct = 100;
@@ -170,7 +165,10 @@ export function SearchProgress({ profileId, status, onStateChange, onClear }) {
                 {/* Stats Grid */}
                 <div className="row g-3">
                     {[
-                        { label: 'New Intel', value: jobs_new, color: 'text-white' },
+                        // During searching, show live analysis count if available; otherwise show final saved count.
+                        state === 'searching' && analysisRunning
+                            ? { label: 'Analyzed', value: jobs_analyzed, color: 'text-primary' }
+                            : { label: 'New Intel', value: jobs_new, color: 'text-white' },
                         { label: 'Duplicates', value: jobs_duplicates, color: 'text-warning' },
                         { label: 'Skipped', value: jobs_skipped, color: 'text-secondary' },
                         { label: 'Errors', value: errors, color: 'text-danger' }
@@ -191,7 +189,9 @@ export function SearchProgress({ profileId, status, onStateChange, onClear }) {
                     analyzedJobs={analyzedJobs} 
                     searches_generated={searches_generated} 
                     current_search_index={current_search_index} 
-                    activeItemRef={activeItemRef} 
+                    activeItemRef={activeItemRef}
+                    jobs_analyzed={jobs_analyzed}
+                    jobs_analyze_total={jobs_analyze_total}
                 />
 
                 <LiveLogs 
