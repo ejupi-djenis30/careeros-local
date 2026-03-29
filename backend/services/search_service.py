@@ -459,7 +459,6 @@ class SearchService:
             return normalized or {}
         except Exception as exc:
             # Unwrap tenacity RetryError so the real API error is visible in logs.
-            from tenacity import RetryError
             from backend.services.llm_service import _unwrap_retry_error
             _, error_msg = _unwrap_retry_error(exc)
             logger.error(

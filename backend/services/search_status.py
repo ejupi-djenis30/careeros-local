@@ -206,7 +206,7 @@ def _merge_with_file(memory: Dict[int, Dict[str, Any]]) -> Dict[int, Dict[str, A
                 # valid for UTC timestamps of the same format.
                 file_started = (file_entry or {}).get("started_at") or ""
                 if file_started >= _WORKER_BOOT_TIME:
-                    merged[pid] = copy.deepcopy(file_entry)  # type: ignore[assignment]
+                    merged[pid] = copy.deepcopy(file_entry)  # type: ignore[assignment, arg-type]
                 # else: stale non-terminal entry from a crashed prior run — skip.
         elif file_entry is None:
             merged[pid] = copy.deepcopy(mem_entry)

@@ -165,4 +165,66 @@ describe('SearchProgress', () => {
     expect(screen.getByTestId('target-queue')).toHaveAttribute('data-active-indices', '2,3');
     expect(screen.getByTestId('target-queue')).toHaveAttribute('data-completed-indices', '1');
   });
+
+  it('does not spike to 90% when first analysis batch equals total (jobs_analyzed == jobs_analyze_total)', () => {
+    // Regression: when the first batch completes and jobs_analyzed === jobs_analyze_total
+    // the old code produced analysisPct = 90 % (ratio 1.0).  The fix requires
+    // analysisRunning = false when the ratio is 1.0, so searchPct dominates.
+    const status = {
+      state: 'searching',
+      terminal_reason: null,
+      total_searches: 4,
+      searches_completed: 1,
+      active_search_indices: [2],
+      completed_search_indices: [1],
+      current_query: 'dev',
+      searches_generated: [{ query: 'a' }, { query: 'b' }, { query: 'c' }, { query: 'd' }],
+      jobs_new: 0,
+      jobs_duplicates: 0,
+      jobs_skipped: 0,
+      // First batch complete: analyzed == total → analysisRunning must be false
+      jobs_analyzed: 10,
+      jobs_analyze_total: 10,
+      errors: 0,
+      log: [],
+    };
+
+    render(<ToastProvider><SearchProgress profileId="1" status={status} onStateChange={vi.fn()} onClear={vi.fn()} /></ToastProvider>);
+
+    const pct = parseInt(screen.getByTestId('progress-bar').getAttribute('data-progress-pct'), 10);
+    // searchPct = 5 + (1/4)*85 = 26. Must be ≤ 30, never 90.
+    expect(pct).toBeLessThanOrEqual(30);
+    expect(pct).toBeGreaterThanOrEqual(5);
+  });
+
+  it('shows analysis progress when more jobs are queued than analyzed (stable ratio)', () => {
+    // When jobs_analyze_total > jobs_analyzed, analysisRunning should be true
+    // and analysisPct should dominate if it is higher than searchPct.
+    const status = {
+      state: 'searching',
+      terminal_reason: null,
+      total_searches: 4,
+      searches_completed: 1,
+      active_search_indices: [2],
+      completed_search_indices: [1],
+      current_query: 'dev',
+      searches_generated: [{ query: 'a' }, { query: 'b' }, { query: 'c' }, { query: 'd' }],
+      jobs_new: 0,
+      jobs_duplicates: 0,
+      jobs_skipped: 0,
+      // 30 analyzed out of 50 expected → ratio 0.6 → analysisPct = 5 + 0.6*85 ≈ 56
+      jobs_analyzed: 30,
+      jobs_analyze_total: 50,
+      errors: 0,
+      log: [],
+    };
+
+    render(<ToastProvider><SearchProgress profileId="1" status={status} onStateChange={vi.fn()} onClear={vi.fn()} /></ToastProvider>);
+
+    const pct = parseInt(screen.getByTestId('progress-bar').getAttribute('data-progress-pct'), 10);
+    // analysisPct ≈ 56, searchPct = 26. Bar should reflect analysis progress.
+    expect(pct).toBeGreaterThanOrEqual(50);
+    expect(pct).toBeLessThanOrEqual(65);
+  });
 });
+

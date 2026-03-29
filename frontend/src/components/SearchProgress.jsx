@@ -11,11 +11,14 @@ export function SearchProgress({ profileId, status, onStateChange, onClear }) {
     const reportedState = useRef(null);
     const { showToast } = useToast();
     const [cachedStatus, setCachedStatus] = useState(status);
+    // monotonic floor for progress bar — state value so reads during render are valid
+    const [progressFloor, setProgressFloor] = useState(0);
 
-    useEffect(() => {
-        // eslint-disable-next-line react-hooks/set-state-in-effect
-        if (status) setCachedStatus(status);
-    }, [status]);
+    // "Adjust state based on props" pattern (react.dev/learn/you-might-not-need-an-effect#adjusting-some-state-when-a-prop-changes)
+    // Caches the last non-null status value so the UI doesn't blank when status briefly becomes null.
+    if (status && status !== cachedStatus) {
+        setCachedStatus(status);
+    }
 
     const displayStatus = status || cachedStatus;
 
@@ -34,6 +37,48 @@ export function SearchProgress({ profileId, status, onStateChange, onClear }) {
             activeItemRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
         }
     }, [displayStatus?.active_search_indices, displayStatus?.completed_search_indices, displayStatus?.log?.length]);
+
+    // Progress calculation — resolved here (before the early return) so all hooks are
+    // unconditional. Optional chaining handles the null displayStatus case.
+    const _state = displayStatus?.state;
+    const _totalSearches = displayStatus?.total_searches || 0;
+    const _searchesCompleted = displayStatus?.searches_completed || 0;
+    const _jobsAnalyzed = displayStatus?.jobs_analyzed || 0;
+    const _jobsAnalyzeTotal = displayStatus?.jobs_analyze_total || 0;
+    const _isDone = _state === "done";
+    const _isError = _state === "error" || _state === "stopped";
+    const _analysisRunning = _jobsAnalyzed > 0 && _jobsAnalyzeTotal > _jobsAnalyzed;
+
+    let _rawProgressPct = 0;
+    let analyzingText = "ANALYZING TARGETS...";
+    if (_state === "generating") {
+        _rawProgressPct = 5;
+    } else if (_state === "searching" && _totalSearches > 0) {
+        const searchPct = 5 + Math.round((_searchesCompleted / _totalSearches) * 85);
+        const analysisPct = _analysisRunning
+            ? 5 + Math.round((_jobsAnalyzed / _jobsAnalyzeTotal) * 85)
+            : 0;
+        _rawProgressPct = Math.max(searchPct, analysisPct);
+        if (_analysisRunning) {
+            analyzingText = `ANALYZING TARGETS (${_jobsAnalyzed}/${_jobsAnalyzeTotal})...`;
+        }
+    } else if (_state === "analyzing") {
+        _rawProgressPct = 90;
+        if (_analysisRunning) {
+            _rawProgressPct = 90 + Math.round((_jobsAnalyzed / _jobsAnalyzeTotal) * 10);
+            analyzingText = `ANALYZING TARGETS (${_jobsAnalyzed}/${_jobsAnalyzeTotal})...`;
+        }
+    } else if (_isDone) {
+        _rawProgressPct = 100;
+    }
+
+    // Monotonic floor — same "adjust state on derived value change" pattern as cachedStatus above.
+    // React re-renders immediately when this fires but does not loop (guard prevents re-firing).
+    if (_isDone || _isError) {
+        if (progressFloor !== 0) setProgressFloor(0);
+    } else if (_rawProgressPct > progressFloor) {
+        setProgressFloor(_rawProgressPct);
+    }
 
     const handleStop = async () => {
         try {
@@ -96,51 +141,9 @@ export function SearchProgress({ profileId, status, onStateChange, onClear }) {
     const debugTerminalReason = terminal_reason || "n/a";
     const debugLabel = `LLM_DEBUG state=${state} terminal_reason=${debugTerminalReason} profile_id=${profileId}`;
 
-    // Progress calculation — analysis may run concurrently during the searching phase.
-    // monotonic floor: the bar never moves backward while a search is running.
-    const progressFloorRef = useRef(0);
-    let progressPct = 0;
-    let analyzingText = "ANALYZING TARGETS...";
-    // analysisRunning is only true when there are MORE jobs still to analyze than have already
-    // been analyzed.  When jobs_analyzed === jobs_analyze_total the first batch just completed
-    // but more searches may still be in flight; using a ratio of 1.0 at that point would briefly
-    // spike the bar to 90 % and then drop it backward once new batches are queued.
-    const analysisRunning = (jobs_analyzed || 0) > 0 &&
-        (jobs_analyze_total || 0) > (jobs_analyzed || 0);
-    const completedSearchCount = searches_completed || 0;
-
-    if (state === "generating") {
-        progressPct = 5;
-    } else if (state === "searching" && total_searches > 0) {
-        // Searching phase: 5 % → 90 % based on completed queries.
-        const searchPct = 5 + Math.round((completedSearchCount / total_searches) * 85);
-        // Only blend in analysis progress when a stable (non-unity) ratio is available so the
-        // bar does not momentarily hit 90 % just because the first small batch finished.
-        const analysisPct = analysisRunning
-            ? 5 + Math.round((jobs_analyzed / jobs_analyze_total) * 85)
-            : 0;
-        progressPct = Math.max(searchPct, analysisPct);
-        if (analysisRunning) {
-            analyzingText = `ANALYZING TARGETS (${jobs_analyzed}/${jobs_analyze_total})...`;
-        }
-    } else if (state === "analyzing") {
-        progressPct = 90;
-        if (analysisRunning) {
-            progressPct = 90 + Math.round((jobs_analyzed / jobs_analyze_total) * 10);
-            analyzingText = `ANALYZING TARGETS (${jobs_analyzed}/${jobs_analyze_total})...`;
-        }
-    } else if (isDone) {
-        progressPct = 100;
-    }
-
-    // Apply monotonic floor: the bar cannot move backward within an active run.
-    // Terminal states (done / error) bypass this so "done" always snaps to 100 %.
-    if (isDone || isError) {
-        progressFloorRef.current = 0; // reset for the next run
-    } else {
-        progressPct = Math.max(progressPct, progressFloorRef.current);
-        progressFloorRef.current = progressPct;
-    }
+    // Progress calculation was moved before the early return to keep all hooks unconditional.
+    // Apply the monotonic floor — progressFloor is state, so reading it in render is valid.
+    const progressPct = (_isDone || _isError) ? _rawProgressPct : Math.max(_rawProgressPct, progressFloor);
 
     const analyzedJobs = [];
     if (state === "analyzing" && log) {
