@@ -36,7 +36,6 @@ export function ProgressPage() {
     // SearchContext will expire it after PENDING_ID_TTL_MS if the server never confirms it.
     if (singlePid) {
       addProfileId(singlePid);
-      // eslint-disable-next-line react-hooks/set-state-in-effect
       if (!visibleProfileId) setVisibleProfileId(singlePid);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps

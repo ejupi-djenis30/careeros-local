@@ -116,6 +116,9 @@ async def test_analyze_and_save_success(mock_service):
             
             mock_session = mock_service.job_repo.db
             mock_session.query.return_value.filter.return_value.all.return_value = []
+            # _save_single_job and _upsert_scraped_job now use .first() for upsert checks;
+            # return None so both take the "create new" branch and call db.add()
+            mock_session.query.return_value.filter.return_value.first.return_value = None
             
             saved, skipped = await mock_service._analyze_and_save(1, profile_dict, [job1, job2])
             
@@ -167,7 +170,7 @@ async def test_run_search_cv_summarization_and_unexpected(mock_service):
     with patch.object(mock_service, "_generate_plan", new=AsyncMock(return_value=[{"query": "dev"}])), \
          patch.object(mock_service, "_normalize_user_profile", new=AsyncMock(return_value={})), \
          patch.object(mock_service, "_search_and_produce", new=AsyncMock(return_value=(0, 0))), \
-         patch.object(mock_service, "_processing_consumer", new=AsyncMock(return_value=(0, []))), \
+         patch.object(mock_service, "_processing_consumer", new=AsyncMock(return_value=(0, 0, [], 0, 0))), \
          patch.object(mock_service.profile_repo, "get", return_value=profile):
         await mock_service.run_search(1)
 
@@ -715,7 +718,7 @@ async def test_run_search_force_regenerate_flags(mock_service):
          patch("backend.services.search_service.llm_service.summarize_cv", new=AsyncMock(return_value="fresh summary")) as mock_summarize, \
          patch.object(mock_service, "_normalize_user_profile", new=AsyncMock(return_value={})), \
          patch.object(mock_service, "_search_and_produce", new=AsyncMock(return_value=(0, 0))), \
-         patch.object(mock_service, "_processing_consumer", new=AsyncMock(return_value=(0, []))), \
+         patch.object(mock_service, "_processing_consumer", new=AsyncMock(return_value=(0, 0, [], 0, 0))), \
          patch("backend.services.search_service.update_status"):
         await mock_service.run_search(
             1,
@@ -744,7 +747,7 @@ async def test_run_search_done_terminal_reason_no_results(mock_service):
 
     with patch.object(mock_service, "_generate_plan", new=AsyncMock(return_value=[{"query": "dev"}])), \
          patch.object(mock_service, "_search_and_produce", new=AsyncMock(return_value=(0, 0))), \
-         patch.object(mock_service, "_processing_consumer", new=AsyncMock(return_value=(0, []))), \
+         patch.object(mock_service, "_processing_consumer", new=AsyncMock(return_value=(0, 0, [], 0, 0))), \
          patch.object(mock_service, "_normalize_user_profile", new=AsyncMock(return_value={})), \
          patch("backend.services.search_service.update_status") as mock_update:
         await mock_service.run_search(1)
@@ -770,7 +773,7 @@ async def test_run_search_sets_error_when_all_provider_searches_fail(mock_servic
 
     with patch.object(mock_service, "_generate_plan", new=AsyncMock(return_value=[{"query": "dev"}])), \
          patch.object(mock_service, "_search_and_produce", new=AsyncMock(return_value=(0, 0))), \
-         patch.object(mock_service, "_processing_consumer", new=AsyncMock(return_value=(0, []))), \
+         patch.object(mock_service, "_processing_consumer", new=AsyncMock(return_value=(0, 0, [], 0, 0))), \
          patch.object(mock_service, "_normalize_user_profile", new=AsyncMock(return_value={})), \
          patch.object(mock_service, "_status_metrics", return_value={"errors": 1, "provider_failures": 2, "provider_successes": 0}), \
          patch("backend.services.search_service.update_status") as mock_update:
@@ -802,7 +805,7 @@ async def test_run_search_done_terminal_reason_all_duplicates(mock_service):
 
     with patch.object(mock_service, "_generate_plan", new=AsyncMock(return_value=[{"query": "dev"}])), \
          patch.object(mock_service, "_search_and_produce", new=AsyncMock(return_value=(3, 3))), \
-         patch.object(mock_service, "_processing_consumer", new=AsyncMock(return_value=(0, []))), \
+         patch.object(mock_service, "_processing_consumer", new=AsyncMock(return_value=(0, 0, [], 0, 0))), \
          patch.object(mock_service, "_normalize_user_profile", new=AsyncMock(return_value={})), \
          patch("backend.services.search_service.update_status") as mock_update:
         await mock_service.run_search(1)
@@ -828,7 +831,7 @@ async def test_run_search_done_terminal_reason_no_jobs_after_structured_filters(
 
     with patch.object(mock_service, "_generate_plan", new=AsyncMock(return_value=[{"query": "dev"}])), \
          patch.object(mock_service, "_search_and_produce", new=AsyncMock(return_value=(3, 0))), \
-         patch.object(mock_service, "_processing_consumer", new=AsyncMock(return_value=(3, []))), \
+         patch.object(mock_service, "_processing_consumer", new=AsyncMock(return_value=(3, 0, [], 0, 0))), \
          patch.object(mock_service, "_normalize_user_profile", new=AsyncMock(return_value={})), \
          patch("backend.services.search_service.update_status") as mock_update:
         await mock_service.run_search(1)
@@ -854,7 +857,7 @@ async def test_run_search_sets_error_when_processing_fails_before_analysis(mock_
 
     with patch.object(mock_service, "_generate_plan", new=AsyncMock(return_value=[{"query": "dev"}])), \
          patch.object(mock_service, "_search_and_produce", new=AsyncMock(return_value=(3, 0))), \
-         patch.object(mock_service, "_processing_consumer", new=AsyncMock(return_value=(1, []))), \
+         patch.object(mock_service, "_processing_consumer", new=AsyncMock(return_value=(1, 0, [], 0, 0))), \
          patch.object(mock_service, "_normalize_user_profile", new=AsyncMock(return_value={})), \
          patch.object(mock_service, "_status_metrics", return_value={"errors": 1, "provider_failures": 0, "provider_successes": 1}), \
          patch("backend.services.search_service.update_status") as mock_update:
@@ -868,6 +871,97 @@ async def test_run_search_sets_error_when_processing_fails_before_analysis(mock_
         jobs_duplicates=0,
         jobs_skipped=1,
         error="Jobs were fetched but pipeline processing failed before analysis completed.",
+    )
+
+
+async def test_run_search_analysis_failure_not_pipeline_error_when_all_accounted(mock_service):
+    """Regression: analysis batch failures should NOT produce pipeline_processing_failed when
+    every unique job is either filtered OR lost to analysis errors (no truly unexplained jobs).
+
+    Scenario:
+    - 3 unique jobs found
+    - 1 filtered by structured filter  (total_filtered=1)
+    - 2 reached analysis but LLM failed for both  (analysis_failed=2, errors=2)
+    - analyzed_pairs is empty
+
+    Expected: state=done because unexplained_unique = 3 - 1 - 2 = 0.
+    """
+    profile = MagicMock(
+        id=1,
+        user_id=1,
+        cv_content=None,
+        role_description="dev",
+        search_strategy="",
+        latitude=None,
+        longitude=None,
+        cached_queries=None,
+        max_queries=5,
+        max_occupation_queries=None,
+        max_keyword_queries=None,
+    )
+    mock_service.profile_repo.get = MagicMock(return_value=profile)
+
+    with patch.object(mock_service, "_generate_plan", new=AsyncMock(return_value=[{"query": "dev"}])), \
+         patch.object(mock_service, "_search_and_produce", new=AsyncMock(return_value=(3, 0))), \
+         patch.object(mock_service, "_processing_consumer", new=AsyncMock(return_value=(1, 2, [], 0, 0))), \
+         patch.object(mock_service, "_normalize_user_profile", new=AsyncMock(return_value={})), \
+         patch.object(mock_service, "_status_metrics", return_value={"errors": 2, "provider_failures": 0, "provider_successes": 1}), \
+         patch("backend.services.search_service.update_status") as mock_update:
+        await mock_service.run_search(1)
+
+    # Must NOT declare pipeline_processing_failed — all 3 jobs are accounted for.
+    terminal_reason_calls = [
+        call.kwargs.get("terminal_reason")
+        for call in mock_update.call_args_list
+        if "terminal_reason" in (call.kwargs or {})
+    ]
+    assert "pipeline_processing_failed" not in terminal_reason_calls, (
+        f"Unexpectedly triggered pipeline_processing_failed; terminal reasons seen: {terminal_reason_calls}"
+    )
+    final_state_calls = [
+        call.kwargs.get("state")
+        for call in mock_update.call_args_list
+        if call.kwargs.get("state") in {"done", "error"}
+    ]
+    assert "done" in final_state_calls, f"Expected state=done, got: {final_state_calls}"
+
+
+async def test_run_search_normalization_exception_zero_errors(mock_service):
+    """Regression: normalization soft-failure must NOT inflate the errors counter.
+    A run where all jobs are filtered should end done/no_jobs_after_structured_filters
+    even if normalization raised internally, because the consumer no longer calls
+    _increment_status_errors on normalization exceptions.
+    """
+    profile = MagicMock(
+        id=1,
+        user_id=1,
+        cv_content=None,
+        role_description="dev",
+        search_strategy="",
+        latitude=None,
+        longitude=None,
+        cached_queries=None,
+        max_queries=5,
+        max_occupation_queries=None,
+        max_keyword_queries=None,
+    )
+    mock_service.profile_repo.get = MagicMock(return_value=profile)
+
+    with patch.object(mock_service, "_generate_plan", new=AsyncMock(return_value=[{"query": "dev"}])), \
+         patch.object(mock_service, "_search_and_produce", new=AsyncMock(return_value=(3, 0))), \
+         patch.object(mock_service, "_processing_consumer", new=AsyncMock(return_value=(3, 0, [], 0, 0))), \
+         patch.object(mock_service, "_normalize_user_profile", new=AsyncMock(return_value={})), \
+         patch.object(mock_service, "_status_metrics", return_value={"errors": 0, "provider_failures": 0, "provider_successes": 1}), \
+         patch("backend.services.search_service.update_status") as mock_update:
+        await mock_service.run_search(1)
+
+    mock_update.assert_any_call(
+        1,
+        state="done",
+        terminal_reason="no_jobs_after_structured_filters",
+        jobs_found=3,
+        jobs_duplicates=0,
+        jobs_skipped=3,
     )
 
 
@@ -1025,16 +1119,15 @@ async def test_run_search_sets_error_when_all_persistence_fails_after_analysis(m
     mock_service.profile_repo.get = MagicMock(return_value=profile)
     analyzed_pairs = [(MagicMock(), {"affinity_score": 70, "worth_applying": True})]
 
+    # consumer_saved=0, consumer_skipped=1: consumer tried to persist but all failed
     with patch.object(mock_service, "_generate_plan", new=AsyncMock(return_value=[{"query": "dev"}])), \
          patch.object(mock_service, "_search_and_produce", new=AsyncMock(return_value=(3, 0))), \
-         patch.object(mock_service, "_processing_consumer", new=AsyncMock(return_value=(1, analyzed_pairs))), \
+         patch.object(mock_service, "_processing_consumer", new=AsyncMock(return_value=(1, 0, analyzed_pairs, 0, 1))), \
          patch.object(mock_service, "_normalize_user_profile", new=AsyncMock(return_value={})), \
-         patch.object(mock_service, "_finalize_and_save", new=AsyncMock(return_value=(0, 1))), \
          patch.object(
              mock_service,
              "_status_metrics",
              side_effect=[
-                 {"errors": 0, "provider_failures": 0, "provider_successes": 1},
                  {"errors": 0, "provider_failures": 0, "provider_successes": 1},
                  {"errors": 1, "provider_failures": 0, "provider_successes": 1},
              ],

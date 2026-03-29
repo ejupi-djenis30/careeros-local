@@ -86,7 +86,7 @@ class SearchProfileBase(BaseModel):
     def empty_string_to_none(cls, v: Any) -> Optional[int]:
         if v == "" or v == -1 or v == "-1":
             return None
-        return v
+        return v  # type: ignore[no-any-return]
 
     @field_validator("preferred_languages", mode="before")
     @classmethod
