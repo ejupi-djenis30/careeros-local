@@ -19,6 +19,7 @@ _STATUS_FILE = os.path.join(_DATA_DIR, "job_hunter_statuses.json")
 
 _VALID_STATUS_KEYS = {
     "user_id", "state", "total_searches", "current_search_index",
+    "searches_completed", "active_search_indices", "completed_search_indices",
     "current_query", "searches_generated", "jobs_found", "jobs_new",
     "jobs_duplicates", "jobs_skipped", "errors", "log",
     "started_at", "finished_at", "error",
@@ -97,6 +98,9 @@ def init_status(profile_id: int, total_searches: int = 0, searches: Optional[Lis
             "terminal_reason": None,
             "total_searches": total_searches,
             "current_search_index": 0,
+            "searches_completed": 0,
+            "active_search_indices": [],
+            "completed_search_indices": [],
             "current_query": "",
             "searches_generated": searches or [],
             "jobs_found": 0,

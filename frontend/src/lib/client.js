@@ -3,6 +3,7 @@ export const API_BASE = import.meta.env.VITE_API_URL || "/api/v1";
 export class ApiClient {
     static accessToken = null;
     static _refreshPromise = null;
+    static _suppressUnauthorized = false;
 
     static _dispatchApiError(message) {
         window.dispatchEvent(new CustomEvent("jh_api_error", { detail: { message } }));
@@ -117,6 +118,9 @@ export class ApiClient {
             let response = await fetch(url, config);
 
             if (response.status === 401) {
+                if (this._suppressUnauthorized) {
+                    throw new Error("UNAUTHORIZED");
+                }
                 const retryRes = await this._handleUnauthorized(url, config);
                 if (retryRes) response = retryRes;
                 else throw new Error("UNAUTHORIZED");

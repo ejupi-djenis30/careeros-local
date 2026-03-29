@@ -11,15 +11,27 @@ vi.mock('../services/search', () => ({
 }));
 
 vi.mock('./SearchProgress/ProgressHeader', () => ({
-  ProgressHeader: () => <div data-testid="progress-header" />,
+  ProgressHeader: (props) => (
+    <div
+      data-testid="progress-header"
+      data-searches-completed={props.searches_completed ?? ''}
+      data-active-count={props.active_search_indices?.length ?? 0}
+    />
+  ),
 }));
 
 vi.mock('./SearchProgress/ProgressBar', () => ({
-  ProgressBar: () => <div data-testid="progress-bar" />,
+  ProgressBar: (props) => <div data-testid="progress-bar" data-progress-pct={props.progressPct} />,
 }));
 
 vi.mock('./SearchProgress/TargetQueue', () => ({
-  TargetQueue: () => <div data-testid="target-queue" />,
+  TargetQueue: (props) => (
+    <div
+      data-testid="target-queue"
+      data-active-indices={(props.active_search_indices || []).join(',')}
+      data-completed-indices={(props.completed_search_indices || []).join(',')}
+    />
+  ),
 }));
 
 vi.mock('./SearchProgress/LiveLogs', () => ({
@@ -98,5 +110,59 @@ describe('SearchProgress', () => {
     expect(screen.getByTestId('llm-debug-label')).toHaveTextContent(
       'LLM_DEBUG state=done terminal_reason=completed profile_id=1'
     );
+  });
+
+  it('shows error notice for pipeline processing failures', () => {
+    const status = {
+      state: 'error',
+      terminal_reason: 'pipeline_processing_failed',
+      total_searches: 3,
+      current_search_index: 3,
+      current_query: '',
+      searches_generated: [],
+      jobs_new: 0,
+      jobs_duplicates: 0,
+      jobs_skipped: 2,
+      errors: 1,
+      log: [],
+    };
+
+    render(<ToastProvider><SearchProgress profileId="1" status={status} onStateChange={vi.fn()} onClear={vi.fn()} /></ToastProvider>);
+
+    expect(
+      screen.getByText('Search failed while processing fetched jobs before analysis could complete.')
+    ).toBeInTheDocument();
+    expect(screen.getByTestId('llm-debug-label')).toHaveTextContent(
+      'LLM_DEBUG state=error terminal_reason=pipeline_processing_failed profile_id=1'
+    );
+  });
+
+  it('uses completed query counts instead of current index for concurrent progress', () => {
+    const status = {
+      state: 'searching',
+      terminal_reason: null,
+      total_searches: 4,
+      current_search_index: 3,
+      searches_completed: 1,
+      active_search_indices: [2, 3],
+      completed_search_indices: [1],
+      current_query: 'data engineer',
+      searches_generated: [{ query: 'a' }, { query: 'b' }, { query: 'c' }, { query: 'd' }],
+      jobs_new: 0,
+      jobs_duplicates: 0,
+      jobs_skipped: 0,
+      jobs_analyzed: 0,
+      jobs_analyze_total: 0,
+      errors: 0,
+      log: [],
+    };
+
+    render(<ToastProvider><SearchProgress profileId="1" status={status} onStateChange={vi.fn()} onClear={vi.fn()} /></ToastProvider>);
+
+    expect(screen.getByTestId('progress-bar')).toHaveAttribute('data-progress-pct', '26');
+    expect(screen.getByTestId('progress-header')).toHaveAttribute('data-searches-completed', '1');
+    expect(screen.getByTestId('progress-header')).toHaveAttribute('data-active-count', '2');
+    expect(screen.getByTestId('target-queue')).toHaveAttribute('data-active-indices', '2,3');
+    expect(screen.getByTestId('target-queue')).toHaveAttribute('data-completed-indices', '1');
   });
 });

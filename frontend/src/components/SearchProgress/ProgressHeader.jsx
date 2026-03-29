@@ -5,11 +5,18 @@ export function ProgressHeader({
     isError, 
     isRunning, 
     state, 
-    current_search_index, 
+    searches_completed,
+    active_search_indices,
     total_searches, 
     handleStop, 
     onClear 
 }) {
+    const completedCount = searches_completed || 0;
+    const activeCount = (active_search_indices || []).length;
+    const searchSubtitle = activeCount > 0
+        ? `Executing ${activeCount} vector${activeCount === 1 ? "" : "s"}; ${completedCount} / ${total_searches} completed...`
+        : `Processed ${completedCount} / ${total_searches} vectors...`;
+
     return (
         <div className="d-flex flex-wrap justify-content-between align-items-center gap-4 mb-4">
             <div className="d-flex align-items-center gap-4">
@@ -24,7 +31,7 @@ export function ProgressHeader({
                     </h2>
                     <p className="text-white-50 mb-0 font-monospace small">
                         {state === "generating" && "Generating tactical search vector..."}
-                        {state === "searching" && `Executing vector ${current_search_index} / ${total_searches}...`}
+                        {state === "searching" && searchSubtitle}
                         {state === "analyzing" && "Analyzing intelligence data..."}
                         {state === "done" && "All objectives secured."}
                     </p>

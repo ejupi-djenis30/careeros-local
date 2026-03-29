@@ -7,6 +7,7 @@ import re
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from backend.core.config import settings
@@ -171,7 +172,7 @@ class SearchService:
 
         created = False
         if not existing_sj:
-            existing_sj = ScrapedJob(
+            new_sj = ScrapedJob(
                 platform=platform,
                 platform_job_id=platform_id,
                 title=clean_html_tags(getattr(listing, "title", "Unknown")),
@@ -186,9 +187,20 @@ class SearchService:
                 source_query=getattr(listing, "_source_query", "Unknown"),
                 **normalized_bootstrap,
             )
-            self.db.add(existing_sj)
-            self.db.flush()
-            created = True
+            savepoint = self.db.begin_nested()
+            try:
+                self.db.add(new_sj)
+                savepoint.commit()
+                existing_sj = new_sj
+                created = True
+            except IntegrityError:
+                savepoint.rollback()
+                # Another concurrent worker inserted the same job between our query
+                # and our insert — re-fetch the winner without losing the batch.
+                existing_sj = self.db.query(ScrapedJob).filter(
+                    ScrapedJob.platform == platform,
+                    ScrapedJob.platform_job_id == platform_id,
+                ).first()
         else:
             refresh_fields = {
                 "description": clean_html_tags(desc_text) if desc_text else None,
@@ -937,7 +949,13 @@ class SearchService:
 
     # CEFR level rank — higher = better; native treated as C2 when comparing job requirements
     _CEFR_RANK: Dict[str, int] = {
-        "a1": 1, "a2": 2, "b1": 3, "b2": 4, "c1": 5, "c2": 6, "native": 6,
+        "a1": 1,
+        "a2": 2,
+        "b1": 3,
+        "b2": 4,
+        "c1": 5,
+        "c2": 6,
+        "native": 6,
     }
 
     @staticmethod
@@ -1290,8 +1308,19 @@ class SearchService:
                 profile_id, profile_dict, profile_preferences, job_queue
             ),
         )
+        status_metrics = self._status_metrics(profile_id)
 
         if total_found == 0:
+            if status_metrics["provider_failures"] > 0 and status_metrics["provider_successes"] == 0:
+                add_log(profile_id, "All provider searches failed before any jobs could be processed.")
+                add_log(profile_id, f"[LLM_DEBUG] state=error terminal_reason=search_execution_failed profile_id={profile_id}")
+                update_status(
+                    profile_id,
+                    state="error",
+                    terminal_reason="search_execution_failed",
+                    error="All provider searches failed before any jobs could be processed.",
+                )
+                return
             add_log(profile_id, "No jobs found across all queries.")
             add_log(profile_id, f"[LLM_DEBUG] state=done terminal_reason=no_results profile_id={profile_id}")
             update_status(profile_id, state="done", terminal_reason="no_results")
@@ -1308,13 +1337,27 @@ class SearchService:
             return
 
         if not analyzed_pairs:
-            add_log(profile_id, "No jobs passed structured filtering and analysis.")
-            add_log(profile_id, f"[LLM_DEBUG] state=done terminal_reason=no_jobs_after_structured_filters profile_id={profile_id}")
-            update_status(
-                profile_id, state="done",
-                terminal_reason="no_jobs_after_structured_filters",
-                jobs_found=total_found, jobs_duplicates=total_duplicates, jobs_skipped=total_filtered,
-            )
+            unexplained_unique = max(0, unique_total - total_filtered)
+            if status_metrics["errors"] > 0 and unexplained_unique > 0:
+                add_log(profile_id, "Jobs were fetched but pipeline processing failed before analysis completed.")
+                add_log(profile_id, f"[LLM_DEBUG] state=error terminal_reason=pipeline_processing_failed profile_id={profile_id}")
+                update_status(
+                    profile_id,
+                    state="error",
+                    terminal_reason="pipeline_processing_failed",
+                    jobs_found=total_found,
+                    jobs_duplicates=total_duplicates,
+                    jobs_skipped=total_filtered,
+                    error="Jobs were fetched but pipeline processing failed before analysis completed.",
+                )
+            else:
+                add_log(profile_id, "No jobs passed structured filtering and analysis.")
+                add_log(profile_id, f"[LLM_DEBUG] state=done terminal_reason=no_jobs_after_structured_filters profile_id={profile_id}")
+                update_status(
+                    profile_id, state="done",
+                    terminal_reason="no_jobs_after_structured_filters",
+                    jobs_found=total_found, jobs_duplicates=total_duplicates, jobs_skipped=total_filtered,
+                )
             return
 
         # ── Step 6b: Optional final passes (critique, rerank) then save ──
@@ -1326,10 +1369,27 @@ class SearchService:
             add_log(profile_id, f"Step 6b: Running final analysis passes ({len(analyzed_pairs)} jobs)...")
             update_status(profile_id, state="analyzing")
 
+        pre_finalize_errors = self._status_metrics(profile_id)["errors"]
         saved_count, skipped_count = await self._finalize_and_save(
             profile_id, profile_dict, analyzed_pairs
         )
         total_skipped = total_filtered + skipped_count
+        post_finalize_errors = self._status_metrics(profile_id)["errors"]
+
+        if saved_count == 0 and analyzed_pairs and post_finalize_errors > pre_finalize_errors:
+            add_log(profile_id, "Jobs were analyzed but none could be persisted.")
+            add_log(profile_id, f"[LLM_DEBUG] state=error terminal_reason=job_persistence_failed profile_id={profile_id}")
+            update_status(
+                profile_id,
+                state="error",
+                terminal_reason="job_persistence_failed",
+                finished_at=datetime.now(timezone.utc).isoformat(),
+                jobs_found=total_found,
+                jobs_duplicates=total_duplicates,
+                jobs_skipped=total_skipped,
+                error="Jobs were analyzed but none could be persisted.",
+            )
+            return
 
         add_log(profile_id, f"✓ Search complete – {saved_count} jobs saved, {skipped_count} skipped")
         add_log(profile_id, f"[LLM_DEBUG] state=done terminal_reason=completed profile_id={profile_id} jobs_saved={saved_count} jobs_skipped={skipped_count}")
@@ -1613,6 +1673,7 @@ class SearchService:
                 for p_name, items, error in p_results:
                     if error:
                         execution_metrics["provider_failures"] += 1
+                        self._increment_status_errors(profile_id)
                         add_log(profile_id, f"  ⚠ {p_name} failed: {str(error)[:100]}")
                     else:
                         execution_metrics["provider_successes"] += 1
@@ -2017,6 +2078,27 @@ class SearchService:
                 )
                 raise
 
+    def _status_metrics(self, profile_id: int) -> Dict[str, int]:
+        status = get_status(profile_id) or {}
+
+        def as_int(key: str) -> int:
+            value = status.get(key, 0)
+            try:
+                return int(value or 0)
+            except (TypeError, ValueError):
+                return 0
+
+        return {
+            "errors": as_int("errors"),
+            "provider_failures": as_int("provider_failures"),
+            "provider_successes": as_int("provider_successes"),
+        }
+
+    def _increment_status_errors(self, profile_id: int, count: int = 1) -> int:
+        next_errors = self._status_metrics(profile_id)["errors"] + max(0, count)
+        update_status(profile_id, errors=next_errors)
+        return next_errors
+
 
     # ─── Streaming pipeline helpers ───────────────────────────────────────
 
@@ -2069,6 +2151,8 @@ class SearchService:
         seen_url_tokens: set = set()
         seen_fuzzy_keys: set = set()
         seen_desc_fingerprints: set = set()
+        active_query_indices: set[int] = set()
+        completed_query_indices: set[int] = set()
 
         # Profile-history sets — mutated in-place so cross-query history dedup is cumulative.
         existing_keys: set = profile_history["existing_keys"]
@@ -2078,174 +2162,198 @@ class SearchService:
 
         async def execute_and_push(idx: int, search: dict):
             nonlocal total_found, total_duplicates
+            query_idx = idx + 1
 
             async with semaphore:
                 status_data = get_status(profile_id)
                 if status_data.get("state") in STOP_STATES:
                     return
 
-                normalized_search, _ = normalize_search_item(search)
-                if not normalized_search:
-                    add_log(profile_id, f"⚠ Skipping invalid query payload at index {idx + 1}")
-                    return
-
-                query = normalized_search.get("query", "")
-                domain = normalized_search.get("domain", "general")
-                query_type = normalized_search.get("type", "keyword")
-                query_language = normalized_search.get("language", "en")
-
-                profession_codes = []
-                avam_fallback_keyword = False
-                if query_type == "occupation":
-                    profession_codes = await avam_mapper.resolve(query)
-                    if not profession_codes:
-                        avam_fallback_keyword = True
-                        execution_metrics["avam_fallback_count"] += 1
-                        add_log(profile_id, f"  ℹ AVAM found no codes for «{query}», JobRoom will use keyword fallback")
-
-                compatible = route_provider_names(normalized_search, self.providers, provider_infos)
-                if not compatible:
-                    execution_metrics["queries_without_provider"] += 1
-                    add_log(profile_id, f"⚠ No providers accept domain '{domain}' for «{query}»")
-                    return
-
-                update_status(profile_id, current_search_index=idx + 1, current_query=f"«{query}» ({domain})")
-                add_log(profile_id, f"Running query {idx+1}/{len(searches)}: «{query}» on {', '.join(compatible)}")
-
-                async def search_provider(provider_name: str, req: JobSearchRequest):
-                    provider = self.providers[provider_name]
-                    if not provider:
-                        return provider_name, [], None
-                    provider_jobs = []
-                    try:
-                        current_page = 0
-                        while True:
-                            page_size = 50
-                            if hasattr(provider, "capabilities") and hasattr(provider.capabilities, "max_page_size"):
-                                page_size = provider.capabilities.max_page_size
-                            page_req = req.model_copy(update={"page": current_page, "page_size": page_size})
-                            result = await provider.search(page_req)
-                            page_items = list(getattr(result, "items", []) or [])
-                            for item in page_items:
-                                if hasattr(item, "_source_query"):
-                                    item._source_query = query
-                                else:
-                                    setattr(item, "_source_query", query)
-                            provider_jobs.extend(page_items)
-                            if not page_items:
-                                break
-                            total_pages = getattr(result, "total_pages", 1)
-                            total_count = getattr(result, "total_count", None)
-                            if total_pages and current_page >= total_pages - 1:
-                                break
-                            if total_count is not None and total_count >= 0 and len(provider_jobs) >= total_count:
-                                break
-                            current_page += 1
-                            if provider.throttle_delay > 0:
-                                await asyncio.sleep(provider.throttle_delay)
-                            status_data = get_status(profile_id)
-                            if status_data.get("state") in STOP_STATES:
-                                break
-                        return provider_name, provider_jobs, None
-                    except Exception as e:
-                        return provider_name, provider_jobs, e
-
-                p_tasks = []
-                for p_name in compatible:
-                    provider = self.providers[p_name]
-                    page_size = 50
-                    if hasattr(provider, "capabilities") and hasattr(provider.capabilities, "max_page_size"):
-                        page_size = provider.capabilities.max_page_size
-                    if p_name == "job_room" and avam_fallback_keyword:
-                        req_fallback = build_search_request(
-                            profile, query, [],
-                            language=supported_request_language(query_language, provider),
-                            page_size=page_size, provider=provider,
-                        )
-                        p_tasks.append(search_provider(p_name, req_fallback))
-                    else:
-                        req = build_search_request(
-                            profile, query, profession_codes,
-                            language=supported_request_language(query_language, provider),
-                            page_size=page_size, provider=provider,
-                        )
-                        p_tasks.append(search_provider(p_name, req))
-
-                if provider_parallel:
-                    p_results = await asyncio.gather(*p_tasks)
-                else:
-                    p_results = []
-                    for task in p_tasks:
-                        p_results.append(await task)
-
-                found_jobs = []
-                for p_name, items, error in p_results:
-                    if error:
-                        execution_metrics["provider_failures"] += 1
-                        add_log(profile_id, f"  ⚠ {p_name} failed: {str(error)[:100]}")
-                    else:
-                        execution_metrics["provider_successes"] += 1
-                        found_jobs.extend(items)
-                        add_log(profile_id, f"  ↳ {p_name}: {len(items)} jobs")
-
-                total_found += len(found_jobs)
-
-                # ── Incremental dedup: cross-query (T1-T3) + profile history ──
-                # All check+add operations are synchronous — no await between, so atomically safe.
-                new_unique: list = []
-                for job in found_jobs:
-                    key = listing_identity_key(job)
-                    url = listing_url_token(job)
-                    fuzzy = listing_fuzzy_key(job)
-                    desc_fp = listing_description_fingerprint(job)
-
-                    if key and (key in seen_identity_keys or key in existing_keys):
-                        continue
-                    if url and (url in seen_url_tokens or (url in existing_urls and key not in existing_keys)):
-                        continue
-                    if fuzzy and (fuzzy in seen_fuzzy_keys or fuzzy in existing_fuzzy_keys):
-                        continue
-                    if desc_fp and desc_fp in seen_desc_fingerprints:
-                        continue
-
-                    if key:
-                        seen_identity_keys.add(key)
-                        existing_keys.add(key)
-                    if url:
-                        seen_url_tokens.add(url)
-                        existing_urls.add(url)
-                    if fuzzy:
-                        seen_fuzzy_keys.add(fuzzy)
-                        existing_fuzzy_keys.add(fuzzy)
-                    if desc_fp:
-                        seen_desc_fingerprints.add(desc_fp)
-
-                    new_unique.append(job)
-
-                total_duplicates += len(found_jobs) - len(new_unique)
-
-                if not new_unique:
-                    return
-
-                # ── Persist this query's unique batch to the shared catalog ──
+                query_started = False
                 try:
-                    await self._persist_scraped_job_catalog(profile_id, new_unique)
-                except Exception as persist_err:
-                    logger.error(
-                        "Failed to persist job batch for profile %s: %s", profile_id, persist_err
-                    )
-                    return
+                    normalized_search, _ = normalize_search_item(search)
+                    if not normalized_search:
+                        add_log(profile_id, f"⚠ Skipping invalid query payload at index {idx + 1}")
+                        return
 
-                # ── Set _applied_elsewhere flag (scraped_job_id is now assigned) ──
-                for job in new_unique:
-                    scraped_id = getattr(job, "_scraped_job_id", None)
-                    setattr(
-                        job, "_applied_elsewhere",
-                        scraped_id is not None and scraped_id in applied_scraped_ids,
-                    )
+                    query = normalized_search.get("query", "")
+                    domain = normalized_search.get("domain", "general")
+                    query_type = normalized_search.get("type", "keyword")
+                    query_language = normalized_search.get("language", "en")
 
-                # Push batch to the consumer for normalization + filtering + analysis.
-                await job_queue.put(new_unique)
+                    profession_codes = []
+                    avam_fallback_keyword = False
+                    if query_type == "occupation":
+                        profession_codes = await avam_mapper.resolve(query)
+                        if not profession_codes:
+                            avam_fallback_keyword = True
+                            execution_metrics["avam_fallback_count"] += 1
+                            add_log(profile_id, f"  ℹ AVAM found no codes for «{query}», JobRoom will use keyword fallback")
+
+                    compatible = route_provider_names(normalized_search, self.providers, provider_infos)
+                    if not compatible:
+                        execution_metrics["queries_without_provider"] += 1
+                        add_log(profile_id, f"⚠ No providers accept domain '{domain}' for «{query}»")
+                        return
+
+                    active_query_indices.add(query_idx)
+                    query_started = True
+                    update_status(
+                        profile_id,
+                        current_search_index=query_idx,
+                        current_query=f"«{query}» ({domain})",
+                        active_search_indices=sorted(active_query_indices),
+                        searches_completed=len(completed_query_indices),
+                        completed_search_indices=sorted(completed_query_indices),
+                    )
+                    add_log(profile_id, f"Running query {query_idx}/{len(searches)}: «{query}» on {', '.join(compatible)}")
+
+                    async def search_provider(provider_name: str, req: JobSearchRequest):
+                        provider = self.providers[provider_name]
+                        if not provider:
+                            return provider_name, [], None
+                        provider_jobs = []
+                        try:
+                            current_page = 0
+                            while True:
+                                page_size = 50
+                                if hasattr(provider, "capabilities") and hasattr(provider.capabilities, "max_page_size"):
+                                    page_size = provider.capabilities.max_page_size
+                                page_req = req.model_copy(update={"page": current_page, "page_size": page_size})
+                                result = await provider.search(page_req)
+                                page_items = list(getattr(result, "items", []) or [])
+                                for item in page_items:
+                                    if hasattr(item, "_source_query"):
+                                        item._source_query = query
+                                    else:
+                                        setattr(item, "_source_query", query)
+                                provider_jobs.extend(page_items)
+                                if not page_items:
+                                    break
+                                total_pages = getattr(result, "total_pages", 1)
+                                total_count = getattr(result, "total_count", None)
+                                if total_pages and current_page >= total_pages - 1:
+                                    break
+                                if total_count is not None and total_count >= 0 and len(provider_jobs) >= total_count:
+                                    break
+                                current_page += 1
+                                if provider.throttle_delay > 0:
+                                    await asyncio.sleep(provider.throttle_delay)
+                                status_data = get_status(profile_id)
+                                if status_data.get("state") in STOP_STATES:
+                                    break
+                            return provider_name, provider_jobs, None
+                        except Exception as e:
+                            return provider_name, provider_jobs, e
+
+                    p_tasks = []
+                    for p_name in compatible:
+                        provider = self.providers[p_name]
+                        page_size = 50
+                        if hasattr(provider, "capabilities") and hasattr(provider.capabilities, "max_page_size"):
+                            page_size = provider.capabilities.max_page_size
+                        if p_name == "job_room" and avam_fallback_keyword:
+                            req_fallback = build_search_request(
+                                profile, query, [],
+                                language=supported_request_language(query_language, provider),
+                                page_size=page_size, provider=provider,
+                            )
+                            p_tasks.append(search_provider(p_name, req_fallback))
+                        else:
+                            req = build_search_request(
+                                profile, query, profession_codes,
+                                language=supported_request_language(query_language, provider),
+                                page_size=page_size, provider=provider,
+                            )
+                            p_tasks.append(search_provider(p_name, req))
+
+                    if provider_parallel:
+                        p_results = await asyncio.gather(*p_tasks)
+                    else:
+                        p_results = []
+                        for task in p_tasks:
+                            p_results.append(await task)
+
+                    found_jobs = []
+                    for p_name, items, error in p_results:
+                        if error:
+                            execution_metrics["provider_failures"] += 1
+                            add_log(profile_id, f"  ⚠ {p_name} failed: {str(error)[:100]}")
+                        else:
+                            execution_metrics["provider_successes"] += 1
+                            found_jobs.extend(items)
+                            add_log(profile_id, f"  ↳ {p_name}: {len(items)} jobs")
+
+                    total_found += len(found_jobs)
+
+                    # ── Incremental dedup: cross-query (T1-T3) + profile history ──
+                    # All check+add operations are synchronous — no await between, so atomically safe.
+                    new_unique: list = []
+                    for job in found_jobs:
+                        key = listing_identity_key(job)
+                        url = listing_url_token(job)
+                        fuzzy = listing_fuzzy_key(job)
+                        desc_fp = listing_description_fingerprint(job)
+
+                        if key and (key in seen_identity_keys or key in existing_keys):
+                            continue
+                        if url and (url in seen_url_tokens or (url in existing_urls and key not in existing_keys)):
+                            continue
+                        if fuzzy and (fuzzy in seen_fuzzy_keys or fuzzy in existing_fuzzy_keys):
+                            continue
+                        if desc_fp and desc_fp in seen_desc_fingerprints:
+                            continue
+
+                        if key:
+                            seen_identity_keys.add(key)
+                            existing_keys.add(key)
+                        if url:
+                            seen_url_tokens.add(url)
+                            existing_urls.add(url)
+                        if fuzzy:
+                            seen_fuzzy_keys.add(fuzzy)
+                            existing_fuzzy_keys.add(fuzzy)
+                        if desc_fp:
+                            seen_desc_fingerprints.add(desc_fp)
+
+                        new_unique.append(job)
+
+                    total_duplicates += len(found_jobs) - len(new_unique)
+
+                    if not new_unique:
+                        return
+
+                    # ── Persist this query's unique batch to the shared catalog ──
+                    try:
+                        await self._persist_scraped_job_catalog(profile_id, new_unique)
+                    except Exception as persist_err:
+                        self._increment_status_errors(profile_id)
+                        logger.error(
+                            "Failed to persist job batch for profile %s: %s", profile_id, persist_err
+                        )
+                        add_log(profile_id, f"Persistence error for streamed batch: {persist_err}")
+                        return
+
+                    # ── Set _applied_elsewhere flag (scraped_job_id is now assigned) ──
+                    for job in new_unique:
+                        scraped_id = getattr(job, "_scraped_job_id", None)
+                        setattr(
+                            job, "_applied_elsewhere",
+                            scraped_id is not None and scraped_id in applied_scraped_ids,
+                        )
+
+                    # Push batch to the consumer for normalization + filtering + analysis.
+                    await job_queue.put(new_unique)
+                finally:
+                    if query_started:
+                        active_query_indices.discard(query_idx)
+                    completed_query_indices.add(query_idx)
+                    update_status(
+                        profile_id,
+                        active_search_indices=sorted(active_query_indices),
+                        searches_completed=len(completed_query_indices),
+                        completed_search_indices=sorted(completed_query_indices),
+                    )
 
         try:
             await asyncio.gather(*(execute_and_push(i, q) for i, q in enumerate(searches)))
@@ -2299,6 +2407,7 @@ class SearchService:
             try:
                 await self._normalize_persisted_jobs(profile_id, batch)
             except Exception as norm_err:
+                self._increment_status_errors(profile_id)
                 from backend.services.llm_service import _unwrap_retry_error
                 _, err_msg = _unwrap_retry_error(norm_err)
                 logger.error(
@@ -2410,6 +2519,7 @@ class SearchService:
                     results = await llm_service.analyze_job_batch(jobs_metadata, profile_dict)
                     return list(zip(batch, results))
                 except Exception as e:
+                    self._increment_status_errors(profile_id)
                     logger.error(f"Analysis batch failed: {e}")
                     return []
 
@@ -2554,6 +2664,7 @@ class SearchService:
                 await self._save_single_job(job, analysis, profile_dict, origin_coords, commit=True)
                 saved_count += 1
             except Exception as exc:
+                self._increment_status_errors(profile_id)
                 logger.warning(
                     "Skipping job due to persistence error (profile %s): %s",
                     profile_dict.get("id"), exc,

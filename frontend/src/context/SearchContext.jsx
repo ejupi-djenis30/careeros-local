@@ -5,11 +5,17 @@ import { useAuth } from './AuthContext';
 
 const SearchContext = createContext(null);
 
+// IDs added locally (not yet confirmed by a poll) are kept for at most this many
+// milliseconds before being silently dropped if the server never acknowledges them.
+const PENDING_ID_TTL_MS = 30_000;
+
 export function SearchProvider({ children }) {
     const { isLoggedIn } = useAuth();
     const [searchStatuses, setSearchStatuses] = useState({});
     const [activeProfileIds, setActiveProfileIds] = useState([]);
     const activeProfileIdsRef = useRef(activeProfileIds);
+    // Tracks when each locally-added ID was registered so we can expire it.
+    const pendingAddedAtRef = useRef({});
 
     useEffect(() => {
         activeProfileIdsRef.current = activeProfileIds;
@@ -44,11 +50,20 @@ export function SearchProvider({ children }) {
                 
                 // Merge server-confirmed running IDs with any IDs pending first server acknowledgement
                 // (the brief window between addProfileId() being called and the first poll returning it).
+                // IDs that the server has never seen past PENDING_ID_TTL_MS are dropped.
                 setActiveProfileIds(prev => {
+                    const now = Date.now();
                     const next = [...runningIds];
                     for (const id of activeProfileIdsRef.current) {
-                        if (!res[id] && !next.includes(id)) {
-                            next.push(id);
+                        if (res[id]) {
+                            // Server confirmed — stop tracking as pending
+                            delete pendingAddedAtRef.current[id];
+                        } else if (!next.includes(id)) {
+                            const addedAt = pendingAddedAtRef.current[id];
+                            if (addedAt !== undefined && (now - addedAt) < PENDING_ID_TTL_MS) {
+                                next.push(id);
+                            }
+                            // Expired or unknown IDs are silently dropped
                         }
                     }
                     next.sort();
@@ -76,15 +91,21 @@ export function SearchProvider({ children }) {
     }, [isLoggedIn]);
 
     const addProfileId = useCallback((pid) => {
+        const pidStr = String(pid);
         setActiveProfileIds(prev => {
-            const pidStr = String(pid);
             if (prev.includes(pidStr)) return prev;
             return [...prev, pidStr];
         });
+        // Record the time this ID was locally added so the TTL check can expire it.
+        if (pendingAddedAtRef.current[pidStr] === undefined) {
+            pendingAddedAtRef.current[pidStr] = Date.now();
+        }
     }, []);
 
     const removeProfileId = useCallback((pid) => {
-        setActiveProfileIds(prev => prev.filter(id => id !== String(pid)));
+        const pidStr = String(pid);
+        delete pendingAddedAtRef.current[pidStr];
+        setActiveProfileIds(prev => prev.filter(id => id !== pidStr));
     }, []);
 
     return (

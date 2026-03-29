@@ -33,7 +33,7 @@ export function SearchProgress({ profileId, status, onStateChange, onClear }) {
         if (activeItemRef.current) {
             activeItemRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
         }
-    }, [displayStatus?.current_search_index, displayStatus?.log?.length]);
+    }, [displayStatus?.active_search_indices, displayStatus?.completed_search_indices, displayStatus?.log?.length]);
 
     const handleStop = async () => {
         try {
@@ -52,7 +52,24 @@ export function SearchProgress({ profileId, status, onStateChange, onClear }) {
         </div>
     );
 
-    const { state, total_searches, current_search_index, current_query, searches_generated, jobs_new, jobs_duplicates, jobs_skipped, jobs_analyzed, jobs_analyze_total, errors, log, terminal_reason } = displayStatus;
+    const {
+        state,
+        total_searches,
+        current_search_index,
+        searches_completed,
+        active_search_indices,
+        completed_search_indices,
+        current_query,
+        searches_generated,
+        jobs_new,
+        jobs_duplicates,
+        jobs_skipped,
+        jobs_analyzed,
+        jobs_analyze_total,
+        errors,
+        log,
+        terminal_reason,
+    } = displayStatus;
     const isRunning = state === "generating" || state === "searching" || state === "analyzing";
     const isDone = state === "done";
     const isError = state === "error" || state === "stopped";
@@ -63,7 +80,18 @@ export function SearchProgress({ profileId, status, onStateChange, onClear }) {
         no_relevant_jobs: "Search completed with notice: no jobs passed relevance filtering.",
         no_jobs_after_structured_filters: "Search completed with notice: all fetched jobs were filtered out by structured constraints.",
     };
-    const doneNotice = isDone ? doneNoticeByReason[terminal_reason] : null;
+    const errorNoticeByReason = {
+        search_execution_failed: "Search failed before any provider returned usable results.",
+        pipeline_processing_failed: "Search failed while processing fetched jobs before analysis could complete.",
+        job_persistence_failed: "Jobs were analyzed, but saving them failed.",
+        pipeline_timeout: "Search exceeded the maximum allowed processing time.",
+        server_shutdown: "Search was interrupted because the server shut down.",
+    };
+    const statusNotice = isDone
+        ? doneNoticeByReason[terminal_reason]
+        : isError
+            ? errorNoticeByReason[terminal_reason]
+            : null;
     const showDebugLabel = isDone || isError;
     const debugTerminalReason = terminal_reason || "n/a";
     const debugLabel = `LLM_DEBUG state=${state} terminal_reason=${debugTerminalReason} profile_id=${profileId}`;
@@ -72,12 +100,13 @@ export function SearchProgress({ profileId, status, onStateChange, onClear }) {
     let progressPct = 0;
     let analyzingText = "ANALYZING TARGETS...";
     const analysisRunning = (jobs_analyzed || 0) > 0 && (jobs_analyze_total || 0) > 0;
+    const completedSearchCount = searches_completed || 0;
 
     if (state === "generating") {
         progressPct = 5;
     } else if (state === "searching" && total_searches > 0) {
         // Searching phase: 5% → 90% (extended range to accommodate concurrent analysis)
-        const searchPct = 5 + Math.round((current_search_index / total_searches) * 85);
+        const searchPct = 5 + Math.round((completedSearchCount / total_searches) * 85);
         // If analysis is also running, let the higher progress win so the bar never goes backward.
         const analysisPct = analysisRunning
             ? 5 + Math.round((jobs_analyzed / jobs_analyze_total) * 85)
@@ -128,7 +157,9 @@ export function SearchProgress({ profileId, status, onStateChange, onClear }) {
                     isError={isError} 
                     isRunning={isRunning} 
                     state={state} 
-                    current_search_index={current_search_index} 
+                    current_search_index={current_search_index}
+                    searches_completed={searches_completed}
+                    active_search_indices={active_search_indices}
                     total_searches={total_searches} 
                     handleStop={handleStop} 
                     onClear={onClear} 
@@ -144,9 +175,9 @@ export function SearchProgress({ profileId, status, onStateChange, onClear }) {
                     current_query={current_query} 
                 />
 
-                {doneNotice && (
-                    <div className="alert alert-warning py-2 px-3 mb-3 small" role="status">
-                        {doneNotice}
+                {statusNotice && (
+                    <div className={`alert ${isError ? 'alert-danger' : 'alert-warning'} py-2 px-3 mb-3 small`} role="status">
+                        {statusNotice}
                     </div>
                 )}
 
@@ -189,6 +220,8 @@ export function SearchProgress({ profileId, status, onStateChange, onClear }) {
                     analyzedJobs={analyzedJobs} 
                     searches_generated={searches_generated} 
                     current_search_index={current_search_index} 
+                    active_search_indices={active_search_indices}
+                    completed_search_indices={completed_search_indices}
                     activeItemRef={activeItemRef}
                     jobs_analyzed={jobs_analyzed}
                     jobs_analyze_total={jobs_analyze_total}

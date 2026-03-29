@@ -31,15 +31,22 @@ export function ProgressPage() {
   }, [showToast]);
 
   useEffect(() => {
-    // If we land here from an external route with a specific PID, ensure it's tracked
+    // If we land here from an external route with a specific PID, ensure it's tracked.
+    // We only need to register the pid once (when singlePid or addProfileId changes).
+    // SearchContext will expire it after PENDING_ID_TTL_MS if the server never confirms it.
     if (singlePid) {
       addProfileId(singlePid);
       // eslint-disable-next-line react-hooks/set-state-in-effect
       if (!visibleProfileId) setVisibleProfileId(singlePid);
-    } else if (activeProfileIds.length > 0 && !visibleProfileId) {
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [singlePid, addProfileId]);
+
+  useEffect(() => {
+    if (!visibleProfileId && activeProfileIds.length > 0) {
       setVisibleProfileId(activeProfileIds[0]);
     }
-  }, [singlePid, addProfileId, visibleProfileId, activeProfileIds]);
+  }, [activeProfileIds, visibleProfileId]);
 
   const handleClearSearch = (profileId) => {
     const next = activeProfileIds.filter(id => id !== String(profileId));
