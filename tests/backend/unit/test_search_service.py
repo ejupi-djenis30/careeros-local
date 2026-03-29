@@ -269,7 +269,7 @@ async def test_run_search_uses_degraded_fallback_plan_when_enabled(search_servic
     with patch.object(search_service, "_generate_plan", new=AsyncMock(return_value=[])), \
          patch.object(search_service, "_build_degraded_fallback_plan", return_value=fallback_plan), \
          patch.object(search_service, "_search_and_produce", new=AsyncMock(return_value=(0, 0))) as mock_prod, \
-         patch.object(search_service, "_processing_consumer", new=AsyncMock(return_value=(0, []))) as mock_cons, \
+         patch.object(search_service, "_processing_consumer", new=AsyncMock(return_value=(0, 0, [], 0, 0))) as mock_cons, \
          patch.object(search_service, "_normalize_user_profile", new=AsyncMock(return_value={})), \
          patch("backend.services.search_service.llm_service.summarize_cv", new=AsyncMock(return_value="")), \
          patch("backend.services.search_service.add_log"), \

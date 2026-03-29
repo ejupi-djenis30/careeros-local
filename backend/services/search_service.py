@@ -1298,9 +1298,9 @@ class SearchService:
         profile_history = self._load_profile_dedup_history(profile_id, user_id)
 
         # The producer streams unique-per-query batches; the consumer normalizes,
-        # filters, and runs LLM analysis on each batch as it arrives.
+        # filters, analyzes, and immediately persists each batch as it arrives.
         job_queue: asyncio.Queue = asyncio.Queue()
-        (total_found, total_duplicates), (total_filtered, analyzed_pairs) = await asyncio.gather(
+        (total_found, total_duplicates), (total_filtered, analysis_failed, analyzed_pairs, consumer_saved, consumer_skipped) = await asyncio.gather(
             self._search_and_produce(
                 profile_id, profile, searches, provider_infos, job_queue, profile_history
             ),
@@ -1337,7 +1337,12 @@ class SearchService:
             return
 
         if not analyzed_pairs:
-            unexplained_unique = max(0, unique_total - total_filtered)
+            # Jobs are "explained" if they were filtered by structured rules OR if they
+            # passed filters but were lost due to LLM analysis errors (already counted in
+            # errors counter by _run_analysis_batches).  Only truly unexplained missing jobs
+            # — where neither filtering nor analysis failure accounts for them — warrant a
+            # pipeline_processing_failed terminal state.
+            unexplained_unique = max(0, unique_total - total_filtered - analysis_failed)
             if status_metrics["errors"] > 0 and unexplained_unique > 0:
                 add_log(profile_id, "Jobs were fetched but pipeline processing failed before analysis completed.")
                 add_log(profile_id, f"[LLM_DEBUG] state=error terminal_reason=pipeline_processing_failed profile_id={profile_id}")
@@ -1360,23 +1365,10 @@ class SearchService:
                 )
             return
 
-        # ── Step 6b: Optional final passes (critique, rerank) then save ──
-        needs_final_pass = (
-            getattr(settings, "MATCH_CRITIQUE_ENABLED", False)
-            or getattr(settings, "MATCH_RERANK_ENABLED", False)
-        )
-        if needs_final_pass:
-            add_log(profile_id, f"Step 6b: Running final analysis passes ({len(analyzed_pairs)} jobs)...")
-            update_status(profile_id, state="analyzing")
-
+        # Jobs have already been saved progressively by the consumer.
+        # Check whether any job made it through analysis but failed to persist.
         pre_finalize_errors = self._status_metrics(profile_id)["errors"]
-        saved_count, skipped_count = await self._finalize_and_save(
-            profile_id, profile_dict, analyzed_pairs
-        )
-        total_skipped = total_filtered + skipped_count
-        post_finalize_errors = self._status_metrics(profile_id)["errors"]
-
-        if saved_count == 0 and analyzed_pairs and post_finalize_errors > pre_finalize_errors:
+        if consumer_saved == 0 and analyzed_pairs and pre_finalize_errors > 0:
             add_log(profile_id, "Jobs were analyzed but none could be persisted.")
             add_log(profile_id, f"[LLM_DEBUG] state=error terminal_reason=job_persistence_failed profile_id={profile_id}")
             update_status(
@@ -1386,13 +1378,28 @@ class SearchService:
                 finished_at=datetime.now(timezone.utc).isoformat(),
                 jobs_found=total_found,
                 jobs_duplicates=total_duplicates,
-                jobs_skipped=total_skipped,
+                jobs_skipped=total_filtered + consumer_skipped,
                 error="Jobs were analyzed but none could be persisted.",
             )
             return
 
-        add_log(profile_id, f"✓ Search complete – {saved_count} jobs saved, {skipped_count} skipped")
-        add_log(profile_id, f"[LLM_DEBUG] state=done terminal_reason=completed profile_id={profile_id} jobs_saved={saved_count} jobs_skipped={skipped_count}")
+        # ── Step 6b: Optional final passes (critique/rerank/salary) ──
+        # These passes refine analysis on already-saved rows; they are LLM-heavy and run
+        # only once across all batches after the search stream completes.
+        needs_final_pass = (
+            getattr(settings, "MATCH_CRITIQUE_ENABLED", False)
+            or getattr(settings, "MATCH_RERANK_ENABLED", False)
+            or getattr(settings, "SALARY_BENCHMARK_ENABLED", False)
+        )
+        if needs_final_pass and analyzed_pairs:
+            add_log(profile_id, f"Step 6b: Running final refinement passes ({len(analyzed_pairs)} jobs)...")
+            update_status(profile_id, state="analyzing")
+            await self._finalize_and_save(profile_id, profile_dict, analyzed_pairs)
+
+        saved_count = consumer_saved
+        total_skipped = total_filtered + consumer_skipped
+        add_log(profile_id, f"✓ Search complete – {saved_count} jobs saved, {consumer_skipped} skipped")
+        add_log(profile_id, f"[LLM_DEBUG] state=done terminal_reason=completed profile_id={profile_id} jobs_saved={saved_count} jobs_skipped={consumer_skipped}")
         update_status(
             profile_id,
             state="done",
@@ -2043,27 +2050,57 @@ class SearchService:
                     coords.lat, coords.lon
                 )
 
-        # 3. Job (Link)
-        new_job = Job(
-            user_id=profile_dict["user_id"],
-            search_profile_id=profile_dict["id"],
-            scraped_job_id=existing_sj.id,
-            affinity_score=analysis.get("affinity_score", 0),
-            affinity_analysis=analysis.get("affinity_analysis", ""),
-            worth_applying=analysis.get("worth_applying", False),
-            distance_km=distance_km,
-            applied=False,
-            skill_match_score=analysis.get("skill_match_score"),
-            experience_match_score=analysis.get("experience_match_score"),
-            intent_match_score=analysis.get("intent_match_score"),
-            language_match_score=analysis.get("language_match_score"),
-            location_match_score=analysis.get("location_match_score"),
-            transferability_score=analysis.get("transferability_score"),
-            qualification_gap_score=analysis.get("qualification_gap_score"),
-            analysis_structured=analysis.get("analysis_structured"),
-            red_flags=analysis.get("red_flags"),
-        )
-        self.db.add(new_job)
+        # 3. Job — upsert (preserve user-action fields on existing rows).
+        # Analysis fields are always refreshed; applied/dismissed/feedback_signal are never
+        # overwritten so existing user actions survive a re-run that re-analyzes the same job.
+        _analysis_fields: dict = {
+            "affinity_score": analysis.get("affinity_score", 0),
+            "affinity_analysis": analysis.get("affinity_analysis", ""),
+            "worth_applying": analysis.get("worth_applying", False),
+            "distance_km": distance_km,
+            "skill_match_score": analysis.get("skill_match_score"),
+            "experience_match_score": analysis.get("experience_match_score"),
+            "intent_match_score": analysis.get("intent_match_score"),
+            "language_match_score": analysis.get("language_match_score"),
+            "location_match_score": analysis.get("location_match_score"),
+            "transferability_score": analysis.get("transferability_score"),
+            "qualification_gap_score": analysis.get("qualification_gap_score"),
+            "analysis_structured": analysis.get("analysis_structured"),
+            "red_flags": analysis.get("red_flags"),
+        }
+        existing_job = self.db.query(Job).filter(
+            Job.user_id == profile_dict["user_id"],
+            Job.scraped_job_id == existing_sj.id,
+            Job.search_profile_id == profile_dict.get("id"),
+        ).first()
+        if existing_job:
+            for _f, _v in _analysis_fields.items():
+                setattr(existing_job, _f, _v)
+        else:
+            new_job = Job(
+                user_id=profile_dict["user_id"],
+                search_profile_id=profile_dict.get("id"),
+                scraped_job_id=existing_sj.id,
+                applied=False,
+                **_analysis_fields,
+            )
+            _sp = self.db.begin_nested()
+            try:
+                self.db.add(new_job)
+                _sp.commit()
+            except IntegrityError:
+                _sp.rollback()
+                # Concurrent save of the same job won the race — reload and update.
+                existing_job = self.db.query(Job).filter(
+                    Job.user_id == profile_dict["user_id"],
+                    Job.scraped_job_id == existing_sj.id,
+                    Job.search_profile_id == profile_dict.get("id"),
+                ).first()
+                if existing_job:
+                    for _f, _v in _analysis_fields.items():
+                        setattr(existing_job, _f, _v)
+                else:
+                    raise  # genuinely unexpected; let caller handle
         if commit:
             try:
                 self.db.commit()
@@ -2382,16 +2419,31 @@ class SearchService:
         profile_dict: dict,
         profile_preferences: dict,
         job_queue: asyncio.Queue,
-    ) -> tuple[int, list]:
+    ) -> tuple[int, int, list, int, int]:
         """Consume job batches from the queue; run normalize → filter → LLM analysis
         on each batch immediately as it arrives, overlapping with ongoing searches.
+        Each analyzed batch is persisted to the Job table immediately — before the
+        next batch is even started — so new jobs appear in the DB and in the UI
+        while the search is still running.
 
-        Returns (total_filtered_count, analyzed_pairs) where analyzed_pairs is a list of
-        (job_listing, analysis_dict).  Critique and reranking are deferred to _finalize_and_save.
+        Returns (total_filtered_count, analysis_failed_count, analyzed_pairs, total_saved, total_save_skipped) where:
+        - total_filtered_count: jobs dropped by structured filters
+        - analysis_failed_count: jobs that passed filters but were lost due to LLM analysis errors
+        - analyzed_pairs: list of (job_listing, analysis_dict) — kept for optional final passes
+        - total_saved: jobs successfully persisted
+        - total_save_skipped: jobs lost due to persistence errors
         """
         total_filtered = 0
+        analysis_failed = 0
         analyzed_pairs: list = []
         cumulative_to_analyze = 0
+        total_saved = 0
+        total_save_skipped = 0
+
+        # Pre-compute origin_coords once so every batch save call can calculate distance.
+        origin_coords = None
+        if profile_dict.get("latitude") and profile_dict.get("longitude"):
+            origin_coords = (profile_dict["latitude"], profile_dict["longitude"])
 
         while True:
             batch = await job_queue.get()
@@ -2404,19 +2456,22 @@ class SearchService:
                 break
 
             # ── Normalize ──
+            # Normalization failure is a soft warning: the batch continues with provider-bootstrap
+            # fields only.  We do NOT increment the errors counter here because normalization is
+            # not a terminal failure — it does not cause job loss by itself.  The activity log
+            # records the issue so the user can debug if needed.
             try:
                 await self._normalize_persisted_jobs(profile_id, batch)
             except Exception as norm_err:
-                self._increment_status_errors(profile_id)
                 from backend.services.llm_service import _unwrap_retry_error
                 _, err_msg = _unwrap_retry_error(norm_err)
-                logger.error(
+                logger.warning(
                     "LLM normalization failed for profile %s batch — proceeding without full normalization: %s",
                     profile_id, err_msg,
                 )
                 add_log(
                     profile_id,
-                    f"Normalization error (batch proceeds without field-level filtering): {err_msg}",
+                    f"⚠ Normalization warning (batch proceeds without field-level filters): {err_msg}",
                 )
 
             # ── Filter ──
@@ -2429,16 +2484,49 @@ class SearchService:
             if not filtered_batch:
                 continue
 
-            # Update running total so the frontend can show analysis progress in real time.
-            cumulative_to_analyze += len(filtered_batch)
-            update_status(profile_id, jobs_analyze_total=cumulative_to_analyze)
-
-            # ── LLM analysis (batch-parallel, no critique/rerank yet) ──
+            # ── Analyze ──
+            # NOTE: we defer the status update until AFTER analysis completes so that the
+            # frontend never sees a completed ratio (analyzed == total) for just the
+            # first batch while more searches are still running.  Both counters are written
+            # in a single update_status call to keep the ratio coherent.
             batch_pairs = await self._run_analysis_batches(profile_id, profile_dict, filtered_batch)
+            # Track jobs that passed filters but were lost due to analysis errors.
+            analysis_failed += len(filtered_batch) - len(batch_pairs)
+            cumulative_to_analyze += len(filtered_batch)
             analyzed_pairs.extend(batch_pairs)
-            update_status(profile_id, jobs_analyzed=len(analyzed_pairs))
 
-        return total_filtered, analyzed_pairs
+            # ── Save immediately (progressive persistence) ──
+            # Jobs reaching this point are persisted without waiting for the search to finish.
+            # _save_single_job is a conflict-safe upsert: if the same job was already saved
+            # (e.g. by a concurrent coroutine or a previous run) its analysis fields are
+            # updated in-place and user-action fields (applied, dismissed) are preserved.
+            batch_saved = 0
+            batch_skipped = 0
+            for listing, analysis in batch_pairs:
+                try:
+                    await self._save_single_job(
+                        listing, analysis, profile_dict, origin_coords, commit=True
+                    )
+                    batch_saved += 1
+                except Exception as save_exc:
+                    self._increment_status_errors(profile_id)
+                    logger.warning(
+                        "Progressive save failed for profile %s: %s",
+                        profile_id, save_exc,
+                    )
+                    batch_skipped += 1
+
+            total_saved += batch_saved
+            total_save_skipped += batch_skipped
+
+            update_status(
+                profile_id,
+                jobs_analyze_total=cumulative_to_analyze,
+                jobs_analyzed=len(analyzed_pairs),
+                jobs_new=total_saved,
+            )
+
+        return total_filtered, analysis_failed, analyzed_pairs, total_saved, total_save_skipped
 
     async def _run_analysis_batches(self, profile_id: int, profile_dict: dict, jobs: list) -> list:
         """Run LLM match analysis on a list of jobs using concurrent internal batches.
@@ -2532,31 +2620,40 @@ class SearchService:
         profile_id: int,
         profile_dict: dict,
         analyzed_pairs: list,
-    ) -> tuple[int, int]:
-        """Apply optional critique, reranking, and salary benchmark; then persist all jobs.
+    ) -> None:
+        """Apply optional critique, reranking, and salary benchmark to already-persisted jobs.
 
-        Receives (job, analysis) pairs that have already been through LLM analysis
-        (produced by _processing_consumer → _run_analysis_batches).
+        Jobs have already been saved to the 'jobs' table progressively by _processing_consumer.
+        This phase only refines analysis fields on existing rows when global passes
+        (critique / rerank / salary benchmark) are enabled.  It is a no-op when all
+        those settings are disabled.
+
+        Receives (job, analysis) pairs carrying the initial analysis values together with
+        ._scraped_job_id attributes stamped by _upsert_scraped_job.
         """
         post_status = get_status(profile_id)
         if post_status.get("state") in STOP_STATES:
-            add_log(profile_id, "Search was stopped during analysis — discarding results.")
-            return 0, len(analyzed_pairs)
+            add_log(profile_id, "Search was stopped — skipping final refinement passes.")
+            return
 
-        origin_coords = None
-        if profile_dict.get("latitude") and profile_dict.get("longitude"):
-            origin_coords = (profile_dict["latitude"], profile_dict["longitude"])
+        needs_final_pass = (
+            getattr(settings, "MATCH_CRITIQUE_ENABLED", False)
+            or getattr(settings, "MATCH_RERANK_ENABLED", False)
+            or getattr(settings, "SALARY_BENCHMARK_ENABLED", False)
+        )
+        if not needs_final_pass or not analyzed_pairs:
+            return
 
-        jobs_to_persist = list(analyzed_pairs)
+        jobs_to_refine = list(analyzed_pairs)
 
         # ── Phase: Two-pass critique for borderline scores ────────────────
         critique_enabled = getattr(settings, "MATCH_CRITIQUE_ENABLED", False)
         critique_min = int(getattr(settings, "MATCH_CRITIQUE_SCORE_RANGE_MIN", 40))
         critique_max = int(getattr(settings, "MATCH_CRITIQUE_SCORE_RANGE_MAX", 80))
-        if critique_enabled and jobs_to_persist:
+        if critique_enabled and jobs_to_refine:
             borderline = [
                 (i, job, analysis)
-                for i, (job, analysis) in enumerate(jobs_to_persist)
+                for i, (job, analysis) in enumerate(jobs_to_refine)
                 if critique_min <= analysis.get("affinity_score", 0) <= critique_max
             ]
             if borderline:
@@ -2584,7 +2681,7 @@ class SearchService:
                         borderline_jobs_meta, borderline_analyses, profile_dict
                     )
                     for orig_idx, critiqued_analysis in zip(borderline_indices, critiqued):
-                        jobs_to_persist[orig_idx] = (jobs_to_persist[orig_idx][0], critiqued_analysis)
+                        jobs_to_refine[orig_idx] = (jobs_to_refine[orig_idx][0], critiqued_analysis)
                     add_log(profile_id, f"Critique pass refined {len(borderline)} borderline jobs.")
                 except Exception as exc:
                     logger.warning("[CRITIQUE] Critique pass failed: %s", exc)
@@ -2592,10 +2689,10 @@ class SearchService:
         # ── Phase: Comparative re-ranking of top-N jobs ──────────────────
         rerank_enabled = getattr(settings, "MATCH_RERANK_ENABLED", False)
         rerank_top_n = int(getattr(settings, "MATCH_RERANK_TOP_N", 20))
-        if rerank_enabled and len(jobs_to_persist) >= 3:
+        if rerank_enabled and len(jobs_to_refine) >= 3:
             try:
                 scored_with_index = sorted(
-                    enumerate(jobs_to_persist),
+                    enumerate(jobs_to_refine),
                     key=lambda x: x[1][1].get("affinity_score", 0),
                     reverse=True,
                 )[:rerank_top_n]
@@ -2624,12 +2721,12 @@ class SearchService:
                 for rerank_result in reranked:
                     orig_idx = rerank_result.get("job_index", -1)
                     final_score = rerank_result.get("final_score")
-                    if orig_idx >= 0 and final_score is not None and 0 <= orig_idx < len(jobs_to_persist):
-                        job, analysis = jobs_to_persist[orig_idx]
+                    if orig_idx >= 0 and final_score is not None and 0 <= orig_idx < len(jobs_to_refine):
+                        job, analysis = jobs_to_refine[orig_idx]
                         updated = dict(analysis)
                         updated["affinity_score"] = final_score
                         updated["worth_applying"] = bool(analysis.get("worth_applying", False)) and final_score >= 65
-                        jobs_to_persist[orig_idx] = (job, updated)
+                        jobs_to_refine[orig_idx] = (job, updated)
                 add_log(profile_id, f"Re-ranked top {len(reranked)} jobs for calibration.")
             except Exception as exc:
                 logger.warning("[RERANK] Re-rank pass failed: %s", exc)
@@ -2638,7 +2735,7 @@ class SearchService:
         if getattr(settings, "SALARY_BENCHMARK_ENABLED", False):
             try:
                 from backend.services.preference_service import compute_salary_benchmark
-                for idx, (job, analysis) in enumerate(jobs_to_persist):
+                for idx, (job, analysis) in enumerate(jobs_to_refine):
                     job_norm_data = getattr(job, "_normalized_job_data", None) or {}
                     job_salary_max = job_norm_data.get("salary_max_chf")
                     if not job_salary_max:
@@ -2654,24 +2751,51 @@ class SearchService:
                         if "salary_below_market" not in flags:
                             flags.append("salary_below_market")
                             updated["red_flags"] = flags
-                            jobs_to_persist[idx] = (job, updated)
+                            jobs_to_refine[idx] = (job, updated)
             except Exception:
                 logger.debug("salary_below_market check skipped (non-critical)")
 
-        saved_count = 0
-        for job, analysis in jobs_to_persist:
+        # ── Apply refined analyses to already-persisted Job rows ──
+        # Jobs were saved during the streaming consumer pass; we find each existing row
+        # by (user_id, scraped_job_id, search_profile_id) and patch only analysis fields.
+        # User-action fields (applied, dismissed, feedback_signal) are not touched.
+        updated_count = 0
+        for job, analysis in jobs_to_refine:
+            scraped_job_id = getattr(job, "_scraped_job_id", None)
+            if scraped_job_id is None:
+                continue
             try:
-                await self._save_single_job(job, analysis, profile_dict, origin_coords, commit=True)
-                saved_count += 1
+                existing_job = self.db.query(Job).filter(
+                    Job.user_id == profile_dict["user_id"],
+                    Job.scraped_job_id == scraped_job_id,
+                    Job.search_profile_id == profile_dict.get("id"),
+                ).first()
+                if not existing_job:
+                    continue
+                existing_job.affinity_score = analysis.get("affinity_score", existing_job.affinity_score)
+                existing_job.affinity_analysis = analysis.get("affinity_analysis", existing_job.affinity_analysis)
+                existing_job.worth_applying = analysis.get("worth_applying", existing_job.worth_applying)
+                existing_job.skill_match_score = analysis.get("skill_match_score", existing_job.skill_match_score)
+                existing_job.experience_match_score = analysis.get("experience_match_score", existing_job.experience_match_score)
+                existing_job.intent_match_score = analysis.get("intent_match_score", existing_job.intent_match_score)
+                existing_job.language_match_score = analysis.get("language_match_score", existing_job.language_match_score)
+                existing_job.location_match_score = analysis.get("location_match_score", existing_job.location_match_score)
+                existing_job.transferability_score = analysis.get("transferability_score", existing_job.transferability_score)
+                existing_job.qualification_gap_score = analysis.get("qualification_gap_score", existing_job.qualification_gap_score)
+                existing_job.analysis_structured = analysis.get("analysis_structured", existing_job.analysis_structured)
+                existing_job.red_flags = analysis.get("red_flags", existing_job.red_flags)
+                self.db.commit()
+                updated_count += 1
             except Exception as exc:
+                self.db.rollback()
                 self._increment_status_errors(profile_id)
                 logger.warning(
-                    "Skipping job due to persistence error (profile %s): %s",
-                    profile_dict.get("id"), exc,
+                    "Final-pass update failed for scraped_job_id %s (profile %s): %s",
+                    scraped_job_id, profile_dict.get("id"), exc,
                 )
 
-        skipped_count = len(analyzed_pairs) - saved_count
-        return saved_count, skipped_count
+        if updated_count > 0:
+            add_log(profile_id, f"Final passes applied: {updated_count} jobs refined in-place.")
 
 
 def get_search_service(db: Session) -> SearchService:

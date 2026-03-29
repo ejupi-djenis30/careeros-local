@@ -97,17 +97,25 @@ export function SearchProgress({ profileId, status, onStateChange, onClear }) {
     const debugLabel = `LLM_DEBUG state=${state} terminal_reason=${debugTerminalReason} profile_id=${profileId}`;
 
     // Progress calculation — analysis may run concurrently during the searching phase.
+    // monotonic floor: the bar never moves backward while a search is running.
+    const progressFloorRef = useRef(0);
     let progressPct = 0;
     let analyzingText = "ANALYZING TARGETS...";
-    const analysisRunning = (jobs_analyzed || 0) > 0 && (jobs_analyze_total || 0) > 0;
+    // analysisRunning is only true when there are MORE jobs still to analyze than have already
+    // been analyzed.  When jobs_analyzed === jobs_analyze_total the first batch just completed
+    // but more searches may still be in flight; using a ratio of 1.0 at that point would briefly
+    // spike the bar to 90 % and then drop it backward once new batches are queued.
+    const analysisRunning = (jobs_analyzed || 0) > 0 &&
+        (jobs_analyze_total || 0) > (jobs_analyzed || 0);
     const completedSearchCount = searches_completed || 0;
 
     if (state === "generating") {
         progressPct = 5;
     } else if (state === "searching" && total_searches > 0) {
-        // Searching phase: 5% → 90% (extended range to accommodate concurrent analysis)
+        // Searching phase: 5 % → 90 % based on completed queries.
         const searchPct = 5 + Math.round((completedSearchCount / total_searches) * 85);
-        // If analysis is also running, let the higher progress win so the bar never goes backward.
+        // Only blend in analysis progress when a stable (non-unity) ratio is available so the
+        // bar does not momentarily hit 90 % just because the first small batch finished.
         const analysisPct = analysisRunning
             ? 5 + Math.round((jobs_analyzed / jobs_analyze_total) * 85)
             : 0;
@@ -123,6 +131,15 @@ export function SearchProgress({ profileId, status, onStateChange, onClear }) {
         }
     } else if (isDone) {
         progressPct = 100;
+    }
+
+    // Apply monotonic floor: the bar cannot move backward within an active run.
+    // Terminal states (done / error) bypass this so "done" always snaps to 100 %.
+    if (isDone || isError) {
+        progressFloorRef.current = 0; // reset for the next run
+    } else {
+        progressPct = Math.max(progressPct, progressFloorRef.current);
+        progressFloorRef.current = progressPct;
     }
 
     const analyzedJobs = [];
@@ -196,9 +213,10 @@ export function SearchProgress({ profileId, status, onStateChange, onClear }) {
                 {/* Stats Grid */}
                 <div className="row g-3">
                     {[
-                        // During searching, show live analysis count if available; otherwise show final saved count.
-                        state === 'searching' && analysisRunning
-                            ? { label: 'Analyzed', value: jobs_analyzed, color: 'text-primary' }
+                        // jobs_new is updated live as jobs are saved during searching —
+                        // show it with a contextual label ("Saved" while running, "New Intel" when done).
+                        isRunning
+                            ? { label: 'Saved', value: jobs_new, color: 'text-primary' }
                             : { label: 'New Intel', value: jobs_new, color: 'text-white' },
                         { label: 'Duplicates', value: jobs_duplicates, color: 'text-warning' },
                         { label: 'Skipped', value: jobs_skipped, color: 'text-secondary' },
