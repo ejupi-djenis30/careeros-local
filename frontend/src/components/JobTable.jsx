@@ -15,7 +15,9 @@ export function JobTable({ jobs, isGlobalView, onToggleApplied, isAppliedPending
         setSelectedJobForAnalysis(job);
         // Fire-and-forget view recording (idempotent on the server)
         if (job?.id) {
-            JobService.recordView(job.id).catch(() => {});
+            JobService.recordView(job.id).catch((error) => {
+                console.warn(`Failed to record job view for ${job.id}`, error);
+            });
         }
     };
 
@@ -186,6 +188,7 @@ export function JobTable({ jobs, isGlobalView, onToggleApplied, isAppliedPending
                         <div className="d-flex align-items-center gap-2">
                             <button
                                 className="btn btn-sm btn-secondary btn-icon sz-32"
+                                aria-label="Previous page"
                                 disabled={pagination.page === 1}
                                 onClick={() => onPageChange(pagination.page - 1)}
                             >
@@ -198,6 +201,7 @@ export function JobTable({ jobs, isGlobalView, onToggleApplied, isAppliedPending
 
                             <button
                                 className="btn btn-sm btn-secondary btn-icon sz-32"
+                                aria-label="Next page"
                                 disabled={pagination.page === pagination.pages}
                                 onClick={() => onPageChange(pagination.page + 1)}
                             >

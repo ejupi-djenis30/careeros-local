@@ -126,6 +126,32 @@ describe('SearchContext', () => {
       expect(screen.getByTestId('status-state')).toHaveTextContent('none');
     });
   });
+
+  it('does not increment heartbeat when a poll returns unchanged statuses', async () => {
+    mockGetAllStatuses
+      .mockResolvedValueOnce({ 1: { state: 'searching', log: ['tick'] } })
+      .mockResolvedValueOnce({ 1: { state: 'searching', log: ['tick'] } });
+
+    render(
+      <SearchProvider>
+        <Consumer />
+      </SearchProvider>
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId('status-heartbeat')).toHaveTextContent('1');
+    });
+
+    await act(async () => {
+      vi.advanceTimersByTime(1500);
+    });
+
+    await flushAsyncWork();
+
+    await waitFor(() => {
+      expect(screen.getByTestId('status-heartbeat')).toHaveTextContent('1');
+    });
+  });
 });
 
 // ── Ghost-PID TTL tests ────────────────────────────────────────────────────────

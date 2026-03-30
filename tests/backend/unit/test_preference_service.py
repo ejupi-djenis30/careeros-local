@@ -55,9 +55,9 @@ def _make_job(
 def _make_db(jobs=None, user=None):
     """Create a minimal mock DB session."""
     db = MagicMock()
-    # Chain: db.query(Job).join(...).filter(...).all() → jobs
+    # Chain: db.query(Job).options(...).filter(...).all() → jobs
     query_chain = MagicMock()
-    query_chain.join.return_value = query_chain
+    query_chain.options.return_value = query_chain
     query_chain.filter.return_value = query_chain
     query_chain.all.return_value = jobs or []
     db.query.return_value = query_chain

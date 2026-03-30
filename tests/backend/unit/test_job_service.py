@@ -3,7 +3,6 @@ from unittest.mock import MagicMock
 import pytest
 from fastapi import HTTPException
 
-from backend.models import ScrapedJob
 from backend.schemas import JobCreate, JobUpdate
 from backend.services.job_service import JobService
 
@@ -63,9 +62,6 @@ def test_create_job(job_service, mock_repo):
 
 
 def test_create_job_uses_deterministic_manual_platform_job_id(job_service, mock_repo):
-    mock_repo.db.query.return_value.filter.return_value.first.return_value = None
-    mock_repo.db.add.reset_mock()
-
     job_in = JobCreate(
         title="Stable Job",
         company="ACME",
@@ -73,15 +69,14 @@ def test_create_job_uses_deterministic_manual_platform_job_id(job_service, mock_
     )
 
     job_service.create_job(1, job_in)
-    first_scraped = mock_repo.db.add.call_args_list[0].args[0]
+    first_call_fields = mock_repo.get_or_create_scraped_job.call_args_list[0].args[0]
 
-    mock_repo.db.add.reset_mock()
-    mock_repo.db.query.return_value.filter.return_value.first.return_value = None
+    mock_repo.get_or_create_scraped_job.reset_mock()
     job_service.create_job(1, job_in)
-    second_scraped = mock_repo.db.add.call_args_list[0].args[0]
+    second_call_fields = mock_repo.get_or_create_scraped_job.call_args_list[0].args[0]
 
-    assert isinstance(first_scraped, ScrapedJob)
-    assert first_scraped.platform_job_id == second_scraped.platform_job_id
+    assert first_call_fields["platform_job_id"] is not None
+    assert first_call_fields["platform_job_id"] == second_call_fields["platform_job_id"]
 
 
 def test_create_job_rejects_foreign_profile(job_service, mock_repo):

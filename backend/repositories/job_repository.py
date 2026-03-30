@@ -11,6 +11,26 @@ class JobRepository(BaseRepository[Job]):
     def __init__(self, db: Session):
         super().__init__(Job, db)
 
+    def get_or_create_scraped_job(self, scraped_fields: dict) -> ScrapedJob:
+        """Find an existing ScrapedJob by (platform, platform_job_id) or insert a new one.
+
+        Encapsulates the upsert logic so services never query ScrapedJob directly.
+        """
+        existing = (
+            self.db.query(ScrapedJob)
+            .filter(
+                ScrapedJob.platform == scraped_fields["platform"],
+                ScrapedJob.platform_job_id == scraped_fields["platform_job_id"],
+            )
+            .first()
+        )
+        if existing:
+            return existing
+        scraped_job = ScrapedJob(**{k: v for k, v in scraped_fields.items() if v is not None})
+        self.db.add(scraped_job)
+        self.db.flush()
+        return scraped_job
+
     def get_user_job_identifiers(self, user_id: int) -> List[Tuple[str, str, str, str, str]]:
         """Returns lightweight tuples of (platform, platform_job_id, external_url, title, company) for all user jobs."""
         return (

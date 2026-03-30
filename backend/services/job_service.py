@@ -59,8 +59,6 @@ class JobService:
         }
 
     def create_job(self, user_id: int, job_in: JobCreate):
-        from backend.models import ScrapedJob
-
         job_dict = job_in.model_dump()
         profile_id = job_dict.get("search_profile_id")
         if profile_id is not None:
@@ -85,21 +83,8 @@ class JobService:
             "workload": job_dict.get("workload", None),
         }
 
-        # Upsert or create ScrapedJob
-        existing_scraped = (
-            self.repo.db.query(ScrapedJob)
-            .filter(
-                ScrapedJob.platform == scraped_fields["platform"],
-                ScrapedJob.platform_job_id == scraped_fields["platform_job_id"],
-            )
-            .first()
-        )
-        if not existing_scraped:
-            scraped_job = ScrapedJob(**{k: v for k, v in scraped_fields.items() if v is not None})
-            self.repo.db.add(scraped_job)
-            self.repo.db.flush()
-        else:
-            scraped_job = existing_scraped
+        # Upsert ScrapedJob via repository (never access DB directly from service)
+        scraped_job = self.repo.get_or_create_scraped_job(scraped_fields)
 
         # Create the user-specific Job record
         job_data = {

@@ -1,4 +1,5 @@
 import math
+from unittest.mock import AsyncMock
 
 import pytest
 from fastapi import HTTPException, UploadFile
@@ -74,7 +75,7 @@ async def test_extract_text_from_file_pdf_error():
     # Invalid PDF content
     mock_file = UploadFile(filename="test.pdf", file=None)
     # Mocking read() to return invalid bytes
-    mock_file.read = lambda: (async_return(b"not a pdf"))
+    mock_file.read = AsyncMock(return_value=b"not a pdf")
 
     from backend.services.utils import extract_text_from_file
 
@@ -89,7 +90,7 @@ async def test_extract_text_from_file_pdf_success():
     from backend.services.utils import extract_text_from_file
 
     mock_file = UploadFile(filename="test.pdf", file=None)
-    mock_file.read = lambda: (async_return(b"%PDF-1.4 mock pdf"))
+    mock_file.read = AsyncMock(return_value=b"%PDF-1.4 mock pdf")
 
     from unittest.mock import MagicMock, patch
 

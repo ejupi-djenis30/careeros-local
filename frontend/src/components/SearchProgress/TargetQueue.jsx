@@ -1,6 +1,6 @@
-import React from "react";
+import React, { memo } from "react";
 
-export function TargetQueue({ state, analyzedJobs, searches_generated, active_search_indices, completed_search_indices, activeItemRef, jobs_analyzed, jobs_analyze_total }) {
+export const TargetQueue = memo(function TargetQueue({ state, analyzedJobs, searches_generated, active_search_indices, completed_search_indices, activeItemRef, jobs_analyzed, jobs_analyze_total }) {
     // During searching, show analysis count badge if analysis is already running concurrently.
     const showAnalysisBadge = state === "searching" && (jobs_analyzed || 0) > 0;
     const activeIndices = new Set(active_search_indices || []);
@@ -79,4 +79,4 @@ export function TargetQueue({ state, analyzedJobs, searches_generated, active_se
             </div>
         </div>
     );
-}
+});

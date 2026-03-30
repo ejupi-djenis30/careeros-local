@@ -205,6 +205,11 @@ def _prune_stale_reserved_entries(statuses: Dict[int, Dict[str, Any]]) -> Dict[i
     }
 
 
+def _entry_is_current_worker_visible(entry: Dict[str, Any] | None) -> bool:
+    reference_ts = _entry_timestamp(entry)
+    return bool(reference_ts and reference_ts >= _WORKER_BOOT_TIME)
+
+
 def _shared_entry_blocks_reservation(entry: Dict[str, Any]) -> bool:
     state = entry.get("state", "unknown")
     if state in _TERMINAL_STATES or state == "unknown":
@@ -212,8 +217,7 @@ def _shared_entry_blocks_reservation(entry: Dict[str, Any]) -> bool:
     if state == _RESERVED_STATE:
         return not _is_stale_reserved_entry(entry)
 
-    file_started = entry.get("started_at") or ""
-    return bool(file_started and file_started >= _WORKER_BOOT_TIME)
+    return _entry_is_current_worker_visible(entry)
 
 
 def _save_statuses(force: bool = False, statuses_snapshot: Dict[int, Dict[str, Any]] | None = None):
@@ -395,20 +399,17 @@ def _merge_with_file(memory: Dict[int, Dict[str, Any]]) -> Dict[int, Dict[str, A
             if file_state in _TERMINAL_STATES:
                 # Terminal states are always safe to surface.
                 merged[pid] = file_entry  # type: ignore[assignment]
-            else:
-                # Non-terminal: only include if the search was started AFTER
-                # this worker booted.  Lexicographic ISO-8601 comparison is
-                # valid for UTC timestamps of the same format.
-                file_started = (file_entry or {}).get("started_at") or ""
-                if file_started >= _WORKER_BOOT_TIME:
-                    merged[pid] = copy.deepcopy(file_entry)  # type: ignore[assignment, arg-type]
-                # else: stale non-terminal entry from a crashed prior run — skip.
+            elif _entry_is_current_worker_visible(file_entry):
+                merged[pid] = copy.deepcopy(file_entry)  # type: ignore[assignment, arg-type]
+            # else: stale non-terminal entry from a crashed prior run — skip.
         elif file_entry is None:
             merged[pid] = copy.deepcopy(mem_entry)
         else:
-            mem_started = mem_entry.get("started_at") or ""
-            file_started = file_entry.get("started_at") or ""
-            merged[pid] = copy.deepcopy(mem_entry if mem_started >= file_started else file_entry)
+            merged[pid] = copy.deepcopy(
+                mem_entry
+                if _entry_timestamp(mem_entry) >= _entry_timestamp(file_entry)
+                else file_entry
+            )
     return merged
 
 
