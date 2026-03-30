@@ -45,27 +45,6 @@ function RegisterButton() {
   );
 }
 
-function LoginWithErrorCapture() {
-  const { login } = useAuth();
-  const [error, setError] = React.useState('');
-
-  return (
-    <>
-      <button onClick={async () => {
-        try {
-          await login('alice', 'pw');
-          setError('');
-        } catch (err) {
-          setError(err.message);
-        }
-      }}>
-        Login With Capture
-      </button>
-      <div data-testid="login-error">{error || 'none'}</div>
-    </>
-  );
-}
-
 function LogoutButton() {
   const { logout } = useAuth();
   return <button onClick={logout}>Logout</button>;
@@ -139,18 +118,17 @@ describe('AuthContext', () => {
     expect(screen.getByTestId('logged-in').textContent).toBe('true');
   });
 
-  it('login surfaces an explicit error when response has no access_token', async () => {
+  it('login does not set user if response has no access_token', async () => {
     mockRefresh.mockResolvedValue(null);
     mockLogin.mockResolvedValue({ error: 'invalid credentials' });
 
-    await renderAndWait(<><Consumer /><LoginWithErrorCapture /></>);
+    await renderAndWait(<><Consumer /><LoginButton /></>);
 
     await act(async () => {
-      screen.getByRole('button', { name: 'Login With Capture' }).click();
+      screen.getByRole('button').click();
     });
 
     expect(screen.getByTestId('user').textContent).toBe('null');
-    expect(screen.getByTestId('login-error').textContent).toBe('invalid credentials');
   });
 
   it('register sets user and returns response', async () => {

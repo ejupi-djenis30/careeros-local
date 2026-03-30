@@ -1,4 +1,4 @@
-import React, { memo } from "react";
+import React from "react";
 
 function parseLlmDebugMessage(message) {
     if (typeof message !== "string" || !message.startsWith("[LLM_DEBUG]")) {
@@ -18,7 +18,7 @@ function parseLlmDebugMessage(message) {
     };
 }
 
-export const LiveLogs = memo(function LiveLogs({ log, logEndRef }) {
+export function LiveLogs({ log, logEndRef }) {
     return (
         <div className="col-lg-7 d-flex flex-column h-100">
             <div className="glass-panel p-0 h-100 overflow-hidden d-flex flex-column border-0 shadow-lg">
@@ -73,4 +73,4 @@ export const LiveLogs = memo(function LiveLogs({ log, logEndRef }) {
             </div>
         </div>
     );
-});
+}

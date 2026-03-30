@@ -4,15 +4,6 @@ import { AuthService } from '../services/auth';
 
 const AuthContext = createContext(null);
 
-function requireAccessToken(response, fallbackMessage) {
-    if (response?.access_token) {
-        return response;
-    }
-
-    const message = response?.detail || response?.error || response?.message || fallbackMessage;
-    throw new Error(message);
-}
-
 export function AuthProvider({ children }) {
     const [user, setUser] = useState(null);
     const [loading, setLoading] = useState(true);
@@ -48,20 +39,18 @@ export function AuthProvider({ children }) {
     }, []);
 
     const login = async (username, password) => {
-        const res = requireAccessToken(
-            await AuthService.login(username, password),
-            'Login failed. Please try again.'
-        );
-        setUser(username);
+        const res = await AuthService.login(username, password);
+        if (res.access_token) {
+            setUser(username);
+        }
         return res;
     };
 
     const register = async (username, password) => {
-        const res = requireAccessToken(
-            await AuthService.register(username, password),
-            'Registration failed. Please try again.'
-        );
-        setUser(username);
+        const res = await AuthService.register(username, password);
+        if (res.access_token) {
+            setUser(username);
+        }
         return res;
     };
 

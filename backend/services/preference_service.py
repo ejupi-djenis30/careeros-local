@@ -23,7 +23,7 @@ from collections import Counter
 from datetime import datetime, timezone
 from typing import Any, Dict, Optional
 
-from sqlalchemy.orm import Session, joinedload
+from sqlalchemy.orm import Session
 
 from backend.core.config import settings
 from backend.models.job import Job, ScrapedJob
@@ -68,7 +68,7 @@ def get_preference_signals(user_id: int, db: Session) -> Optional[Dict[str, Any]
 
 
 def _compute(user_id: int, db: Session) -> Dict[str, Any]:
-    jobs = db.query(Job).options(joinedload(Job.scraped_job)).filter(Job.user_id == user_id).all()
+    jobs = db.query(Job).join(Job.scraped_job).filter(Job.user_id == user_id).all()
 
     applied_jobs = [j for j in jobs if j.applied]
     dismissed_jobs = [j for j in jobs if j.dismissed]

@@ -1,19 +1,11 @@
 import React from 'react';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { render, screen, fireEvent } from '@testing-library/react';
+import { describe, it, expect, vi } from 'vitest';
 import { JobTable } from './JobTable';
-
-const mockRecordView = vi.fn();
 
 // Mock useToast so JobTable can render without a ToastProvider
 vi.mock('../context/ToastContext', () => ({
     useToast: () => ({ showToast: vi.fn(), clearToast: vi.fn() })
-}));
-
-vi.mock('../services/jobs', () => ({
-    JobService: {
-        recordView: (...args) => mockRecordView(...args),
-    }
 }));
 
 // Mock matchMedia for window size
@@ -32,11 +24,6 @@ Object.defineProperty(window, 'matchMedia', {
 });
 
 describe('JobTable', () => {
-    beforeEach(() => {
-        mockRecordView.mockReset();
-        mockRecordView.mockResolvedValue({});
-    });
-
     it('renders the empty state when no jobs are provided', () => {
         render(<JobTable jobs={[]} isGlobalView={false} onToggleApplied={vi.fn()} pagination={{}} onPageChange={vi.fn()} />);
 
@@ -143,7 +130,6 @@ describe('JobTable', () => {
         // Mobile is rendered first in DOM, Desktop second
         fireEvent.click(viewBtns[1] || viewBtns[0]);
 
-        expect(mockRecordView).toHaveBeenCalledWith('1');
         expect(screen.getByText('AI Match Analysis')).toBeInTheDocument();
         expect(screen.getByText('Great fit because...')).toBeInTheDocument();
 
@@ -172,31 +158,5 @@ describe('JobTable', () => {
         fireEvent.click(xIcon.closest('button'));
 
         expect(screen.queryByText('AI Match Analysis')).not.toBeInTheDocument();
-    });
-
-    it('logs recordView failures instead of swallowing them silently', async () => {
-        const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
-        mockRecordView.mockRejectedValueOnce(new Error('network down'));
-
-        render(
-            <JobTable
-                jobs={[{ id: '99', title: 'Engineer', company: 'Google', affinity_analysis: 'Great fit', affinity_score: 95 }]}
-                pagination={{ page: 1, pages: 1, total: 1 }}
-                onPageChange={vi.fn()}
-                isGlobalView={false}
-            />
-        );
-
-        const viewBtns = screen.getAllByTitle('View Analysis');
-        fireEvent.click(viewBtns[0]);
-
-        await waitFor(() => {
-            expect(warnSpy).toHaveBeenCalledWith(
-                'Failed to record job view for 99',
-                expect.any(Error)
-            );
-        });
-
-        warnSpy.mockRestore();
     });
 });

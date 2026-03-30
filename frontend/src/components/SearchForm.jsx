@@ -129,8 +129,6 @@ export function SearchForm({ onStartSearch, isLoading, prefill }) {
         onStartSearch(searchProfile);
     };
 
-    const nameIsDuplicate = !profile.id && !!profile.name.trim() && existingNames.includes(profile.name.trim().toLowerCase());
-
     return (
         <div className="animate-fade-in w-100 h-100 d-flex flex-column">
             <div className="glass-panel p-3 p-lg-4 h-100 d-flex flex-column">
@@ -151,7 +149,7 @@ export function SearchForm({ onStartSearch, isLoading, prefill }) {
                         <div className="d-flex align-items-center gap-2 align-self-stretch align-self-md-auto">
                              <button
                                 type="submit"
-                                disabled={isLoading || nameIsDuplicate}
+                                disabled={isLoading}
                                 className="btn btn-primary rounded-pill px-4 shadow-glow hover-scale fw-bold d-flex align-items-center justify-content-center gap-2 w-100 w-md-auto"
                             >
                                 {isLoading ? (

@@ -9,61 +9,6 @@ const SearchContext = createContext(null);
 // milliseconds before being silently dropped if the server never acknowledges them.
 const PENDING_ID_TTL_MS = 30_000;
 
-function areArraysEqual(left, right) {
-    if (left.length !== right.length) {
-        return false;
-    }
-
-    return left.every((value, index) => value === right[index]);
-}
-
-function areStatusValuesEqual(left, right) {
-    if (Object.is(left, right)) {
-        return true;
-    }
-
-    if (!left || !right || typeof left !== 'object' || typeof right !== 'object') {
-        return false;
-    }
-
-    const leftKeys = Object.keys(left);
-    const rightKeys = Object.keys(right);
-    if (leftKeys.length !== rightKeys.length) {
-        return false;
-    }
-
-    return leftKeys.every(key => {
-        const leftValue = left[key];
-        const rightValue = right[key];
-
-        if (Object.is(leftValue, rightValue)) {
-            return true;
-        }
-
-        if (
-            leftValue &&
-            rightValue &&
-            typeof leftValue === 'object' &&
-            typeof rightValue === 'object'
-        ) {
-            return JSON.stringify(leftValue) === JSON.stringify(rightValue);
-        }
-
-        return false;
-    });
-}
-
-function haveStatusesChanged(previousStatuses, nextStatuses) {
-    const previousIds = Object.keys(previousStatuses);
-    const nextIds = Object.keys(nextStatuses);
-
-    if (previousIds.length !== nextIds.length) {
-        return true;
-    }
-
-    return nextIds.some(id => !areStatusValuesEqual(previousStatuses[id], nextStatuses[id]));
-}
-
 export function SearchProvider({ children }) {
     const { isLoggedIn } = useAuth();
     const [searchStatuses, setSearchStatuses] = useState({});
@@ -72,8 +17,6 @@ export function SearchProvider({ children }) {
     const activeProfileIdsRef = useRef(activeProfileIds);
     // Tracks when each locally-added ID was registered so we can expire it.
     const pendingAddedAtRef = useRef({});
-    // Tracks the last polled statuses so consumers only wake up on real changes.
-    const lastStatusesRef = useRef({});
 
     useEffect(() => {
         activeProfileIdsRef.current = activeProfileIds;
@@ -103,11 +46,7 @@ export function SearchProvider({ children }) {
                 const res = await SearchService.getAllStatuses(abortController.signal);
                 if (isDisposed) return;
                 setSearchStatuses(res);
-                // Only wake up consumers when the status data actually changed.
-                if (haveStatusesChanged(lastStatusesRef.current, res)) {
-                    lastStatusesRef.current = res;
-                    setStatusHeartbeat(prev => prev + 1);
-                }
+                setStatusHeartbeat(prev => prev + 1);
 
                 const runningIds = Object.entries(res)
                     .filter(([, status]) => status && ['generating', 'searching', 'analyzing'].includes(status.state))
@@ -139,7 +78,7 @@ export function SearchProvider({ children }) {
                     }
                     next.sort();
                     const prevSorted = [...prev].sort();
-                    if (areArraysEqual(next, prevSorted)) return prev;
+                    if (JSON.stringify(next) === JSON.stringify(prevSorted)) return prev;
                     return next;
                 });
 
@@ -163,7 +102,6 @@ export function SearchProvider({ children }) {
             isDisposed = true;
             window.clearTimeout(timeoutId);
             abortController.abort();
-            lastStatusesRef.current = {};
         };
     }, [isLoggedIn]);
 
@@ -171,12 +109,12 @@ export function SearchProvider({ children }) {
         const pidStr = String(pid);
         setActiveProfileIds(prev => {
             if (prev.includes(pidStr)) return prev;
-            // Update ref inside the setState callback so it is atomic with the state change.
-            if (pendingAddedAtRef.current[pidStr] === undefined) {
-                pendingAddedAtRef.current[pidStr] = Date.now();
-            }
             return [...prev, pidStr];
         });
+        // Record the time this ID was locally added so the TTL check can expire it.
+        if (pendingAddedAtRef.current[pidStr] === undefined) {
+            pendingAddedAtRef.current[pidStr] = Date.now();
+        }
     }, []);
 
     const removeProfileId = useCallback((pid) => {

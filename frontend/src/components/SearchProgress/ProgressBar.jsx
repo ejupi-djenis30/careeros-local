@@ -1,6 +1,6 @@
-import React, { memo } from "react";
+import React from "react";
 
-export const ProgressBar = memo(function ProgressBar({ state, isDone, isError, isRunning, progressPct, analyzingText, current_query }) {
+export function ProgressBar({ state, isDone, isError, isRunning, progressPct, analyzingText, current_query }) {
     if (state === "pending") return null;
 
     return (
@@ -25,4 +25,4 @@ export const ProgressBar = memo(function ProgressBar({ state, isDone, isError, i
             </div>
         </div>
     );
-});
+}

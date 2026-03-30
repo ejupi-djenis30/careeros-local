@@ -48,7 +48,7 @@ export function useJobs(logout) {
       const resolved = typeof next === 'function' ? next(prev) : next;
       return { ...DEFAULT_FILTERS, ...resolved };
     });
-    setPaginationState((prev) => ({ ...prev, page: 1 }));
+    setPaginationState((prev) => (prev.page === 1 ? prev : { ...prev, page: 1 }));
     // Abort any in-flight fetch so a stale response can't overwrite the new filter state
     if (fetchAbortControllerRef.current) {
       fetchAbortControllerRef.current.abort();

@@ -24,6 +24,8 @@ export function SearchFormCoreInputs({ profile, handleChange, handleLocationChan
                 <label className="form-label text-white small fw-bold text-uppercase x-small mb-2">Target Location <span className="text-danger">*</span></label>
                 <LocationInput
                     location={profile.location_filter}
+                    latitude={profile.latitude}
+                    longitude={profile.longitude}
                     onLocationChange={handleLocationChange}
                 />
             </div>

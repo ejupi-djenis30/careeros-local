@@ -7,7 +7,6 @@ from sqlalchemy.orm import Session
 
 from backend.api.deps import get_current_user_id, limiter
 from backend.core.config import settings
-from backend.core.constants import PREFERENCE_FIELDS as _PREFERENCE_FIELDS
 from backend.db.base import SessionLocal, get_db
 from backend.repositories.profile_repository import ProfileRepository
 from backend.schemas.profile import StartSearchRequest
@@ -26,6 +25,17 @@ from backend.services.utils import extract_text_from_file
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+
+_PREFERENCE_FIELDS = {
+    "preferred_languages",
+    "preferred_domains",
+    "remote_only",
+    "salary_min_chf",
+    "workload_min",
+    "workload_max",
+    "hard_max_distance_km",
+}
 
 
 @router.post("/upload-cv", response_model=CVUploadResponse)

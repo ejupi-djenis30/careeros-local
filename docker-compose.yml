@@ -38,6 +38,7 @@ services:
              gunicorn backend.main:app --worker-class uvicorn.workers.UvicornWorker --bind 0.0.0.0:8000 --workers 1 --timeout 120"
     volumes:
       - app_data:/app/data
+      - ./tests:/app/tests
     healthcheck:
       test:
         [

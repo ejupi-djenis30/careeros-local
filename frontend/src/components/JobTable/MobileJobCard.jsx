@@ -1,11 +1,9 @@
 import React, { memo } from "react";
 import { ScoreBadge } from "./Badges";
-import { safeUrl } from "../../utils/url";
 
 export const MobileJobCard = memo(function MobileJobCard({ job, isGlobalView, onToggleApplied, isAppliedPending = false, onCopy, onViewAnalysis, onOpenDismissDialog, onReactivate }) {
-    const rawApplyUrl = job.application_url || job.external_url;
-    const applyUrl = safeUrl(rawApplyUrl);
-    const sourceUrl = safeUrl(job.external_url && job.external_url !== rawApplyUrl ? job.external_url : null);
+    const applyUrl = job.application_url || job.external_url;
+    const sourceUrl = job.external_url && job.external_url !== applyUrl ? job.external_url : null;
     const mailtoUrl = job.application_email ? `mailto:${job.application_email}` : null;
     const fmtDistance = job.distance_km != null ? parseFloat(Number(job.distance_km).toFixed(2)) : null;
 

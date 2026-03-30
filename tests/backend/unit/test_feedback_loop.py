@@ -212,7 +212,7 @@ class TestPreferenceService:
         ]
 
         db_mock = MagicMock()
-        db_mock.query.return_value.options.return_value.filter.return_value.all.return_value = jobs
+        db_mock.query.return_value.join.return_value.filter.return_value.all.return_value = jobs
 
         result = _compute(1, db_mock)
 
@@ -230,7 +230,7 @@ class TestPreferenceService:
         ]
 
         db_mock = MagicMock()
-        db_mock.query.return_value.options.return_value.filter.return_value.all.return_value = jobs
+        db_mock.query.return_value.join.return_value.filter.return_value.all.return_value = jobs
 
         result = _compute(1, db_mock)
         # marketing has 100% dismiss rate → should appear in avoided_domains
@@ -246,7 +246,7 @@ class TestPreferenceService:
         ]
 
         db_mock = MagicMock()
-        db_mock.query.return_value.options.return_value.filter.return_value.all.return_value = jobs
+        db_mock.query.return_value.join.return_value.filter.return_value.all.return_value = jobs
 
         result = _compute(1, db_mock)
         assert result["dealbreaker_patterns"].get("bad_salary") == 2

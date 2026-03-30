@@ -12,7 +12,7 @@ export function ProgressPage() {
 
   const { searchStatuses, activeProfileIds, addProfileId, removeProfileId } = useSearchContext();
   const { showToast } = useToast();
-  const [selectedProfileId, setSelectedProfileId] = React.useState(singlePid);
+  const [visibleProfileId, setVisibleProfileId] = React.useState(singlePid);
   const [profiles, setProfiles] = React.useState({});
   const [profilesError, setProfilesError] = React.useState('');
 
@@ -35,16 +35,20 @@ export function ProgressPage() {
 
   useEffect(() => {
     // If we land here from an external route with a specific PID, ensure it's tracked.
+    // We only need to register the pid once (when singlePid or addProfileId changes).
     // SearchContext will expire it after PENDING_ID_TTL_MS if the server never confirms it.
     if (singlePid) {
       addProfileId(singlePid);
+      if (!visibleProfileId) setVisibleProfileId(singlePid);
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [singlePid, addProfileId]);
 
-  const visibleProfileId = singlePid
-    || (selectedProfileId && activeProfileIds.includes(String(selectedProfileId))
-      ? String(selectedProfileId)
-      : activeProfileIds[0] || null);
+  useEffect(() => {
+    if (!visibleProfileId && activeProfileIds.length > 0) {
+      setVisibleProfileId(activeProfileIds[0]);
+    }
+  }, [activeProfileIds, visibleProfileId]);
 
   const handleClearSearch = (profileId) => {
     const next = activeProfileIds.filter(id => id !== String(profileId));
@@ -59,7 +63,7 @@ export function ProgressPage() {
     if (next.length === 0) {
       navigate('/jobs');
     } else if (String(visibleProfileId) === String(profileId)) {
-      setSelectedProfileId(next[next.length - 1]);
+      setVisibleProfileId(next[next.length - 1]);
     }
   };
 
@@ -102,7 +106,7 @@ export function ProgressPage() {
               <button
                 key={pid}
                 className={`btn rounded-pill px-4 d-flex align-items-center gap-2 text-nowrap ${isActive ? 'btn-primary' : 'btn-outline-secondary bg-black-20 text-white'}`}
-                onClick={() => setSelectedProfileId(pid)}
+                onClick={() => setVisibleProfileId(pid)}
                 title={`State: ${s?.state || 'pending'}`}
               >
                 <i className={`bi ${tabIcon}`}></i>

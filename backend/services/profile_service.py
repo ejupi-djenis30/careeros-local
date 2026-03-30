@@ -3,9 +3,18 @@ from typing import Any, Dict
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
-from backend.core.constants import PREFERENCE_FIELDS as _PREFERENCE_FIELDS
 from backend.repositories.profile_repository import ProfileRepository
 from backend.schemas import ScheduleToggle, SearchProfileCreate
+
+_PREFERENCE_FIELDS = {
+    "preferred_languages",
+    "preferred_domains",
+    "remote_only",
+    "salary_min_chf",
+    "workload_min",
+    "workload_max",
+    "hard_max_distance_km",
+}
 
 _QUERY_CACHE_INVALIDATION_FIELDS = {
     "role_description",

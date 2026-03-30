@@ -4,8 +4,6 @@ export class ApiClient {
     static accessToken = null;
     static _refreshPromise = null;
     static _suppressUnauthorized = false;
-    // Prevents infinite refresh-retry loops: set true after a failed refresh, reset on next login.
-    static _refreshFailed = false;
 
     static _dispatchApiError(message) {
         window.dispatchEvent(new CustomEvent("jh_api_error", { detail: { message } }));
@@ -25,7 +23,6 @@ export class ApiClient {
 
     static setToken(token) {
         this.accessToken = token;
-        if (token) this._refreshFailed = false;
     }
 
     static getToken() {
@@ -44,10 +41,6 @@ export class ApiClient {
     }
 
     static async _handleUnauthorized(originalUrl, originalConfig) {
-        if (this._refreshFailed) {
-            window.dispatchEvent(new Event("jh_unauthorized"));
-            return null;
-        }
         if (!this._refreshPromise) {
             this._refreshPromise = (async () => {
                 const refreshRes = await fetch(`${API_BASE}/auth/refresh`, {
@@ -83,7 +76,6 @@ export class ApiClient {
             return await fetch(originalUrl, { ...originalConfig, headers: newHeaders });
         }
 
-        this._refreshFailed = true;
         window.dispatchEvent(new Event("jh_unauthorized"));
         return null;
     }

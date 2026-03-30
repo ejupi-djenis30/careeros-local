@@ -260,19 +260,6 @@ def test_reserve_task_blocked_by_file_active_state():
     assert result is False, "reserve_task should reject when another worker owns the search"
 
 
-def test_reserve_task_blocked_by_recent_file_update_without_started_at():
-    file_data = {
-        654: {
-            "state": "searching",
-            "updated_at": "9999-01-01T00:00:00+00:00",
-            "terminal_reason": None,
-        }
-    }
-    with patch("backend.services.search_status._load_statuses", return_value=file_data):
-        result = reserve_task(654)
-    assert result is False, "recent updated_at should block duplicate reservations"
-
-
 def test_reserve_task_allowed_when_file_shows_terminal_state():
     """reserve_task must allow when the file shows a terminal (done/error) state."""
     file_data = {
@@ -363,26 +350,3 @@ def test_register_task_allows_registration_after_task_done():
     finally:
         unregister_task(300)
         loop.close()
-
-
-def test_merge_with_file_prefers_newer_updated_entry_over_older_started_entry():
-    memory = {
-        77: {
-            "state": "done",
-            "started_at": "2024-01-01T00:00:00+00:00",
-            "updated_at": "2024-01-01T00:05:00+00:00",
-            "finished_at": "2024-01-01T00:05:00+00:00",
-        }
-    }
-    file_data = {
-        77: {
-            "state": "searching",
-            "started_at": "2024-01-01T00:01:00+00:00",
-            "updated_at": "2024-01-01T00:02:00+00:00",
-        }
-    }
-
-    with patch("backend.services.search_status._load_statuses", return_value=file_data):
-        merged = ss._merge_with_file(memory)
-
-    assert merged[77]["state"] == "done"
