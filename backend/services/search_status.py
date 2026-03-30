@@ -93,7 +93,7 @@ def _status_file_lock(timeout_seconds: float = 5.0) -> Iterator[None]:
                     import msvcrt
 
                     lock_handle.seek(0)
-                    msvcrt.locking(lock_handle.fileno(), msvcrt.LK_NBLCK, 1)
+                    msvcrt.locking(lock_handle.fileno(), msvcrt.LK_NBLCK, 1)  # type: ignore[attr-defined]
                 else:
                     _fcntl.flock(lock_handle.fileno(), _fcntl.LOCK_EX | _fcntl.LOCK_NB)
                 acquired = True
@@ -110,7 +110,7 @@ def _status_file_lock(timeout_seconds: float = 5.0) -> Iterator[None]:
                     import msvcrt
 
                     lock_handle.seek(0)
-                    msvcrt.locking(lock_handle.fileno(), msvcrt.LK_UNLCK, 1)
+                    msvcrt.locking(lock_handle.fileno(), msvcrt.LK_UNLCK, 1)  # type: ignore[attr-defined]
                 else:
                     _fcntl.flock(lock_handle.fileno(), _fcntl.LOCK_UN)
             except OSError:
