@@ -19,6 +19,15 @@ from typing import Any, Dict, List, Optional, Tuple
 
 logger = logging.getLogger(__name__)
 
+_INVALID_LISTING_ID_TOKENS = {
+    "none",
+    "null",
+    "unknown",
+    "n/a",
+    "na",
+    "undefined",
+}
+
 
 # ─── Skill taxonomy loader ────────────────────────────────────────────────────
 
@@ -340,10 +349,24 @@ def extract_company_name(listing) -> str:
     return ""
 
 
+def normalize_listing_identifier(value: Any) -> str:
+    """Return a clean listing identifier token or an empty string when unusable."""
+    if value is None:
+        return ""
+    token = str(value).strip()
+    if not token:
+        return ""
+    if token.lower() in _INVALID_LISTING_ID_TOKENS:
+        return ""
+    return token
+
+
 def listing_identity_key(listing) -> Optional[str]:
     """Return a ``platform:platform_id`` dedup key, or *None* if unavailable."""
     platform = getattr(listing, "source", None) or getattr(listing, "platform", None)
-    platform_id = getattr(listing, "id", None) or getattr(listing, "platform_job_id", None)
+    platform_id = normalize_listing_identifier(
+        getattr(listing, "id", None) or getattr(listing, "platform_job_id", None)
+    )
     if platform and platform_id:
         return f"{platform}:{platform_id}"
     return None

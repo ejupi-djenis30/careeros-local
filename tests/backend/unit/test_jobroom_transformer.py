@@ -66,6 +66,16 @@ def test_transform_job_data_invalid_coords_and_dates():
     assert listing.employment.workload_min == 100  # default
 
 
+def test_transform_job_data_missing_id_returns_none(caplog):
+    caplog.set_level("WARNING")
+    raw = {"jobContent": {"jobDescriptions": []}}
+
+    listing = transform_job_data(raw, "job_room")
+
+    assert listing is None
+    assert "Skipping JobRoom listing with missing id" in caplog.text
+
+
 def test_transform_job_data_logs_invalid_values(caplog):
     caplog.set_level("WARNING")
     raw = {

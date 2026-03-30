@@ -89,6 +89,31 @@ describe('SearchProgress', () => {
     );
   });
 
+  it('shows completion notice for no_jobs_after_dedup terminal reason', () => {
+    const status = {
+      state: 'done',
+      terminal_reason: 'no_jobs_after_dedup',
+      total_searches: 2,
+      current_search_index: 2,
+      current_query: '',
+      searches_generated: [],
+      jobs_new: 0,
+      jobs_duplicates: 4,
+      jobs_skipped: 0,
+      errors: 0,
+      log: [],
+    };
+
+    render(<ToastProvider><SearchProgress profileId="1" status={status} onStateChange={vi.fn()} onClear={vi.fn()} /></ToastProvider>);
+
+    expect(
+      screen.getByText('Search completed with notice: fetched jobs collapsed during runtime deduplication.')
+    ).toBeInTheDocument();
+    expect(screen.getByTestId('llm-debug-label')).toHaveTextContent(
+      'LLM_DEBUG state=done terminal_reason=no_jobs_after_dedup profile_id=1'
+    );
+  });
+
   it('does not show completion notice for fully completed runs', () => {
     const status = {
       state: 'done',

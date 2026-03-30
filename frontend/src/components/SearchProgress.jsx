@@ -122,6 +122,7 @@ export function SearchProgress({ profileId, status, onStateChange, onClear }) {
         no_queries: "Search completed with notice: no valid queries were generated.",
         no_results: "Search completed with notice: no jobs were found for the generated queries.",
         all_duplicates: "Search completed with notice: all found jobs were already present in history.",
+        no_jobs_after_dedup: "Search completed with notice: fetched jobs collapsed during runtime deduplication.",
         no_relevant_jobs: "Search completed with notice: no jobs passed relevance filtering.",
         no_jobs_after_structured_filters: "Search completed with notice: all fetched jobs were filtered out by structured constraints.",
     };

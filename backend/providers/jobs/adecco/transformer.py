@@ -45,7 +45,10 @@ def transform_job_data(
         # Detail data is the primary truth for description, but light_job has list metadata
         primary_source = detail_job if detail_job else light_job
 
-        job_id = light_job.get("jobId", "unknown")
+        job_id = str(light_job.get("jobId") or "").strip()
+        if not job_id:
+            logger.warning("Skipping Adecco listing with missing jobId")
+            return None
 
         # 1. Basic Info
         title = primary_source.get("jobName") or light_job.get("jobTitle") or "Unknown Title"

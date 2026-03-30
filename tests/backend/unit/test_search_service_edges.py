@@ -1054,6 +1054,17 @@ async def test_run_search_done_terminal_reason_all_duplicates(mock_service):
         patch.object(
             mock_service, "_generate_plan", new=AsyncMock(return_value=[{"query": "dev"}])
         ),
+        patch.object(
+            mock_service,
+            "_load_profile_dedup_history",
+            return_value={
+                "existing_keys": {"job_room:123"},
+                "existing_urls": set(),
+                "existing_fuzzy_keys": set(),
+                "existing_fuzzy_keys_strong": set(),
+                "applied_scraped_ids": set(),
+            },
+        ),
         patch.object(mock_service, "_search_and_produce", new=AsyncMock(return_value=(3, 3))),
         patch.object(
             mock_service, "_processing_consumer", new=AsyncMock(return_value=(0, 0, [], 0, 0))
@@ -1065,6 +1076,51 @@ async def test_run_search_done_terminal_reason_all_duplicates(mock_service):
 
     mock_update.assert_any_call(
         1, state="done", terminal_reason="all_duplicates", jobs_found=3, jobs_duplicates=3
+    )
+
+
+async def test_run_search_done_terminal_reason_no_jobs_after_dedup(mock_service):
+    profile = MagicMock(
+        id=1,
+        user_id=1,
+        cv_content=None,
+        role_description="dev",
+        search_strategy="",
+        latitude=None,
+        longitude=None,
+        cached_queries=None,
+        max_queries=5,
+        max_occupation_queries=None,
+        max_keyword_queries=None,
+    )
+    mock_service.profile_repo.get = MagicMock(return_value=profile)
+
+    with (
+        patch.object(
+            mock_service, "_generate_plan", new=AsyncMock(return_value=[{"query": "dev"}])
+        ),
+        patch.object(
+            mock_service,
+            "_load_profile_dedup_history",
+            return_value={
+                "existing_keys": set(),
+                "existing_urls": set(),
+                "existing_fuzzy_keys": set(),
+                "existing_fuzzy_keys_strong": set(),
+                "applied_scraped_ids": set(),
+            },
+        ),
+        patch.object(mock_service, "_search_and_produce", new=AsyncMock(return_value=(3, 3))),
+        patch.object(
+            mock_service, "_processing_consumer", new=AsyncMock(return_value=(0, 0, [], 0, 0))
+        ),
+        patch.object(mock_service, "_normalize_user_profile", new=AsyncMock(return_value={})),
+        patch("backend.services.search_service.update_status") as mock_update,
+    ):
+        await mock_service.run_search(1)
+
+    mock_update.assert_any_call(
+        1, state="done", terminal_reason="no_jobs_after_dedup", jobs_found=3, jobs_duplicates=3
     )
 
 

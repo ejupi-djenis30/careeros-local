@@ -31,10 +31,14 @@ def safe_int(value: Any, default: int = 0) -> int:
 
 def transform_job_data(
     raw: dict[str, Any], source_name: str, include_raw_data: bool = False
-) -> JobListing:
+) -> JobListing | None:
     """Transform job-room.ch response to generalized JobListing."""
     job = raw.get("jobAdvertisement", raw)
     content = job.get("jobContent", {})
+    job_id = str(job.get("id") or "").strip()
+    if not job_id:
+        logger.warning("Skipping JobRoom listing with missing id")
+        return None
 
     # Extract descriptions (multilingual)
     descriptions = []
@@ -205,16 +209,14 @@ def transform_job_data(
             logger.warning("Invalid job-room updatedTime %r: %s", job.get("updatedTime"), exc)
 
     return JobListing(
-        id=job.get("id", ""),
+        id=job_id,
         source=source_name,
         external_reference=job.get("externalReference"),
         stellennummer_egov=job.get("stellennummerEgov"),
         stellennummer_avam=job.get("stellennummerAvam"),
         title=title,
         descriptions=descriptions,
-        external_url=f"https://www.job-room.ch/job-search/{job.get('id')}"
-        if job.get("id")
-        else None,
+        external_url=f"https://www.job-room.ch/job-search/{job_id}",
         company=company,
         location=location,
         number_of_positions=safe_int(content.get("numberOfJobs"), 1),

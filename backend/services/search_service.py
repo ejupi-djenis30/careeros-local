@@ -35,6 +35,7 @@ from backend.services.search.listing_utils import (
     listing_identity_key,
     listing_is_remote,
     listing_url_token,
+    normalize_listing_identifier,
     normalized_text_token,
     parse_listing_publication_date,
     semantic_skills_score,
@@ -1514,6 +1515,11 @@ class SearchService:
 
         # Pre-load profile job history for incremental deduplication inside the producer.
         profile_history = self._load_profile_dedup_history(profile_id, user_id)
+        had_profile_history = bool(
+            profile_history.get("existing_keys")
+            or profile_history.get("existing_urls")
+            or profile_history.get("existing_fuzzy_keys_strong")
+        )
 
         # The producer streams unique-per-query batches; the consumer normalizes,
         # filters, analyzes, and immediately persists each batch as it arrives.
@@ -1574,18 +1580,35 @@ class SearchService:
 
         unique_total = total_found - total_duplicates
         if unique_total == 0:
-            add_log(profile_id, "All found jobs are already in profile history.")
-            add_log(
-                profile_id,
-                f"[LLM_DEBUG] state=done terminal_reason=all_duplicates profile_id={profile_id}",
-            )
-            update_status(
-                profile_id,
-                state="done",
-                terminal_reason="all_duplicates",
-                jobs_found=total_found,
-                jobs_duplicates=total_duplicates,
-            )
+            if had_profile_history:
+                add_log(profile_id, "All found jobs are already in profile history.")
+                add_log(
+                    profile_id,
+                    f"[LLM_DEBUG] state=done terminal_reason=all_duplicates profile_id={profile_id}",
+                )
+                update_status(
+                    profile_id,
+                    state="done",
+                    terminal_reason="all_duplicates",
+                    jobs_found=total_found,
+                    jobs_duplicates=total_duplicates,
+                )
+            else:
+                add_log(
+                    profile_id,
+                    "All fetched jobs collapsed during runtime deduplication (no prior profile history).",
+                )
+                add_log(
+                    profile_id,
+                    f"[LLM_DEBUG] state=done terminal_reason=no_jobs_after_dedup profile_id={profile_id}",
+                )
+                update_status(
+                    profile_id,
+                    state="done",
+                    terminal_reason="no_jobs_after_dedup",
+                    jobs_found=total_found,
+                    jobs_duplicates=total_duplicates,
+                )
             return
 
         if not analyzed_pairs:
@@ -2057,6 +2080,11 @@ class SearchService:
         existing_fuzzy_keys = {
             listing_fuzzy_key(row) for row in existing_identifiers if listing_fuzzy_key(row)
         }
+        existing_fuzzy_keys_strong = {
+            listing_fuzzy_key(row)
+            for row in existing_identifiers
+            if listing_fuzzy_key(row) and (listing_identity_key(row) or listing_url_token(row))
+        }
 
         # Batch-load existing ScrapedJob records for "applied elsewhere" check.
         # Groups by platform and uses a single IN query per provider, avoiding N+1 DB roundtrips.
@@ -2084,7 +2112,9 @@ class SearchService:
 
         for listing in all_jobs:
             platform = getattr(listing, "source", None) or getattr(listing, "platform", "unknown")
-            platform_id = str(getattr(listing, "id", "") or getattr(listing, "platform_job_id", ""))
+            platform_id = normalize_listing_identifier(
+                getattr(listing, "id", "") or getattr(listing, "platform_job_id", "")
+            )
 
             key = listing_identity_key(listing)
             url = listing_url_token(listing)
@@ -2096,7 +2126,12 @@ class SearchService:
                 continue
 
             if fuzzy_key and (fuzzy_key in existing_fuzzy_keys or fuzzy_key in seen_fuzzy_keys):
-                continue
+                has_anchor = bool(key or url)
+                has_strong_fuzzy_match = (
+                    fuzzy_key in existing_fuzzy_keys_strong or fuzzy_key in seen_fuzzy_keys
+                )
+                if has_anchor and has_strong_fuzzy_match:
+                    continue
 
             # Tier 4: description fingerprint — catches cross-provider reposts where
             # different platform IDs, URLs, and titles are used for the same body text.
@@ -2115,7 +2150,9 @@ class SearchService:
             if url:
                 existing_urls.add(url)
             if fuzzy_key:
-                seen_fuzzy_keys.add(fuzzy_key)
+                existing_fuzzy_keys.add(fuzzy_key)
+                if key or url or desc_fp:
+                    seen_fuzzy_keys.add(fuzzy_key)
             if desc_fp:
                 seen_desc_fingerprints.add(desc_fp)
 
@@ -2521,6 +2558,11 @@ class SearchService:
         applied_scraped_ids = (
             self.job_repo.get_applied_scraped_job_ids(user_id) if user_id is not None else set()
         )
+        existing_fuzzy_keys_strong = {
+            listing_fuzzy_key(r)
+            for r in existing_identifiers
+            if listing_fuzzy_key(r) and (listing_identity_key(r) or listing_url_token(r))
+        }
         return {
             "existing_keys": {
                 listing_identity_key(r) for r in existing_identifiers if listing_identity_key(r)
@@ -2531,6 +2573,7 @@ class SearchService:
             "existing_fuzzy_keys": {
                 listing_fuzzy_key(r) for r in existing_identifiers if listing_fuzzy_key(r)
             },
+            "existing_fuzzy_keys_strong": existing_fuzzy_keys_strong,
             "applied_scraped_ids": applied_scraped_ids,
         }
 
@@ -2566,7 +2609,7 @@ class SearchService:
         # Safe in asyncio: check+add is always synchronous (no await between).
         seen_identity_keys: set = set()
         seen_url_tokens: set = set()
-        seen_fuzzy_keys: set = set()
+        seen_fuzzy_keys_strong: set = set()
         seen_desc_fingerprints: set = set()
         active_query_indices: set[int] = set()
         completed_query_indices: set[int] = set()
@@ -2575,6 +2618,7 @@ class SearchService:
         existing_keys: set = profile_history["existing_keys"]
         existing_urls: set = profile_history["existing_urls"]
         existing_fuzzy_keys: set = profile_history["existing_fuzzy_keys"]
+        existing_fuzzy_keys_strong: set = profile_history.get("existing_fuzzy_keys_strong", set())
         applied_scraped_ids: set = profile_history["applied_scraped_ids"]
 
         async def execute_and_push(idx: int, search: dict):
@@ -2745,8 +2789,16 @@ class SearchService:
                             or (url in existing_urls and key not in existing_keys)
                         ):
                             continue
-                        if fuzzy and (fuzzy in seen_fuzzy_keys or fuzzy in existing_fuzzy_keys):
-                            continue
+                        if fuzzy and (
+                            fuzzy in seen_fuzzy_keys_strong or fuzzy in existing_fuzzy_keys
+                        ):
+                            has_anchor = bool(key or url)
+                            has_strong_fuzzy_match = (
+                                fuzzy in seen_fuzzy_keys_strong
+                                or fuzzy in existing_fuzzy_keys_strong
+                            )
+                            if has_anchor and has_strong_fuzzy_match:
+                                continue
                         if desc_fp and desc_fp in seen_desc_fingerprints:
                             continue
 
@@ -2757,8 +2809,10 @@ class SearchService:
                             seen_url_tokens.add(url)
                             existing_urls.add(url)
                         if fuzzy:
-                            seen_fuzzy_keys.add(fuzzy)
                             existing_fuzzy_keys.add(fuzzy)
+                            if key or url or desc_fp:
+                                seen_fuzzy_keys_strong.add(fuzzy)
+                                existing_fuzzy_keys_strong.add(fuzzy)
                         if desc_fp:
                             seen_desc_fingerprints.add(desc_fp)
 

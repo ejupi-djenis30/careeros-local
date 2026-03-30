@@ -390,6 +390,15 @@ def test_transform_country_code_normalization():
     assert job_de.location.country_code == "DE"
 
 
+def test_transform_job_data_missing_job_id_returns_none(caplog):
+    caplog.set_level("WARNING")
+
+    listing = transform_job_data({"jobTitle": "Software Engineer"}, None, "adecco")
+
+    assert listing is None
+    assert "Skipping Adecco listing with missing jobId" in caplog.text
+
+
 @pytest.mark.asyncio
 async def test_adecco_search_with_radius(adept_provider):
     """Test Adecco search with location and radius filter."""

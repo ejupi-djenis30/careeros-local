@@ -16,6 +16,7 @@ from backend.services.search.listing_utils import (
     listing_fuzzy_key,
     listing_identity_key,
     listing_is_remote,
+    normalize_listing_identifier,
     normalized_text_token,
     parse_listing_publication_date,
     skills_overlap,
@@ -166,6 +167,20 @@ class TestListingIdentityKey:
     def test_missing_id_returns_none(self):
         listing = self._make(source="jobroom")  # no id or platform_job_id
         assert listing_identity_key(listing) is None
+
+    def test_sentinel_identifier_returns_none(self):
+        listing = self._make(source="swissdevjobs", id_="None")
+        assert listing_identity_key(listing) is None
+
+
+class TestNormalizeListingIdentifier:
+    def test_normalizes_valid_identifier(self):
+        assert normalize_listing_identifier("  abc-123  ") == "abc-123"
+
+    def test_rejects_sentinel_identifier(self):
+        assert normalize_listing_identifier("unknown") == ""
+        assert normalize_listing_identifier("None") == ""
+        assert normalize_listing_identifier("  ") == ""
 
 
 # ─── listing_fuzzy_key ───────────────────────────────────────────────────────

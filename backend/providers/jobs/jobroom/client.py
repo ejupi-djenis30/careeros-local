@@ -166,7 +166,10 @@ class JobRoomProvider(BaseJobProvider):
             else:
                 raise ResponseParseError(self.name, f"Unexpected response format: {type(data)}")
 
-            items = [transform_job_data(job, self.name, self._include_raw_data) for job in jobs]
+            transformed = [
+                transform_job_data(job, self.name, self._include_raw_data) for job in jobs
+            ]
+            items = [item for item in transformed if item is not None]
 
             elapsed_ms = int((time.time() - start_time) * 1000)
 
@@ -209,7 +212,15 @@ class JobRoomProvider(BaseJobProvider):
             )
 
             data = response.json()
-            return transform_job_data({"jobAdvertisement": data}, self.name, self._include_raw_data)
+            listing = transform_job_data(
+                {"jobAdvertisement": data}, self.name, self._include_raw_data
+            )
+            if listing is None:
+                raise ResponseParseError(
+                    self.name,
+                    f"Could not transform job-room details for id={job_id}",
+                )
+            return listing
 
         except Exception as e:
             from backend.providers.jobs.exceptions import format_provider_error
