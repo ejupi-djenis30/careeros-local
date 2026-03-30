@@ -5,6 +5,7 @@ import { JobService } from '../services/jobs';
 import { SearchService } from '../services/search';
 
 let mockActiveProfileIds = [];
+let mockStatusHeartbeat = 0;
 
 vi.mock('../services/jobs', () => ({
   JobService: {
@@ -14,7 +15,10 @@ vi.mock('../services/jobs', () => ({
 }));
 
 vi.mock('../context/SearchContext', () => ({
-  useSearchContext: () => ({ activeProfileIds: mockActiveProfileIds })
+  useSearchContext: () => ({
+    activeProfileIds: mockActiveProfileIds,
+    statusHeartbeat: mockStatusHeartbeat,
+  })
 }));
 
 vi.mock('../services/search', () => ({
@@ -47,6 +51,7 @@ describe('useJobs', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockActiveProfileIds = [];
+    mockStatusHeartbeat = 0;
     JobService.getAll.mockResolvedValue(mockPagination);
     SearchService.getProfiles.mockResolvedValue(mockProfiles);
   });
@@ -220,23 +225,16 @@ describe('useJobs', () => {
     consoleSpy.mockRestore();
   });
 
-  it('polls fetchJobs periodically while a search is active', async () => {
-    vi.useFakeTimers({ shouldAdvanceTime: true });
-    try {
-        mockActiveProfileIds = ['1'];
-        renderHook(() => useJobs());
-        await waitFor(() => expect(JobService.getAll).toHaveBeenCalledTimes(1));
+  it('refreshes jobs when search status heartbeat advances during an active search', async () => {
+    mockActiveProfileIds = ['1'];
+    const { rerender } = renderHook(() => useJobs());
+    await waitFor(() => expect(JobService.getAll).toHaveBeenCalledTimes(1));
 
-        JobService.getAll.mockClear();
+    JobService.getAll.mockClear();
+    mockStatusHeartbeat = 1;
+    rerender();
 
-        await act(async () => {
-            vi.advanceTimersByTime(5500);
-        });
-
-        await waitFor(() => expect(JobService.getAll).toHaveBeenCalledTimes(1));
-    } finally {
-        vi.useRealTimers();
-    }
+    await waitFor(() => expect(JobService.getAll).toHaveBeenCalledTimes(1));
   });
 
   it('uses the idle polling interval when no searches are active', async () => {

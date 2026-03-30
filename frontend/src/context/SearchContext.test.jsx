@@ -17,11 +17,12 @@ vi.mock('./AuthContext', () => ({
 }));
 
 function Consumer() {
-  const { activeProfileIds, searchStatuses } = useSearchContext();
+  const { activeProfileIds, searchStatuses, statusHeartbeat } = useSearchContext();
   return (
     <>
       <div data-testid="active-ids">{activeProfileIds.join(',')}</div>
       <div data-testid="status-state">{searchStatuses['1']?.state || 'none'}</div>
+      <div data-testid="status-heartbeat">{statusHeartbeat}</div>
     </>
   );
 }
@@ -61,6 +62,7 @@ describe('SearchContext', () => {
     await waitFor(() => {
       expect(screen.getByTestId('active-ids')).toHaveTextContent('1');
       expect(screen.getByTestId('status-state')).toHaveTextContent('searching');
+      expect(screen.getByTestId('status-heartbeat')).toHaveTextContent('1');
     });
 
     expect(mockGetAllStatuses).toHaveBeenCalledTimes(1);
@@ -74,6 +76,7 @@ describe('SearchContext', () => {
     await waitFor(() => {
       expect(screen.getByTestId('active-ids')).toHaveTextContent('');
       expect(screen.getByTestId('status-state')).toHaveTextContent('done');
+      expect(screen.getByTestId('status-heartbeat')).toHaveTextContent('2');
     });
 
     expect(mockGetAllStatuses).toHaveBeenCalledTimes(2);
@@ -177,6 +180,9 @@ describe('SearchContext — ghost PID TTL', () => {
   });
 
   it('locally added pid is dropped after TTL when server never confirms it', async () => {
+    const listener = vi.fn();
+    window.addEventListener('jh_api_error', listener);
+
     // Server never returns pid 42
     mockGetAllStatuses.mockResolvedValue({});
 
@@ -208,6 +214,16 @@ describe('SearchContext — ghost PID TTL', () => {
     await waitFor(() => {
       expect(getByTestId('active-ids').textContent).toBe('');
     });
+
+    expect(listener).toHaveBeenCalledWith(
+      expect.objectContaining({
+        detail: expect.objectContaining({
+          message: 'Search 42 did not start successfully. Please try again.'
+        })
+      })
+    );
+
+    window.removeEventListener('jh_api_error', listener);
   });
 
   it('locally added pid is retained permanently once server confirms it', async () => {

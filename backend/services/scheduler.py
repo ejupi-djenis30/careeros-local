@@ -36,25 +36,27 @@ async def _run_scheduled_search(profile_id: int):
 
     # Respect the same reservation lifecycle as manual searches so that a
     # scheduled run cannot overlap with a manually-triggered run on any worker.
-    if not reserve_task(profile_id):
+    reservation_token = reserve_task(profile_id, return_token=True)
+    if not reservation_token:
         logger.info(
             "[Scheduler] Skipping scheduled search for profile %d — a search is already running",
             profile_id,
         )
         return
 
-    db: Session = SessionLocal()
+    db: Session | None = None
     try:
+        db = SessionLocal()
         profile = db.query(SearchProfile).filter(SearchProfile.id == profile_id).first()
         if not profile:
             logger.warning(f"[Scheduler] Profile {profile_id} not found, removing job")
-            release_task(profile_id)
+            release_task(profile_id, reservation_token)
             remove_schedule(profile_id)
             return
 
         if not profile.schedule_enabled:
             logger.info(f"[Scheduler] Profile {profile_id} schedule disabled, skipping")
-            release_task(profile_id)
+            release_task(profile_id, reservation_token)
             return
 
         # Update last run time
@@ -64,15 +66,16 @@ async def _run_scheduled_search(profile_id: int):
         # Run the search workflow — run_search calls register_task internally,
         # which moves the slot from reserved → active.
         search_service = get_search_service(db)
-        await search_service.run_search(profile_id)
+        await search_service.run_search(profile_id, reservation_token=reservation_token)
 
         logger.info(f"[Scheduler] Completed scheduled search for profile {profile_id}")
     except Exception as e:
         # Safety net: release the reservation if run_search never registered the task.
-        release_task(profile_id)
+        release_task(profile_id, reservation_token)
         logger.error(f"[Scheduler] Error running scheduled search for profile {profile_id}: {e}")
     finally:
-        db.close()
+        if db is not None:
+            db.close()
 
 
 def add_schedule(profile_id: int, interval_hours: int):

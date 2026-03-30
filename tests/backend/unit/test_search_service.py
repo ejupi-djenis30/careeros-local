@@ -748,3 +748,59 @@ async def test_run_analysis_batches_does_not_increment_errors_for_circuit_open(s
 
     assert result == []
     mock_increment_errors.assert_not_called()
+
+
+# ─── Structured filter normalization-status gate ─────────────────────────────
+
+
+def test_passes_structured_filters_skips_norm_filters_for_failed_job(search_service):
+    """A job with normalization_status='failed' must NOT be dropped by normalization-based
+    filters even when SEARCH_ENABLE_NORMALIZATION_MATCHING is enabled and the profile
+    is fully normalized. The expensive MATCH step handles it instead."""
+    job = MagicMock()
+    # status='failed' means normalization was attempted but the LLM returned empty
+    job._normalized_job_data = {
+        "status": "failed",
+        "domain": None,
+        "seniority": None,
+        "required_languages": [],
+        "workload_min": None,
+        "workload_max": None,
+        "salary_max_chf": None,
+        "employment_mode": None,
+    }
+    job.language_skills = []
+    job.employment = MagicMock(workload_min=80, workload_max=100)
+    job.location = MagicMock(coordinates=None)
+
+    preferences = {
+        "preferred_languages": [],
+        "remote_only": False,
+        "salary_min_chf": None,
+        "workload_min": None,
+        "workload_max": None,
+        "hard_max_distance_km": None,
+    }
+    # Fully normalized profile with IT domain — would drop a non-IT job if filters ran
+    profile_dict = {
+        "latitude": None,
+        "longitude": None,
+        "workload_filter": None,
+        "profile_normalization": {
+            "domain": "it",
+            "seniority": "senior",
+            "experience_years": 8,
+            "qualification_level": "master",
+            "open_to_unrelated": False,
+        },
+    }
+
+    with (
+        patch("backend.services.search_service.settings") as mock_settings,
+        patch("backend.services.search_service.add_log"),
+    ):
+        mock_settings.SEARCH_ENABLE_NORMALIZATION_MATCHING = True
+        mock_settings.REMOTE_KEYWORDS = []
+        ok, reason = search_service._passes_structured_filters(job, preferences, profile_dict)
+
+    assert ok, f"Failed job should pass structured filter but got: {reason}"

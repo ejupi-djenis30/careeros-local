@@ -73,6 +73,7 @@ from backend.services.search_status import (
     get_status,
     init_status,
     register_task,
+    release_task,
     unregister_task,
     update_status,
 )
@@ -175,6 +176,8 @@ class SearchService:
             company_name=company_name,
             location_str=location_str,
         )
+        application_url = self._listing_application_field(listing, "form_url")
+        application_email = self._listing_application_field(listing, "email")
 
         created = False
         if not existing_sj:
@@ -188,12 +191,8 @@ class SearchService:
                 external_url=getattr(listing, "external_url", None)
                 or getattr(listing, "url", None)
                 or platform_id,
-                application_url=getattr(listing, "application", None).form_url
-                if getattr(listing, "application", None)
-                else None,
-                application_email=getattr(listing, "application", None).email
-                if getattr(listing, "application", None)
-                else None,
+                application_url=application_url,
+                application_email=application_email,
                 workload=workload_str or None,
                 publication_date=pub_date,
                 source_query=getattr(listing, "_source_query", "Unknown"),
@@ -221,12 +220,8 @@ class SearchService:
             refresh_fields = {
                 "description": clean_html_tags(desc_text) if desc_text else None,
                 "location": location_str or None,
-                "application_url": getattr(listing, "application", None).form_url
-                if getattr(listing, "application", None)
-                else None,
-                "application_email": getattr(listing, "application", None).email
-                if getattr(listing, "application", None)
-                else None,
+                "application_url": application_url,
+                "application_email": application_email,
                 "workload": workload_str or None,
                 "publication_date": pub_date,
                 "source_query": getattr(listing, "_source_query", None),
@@ -243,15 +238,26 @@ class SearchService:
 
         setattr(listing, "_scraped_job_id", existing_sj.id)
         setattr(listing, "_normalized_job_data", existing_sj.normalized_job_data)
+        setattr(listing, "_catalog_persisted", True)
+        setattr(listing, "_catalog_persist_error", None)
         return existing_sj, created
 
     async def _persist_scraped_job_catalog(self, profile_id: int, jobs: list) -> tuple[int, int]:
+        """Persist jobs into the shared catalog before downstream normalization/analysis.
+
+        Partial success is intentional: successfully persisted jobs continue through the
+        pipeline in the current run, while failed jobs are tagged and excluded from the
+        downstream queue so the catalog-first invariant is preserved.
+        """
         if not jobs:
             return 0, 0
 
         created = 0
         updated = 0
         failed = 0
+        for listing in jobs:
+            setattr(listing, "_catalog_persisted", False)
+            setattr(listing, "_catalog_persist_error", None)
         try:
             for listing in jobs:
                 savepoint = self.db.begin_nested()
@@ -265,6 +271,8 @@ class SearchService:
                 except Exception as exc:
                     failed += 1
                     savepoint.rollback()
+                    setattr(listing, "_catalog_persisted", False)
+                    setattr(listing, "_catalog_persist_error", str(exc))
                     logger.warning(
                         "Failed to persist scraped job catalog entry for profile %s: %s",
                         profile_id,
@@ -289,6 +297,15 @@ class SearchService:
             f"{created} created, {updated} refreshed" + (f", {failed} failed" if failed else ""),
         )
         return created, updated
+
+    @staticmethod
+    def _listing_application_field(listing: Any, field_name: str) -> Any:
+        application = getattr(listing, "application", None)
+        if application is None:
+            return None
+        if isinstance(application, dict):
+            return application.get(field_name)
+        return getattr(application, field_name, None)
 
     async def _normalize_persisted_jobs(self, profile_id: int, jobs: List[Any]) -> int:
         if not jobs:
@@ -353,7 +370,12 @@ class SearchService:
         upgraded = 0
         for scraped_job, normalized in zip(candidate_records, normalized_rows):
             if not normalized:
-                # Batch failed for this job — leave normalization_status unchanged
+                # LLM batch returned empty for this job — mark it explicitly so it
+                # isn't silently re-queued as pending on every subsequent search run.
+                scraped_job.normalization_status = "failed"
+                fail_meta = scraped_job.normalized_metadata or {}
+                fail_meta["normalization_failed_at"] = datetime.now(timezone.utc).isoformat()
+                scraped_job.normalized_metadata = fail_meta
                 continue
             scraped_job.normalization_status = "normalized"
             scraped_job.normalized_at = datetime.now(timezone.utc)
@@ -652,11 +674,15 @@ class SearchService:
                 return False, "distance_limit"
 
         # ── Normalization-based deterministic matching ──────────────────────
-        # Only active when the feature flag is enabled AND the candidate profile
-        # has been successfully normalized (non-empty profile_normalization dict).
+        # Only active when the feature flag is enabled AND:
+        #   • the candidate profile has been successfully normalized, AND
+        #   • the job itself has a confirmed `normalized` status.
+        # Jobs with status `failed`, `pending`, `provider_bootstrap`, or missing
+        # data are passed through here — the expensive MATCH step will assess them.
         if settings.SEARCH_ENABLE_NORMALIZATION_MATCHING:
             profile_norm = profile_dict.get("profile_normalization") or {}
-            if profile_norm:
+            norm_status = normalized.get("status")
+            if profile_norm and norm_status == "normalized":
                 preference_signals = profile_dict.get("preference_signals") or {}
                 ok, reason = self._passes_normalization_filters(
                     normalized, profile_norm, preference_signals
@@ -1271,9 +1297,18 @@ class SearchService:
         profile_id: int,
         force_regenerate_cv_summary: bool = False,
         force_regenerate_queries: bool = False,
+        reservation_token: str | None = None,
     ):
         """Run the full search workflow for a saved profile."""
-        register_task(profile_id, asyncio.current_task())
+        if not register_task(
+            profile_id, asyncio.current_task(), reservation_token=reservation_token
+        ):
+            logger.warning(
+                "Aborting search startup for profile %d because task activation was rejected",
+                profile_id,
+            )
+            release_task(profile_id, reservation_token)
+            return
 
         # Ensure fresh LLM providers (reload config)
         llm_service.clear_provider_cache()
@@ -2753,8 +2788,23 @@ class SearchService:
                         add_log(profile_id, f"Persistence error for streamed batch: {persist_err}")
                         return
 
+                    persisted_batch = [
+                        job for job in new_unique if getattr(job, "_catalog_persisted", False)
+                    ]
+                    failed_catalog_count = len(new_unique) - len(persisted_batch)
+                    if failed_catalog_count:
+                        self._increment_status_errors(profile_id, failed_catalog_count)
+                        add_log(
+                            profile_id,
+                            "Skipped "
+                            f"{failed_catalog_count} job(s) because catalog persistence failed before analysis.",
+                        )
+
+                    if not persisted_batch:
+                        return
+
                     # ── Set _applied_elsewhere flag (scraped_job_id is now assigned) ──
-                    for job in new_unique:
+                    for job in persisted_batch:
                         scraped_id = getattr(job, "_scraped_job_id", None)
                         setattr(
                             job,
@@ -2763,7 +2813,7 @@ class SearchService:
                         )
 
                     # Push batch to the consumer for normalization + filtering + analysis.
-                    await job_queue.put(new_unique)
+                    await job_queue.put(persisted_batch)
                 finally:
                     if query_started:
                         active_query_indices.discard(query_idx)

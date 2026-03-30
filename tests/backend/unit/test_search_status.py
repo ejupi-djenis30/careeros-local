@@ -1,3 +1,4 @@
+from contextlib import nullcontext
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -125,11 +126,116 @@ def test_task_reservation_lifecycle():
     assert reserve_task(123) is True
 
 
+def test_tokenized_reservation_requires_matching_token_for_registration_and_release():
+    token = reserve_task(321, return_token=True)
+    mock_task = MagicMock()
+
+    assert isinstance(token, str)
+    assert register_task(321, mock_task, reservation_token="wrong-token") is False
+    assert release_task(321, reservation_token="wrong-token") is False
+    assert register_task(321, mock_task, reservation_token=token) is True
+
+
 def test_save_statuses_logs_warning_on_write_failure(caplog):
     caplog.set_level("WARNING")
     with patch("backend.services.search_status.open", side_effect=OSError("disk full")):
         init_status(1)
     assert "Failed to persist search statuses" in caplog.text
+
+
+def test_save_statuses_merges_with_newer_file_entry():
+    init_status(1)
+    with ss._lock:
+        snapshot = dict(ss._statuses)
+
+    file_entry = {
+        1: {**snapshot[1], "state": "searching", "updated_at": "9999-01-01T00:00:00+00:00"},
+        2: {
+            "state": "done",
+            "started_at": "2024-01-01T00:00:00+00:00",
+            "updated_at": "2024-01-01T00:00:01+00:00",
+        },
+    }
+
+    with (
+        patch("backend.services.search_status._load_statuses", return_value=file_entry),
+        patch("backend.services.search_status._write_status_payload") as mock_write,
+    ):
+        ss._save_statuses(force=True, statuses_snapshot=snapshot)
+
+    written_payload = mock_write.call_args.args[0]
+    assert written_payload[1]["state"] == "searching"
+    assert written_payload[2]["state"] == "done"
+
+
+def test_add_log_persists_every_update_without_debounce_skip():
+    init_status(1)
+
+    with (
+        patch("backend.services.search_status._load_statuses", return_value={}),
+        patch("backend.services.search_status._write_status_payload") as mock_write,
+    ):
+        add_log(1, "First persisted log")
+        add_log(1, "Second persisted log")
+
+    assert mock_write.call_count == 2
+    final_payload = mock_write.call_args.args[0]
+    assert final_payload[1]["log"][-1]["message"] == "Second persisted log"
+
+
+def test_reserve_task_persists_shared_reserved_entry():
+    with (
+        patch("backend.services.search_status._status_file_lock", return_value=nullcontext()),
+        patch("backend.services.search_status._load_statuses", return_value={}),
+        patch("backend.services.search_status._write_status_payload") as mock_write,
+    ):
+        token = reserve_task(808, return_token=True)
+
+    payload = mock_write.call_args.args[0]
+    assert isinstance(token, str)
+    assert payload[808]["state"] == "reserved"
+    assert payload[808]["reservation_token"] == token
+
+
+def test_release_task_removes_shared_reserved_entry():
+    token = reserve_task(909, return_token=True)
+    file_data = {
+        909: {
+            "state": "reserved",
+            "started_at": "9999-01-01T00:00:00+00:00",
+            "updated_at": "9999-01-01T00:00:00+00:00",
+            "reservation_token": token,
+        }
+    }
+
+    with (
+        patch("backend.services.search_status._status_file_lock", return_value=nullcontext()),
+        patch("backend.services.search_status._load_statuses", return_value=file_data),
+        patch("backend.services.search_status._write_status_payload") as mock_write,
+    ):
+        assert release_task(909, reservation_token=token) is True
+
+    written_payload = mock_write.call_args.args[0]
+    assert 909 not in written_payload
+
+
+def test_reserve_task_allows_when_file_shows_stale_reserved_state():
+    file_data = {
+        1001: {
+            "state": "reserved",
+            "started_at": "2000-01-01T00:00:00+00:00",
+            "updated_at": "2000-01-01T00:00:00+00:00",
+            "reservation_token": "old-token",
+        }
+    }
+    with (
+        patch("backend.services.search_status._status_file_lock", return_value=nullcontext()),
+        patch("backend.services.search_status._load_statuses", return_value=file_data),
+        patch("backend.services.search_status._write_status_payload"),
+    ):
+        result = reserve_task(1001)
+    assert result is True
+    release_task(1001)
 
 
 # ── Cross-worker reserve_task tests ─────────────────────────────────────

@@ -154,7 +154,7 @@ def test_search_routes_full():
             patch("fastapi.BackgroundTasks.add_task"),
             patch("backend.api.routes.search.cancel_task"),
         ):
-            mock_repo.get.return_value = MagicMock(user_id=1)  # Authorized
+            mock_repo.get.return_value = MagicMock(user_id=1, id=1)  # Authorized
             mock_repo.update.return_value = MagicMock(id=1)
             res_auth = client.post("/api/v1/search/start", json=payload)
             assert res_auth.status_code == 200
@@ -260,6 +260,7 @@ def test_run_search_background_wrapper():
         # Check bg task added
         bg_func = bg_tasks.add_task.call_args[0][0]
         _ = bg_tasks.add_task.call_args[0][1]
+        assert isinstance(bg_tasks.add_task.call_args[0][4], str)
 
         # Execute the wrapper manually
         bg_args = bg_tasks.add_task.call_args[0]
@@ -267,6 +268,63 @@ def test_run_search_background_wrapper():
 
         mock_session_local.assert_called()
         mock_fresh_db.close.assert_called()
+
+
+def test_run_search_background_wrapper_releases_reservation_when_session_creation_fails():
+    import asyncio
+
+    from backend.api.routes.search import start_search
+
+    bg_tasks = MagicMock()
+    mock_app_db = MagicMock()
+    mock_request = MagicMock()
+
+    class FakeStartReq:
+        id = None
+        name: str = "test"
+        role_description: str = "dev"
+        location_filter: str = "us"
+        search_strategy: str = "broad"
+        max_queries: int = 5
+        posted_within_days: int = 7
+        max_distance: int = 50
+        schedule_interval_hours: int = 24
+        force_regenerate_cv_summary = False
+        force_regenerate_queries = False
+
+        def model_dump(self, exclude_unset=True):
+            return {
+                "id": self.id,
+                "name": self.name,
+                "role_description": self.role_description,
+                "location_filter": self.location_filter,
+                "search_strategy": self.search_strategy,
+                "max_queries": self.max_queries,
+                "posted_within_days": self.posted_within_days,
+                "max_distance": self.max_distance,
+                "schedule_interval_hours": self.schedule_interval_hours,
+                "force_regenerate_cv_summary": False,
+                "force_regenerate_queries": False,
+            }
+
+    with (
+        patch("backend.api.routes.search.ProfileRepository") as MockRepo,
+        patch("backend.api.routes.search.SessionLocal", side_effect=RuntimeError("db down")),
+        patch("backend.api.routes.search.get_search_service"),
+        patch("backend.api.routes.search.release_task") as mock_release,
+    ):
+        mock_repo = MagicMock()
+        mock_repo.create.return_value = MagicMock(id=101)
+        MockRepo.return_value = mock_repo
+
+        asyncio.run(start_search(mock_request, FakeStartReq(), bg_tasks, mock_app_db, 1))
+
+        bg_func = bg_tasks.add_task.call_args[0][0]
+        bg_args = bg_tasks.add_task.call_args[0]
+        asyncio.run(bg_func(*bg_args[1:]))
+
+    reservation_token = bg_args[4]
+    mock_release.assert_called_once_with(101, reservation_token)
 
 
 def test_deps_full():

@@ -1,10 +1,9 @@
+import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
 from backend.services.search_service import SearchService, get_search_service
-
-pytestmark = pytest.mark.asyncio
 
 
 @pytest.fixture
@@ -600,7 +599,38 @@ async def test_persist_scraped_job_catalog_commits_before_analysis(mock_service)
     assert updated == 0
     mock_session.commit.assert_called_once()
     assert getattr(listing, "_scraped_job_id", None) == 321
+    assert getattr(listing, "_catalog_persisted", None) is True
     assert getattr(listing, "_normalized_job_data", {}).get("status") == "provider_bootstrap"
+
+
+async def test_persist_scraped_job_catalog_marks_failed_entries_without_queueing_them(mock_service):
+    listing_ok = MagicMock()
+    listing_fail = MagicMock()
+
+    mock_session = mock_service.job_repo.db
+    mock_session.begin_nested.return_value = MagicMock()
+
+    scraped_job = MagicMock(id=321, normalized_job_data={"status": "provider_bootstrap"})
+
+    def side_effect(listing):
+        if listing is listing_ok:
+            setattr(listing, "_catalog_persisted", True)
+            setattr(listing, "_catalog_persist_error", None)
+            setattr(listing, "_scraped_job_id", 321)
+            setattr(listing, "_normalized_job_data", {"status": "provider_bootstrap"})
+            return scraped_job, True
+        raise RuntimeError("catalog failure")
+
+    with patch.object(mock_service, "_upsert_scraped_job", side_effect=side_effect):
+        created, updated = await mock_service._persist_scraped_job_catalog(
+            1, [listing_ok, listing_fail]
+        )
+
+    assert created == 1
+    assert updated == 0
+    assert getattr(listing_ok, "_catalog_persisted", None) is True
+    assert getattr(listing_fail, "_catalog_persisted", None) is False
+    assert "catalog failure" in getattr(listing_fail, "_catalog_persist_error", "")
 
 
 async def test_normalize_persisted_jobs_upgrades_bootstrap_rows(mock_service):
@@ -1398,6 +1428,103 @@ def test_upsert_scraped_job_updates_existing_record():
     assert existing_sj.location == "Bern"
 
 
+def test_upsert_scraped_job_handles_partial_application_payloads():
+    service = _make_mock_service_with_real_upsert()
+    db = service.db
+    db.query.return_value.filter.return_value.first.return_value = None
+    savepoint_mock = MagicMock()
+    db.begin_nested.return_value = savepoint_mock
+
+    listing = _make_listing()
+    listing.application = {"email": "jobs@example.com"}
+
+    with (
+        patch("backend.services.search_service.bootstrap_normalized_job_data", return_value={}),
+        patch(
+            "backend.services.search_service.extract_listing_description_text", return_value="desc"
+        ),
+        patch("backend.services.search_service.extract_company_name", return_value="Acme"),
+        patch(
+            "backend.services.search_service.extract_listing_location_string", return_value="Zurich"
+        ),
+        patch(
+            "backend.services.search_service.extract_listing_workload_string", return_value="80-100"
+        ),
+        patch("backend.services.search_service.parse_listing_publication_date", return_value=None),
+    ):
+        service._upsert_scraped_job(listing)
+
+    saved_job = db.add.call_args.args[0]
+    assert saved_job.application_url is None
+    assert saved_job.application_email == "jobs@example.com"
+
+
+async def test_search_and_produce_queues_only_catalog_persisted_jobs(mock_service):
+    from types import SimpleNamespace
+
+    profile = SimpleNamespace(
+        location_filter="",
+        posted_within_days=7,
+        max_distance=50,
+        workload_filter="",
+        latitude=None,
+        longitude=None,
+        contract_type="",
+    )
+    search = {"query": "dev", "domain": "it", "type": "keyword", "language": "en"}
+    provider = MagicMock()
+    provider.throttle_delay = 0.0
+    provider.capabilities = SimpleNamespace(max_page_size=50)
+
+    job1 = SimpleNamespace(source="job_room", id="1", external_url="u1", title="Dev 1")
+    job2 = SimpleNamespace(source="job_room", id="2", external_url="u2", title="Dev 2")
+
+    provider.search = AsyncMock(
+        return_value=SimpleNamespace(items=[job1, job2], total_pages=1, total_count=2)
+    )
+    mock_service.providers = {"job_room": provider}
+    job_queue = asyncio.Queue()
+
+    async def mark_catalog_state(profile_id, jobs):
+        jobs[0]._catalog_persisted = True
+        jobs[0]._scraped_job_id = 11
+        jobs[0]._normalized_job_data = {"status": "provider_bootstrap"}
+        jobs[1]._catalog_persisted = False
+        jobs[1]._catalog_persist_error = "failed"
+        return 1, 0
+
+    with (
+        patch("backend.services.search_service.get_status", return_value={"state": "searching"}),
+        patch("backend.services.search_service.route_provider_names", return_value=["job_room"]),
+        patch("backend.services.search_service.build_search_request", return_value=MagicMock()),
+        patch.object(mock_service, "_persist_scraped_job_catalog", new=mark_catalog_state),
+        patch.object(mock_service, "_increment_status_errors") as mock_errors,
+        patch("backend.services.search_service.update_status"),
+        patch("backend.services.search_service.add_log"),
+    ):
+        total_found, total_duplicates = await mock_service._search_and_produce(
+            1,
+            profile,
+            [search],
+            {"job_room": MagicMock()},
+            job_queue,
+            {
+                "existing_keys": set(),
+                "existing_urls": set(),
+                "existing_fuzzy_keys": set(),
+                "applied_scraped_ids": set(),
+            },
+        )
+
+    queued_batch = await job_queue.get()
+    sentinel = await job_queue.get()
+    assert total_found == 2
+    assert total_duplicates == 0
+    assert [getattr(job, "id", None) for job in queued_batch] == ["1"]
+    assert sentinel is None
+    mock_errors.assert_called_once_with(1, 1)
+
+
 async def test_run_search_sets_error_when_all_persistence_fails_after_analysis(mock_service):
     profile = MagicMock(
         id=1,
@@ -1541,3 +1668,33 @@ async def test_analyze_and_save_match_payload_includes_all_normalized_fields(moc
     # Original fields still present
     assert nd["domain"] == "general"
     assert nd["required_skills"] == ["cleaning equipment"]
+
+
+async def test_normalize_persisted_jobs_marks_failed_when_batch_returns_empty(mock_service):
+    """When LLM returns {} for a job, normalization_status must become 'failed', not stay pending."""
+    listing = MagicMock()
+    listing._scraped_job_id = 777
+
+    scraped_job = MagicMock()
+    scraped_job.id = 777
+    scraped_job.title = "Warehouse Worker"
+    scraped_job.company = "Logistics Co"
+    scraped_job.location = "Zurich"
+    scraped_job.workload = "100%"
+    scraped_job.description = "Pack and ship."
+    scraped_job.normalization_status = "provider_bootstrap"
+    scraped_job.normalized_metadata = None
+
+    mock_session = mock_service.job_repo.db
+    mock_session.query.return_value.filter.return_value.all.return_value = [scraped_job]
+
+    with patch(
+        "backend.services.search_service.llm_service.normalize_job_batch",
+        new=AsyncMock(return_value=[{}]),  # empty dict = batch failure for this job
+    ):
+        upgraded = await mock_service._normalize_persisted_jobs(1, [listing])
+
+    assert upgraded == 0
+    assert scraped_job.normalization_status == "failed"
+    assert scraped_job.normalized_metadata is not None
+    assert "normalization_failed_at" in scraped_job.normalized_metadata

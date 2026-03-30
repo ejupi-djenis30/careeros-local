@@ -178,6 +178,11 @@ class TestBuildProvider:
         with pytest.raises(ValueError, match="API key"):
             _build_provider(cfg)
 
+    def test_missing_api_key_error_includes_step_context(self):
+        cfg = self._base_cfg(provider="openai", api_key="")
+        with pytest.raises(ValueError, match="step 'match'.*LLM_MATCH_API_KEY or LLM_API_KEY"):
+            _build_provider(cfg, step="match")
+
     def test_ollama_does_not_require_api_key(self):
         with patch("backend.providers.llm.factory.settings") as mock_settings:
             mock_settings.OLLAMA_BASE_URL = "http://localhost:11434"

@@ -14,6 +14,7 @@ export function ProgressPage() {
   const { showToast } = useToast();
   const [visibleProfileId, setVisibleProfileId] = React.useState(singlePid);
   const [profiles, setProfiles] = React.useState({});
+  const [profilesError, setProfilesError] = React.useState('');
 
   useEffect(() => {
     SearchService.getProfiles()
@@ -23,10 +24,12 @@ export function ProgressPage() {
             mapping[p.id] = p.name || p.role_description || `Search #${p.id}`;
         });
         setProfiles(mapping);
+        setProfilesError('');
       })
       .catch((error) => {
         console.error('Failed to load profiles for progress labels:', error);
         showToast('Failed to load profile names for active searches.');
+        setProfilesError('Profile names are temporarily unavailable.');
       });
   }, [showToast]);
 
@@ -111,6 +114,12 @@ export function ProgressPage() {
               </button>
             );
           })}
+        </div>
+      )}
+
+      {profilesError && (
+        <div className="alert alert-warning py-2 px-3 mb-3" role="alert">
+          {profilesError}
         </div>
       )}
 

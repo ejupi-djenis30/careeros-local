@@ -25,7 +25,7 @@ const DEFAULT_PAGINATION = {
 const PAGE_SIZE = 20;
 
 export function useJobs(logout) {
-  const { activeProfileIds } = useSearchContext();
+  const { activeProfileIds, statusHeartbeat } = useSearchContext();
   const { showToast } = useToast();
   const [jobs, setJobs] = useState([]);
   const [filtersState, setFiltersState] = useState(DEFAULT_FILTERS);
@@ -117,8 +117,9 @@ export function useJobs(logout) {
         return;
       }
       console.error('Failed to load search profiles', error);
+      showToast(error.message || 'Failed to load search profiles.');
     }
-  }, [logout]);
+  }, [logout, showToast]);
 
   useEffect(() => {
     fetchProfiles();
@@ -128,11 +129,30 @@ export function useJobs(logout) {
     fetchJobs();
   }, [fetchJobs]);
 
-  // OPT-3: Background polling intervals - adjusted based on activity
   useEffect(() => {
-    const isSearching = activeProfileIds.length > 0;
-    const intervalTime = isSearching ? 5000 : 30000; // 5s if searching, 30s if idle
+    return () => {
+      if (fetchAbortControllerRef.current) {
+        fetchAbortControllerRef.current.abort();
+      }
+    };
+  }, []);
 
+  // Active searches refresh job data via SearchContext's status polling heartbeat.
+  useEffect(() => {
+    if (activeProfileIds.length === 0 || statusHeartbeat === 0) {
+      return;
+    }
+
+    fetchJobs(true);
+  }, [activeProfileIds.length, statusHeartbeat, fetchJobs]);
+
+  // Idle fallback polling when no searches are active.
+  useEffect(() => {
+    if (activeProfileIds.length > 0) {
+      return undefined;
+    }
+
+    const intervalTime = 30000;
     const interval = setInterval(() => {
       fetchJobs(true);
     }, intervalTime);
@@ -164,6 +184,7 @@ export function useJobs(logout) {
     } catch (error) {
       if (error.message === "UNAUTHORIZED" && logout) { logout(); return; }
       console.error("Failed to update job", error);
+      showToast(error.message || 'Failed to update job state.');
     } finally {
       setPendingAppliedJobIds(prev => prev.filter(id => id !== jobId));
     }
@@ -202,6 +223,7 @@ export function useJobs(logout) {
           } catch (undoError) {
             if (undoError.message === 'UNAUTHORIZED' && logout) { logout(); return; }
             console.error('Failed to undo dismiss', undoError);
+            showToast(undoError.message || 'Failed to undo dismiss.');
           }
         }
       }, 5000);
@@ -209,6 +231,7 @@ export function useJobs(logout) {
     } catch (error) {
       if (error.message === "UNAUTHORIZED" && logout) { logout(); return; }
       console.error("Failed to dismiss job", error);
+      showToast(error.message || 'Failed to dismiss job.');
     }
   };
 
@@ -220,6 +243,7 @@ export function useJobs(logout) {
     } catch (error) {
       if (error.message === "UNAUTHORIZED" && logout) { logout(); return; }
       console.error("Failed to reactivate job", error);
+      showToast(error.message || 'Failed to reactivate job.');
     }
   };
 

@@ -108,13 +108,13 @@ describe('useLocationInput', () => {
 
     await act(async () => {
       await userEvent.type(screen.getByTestId('input'), 'Zu');
-      vi.advanceTimersByTime(1100);
+      vi.advanceTimersByTime(900);
     });
 
     expect(spy).not.toHaveBeenCalled();
   });
 
-  it('fetches OSM suggestions after 1 s debounce', async () => {
+  it('fetches OSM suggestions after 800 ms debounce', async () => {
     const osmData = [
       {
         place_id: 42,
@@ -166,6 +166,57 @@ describe('useLocationInput', () => {
         expect.stringContaining('location suggestions'),
       );
     });
+  });
+
+  // ── preserved coordinates during typing ────────────────────────────────────
+
+  it('preserves last confirmed coords while user types a new query', async () => {
+    const osmData = [
+      {
+        place_id: 10,
+        display_name: 'Zurich, Switzerland',
+        lat: '47.3769',
+        lon: '8.5417',
+        address: { city: 'Zurich', state: 'Switzerland' },
+      },
+    ];
+    mockFetchSuccess(osmData);
+    const onLocationChange = vi.fn();
+    renderHook('', onLocationChange);
+
+    // Select Zurich from suggestions
+    await act(async () => {
+      await userEvent.type(screen.getByTestId('input'), 'Zur');
+      vi.advanceTimersByTime(900);
+    });
+    await waitFor(() => expect(screen.getByTestId('suggestion-10')).toBeTruthy());
+    await act(async () => { screen.getByTestId('suggestion-10').click(); });
+
+    // Now user types additional text (modifying the selection)
+    onLocationChange.mockClear();
+    await act(async () => {
+      await userEvent.type(screen.getByTestId('input'), ' Ba');
+      vi.advanceTimersByTime(900);
+    });
+
+    // onLocationChange must have been called with the preserved lat/lon (not null)
+    const callsWithNullLat = onLocationChange.mock.calls.filter(([arg]) => arg.lat === null);
+    expect(callsWithNullLat).toHaveLength(0);
+    const lastCall = onLocationChange.mock.calls.at(-1);
+    expect(lastCall[0].lat).toBe(47.3769);
+    expect(lastCall[0].lon).toBe(8.5417);
+  });
+
+  it('nulls coordinates immediately when field is cleared', async () => {
+    const onLocationChange = vi.fn();
+    renderHook('Zurich', onLocationChange);
+
+    await act(async () => {
+      await userEvent.clear(screen.getByTestId('input'));
+    });
+
+    expect(onLocationChange).toHaveBeenLastCalledWith({ name: '', lat: null, lon: null });
+    expect(screen.getByTestId('show-suggestions').textContent).toBe('false');
   });
 
   // ── handleSelect ────────────────────────────────────────────────────────────

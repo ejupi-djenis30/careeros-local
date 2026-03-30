@@ -69,11 +69,27 @@ jobs:
         run: |
           alembic upgrade head
 
+      - name: Validate Alembic round-trip (SQLite)
+        env:
+          SECRET_KEY: ci-test-secret-key-not-for-production
+          DATABASE_URL: sqlite:///./migration_test.db
+        run: |
+          alembic downgrade -1
+          alembic upgrade head
+
       - name: Validate Alembic migrations (PostgreSQL)
         env:
           SECRET_KEY: ci-test-secret-key-not-for-production
           DATABASE_URL: postgresql://testuser:testpass@localhost:5432/testdb
         run: |
+          alembic upgrade head
+
+      - name: Validate Alembic round-trip (PostgreSQL)
+        env:
+          SECRET_KEY: ci-test-secret-key-not-for-production
+          DATABASE_URL: postgresql://testuser:testpass@localhost:5432/testdb
+        run: |
+          alembic downgrade -1
           alembic upgrade head
 
       - name: Run tests (SQLite)

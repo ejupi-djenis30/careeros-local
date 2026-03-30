@@ -1,3 +1,4 @@
+import asyncio
 import logging
 from datetime import datetime
 
@@ -70,6 +71,20 @@ async def start_search(
 ):
     profile_repo = ProfileRepository(db)
 
+    active_states = {"reserved", "generating", "searching", "analyzing"}
+    user_statuses = get_all_statuses(user_id=user_id)
+    user_active_count = sum(
+        1 for status in user_statuses.values() if (status or {}).get("state") in active_states
+    )
+    if user_active_count >= settings.MAX_CONCURRENT_SEARCHES_PER_USER:
+        raise HTTPException(
+            status_code=429,
+            detail=(
+                "Too many active searches. "
+                f"Maximum allowed is {settings.MAX_CONCURRENT_SEARCHES_PER_USER}."
+            ),
+        )
+
     # If it's a manual search from the form (no ID or explicit history flag)
     # create a new History entry.
     # Otherwise if it has an ID, use that (re-run).
@@ -103,7 +118,8 @@ async def start_search(
         # Reserve the task slot BEFORE modifying the profile to avoid leaving
         # the profile in an inconsistent state (is_stopped=False) if the slot
         # is already taken by a concurrent run.
-        if not reserve_task(profile.id):
+        reservation_token = reserve_task(profile.id, return_token=True)
+        if not reservation_token:
             raise HTTPException(
                 status_code=409, detail="A search is already running for this profile"
             )
@@ -131,7 +147,8 @@ async def start_search(
         profile_data["is_stopped"] = False
         profile = profile_repo.create(profile_data)
 
-        if not reserve_task(profile.id):
+        reservation_token = reserve_task(profile.id, return_token=True)
+        if not reservation_token:
             raise HTTPException(
                 status_code=409, detail="A search is already running for this profile"
             )
@@ -142,29 +159,46 @@ async def start_search(
 
     # The FastAPI dependency session `db` is closed as soon as this HTTP route returns,
     # so the background task needs its own fresh session to avoid DetachedInstanceError.
-    async def run_search_background(_profile_id: int, _force_cv: bool, _force_q: bool):
-        fresh_db = SessionLocal()
+    async def run_search_background(
+        _profile_id: int,
+        _force_cv: bool,
+        _force_q: bool,
+        _reservation_token: str,
+    ):
+        fresh_db = None
         try:
+            fresh_db = SessionLocal()
             svc = get_search_service(fresh_db)
             await svc.run_search(
                 _profile_id,
                 force_regenerate_cv_summary=_force_cv,
                 force_regenerate_queries=_force_q,
+                reservation_token=_reservation_token,
             )
+        except asyncio.CancelledError:
+            release_task(_profile_id, _reservation_token)
+            raise
         except Exception:
             # Safety net: if run_search never called register_task (e.g. get_search_service
             # raised), the reservation slot is still held. Release it so future searches
             # for this profile are not permanently blocked.
             # If register_task was already called, release_task is a no-op.
-            release_task(_profile_id)
+            release_task(_profile_id, _reservation_token)
             logger.exception("Background search failed unexpectedly for profile %d", _profile_id)
         finally:
-            fresh_db.close()
+            if fresh_db is not None:
+                fresh_db.close()
 
     try:
-        background_tasks.add_task(run_search_background, profile.id, force_regen_cv, force_regen_q)
+        background_tasks.add_task(
+            run_search_background,
+            profile.id,
+            force_regen_cv,
+            force_regen_q,
+            reservation_token,
+        )
     except Exception:
-        release_task(profile.id)
+        release_task(profile.id, reservation_token)
         raise
 
     return {"message": "Search started", "profile_id": profile.id}

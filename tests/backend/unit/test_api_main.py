@@ -19,6 +19,27 @@ def test_health():
         assert data["database"] == "connected"
 
 
+def test_health_returns_503_when_database_unavailable():
+    with patch("backend.main._check_db_status", return_value="unavailable"):
+        response = client.get("/api/v1/health")
+    assert response.status_code == 503
+    assert response.json()["status"] == "degraded"
+
+
+def test_health_live_ignores_database_state():
+    with patch("backend.main._check_db_status", return_value="unavailable"):
+        response = client.get("/api/v1/health/live")
+    assert response.status_code == 200
+    assert response.json() == {"status": "ok"}
+
+
+def test_check_db_status_handles_session_creation_failure():
+    from backend.main import _check_db_status
+
+    with patch("backend.db.base.SessionLocal", side_effect=RuntimeError("cannot connect")):
+        assert _check_db_status() == "unavailable"
+
+
 def test_root_db_success():
     with patch("backend.db.base.SessionLocal") as mock_session:
         # Mock successful execute

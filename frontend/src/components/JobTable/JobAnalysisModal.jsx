@@ -37,7 +37,7 @@ export function JobAnalysisModal({ job, onClose }) {
                 <div
                     className="text-secondary section-text text-pre-wrap-lh"
                 >
-                    {job.affinity_analysis}
+                    {job.affinity_analysis || 'No analysis available for this job yet.'}
                 </div>
                 <div className="mt-5 pt-3 border-top border-white-10 d-flex justify-content-between align-items-center">
                     <ScoreBadge score={Math.round(job.affinity_score)} />
