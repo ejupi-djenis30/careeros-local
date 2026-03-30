@@ -260,6 +260,7 @@ def test_run_search_background_wrapper():
         # Check bg task added
         bg_func = bg_tasks.add_task.call_args[0][0]
         _ = bg_tasks.add_task.call_args[0][1]
+        assert isinstance(bg_tasks.add_task.call_args[0][4], str)
 
         # Execute the wrapper manually
         bg_args = bg_tasks.add_task.call_args[0]

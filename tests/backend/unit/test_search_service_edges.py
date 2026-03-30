@@ -1541,3 +1541,33 @@ async def test_analyze_and_save_match_payload_includes_all_normalized_fields(moc
     # Original fields still present
     assert nd["domain"] == "general"
     assert nd["required_skills"] == ["cleaning equipment"]
+
+
+async def test_normalize_persisted_jobs_marks_failed_when_batch_returns_empty(mock_service):
+    """When LLM returns {} for a job, normalization_status must become 'failed', not stay pending."""
+    listing = MagicMock()
+    listing._scraped_job_id = 777
+
+    scraped_job = MagicMock()
+    scraped_job.id = 777
+    scraped_job.title = "Warehouse Worker"
+    scraped_job.company = "Logistics Co"
+    scraped_job.location = "Zurich"
+    scraped_job.workload = "100%"
+    scraped_job.description = "Pack and ship."
+    scraped_job.normalization_status = "provider_bootstrap"
+    scraped_job.normalized_metadata = None
+
+    mock_session = mock_service.job_repo.db
+    mock_session.query.return_value.filter.return_value.all.return_value = [scraped_job]
+
+    with patch(
+        "backend.services.search_service.llm_service.normalize_job_batch",
+        new=AsyncMock(return_value=[{}]),  # empty dict = batch failure for this job
+    ):
+        upgraded = await mock_service._normalize_persisted_jobs(1, [listing])
+
+    assert upgraded == 0
+    assert scraped_job.normalization_status == "failed"
+    assert scraped_job.normalized_metadata is not None
+    assert "normalization_failed_at" in scraped_job.normalized_metadata

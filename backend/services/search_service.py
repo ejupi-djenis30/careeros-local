@@ -73,6 +73,7 @@ from backend.services.search_status import (
     get_status,
     init_status,
     register_task,
+    release_task,
     unregister_task,
     update_status,
 )
@@ -353,7 +354,12 @@ class SearchService:
         upgraded = 0
         for scraped_job, normalized in zip(candidate_records, normalized_rows):
             if not normalized:
-                # Batch failed for this job — leave normalization_status unchanged
+                # LLM batch returned empty for this job — mark it explicitly so it
+                # isn't silently re-queued as pending on every subsequent search run.
+                scraped_job.normalization_status = "failed"
+                fail_meta = scraped_job.normalized_metadata or {}
+                fail_meta["normalization_failed_at"] = datetime.now(timezone.utc).isoformat()
+                scraped_job.normalized_metadata = fail_meta
                 continue
             scraped_job.normalization_status = "normalized"
             scraped_job.normalized_at = datetime.now(timezone.utc)
@@ -652,11 +658,15 @@ class SearchService:
                 return False, "distance_limit"
 
         # ── Normalization-based deterministic matching ──────────────────────
-        # Only active when the feature flag is enabled AND the candidate profile
-        # has been successfully normalized (non-empty profile_normalization dict).
+        # Only active when the feature flag is enabled AND:
+        #   • the candidate profile has been successfully normalized, AND
+        #   • the job itself has a confirmed `normalized` status.
+        # Jobs with status `failed`, `pending`, `provider_bootstrap`, or missing
+        # data are passed through here — the expensive MATCH step will assess them.
         if settings.SEARCH_ENABLE_NORMALIZATION_MATCHING:
             profile_norm = profile_dict.get("profile_normalization") or {}
-            if profile_norm:
+            norm_status = normalized.get("status")
+            if profile_norm and norm_status == "normalized":
                 preference_signals = profile_dict.get("preference_signals") or {}
                 ok, reason = self._passes_normalization_filters(
                     normalized, profile_norm, preference_signals
@@ -1271,9 +1281,18 @@ class SearchService:
         profile_id: int,
         force_regenerate_cv_summary: bool = False,
         force_regenerate_queries: bool = False,
+        reservation_token: str | None = None,
     ):
         """Run the full search workflow for a saved profile."""
-        register_task(profile_id, asyncio.current_task())
+        if not register_task(
+            profile_id, asyncio.current_task(), reservation_token=reservation_token
+        ):
+            logger.warning(
+                "Aborting search startup for profile %d because task activation was rejected",
+                profile_id,
+            )
+            release_task(profile_id, reservation_token)
+            return
 
         # Ensure fresh LLM providers (reload config)
         llm_service.clear_provider_cache()

@@ -8,15 +8,28 @@ import logging
 import os
 import threading
 import time
+import uuid
+from contextlib import contextmanager
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Iterator, List, Optional
 
 logger = logging.getLogger(__name__)
+
+# Platform-safe fcntl accessor: mypy on Windows doesn't have fcntl, so expose
+# a typed-any module variable that the lock code can use without static
+# attribute errors.
+try:
+    import fcntl  # type: ignore
+
+    _fcntl: Any = fcntl
+except Exception:
+    _fcntl: Any = None  # type: ignore
 
 _lock = threading.Lock()
 _DATA_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "data")
 os.makedirs(_DATA_DIR, exist_ok=True)
 _STATUS_FILE = os.path.join(_DATA_DIR, "job_hunter_statuses.json")
+_STATUS_LOCK_FILE = os.path.join(_DATA_DIR, "job_hunter_statuses.lock")
 
 _VALID_STATUS_KEYS = {
     "user_id",
@@ -36,6 +49,7 @@ _VALID_STATUS_KEYS = {
     "log",
     "started_at",
     "finished_at",
+    "updated_at",
     "error",
     "jobs_analyzed",
     "jobs_analyze_total",
@@ -64,6 +78,86 @@ def _load_statuses() -> Dict[int, Dict[str, Any]]:
     return {}
 
 
+@contextmanager
+def _status_file_lock(timeout_seconds: float = 5.0) -> Iterator[None]:
+    lock_handle = open(_STATUS_LOCK_FILE, "a+b")
+    acquired = False
+    start = time.time()
+    try:
+        while not acquired:
+            try:
+                if os.name == "nt":
+                    import msvcrt
+
+                    lock_handle.seek(0)
+                    msvcrt.locking(lock_handle.fileno(), msvcrt.LK_NBLCK, 1)
+                else:
+                    _fcntl.flock(lock_handle.fileno(), _fcntl.LOCK_EX | _fcntl.LOCK_NB)
+                acquired = True
+            except OSError:
+                if (time.time() - start) >= timeout_seconds:
+                    raise TimeoutError("Timed out waiting for search status file lock")
+                time.sleep(0.05)
+
+        yield
+    finally:
+        if acquired:
+            try:
+                if os.name == "nt":
+                    import msvcrt
+
+                    lock_handle.seek(0)
+                    msvcrt.locking(lock_handle.fileno(), msvcrt.LK_UNLCK, 1)
+                else:
+                    _fcntl.flock(lock_handle.fileno(), _fcntl.LOCK_UN)
+            except OSError:
+                pass
+        lock_handle.close()
+
+
+def _entry_timestamp(entry: Dict[str, Any] | None) -> str:
+    if not entry:
+        return ""
+    return str(entry.get("updated_at") or entry.get("finished_at") or entry.get("started_at") or "")
+
+
+def _merge_status_maps(
+    existing: Dict[int, Dict[str, Any]],
+    incoming: Dict[int, Dict[str, Any]],
+    removed_ids: set[int] | None = None,
+) -> Dict[int, Dict[str, Any]]:
+    removed = removed_ids or set()
+    merged: Dict[int, Dict[str, Any]] = {}
+    all_ids = (set(existing.keys()) | set(incoming.keys())) - removed
+
+    for profile_id in all_ids:
+        current = existing.get(profile_id)
+        new_entry = incoming.get(profile_id)
+        if current is None:
+            merged[profile_id] = new_entry  # type: ignore[assignment]
+            continue
+        if new_entry is None:
+            merged[profile_id] = current
+            continue
+        merged[profile_id] = (
+            new_entry if _entry_timestamp(new_entry) >= _entry_timestamp(current) else current
+        )
+
+    return merged
+
+
+def _write_status_payload(payload: Dict[int, Dict[str, Any]]):
+    temp_file = f"{_STATUS_FILE}.{os.getpid()}.{threading.get_ident()}.tmp"
+    with open(temp_file, "w", encoding="utf-8") as f:
+        json.dump(payload, f)
+    os.replace(temp_file, _STATUS_FILE)
+
+
+def _touch_status_entry(entry: Dict[str, Any]) -> Dict[str, Any]:
+    entry["updated_at"] = datetime.now(timezone.utc).isoformat()
+    return entry
+
+
 _last_save_time = 0.0
 _SAVE_DEBOUNCE_INTERVAL = 1.5
 _RESERVATION_TTL_SECONDS = 30.0
@@ -78,10 +172,33 @@ def _save_statuses(force: bool = False, statuses_snapshot: Dict[int, Dict[str, A
     payload = statuses_snapshot if statuses_snapshot is not None else _statuses
 
     try:
-        temp_file = f"{_STATUS_FILE}.tmp"
-        with open(temp_file, "w") as f:
-            json.dump(payload, f)
-        os.replace(temp_file, _STATUS_FILE)
+        with _status_file_lock():
+            file_payload = _load_statuses()
+            merged = _merge_status_maps(file_payload, payload)
+            _write_status_payload(merged)
+        _last_save_time = now
+    except Exception as exc:
+        logger.warning("Failed to persist search statuses to %s: %s", _STATUS_FILE, exc)
+
+
+def _save_statuses_with_removals(
+    *,
+    force: bool = False,
+    statuses_snapshot: Dict[int, Dict[str, Any]] | None = None,
+    removed_ids: set[int] | None = None,
+):
+    global _last_save_time
+    now = time.time()
+    if not force and (now - _last_save_time) < _SAVE_DEBOUNCE_INTERVAL:
+        return
+
+    payload = statuses_snapshot if statuses_snapshot is not None else _statuses
+
+    try:
+        with _status_file_lock():
+            file_payload = _load_statuses()
+            merged = _merge_status_maps(file_payload, payload, removed_ids=removed_ids)
+            _write_status_payload(merged)
         _last_save_time = now
     except Exception as exc:
         logger.warning("Failed to persist search statuses to %s: %s", _STATUS_FILE, exc)
@@ -89,7 +206,7 @@ def _save_statuses(force: bool = False, statuses_snapshot: Dict[int, Dict[str, A
 
 _statuses: Dict[int, Dict[str, Any]] = _load_statuses()
 _active_tasks: Dict[int, Any] = {}  # profile_id -> asyncio.Task
-_reserved_tasks: Dict[int, float] = {}
+_reserved_tasks: Dict[int, Dict[str, Any]] = {}
 # ISO-8601 timestamp captured once when this worker process starts.
 # Used in _merge_with_file to distinguish live cross-worker search entries
 # (started after this boot) from stale entries left in the file by a prior
@@ -101,8 +218,8 @@ def _cleanup_stale_reservations(now: float | None = None):
     ts = now if now is not None else time.time()
     stale = [
         profile_id
-        for profile_id, reserved_at in _reserved_tasks.items()
-        if (ts - reserved_at) > _RESERVATION_TTL_SECONDS
+        for profile_id, reservation in _reserved_tasks.items()
+        if (ts - float(reservation.get("reserved_at", 0.0))) > _RESERVATION_TTL_SECONDS
     ]
     for profile_id in stale:
         _reserved_tasks.pop(profile_id, None)
@@ -154,6 +271,7 @@ def init_status(
             "started_at": datetime.now(timezone.utc).isoformat(),
             "finished_at": None,
         }
+        _touch_status_entry(_statuses[profile_id])
         snapshot = dict(_statuses)
     _save_statuses(force=True, statuses_snapshot=snapshot)
 
@@ -173,6 +291,7 @@ def add_log(profile_id: int, message: str):
             # Keep last 100 entries
             if len(s["log"]) > 100:
                 s["log"] = s["log"][-100:]
+            _touch_status_entry(s)
             snapshot = dict(_statuses)
     if snapshot is not None:
         _save_statuses(statuses_snapshot=snapshot)
@@ -195,6 +314,7 @@ def update_status(profile_id: int, **kwargs):
             is_terminal = s.get("state") in _TERMINAL_STATES
             if is_terminal and not s.get("finished_at"):
                 s["finished_at"] = datetime.now(timezone.utc).isoformat()
+            _touch_status_entry(s)
             snapshot = dict(_statuses)
             should_force = is_terminal
     if snapshot is not None:
@@ -313,10 +433,12 @@ def clear_status(profile_id: int):
             _statuses.pop(profile_id, None)
             snapshot = dict(_statuses)
     if snapshot is not None:
-        _save_statuses(force=True, statuses_snapshot=snapshot)
+        _save_statuses_with_removals(
+            force=True, statuses_snapshot=snapshot, removed_ids={profile_id}
+        )
 
 
-def register_task(profile_id: int, task: Any):
+def register_task(profile_id: int, task: Any, reservation_token: str | None = None):
     """Register an active search task.
 
     Guards against a second worker overwriting an already-active task for the
@@ -324,7 +446,20 @@ def register_task(profile_id: int, task: Any):
     live task the call is a no-op and returns False so the caller can abort.
     """
     with _lock:
-        _reserved_tasks.pop(profile_id, None)
+        reservation = _reserved_tasks.get(profile_id)
+        if reservation_token is not None:
+            if reservation is None:
+                logger.warning(
+                    "register_task: profile %d has no matching reservation token; refusing activation",
+                    profile_id,
+                )
+                return False
+            if reservation.get("token") != reservation_token:
+                logger.warning(
+                    "register_task: profile %d reservation token mismatch; refusing activation",
+                    profile_id,
+                )
+                return False
         existing = _active_tasks.get(profile_id)
         if existing is not None:
             # Check if the existing task is still alive before refusing.
@@ -337,6 +472,7 @@ def register_task(profile_id: int, task: Any):
                     return False
             except Exception:
                 pass  # Non-asyncio task object — treat as replaced
+                _reserved_tasks.pop(profile_id, None)
         _active_tasks[profile_id] = task
         return True
 
@@ -354,7 +490,9 @@ def get_all_active_tasks() -> dict:
         return dict(_active_tasks)
 
 
-def reserve_task(profile_id: int) -> bool:
+def reserve_task(
+    profile_id: int, *, return_token: bool = False, reservation_token: str | None = None
+) -> bool | str:
     """Reserve a profile before the background task is registered.
 
     Cross-worker safe: in addition to checking the in-process task registries
@@ -394,14 +532,24 @@ def reserve_task(profile_id: int) -> bool:
                 "reserve_task: failed to read status file for cross-worker check: %s", exc
             )
 
-        _reserved_tasks[profile_id] = time.time()
-        return True
+        token = reservation_token or uuid.uuid4().hex
+        _reserved_tasks[profile_id] = {
+            "reserved_at": time.time(),
+            "token": token,
+        }
+        return token if return_token else True
 
 
-def release_task(profile_id: int):
+def release_task(profile_id: int, reservation_token: str | None = None) -> bool:
     """Release a previously reserved profile slot."""
     with _lock:
+        reservation = _reserved_tasks.get(profile_id)
+        if reservation is None:
+            return False
+        if reservation_token is not None and reservation.get("token") != reservation_token:
+            return False
         _reserved_tasks.pop(profile_id, None)
+        return True
 
 
 def cancel_task(profile_id: int):

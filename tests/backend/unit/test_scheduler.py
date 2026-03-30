@@ -85,13 +85,13 @@ async def test_run_scheduled_search_success():
     with (
         patch("backend.services.scheduler.SessionLocal", return_value=mock_db),
         patch("backend.services.scheduler.get_search_service", return_value=mock_search_service),
-        patch("backend.services.scheduler.reserve_task", return_value=True) as mock_reserve,
+        patch("backend.services.scheduler.reserve_task", return_value="token-1") as mock_reserve,
         patch("backend.services.scheduler.release_task") as mock_release,
     ):
         await _run_scheduled_search(1)
 
-        mock_reserve.assert_called_once_with(1)
-        mock_search_service.run_search.assert_awaited_once_with(1)
+        mock_reserve.assert_called_once_with(1, return_token=True)
+        mock_search_service.run_search.assert_awaited_once_with(1, reservation_token="token-1")
         mock_db.commit.assert_called_once()
         assert mock_profile.last_scheduled_run is not None
         # release_task should NOT be called on a successful run (run_search handles task lifecycle)
@@ -119,13 +119,13 @@ async def test_run_scheduled_search_profile_not_found():
 
     with (
         patch("backend.services.scheduler.SessionLocal", return_value=mock_db),
-        patch("backend.services.scheduler.reserve_task", return_value=True),
+        patch("backend.services.scheduler.reserve_task", return_value="token-2"),
         patch("backend.services.scheduler.release_task") as mock_release,
         patch("backend.services.scheduler.remove_schedule") as mock_remove,
     ):
         await _run_scheduled_search(1)
         mock_remove.assert_called_once_with(1)
-        mock_release.assert_called_once_with(1)
+        mock_release.assert_called_once_with(1, "token-2")
 
 
 @pytest.mark.asyncio
@@ -139,13 +139,13 @@ async def test_run_scheduled_search_disabled():
 
     with (
         patch("backend.services.scheduler.SessionLocal", return_value=mock_db),
-        patch("backend.services.scheduler.reserve_task", return_value=True),
+        patch("backend.services.scheduler.reserve_task", return_value="token-3"),
         patch("backend.services.scheduler.release_task") as mock_release,
         patch("backend.services.scheduler.get_search_service", return_value=mock_search_service),
     ):
         await _run_scheduled_search(1)
         mock_search_service.run_search.assert_not_awaited()
-        mock_release.assert_called_once_with(1)
+        mock_release.assert_called_once_with(1, "token-3")
 
 
 def test_start_scheduler():
@@ -186,14 +186,14 @@ async def test_run_scheduled_search_exception():
 
     with (
         patch("backend.services.scheduler.SessionLocal", return_value=mock_db),
-        patch("backend.services.scheduler.reserve_task", return_value=True),
+        patch("backend.services.scheduler.reserve_task", return_value="token-4"),
         patch("backend.services.scheduler.release_task") as mock_release,
         patch("backend.services.scheduler.get_search_service", side_effect=Exception("DB Failure")),
     ):
         await _run_scheduled_search(1)
         mock_db.close.assert_called_once()
         # Safety net: release_task must be called when run_search never registered the task
-        mock_release.assert_called_once_with(1)
+        mock_release.assert_called_once_with(1, "token-4")
 
 
 def test_get_all_schedules_no_db_and_specific_user():

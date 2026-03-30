@@ -25,7 +25,7 @@ const DEFAULT_PAGINATION = {
 const PAGE_SIZE = 20;
 
 export function useJobs(logout) {
-  const { activeProfileIds } = useSearchContext();
+  const { activeProfileIds, statusHeartbeat } = useSearchContext();
   const { showToast } = useToast();
   const [jobs, setJobs] = useState([]);
   const [filtersState, setFiltersState] = useState(DEFAULT_FILTERS);
@@ -128,11 +128,30 @@ export function useJobs(logout) {
     fetchJobs();
   }, [fetchJobs]);
 
-  // OPT-3: Background polling intervals - adjusted based on activity
   useEffect(() => {
-    const isSearching = activeProfileIds.length > 0;
-    const intervalTime = isSearching ? 5000 : 30000; // 5s if searching, 30s if idle
+    return () => {
+      if (fetchAbortControllerRef.current) {
+        fetchAbortControllerRef.current.abort();
+      }
+    };
+  }, []);
 
+  // Active searches refresh job data via SearchContext's status polling heartbeat.
+  useEffect(() => {
+    if (activeProfileIds.length === 0 || statusHeartbeat === 0) {
+      return;
+    }
+
+    fetchJobs(true);
+  }, [activeProfileIds.length, statusHeartbeat, fetchJobs]);
+
+  // Idle fallback polling when no searches are active.
+  useEffect(() => {
+    if (activeProfileIds.length > 0) {
+      return undefined;
+    }
+
+    const intervalTime = 30000;
     const interval = setInterval(() => {
       fetchJobs(true);
     }, intervalTime);

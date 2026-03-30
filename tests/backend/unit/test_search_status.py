@@ -125,11 +125,46 @@ def test_task_reservation_lifecycle():
     assert reserve_task(123) is True
 
 
+def test_tokenized_reservation_requires_matching_token_for_registration_and_release():
+    token = reserve_task(321, return_token=True)
+    mock_task = MagicMock()
+
+    assert isinstance(token, str)
+    assert register_task(321, mock_task, reservation_token="wrong-token") is False
+    assert release_task(321, reservation_token="wrong-token") is False
+    assert register_task(321, mock_task, reservation_token=token) is True
+
+
 def test_save_statuses_logs_warning_on_write_failure(caplog):
     caplog.set_level("WARNING")
     with patch("backend.services.search_status.open", side_effect=OSError("disk full")):
         init_status(1)
     assert "Failed to persist search statuses" in caplog.text
+
+
+def test_save_statuses_merges_with_newer_file_entry():
+    init_status(1)
+    with ss._lock:
+        snapshot = dict(ss._statuses)
+
+    file_entry = {
+        1: {**snapshot[1], "state": "searching", "updated_at": "9999-01-01T00:00:00+00:00"},
+        2: {
+            "state": "done",
+            "started_at": "2024-01-01T00:00:00+00:00",
+            "updated_at": "2024-01-01T00:00:01+00:00",
+        },
+    }
+
+    with (
+        patch("backend.services.search_status._load_statuses", return_value=file_entry),
+        patch("backend.services.search_status._write_status_payload") as mock_write,
+    ):
+        ss._save_statuses(force=True, statuses_snapshot=snapshot)
+
+    written_payload = mock_write.call_args.args[0]
+    assert written_payload[1]["state"] == "searching"
+    assert written_payload[2]["state"] == "done"
 
 
 # ── Cross-worker reserve_task tests ─────────────────────────────────────

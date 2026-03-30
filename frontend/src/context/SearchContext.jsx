@@ -13,6 +13,7 @@ export function SearchProvider({ children }) {
     const { isLoggedIn } = useAuth();
     const [searchStatuses, setSearchStatuses] = useState({});
     const [activeProfileIds, setActiveProfileIds] = useState([]);
+    const [statusHeartbeat, setStatusHeartbeat] = useState(0);
     const activeProfileIdsRef = useRef(activeProfileIds);
     // Tracks when each locally-added ID was registered so we can expire it.
     const pendingAddedAtRef = useRef({});
@@ -25,6 +26,8 @@ export function SearchProvider({ children }) {
         if (!isLoggedIn) {
             setSearchStatuses({});
             setActiveProfileIds([]);
+            setStatusHeartbeat(0);
+            pendingAddedAtRef.current = {};
             return;
         }
         let isDisposed = false;
@@ -43,6 +46,7 @@ export function SearchProvider({ children }) {
                 const res = await SearchService.getAllStatuses(abortController.signal);
                 if (isDisposed) return;
                 setSearchStatuses(res);
+                setStatusHeartbeat(prev => prev + 1);
 
                 const runningIds = Object.entries(res)
                     .filter(([, status]) => status && ['generating', 'searching', 'analyzing'].includes(status.state))
@@ -62,8 +66,14 @@ export function SearchProvider({ children }) {
                             const addedAt = pendingAddedAtRef.current[id];
                             if (addedAt !== undefined && (now - addedAt) < PENDING_ID_TTL_MS) {
                                 next.push(id);
+                            } else if (addedAt !== undefined) {
+                                delete pendingAddedAtRef.current[id];
+                                window.dispatchEvent(new CustomEvent('jh_api_error', {
+                                    detail: {
+                                        message: `Search ${id} did not start successfully. Please try again.`
+                                    }
+                                }));
                             }
-                            // Expired or unknown IDs are silently dropped
                         }
                     }
                     next.sort();
@@ -112,6 +122,7 @@ export function SearchProvider({ children }) {
         <SearchContext.Provider value={{
             searchStatuses,
             activeProfileIds,
+            statusHeartbeat,
             addProfileId,
             removeProfileId
         }}>
