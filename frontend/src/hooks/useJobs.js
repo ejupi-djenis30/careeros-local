@@ -117,8 +117,9 @@ export function useJobs(logout) {
         return;
       }
       console.error('Failed to load search profiles', error);
+      showToast(error.message || 'Failed to load search profiles.');
     }
-  }, [logout]);
+  }, [logout, showToast]);
 
   useEffect(() => {
     fetchProfiles();
@@ -183,6 +184,7 @@ export function useJobs(logout) {
     } catch (error) {
       if (error.message === "UNAUTHORIZED" && logout) { logout(); return; }
       console.error("Failed to update job", error);
+      showToast(error.message || 'Failed to update job state.');
     } finally {
       setPendingAppliedJobIds(prev => prev.filter(id => id !== jobId));
     }
@@ -221,6 +223,7 @@ export function useJobs(logout) {
           } catch (undoError) {
             if (undoError.message === 'UNAUTHORIZED' && logout) { logout(); return; }
             console.error('Failed to undo dismiss', undoError);
+            showToast(undoError.message || 'Failed to undo dismiss.');
           }
         }
       }, 5000);
@@ -228,6 +231,7 @@ export function useJobs(logout) {
     } catch (error) {
       if (error.message === "UNAUTHORIZED" && logout) { logout(); return; }
       console.error("Failed to dismiss job", error);
+      showToast(error.message || 'Failed to dismiss job.');
     }
   };
 
@@ -239,6 +243,7 @@ export function useJobs(logout) {
     } catch (error) {
       if (error.message === "UNAUTHORIZED" && logout) { logout(); return; }
       console.error("Failed to reactivate job", error);
+      showToast(error.message || 'Failed to reactivate job.');
     }
   };
 

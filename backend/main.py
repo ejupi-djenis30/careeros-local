@@ -171,15 +171,22 @@ def _check_db_status() -> str:
 
     from backend.db.base import SessionLocal
 
+    db = None
     try:
         db = SessionLocal()
-        try:
-            db.execute(text("SELECT 1"))
-            return "connected"
-        finally:
-            db.close()
-    except Exception:
+    except Exception as exc:
+        logger.warning("Health DB session creation failed: %s", exc)
         return "unavailable"
+
+    try:
+        db.execute(text("SELECT 1"))
+        return "connected"
+    except Exception as exc:
+        logger.warning("Health DB ping failed: %s", exc)
+        return "unavailable"
+    finally:
+        if db is not None:
+            db.close()
 
 
 # ─── Routes ───
@@ -194,6 +201,11 @@ def health():
 
         return JSONResponse(status_code=503, content={"status": "degraded", "database": db_status})
     return {"status": "ok", "database": db_status}
+
+
+@app.get(f"{settings.API_V1_STR}/health/live")
+def health_live():
+    return {"status": "ok"}
 
 
 @app.get("/")

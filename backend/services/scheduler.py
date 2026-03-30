@@ -44,8 +44,9 @@ async def _run_scheduled_search(profile_id: int):
         )
         return
 
-    db: Session = SessionLocal()
+    db: Session | None = None
     try:
+        db = SessionLocal()
         profile = db.query(SearchProfile).filter(SearchProfile.id == profile_id).first()
         if not profile:
             logger.warning(f"[Scheduler] Profile {profile_id} not found, removing job")
@@ -73,7 +74,8 @@ async def _run_scheduled_search(profile_id: int):
         release_task(profile_id, reservation_token)
         logger.error(f"[Scheduler] Error running scheduled search for profile {profile_id}: {e}")
     finally:
-        db.close()
+        if db is not None:
+            db.close()
 
 
 def add_schedule(profile_id: int, interval_hours: int):

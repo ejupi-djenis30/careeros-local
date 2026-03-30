@@ -196,6 +196,18 @@ async def test_run_scheduled_search_exception():
         mock_release.assert_called_once_with(1, "token-4")
 
 
+@pytest.mark.asyncio
+async def test_run_scheduled_search_releases_reservation_when_session_creation_fails():
+    with (
+        patch("backend.services.scheduler.SessionLocal", side_effect=RuntimeError("db offline")),
+        patch("backend.services.scheduler.reserve_task", return_value="token-5"),
+        patch("backend.services.scheduler.release_task") as mock_release,
+    ):
+        await _run_scheduled_search(1)
+
+    mock_release.assert_called_once_with(1, "token-5")
+
+
 def test_get_all_schedules_no_db_and_specific_user():
     mock_scheduler = MagicMock()
     mock_job = MagicMock()

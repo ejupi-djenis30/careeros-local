@@ -71,6 +71,20 @@ async def start_search(
 ):
     profile_repo = ProfileRepository(db)
 
+    active_states = {"reserved", "generating", "searching", "analyzing"}
+    user_statuses = get_all_statuses(user_id=user_id)
+    user_active_count = sum(
+        1 for status in user_statuses.values() if (status or {}).get("state") in active_states
+    )
+    if user_active_count >= settings.MAX_CONCURRENT_SEARCHES_PER_USER:
+        raise HTTPException(
+            status_code=429,
+            detail=(
+                "Too many active searches. "
+                f"Maximum allowed is {settings.MAX_CONCURRENT_SEARCHES_PER_USER}."
+            ),
+        )
+
     # If it's a manual search from the form (no ID or explicit history flag)
     # create a new History entry.
     # Otherwise if it has an ID, use that (re-run).
@@ -151,8 +165,9 @@ async def start_search(
         _force_q: bool,
         _reservation_token: str,
     ):
-        fresh_db = SessionLocal()
+        fresh_db = None
         try:
+            fresh_db = SessionLocal()
             svc = get_search_service(fresh_db)
             await svc.run_search(
                 _profile_id,
@@ -171,7 +186,8 @@ async def start_search(
             release_task(_profile_id, _reservation_token)
             logger.exception("Background search failed unexpectedly for profile %d", _profile_id)
         finally:
-            fresh_db.close()
+            if fresh_db is not None:
+                fresh_db.close()
 
     try:
         background_tasks.add_task(

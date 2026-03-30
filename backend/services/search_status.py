@@ -3,6 +3,7 @@ In-memory search status tracker.
 Stores real-time progress of search workflows for frontend polling.
 """
 
+import copy
 import json
 import logging
 import os
@@ -65,6 +66,7 @@ _VALID_STATUS_KEYS = {
     "avam_fallback_count",
 }
 _TERMINAL_STATES = {"done", "error", "stopped", "cancelled"}
+_RESERVED_STATE = "reserved"
 
 
 def _load_statuses() -> Dict[int, Dict[str, Any]]:
@@ -80,10 +82,11 @@ def _load_statuses() -> Dict[int, Dict[str, Any]]:
 
 @contextmanager
 def _status_file_lock(timeout_seconds: float = 5.0) -> Iterator[None]:
-    lock_handle = open(_STATUS_LOCK_FILE, "a+b")
+    lock_handle = None
     acquired = False
     start = time.time()
     try:
+        lock_handle = open(_STATUS_LOCK_FILE, "a+b")
         while not acquired:
             try:
                 if os.name == "nt":
@@ -101,7 +104,7 @@ def _status_file_lock(timeout_seconds: float = 5.0) -> Iterator[None]:
 
         yield
     finally:
-        if acquired:
+        if acquired and lock_handle is not None:
             try:
                 if os.name == "nt":
                     import msvcrt
@@ -112,7 +115,8 @@ def _status_file_lock(timeout_seconds: float = 5.0) -> Iterator[None]:
                     _fcntl.flock(lock_handle.fileno(), _fcntl.LOCK_UN)
             except OSError:
                 pass
-        lock_handle.close()
+        if lock_handle is not None:
+            lock_handle.close()
 
 
 def _entry_timestamp(entry: Dict[str, Any] | None) -> str:
@@ -158,25 +162,68 @@ def _touch_status_entry(entry: Dict[str, Any]) -> Dict[str, Any]:
     return entry
 
 
-_last_save_time = 0.0
-_SAVE_DEBOUNCE_INTERVAL = 1.5
 _RESERVATION_TTL_SECONDS = 30.0
 
 
-def _save_statuses(force: bool = False, statuses_snapshot: Dict[int, Dict[str, Any]] | None = None):
-    global _last_save_time
-    now = time.time()
-    if not force and (now - _last_save_time) < _SAVE_DEBOUNCE_INTERVAL:
-        return
+def _snapshot_statuses() -> Dict[int, Dict[str, Any]]:
+    return copy.deepcopy(_statuses)
 
+
+def _build_reserved_status_entry(reservation_token: str) -> Dict[str, Any]:
+    timestamp = datetime.now(timezone.utc).isoformat()
+    return {
+        "state": _RESERVED_STATE,
+        "terminal_reason": None,
+        "started_at": timestamp,
+        "updated_at": timestamp,
+        "finished_at": None,
+        "reservation_token": reservation_token,
+    }
+
+
+def _is_stale_reserved_entry(entry: Dict[str, Any], now: float | None = None) -> bool:
+    if entry.get("state") != _RESERVED_STATE:
+        return False
+
+    reference_ts = _entry_timestamp(entry)
+    if not reference_ts:
+        return True
+
+    try:
+        entry_ts = datetime.fromisoformat(reference_ts).timestamp()
+    except (TypeError, ValueError):
+        return True
+
+    current_ts = now if now is not None else time.time()
+    return (current_ts - entry_ts) > _RESERVATION_TTL_SECONDS
+
+
+def _prune_stale_reserved_entries(statuses: Dict[int, Dict[str, Any]]) -> Dict[int, Dict[str, Any]]:
+    now = time.time()
+    return {
+        pid: entry for pid, entry in statuses.items() if not _is_stale_reserved_entry(entry, now)
+    }
+
+
+def _shared_entry_blocks_reservation(entry: Dict[str, Any]) -> bool:
+    state = entry.get("state", "unknown")
+    if state in _TERMINAL_STATES or state == "unknown":
+        return False
+    if state == _RESERVED_STATE:
+        return not _is_stale_reserved_entry(entry)
+
+    file_started = entry.get("started_at") or ""
+    return bool(file_started and file_started >= _WORKER_BOOT_TIME)
+
+
+def _save_statuses(force: bool = False, statuses_snapshot: Dict[int, Dict[str, Any]] | None = None):
     payload = statuses_snapshot if statuses_snapshot is not None else _statuses
 
     try:
         with _status_file_lock():
-            file_payload = _load_statuses()
+            file_payload = _prune_stale_reserved_entries(_load_statuses())
             merged = _merge_status_maps(file_payload, payload)
             _write_status_payload(merged)
-        _last_save_time = now
     except Exception as exc:
         logger.warning("Failed to persist search statuses to %s: %s", _STATUS_FILE, exc)
 
@@ -187,19 +234,13 @@ def _save_statuses_with_removals(
     statuses_snapshot: Dict[int, Dict[str, Any]] | None = None,
     removed_ids: set[int] | None = None,
 ):
-    global _last_save_time
-    now = time.time()
-    if not force and (now - _last_save_time) < _SAVE_DEBOUNCE_INTERVAL:
-        return
-
     payload = statuses_snapshot if statuses_snapshot is not None else _statuses
 
     try:
         with _status_file_lock():
-            file_payload = _load_statuses()
+            file_payload = _prune_stale_reserved_entries(_load_statuses())
             merged = _merge_status_maps(file_payload, payload, removed_ids=removed_ids)
             _write_status_payload(merged)
-        _last_save_time = now
     except Exception as exc:
         logger.warning("Failed to persist search statuses to %s: %s", _STATUS_FILE, exc)
 
@@ -272,7 +313,7 @@ def init_status(
             "finished_at": None,
         }
         _touch_status_entry(_statuses[profile_id])
-        snapshot = dict(_statuses)
+        snapshot = _snapshot_statuses()
     _save_statuses(force=True, statuses_snapshot=snapshot)
 
 
@@ -292,7 +333,7 @@ def add_log(profile_id: int, message: str):
             if len(s["log"]) > 100:
                 s["log"] = s["log"][-100:]
             _touch_status_entry(s)
-            snapshot = dict(_statuses)
+            snapshot = _snapshot_statuses()
     if snapshot is not None:
         _save_statuses(statuses_snapshot=snapshot)
 
@@ -315,7 +356,7 @@ def update_status(profile_id: int, **kwargs):
             if is_terminal and not s.get("finished_at"):
                 s["finished_at"] = datetime.now(timezone.utc).isoformat()
             _touch_status_entry(s)
-            snapshot = dict(_statuses)
+            snapshot = _snapshot_statuses()
             should_force = is_terminal
     if snapshot is not None:
         _save_statuses(force=should_force, statuses_snapshot=snapshot)
@@ -337,11 +378,9 @@ def _merge_with_file(memory: Dict[int, Dict[str, Any]]) -> Dict[int, Dict[str, A
     a fresher file entry wins for a run that was started by a different
     worker (cross-process case).
     """
-    import copy
-
     merged: Dict[int, Dict[str, Any]] = {}
     try:
-        file_data = _load_statuses()
+        file_data = _prune_stale_reserved_entries(_load_statuses())
     except Exception:
         file_data = {}
 
@@ -403,7 +442,7 @@ def get_status(profile_id: int) -> Dict[str, Any]:
         if profile_id in _statuses:
             return dict(_statuses[profile_id])
     # Not present in this worker's memory — check the persisted file.
-    file_statuses = _load_statuses()
+    file_statuses = _prune_stale_reserved_entries(_load_statuses())
     return dict(file_statuses.get(profile_id, {"state": "unknown"}))
 
 
@@ -431,7 +470,7 @@ def clear_status(profile_id: int):
         snapshot = None
         if profile_id in _statuses:
             _statuses.pop(profile_id, None)
-            snapshot = dict(_statuses)
+            snapshot = _snapshot_statuses()
     if snapshot is not None:
         _save_statuses_with_removals(
             force=True, statuses_snapshot=snapshot, removed_ids={profile_id}
@@ -508,35 +547,30 @@ def reserve_task(
 
         # Cross-worker guard: check the shared status file.
         try:
-            file_data = _load_statuses()
-            file_entry = file_data.get(profile_id)
-            if file_entry:
-                file_state = file_entry.get("state", "unknown")
-                file_started = file_entry.get("started_at") or ""
-                # Non-terminal status that was started AFTER this worker booted
-                # means another live worker owns this profile's search.
-                if (
-                    file_state not in _TERMINAL_STATES
-                    and file_state != "unknown"
-                    and file_started >= _WORKER_BOOT_TIME
-                ):
+            with _status_file_lock():
+                file_data = _prune_stale_reserved_entries(_load_statuses())
+                file_entry = file_data.get(profile_id)
+                if file_entry and _shared_entry_blocks_reservation(file_entry):
                     logger.info(
                         "reserve_task: profile %d is already running on another worker (state=%s, started=%s)",
                         profile_id,
-                        file_state,
-                        file_started,
+                        file_entry.get("state", "unknown"),
+                        file_entry.get("started_at") or "",
                     )
                     return False
-        except Exception as exc:
-            logger.warning(
-                "reserve_task: failed to read status file for cross-worker check: %s", exc
-            )
 
-        token = reservation_token or uuid.uuid4().hex
-        _reserved_tasks[profile_id] = {
-            "reserved_at": time.time(),
-            "token": token,
-        }
+                token = reservation_token or uuid.uuid4().hex
+                _reserved_tasks[profile_id] = {
+                    "reserved_at": time.time(),
+                    "token": token,
+                }
+                file_data[profile_id] = _build_reserved_status_entry(token)
+                _write_status_payload(file_data)
+        except Exception as exc:
+            logger.warning("reserve_task: failed to persist shared reservation: %s", exc)
+            _reserved_tasks.pop(profile_id, None)
+            return False
+
         return token if return_token else True
 
 
@@ -549,6 +583,17 @@ def release_task(profile_id: int, reservation_token: str | None = None) -> bool:
         if reservation_token is not None and reservation.get("token") != reservation_token:
             return False
         _reserved_tasks.pop(profile_id, None)
+        try:
+            with _status_file_lock():
+                file_data = _prune_stale_reserved_entries(_load_statuses())
+                file_entry = file_data.get(profile_id)
+                if file_entry and file_entry.get("state") == _RESERVED_STATE:
+                    file_token = file_entry.get("reservation_token")
+                    if reservation_token is None or file_token == reservation_token:
+                        file_data.pop(profile_id, None)
+                        _write_status_payload(file_data)
+        except Exception as exc:
+            logger.warning("release_task: failed to clear shared reservation: %s", exc)
         return True
 
 
@@ -566,3 +611,4 @@ def cancel_task(profile_id: int):
 # Prune stale terminal statuses from prior server runs at module load so the
 # status file does not grow unboundedly across restarts.
 _statuses = _prune_old_terminal_statuses(_statuses)
+_statuses = _prune_stale_reserved_entries(_statuses)

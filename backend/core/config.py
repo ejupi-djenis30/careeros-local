@@ -159,6 +159,8 @@ class Settings(BaseSettings):
     # Pipeline & LLM call timeouts
     # Total allowed wall-clock time for a single end-to-end search run (seconds).
     SEARCH_PIPELINE_TIMEOUT_SECONDS: int = 1800  # 30 minutes
+    # Maximum number of concurrent active searches allowed per user.
+    MAX_CONCURRENT_SEARCHES_PER_USER: int = 3
     # Per-step LLM call timeouts (seconds).  0 = disabled.
     LLM_CALL_TIMEOUT_PLAN: int = 60
     LLM_CALL_TIMEOUT_NORMALIZE: int = 90

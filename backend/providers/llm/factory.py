@@ -68,51 +68,62 @@ def _resolve_step_config(step: str) -> dict:
     }
 
 
-def _build_provider(cfg: dict) -> LLMProvider:
+def _build_provider(cfg: dict, step: str = "default") -> LLMProvider:
     """Instantiate the correct ``LLMProvider`` subclass from a resolved *cfg*."""
     provider_name = cfg["provider"].lower()
+    step_label = step or "default"
+    api_key_hint = (
+        "LLM_API_KEY"
+        if step_label == "default"
+        else f"LLM_{step_label.upper()}_API_KEY or LLM_API_KEY"
+    )
 
     # Validate API key is present for cloud providers (not needed for ollama)
     if provider_name not in ("ollama",) and not cfg.get("api_key"):
         raise ValueError(
-            f"LLM provider '{provider_name}' requires an API key but none was set. "
-            "Configure LLM_API_KEY (or the step-specific variant) in your environment."
+            f"LLM provider '{provider_name}' for step '{step_label}' requires an API key but none was set. "
+            f"Configure {api_key_hint} in your environment."
         )
 
-    if provider_name == "gemini":
-        return GeminiProvider(
+    try:
+        if provider_name == "gemini":
+            return GeminiProvider(
+                api_key=cfg["api_key"],
+                model=cfg["model"],
+                temperature=cfg["temperature"],
+                top_p=cfg["top_p"],
+                max_tokens=cfg["max_tokens"],
+                thinking_level=cfg["thinking_level"],
+            )
+
+        if provider_name == "ollama":
+            base_url = cfg["base_url"] or settings.OLLAMA_BASE_URL
+            api_key = cfg["api_key"] or "ollama"
+            model = cfg["model"] or settings.OLLAMA_MODEL
+            return OllamaProvider(
+                api_key=api_key,
+                base_url=base_url,
+                model=model,
+                temperature=cfg["temperature"],
+                top_p=cfg["top_p"],
+                max_tokens=cfg["max_tokens"],
+            )
+
+        # Default: OpenAI-compatible (groq, deepseek, openai, etc.)
+        return OpenAICompatibleProvider(
             api_key=cfg["api_key"],
+            base_url=cfg["base_url"],
             model=cfg["model"],
             temperature=cfg["temperature"],
             top_p=cfg["top_p"],
             max_tokens=cfg["max_tokens"],
-            thinking_level=cfg["thinking_level"],
+            thinking=cfg["thinking"],
+            provider_name=provider_name,
         )
-
-    if provider_name == "ollama":
-        base_url = cfg["base_url"] or settings.OLLAMA_BASE_URL
-        api_key = cfg["api_key"] or "ollama"
-        model = cfg["model"] or settings.OLLAMA_MODEL
-        return OllamaProvider(
-            api_key=api_key,
-            base_url=base_url,
-            model=model,
-            temperature=cfg["temperature"],
-            top_p=cfg["top_p"],
-            max_tokens=cfg["max_tokens"],
-        )
-
-    # Default: OpenAI-compatible (groq, deepseek, openai, etc.)
-    return OpenAICompatibleProvider(
-        api_key=cfg["api_key"],
-        base_url=cfg["base_url"],
-        model=cfg["model"],
-        temperature=cfg["temperature"],
-        top_p=cfg["top_p"],
-        max_tokens=cfg["max_tokens"],
-        thinking=cfg["thinking"],
-        provider_name=provider_name,
-    )
+    except Exception as exc:
+        raise ValueError(
+            f"Failed to initialize LLM provider '{provider_name}' for step '{step_label}': {exc}"
+        ) from exc
 
 
 # ─── public API ──────────────────────────────────────────────────────────────
@@ -125,7 +136,7 @@ def get_provider_for_step(step: str = "default") -> LLMProvider:
     Any other value (including ``"default"``) falls through to globals.
     """
     cfg = _resolve_step_config(step)
-    provider = _build_provider(cfg)
+    provider = _build_provider(cfg, step=step)
     logger.debug(
         f"[LLM Factory] step={step!r} → {provider.model_id} "
         f"(temp={cfg['temperature']}, top_p={cfg['top_p']}, max_tok={cfg['max_tokens']})"

@@ -130,3 +130,27 @@ def test_start_search_conflict_when_profile_already_reserved(
 
     assert response.status_code == 409
     assert response.json()["detail"] == "A search is already running for this profile"
+
+
+def test_start_search_rejects_when_user_has_too_many_active_searches(
+    client, auth_headers: dict, test_profile
+):
+    profile_id = test_profile["id"]
+    with (
+        patch("backend.api.routes.search.get_all_statuses") as mock_statuses,
+        patch("backend.api.routes.search.settings") as mock_settings,
+    ):
+        mock_statuses.return_value = {
+            100: {"state": "searching"},
+            101: {"state": "analyzing"},
+        }
+        mock_settings.MAX_CONCURRENT_SEARCHES_PER_USER = 2
+
+        response = client.post(
+            "/api/v1/search/start",
+            json={"id": profile_id, "name": "Blocked Search"},
+            headers=auth_headers,
+        )
+
+    assert response.status_code == 429
+    assert "Too many active searches" in response.json()["detail"]

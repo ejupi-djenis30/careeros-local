@@ -51,7 +51,9 @@ export function SearchForm({ onStartSearch, isLoading, prefill }) {
                     .filter(Boolean);
                 setExistingNames(names);
             })
-            .catch(() => {});
+            .catch((error) => {
+                showToast("Failed to load existing profile names: " + (error?.message || "Unknown error"));
+            });
     }, []);
 
     const handleChange = (e) => {
@@ -98,6 +100,10 @@ export function SearchForm({ onStartSearch, isLoading, prefill }) {
         }
         if (!profile.location_filter.trim()) {
             showToast("Please enter a location.");
+            return;
+        }
+        if (profile.remote_only && profile.max_distance !== "" && Number(profile.max_distance) > 0) {
+            showToast("Distance filtering cannot be combined with Remote-only mode.");
             return;
         }
         if (profile.latitude == null || profile.longitude == null) {

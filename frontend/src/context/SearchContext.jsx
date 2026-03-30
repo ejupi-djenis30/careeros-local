@@ -86,6 +86,11 @@ export function SearchProvider({ children }) {
             } catch (e) {
                 if (e.name === 'AbortError') return;
                 console.error("Failed to poll statuses:", e);
+                window.dispatchEvent(new CustomEvent('jh_api_error', {
+                    detail: {
+                        message: 'Live search status updates are temporarily unavailable. Retrying...'
+                    }
+                }));
                 pollingInterval = 15000;
             } finally {
                 scheduleNextPoll();
