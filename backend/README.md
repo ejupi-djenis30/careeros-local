@@ -10,7 +10,7 @@ The **Job Hunter AI** backend is a high-performance, asynchronous API designed t
 - **Data Validation**: [Pydantic v2](https://docs.pydantic.dev/)
 - **ORM & Database**: [SQLAlchemy 2.0](https://www.sqlalchemy.org/) with [Alembic](https://alembic.sqlalchemy.org/) for migrations.
 - **Authentication**: JWT (JSON Web Tokens) with [PyJWT](https://pyjwt.readthedocs.io/) and [Passlib](https://passlib.readthedocs.io/).
-- **LLM Engine**: [Google Gemini GenAI](https://ai.google.dev/gemini-api/docs) & [OpenAI](https://platform.openai.com/).
+- **LLM Engine**: Provider-agnostic integrations for Gemini, OpenAI-compatible APIs, Ollama, and g4f.
 - **Task Scheduling**: [APScheduler](https://apscheduler.readthedocs.io/) for background maintenance and automated searches.
 - **HTTP Client**: [HTTPX](https://github.com/encode/httpx) with HTTP/2 support and [Tenacity](https://tenacity.readthedocs.io/) for robust retries.
 - **Semantic Analysis**: [Sentence-Transformers](https://www.sbert.net/) for local embedding-based skill matching.
@@ -39,7 +39,7 @@ The backend implements a **Clean Architecture** with a strict separation of conc
 ### 4. Provider Layer (`backend/providers`)
 - **External Integrations**: Contains specialized drivers for external APIs.
 - **Job Scrapers**: Modular adapters for various job platforms (SwissDevJobs, JobRoom, etc.) implementing a common `BaseScraper` interface.
-- **LLM Factory**: A provider factory that dynamically instantiates the correct LLM client (Gemini, OpenAI, Ollama) based on configuration.
+- **LLM Factory**: A provider factory that dynamically instantiates the correct LLM client (Gemini, OpenAI-compatible, Ollama, g4f) based on configuration.
 
 ---
 

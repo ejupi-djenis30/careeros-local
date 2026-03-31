@@ -22,6 +22,19 @@ logger = logging.getLogger(__name__)
 _KNOWN_STEPS = {"plan", "match", "normalize", "normalize_profile", "compress"}
 
 
+def _parse_csv_names(raw_value: str) -> list[str]:
+    return [item.strip() for item in raw_value.split(",") if item.strip()]
+
+
+def _resolve_g4f_model(step: str) -> str:
+    step = step.lower()
+    if step in _KNOWN_STEPS:
+        step_model = getattr(settings, f"LLM_{step.upper()}_MODEL", "")
+        if step_model:
+            return step_model
+    return settings.G4F_MODEL
+
+
 def _resolve_step_config(step: str) -> dict:
     """Build a resolved config dict for the given pipeline *step*.
 
@@ -79,7 +92,7 @@ def _build_provider(cfg: dict, step: str = "default") -> LLMProvider:
     )
 
     # Validate API key is present for cloud providers (not needed for ollama)
-    if provider_name not in ("ollama",) and not cfg.get("api_key"):
+    if provider_name not in ("ollama", "g4f") and not cfg.get("api_key"):
         raise ValueError(
             f"LLM provider '{provider_name}' for step '{step_label}' requires an API key but none was set. "
             f"Configure {api_key_hint} in your environment."
@@ -107,6 +120,21 @@ def _build_provider(cfg: dict, step: str = "default") -> LLMProvider:
                 temperature=cfg["temperature"],
                 top_p=cfg["top_p"],
                 max_tokens=cfg["max_tokens"],
+            )
+
+        if provider_name == "g4f":
+            from backend.providers.llm.g4f_provider import G4FProvider
+
+            return G4FProvider(
+                api_key=cfg["api_key"],
+                base_url=cfg["base_url"],
+                model=_resolve_g4f_model(step_label),
+                providers_list=_parse_csv_names(settings.G4F_PROVIDERS),
+                proxies=settings.G4F_PROXY,
+                temperature=cfg["temperature"],
+                top_p=cfg["top_p"],
+                max_tokens=cfg["max_tokens"],
+                shuffle_providers=settings.G4F_SHUFFLE_PROVIDERS,
             )
 
         # Default: OpenAI-compatible (groq, deepseek, openai, etc.)

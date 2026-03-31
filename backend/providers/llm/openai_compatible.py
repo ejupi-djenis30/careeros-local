@@ -4,7 +4,7 @@ from typing import Any, Dict, Optional
 
 from openai import AsyncOpenAI, OpenAI
 
-from backend.providers.llm.base import LLMProvider
+from backend.providers.llm.base import LLMProvider, extract_json_payload
 
 logger = logging.getLogger(__name__)
 
@@ -44,49 +44,7 @@ class OpenAICompatibleProvider(LLMProvider):
         return f"{self.provider_name}/{self.model}"
 
     def _clean_json(self, text: str) -> str:
-        text = text.strip()
-
-        # Strip markdown code blocks
-        if text.startswith("```"):
-            lines = text.split("\n")
-            if len(lines) > 2 and lines[-1].strip().startswith("```"):
-                text = "\n".join(lines[1:-1])
-            else:
-                lines = [line for line in lines[1:] if not line.strip() == "```"]
-                text = "\n".join(lines)
-
-        # Deepseek and some OpenAI-compatible models often prepend reasoning text.
-        # Find first JSON opener and then extract the first decodable JSON fragment.
-        start_idx_dict = text.find("{")
-        start_idx_list = text.find("[")
-
-        start_idx = -1
-        if start_idx_dict != -1 and start_idx_list != -1:
-            start_idx = min(start_idx_dict, start_idx_list)
-        else:
-            start_idx = max(start_idx_dict, start_idx_list)
-
-        if start_idx > 0:
-            text = text[start_idx:]
-
-        decoder = json.JSONDecoder()
-        for idx, ch in enumerate(text):
-            if ch not in "[{":
-                continue
-            try:
-                _, end = decoder.raw_decode(text[idx:])
-                return text[idx : idx + end].strip()
-            except Exception:
-                continue
-
-        # Fallback to bracket trimming if raw decoding failed.
-        end_idx_dict = text.rfind("}")
-        end_idx_list = text.rfind("]")
-        end_idx = max(end_idx_dict, end_idx_list)
-        if end_idx != -1 and end_idx < len(text) - 1:
-            text = text[: end_idx + 1]
-
-        return text.strip()
+        return extract_json_payload(text)
 
     def _prepare_params(
         self,

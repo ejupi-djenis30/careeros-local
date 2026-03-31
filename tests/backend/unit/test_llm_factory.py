@@ -6,7 +6,7 @@ Covers:
 - get_provider_for_step: end-to-end instantiation for each known step
 """
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, PropertyMock, patch
 
 import pytest
 
@@ -15,6 +15,7 @@ from backend.providers.llm.factory import (
     _resolve_step_config,
     get_provider_for_step,
 )
+from backend.providers.llm.g4f_provider import G4FProvider
 from backend.providers.llm.gemini import GeminiProvider
 from backend.providers.llm.ollama import OllamaProvider
 from backend.providers.llm.openai_compatible import OpenAICompatibleProvider
@@ -80,6 +81,10 @@ class TestResolveStepConfig:
             LLM_COMPRESS_MAX_TOKENS=None,
             LLM_COMPRESS_THINKING=False,
             LLM_COMPRESS_THINKING_LEVEL="",
+            G4F_MODEL="",
+            G4F_PROVIDERS="HuggingChat,DeepInfra",
+            G4F_PROXY="http://localhost:8080",
+            G4F_SHUFFLE_PROVIDERS=False,
             OLLAMA_BASE_URL="http://localhost:11434",
             OLLAMA_MODEL="mistral",
         )
@@ -140,6 +145,22 @@ class TestResolveStepConfig:
 
 
 class TestBuildProvider:
+    def _mock_settings(self, **overrides):
+        defaults = dict(
+            G4F_MODEL="",
+            G4F_PROVIDERS="HuggingChat,DeepInfra",
+            G4F_PROXY="http://localhost:8080",
+            G4F_SHUFFLE_PROVIDERS=False,
+            LLM_MATCH_MODEL="",
+            OLLAMA_BASE_URL="http://localhost:11434",
+            OLLAMA_MODEL="mistral",
+        )
+        defaults.update(overrides)
+        m = MagicMock()
+        for key, value in defaults.items():
+            setattr(m, key, value)
+        return m
+
     def _base_cfg(self, **overrides):
         cfg = {
             "provider": "openai",
@@ -192,6 +213,38 @@ class TestBuildProvider:
             provider = _build_provider(cfg)
         assert isinstance(provider, OllamaProvider)
 
+    def test_builds_g4f_provider(self):
+        cfg = self._base_cfg(provider="g4f", api_key="")
+        with patch("backend.providers.llm.factory.settings", self._mock_settings()):
+            with patch(
+                "backend.providers.llm.g4f_provider.G4FProvider.__init__",
+                return_value=None,
+            ) as mock_init:
+                provider = _build_provider(cfg, step="match")
+
+        assert isinstance(provider, G4FProvider)
+        mock_init.assert_called_once_with(
+            api_key="",
+            base_url="https://api.openai.com",
+            model="",
+            providers_list=["HuggingChat", "DeepInfra"],
+            proxies="http://localhost:8080",
+            temperature=0.2,
+            top_p=0.9,
+            max_tokens=512,
+            shuffle_providers=False,
+        )
+
+    def test_g4f_does_not_require_api_key(self):
+        cfg = self._base_cfg(provider="g4f", api_key="")
+        with patch("backend.providers.llm.factory.settings", self._mock_settings()):
+            with patch(
+                "backend.providers.llm.g4f_provider.G4FProvider.__init__",
+                return_value=None,
+            ):
+                provider = _build_provider(cfg)
+        assert isinstance(provider, G4FProvider)
+
 
 # ─── get_provider_for_step ────────────────────────────────────────────────────
 
@@ -208,6 +261,10 @@ class TestGetProviderForStep:
         m.LLM_MAX_TOKENS = 1024
         m.LLM_THINKING = False
         m.LLM_THINKING_LEVEL = ""
+        m.G4F_MODEL = ""
+        m.G4F_PROVIDERS = "HuggingChat,DeepInfra"
+        m.G4F_PROXY = ""
+        m.G4F_SHUFFLE_PROVIDERS = True
         for step in ("PLAN", "MATCH", "NORMALIZE", "NORMALIZE_PROFILE", "COMPRESS"):
             for field in ("PROVIDER", "MODEL", "API_KEY", "BASE_URL", "THINKING_LEVEL"):
                 setattr(m, f"LLM_{step}_{field}", "")
@@ -226,3 +283,22 @@ class TestGetProviderForStep:
             for step in ("plan", "match", "normalize", "normalize_profile", "compress"):
                 provider = get_provider_for_step(step)
                 assert provider is not None
+
+    def test_g4f_provider_for_any_step(self):
+        settings = self._patched_settings()
+        settings.LLM_PROVIDER = "g4f"
+        settings.LLM_API_KEY = ""
+
+        with patch("backend.providers.llm.factory.settings", settings):
+            with patch(
+                "backend.providers.llm.g4f_provider.G4FProvider.__init__",
+                return_value=None,
+            ):
+                with patch(
+                    "backend.providers.llm.g4f_provider.G4FProvider.model_id",
+                    new_callable=PropertyMock,
+                    return_value="g4f/auto",
+                ):
+                    for step in ("plan", "match", "normalize"):
+                        provider = get_provider_for_step(step)
+                        assert isinstance(provider, G4FProvider)

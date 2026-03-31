@@ -1,4 +1,5 @@
 import asyncio
+import json
 import logging
 from abc import ABC, abstractmethod
 from typing import Any, Dict, Optional
@@ -13,6 +14,49 @@ _STEP_TIMEOUT_ATTRS: dict[str, str] = {
     "compress": "LLM_CALL_TIMEOUT_NORMALIZE",
     "match": "LLM_CALL_TIMEOUT_MATCH",
 }
+
+
+def extract_json_payload(text: str) -> str:
+    """Extract the first decodable JSON object/array from model output."""
+    text = (text or "").strip()
+    if not text:
+        return "{}"
+
+    if text.startswith("```"):
+        lines = text.split("\n")
+        if len(lines) > 2 and lines[-1].strip().startswith("```"):
+            text = "\n".join(lines[1:-1])
+        else:
+            lines = [line for line in lines[1:] if line.strip() != "```"]
+            text = "\n".join(lines)
+
+    start_idx_dict = text.find("{")
+    start_idx_list = text.find("[")
+
+    start_idx = -1
+    if start_idx_dict != -1 and start_idx_list != -1:
+        start_idx = min(start_idx_dict, start_idx_list)
+    else:
+        start_idx = max(start_idx_dict, start_idx_list)
+
+    if start_idx > 0:
+        text = text[start_idx:]
+
+    decoder = json.JSONDecoder()
+    for idx, ch in enumerate(text):
+        if ch not in "[{":
+            continue
+        try:
+            _, end = decoder.raw_decode(text[idx:])
+            return text[idx : idx + end].strip()
+        except Exception:
+            continue
+
+    end_idx = max(text.rfind("}"), text.rfind("]"))
+    if end_idx != -1 and end_idx < len(text) - 1:
+        text = text[: end_idx + 1]
+
+    return text.strip() or "{}"
 
 
 class LLMProvider(ABC):

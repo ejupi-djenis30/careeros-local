@@ -22,6 +22,7 @@ supabase>=2.0.0
 # ─── LLM Integration ───
 openai>=1.58.1
 google-genai>=1.0.0,<2.0.0
+g4f>=0.4.9.7
 
 # ─── HTTP Client (scraper) ───
 httpx[http2]>=0.28.0

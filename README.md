@@ -118,6 +118,7 @@ Job Hunter AI is **LLM-agnostic** and supports a **flexible per-step architectur
 - **DeepSeek**: Excellent for highly technical software engineering searches. DeepSeek's models have profound reasoning capabilities regarding complex technical stacks. Supports thinking/reasoning mode.
 - **Google Gemini**: Useful for its massive context windows, particularly if your CV is incredibly lengthy or if you are analyzing massive conglomerate job descriptions. Supports configurable thinking levels.
 - **Ollama (Full Privacy)**: Allows you to run models like `llama3` safely and completely offline on your local hardware.
+- **GPT4Free / g4f**: Integrates the `g4f` Python library as a first-class provider with RetryProvider fallback chains, HAR/cookie authentication, proxy support, streaming, and optional API-key usage.
 - **Any OpenAI-compatible API**: Any provider offering an OpenAI-compatible endpoint (e.g., Together AI, Fireworks, local vLLM) works out of the box.
 
 ### Multi-Step Brain Architecture
@@ -160,7 +161,7 @@ The backend (`backend/`) is divided into distinct, isolated responsibility layer
 4. **Provider Layer (`backend/providers/`)**:
     - **Responsibility**: External world interfaces (Adapter Pattern).
     - **Submodules**:
-      - `llm/`: Contains concrete classes for Groq, DeepSeek, Gemini.
+      - `llm/`: Contains concrete classes for OpenAI-compatible providers, Gemini, Ollama, and g4f.
       - `jobs/`: Connects to `job-room.ch` APIs, formatting their proprietary JSON into internal systemic Request models.
 
 ### Frontend Component Hierarchy
@@ -245,7 +246,7 @@ Job Hunter AI is designed to run everywhere, from a local Windows laptop to a de
 
 ### Prerequisites
 - **Git**
-- **LLM API Key**: You must possess at least one API key from Groq, DeepSeek, Google AI Studio, or have a local Ollama instance running.
+- **LLM Access**: Configure either a provider API key (Groq, DeepSeek, OpenAI, Gemini, etc.), a local Ollama instance, or g4f with free providers / HAR-cookie based auth.
 
 ### Method A: Docker Deployment (Highly Recommended)
 
@@ -262,7 +263,7 @@ Docker is the sanctioned, official method for running Job Hunter AI. It guarante
    ```bash
    cp .env.example .env
    ```
-   *CRITICAL: You MUST set an `LLM_API_KEY` and define your `LLM_PROVIDER` in the `.env` file.* You should also change the `SECRET_KEY` and `POSTGRES_PASSWORD`.
+   *CRITICAL: You MUST define `LLM_PROVIDER` in the `.env` file.* Set `LLM_API_KEY` when your chosen provider requires it. You should also change the `SECRET_KEY` and `POSTGRES_PASSWORD`.
 
 3. **Deploy with Docker Compose**:
    Ensure Docker Desktop or the Docker Engine is running on your machine.
@@ -300,7 +301,7 @@ If you are actively developing and modifying the codebase, you may prefer runnin
    ```bash
    cp .env.example .env
    ```
-   Make sure `DATABASE_URL` is set to `sqlite:///./job_hunter.db` for local running without Postgres. Set your `LLM_API_KEY`.
+   Make sure `DATABASE_URL` is set to `sqlite:///./job_hunter.db` for local running without Postgres. Set your `LLM_API_KEY` when the chosen provider requires it.
 
 3. **Start the Backend Server**:
    ```bash
@@ -341,8 +342,8 @@ These are used as the **default for all pipeline steps** (PLAN, NORMALIZE, NORMA
 
 | Variable | Status | Default | Description |
 | :--- | :---: | :--- | :--- |
-| `LLM_PROVIDER` | **Required** | `groq` | Options: `groq`, `deepseek`, `openai`, `gemini`, `ollama` |
-| `LLM_API_KEY` | **Required** | — | Your provider's API authorization key |
+| `LLM_PROVIDER` | **Required** | `groq` | Options: `groq`, `deepseek`, `openai`, `gemini`, `ollama`, `g4f` |
+| `LLM_API_KEY` | Optional | — | Your provider's API authorization key; not required for `ollama` or g4f free providers |
 | `LLM_BASE_URL` | Optional | — | Provider API endpoint (e.g. `https://api.groq.com/openai/v1`) |
 | `LLM_MODEL` | Optional | `moonshotai/kimi-k2-instruct-0905` | Model name/ID |
 | `LLM_TEMPERATURE` | Optional | `0.7` | Creativity (0.0 = deterministic, 1.0 = very creative) |
@@ -352,6 +353,12 @@ These are used as the **default for all pipeline steps** (PLAN, NORMALIZE, NORMA
 | `LLM_THINKING_LEVEL` | Optional | `OFF` | Gemini thinking level: `OFF`, `LOW`, `MEDIUM`, `HIGH` |
 | `OLLAMA_BASE_URL` | Optional | `http://localhost:11434/v1` | Ollama API endpoint (used when provider=ollama) |
 | `OLLAMA_MODEL` | Optional | `llama3` | Default Ollama model |
+| `G4F_MODEL` | Optional | empty | g4f-specific default model. Leave empty to enable g4f auto-selection |
+| `G4F_PROVIDERS` | Optional | empty | Comma-separated g4f provider list used to build a RetryProvider chain |
+| `G4F_PROXY` | Optional | empty | Optional outbound proxy URL passed to the g4f client |
+| `G4F_SHUFFLE_PROVIDERS` | Optional | `true` | Shuffle the configured g4f provider chain before retrying |
+
+When `LLM_PROVIDER=g4f`, HAR / cookie authentication files are loaded from `data/g4f/har_and_cookies/`.
 
 ### Per-Step LLM Overrides
 

@@ -91,6 +91,15 @@ class Settings(BaseSettings):
     LLM_THINKING: bool = False
     LLM_THINKING_LEVEL: str = "OFF"
 
+    # ─── GPT4Free / g4f ───────────────────────────────────────────────────────
+    # Leave G4F_MODEL empty to let g4f auto-select the best available model.
+    G4F_MODEL: str = ""
+    # Comma-separated provider list used to build a RetryProvider chain.
+    # Example: "HuggingChat,DeepInfra,Blackbox"
+    G4F_PROVIDERS: str = ""
+    G4F_PROXY: str = ""
+    G4F_SHUFFLE_PROVIDERS: bool = True
+
     # ─── Per-step LLM overrides (all optional — empty/zero = use global) ───────
     #
     # Step: PLAN  (generate_search_plan)
