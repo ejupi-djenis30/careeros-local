@@ -19,7 +19,15 @@ from backend.providers.llm.openai_compatible import OpenAICompatibleProvider
 logger = logging.getLogger(__name__)
 
 # ─── recognised step names (used as env-var prefixes) ────────────────────────
-_KNOWN_STEPS = {"plan", "match", "normalize", "normalize_profile", "compress"}
+_KNOWN_STEPS = {
+    "plan",
+    "match",
+    "normalize",
+    "normalize_profile",
+    "compress",
+    "critique",
+    "rerank",
+}
 
 
 def _parse_csv_names(raw_value: str) -> list[str]:
@@ -81,6 +89,49 @@ def _resolve_step_config(step: str) -> dict:
     }
 
 
+def _resolve_fallback_step_config(step: str) -> dict | None:
+    """Build the fallback provider config for *step*.
+
+    Fallback config is optional. When present, it reuses the resolved per-step
+    primary parameters as a last resort for any unset fallback field so that a
+    stable provider can inherit existing model tuning when practical.
+    """
+
+    fallback_provider = (settings.LLM_FALLBACK_PROVIDER or "").strip()
+    if not fallback_provider:
+        return None
+
+    primary_cfg = _resolve_step_config(step)
+
+    return {
+        "provider": fallback_provider,
+        "model": settings.LLM_FALLBACK_MODEL or primary_cfg["model"],
+        "api_key": settings.LLM_FALLBACK_API_KEY or primary_cfg["api_key"],
+        "base_url": settings.LLM_FALLBACK_BASE_URL or primary_cfg["base_url"],
+        "temperature": (
+            settings.LLM_FALLBACK_TEMPERATURE
+            if settings.LLM_FALLBACK_TEMPERATURE is not None
+            else primary_cfg["temperature"]
+        ),
+        "top_p": (
+            settings.LLM_FALLBACK_TOP_P
+            if settings.LLM_FALLBACK_TOP_P is not None
+            else primary_cfg["top_p"]
+        ),
+        "max_tokens": (
+            settings.LLM_FALLBACK_MAX_TOKENS
+            if settings.LLM_FALLBACK_MAX_TOKENS is not None
+            else primary_cfg["max_tokens"]
+        ),
+        "thinking": (
+            settings.LLM_FALLBACK_THINKING
+            if settings.LLM_FALLBACK_THINKING is not None
+            else primary_cfg["thinking"]
+        ),
+        "thinking_level": settings.LLM_FALLBACK_THINKING_LEVEL or primary_cfg["thinking_level"],
+    }
+
+
 def _build_provider(cfg: dict, step: str = "default") -> LLMProvider:
     """Instantiate the correct ``LLMProvider`` subclass from a resolved *cfg*."""
     provider_name = cfg["provider"].lower()
@@ -130,11 +181,14 @@ def _build_provider(cfg: dict, step: str = "default") -> LLMProvider:
                 base_url=cfg["base_url"],
                 model=_resolve_g4f_model(step_label),
                 providers_list=_parse_csv_names(settings.G4F_PROVIDERS),
+                cookies_dir=settings.G4F_COOKIES_DIR or None,
                 proxies=settings.G4F_PROXY,
                 temperature=cfg["temperature"],
                 top_p=cfg["top_p"],
                 max_tokens=cfg["max_tokens"],
                 shuffle_providers=settings.G4F_SHUFFLE_PROVIDERS,
+                allow_auto_discovery=settings.G4F_AUTO_DISCOVER_PROVIDERS,
+                allow_internal_provider_fallback=settings.G4F_ALLOW_INTERNAL_PROVIDER_FALLBACK,
             )
 
         # Default: OpenAI-compatible (groq, deepseek, openai, etc.)
@@ -157,10 +211,35 @@ def _build_provider(cfg: dict, step: str = "default") -> LLMProvider:
 # ─── public API ──────────────────────────────────────────────────────────────
 
 
+def get_provider_name_for_step(step: str = "default") -> str:
+    """Return the resolved primary provider name for a pipeline *step*."""
+
+    return str(_resolve_step_config(step).get("provider") or "").strip().lower()
+
+
+def get_fallback_provider_for_step(step: str = "default") -> LLMProvider | None:
+    """Resolve and instantiate the configured fallback provider for a step.
+
+    Returns ``None`` when no fallback provider has been configured.
+    """
+
+    cfg = _resolve_fallback_step_config(step)
+    if cfg is None:
+        return None
+
+    provider = _build_provider(cfg, step=step)
+    logger.debug(
+        f"[LLM Factory] fallback step={step!r} → {provider.model_id} "
+        f"(temp={cfg['temperature']}, top_p={cfg['top_p']}, max_tok={cfg['max_tokens']})"
+    )
+    return provider
+
+
 def get_provider_for_step(step: str = "default") -> LLMProvider:
     """Resolve and instantiate the LLM provider for a pipeline *step*.
 
-    Recognised steps: ``"plan"``, ``"match"``, ``"normalize"``, ``"normalize_profile"``.
+    Recognised steps: ``"plan"``, ``"match"``, ``"normalize"``, ``"normalize_profile"``,
+    ``"compress"``, ``"critique"``, ``"rerank"``.
     Any other value (including ``"default"``) falls through to globals.
     """
     cfg = _resolve_step_config(step)

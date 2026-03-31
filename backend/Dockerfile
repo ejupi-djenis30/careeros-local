@@ -24,8 +24,8 @@ COPY alembic ./alembic
 COPY alembic.ini .
 
 # Run as non-root for security
-RUN addgroup --system appuser && adduser --system --ingroup appuser appuser \
-    && chown -R appuser:appuser /app
+RUN addgroup --system appuser && adduser --system --ingroup appuser --home /home/appuser appuser \
+    && chown -R appuser:appuser /app /home/appuser
 USER appuser
 
 # Expose the port the app runs on

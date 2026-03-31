@@ -97,8 +97,27 @@ class Settings(BaseSettings):
     # Comma-separated provider list used to build a RetryProvider chain.
     # Example: "HuggingChat,DeepInfra,Blackbox"
     G4F_PROVIDERS: str = ""
+    # Optional override for HAR / cookie auth files. Empty = use repository default.
+    G4F_COOKIES_DIR: str = ""
     G4F_PROXY: str = ""
     G4F_SHUFFLE_PROVIDERS: bool = True
+    # When enabled and G4F_PROVIDERS is empty, g4f tries to discover a usable provider chain.
+    G4F_AUTO_DISCOVER_PROVIDERS: bool = True
+    # When disabled, an empty or broken provider chain raises explicitly instead of delegating
+    # to g4f's opaque internal provider selection.
+    G4F_ALLOW_INTERNAL_PROVIDER_FALLBACK: bool = False
+
+    # ─── Secondary LLM failover ──────────────────────────────────────────────
+    # Used when the primary g4f provider cannot initialize or serve a request.
+    LLM_FALLBACK_PROVIDER: str = ""
+    LLM_FALLBACK_API_KEY: str = ""
+    LLM_FALLBACK_BASE_URL: str = ""
+    LLM_FALLBACK_MODEL: str = ""
+    LLM_FALLBACK_MAX_TOKENS: Optional[int] = None
+    LLM_FALLBACK_TEMPERATURE: Optional[float] = None
+    LLM_FALLBACK_TOP_P: Optional[float] = None
+    LLM_FALLBACK_THINKING: Optional[bool] = None
+    LLM_FALLBACK_THINKING_LEVEL: str = ""
 
     # ─── Per-step LLM overrides (all optional — empty/zero = use global) ───────
     #

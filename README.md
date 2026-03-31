@@ -351,14 +351,28 @@ These are used as the **default for all pipeline steps** (PLAN, NORMALIZE, NORMA
 | `LLM_MAX_TOKENS` | Optional | `16384` | Maximum output tokens |
 | `LLM_THINKING` | Optional | `false` | Enable thinking/reasoning mode (DeepSeek) |
 | `LLM_THINKING_LEVEL` | Optional | `OFF` | Gemini thinking level: `OFF`, `LOW`, `MEDIUM`, `HIGH` |
+| `LLM_FALLBACK_PROVIDER` | Optional | empty | Secondary provider used automatically when the primary g4f provider cannot initialize or serve a request |
+| `LLM_FALLBACK_API_KEY` | Optional | empty | API key for the fallback provider; inherits the resolved step/global API key when left empty |
+| `LLM_FALLBACK_BASE_URL` | Optional | empty | Base URL for the fallback provider; inherits the resolved step/global base URL when left empty |
+| `LLM_FALLBACK_MODEL` | Optional | empty | Model for the fallback provider; inherits the resolved step/global model when left empty |
+| `LLM_FALLBACK_MAX_TOKENS` | Optional | empty | Max tokens for the fallback provider; inherits the resolved step/global limit when left empty |
+| `LLM_FALLBACK_TEMPERATURE` | Optional | empty | Temperature for the fallback provider; inherits the resolved step/global value when left empty |
+| `LLM_FALLBACK_TOP_P` | Optional | empty | Top-p for the fallback provider; inherits the resolved step/global value when left empty |
+| `LLM_FALLBACK_THINKING` | Optional | empty | Thinking-mode override for the fallback provider |
+| `LLM_FALLBACK_THINKING_LEVEL` | Optional | empty | Thinking-level override for the fallback provider |
 | `OLLAMA_BASE_URL` | Optional | `http://localhost:11434/v1` | Ollama API endpoint (used when provider=ollama) |
 | `OLLAMA_MODEL` | Optional | `llama3` | Default Ollama model |
 | `G4F_MODEL` | Optional | empty | g4f-specific default model. Leave empty to enable g4f auto-selection |
 | `G4F_PROVIDERS` | Optional | empty | Comma-separated g4f provider list used to build a RetryProvider chain |
+| `G4F_COOKIES_DIR` | Optional | empty | Optional override for HAR / cookie auth files; empty uses `data/g4f/har_and_cookies/` |
 | `G4F_PROXY` | Optional | empty | Optional outbound proxy URL passed to the g4f client |
 | `G4F_SHUFFLE_PROVIDERS` | Optional | `true` | Shuffle the configured g4f provider chain before retrying |
+| `G4F_AUTO_DISCOVER_PROVIDERS` | Optional | `true` | Best-effort provider discovery when `G4F_PROVIDERS` is empty |
+| `G4F_ALLOW_INTERNAL_PROVIDER_FALLBACK` | Optional | `false` | Allow opaque g4f internal provider selection when discovery fails; keep `false` for deterministic failures + external fallback |
 
 When `LLM_PROVIDER=g4f`, HAR / cookie authentication files are loaded from `data/g4f/har_and_cookies/`.
+The primary supported g4f path is the embedded Python library used directly by the backend. The standard [docker-compose.yml](docker-compose.yml) does not start a standalone g4f server.
+If you want the optional standalone server for debugging or browser-auth workflows, start it explicitly with [docker-compose.g4f.yml](docker-compose.g4f.yml): `docker compose -f docker-compose.yml -f docker-compose.g4f.yml up -d --build`.
 
 ### Per-Step LLM Overrides
 

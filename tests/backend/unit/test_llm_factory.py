@@ -12,8 +12,11 @@ import pytest
 
 from backend.providers.llm.factory import (
     _build_provider,
+    _resolve_fallback_step_config,
     _resolve_step_config,
+    get_fallback_provider_for_step,
     get_provider_for_step,
+    get_provider_name_for_step,
 )
 from backend.providers.llm.g4f_provider import G4FProvider
 from backend.providers.llm.gemini import GeminiProvider
@@ -83,8 +86,20 @@ class TestResolveStepConfig:
             LLM_COMPRESS_THINKING_LEVEL="",
             G4F_MODEL="",
             G4F_PROVIDERS="HuggingChat,DeepInfra",
+            G4F_COOKIES_DIR="",
             G4F_PROXY="http://localhost:8080",
             G4F_SHUFFLE_PROVIDERS=False,
+            G4F_AUTO_DISCOVER_PROVIDERS=True,
+            G4F_ALLOW_INTERNAL_PROVIDER_FALLBACK=False,
+            LLM_FALLBACK_PROVIDER="",
+            LLM_FALLBACK_MODEL="",
+            LLM_FALLBACK_API_KEY="",
+            LLM_FALLBACK_BASE_URL="",
+            LLM_FALLBACK_TEMPERATURE=None,
+            LLM_FALLBACK_TOP_P=None,
+            LLM_FALLBACK_MAX_TOKENS=None,
+            LLM_FALLBACK_THINKING=None,
+            LLM_FALLBACK_THINKING_LEVEL="",
             OLLAMA_BASE_URL="http://localhost:11434",
             OLLAMA_MODEL="mistral",
         )
@@ -136,9 +151,36 @@ class TestResolveStepConfig:
 
     def test_all_known_steps_are_resolvable(self):
         with patch("backend.providers.llm.factory.settings", self._mock_settings()):
-            for step in ("plan", "match", "normalize", "normalize_profile", "compress"):
+            for step in (
+                "plan",
+                "match",
+                "normalize",
+                "normalize_profile",
+                "compress",
+                "critique",
+                "rerank",
+            ):
                 cfg = _resolve_step_config(step)
                 assert "provider" in cfg
+
+    def test_fallback_config_reuses_primary_step_fields_when_unset(self):
+        with patch(
+            "backend.providers.llm.factory.settings",
+            self._mock_settings(
+                LLM_PROVIDER="g4f",
+                LLM_MATCH_MODEL="llama-3.3-70b-versatile",
+                LLM_MATCH_API_KEY="primary-match-key",
+                LLM_MATCH_BASE_URL="https://api.groq.com/openai/v1",
+                LLM_FALLBACK_PROVIDER="groq",
+            ),
+        ):
+            cfg = _resolve_fallback_step_config("match")
+
+        assert cfg is not None
+        assert cfg["provider"] == "groq"
+        assert cfg["model"] == "llama-3.3-70b-versatile"
+        assert cfg["api_key"] == "primary-match-key"
+        assert cfg["base_url"] == "https://api.groq.com/openai/v1"
 
 
 # ─── _build_provider ──────────────────────────────────────────────────────────
@@ -149,9 +191,21 @@ class TestBuildProvider:
         defaults = dict(
             G4F_MODEL="",
             G4F_PROVIDERS="HuggingChat,DeepInfra",
+            G4F_COOKIES_DIR="/tmp/g4f-cookies",
             G4F_PROXY="http://localhost:8080",
             G4F_SHUFFLE_PROVIDERS=False,
+            G4F_AUTO_DISCOVER_PROVIDERS=True,
+            G4F_ALLOW_INTERNAL_PROVIDER_FALLBACK=False,
             LLM_MATCH_MODEL="",
+            LLM_FALLBACK_PROVIDER="",
+            LLM_FALLBACK_MODEL="",
+            LLM_FALLBACK_API_KEY="",
+            LLM_FALLBACK_BASE_URL="",
+            LLM_FALLBACK_TEMPERATURE=None,
+            LLM_FALLBACK_TOP_P=None,
+            LLM_FALLBACK_MAX_TOKENS=None,
+            LLM_FALLBACK_THINKING=None,
+            LLM_FALLBACK_THINKING_LEVEL="",
             OLLAMA_BASE_URL="http://localhost:11434",
             OLLAMA_MODEL="mistral",
         )
@@ -228,12 +282,30 @@ class TestBuildProvider:
             base_url="https://api.openai.com",
             model="",
             providers_list=["HuggingChat", "DeepInfra"],
+            cookies_dir="/tmp/g4f-cookies",
             proxies="http://localhost:8080",
             temperature=0.2,
             top_p=0.9,
             max_tokens=512,
             shuffle_providers=False,
+            allow_auto_discovery=True,
+            allow_internal_provider_fallback=False,
         )
+
+    def test_builds_fallback_provider_when_configured(self):
+        with patch(
+            "backend.providers.llm.factory.settings",
+            self._mock_settings(
+                LLM_FALLBACK_PROVIDER="groq",
+                LLM_FALLBACK_MODEL="llama-3.3-70b-versatile",
+                LLM_FALLBACK_API_KEY="fallback-key",
+                LLM_FALLBACK_BASE_URL="https://api.groq.com/openai/v1",
+            ),
+        ):
+            provider = get_fallback_provider_for_step("match")
+
+        assert isinstance(provider, OpenAICompatibleProvider)
+        assert provider.model_id == "groq/llama-3.3-70b-versatile"
 
     def test_g4f_does_not_require_api_key(self):
         cfg = self._base_cfg(provider="g4f", api_key="")
@@ -263,14 +335,31 @@ class TestGetProviderForStep:
         m.LLM_THINKING_LEVEL = ""
         m.G4F_MODEL = ""
         m.G4F_PROVIDERS = "HuggingChat,DeepInfra"
+        m.G4F_COOKIES_DIR = ""
         m.G4F_PROXY = ""
         m.G4F_SHUFFLE_PROVIDERS = True
+        m.G4F_AUTO_DISCOVER_PROVIDERS = True
+        m.G4F_ALLOW_INTERNAL_PROVIDER_FALLBACK = False
+        m.LLM_FALLBACK_PROVIDER = ""
+        m.LLM_FALLBACK_MODEL = ""
+        m.LLM_FALLBACK_API_KEY = ""
+        m.LLM_FALLBACK_BASE_URL = ""
+        m.LLM_FALLBACK_TEMPERATURE = None
+        m.LLM_FALLBACK_TOP_P = None
+        m.LLM_FALLBACK_MAX_TOKENS = None
+        m.LLM_FALLBACK_THINKING = None
+        m.LLM_FALLBACK_THINKING_LEVEL = ""
         for step in ("PLAN", "MATCH", "NORMALIZE", "NORMALIZE_PROFILE", "COMPRESS"):
             for field in ("PROVIDER", "MODEL", "API_KEY", "BASE_URL", "THINKING_LEVEL"):
                 setattr(m, f"LLM_{step}_{field}", "")
             for field in ("TEMPERATURE", "TOP_P", "MAX_TOKENS"):
                 setattr(m, f"LLM_{step}_{field}", None)
             setattr(m, f"LLM_{step}_THINKING", False)
+        for step in ("CRITIQUE", "RERANK"):
+            for field in ("PROVIDER", "MODEL", "API_KEY", "BASE_URL"):
+                setattr(m, f"LLM_{step}_{field}", "")
+            for field in ("TEMPERATURE", "TOP_P", "MAX_TOKENS"):
+                setattr(m, f"LLM_{step}_{field}", None)
         return m
 
     def test_default_step_returns_provider(self):
@@ -280,7 +369,15 @@ class TestGetProviderForStep:
 
     def test_each_known_step_returns_provider(self):
         with patch("backend.providers.llm.factory.settings", self._patched_settings()):
-            for step in ("plan", "match", "normalize", "normalize_profile", "compress"):
+            for step in (
+                "plan",
+                "match",
+                "normalize",
+                "normalize_profile",
+                "compress",
+                "critique",
+                "rerank",
+            ):
                 provider = get_provider_for_step(step)
                 assert provider is not None
 
@@ -302,3 +399,10 @@ class TestGetProviderForStep:
                     for step in ("plan", "match", "normalize"):
                         provider = get_provider_for_step(step)
                         assert isinstance(provider, G4FProvider)
+
+    def test_get_provider_name_for_step_returns_resolved_primary_provider(self):
+        settings = self._patched_settings()
+        settings.LLM_NORMALIZE_PROVIDER = "g4f"
+
+        with patch("backend.providers.llm.factory.settings", settings):
+            assert get_provider_name_for_step("normalize") == "g4f"

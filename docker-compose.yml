@@ -30,6 +30,9 @@ services:
       - DATABASE_URL=postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-jobhunter}
       - CORS_ORIGINS=http://localhost:5173,http://127.0.0.1:5173,http://localhost:80,http://127.0.0.1:80
       - ENVIRONMENT=${ENVIRONMENT:-development}
+      - HOME=/app/data/home
+      - XDG_CONFIG_HOME=/app/data/config
+      - XDG_CACHE_HOME=/app/data/cache
     ports:
       - "8000:8000"
     command: >

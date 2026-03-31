@@ -4,8 +4,12 @@ from typing import Any, Dict, List, Optional
 from tenacity import RetryError, retry, stop_after_attempt, wait_exponential
 
 from backend.core.config import settings
-from backend.providers.circuit_breaker import CircuitState, circuit_registry
-from backend.providers.llm.factory import get_provider_for_step
+from backend.providers.circuit_breaker import CircuitOpenError, CircuitState, circuit_registry
+from backend.providers.llm.factory import (
+    get_fallback_provider_for_step,
+    get_provider_for_step,
+    get_provider_name_for_step,
+)
 from backend.services.search.query_contracts import (
     compute_plan_input_fingerprint,
     exact_query_fingerprint,
@@ -51,11 +55,79 @@ class LLMService:
     def __init__(self):
         self._provider_cache: Dict[str, Any] = {}
 
-    def _get_provider(self, step: str):
+    def _provider_cache_key(self, step: str, *, fallback: bool = False) -> str:
+        return f"{step}::fallback" if fallback else step
+
+    def _is_g4f_provider(self, provider: Any) -> bool:
+        model_id = str(getattr(provider, "model_id", "") or "").strip().lower()
+        return model_id.startswith("g4f")
+
+    def _get_provider(self, step: str, *, fallback: bool = False):
         # asyncio is single-threaded; no lock needed for dict access
-        if step not in self._provider_cache:
-            self._provider_cache[step] = get_provider_for_step(step)
-        return self._provider_cache[step]
+        cache_key = self._provider_cache_key(step, fallback=fallback)
+        if cache_key not in self._provider_cache:
+            resolver = get_fallback_provider_for_step if fallback else get_provider_for_step
+            try:
+                provider = resolver(step)
+            except Exception as exc:
+                if fallback:
+                    raise
+                if get_provider_name_for_step(step) != "g4f":
+                    raise
+                provider = self._activate_fallback_provider(
+                    step,
+                    reason="provider initialization failed",
+                    error=exc,
+                    persist=True,
+                )
+                if provider is None:
+                    raise
+            if provider is None and fallback:
+                return None
+            self._provider_cache[cache_key] = provider
+        return self._provider_cache[cache_key]
+
+    def _activate_fallback_provider(
+        self,
+        step: str,
+        *,
+        reason: str,
+        error: Optional[Exception] = None,
+        persist: bool = False,
+    ):
+        try:
+            fallback_provider = self._get_provider(step, fallback=True)
+        except Exception as fallback_exc:
+            if error is None:
+                raise
+            raise RuntimeError(
+                f"Primary g4f provider failed for step '{step}' ({reason}): {error}. "
+                f"Fallback provider initialization also failed: {fallback_exc}"
+            ) from fallback_exc
+
+        if fallback_provider is None:
+            return None
+
+        if error is None:
+            logger.warning(
+                "[LLM] step=%s switching from g4f to fallback provider %s (%s).",
+                step,
+                fallback_provider.model_id,
+                reason,
+            )
+        else:
+            logger.warning(
+                "[LLM] step=%s switching from g4f to fallback provider %s (%s: %s).",
+                step,
+                fallback_provider.model_id,
+                reason,
+                error,
+            )
+
+        if persist:
+            self._provider_cache[self._provider_cache_key(step)] = fallback_provider
+
+        return fallback_provider
 
     def clear_provider_cache(self):
         """Force reload of all LLM providers (e.g. if config changes)."""
@@ -80,6 +152,8 @@ class LLMService:
         system_prompt: str,
         user_prompt: str,
         max_tokens: Optional[int] = None,
+        *,
+        _allow_fallback: bool = True,
     ) -> Dict[str, Any]:
         """Invoke provider.generate_json_async with per-step timeout + circuit breaker.
 
@@ -101,7 +175,66 @@ class LLMService:
                 step=step,
             )
 
-        return await cb.call(_do_call())
+        try:
+            return await cb.call(_do_call())
+        except Exception as exc:
+            if not _allow_fallback or not self._is_g4f_provider(provider):
+                raise
+
+            fallback_provider = self._activate_fallback_provider(
+                step,
+                reason=(
+                    "circuit breaker opened"
+                    if isinstance(exc, CircuitOpenError)
+                    else "request failed"
+                ),
+                error=exc,
+                persist=isinstance(exc, CircuitOpenError),
+            )
+            if fallback_provider is None:
+                raise
+
+            return await self._call_provider_json(
+                fallback_provider,
+                step,
+                system_prompt,
+                user_prompt,
+                max_tokens,
+                _allow_fallback=False,
+            )
+
+    async def _call_provider_text(
+        self,
+        provider,
+        step: str,
+        system_prompt: str,
+        user_prompt: str,
+        max_tokens: Optional[int] = None,
+        *,
+        _allow_fallback: bool = True,
+    ) -> str:
+        try:
+            return await provider.generate_text_async(system_prompt, user_prompt, max_tokens)
+        except Exception as exc:
+            if not _allow_fallback or not self._is_g4f_provider(provider):
+                raise
+
+            fallback_provider = self._activate_fallback_provider(
+                step,
+                reason="text request failed",
+                error=exc,
+            )
+            if fallback_provider is None:
+                raise
+
+            return await self._call_provider_text(
+                fallback_provider,
+                step,
+                system_prompt,
+                user_prompt,
+                max_tokens,
+                _allow_fallback=False,
+            )
 
     def _extract_searches_payload(self, result: Any) -> tuple[List[Dict[str, Any]], str, bool]:
         """Extract search list using strict-first parsing with legacy fallback.
@@ -168,7 +301,7 @@ CV:
 
 Return plain text, NOT JSON."""
 
-        return await provider.generate_text_async(system_prompt, user_prompt)
+        return await self._call_provider_text(provider, "plan", system_prompt, user_prompt)
 
     # ─── Step 1.5: User / Candidate Profile Normalization ─────────────
 
@@ -1178,7 +1311,12 @@ Return ONLY JSON with a "results" array, one entry per job, IN ORDER:
             f"{description}"
         )
         try:
-            compressed = await provider.generate_text_async(system_prompt, user_prompt)
+            compressed = await self._call_provider_text(
+                provider,
+                "compress",
+                system_prompt,
+                user_prompt,
+            )
             if compressed and len(compressed.strip()) > 50:
                 result = compressed.strip()
                 logger.info("[COMPRESS] Compressed %d → %d chars", len(description), len(result))
