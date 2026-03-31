@@ -1592,6 +1592,7 @@ class SearchService:
                     terminal_reason="all_duplicates",
                     jobs_found=total_found,
                     jobs_duplicates=total_duplicates,
+                    jobs_unique=total_found - total_duplicates,
                 )
             else:
                 add_log(
@@ -1608,6 +1609,7 @@ class SearchService:
                     terminal_reason="no_jobs_after_dedup",
                     jobs_found=total_found,
                     jobs_duplicates=total_duplicates,
+                    jobs_unique=total_found - total_duplicates,
                 )
             return
 
@@ -1633,6 +1635,7 @@ class SearchService:
                     terminal_reason="pipeline_processing_failed",
                     jobs_found=total_found,
                     jobs_duplicates=total_duplicates,
+                    jobs_unique=total_found - total_duplicates,
                     jobs_skipped=total_filtered + analysis_skipped,
                     error="Jobs were fetched but pipeline processing failed before analysis completed.",
                 )
@@ -1648,6 +1651,7 @@ class SearchService:
                     terminal_reason="no_jobs_after_structured_filters",
                     jobs_found=total_found,
                     jobs_duplicates=total_duplicates,
+                    jobs_unique=total_found - total_duplicates,
                     jobs_skipped=total_filtered + analysis_skipped,
                 )
             return
@@ -1668,6 +1672,7 @@ class SearchService:
                 finished_at=datetime.now(timezone.utc).isoformat(),
                 jobs_found=total_found,
                 jobs_duplicates=total_duplicates,
+                jobs_unique=total_found - total_duplicates,
                 jobs_skipped=total_filtered + consumer_skipped + analysis_skipped,
                 error="Jobs were analyzed but none could be persisted.",
             )
@@ -1706,6 +1711,7 @@ class SearchService:
             jobs_found=total_found,
             jobs_new=saved_count,
             jobs_duplicates=total_duplicates,
+            jobs_unique=total_found - total_duplicates,
             jobs_skipped=total_skipped,
         )
 
@@ -2824,6 +2830,7 @@ class SearchService:
                         profile_id,
                         jobs_found=total_found,
                         jobs_duplicates=total_duplicates,
+                        jobs_unique=total_found - total_duplicates,
                     )
 
                     if not new_unique:
@@ -2989,23 +2996,33 @@ class SearchService:
             # in a single update_status call to keep the ratio coherent.
             analysis_input_count = len(filtered_batch)
             if llm_service.is_analysis_circuit_open():
-                analysis_failed += analysis_input_count
-                total_analysis_skipped += analysis_input_count
-                cumulative_to_analyze += analysis_input_count
-                cumulative_skipped += analysis_input_count
+                # Wait for recovery window instead of permanent skip
+                recovery_wait = float(settings.CIRCUIT_BREAKER_RECOVERY_SECONDS) + 2.0
                 add_log(
                     profile_id,
-                    "⚠ MATCH circuit breaker is open — skipping analysis for "
-                    f"{analysis_input_count} job(s) until the recovery window elapses.",
+                    f"⚠ MATCH circuit breaker is open — waiting {recovery_wait}s for recovery...",
                 )
-                update_status(
-                    profile_id,
-                    jobs_analyze_total=cumulative_to_analyze,
-                    jobs_analyzed=len(analyzed_pairs),
-                    jobs_new=total_saved,
-                    jobs_skipped=cumulative_skipped,
-                )
-                continue
+                await asyncio.sleep(recovery_wait)
+
+                # Check again after waiting
+                if llm_service.is_analysis_circuit_open():
+                    analysis_failed += analysis_input_count
+                    total_analysis_skipped += analysis_input_count
+                    cumulative_to_analyze += analysis_input_count
+                    cumulative_skipped += analysis_input_count
+                    add_log(
+                        profile_id,
+                        "⚠ MATCH circuit breaker is still open — skipping analysis for "
+                        f"{analysis_input_count} job(s).",
+                    )
+                    update_status(
+                        profile_id,
+                        jobs_analyze_total=cumulative_to_analyze,
+                        jobs_analyzed=len(analyzed_pairs),
+                        jobs_new=total_saved,
+                        jobs_skipped=cumulative_skipped,
+                    )
+                    continue
 
             batch_pairs = await self._run_analysis_batches(profile_id, profile_dict, filtered_batch)
             # Track jobs that passed filters but were lost due to analysis errors.
@@ -3063,7 +3080,9 @@ class SearchService:
         Critique, reranking, and salary benchmark are *not* applied here —
         they are handled once across all batches by _finalize_and_save.
         """
-        semaphore = asyncio.Semaphore(settings.ANALYSIS_CONCURRENCY)
+        # Clamp concurrency to prevent mass LLM timeouts that trip the circuit breaker
+        safe_concurrency = min(settings.ANALYSIS_CONCURRENCY, 3)
+        semaphore = asyncio.Semaphore(safe_concurrency)
         batch_size = settings.ANALYSIS_BATCH_SIZE
         batches = [jobs[i : i + batch_size] for i in range(0, len(jobs), batch_size)]
 

@@ -151,7 +151,7 @@ class Settings(BaseSettings):
     SEARCH_ENABLE_DEGRADED_PLAN_FALLBACK: bool = True
     SEARCH_DEGRADED_PLAN_MAX_QUERIES: int = 3
     SEARCH_DEGRADED_PLAN_MAX_KEYWORDS: int = 2
-    ANALYSIS_CONCURRENCY: int = 15
+    ANALYSIS_CONCURRENCY: int = 5
     ANALYSIS_BATCH_SIZE: int = 5
     # Jobs per normalization LLM prompt. Smaller = fewer context-limit errors.
     NORMALIZE_BATCH_SIZE: int = 10
@@ -168,7 +168,7 @@ class Settings(BaseSettings):
 
     # Circuit breaker (per provider)
     # Number of consecutive failures before tripping to OPEN state.
-    CIRCUIT_BREAKER_FAILURE_THRESHOLD: int = 5
+    CIRCUIT_BREAKER_FAILURE_THRESHOLD: int = 10
     # Seconds to wait in OPEN state before trying a probe call (HALF_OPEN).
     CIRCUIT_BREAKER_RECOVERY_SECONDS: int = 60
 

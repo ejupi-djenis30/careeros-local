@@ -107,6 +107,7 @@ export function SearchProgress({ profileId, status, onStateChange, onClear }) {
         current_query,
         searches_generated,
         jobs_new,
+        jobs_unique,
         jobs_duplicates,
         jobs_skipped,
         jobs_analyzed,
@@ -215,21 +216,22 @@ export function SearchProgress({ profileId, status, onStateChange, onClear }) {
                 )}
 
                 {/* Stats Grid */}
-                <div className="row g-3">
+                <div className="row g-3 justify-content-center">
                     {[
                         // jobs_new is updated live as jobs are saved during searching —
                         // show it with a contextual label ("Saved" while running, "New Intel" when done).
                         isRunning
                             ? { label: 'Saved', value: jobs_new, color: 'text-primary' }
                             : { label: 'New Intel', value: jobs_new, color: 'text-white' },
+                        { label: 'In Queue', value: Math.max(0, (jobs_unique || 0) - (jobs_new || 0) - (jobs_skipped || 0)), color: 'text-info' },
                         { label: 'Duplicates', value: jobs_duplicates, color: 'text-warning' },
                         { label: 'Skipped', value: jobs_skipped, color: 'text-secondary' },
                         { label: 'Errors', value: errors, color: 'text-danger' }
                     ].map((stat, i) => (
-                        <div key={i} className="col-6 col-md-3">
-                            <div className="p-3 rounded-4 bg-black-20 border border-white-5 text-center">
-                                <div className={`display-6 fw-bold mb-0 ${stat.color}`}>{stat.value || 0}</div>
-                                <div className="text-secondary x-small text-uppercase tracking-wide opacity-75">{stat.label}</div>
+                        <div key={i} className="col-4 col-md">
+                            <div className="p-3 rounded-4 bg-black-20 border border-white-5 text-center h-100 d-flex flex-column justify-content-center">
+                                <div className={`display-6 fw-bold mb-0 ${stat.color}`} style={{ fontSize: '1.75rem' }}>{stat.value || 0}</div>
+                                <div className="text-secondary x-small text-uppercase tracking-wide opacity-75 mt-1">{stat.label}</div>
                             </div>
                         </div>
                     ))}

@@ -1075,7 +1075,12 @@ async def test_run_search_done_terminal_reason_all_duplicates(mock_service):
         await mock_service.run_search(1)
 
     mock_update.assert_any_call(
-        1, state="done", terminal_reason="all_duplicates", jobs_found=3, jobs_duplicates=3
+        1,
+        state="done",
+        terminal_reason="all_duplicates",
+        jobs_found=3,
+        jobs_duplicates=3,
+        jobs_unique=0,
     )
 
 
@@ -1120,7 +1125,12 @@ async def test_run_search_done_terminal_reason_no_jobs_after_dedup(mock_service)
         await mock_service.run_search(1)
 
     mock_update.assert_any_call(
-        1, state="done", terminal_reason="no_jobs_after_dedup", jobs_found=3, jobs_duplicates=3
+        1,
+        state="done",
+        terminal_reason="no_jobs_after_dedup",
+        jobs_found=3,
+        jobs_duplicates=3,
+        jobs_unique=0,
     )
 
 
@@ -1159,6 +1169,7 @@ async def test_run_search_done_terminal_reason_no_jobs_after_structured_filters(
             terminal_reason="no_jobs_after_structured_filters",
             jobs_found=3,
             jobs_duplicates=0,
+            jobs_unique=3,
             jobs_skipped=3,
         )
 
@@ -1203,6 +1214,7 @@ async def test_run_search_sets_error_when_processing_fails_before_analysis(mock_
         terminal_reason="pipeline_processing_failed",
         jobs_found=3,
         jobs_duplicates=0,
+        jobs_unique=3,
         jobs_skipped=1,
         error="Jobs were fetched but pipeline processing failed before analysis completed.",
     )
@@ -1315,6 +1327,7 @@ async def test_run_search_normalization_exception_zero_errors(mock_service):
         terminal_reason="no_jobs_after_structured_filters",
         jobs_found=3,
         jobs_duplicates=0,
+        jobs_unique=3,
         jobs_skipped=3,
     )
 
