@@ -109,6 +109,9 @@ class Settings(BaseSettings):
     # Reserve a small amount of wall-clock time so we can bail out cleanly before the
     # step-level timeout is exhausted.
     G4F_TIMEOUT_BUFFER_SECONDS: float = 1.0
+    # How long (seconds) to wait before retrying after a rate-limit error (e.g. 100 req/hour).
+    # Default 3600 = wait for the provider's hourly window to reset then continue.
+    G4F_RATE_LIMIT_WAIT_SECONDS: float = 3600.0
     # When enabled and G4F_PROVIDERS is empty, g4f tries to discover a usable provider chain.
     G4F_AUTO_DISCOVER_PROVIDERS: bool = True
     # When disabled, an empty or broken provider chain raises explicitly instead of delegating

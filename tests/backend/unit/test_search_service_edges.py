@@ -248,16 +248,17 @@ async def test_analyze_and_save_success(mock_service):
             mock_geocode.return_value = MagicMock(lat=46.9, lon=7.4)
 
             mock_session = mock_service.job_repo.db
-            mock_session.query.return_value.filter.return_value.all.return_value = []
-            # _save_single_job and _upsert_scraped_job now use .first() for upsert checks;
-            # return None so both take the "create new" branch and call db.add()
-            mock_session.query.return_value.filter.return_value.first.return_value = None
+            mock_service.job_repo.get_scraped_job_by_platform_and_id.return_value = None
+            mock_service.job_repo.create_scraped_job_nested.return_value = True
+            mock_service.job_repo.get_job_by_user_scraped_profile.return_value = None
+            mock_service.job_repo.create_job_nested.return_value = True
 
             saved, skipped = await mock_service._analyze_and_save(1, profile_dict, [job1, job2])
 
             assert saved == 2
             assert skipped == 0
-            assert mock_session.add.called
+            assert mock_service.job_repo.create_scraped_job_nested.call_count == 2
+            assert mock_service.job_repo.create_job_nested.call_count == 2
             # With per-job commits, commit is called once per saved job
             assert mock_session.commit.call_count == 2
 

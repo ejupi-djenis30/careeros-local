@@ -138,6 +138,25 @@ def _entry_timestamp(entry: Dict[str, Any] | None) -> str:
     return str(entry.get("updated_at") or entry.get("finished_at") or entry.get("started_at") or "")
 
 
+def _parse_timestamp(value: Any) -> float:
+    if not value:
+        return 0.0
+    text = str(value).strip()
+    if not text:
+        return 0.0
+    # Normalize trailing Z to an explicit UTC offset for fromisoformat compatibility.
+    if text.endswith("Z"):
+        text = text[:-1] + "+00:00"
+    try:
+        return datetime.fromisoformat(text).timestamp()
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def _entry_timestamp_value(entry: Dict[str, Any] | None) -> float:
+    return _parse_timestamp(_entry_timestamp(entry))
+
+
 def _merge_status_maps(
     existing: Dict[int, Dict[str, Any]],
     incoming: Dict[int, Dict[str, Any]],
@@ -157,7 +176,9 @@ def _merge_status_maps(
             merged[profile_id] = current
             continue
         merged[profile_id] = (
-            new_entry if _entry_timestamp(new_entry) >= _entry_timestamp(current) else current
+            new_entry
+            if _entry_timestamp_value(new_entry) >= _entry_timestamp_value(current)
+            else current
         )
 
     return merged
@@ -209,9 +230,8 @@ def _is_stale_reserved_entry(entry: Dict[str, Any], now: float | None = None) ->
     if not reference_ts:
         return True
 
-    try:
-        entry_ts = datetime.fromisoformat(reference_ts).timestamp()
-    except (TypeError, ValueError):
+    entry_ts = _parse_timestamp(reference_ts)
+    if entry_ts <= 0.0:
         return True
 
     current_ts = now if now is not None else time.time()
@@ -226,8 +246,7 @@ def _prune_stale_reserved_entries(statuses: Dict[int, Dict[str, Any]]) -> Dict[i
 
 
 def _entry_is_current_worker_visible(entry: Dict[str, Any] | None) -> bool:
-    reference_ts = _entry_timestamp(entry)
-    return bool(reference_ts and reference_ts >= _WORKER_BOOT_TIME)
+    return _entry_timestamp_value(entry) >= _WORKER_BOOT_TIME_TS
 
 
 def _shared_entry_blocks_reservation(entry: Dict[str, Any]) -> bool:
@@ -277,6 +296,7 @@ _reserved_tasks: Dict[int, Dict[str, Any]] = {}
 # (started after this boot) from stale entries left in the file by a prior
 # server run that crashed mid-search.
 _WORKER_BOOT_TIME: str = datetime.now(timezone.utc).isoformat()
+_WORKER_BOOT_TIME_TS: float = _parse_timestamp(_WORKER_BOOT_TIME)
 
 
 def _cleanup_stale_reservations(now: float | None = None):
@@ -432,7 +452,7 @@ def _merge_with_file(memory: Dict[int, Dict[str, Any]]) -> Dict[int, Dict[str, A
         else:
             merged[pid] = copy.deepcopy(
                 mem_entry
-                if _entry_timestamp(mem_entry) >= _entry_timestamp(file_entry)
+                if _entry_timestamp_value(mem_entry) >= _entry_timestamp_value(file_entry)
                 else file_entry
             )
     return merged

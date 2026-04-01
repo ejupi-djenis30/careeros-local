@@ -7,7 +7,6 @@ import re
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
-from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from backend.core.config import settings
@@ -157,14 +156,7 @@ class SearchService:
         platform = getattr(listing, "source", None) or getattr(listing, "platform", "unknown")
         platform_id = str(getattr(listing, "id", "") or getattr(listing, "platform_job_id", ""))
 
-        existing_sj = (
-            self.db.query(ScrapedJob)
-            .filter(
-                ScrapedJob.platform == platform,
-                ScrapedJob.platform_job_id == platform_id,
-            )
-            .first()
-        )
+        existing_sj = self.job_repo.get_scraped_job_by_platform_and_id(platform, platform_id)
 
         desc_text = extract_listing_description_text(listing)
         company_name = extract_company_name(listing) or "Unknown"
@@ -200,24 +192,16 @@ class SearchService:
                 source_query=getattr(listing, "_source_query", "Unknown"),
                 **normalized_bootstrap,
             )
-            savepoint = self.db.begin_nested()
-            try:
-                self.db.add(new_sj)
-                savepoint.commit()
+            created_ok = self.job_repo.create_scraped_job_nested(new_sj)
+            if created_ok:
                 existing_sj = new_sj
                 created = True
-            except IntegrityError:
-                savepoint.rollback()
+            else:
                 recovered_catalog_conflict = True
                 # Another concurrent worker inserted the same job between our query
                 # and our insert — re-fetch the winner without losing the batch.
-                existing_sj = (
-                    self.db.query(ScrapedJob)
-                    .filter(
-                        ScrapedJob.platform == platform,
-                        ScrapedJob.platform_job_id == platform_id,
-                    )
-                    .first()
+                existing_sj = self.job_repo.get_scraped_job_by_platform_and_id(
+                    platform, platform_id
                 )
         else:
             refresh_fields = {
@@ -335,7 +319,7 @@ class SearchService:
         all_scraped_ids = [sid for sid in all_scraped_ids if sid is not None]
         scraped_jobs_by_id: Dict[int, ScrapedJob] = {}
         if all_scraped_ids:
-            batch = self.db.query(ScrapedJob).filter(ScrapedJob.id.in_(all_scraped_ids)).all()
+            batch = self.job_repo.get_scraped_jobs_by_ids(all_scraped_ids)
             scraped_jobs_by_id = {sj.id: sj for sj in batch}
 
         for listing in jobs:
@@ -2161,18 +2145,10 @@ class SearchService:
                 if p and pid:
                     pairs_by_platform.setdefault(p, []).append(pid)
 
-            for platform_name, platform_ids in pairs_by_platform.items():
-                batch_sjs = (
-                    self.db.query(ScrapedJob.id, ScrapedJob.platform, ScrapedJob.platform_job_id)
-                    .filter(
-                        ScrapedJob.platform == platform_name,
-                        ScrapedJob.platform_job_id.in_(platform_ids),
-                    )
-                    .all()
-                )
-                for sj_id, sj_platform, sj_platform_id in batch_sjs:
-                    if sj_id in applied_scraped_ids:
-                        applied_scraped_id_by_pair[(sj_platform, sj_platform_id)] = sj_id
+            applied_scraped_id_by_pair = self.job_repo.get_applied_scraped_pairs(
+                pairs_by_platform,
+                applied_scraped_ids,
+            )
 
         for listing in all_jobs:
             platform = getattr(listing, "source", None) or getattr(listing, "platform", "unknown")
@@ -2531,14 +2507,10 @@ class SearchService:
             "analysis_structured": analysis.get("analysis_structured"),
             "red_flags": analysis.get("red_flags"),
         }
-        existing_job = (
-            self.db.query(Job)
-            .filter(
-                Job.user_id == profile_dict["user_id"],
-                Job.scraped_job_id == existing_sj.id,
-                Job.search_profile_id == profile_dict.get("id"),
-            )
-            .first()
+        existing_job = self.job_repo.get_job_by_user_scraped_profile(
+            profile_dict["user_id"],
+            existing_sj.id,
+            profile_dict.get("id"),
         )
         if existing_job:
             for _f, _v in _analysis_fields.items():
@@ -2551,21 +2523,13 @@ class SearchService:
                 applied=False,
                 **_analysis_fields,
             )
-            _sp = self.db.begin_nested()
-            try:
-                self.db.add(new_job)
-                _sp.commit()
-            except IntegrityError:
-                _sp.rollback()
+            created_ok = self.job_repo.create_job_nested(new_job)
+            if not created_ok:
                 # Concurrent save of the same job won the race — reload and update.
-                existing_job = (
-                    self.db.query(Job)
-                    .filter(
-                        Job.user_id == profile_dict["user_id"],
-                        Job.scraped_job_id == existing_sj.id,
-                        Job.search_profile_id == profile_dict.get("id"),
-                    )
-                    .first()
+                existing_job = self.job_repo.get_job_by_user_scraped_profile(
+                    profile_dict["user_id"],
+                    existing_sj.id,
+                    profile_dict.get("id"),
                 )
                 if existing_job:
                     for _f, _v in _analysis_fields.items():
@@ -3550,14 +3514,10 @@ class SearchService:
             if scraped_job_id is None:
                 continue
             try:
-                existing_job = (
-                    self.db.query(Job)
-                    .filter(
-                        Job.user_id == profile_dict["user_id"],
-                        Job.scraped_job_id == scraped_job_id,
-                        Job.search_profile_id == profile_dict.get("id"),
-                    )
-                    .first()
+                existing_job = self.job_repo.get_job_by_user_scraped_profile(
+                    profile_dict["user_id"],
+                    scraped_job_id,
+                    profile_dict.get("id"),
                 )
                 if not existing_job:
                     continue
