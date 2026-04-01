@@ -1,6 +1,7 @@
 import asyncio
 import json
 import logging
+import time
 from abc import ABC, abstractmethod
 from typing import Any, Dict, Optional
 
@@ -13,7 +14,20 @@ _STEP_TIMEOUT_ATTRS: dict[str, str] = {
     "normalize_profile": "LLM_CALL_TIMEOUT_NORMALIZE",
     "compress": "LLM_CALL_TIMEOUT_NORMALIZE",
     "match": "LLM_CALL_TIMEOUT_MATCH",
+    "critique": "LLM_CALL_TIMEOUT_CRITIQUE",
+    "rerank": "LLM_CALL_TIMEOUT_RERANK",
 }
+
+
+def resolve_step_timeout_seconds(step: str, timeout_override: Optional[float] = None) -> float:
+    """Resolve the effective timeout budget for a pipeline step."""
+    from backend.core.config import settings  # lazy to avoid circular import
+
+    if timeout_override is not None:
+        return float(timeout_override)
+
+    timeout_attr = _STEP_TIMEOUT_ATTRS.get(step, "LLM_CALL_TIMEOUT_MATCH")
+    return float(getattr(settings, timeout_attr, 0) or 0)
 
 
 def extract_json_payload(text: str) -> str:
@@ -100,6 +114,35 @@ class LLMProvider(ABC):
         """Async version — default falls back to sync via to_thread."""
         return await asyncio.to_thread(self.generate_json, system_prompt, user_prompt, max_tokens)
 
+    async def generate_text_async_with_timeout(
+        self,
+        system_prompt: str,
+        user_prompt: str,
+        max_tokens: Optional[int] = None,
+        *,
+        step: str = "match",
+        timeout_override: Optional[float] = None,
+    ) -> str:
+        """Like ``generate_text_async`` but enforces a per-step call timeout."""
+        effective_timeout = resolve_step_timeout_seconds(step, timeout_override)
+        coro = self.generate_text_async(system_prompt, user_prompt, max_tokens)
+        if effective_timeout <= 0:
+            return await coro
+
+        started_at = time.monotonic()
+        try:
+            return await asyncio.wait_for(coro, timeout=effective_timeout)
+        except asyncio.TimeoutError:
+            elapsed = time.monotonic() - started_at
+            logger.error(
+                "LLM text timeout (%.0fs) hit for step=%s model=%s elapsed=%.1fs",
+                effective_timeout,
+                step,
+                self.model_id,
+                elapsed,
+            )
+            raise
+
     async def generate_json_async_with_timeout(
         self,
         system_prompt: str,
@@ -114,26 +157,21 @@ class LLMProvider(ABC):
         Falls back to ``generate_json_async`` when the effective timeout is 0
         (i.e. disabled).  Raises ``asyncio.TimeoutError`` on breach.
         """
-        from backend.core.config import settings  # lazy to avoid circular import
-
-        timeout_attr = _STEP_TIMEOUT_ATTRS.get(step, "LLM_CALL_TIMEOUT_MATCH")
-        effective_timeout: float = (
-            timeout_override
-            if timeout_override is not None
-            else float(getattr(settings, timeout_attr, 0))
-        )
-
+        effective_timeout = resolve_step_timeout_seconds(step, timeout_override)
         coro = self.generate_json_async(system_prompt, user_prompt, max_tokens)
         if effective_timeout <= 0:
             return await coro
 
+        started_at = time.monotonic()
         try:
             return await asyncio.wait_for(coro, timeout=effective_timeout)
         except asyncio.TimeoutError:
+            elapsed = time.monotonic() - started_at
             logger.error(
-                "LLM call timeout (%.0fs) hit for step=%s model=%s",
+                "LLM call timeout (%.0fs) hit for step=%s model=%s elapsed=%.1fs",
                 effective_timeout,
                 step,
                 self.model_id,
+                elapsed,
             )
             raise

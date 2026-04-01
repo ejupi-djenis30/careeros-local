@@ -36,6 +36,7 @@ async def test_compress_calls_llm_when_over_limit(llm_service):
 
     mock_provider = MagicMock()
     mock_provider.generate_text_async = AsyncMock(return_value=compressed_output)
+    mock_provider.generate_text_async_with_timeout = mock_provider.generate_text_async
 
     with patch.object(llm_service, "_get_provider", return_value=mock_provider):
         result = await llm_service._compress_description_if_needed(long_desc, max_chars=8000)
@@ -52,6 +53,7 @@ async def test_compress_falls_back_to_truncation_on_llm_failure(llm_service):
 
     mock_provider = MagicMock()
     mock_provider.generate_text_async = AsyncMock(side_effect=RuntimeError("LLM timeout"))
+    mock_provider.generate_text_async_with_timeout = mock_provider.generate_text_async
 
     with patch.object(llm_service, "_get_provider", return_value=mock_provider):
         result = await llm_service._compress_description_if_needed(long_desc, max_chars=8000)
@@ -67,6 +69,7 @@ async def test_compress_falls_back_to_truncation_when_llm_returns_empty(llm_serv
 
     mock_provider = MagicMock()
     mock_provider.generate_text_async = AsyncMock(return_value="  ")  # whitespace only
+    mock_provider.generate_text_async_with_timeout = mock_provider.generate_text_async
 
     with patch.object(llm_service, "_get_provider", return_value=mock_provider):
         result = await llm_service._compress_description_if_needed(long_desc, max_chars=8000)
@@ -79,6 +82,7 @@ async def test_compress_uses_compress_step_provider(llm_service):
     long_desc = "D" * 9000
     mock_provider = MagicMock()
     mock_provider.generate_text_async = AsyncMock(return_value="Compressed output " + "D" * 60)
+    mock_provider.generate_text_async_with_timeout = mock_provider.generate_text_async
 
     with patch.object(
         llm_service, "_get_provider", return_value=mock_provider

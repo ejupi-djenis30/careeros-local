@@ -8,6 +8,7 @@ repos:
       - id: end-of-file-fixer
       - id: check-yaml
         args: [--allow-multiple-documents]
+      - id: check-merge-conflict
       - id: check-added-large-files
         args: [--maxkb=500]
       - id: debug-statements
@@ -40,7 +41,7 @@ repos:
     hooks:
       - id: frontend-lint
         name: Frontend Lint (ESLint)
-        entry: bash -c "cd frontend && npm run lint"
+        entry: python -c "import shutil, subprocess, sys; npm = shutil.which('npm') or shutil.which('npm.cmd'); raise SystemExit(subprocess.call([npm, 'run', 'lint'], cwd='frontend')) if npm else sys.exit('npm executable not found in PATH')"
         language: system
         files: ^frontend/src/.*\.(js|jsx|ts|tsx)$
         pass_filenames: false

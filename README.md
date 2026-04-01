@@ -367,12 +367,21 @@ These are used as the **default for all pipeline steps** (PLAN, NORMALIZE, NORMA
 | `G4F_COOKIES_DIR` | Optional | empty | Optional override for HAR / cookie auth files; empty uses `data/g4f/har_and_cookies/` |
 | `G4F_PROXY` | Optional | empty | Optional outbound proxy URL passed to the g4f client |
 | `G4F_SHUFFLE_PROVIDERS` | Optional | `true` | Shuffle the configured g4f provider chain before retrying |
+| `G4F_MAX_REQUEST_ATTEMPTS` | Optional | `2` | Low-level retry count inside the g4f provider; keep this low to avoid retry storms |
+| `G4F_REQUEST_TIMEOUT_CAP_SECONDS` | Optional | `20` | Per-attempt cap inside g4f so one provider call cannot consume the whole step budget |
+| `G4F_TIMEOUT_BUFFER_SECONDS` | Optional | `1` | Reserved wall-clock headroom before the outer step timeout is exhausted |
 | `G4F_AUTO_DISCOVER_PROVIDERS` | Optional | `true` | Best-effort provider discovery when `G4F_PROVIDERS` is empty |
 | `G4F_ALLOW_INTERNAL_PROVIDER_FALLBACK` | Optional | `false` | Allow opaque g4f internal provider selection when discovery fails; keep `false` for deterministic failures + external fallback |
 
 When `LLM_PROVIDER=g4f`, HAR / cookie authentication files are loaded from `data/g4f/har_and_cookies/`.
 The primary supported g4f path is the embedded Python library used directly by the backend. The standard [docker-compose.yml](docker-compose.yml) does not start a standalone g4f server.
 If you want the optional standalone server for debugging or browser-auth workflows, start it explicitly with [docker-compose.g4f.yml](docker-compose.g4f.yml): `docker compose -f docker-compose.yml -f docker-compose.g4f.yml up -d --build`.
+
+Recommended g4f production posture:
+- Set an explicit `G4F_PROVIDERS` chain instead of relying on opaque internal selection.
+- Keep `G4F_MAX_REQUEST_ATTEMPTS` small (usually `2` or `3`). Very high values create retry storms and apparent hangs.
+- Configure `LLM_FALLBACK_PROVIDER` so g4f timeouts fail over to a stable cloud provider.
+- Use the g4f-specific timeout knobs (`LLM_CALL_TIMEOUT_*_G4F`) to keep failover fast on PLAN, NORMALIZE, MATCH, CRITIQUE, and RERANK.
 
 ### Per-Step LLM Overrides
 

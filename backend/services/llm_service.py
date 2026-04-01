@@ -1,7 +1,8 @@
+import asyncio
 import logging
 from typing import Any, Dict, List, Optional
 
-from tenacity import RetryError, retry, stop_after_attempt, wait_exponential
+from tenacity import RetryError, retry, retry_if_exception, stop_after_attempt, wait_exponential
 
 from backend.core.config import settings
 from backend.providers.circuit_breaker import CircuitOpenError, CircuitState, circuit_registry
@@ -20,6 +21,44 @@ from backend.services.search.query_contracts import (
 )
 
 logger = logging.getLogger(__name__)
+
+_G4F_TIMEOUT_OVERRIDE_ATTRS = {
+    "plan": "LLM_CALL_TIMEOUT_PLAN_G4F",
+    "normalize": "LLM_CALL_TIMEOUT_NORMALIZE_G4F",
+    "normalize_profile": "LLM_CALL_TIMEOUT_NORMALIZE_G4F",
+    "compress": "LLM_CALL_TIMEOUT_NORMALIZE_G4F",
+    "match": "LLM_CALL_TIMEOUT_MATCH_G4F",
+    "critique": "LLM_CALL_TIMEOUT_CRITIQUE_G4F",
+    "rerank": "LLM_CALL_TIMEOUT_RERANK_G4F",
+}
+
+
+def _is_retryable_plan_error(exc: Exception) -> bool:
+    """Return True for transient PLAN-step failures worth retrying."""
+    real_exc = exc
+    if isinstance(exc, RetryError):
+        try:
+            real_exc = exc.last_attempt.exception()
+        except Exception:
+            pass
+
+    if isinstance(real_exc, (asyncio.TimeoutError, TimeoutError, CircuitOpenError)):
+        return True
+
+    error_text = str(real_exc).lower()
+    retryable_fragments = (
+        "rate limit",
+        "timeout",
+        "timed out",
+        "temporar",
+        "connection reset",
+        "connection aborted",
+        "connection error",
+        "502",
+        "503",
+        "504",
+    )
+    return any(fragment in error_text for fragment in retryable_fragments)
 
 
 def _unwrap_retry_error(exc: Exception) -> tuple[Exception, str]:
@@ -61,6 +100,26 @@ class LLMService:
     def _is_g4f_provider(self, provider: Any) -> bool:
         model_id = str(getattr(provider, "model_id", "") or "").strip().lower()
         return model_id.startswith("g4f")
+
+    def _resolve_timeout_override(self, provider: Any, step: str) -> Optional[float]:
+        """Apply step/provider-specific timeout budgets to speed up failover."""
+        if not self._is_g4f_provider(provider):
+            return None
+
+        timeout_attr = _G4F_TIMEOUT_OVERRIDE_ATTRS.get(step)
+        if not timeout_attr:
+            return None
+
+        g4f_timeout = float(getattr(settings, timeout_attr, 0) or 0)
+        if g4f_timeout <= 0:
+            return None
+
+        base_timeout_attr = timeout_attr.removesuffix("_G4F")
+        base_timeout = float(getattr(settings, base_timeout_attr, 0) or 0)
+        return min(g4f_timeout, base_timeout) if base_timeout > 0 else g4f_timeout
+
+    def _circuit_service_name(self, provider: Any, step: str) -> str:
+        return f"{step}:{provider.model_id}"
 
     def _get_provider(self, step: str, *, fallback: bool = False):
         # asyncio is single-threaded; no lock needed for dict access
@@ -136,7 +195,7 @@ class LLMService:
     def is_step_circuit_open(self, step: str) -> bool:
         provider = self._get_provider(step)
         cb = circuit_registry.get(
-            provider.model_id,
+            self._circuit_service_name(provider, step),
             failure_threshold=settings.CIRCUIT_BREAKER_FAILURE_THRESHOLD,
             recovery_seconds=float(settings.CIRCUIT_BREAKER_RECOVERY_SECONDS),
         )
@@ -162,17 +221,19 @@ class LLMService:
         (raising CircuitOpenError) rather than blocking for the full timeout.
         """
         cb = circuit_registry.get(
-            provider.model_id,
+            self._circuit_service_name(provider, step),
             failure_threshold=settings.CIRCUIT_BREAKER_FAILURE_THRESHOLD,
             recovery_seconds=float(settings.CIRCUIT_BREAKER_RECOVERY_SECONDS),
         )
 
         async def _do_call() -> Dict[str, Any]:
+            timeout_override = self._resolve_timeout_override(provider, step)
             return await provider.generate_json_async_with_timeout(
                 system_prompt,
                 user_prompt,
                 max_tokens,
                 step=step,
+                timeout_override=timeout_override,
             )
 
         try:
@@ -184,12 +245,16 @@ class LLMService:
             fallback_provider = self._activate_fallback_provider(
                 step,
                 reason=(
-                    "circuit breaker opened"
-                    if isinstance(exc, CircuitOpenError)
-                    else "request failed"
+                    "request timed out"
+                    if isinstance(exc, asyncio.TimeoutError)
+                    else (
+                        "circuit breaker opened"
+                        if isinstance(exc, CircuitOpenError)
+                        else "request failed"
+                    )
                 ),
                 error=exc,
-                persist=isinstance(exc, CircuitOpenError),
+                persist=isinstance(exc, (CircuitOpenError, asyncio.TimeoutError)),
             )
             if fallback_provider is None:
                 raise
@@ -213,16 +278,41 @@ class LLMService:
         *,
         _allow_fallback: bool = True,
     ) -> str:
+        cb = circuit_registry.get(
+            self._circuit_service_name(provider, step),
+            failure_threshold=settings.CIRCUIT_BREAKER_FAILURE_THRESHOLD,
+            recovery_seconds=float(settings.CIRCUIT_BREAKER_RECOVERY_SECONDS),
+        )
+
+        async def _do_call() -> str:
+            timeout_override = self._resolve_timeout_override(provider, step)
+            return await provider.generate_text_async_with_timeout(
+                system_prompt,
+                user_prompt,
+                max_tokens,
+                step=step,
+                timeout_override=timeout_override,
+            )
+
         try:
-            return await provider.generate_text_async(system_prompt, user_prompt, max_tokens)
+            return await cb.call(_do_call())
         except Exception as exc:
             if not _allow_fallback or not self._is_g4f_provider(provider):
                 raise
 
             fallback_provider = self._activate_fallback_provider(
                 step,
-                reason="text request failed",
+                reason=(
+                    "text request timed out"
+                    if isinstance(exc, asyncio.TimeoutError)
+                    else (
+                        "circuit breaker opened"
+                        if isinstance(exc, CircuitOpenError)
+                        else "text request failed"
+                    )
+                ),
                 error=exc,
+                persist=isinstance(exc, (CircuitOpenError, asyncio.TimeoutError)),
             )
             if fallback_provider is None:
                 raise
@@ -684,7 +774,11 @@ Return ONLY JSON — no markdown, no explanations:
 
         return normalized
 
-    @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=10))
+    @retry(
+        retry=retry_if_exception(_is_retryable_plan_error),
+        stop=stop_after_attempt(max(1, int(getattr(settings, "LLM_PLAN_RETRY_ATTEMPTS", 2)))),
+        wait=wait_exponential(multiplier=1, min=1, max=4),
+    )
     async def _call_generate_search_plan(
         self,
         profile: Dict[str, Any],
