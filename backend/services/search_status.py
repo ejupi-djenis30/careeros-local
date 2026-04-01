@@ -170,9 +170,11 @@ def _snapshot_statuses() -> Dict[int, Dict[str, Any]]:
     return copy.deepcopy(_statuses)
 
 
-def _build_reserved_status_entry(reservation_token: str) -> Dict[str, Any]:
+def _build_reserved_status_entry(
+    reservation_token: str, user_id: int | None = None
+) -> Dict[str, Any]:
     timestamp = datetime.now(timezone.utc).isoformat()
-    return {
+    entry: Dict[str, Any] = {
         "state": _RESERVED_STATE,
         "terminal_reason": None,
         "started_at": timestamp,
@@ -180,6 +182,9 @@ def _build_reserved_status_entry(reservation_token: str) -> Dict[str, Any]:
         "finished_at": None,
         "reservation_token": reservation_token,
     }
+    if user_id is not None:
+        entry["user_id"] = user_id
+    return entry
 
 
 def _is_stale_reserved_entry(entry: Dict[str, Any], now: float | None = None) -> bool:
@@ -533,7 +538,11 @@ def get_all_active_tasks() -> dict:
 
 
 def reserve_task(
-    profile_id: int, *, return_token: bool = False, reservation_token: str | None = None
+    profile_id: int,
+    *,
+    return_token: bool = False,
+    reservation_token: str | None = None,
+    user_id: int | None = None,
 ) -> bool | str:
     """Reserve a profile before the background task is registered.
 
@@ -567,7 +576,7 @@ def reserve_task(
                     "reserved_at": time.time(),
                     "token": token,
                 }
-                file_data[profile_id] = _build_reserved_status_entry(token)
+                file_data[profile_id] = _build_reserved_status_entry(token, user_id=user_id)
                 _write_status_payload(file_data)
         except Exception as exc:
             logger.warning("reserve_task: failed to persist shared reservation: %s", exc)
@@ -581,11 +590,14 @@ def release_task(profile_id: int, reservation_token: str | None = None) -> bool:
     """Release a previously reserved profile slot."""
     with _lock:
         reservation = _reserved_tasks.get(profile_id)
-        if reservation is None:
-            return False
-        if reservation_token is not None and reservation.get("token") != reservation_token:
-            return False
-        _reserved_tasks.pop(profile_id, None)
+        in_memory_released = False
+        if reservation is not None:
+            if reservation_token is not None and reservation.get("token") != reservation_token:
+                return False
+            _reserved_tasks.pop(profile_id, None)
+            in_memory_released = True
+
+        file_released = False
         try:
             with _status_file_lock():
                 file_data = _prune_stale_reserved_entries(_load_statuses())
@@ -595,9 +607,10 @@ def release_task(profile_id: int, reservation_token: str | None = None) -> bool:
                     if reservation_token is None or file_token == reservation_token:
                         file_data.pop(profile_id, None)
                         _write_status_payload(file_data)
+                        file_released = True
         except Exception as exc:
             logger.warning("release_task: failed to clear shared reservation: %s", exc)
-        return True
+        return in_memory_released or file_released
 
 
 def cancel_task(profile_id: int):

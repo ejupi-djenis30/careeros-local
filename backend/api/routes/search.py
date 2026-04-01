@@ -118,7 +118,7 @@ async def start_search(
         # Reserve the task slot BEFORE modifying the profile to avoid leaving
         # the profile in an inconsistent state (is_stopped=False) if the slot
         # is already taken by a concurrent run.
-        reservation_token = reserve_task(profile.id, return_token=True)
+        reservation_token = reserve_task(profile.id, return_token=True, user_id=user_id)
         if not reservation_token:
             raise HTTPException(
                 status_code=409, detail="A search is already running for this profile"
@@ -147,7 +147,7 @@ async def start_search(
         profile_data["is_stopped"] = False
         profile = profile_repo.create(profile_data)
 
-        reservation_token = reserve_task(profile.id, return_token=True)
+        reservation_token = reserve_task(profile.id, return_token=True, user_id=user_id)
         if not reservation_token:
             raise HTTPException(
                 status_code=409, detail="A search is already running for this profile"

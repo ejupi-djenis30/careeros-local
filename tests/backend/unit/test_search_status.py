@@ -197,6 +197,20 @@ def test_reserve_task_persists_shared_reserved_entry():
     assert payload[808]["reservation_token"] == token
 
 
+def test_reserve_task_persists_user_id_for_cross_worker_visibility():
+    with (
+        patch("backend.services.search_status._status_file_lock", return_value=nullcontext()),
+        patch("backend.services.search_status._load_statuses", return_value={}),
+        patch("backend.services.search_status._write_status_payload") as mock_write,
+    ):
+        token = reserve_task(811, return_token=True, user_id=77)
+
+    payload = mock_write.call_args.args[0]
+    assert isinstance(token, str)
+    assert payload[811]["state"] == "reserved"
+    assert payload[811]["user_id"] == 77
+
+
 def test_release_task_removes_shared_reserved_entry():
     token = reserve_task(909, return_token=True)
     file_data = {
@@ -217,6 +231,27 @@ def test_release_task_removes_shared_reserved_entry():
 
     written_payload = mock_write.call_args.args[0]
     assert 909 not in written_payload
+
+
+def test_release_task_clears_file_entry_even_without_in_memory_reservation():
+    file_data = {
+        990: {
+            "state": "reserved",
+            "started_at": "9999-01-01T00:00:00+00:00",
+            "updated_at": "9999-01-01T00:00:00+00:00",
+            "reservation_token": "shared-token",
+        }
+    }
+
+    with (
+        patch("backend.services.search_status._status_file_lock", return_value=nullcontext()),
+        patch("backend.services.search_status._load_statuses", return_value=file_data),
+        patch("backend.services.search_status._write_status_payload") as mock_write,
+    ):
+        assert release_task(990, reservation_token="shared-token") is True
+
+    written_payload = mock_write.call_args.args[0]
+    assert 990 not in written_payload
 
 
 def test_reserve_task_allows_when_file_shows_stale_reserved_state():
