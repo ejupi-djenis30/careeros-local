@@ -1301,9 +1301,7 @@ class SearchService:
         reservation_token: str | None = None,
     ):
         """Run the full search workflow for a saved profile."""
-        if not register_task(
-            profile_id, asyncio.current_task(), reservation_token=reservation_token
-        ):
+        if not self._activate_search_task(profile_id, reservation_token):
             logger.warning(
                 "Aborting search startup for profile %d because task activation was rejected",
                 profile_id,
@@ -1315,9 +1313,42 @@ class SearchService:
         llm_service.clear_provider_cache()
 
         try:
+            await self._run_pipeline_with_timeout(
+                profile_id,
+                force_regenerate_cv_summary=force_regenerate_cv_summary,
+                force_regenerate_queries=force_regenerate_queries,
+            )
+        except Exception as e:
+            logger.error(
+                f"Unexpected error in run_search for profile {profile_id}: {e}", exc_info=True
+            )
+            update_status(profile_id, state="error", error=f"Unexpected error: {e}")
+        finally:
+            await self._close_provider_resources()
+            unregister_task(profile_id)
+
+    def _activate_search_task(self, profile_id: int, reservation_token: str | None) -> bool:
+        return bool(
+            register_task(
+                profile_id,
+                asyncio.current_task(),
+                reservation_token=reservation_token,
+            )
+        )
+
+    async def _run_pipeline_with_timeout(
+        self,
+        profile_id: int,
+        *,
+        force_regenerate_cv_summary: bool,
+        force_regenerate_queries: bool,
+    ) -> None:
+        try:
             await asyncio.wait_for(
                 self._run_pipeline(
-                    profile_id, force_regenerate_cv_summary, force_regenerate_queries
+                    profile_id,
+                    force_regenerate_cv_summary,
+                    force_regenerate_queries,
                 ),
                 timeout=settings.SEARCH_PIPELINE_TIMEOUT_SECONDS,
             )
@@ -1338,35 +1369,29 @@ class SearchService:
                 terminal_reason="pipeline_timeout",
                 error=f"Pipeline timed out after {settings.SEARCH_PIPELINE_TIMEOUT_SECONDS}s",
             )
-        except Exception as e:
-            logger.error(
-                f"Unexpected error in run_search for profile {profile_id}: {e}", exc_info=True
-            )
-            update_status(profile_id, state="error", error=f"Unexpected error: {e}")
-        finally:
-            for provider_name, provider in self.providers.items():
-                if not provider:
+
+    async def _close_provider_resources(self) -> None:
+        for provider_name, provider in self.providers.items():
+            if not provider:
+                continue
+
+            try:
+                # Use static lookup to avoid triggering synthetic Mock attributes.
+                if inspect.getattr_static(provider, "close", None) is not None:
+                    close_result = provider.close()
+                    if asyncio.iscoroutine(close_result):
+                        await close_result
                     continue
 
-                try:
-                    # Use static lookup to avoid triggering synthetic Mock attributes.
-                    if inspect.getattr_static(provider, "close", None) is not None:
-                        close_result = provider.close()
-                        if asyncio.iscoroutine(close_result):
-                            await close_result
-                        continue
-
-                    session = getattr(provider, "_session", None)
-                    if session and inspect.getattr_static(session, "aclose", None) is not None:
-                        close_result = session.aclose()
-                        if asyncio.iscoroutine(close_result):
-                            await close_result
-                except Exception as close_error:
-                    logger.warning(
-                        "Failed to close provider %s cleanly: %s", provider_name, close_error
-                    )
-
-            unregister_task(profile_id)
+                session = getattr(provider, "_session", None)
+                if session and inspect.getattr_static(session, "aclose", None) is not None:
+                    close_result = session.aclose()
+                    if asyncio.iscoroutine(close_result):
+                        await close_result
+            except Exception as close_error:
+                logger.warning(
+                    "Failed to close provider %s cleanly: %s", provider_name, close_error
+                )
 
     async def _run_pipeline(
         self,
