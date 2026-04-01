@@ -10,7 +10,7 @@ from typing import Any, Dict, List, Optional
 from sqlalchemy.orm import Session
 
 from backend.core.config import settings
-from backend.models import Job, ScrapedJob, SearchProfile
+from backend.models import ScrapedJob, SearchProfile
 from backend.providers.circuit_breaker import CircuitOpenError
 from backend.providers.jobs.jobroom.client import JobRoomProvider
 from backend.providers.jobs.swissdevjobs.client import SwissDevJobsProvider
@@ -18,12 +18,9 @@ from backend.repositories.job_repository import JobRepository
 from backend.repositories.profile_repository import ProfileRepository
 from backend.services.llm_service import llm_service
 from backend.services.search.listing_utils import (
-    _word_bounded_substring,
     bootstrap_normalized_job_data,
     coerce_int,
     coerce_string_list,
-    compute_posting_quality,
-    compute_prescore,
     extract_company_name,
     extract_listing_description_text,
     extract_listing_location_string,
@@ -35,13 +32,12 @@ from backend.services.search.listing_utils import (
     listing_is_remote,
     listing_url_token,
     normalize_listing_identifier,
-    normalized_text_token,
     parse_listing_publication_date,
-    semantic_skills_score,
 )
+from backend.services.search.matching_engine import SearchNormalizationFilterEngine
+from backend.services.search.persistence import SearchPipelinePersistence
 from backend.services.search.search_validator import build_search_request
 from backend.services.utils import (
-    clean_html_tags,
     geocode_location,
     haversine_distance,
 )
@@ -98,10 +94,24 @@ def get_compatible_providers(
 class SearchService:
     """Orchestrates the entire multi-step job search pipeline (Feature 1 & 4)."""
 
-    def __init__(self, db: Session = None, job_repo=None, profile_repo=None):
+    def __init__(
+        self,
+        db: Session = None,
+        job_repo=None,
+        profile_repo=None,
+        normalization_filter_engine: SearchNormalizationFilterEngine | None = None,
+        search_persistence: SearchPipelinePersistence | None = None,
+    ):
         self.db = db or getattr(job_repo, "db", None) or getattr(profile_repo, "db", None)
         self.job_repo = job_repo or (JobRepository(db) if db else None)
         self.profile_repo = profile_repo or (ProfileRepository(db) if db else None)
+        self.normalization_filter_engine = (
+            normalization_filter_engine or SearchNormalizationFilterEngine()
+        )
+        self.search_persistence = search_persistence or SearchPipelinePersistence(
+            self.db,
+            self.job_repo,
+        )
         # Providers (registered by domain)
         self.providers = {
             "job_room": JobRoomProvider(),
@@ -153,82 +163,15 @@ class SearchService:
         return filtered, stats
 
     def _upsert_scraped_job(self, listing) -> tuple[ScrapedJob, bool]:
-        platform = getattr(listing, "source", None) or getattr(listing, "platform", "unknown")
-        platform_id = str(getattr(listing, "id", "") or getattr(listing, "platform_job_id", ""))
-
-        existing_sj = self.job_repo.get_scraped_job_by_platform_and_id(platform, platform_id)
-
-        desc_text = extract_listing_description_text(listing)
-        company_name = extract_company_name(listing) or "Unknown"
-        location_str = extract_listing_location_string(listing)
-        workload_str = extract_listing_workload_string(listing)
-        pub_date = parse_listing_publication_date(listing, platform, platform_id)
-        normalized_bootstrap = bootstrap_normalized_job_data(
+        return self.search_persistence.upsert_scraped_job(
             listing,
-            desc_text=desc_text,
-            company_name=company_name,
-            location_str=location_str,
+            bootstrap_normalized_job_data_fn=bootstrap_normalized_job_data,
+            extract_listing_description_text_fn=extract_listing_description_text,
+            extract_company_name_fn=extract_company_name,
+            extract_listing_location_string_fn=extract_listing_location_string,
+            extract_listing_workload_string_fn=extract_listing_workload_string,
+            parse_listing_publication_date_fn=parse_listing_publication_date,
         )
-        application_url = self._listing_application_field(listing, "form_url")
-        application_email = self._listing_application_field(listing, "email")
-
-        created = False
-        recovered_catalog_conflict = False
-        if not existing_sj:
-            new_sj = ScrapedJob(
-                platform=platform,
-                platform_job_id=platform_id,
-                title=clean_html_tags(getattr(listing, "title", "Unknown")),
-                company=company_name,
-                description=clean_html_tags(desc_text) if desc_text else None,
-                location=location_str,
-                external_url=getattr(listing, "external_url", None)
-                or getattr(listing, "url", None)
-                or platform_id,
-                application_url=application_url,
-                application_email=application_email,
-                workload=workload_str or None,
-                publication_date=pub_date,
-                source_query=getattr(listing, "_source_query", "Unknown"),
-                **normalized_bootstrap,
-            )
-            created_ok = self.job_repo.create_scraped_job_nested(new_sj)
-            if created_ok:
-                existing_sj = new_sj
-                created = True
-            else:
-                recovered_catalog_conflict = True
-                # Another concurrent worker inserted the same job between our query
-                # and our insert — re-fetch the winner without losing the batch.
-                existing_sj = self.job_repo.get_scraped_job_by_platform_and_id(
-                    platform, platform_id
-                )
-        else:
-            refresh_fields = {
-                "description": clean_html_tags(desc_text) if desc_text else None,
-                "location": location_str or None,
-                "application_url": application_url,
-                "application_email": application_email,
-                "workload": workload_str or None,
-                "publication_date": pub_date,
-                "source_query": getattr(listing, "_source_query", None),
-            }
-            for field, value in refresh_fields.items():
-                if getattr(existing_sj, field, None) is None and value is not None:
-                    setattr(existing_sj, field, value)
-
-            for field, value in normalized_bootstrap.items():
-                if getattr(existing_sj, field, None) is None and value is not None:
-                    setattr(existing_sj, field, value)
-            if not existing_sj.normalization_status:
-                existing_sj.normalization_status = "provider_bootstrap"
-
-        setattr(listing, "_scraped_job_id", existing_sj.id)
-        setattr(listing, "_normalized_job_data", existing_sj.normalized_job_data)
-        setattr(listing, "_catalog_conflict_recovered", recovered_catalog_conflict)
-        setattr(listing, "_catalog_persisted", True)
-        setattr(listing, "_catalog_persist_error", None)
-        return existing_sj, created
 
     async def _persist_scraped_job_catalog(self, profile_id: int, jobs: list) -> tuple[int, int]:
         """Persist jobs into the shared catalog before downstream normalization/analysis.
@@ -237,66 +180,31 @@ class SearchService:
         pipeline in the current run, while failed jobs are tagged and excluded from the
         downstream queue so the catalog-first invariant is preserved.
         """
-        if not jobs:
-            return 0, 0
+        result = self.search_persistence.persist_scraped_job_catalog(
+            jobs,
+            upsert_scraped_job=self._upsert_scraped_job,
+        )
 
-        created = 0
-        updated = 0
-        failed = 0
-        conflict_recoveries = 0
-        for listing in jobs:
-            setattr(listing, "_catalog_persisted", False)
-            setattr(listing, "_catalog_persist_error", None)
-        try:
-            for listing in jobs:
-                savepoint = self.db.begin_nested()
-                try:
-                    _, was_created = self._upsert_scraped_job(listing)
-                    savepoint.commit()
-                    if getattr(listing, "_catalog_conflict_recovered", False):
-                        conflict_recoveries += 1
-                    if was_created:
-                        created += 1
-                    else:
-                        updated += 1
-                except Exception as exc:
-                    failed += 1
-                    savepoint.rollback()
-                    setattr(listing, "_catalog_persisted", False)
-                    setattr(listing, "_catalog_persist_error", str(exc))
-                    logger.warning(
-                        "Failed to persist scraped job catalog entry for profile %s: %s",
-                        profile_id,
-                        exc,
-                    )
-            self.db.commit()
-        except Exception as exc:
-            self.db.rollback()
-            logger.error(
-                "Failed to persist scraped job catalog for profile %s: %s", profile_id, exc
-            )
-            raise
-
-        if created == 0 and updated == 0 and failed > 0:
+        if result.created == 0 and result.updated == 0 and result.failed > 0:
             raise RuntimeError(
-                f"Failed to persist all {failed} scraped catalog job entries for profile {profile_id}"
+                f"Failed to persist all {result.failed} scraped catalog job entries for profile {profile_id}"
             )
 
-        if conflict_recoveries:
-            self._increment_catalog_conflicts(profile_id, conflict_recoveries)
+        if result.conflict_recoveries:
+            self._increment_catalog_conflicts(profile_id, result.conflict_recoveries)
 
         add_log(
             profile_id,
             "Persisted shared job catalog entries before filtering: "
-            f"{created} created, {updated} refreshed"
-            + (f", {failed} failed" if failed else "")
+            f"{result.created} created, {result.updated} refreshed"
+            + (f", {result.failed} failed" if result.failed else "")
             + (
-                f", {conflict_recoveries} catalog conflicts recovered"
-                if conflict_recoveries
+                f", {result.conflict_recoveries} catalog conflicts recovered"
+                if result.conflict_recoveries
                 else ""
             ),
         )
-        return created, updated
+        return result.created, result.updated
 
     @staticmethod
     def _listing_application_field(listing: Any, field_name: str) -> Any:
@@ -308,132 +216,11 @@ class SearchService:
         return getattr(application, field_name, None)
 
     async def _normalize_persisted_jobs(self, profile_id: int, jobs: List[Any]) -> int:
-        if not jobs:
-            return 0
-
-        candidates: List[Dict[str, Any]] = []
-        candidate_records: List[ScrapedJob] = []
-
-        # Batch-load all referenced ScrapedJob records in a single IN query
-        all_scraped_ids = [getattr(listing, "_scraped_job_id", None) for listing in jobs]
-        all_scraped_ids = [sid for sid in all_scraped_ids if sid is not None]
-        scraped_jobs_by_id: Dict[int, ScrapedJob] = {}
-        if all_scraped_ids:
-            batch = self.job_repo.get_scraped_jobs_by_ids(all_scraped_ids)
-            scraped_jobs_by_id = {sj.id: sj for sj in batch}
-
-        for listing in jobs:
-            scraped_job_id = getattr(listing, "_scraped_job_id", None)
-            if not scraped_job_id:
-                continue
-            scraped_job = scraped_jobs_by_id.get(scraped_job_id)
-            if not scraped_job:
-                continue
-            if scraped_job.normalization_status not in {None, "", "pending", "provider_bootstrap"}:
-                setattr(listing, "_normalized_job_data", scraped_job.normalized_job_data)
-                continue
-
-            candidates.append(
-                {
-                    "title": scraped_job.title,
-                    "company": scraped_job.company,
-                    "location": scraped_job.location,
-                    "workload": scraped_job.workload,
-                    "description": scraped_job.description,
-                }
-            )
-            candidate_records.append(scraped_job)
-
-        if not candidates:
-            return 0
-
-        # ── Chunked normalization: send candidates in small batches to avoid
-        # context-limit errors (APIStatusError) that would fail the entire batch.
-        batch_size = max(1, settings.NORMALIZE_BATCH_SIZE)
-        normalized_rows: List[Dict[str, Any]] = []
-        for chunk_start in range(0, len(candidates), batch_size):
-            chunk = candidates[chunk_start : chunk_start + batch_size]
-            try:
-                chunk_result = await llm_service.normalize_job_batch(chunk)
-                normalized_rows.extend(chunk_result)
-            except Exception as batch_err:
-                logger.warning(
-                    "[NORMALIZE] Batch %d-%d failed for profile %s, skipping chunk: %s",
-                    chunk_start,
-                    chunk_start + len(chunk) - 1,
-                    profile_id,
-                    batch_err,
-                )
-                # Pad with empty dicts so indices stay aligned with candidate_records
-                normalized_rows.extend([{} for _ in chunk])
-
-        upgraded = 0
-        for scraped_job, normalized in zip(candidate_records, normalized_rows):
-            if not normalized:
-                # LLM batch returned empty for this job — mark it explicitly so it
-                # isn't silently re-queued as pending on every subsequent search run.
-                scraped_job.normalization_status = "failed"
-                fail_meta = scraped_job.normalized_metadata or {}
-                fail_meta["normalization_failed_at"] = datetime.now(timezone.utc).isoformat()
-                scraped_job.normalized_metadata = fail_meta
-                continue
-            scraped_job.normalization_status = "normalized"
-            scraped_job.normalized_at = datetime.now(timezone.utc)
-            scraped_job.normalization_source = "llm_normalizer"
-            scraped_job.normalization_confidence = normalized.get("confidence")
-            scraped_job.normalized_title = normalized.get("title")
-            scraped_job.normalized_role_family = normalized.get("role_family")
-            scraped_job.normalized_domain = normalized.get("domain")
-            scraped_job.normalized_seniority = normalized.get("seniority")
-            scraped_job.normalized_employment_mode = normalized.get("employment_mode")
-            scraped_job.normalized_contract_type = normalized.get("contract_type")
-            scraped_job.normalized_qualification_level = normalized.get("qualification_level")
-            scraped_job.normalized_experience_min_years = normalized.get("experience_min_years")
-            scraped_job.normalized_experience_max_years = normalized.get("experience_max_years")
-            scraped_job.normalized_workload_min = normalized.get("workload_min")
-            scraped_job.normalized_workload_max = normalized.get("workload_max")
-            scraped_job.normalized_salary_min_chf = normalized.get("salary_min_chf")
-            scraped_job.normalized_salary_max_chf = normalized.get("salary_max_chf")
-            scraped_job.normalized_required_languages = normalized.get("required_languages") or None
-            scraped_job.normalized_required_skills = normalized.get("required_skills") or None
-            scraped_job.normalized_education_levels = normalized.get("education_levels") or None
-            scraped_job.normalized_key_requirements = normalized.get("key_requirements") or None
-            # V2 enhanced job normalization fields
-            scraped_job.normalized_preferred_skills = normalized.get("preferred_skills") or None
-            scraped_job.normalized_soft_skills = normalized.get("soft_skills") or None
-            scraped_job.normalized_physical_requirements = (
-                normalized.get("physical_requirements") or None
-            )
-            scraped_job.normalized_entry_barrier = normalized.get("entry_barrier")
-            scraped_job.normalized_career_changer_friendly = normalized.get(
-                "career_changer_friendly"
-            )
-            scraped_job.normalized_hard_blockers = normalized.get("hard_blockers") or None
-
-            metadata = scraped_job.normalized_metadata or {}
-            metadata.update({"llm_normalized": True, "source": "llm_normalizer"})
-            scraped_job.normalized_metadata = metadata
-
-            # ── Phase 4.1: Compute and store posting quality score ────────
-            if scraped_job.posting_quality is None and scraped_job.description:
-                try:
-                    scraped_job.posting_quality = compute_posting_quality(scraped_job.description)
-                except Exception:
-                    pass
-
-            upgraded += 1
-
-        self.db.commit()
-
-        # Propagate normalized_job_data from already-updated in-memory records
-        # (avoids a second per-job DB round-trip after the commit)
-        for listing in jobs:
-            scraped_job_id = getattr(listing, "_scraped_job_id", None)
-            if not scraped_job_id:
-                continue
-            scraped_job = scraped_jobs_by_id.get(scraped_job_id)
-            if scraped_job:
-                setattr(listing, "_normalized_job_data", scraped_job.normalized_job_data)
+        upgraded = await self.search_persistence.normalize_persisted_jobs(
+            profile_id,
+            jobs,
+            normalize_job_batch=llm_service.normalize_job_batch,
+        )
 
         if upgraded > 0:
             add_log(
@@ -602,7 +389,7 @@ class SearchService:
             normalized = {}
 
         if preferences.get("remote_only"):
-            mode_token = normalized_text_token(normalized.get("employment_mode", ""))
+            mode_token = self._normalized_text_token(normalized.get("employment_mode", ""))
             is_remote_like = mode_token in {
                 "remote",
                 "hybrid",
@@ -692,402 +479,23 @@ class SearchService:
 
         return True, "ok"
 
-    # ─── qualification hierarchy used by normalization filters ───────────────
-    _QUALIFICATION_RANK: Dict[str, int] = {
-        "none": 0,
-        "vocational": 1,
-        "bachelor": 2,
-        "master": 3,
-        "phd": 4,
-    }
-
-    # Groups of closely related domains where cross-domain filter is relaxed.
-    # Domains within the same group are considered "distance 1" (related).
-    _RELATED_DOMAIN_GROUPS: tuple[frozenset[str], ...] = (
-        frozenset({"it", "engineering"}),
-        frozenset({"it", "consulting"}),
-        frozenset({"it", "marketing"}),  # digital marketing / growth
-        frozenset({"finance", "administration"}),
-        frozenset({"finance", "consulting"}),
-        frozenset({"medical", "pharma"}),
-        frozenset({"medical", "education"}),  # healthcare training
-        frozenset({"sales", "marketing"}),
-        frozenset({"sales", "hospitality"}),  # client-facing service
-        frozenset({"engineering", "construction"}),
-        frozenset({"logistics", "construction"}),
-        frozenset({"logistics", "general"}),
-        frozenset({"hospitality", "general"}),
-        frozenset({"administration", "legal"}),
-        frozenset({"education", "consulting"}),
-    )
-
-    def _domains_are_related(self, domain_a: str, domain_b: str) -> bool:
-        """Return True when two domains are in the same related group.
-
-        Uses the continuous domain affinity matrix (threshold 0.40) when available,
-        falling back to the legacy group-based check.
-        """
-        try:
-            from backend.data.domain_affinity import domains_are_related  # type: ignore
-
-            return domains_are_related(domain_a, domain_b, threshold=0.40)
-        except Exception:
-            # Legacy fallback
-            for group in self._RELATED_DOMAIN_GROUPS:
-                if domain_a in group and domain_b in group:
-                    return True
-            return False
-
-    def _domain_affinity_score(self, domain_a: str, domain_b: str) -> float:
-        """Return a continuous 0.0–1.0 affinity score between two domains."""
-        try:
-            from backend.data.domain_affinity import get_domain_affinity  # type: ignore
-
-            return get_domain_affinity(domain_a, domain_b)
-        except Exception:
-            if domain_a == domain_b:
-                return 1.0
-            return 0.5 if self._domains_are_related(domain_a, domain_b) else 0.0
-
-    def _domain_distance(self, domain_a: str, domain_b: str) -> int:
-        """Return 0 (same), 1 (related), or 2 (unrelated) for two domain strings."""
-        if domain_a == domain_b:
-            return 0
-        if self._domains_are_related(domain_a, domain_b):
-            return 1
-        return 2
-
-    # Ordered seniority levels for range-based comparison
-    _SENIORITY_ORDER: Dict[str, int] = {
-        "intern": 0,
-        "trainee": 0,
-        "entry": 0,
-        "junior": 1,
-        "mid": 2,
-        "senior": 3,
-        "lead": 4,
-        "director": 5,
-    }
-
-    # Role types grouped by family for compatibility checks
-    _ROLE_TYPE_FAMILIES: List[frozenset] = [
-        frozenset({"manual", "service"}),
-        frozenset({"technical", "professional"}),
-        frozenset({"administrative", "managerial"}),
-        frozenset({"creative"}),
-    ]
-
-    def _role_types_compatible(self, intent_rt: str, job_rt: str) -> bool:
-        """Return True when intent_role_type and job_role_type are in the same family."""
-        if intent_rt == job_rt:
-            return True
-        for family in self._ROLE_TYPE_FAMILIES:
-            if intent_rt in family and job_rt in family:
-                return True
-        return False
-
     def _passes_normalization_filters(
         self,
         job_norm: Dict[str, Any],
         profile_norm: Dict[str, Any],
         preference_signals: Optional[Dict[str, Any]] = None,
     ) -> tuple[bool, str]:
-        """Intent-aware deterministic field-vs-field match between normalized job and candidate.
-
-        Uses the SEARCH INTENT (what the user WANTS) as the primary comparison axis,
-        falling back to the candidate CV profile for fields the intent doesn't specify.
-
-        Key principle: if the user explicitly searches in a domain different from their CV
-        (open_to_unrelated=True), domain and skills filters are bypassed so cross-domain
-        job exploration works correctly.
-
-        Checks (in order):
-        0. Confidence gate           — low-confidence normalizations skip all checks
-        0.5 Dealbreaker rejection    — absolute no-gos from the search intent
-        1. Domain match              — uses intent_domain; bypassed when open_to_unrelated=True
-        2. Role-type match           — intent_role_type vs job role_type family check
-        3. Seniority range match     — uses intent_seniority_min/max (falls back to single seniority)
-        4. Qualification match       — uses intent_qualification_level (falls back to candidate)
-        5a. Entry barrier gate       — high-barrier jobs rejected for cross-domain explorers
-        5b. Experience floor         — uses candidate's actual experience (CV fact)
-        6. Skills overlap            — alias-aware; extended with transferable_skills;
-                                       bypassed when job is career_changer_friendly
-        """
-        # ─── 0. Confidence gate ───────────────────────────────────────────
-        # Low-confidence normalization means categorical fields (domain, seniority,
-        # role_type, qualification, skills) are unreliable.  Rather than skipping ALL
-        # checks (old, unsafe behaviour), we set a flag and selectively skip only the
-        # inference-based categorical gates, while still enforcing hard numeric facts
-        # (experience floor, entry barrier) and the candidate's own dealbreakers.
-        # The prescore threshold is raised by 15 pts as an additional safety net.
-        raw_confidence = job_norm.get("confidence")
-        low_confidence = False
-        if raw_confidence is not None:
-            try:
-                if float(raw_confidence) < 0.7:
-                    low_confidence = True
-            except (TypeError, ValueError):
-                pass
-
-        open_to_unrelated = bool(profile_norm.get("open_to_unrelated", False))
-        flexibility = profile_norm.get("flexibility") or {}
-
-        # ─── 0.5. Dealbreaker rejection ──────────────────────────────────
-        # Absolute no-gos from the search intent take effect before any other filter.
-        dealbreakers = [
-            str(d).lower().strip() for d in (profile_norm.get("dealbreakers") or []) if d
-        ]
-        if dealbreakers:
-            hard_blockers_raw = list(job_norm.get("hard_blockers") or []) + list(
-                job_norm.get("key_requirements") or []
-            )
-            hard_blockers = [normalized_text_token(str(b)) for b in hard_blockers_raw if b]
-            for dk in dealbreakers:
-                dk_token = normalized_text_token(dk)
-                if dk_token and any(
-                    _word_bounded_substring(dk_token, hb) or _word_bounded_substring(hb, dk_token)
-                    for hb in hard_blockers
-                    if hb
-                ):
-                    return False, "norm_dealbreaker_hit"
-
-        # ─── 0.6. Progressive dealbreaker escalation (Tier 3 hard filter) ────
-        # When a user has dismissed 10+ jobs with the same feedback signal, that pattern
-        # is a strong learned preference. We auto-reject new jobs that clearly match it
-        # without waiting for MATCH — saving tokens and improving precision.
-        if preference_signals:
-            _t3 = int(getattr(settings, "DEALBREAKER_ESCALATION_TIER3", 10))
-            _dealbreaker_patterns = preference_signals.get("dealbreaker_patterns") or {}
-            _job_seniority_esc = str(
-                job_norm.get("seniority") or job_norm.get("normalized_seniority") or ""
-            ).lower()
-            _profile_seniority_esc = str(
-                profile_norm.get("intent_seniority") or profile_norm.get("seniority") or ""
-            ).lower()
-            _job_domain_esc = str(
-                job_norm.get("domain") or job_norm.get("normalized_domain") or "general"
-            ).lower()
-            _avoided_domains_esc = [
-                d.lower() for d in (preference_signals.get("avoided_domains") or [])
-            ]
-            for _sig, _cnt in _dealbreaker_patterns.items():
-                if _cnt < _t3:
-                    continue
-                if (
-                    _sig == "too_senior"
-                    and _job_seniority_esc == "senior"
-                    and _profile_seniority_esc in ("junior", "mid")
-                ):
-                    return False, "norm_escalated_dealbreaker:too_senior"
-                if (
-                    _sig == "too_junior"
-                    and _job_seniority_esc == "junior"
-                    and _profile_seniority_esc in ("senior", "mid")
-                ):
-                    return False, "norm_escalated_dealbreaker:too_junior"
-                if (
-                    _sig == "wrong_domain"
-                    and _job_domain_esc
-                    and _job_domain_esc in _avoided_domains_esc
-                ):
-                    return False, "norm_escalated_dealbreaker:wrong_domain"
-
-        # ─── 1. Domain match ─────────────────────────────────────────────
-        # Skip for low-confidence normalizations — the extracted domain may be wrong.
-        # Primary: use search intent domain; fallback to CV domain
-        intent_domain = (
-            str(profile_norm.get("intent_domain") or profile_norm.get("domain") or "general")
-            .strip()
-            .lower()
-        )
-        job_domain = str(job_norm.get("domain") or "general").strip().lower()
-
-        if not low_confidence and not open_to_unrelated:
-            if (
-                intent_domain
-                and job_domain
-                and intent_domain != "general"
-                and job_domain != "general"
-                and intent_domain != job_domain
-                and not self._domains_are_related(intent_domain, job_domain)
-            ):
-                return False, "norm_domain_mismatch"
-
-        # ─── 2. Role-type match ───────────────────────────────────────────
-        # Use explicit intent_role_type when available.
-        # Example: junior developer with intent_role_type="manual" should only see manual/service jobs.
-        # Skip for low-confidence normalizations — the extracted role_type may be wrong.
-        intent_role_type = str(profile_norm.get("intent_role_type") or "").strip().lower() or None
-        job_role_type = str(job_norm.get("role_type") or "").strip().lower() or None
-
-        if not low_confidence and intent_role_type and job_role_type:
-            flexible_domain = bool(flexibility.get("domain", False))
-            if not flexible_domain and not open_to_unrelated:
-                if not self._role_types_compatible(intent_role_type, job_role_type):
-                    return False, "norm_role_type_mismatch"
-
-        # ─── Manual-work gate (keyword fallback when intent_role_type not extracted yet) ─
-        intent_keywords = [str(k).lower() for k in (profile_norm.get("intent_keywords") or []) if k]
-        _manual_signals = {
-            "manual",
-            "warehouse",
-            "cleaning",
-            "physical",
-            "handwerk",
-            "lager",
-            "reinigung",
-            "manuell",
-        }
-        searching_manual = (
-            (intent_role_type in {"manual", "service"})
-            or open_to_unrelated
-            or bool(_manual_signals & set(intent_keywords))
+        return self.normalization_filter_engine.passes_normalization_filters(
+            job_norm,
+            profile_norm,
+            preference_signals,
         )
 
-        # ─── 3. Seniority range match ─────────────────────────────────────
-        # Use intent_seniority_min/max range; fall back to single intent_seniority or CV seniority.
-        # Skip for low-confidence normalizations — the extracted seniority may be wrong.
-        intent_seniority_min = (
-            str(profile_norm.get("intent_seniority_min") or "").strip().lower() or None
-        )
-        intent_seniority_max = (
-            str(profile_norm.get("intent_seniority_max") or "").strip().lower() or None
-        )
-        has_range = intent_seniority_min or intent_seniority_max
-        job_seniority = str(job_norm.get("seniority") or "").strip().lower()
+    @staticmethod
+    def _normalized_text_token(value: Any) -> str:
+        from backend.services.search.listing_utils import normalized_text_token
 
-        if not low_confidence and job_seniority and has_range:
-            job_rank = self._SENIORITY_ORDER.get(job_seniority, -1)
-            if job_rank >= 0:
-                if intent_seniority_min:
-                    min_rank = self._SENIORITY_ORDER.get(intent_seniority_min, -1)
-                    if min_rank >= 0 and job_rank < min_rank:
-                        pass  # job is below min — fine, user can fill an easier role
-                if intent_seniority_max:
-                    max_rank = self._SENIORITY_ORDER.get(intent_seniority_max, -1)
-                    if max_rank >= 0 and job_rank > max_rank:
-                        # Job requires higher seniority than max tolerance — check exp gap
-                        user_exp = coerce_int(profile_norm.get("experience_years"), None)
-                        job_exp_min = coerce_int(job_norm.get("experience_min_years"), None)
-                        tolerance = int(
-                            getattr(settings, "SEARCH_NORMALIZATION_EXPERIENCE_TOLERANCE", 2)
-                        )
-                        if (
-                            job_exp_min is not None
-                            and user_exp is not None
-                            and job_exp_min > user_exp + tolerance
-                        ):
-                            return False, "norm_seniority_overqualified"
-        elif not low_confidence and job_seniority:
-            # Legacy single-point seniority check
-            effective_seniority = (
-                str(profile_norm.get("intent_seniority") or profile_norm.get("seniority") or "")
-                .strip()
-                .lower()
-            )
-            if effective_seniority:
-                if effective_seniority == "junior" and job_seniority == "senior":
-                    job_exp_min = coerce_int(job_norm.get("experience_min_years"), None)
-                    user_exp = coerce_int(profile_norm.get("experience_years"), None)
-                    tolerance = int(
-                        getattr(settings, "SEARCH_NORMALIZATION_EXPERIENCE_TOLERANCE", 2)
-                    )
-                    if (
-                        job_exp_min is not None
-                        and user_exp is not None
-                        and job_exp_min > user_exp + tolerance
-                    ):
-                        return False, "norm_seniority_overqualified"
-                if effective_seniority == "senior" and job_seniority == "junior":
-                    job_exp_max = coerce_int(job_norm.get("experience_max_years"), None)
-                    user_exp = coerce_int(profile_norm.get("experience_years"), None)
-                    if (
-                        job_exp_max is not None
-                        and user_exp is not None
-                        and job_exp_max < user_exp - 3
-                    ):
-                        return False, "norm_seniority_underqualified"
-
-        # ─── 4. Qualification level ───────────────────────────────────────
-        # Use intent qualification (what the user is willing to meet); fall back to CV level.
-        # Skip for low-confidence normalizations — the extracted qualification may be wrong.
-        effective_ql = (
-            str(
-                profile_norm.get("intent_qualification_level")
-                or profile_norm.get("qualification_level")
-                or ""
-            )
-            .strip()
-            .lower()
-        )
-        job_ql = str(job_norm.get("qualification_level") or "").strip().lower()
-
-        if not low_confidence and effective_ql and job_ql:
-            # Skip qualification check for entry_barrier=none or career_changer_friendly jobs
-            job_entry_barrier = str(job_norm.get("entry_barrier") or "").strip().lower()
-            job_career_changer = bool(job_norm.get("career_changer_friendly", False))
-            if not job_career_changer and job_entry_barrier not in {"none", "low"}:
-                user_rank = self._QUALIFICATION_RANK.get(effective_ql, -1)
-                job_rank = self._QUALIFICATION_RANK.get(job_ql, -1)
-                if user_rank >= 0 and job_rank >= 0 and job_rank > user_rank + 1:
-                    return False, "norm_qualification_mismatch"
-
-        # ─── 5a. Entry barrier gate ───────────────────────────────────────
-        # Cross-domain explorers (open_to_unrelated) should not be forced into
-        # high-barrier jobs that require domain-specific credentials.
-        job_entry_barrier_check = str(job_norm.get("entry_barrier") or "").strip().lower()
-        if open_to_unrelated and job_entry_barrier_check == "high":
-            return False, "norm_entry_barrier_high"
-
-        # ─── 5b. Experience floor ─────────────────────────────────────────
-        job_exp_min = coerce_int(job_norm.get("experience_min_years"), None)
-        user_exp = coerce_int(profile_norm.get("experience_years"), None)
-        if job_exp_min is not None and user_exp is not None:
-            tolerance = int(getattr(settings, "SEARCH_NORMALIZATION_EXPERIENCE_TOLERANCE", 2))
-            if job_exp_min > user_exp + tolerance:
-                return False, "norm_experience_floor"
-
-        # ─── 6. Skills overlap (alias-aware, extended with transferable skills) ─
-        # Skip for low-confidence normalizations — required_skills may be empty or wrong.
-        career_changer_friendly = bool(job_norm.get("career_changer_friendly", False))
-        if not low_confidence and not searching_manual and not career_changer_friendly:
-            job_skills = [s for s in (job_norm.get("required_skills") or []) if s]
-            # Combine CV skills + intent target skills + transferable skills as the candidate pool
-            profile_skills = list(
-                {
-                    *[s for s in (profile_norm.get("skills") or []) if s],
-                    *[s for s in (profile_norm.get("intent_skills") or []) if s],
-                    *[s for s in (profile_norm.get("transferable_skills") or []) if s],
-                }
-            )
-            if len(job_skills) >= 3 and len(profile_skills) >= 3:
-                overlap = semantic_skills_score(job_skills, profile_skills)
-                if overlap == 0.0:
-                    return False, "norm_skills_disjoint"
-
-        # ─── 7. Continuous pre-score gate (optional) ──────────────────────────
-        # Runs after structural filters pass. Uses compute_prescore() to get a
-        # 0-100 multi-signal score and rejects jobs that are very unlikely matches.
-        if getattr(settings, "STRUCTURED_PRESCORE_ENABLED", False):
-            try:
-                threshold = float(getattr(settings, "STRUCTURED_PRESCORE_THRESHOLD", 30.0))
-                # Dynamic threshold: stricter when user has established preference signals
-                if preference_signals and preference_signals.get("signal_count", 0) >= getattr(
-                    settings, "PREFERENCE_MIN_SIGNAL_COUNT", 10
-                ):
-                    threshold = float(
-                        getattr(settings, "STRUCTURED_PRESCORE_THRESHOLD_WITH_PREFS", 35.0)
-                    )
-                # Low-confidence penalty: unreliable normalization must clear a higher bar
-                if low_confidence:
-                    threshold += 15.0
-                prescore = compute_prescore(job_norm, profile_norm, preference_signals)
-                if prescore < threshold:
-                    return False, f"norm_prescore_low:{prescore:.1f}"
-            except Exception:
-                pass  # If prescore computation fails, allow the job through
-
-        return True, "ok"
+        return normalized_text_token(value)
 
     def _resolve_required_workload_range(
         self, profile_dict: Dict[str, Any], preferences: Dict[str, Any]
@@ -1331,16 +739,34 @@ class SearchService:
             update_status(profile_id, state="error", error=f"Unexpected error: {e}")
         finally:
             await self._close_provider_resources()
+            if reservation_token is not None:
+                release_task(profile_id, reservation_token)
             unregister_task(profile_id)
 
     def _activate_search_task(self, profile_id: int, reservation_token: str | None) -> bool:
-        return bool(
+        registered = bool(
             register_task(
                 profile_id,
                 asyncio.current_task(),
                 reservation_token=reservation_token,
             )
         )
+        if not registered:
+            return False
+
+        if reservation_token is None:
+            return True
+
+        activated = self.profile_repo.activate_search_lock(profile_id, reservation_token)
+        if activated:
+            return True
+
+        unregister_task(profile_id)
+        logger.warning(
+            "Aborting search startup for profile %d because DB-backed lock activation failed",
+            profile_id,
+        )
+        return False
 
     async def _run_pipeline_with_timeout(
         self,
@@ -2457,98 +1883,15 @@ class SearchService:
     async def _save_single_job(
         self, listing, analysis, profile_dict, origin_coords, commit: bool = True
     ):
-        platform = getattr(listing, "source", None) or getattr(listing, "platform", "unknown")
-        platform_id = str(getattr(listing, "id", "") or getattr(listing, "platform_job_id", ""))
-
-        # 1. ScrapedJob (or fetch existing)
-        existing_sj, _ = self._upsert_scraped_job(listing)
-
-        location_str = extract_listing_location_string(listing)
-
-        # 2. Distance
-        distance_km = None
-        if origin_coords and getattr(listing, "location", None):
-            # Try to geocode if no coords
-            coords = getattr(listing.location, "coordinates", None)
-            if not coords and location_str:
-                coords = await geocode_location(location_str)
-                if coords:
-                    logger.info(
-                        "Resolved missing coordinates for %s via geocoding fallback", location_str
-                    )
-                else:
-                    logger.warning(
-                        "Could not resolve coordinates for %s/%s with location %r",
-                        platform,
-                        platform_id,
-                        location_str,
-                    )
-
-            if coords:
-                distance_km = haversine_distance(
-                    origin_coords[0], origin_coords[1], coords.lat, coords.lon
-                )
-
-        # 3. Job — upsert (preserve user-action fields on existing rows).
-        # Analysis fields are always refreshed; applied/dismissed/feedback_signal are never
-        # overwritten so existing user actions survive a re-run that re-analyzes the same job.
-        _analysis_fields: dict = {
-            "affinity_score": analysis.get("affinity_score", 0),
-            "affinity_analysis": analysis.get("affinity_analysis", ""),
-            "worth_applying": analysis.get("worth_applying", False),
-            "distance_km": distance_km,
-            "skill_match_score": analysis.get("skill_match_score"),
-            "experience_match_score": analysis.get("experience_match_score"),
-            "intent_match_score": analysis.get("intent_match_score"),
-            "language_match_score": analysis.get("language_match_score"),
-            "location_match_score": analysis.get("location_match_score"),
-            "transferability_score": analysis.get("transferability_score"),
-            "qualification_gap_score": analysis.get("qualification_gap_score"),
-            "analysis_structured": analysis.get("analysis_structured"),
-            "red_flags": analysis.get("red_flags"),
-        }
-        existing_job = self.job_repo.get_job_by_user_scraped_profile(
-            profile_dict["user_id"],
-            existing_sj.id,
-            profile_dict.get("id"),
+        await self.search_persistence.save_single_job(
+            listing,
+            analysis,
+            profile_dict,
+            origin_coords,
+            upsert_scraped_job=self._upsert_scraped_job,
+            geocode_location_fn=geocode_location,
+            commit=commit,
         )
-        if existing_job:
-            for _f, _v in _analysis_fields.items():
-                setattr(existing_job, _f, _v)
-        else:
-            new_job = Job(
-                user_id=profile_dict["user_id"],
-                search_profile_id=profile_dict.get("id"),
-                scraped_job_id=existing_sj.id,
-                applied=False,
-                **_analysis_fields,
-            )
-            created_ok = self.job_repo.create_job_nested(new_job)
-            if not created_ok:
-                # Concurrent save of the same job won the race — reload and update.
-                existing_job = self.job_repo.get_job_by_user_scraped_profile(
-                    profile_dict["user_id"],
-                    existing_sj.id,
-                    profile_dict.get("id"),
-                )
-                if existing_job:
-                    for _f, _v in _analysis_fields.items():
-                        setattr(existing_job, _f, _v)
-                else:
-                    raise  # genuinely unexpected; let caller handle
-        if commit:
-            try:
-                self.db.commit()
-            except Exception as exc:
-                self.db.rollback()
-                logger.error(
-                    "Failed to persist job %s/%s for profile %s: %s",
-                    platform,
-                    platform_id,
-                    profile_dict.get("id"),
-                    exc,
-                )
-                raise
 
     def _status_metrics(self, profile_id: int) -> Dict[str, int]:
         status = get_status(profile_id) or {}
@@ -3504,68 +2847,12 @@ class SearchService:
             except Exception:
                 logger.debug("salary_below_market check skipped (non-critical)")
 
-        # ── Apply refined analyses to already-persisted Job rows ──
-        # Jobs were saved during the streaming consumer pass; we find each existing row
-        # by (user_id, scraped_job_id, search_profile_id) and patch only analysis fields.
-        # User-action fields (applied, dismissed, feedback_signal) are not touched.
-        updated_count = 0
-        for job, analysis in jobs_to_refine:
-            scraped_job_id = getattr(job, "_scraped_job_id", None)
-            if scraped_job_id is None:
-                continue
-            try:
-                existing_job = self.job_repo.get_job_by_user_scraped_profile(
-                    profile_dict["user_id"],
-                    scraped_job_id,
-                    profile_dict.get("id"),
-                )
-                if not existing_job:
-                    continue
-                existing_job.affinity_score = analysis.get(
-                    "affinity_score", existing_job.affinity_score
-                )
-                existing_job.affinity_analysis = analysis.get(
-                    "affinity_analysis", existing_job.affinity_analysis
-                )
-                existing_job.worth_applying = analysis.get(
-                    "worth_applying", existing_job.worth_applying
-                )
-                existing_job.skill_match_score = analysis.get(
-                    "skill_match_score", existing_job.skill_match_score
-                )
-                existing_job.experience_match_score = analysis.get(
-                    "experience_match_score", existing_job.experience_match_score
-                )
-                existing_job.intent_match_score = analysis.get(
-                    "intent_match_score", existing_job.intent_match_score
-                )
-                existing_job.language_match_score = analysis.get(
-                    "language_match_score", existing_job.language_match_score
-                )
-                existing_job.location_match_score = analysis.get(
-                    "location_match_score", existing_job.location_match_score
-                )
-                existing_job.transferability_score = analysis.get(
-                    "transferability_score", existing_job.transferability_score
-                )
-                existing_job.qualification_gap_score = analysis.get(
-                    "qualification_gap_score", existing_job.qualification_gap_score
-                )
-                existing_job.analysis_structured = analysis.get(
-                    "analysis_structured", existing_job.analysis_structured
-                )
-                existing_job.red_flags = analysis.get("red_flags", existing_job.red_flags)
-                self.db.commit()
-                updated_count += 1
-            except Exception as exc:
-                self.db.rollback()
-                self._increment_status_errors(profile_id)
-                logger.warning(
-                    "Final-pass update failed for scraped_job_id %s (profile %s): %s",
-                    scraped_job_id,
-                    profile_dict.get("id"),
-                    exc,
-                )
+        updated_count = self.search_persistence.apply_refined_analysis_updates(
+            profile_id,
+            profile_dict,
+            jobs_to_refine,
+            increment_status_errors=self._increment_status_errors,
+        )
 
         if updated_count > 0:
             add_log(profile_id, f"Final passes applied: {updated_count} jobs refined in-place.")

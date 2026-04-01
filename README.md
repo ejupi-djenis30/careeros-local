@@ -557,7 +557,7 @@ The project includes an advanced testing setup. We explicitly mandate that unit 
 
 ### Agent Operations (AGENTS.md)
 
-There is a dedicated file titled `AGENTS.md` located in the root directory. **Any AI agent interacting with this codebase must read that file before performing actions.** It contains explicitly formatted instructions outlining requirements for redirecting terminal output to the `.gitignore`-protected `cmd_output/` directory, strict Docker-first testing priorities, and mandates for architectural consistency.
+There is a dedicated file titled `AGENTS.md` located in the root directory. **Any AI agent interacting with this codebase must read that file before performing actions.** It contains explicitly formatted instructions outlining requirements for redirecting terminal output to the `.gitignore`-protected `cmd_outputs/` directory, strict Docker-first testing priorities, and mandates for architectural consistency.
 
 ---
 
@@ -573,7 +573,10 @@ There is a dedicated file titled `AGENTS.md` located in the root directory. **An
 **Symptom**: You execute a search, but the progress bar does not move and no logs are printed to the frontend UI.
 **Resolution**: The frontend relies on HTTP polling (every 1.5 seconds) to `GET /search/status/all`. Open your browser's Developer Tools (F12) -> Network tab.
 - Are the `/status/all` requests failing with 500s? Your backend has crashed (likely an LLM timeout). Check the backend Docker logs: `docker logs job-hunter-ai-backend-1`.
-- If the requests are completing and returning `{}` (empty brace), there is an in-memory state desynchronization. Ensure your Docker compose file is running Gunicorn with exactly **1 worker thread**. Multiple threads will result in the state locking memory in an isolated thread inaccessible to the poller.
+- If the requests are completing and returning `{}` (empty brace), the issue is no longer a single-worker requirement. Search ownership is DB-backed, while progress snapshots are stored in `backend/data/job_hunter_statuses.json`. Verify that:
+   - your database schema includes the search lock columns on `search_profiles` (run Alembic migrations or rebuild fresh volumes),
+   - the backend process can write to `backend/data/`, and
+   - the backend logs do not show lock activation/release errors for the profile being searched.
 
 ### 3. 🐞 "Database Integrity / Missing Columns Exception"
 **Symptom**: `sqlalchemy.exc.OperationalError: no such column: ...`

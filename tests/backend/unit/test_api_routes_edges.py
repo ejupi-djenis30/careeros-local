@@ -185,6 +185,7 @@ async def test_search_start_with_empty_fields_and_default_name():
     with (
         patch("backend.api.routes.search.ProfileRepository", return_value=mock_repo),
         patch("backend.api.routes.search.cancel_task"),
+        patch("backend.api.routes.search.reserve_task", return_value="token-1"),
     ):
         req = FakeRequest()
         bg_tasks = MagicMock()

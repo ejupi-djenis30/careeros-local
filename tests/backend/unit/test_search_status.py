@@ -23,11 +23,16 @@ from backend.services.search_status import (
 @pytest.fixture(autouse=True)
 def reset_status_registry():
     """Reset the global in-memory dictionaries before each test."""
-    with ss._lock:
-        ss._statuses.clear()
-        ss._active_tasks.clear()
-        ss._reserved_tasks.clear()
-    yield
+    with (
+        patch("backend.services.search_status._acquire_profile_search_lock", return_value=True),
+        patch("backend.services.search_status._activate_profile_search_lock", return_value=True),
+        patch("backend.services.search_status._release_profile_search_lock", return_value=True),
+    ):
+        with ss._lock:
+            ss._statuses.clear()
+            ss._active_tasks.clear()
+            ss._reserved_tasks.clear()
+        yield
 
 
 def test_init_status():
@@ -253,34 +258,21 @@ def test_release_task_removes_shared_reserved_entry():
     assert 909 not in written_payload
 
 
-def test_release_task_clears_file_entry_even_without_in_memory_reservation():
-    file_data = {
-        990: {
-            "state": "reserved",
-            "started_at": "9999-01-01T00:00:00+00:00",
-            "updated_at": "9999-01-01T00:00:00+00:00",
-            "reservation_token": "shared-token",
-        }
-    }
-
-    with (
-        patch("backend.services.search_status._status_file_lock", return_value=nullcontext()),
-        patch("backend.services.search_status._load_statuses", return_value=file_data),
-        patch("backend.services.search_status._write_status_payload") as mock_write,
-    ):
+def test_release_task_calls_db_release_even_without_in_memory_reservation():
+    with patch(
+        "backend.services.search_status._release_profile_search_lock", return_value=True
+    ) as mock_release:
         assert release_task(990, reservation_token="shared-token") is True
 
-    written_payload = mock_write.call_args.args[0]
-    assert 990 not in written_payload
+    mock_release.assert_called_once_with(990, "shared-token")
 
 
-def test_reserve_task_allows_when_file_shows_stale_reserved_state():
+def test_reserve_task_ignores_shared_status_file_for_ownership_checks():
     file_data = {
         1001: {
-            "state": "reserved",
-            "started_at": "2000-01-01T00:00:00+00:00",
-            "updated_at": "2000-01-01T00:00:00+00:00",
-            "reservation_token": "old-token",
+            "state": "searching",
+            "started_at": "9999-01-01T00:00:00+00:00",
+            "updated_at": "9999-01-01T00:00:00+00:00",
         }
     }
     with (
@@ -293,70 +285,13 @@ def test_reserve_task_allows_when_file_shows_stale_reserved_state():
     release_task(1001)
 
 
-# ── Cross-worker reserve_task tests ─────────────────────────────────────
+# ── DB-backed reserve_task tests ────────────────────────────────────────
 
 
-def test_reserve_task_blocked_by_file_active_state():
-    """reserve_task must reject when the shared JSON file shows a non-terminal
-    state with a started_at AFTER the current worker's boot time."""
-    from datetime import datetime, timezone
-
-    # Simulate a file entry started *after* the worker booted (cross-worker case)
-    future_started = datetime.now(timezone.utc).isoformat()  # strictly after _WORKER_BOOT_TIME
-    file_data = {
-        456: {
-            "state": "searching",
-            "started_at": future_started,
-            "terminal_reason": None,
-        }
-    }
-    with patch("backend.services.search_status._load_statuses", return_value=file_data):
+def test_reserve_task_blocked_by_db_lock():
+    with patch("backend.services.search_status._acquire_profile_search_lock", return_value=False):
         result = reserve_task(456)
-    assert result is False, "reserve_task should reject when another worker owns the search"
-
-
-def test_reserve_task_blocked_by_recent_file_update_without_started_at():
-    file_data = {
-        654: {
-            "state": "searching",
-            "updated_at": "9999-01-01T00:00:00+00:00",
-            "terminal_reason": None,
-        }
-    }
-    with patch("backend.services.search_status._load_statuses", return_value=file_data):
-        result = reserve_task(654)
-    assert result is False, "recent updated_at should block duplicate reservations"
-
-
-def test_reserve_task_allowed_when_file_shows_terminal_state():
-    """reserve_task must allow when the file shows a terminal (done/error) state."""
-    file_data = {
-        789: {
-            "state": "done",
-            "started_at": "2000-01-01T00:00:00+00:00",
-            "terminal_reason": "completed",
-        }
-    }
-    with patch("backend.services.search_status._load_statuses", return_value=file_data):
-        result = reserve_task(789)
-    assert result is True, "Completed searches should not block a new reservation"
-    release_task(789)
-
-
-def test_reserve_task_allowed_when_file_shows_stale_state():
-    """reserve_task must allow when the file entry pre-dates the current worker boot."""
-    # Use a started_at that is definitely before _WORKER_BOOT_TIME
-    old_started = "2000-01-01T00:00:00+00:00"
-    file_data = {
-        101: {
-            "state": "searching",  # non-terminal but stale
-            "started_at": old_started,
-        }
-    }
-    with patch("backend.services.search_status._load_statuses", return_value=file_data):
-        result = reserve_task(101)
-    assert result is True, "Stale pre-boot entries should not block a fresh reservation"
-    release_task(101)
+    assert result is False, "reserve_task should reject when the DB-backed lock is occupied"
 
 
 # ── register_task guard tests ────────────────────────────────────────────

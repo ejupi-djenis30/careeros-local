@@ -1,10 +1,14 @@
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import List, Optional
 
+from sqlalchemy import and_, or_
 from sqlalchemy.orm import Session
 
 from backend.models import SearchProfile
 from backend.repositories.base import BaseRepository
+
+SEARCH_LOCK_RESERVED = "reserved"
+SEARCH_LOCK_ACTIVE = "active"
 
 
 class ProfileRepository(BaseRepository[SearchProfile]):
@@ -19,6 +23,115 @@ class ProfileRepository(BaseRepository[SearchProfile]):
             .limit(limit)
             .all()
         )
+
+    def acquire_search_lock(
+        self,
+        profile_id: int,
+        token: str,
+        *,
+        reservation_ttl_seconds: int,
+        active_ttl_seconds: int,
+    ) -> bool:
+        now = datetime.now(timezone.utc)
+        reserved_stale_before = now - timedelta(seconds=reservation_ttl_seconds)
+        active_stale_before = now - timedelta(seconds=active_ttl_seconds)
+
+        try:
+            updated = (
+                self.db.query(self.model)
+                .filter(self.model.id == profile_id)
+                .filter(
+                    or_(
+                        self.model.search_lock_token.is_(None),
+                        and_(
+                            self.model.search_lock_state == SEARCH_LOCK_RESERVED,
+                            or_(
+                                self.model.search_lock_acquired_at.is_(None),
+                                self.model.search_lock_acquired_at < reserved_stale_before,
+                            ),
+                        ),
+                        and_(
+                            self.model.search_lock_state == SEARCH_LOCK_ACTIVE,
+                            or_(
+                                self.model.search_lock_acquired_at.is_(None),
+                                self.model.search_lock_acquired_at < active_stale_before,
+                            ),
+                        ),
+                    )
+                )
+                .update(
+                    {
+                        self.model.search_lock_token: token,
+                        self.model.search_lock_state: SEARCH_LOCK_RESERVED,
+                        self.model.search_lock_acquired_at: now,
+                    },
+                    synchronize_session=False,
+                )
+            )
+            if not updated:
+                self.db.rollback()
+                return False
+            self.db.commit()
+            self.db.expire_all()
+            return True
+        except Exception:
+            self.db.rollback()
+            raise
+
+    def activate_search_lock(self, profile_id: int, token: str) -> bool:
+        now = datetime.now(timezone.utc)
+        try:
+            updated = (
+                self.db.query(self.model)
+                .filter(
+                    self.model.id == profile_id,
+                    self.model.search_lock_token == token,
+                )
+                .update(
+                    {
+                        self.model.search_lock_state: SEARCH_LOCK_ACTIVE,
+                        self.model.search_lock_acquired_at: now,
+                    },
+                    synchronize_session=False,
+                )
+            )
+            if not updated:
+                self.db.rollback()
+                return False
+            self.db.commit()
+            self.db.expire_all()
+            return True
+        except Exception:
+            self.db.rollback()
+            raise
+
+    def release_search_lock(self, profile_id: int, token: Optional[str] = None) -> bool:
+        filters = [self.model.id == profile_id]
+        if token is not None:
+            filters.append(self.model.search_lock_token == token)
+
+        try:
+            updated = (
+                self.db.query(self.model)
+                .filter(*filters)
+                .update(
+                    {
+                        self.model.search_lock_token: None,
+                        self.model.search_lock_state: None,
+                        self.model.search_lock_acquired_at: None,
+                    },
+                    synchronize_session=False,
+                )
+            )
+            if not updated:
+                self.db.rollback()
+                return False
+            self.db.commit()
+            self.db.expire_all()
+            return True
+        except Exception:
+            self.db.rollback()
+            raise
 
     def update_cache(
         self, profile_id: int, cv_summary: Optional[str] = None, queries_json: Optional[str] = None

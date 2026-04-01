@@ -92,6 +92,7 @@ class TestResolveStepConfig:
             G4F_MAX_REQUEST_ATTEMPTS=2,
             G4F_REQUEST_TIMEOUT_CAP_SECONDS=20.0,
             G4F_TIMEOUT_BUFFER_SECONDS=1.0,
+            G4F_RATE_LIMIT_WAIT_SECONDS=3600.0,
             G4F_AUTO_DISCOVER_PROVIDERS=True,
             G4F_ALLOW_INTERNAL_PROVIDER_FALLBACK=False,
             LLM_FALLBACK_PROVIDER="",
@@ -200,6 +201,7 @@ class TestBuildProvider:
             G4F_MAX_REQUEST_ATTEMPTS=2,
             G4F_REQUEST_TIMEOUT_CAP_SECONDS=20.0,
             G4F_TIMEOUT_BUFFER_SECONDS=1.0,
+            G4F_RATE_LIMIT_WAIT_SECONDS=3600.0,
             G4F_AUTO_DISCOVER_PROVIDERS=True,
             G4F_ALLOW_INTERNAL_PROVIDER_FALLBACK=False,
             LLM_MATCH_MODEL="",
@@ -296,6 +298,7 @@ class TestBuildProvider:
             max_request_attempts=2,
             request_timeout_cap_seconds=20.0,
             timeout_buffer_seconds=1.0,
+            rate_limit_wait_seconds=3600.0,
             shuffle_providers=False,
             allow_auto_discovery=True,
             allow_internal_provider_fallback=False,
@@ -350,6 +353,7 @@ class TestGetProviderForStep:
         m.G4F_MAX_REQUEST_ATTEMPTS = 2
         m.G4F_REQUEST_TIMEOUT_CAP_SECONDS = 20.0
         m.G4F_TIMEOUT_BUFFER_SECONDS = 1.0
+        m.G4F_RATE_LIMIT_WAIT_SECONDS = 3600.0
         m.G4F_AUTO_DISCOVER_PROVIDERS = True
         m.G4F_ALLOW_INTERNAL_PROVIDER_FALLBACK = False
         m.LLM_FALLBACK_PROVIDER = ""

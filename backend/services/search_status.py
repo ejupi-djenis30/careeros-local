@@ -15,6 +15,10 @@ from contextlib import contextmanager
 from datetime import datetime, timezone
 from typing import Any, Dict, Iterator, List, Optional
 
+from backend.core.config import settings
+from backend.db.base import SessionLocal
+from backend.repositories.profile_repository import ProfileRepository
+
 logger = logging.getLogger(__name__)
 
 # Platform-safe fcntl accessor: mypy on Windows doesn't have fcntl, so expose
@@ -201,8 +205,57 @@ def _touch_status_entry(entry: Dict[str, Any]) -> Dict[str, Any]:
 _RESERVATION_TTL_SECONDS = 30.0
 
 
+def _active_lock_ttl_seconds() -> int:
+    """Return a safe stale-lock TTL for active searches.
+
+    This TTL is derived from the configured pipeline timeout, but it is capped
+    so misconfigured environments cannot overflow datetime arithmetic or keep a
+    dead lock alive for an effectively unbounded time.
+    """
+    try:
+        configured_timeout = int(getattr(settings, "SEARCH_PIPELINE_TIMEOUT_SECONDS", 1800))
+    except (TypeError, ValueError, OverflowError):
+        configured_timeout = 1800
+
+    normalized_timeout = max(configured_timeout, int(_RESERVATION_TTL_SECONDS))
+    capped_timeout = min(normalized_timeout, 24 * 60 * 60)
+    return capped_timeout + 60
+
+
 def _snapshot_statuses() -> Dict[int, Dict[str, Any]]:
     return copy.deepcopy(_statuses)
+
+
+def _acquire_profile_search_lock(profile_id: int, reservation_token: str) -> bool:
+    db = SessionLocal()
+    try:
+        repo = ProfileRepository(db)
+        return repo.acquire_search_lock(
+            profile_id,
+            reservation_token,
+            reservation_ttl_seconds=int(_RESERVATION_TTL_SECONDS),
+            active_ttl_seconds=_active_lock_ttl_seconds(),
+        )
+    finally:
+        db.close()
+
+
+def _activate_profile_search_lock(profile_id: int, reservation_token: str) -> bool:
+    db = SessionLocal()
+    try:
+        repo = ProfileRepository(db)
+        return repo.activate_search_lock(profile_id, reservation_token)
+    finally:
+        db.close()
+
+
+def _release_profile_search_lock(profile_id: int, reservation_token: str | None = None) -> bool:
+    db = SessionLocal()
+    try:
+        repo = ProfileRepository(db)
+        return repo.release_search_lock(profile_id, reservation_token)
+    finally:
+        db.close()
 
 
 def _build_reserved_status_entry(
@@ -557,7 +610,7 @@ def register_task(profile_id: int, task: Any, reservation_token: str | None = No
                     return False
             except Exception:
                 pass  # Non-asyncio task object — treat as replaced
-                _reserved_tasks.pop(profile_id, None)
+        _reserved_tasks.pop(profile_id, None)
         _active_tasks[profile_id] = task
         return True
 
@@ -585,43 +638,34 @@ def reserve_task(
     """Reserve a profile before the background task is registered.
 
     Cross-worker safe: in addition to checking the in-process task registries
-    this also inspects the shared JSON status file so that a reservation made
-    by a sibling Gunicorn worker is honoured.  A non-terminal status entry
-    whose ``started_at`` was created after this worker booted means another
-    worker already owns (or just started) the search.
+    this now acquires a persistent DB-backed lock on the SearchProfile row.
+    The shared JSON status file remains for progress visibility only.
     """
+    token = reservation_token or uuid.uuid4().hex
+
     with _lock:
         _cleanup_stale_reservations()
         if profile_id in _active_tasks or profile_id in _reserved_tasks:
             return False
 
-        # Cross-worker guard: check the shared status file.
-        try:
-            with _status_file_lock():
-                file_data = _prune_stale_reserved_entries(_load_statuses())
-                file_entry = file_data.get(profile_id)
-                if file_entry and _shared_entry_blocks_reservation(file_entry):
-                    logger.info(
-                        "reserve_task: profile %d is already running on another worker (state=%s, started=%s)",
-                        profile_id,
-                        file_entry.get("state", "unknown"),
-                        file_entry.get("started_at") or "",
-                    )
-                    return False
-
-                token = reservation_token or uuid.uuid4().hex
-                _reserved_tasks[profile_id] = {
-                    "reserved_at": time.time(),
-                    "token": token,
-                }
-                file_data[profile_id] = _build_reserved_status_entry(token, user_id=user_id)
-                _write_status_payload(file_data)
-        except Exception as exc:
-            logger.warning("reserve_task: failed to persist shared reservation: %s", exc)
-            _reserved_tasks.pop(profile_id, None)
+    try:
+        if not _acquire_profile_search_lock(profile_id, token):
             return False
+    except Exception as exc:
+        logger.warning("reserve_task: failed to acquire DB-backed search lock: %s", exc)
+        return False
 
-        return token if return_token else True
+    with _lock:
+        _reserved_tasks[profile_id] = {
+            "reserved_at": time.time(),
+            "token": token,
+        }
+        _statuses[profile_id] = _build_reserved_status_entry(token, user_id=user_id)
+        snapshot = _snapshot_statuses()
+
+    _save_statuses(force=True, statuses_snapshot=snapshot)
+
+    return token if return_token else True
 
 
 def release_task(profile_id: int, reservation_token: str | None = None) -> bool:
@@ -635,20 +679,28 @@ def release_task(profile_id: int, reservation_token: str | None = None) -> bool:
             _reserved_tasks.pop(profile_id, None)
             in_memory_released = True
 
-        file_released = False
-        try:
-            with _status_file_lock():
-                file_data = _prune_stale_reserved_entries(_load_statuses())
-                file_entry = file_data.get(profile_id)
-                if file_entry and file_entry.get("state") == _RESERVED_STATE:
-                    file_token = file_entry.get("reservation_token")
-                    if reservation_token is None or file_token == reservation_token:
-                        file_data.pop(profile_id, None)
-                        _write_status_payload(file_data)
-                        file_released = True
-        except Exception as exc:
-            logger.warning("release_task: failed to clear shared reservation: %s", exc)
-        return in_memory_released or file_released
+        status_entry = _statuses.get(profile_id)
+        removed_ids: set[int] | None = None
+        snapshot = None
+        if status_entry and status_entry.get("state") == _RESERVED_STATE:
+            _statuses.pop(profile_id, None)
+            removed_ids = {profile_id}
+            snapshot = _snapshot_statuses()
+
+    try:
+        db_released = _release_profile_search_lock(profile_id, reservation_token)
+    except Exception as exc:
+        logger.warning("release_task: failed to clear DB-backed search lock: %s", exc)
+        db_released = False
+
+    if snapshot is not None:
+        _save_statuses_with_removals(
+            force=True,
+            statuses_snapshot=snapshot,
+            removed_ids=removed_ids,
+        )
+
+    return in_memory_released or db_released
 
 
 def cancel_task(profile_id: int):

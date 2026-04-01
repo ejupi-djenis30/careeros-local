@@ -39,6 +39,22 @@ def _clear_status_file():
             os.remove(search_status._STATUS_FILE)
     except OSError:
         pass
+    try:
+        if os.path.exists(search_status._STATUS_LOCK_FILE):
+            os.remove(search_status._STATUS_LOCK_FILE)
+    except OSError:
+        pass
+    status_dir = os.path.dirname(search_status._STATUS_FILE)
+    prefix = os.path.basename(search_status._STATUS_FILE)
+    try:
+        for child in os.listdir(status_dir):
+            if child.startswith(f"{prefix}.") and child.endswith(".tmp"):
+                try:
+                    os.remove(os.path.join(status_dir, child))
+                except OSError:
+                    pass
+    except OSError:
+        pass
 
 
 @pytest.fixture(autouse=True)
