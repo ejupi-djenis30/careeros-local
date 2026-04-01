@@ -370,6 +370,7 @@ These are used as the **default for all pipeline steps** (PLAN, NORMALIZE, NORMA
 | `G4F_MAX_REQUEST_ATTEMPTS` | Optional | `2` | Low-level retry count inside the g4f provider; keep this low to avoid retry storms |
 | `G4F_REQUEST_TIMEOUT_CAP_SECONDS` | Optional | `20` | Per-attempt cap inside g4f so one provider call cannot consume the whole step budget |
 | `G4F_TIMEOUT_BUFFER_SECONDS` | Optional | `1` | Reserved wall-clock headroom before the outer step timeout is exhausted |
+| `G4F_RATE_LIMIT_WAIT_SECONDS` | Optional | `3600` | Backoff in seconds used when g4f returns explicit rate-limit errors (for example HTTP 429 / per-hour limits) |
 | `G4F_AUTO_DISCOVER_PROVIDERS` | Optional | `true` | Best-effort provider discovery when `G4F_PROVIDERS` is empty |
 | `G4F_ALLOW_INTERNAL_PROVIDER_FALLBACK` | Optional | `false` | Allow opaque g4f internal provider selection when discovery fails; keep `false` for deterministic failures + external fallback |
 
