@@ -139,6 +139,7 @@ class Job(BaseModel, TimestampMixin):
             "user_id", "scraped_job_id", "search_profile_id", name="uq_job_user_scraped_profile"
         ),
         Index("ix_job_user_profile", "user_id", "search_profile_id"),
+        Index("ix_jobs_user_dismissed_created_at", "user_id", "dismissed", "created_at"),
     )
 
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)

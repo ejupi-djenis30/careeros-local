@@ -87,8 +87,21 @@ export function SearchForm({ onStartSearch, isLoading, prefill }) {
         }
     };
 
+    const coerceNumericValue = (value, fallback = undefined) => {
+        if (value === "" || value == null) return fallback;
+        const nextValue = Number(value);
+        return Number.isFinite(nextValue) ? nextValue : fallback;
+    };
+
     const handleSubmit = (e) => {
         e.preventDefault();
+
+        const postedWithinDays = coerceNumericValue(profile.posted_within_days, 30);
+        const maxDistance = coerceNumericValue(profile.max_distance, 50);
+        const scheduleIntervalHours = coerceNumericValue(profile.schedule_interval_hours, 24);
+        const maxQueries = profile.max_queries === "" ? -1 : coerceNumericValue(profile.max_queries, -1);
+        const maxOccupationQueries = profile.max_occupation_queries === "" ? -1 : coerceNumericValue(profile.max_occupation_queries, -1);
+        const maxKeywordQueries = profile.max_keyword_queries === "" ? -1 : coerceNumericValue(profile.max_keyword_queries, -1);
 
         if (!profile.cv_content) {
             showToast("Please upload your CV first. It is required for AI-powered search.");
@@ -102,7 +115,19 @@ export function SearchForm({ onStartSearch, isLoading, prefill }) {
             showToast("Please enter a location.");
             return;
         }
-        if (profile.remote_only && profile.max_distance !== "" && Number(profile.max_distance) > 0) {
+        if (postedWithinDays < 1) {
+            showToast("Posted within days must be at least 1.");
+            return;
+        }
+        if (maxDistance < 0) {
+            showToast("Max distance must be zero or greater.");
+            return;
+        }
+        if (profile.schedule_enabled && scheduleIntervalHours < 1) {
+            showToast("Schedule interval must be at least 1 hour.");
+            return;
+        }
+        if (profile.remote_only && maxDistance > 0) {
             showToast("Distance filtering cannot be combined with Remote-only mode.");
             return;
         }
@@ -118,9 +143,12 @@ export function SearchForm({ onStartSearch, isLoading, prefill }) {
         const { scrape_mode: _legacyScrapeMode, ...profilePayload } = profile;
         const searchProfile = {
             ...profilePayload,
-            max_queries: profile.max_queries === "" ? -1 : profile.max_queries,
-            max_occupation_queries: profile.max_occupation_queries === "" ? -1 : profile.max_occupation_queries,
-            max_keyword_queries: profile.max_keyword_queries === "" ? -1 : profile.max_keyword_queries,
+            posted_within_days: postedWithinDays,
+            max_distance: maxDistance,
+            schedule_interval_hours: scheduleIntervalHours,
+            max_queries: maxQueries,
+            max_occupation_queries: maxOccupationQueries,
+            max_keyword_queries: maxKeywordQueries,
             preferred_languages: profile.preferred_languages?.length ? profile.preferred_languages : undefined,
             remote_only: profile.remote_only || undefined,
             salary_min_chf: profile.salary_min_chf !== "" && profile.salary_min_chf != null ? Number(profile.salary_min_chf) : undefined,

@@ -109,6 +109,10 @@ export function SearchProgress({ profileId, status, onStateChange, onClear }) {
         jobs_new,
         jobs_unique,
         jobs_duplicates,
+        jobs_duplicates_total,
+        jobs_duplicates_runtime,
+        jobs_duplicates_history,
+        jobs_duplicates_catalog_conflicts,
         jobs_skipped,
         jobs_analyzed,
         jobs_analyze_total,
@@ -142,6 +146,10 @@ export function SearchProgress({ profileId, status, onStateChange, onClear }) {
     const showDebugLabel = isDone || isError;
     const debugTerminalReason = terminal_reason || "n/a";
     const debugLabel = `LLM_DEBUG state=${state} terminal_reason=${debugTerminalReason} profile_id=${profileId}`;
+    const duplicateTotal = jobs_duplicates_total ?? jobs_duplicates ?? 0;
+    const duplicateRuntime = jobs_duplicates_runtime ?? 0;
+    const duplicateHistory = jobs_duplicates_history ?? 0;
+    const duplicateCatalogConflicts = jobs_duplicates_catalog_conflicts ?? 0;
 
     // Progress calculation was moved before the early return to keep all hooks unconditional.
     // Apply the monotonic floor — progressFloor is state, so reading it in render is valid.
@@ -224,7 +232,12 @@ export function SearchProgress({ profileId, status, onStateChange, onClear }) {
                             ? { label: 'Saved', value: jobs_new, color: 'text-primary' }
                             : { label: 'New Intel', value: jobs_new, color: 'text-white' },
                         { label: 'In Queue', value: Math.max(0, (jobs_unique || 0) - (jobs_new || 0) - (jobs_skipped || 0)), color: 'text-info' },
-                        { label: 'Duplicates', value: jobs_duplicates, color: 'text-warning' },
+                        {
+                            label: 'Duplicates',
+                            value: duplicateTotal,
+                            color: 'text-warning',
+                            detail: `R ${duplicateRuntime} H ${duplicateHistory} C ${duplicateCatalogConflicts}`,
+                        },
                         { label: 'Skipped', value: jobs_skipped, color: 'text-secondary' },
                         { label: 'Errors', value: errors, color: 'text-danger' }
                     ].map((stat, i) => (
@@ -232,6 +245,9 @@ export function SearchProgress({ profileId, status, onStateChange, onClear }) {
                             <div className="p-3 rounded-4 bg-black-20 border border-white-5 text-center h-100 d-flex flex-column justify-content-center">
                                 <div className={`display-6 fw-bold mb-0 ${stat.color}`} style={{ fontSize: '1.75rem' }}>{stat.value || 0}</div>
                                 <div className="text-secondary x-small text-uppercase tracking-wide opacity-75 mt-1">{stat.label}</div>
+                                {stat.detail ? (
+                                    <div className="text-secondary x-small opacity-60 mt-1">{stat.detail}</div>
+                                ) : null}
                             </div>
                         </div>
                     ))}

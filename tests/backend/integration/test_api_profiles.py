@@ -41,6 +41,28 @@ class TestAdvancedProfilesAPI:
         response = client.post("/api/v1/search/start", json=payload, headers=auth_headers)
         assert response.status_code == 422  # Unprocessable Entity
 
+    def test_create_profile_accepts_large_numeric_values(self, client, auth_headers):
+        payload = {
+            "name": "High Limit Profile",
+            "role_description": "Platform Engineer",
+            "cv_content": "Python, Docker, Kubernetes",
+            "location_filter": "Zurich",
+            "posted_within_days": 999999,
+            "max_distance": 999999,
+            "schedule_enabled": True,
+            "schedule_interval_hours": 999999,
+            "max_queries": 999999,
+        }
+
+        response = client.post("/api/v1/profiles/", json=payload, headers=auth_headers)
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["posted_within_days"] == 999999
+        assert data["max_distance"] == 999999
+        assert data["schedule_interval_hours"] == 999999
+        assert data["max_queries"] == 999999
+
     def test_delete_profile_cascades(self, client, auth_headers, db_session, test_user):
         from backend.models import Job, ScrapedJob, SearchProfile
 

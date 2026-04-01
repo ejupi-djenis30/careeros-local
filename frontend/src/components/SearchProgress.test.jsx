@@ -162,6 +162,31 @@ describe('SearchProgress', () => {
     );
   });
 
+  it('renders duplicate breakdown when provided by backend status', () => {
+    const status = {
+      state: 'searching',
+      terminal_reason: null,
+      total_searches: 2,
+      current_search_index: 1,
+      current_query: 'backend engineer',
+      searches_generated: [],
+      jobs_new: 0,
+      jobs_unique: 1,
+      jobs_duplicates: 3,
+      jobs_duplicates_total: 3,
+      jobs_duplicates_runtime: 1,
+      jobs_duplicates_history: 2,
+      jobs_duplicates_catalog_conflicts: 4,
+      jobs_skipped: 0,
+      errors: 0,
+      log: [],
+    };
+
+    render(<ToastProvider><SearchProgress profileId="1" status={status} onStateChange={vi.fn()} onClear={vi.fn()} /></ToastProvider>);
+
+    expect(screen.getByText('R 1 H 2 C 4')).toBeInTheDocument();
+  });
+
   it('uses completed query counts instead of current index for concurrent progress', () => {
     const status = {
       state: 'searching',

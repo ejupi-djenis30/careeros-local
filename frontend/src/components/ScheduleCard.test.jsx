@@ -1,5 +1,5 @@
 import React from 'react';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, act } from '@testing-library/react';
 import { describe, it, expect, vi } from 'vitest';
 import { ScheduleCard } from './ScheduleCard';
 
@@ -28,11 +28,11 @@ describe('ScheduleCard', () => {
 
         expect(screen.getByText('Campaign #10')).toBeInTheDocument();
         expect(screen.getByText('Any Location')).toBeInTheDocument();
-        const select = screen.getByRole('combobox');
-        expect(select.value).toBe("24"); // Checks the fallback
+        const intervalInput = screen.getByRole('spinbutton');
+        expect(intervalInput.value).toBe("24"); // Checks the fallback
     });
 
-    it('calls onToggle when schedule switch is clicked', () => {
+    it('calls onToggle when schedule switch is clicked', async () => {
         const onToggle = vi.fn();
         render(<ScheduleCard profile={mockProfile} onToggle={onToggle} onChangeInterval={vi.fn()} onDelete={vi.fn()} />);
 
@@ -40,20 +40,31 @@ describe('ScheduleCard', () => {
         // Initial state
         expect(toggleSwitch).toBeChecked();
 
-        fireEvent.click(toggleSwitch);
+        await act(async () => {
+            fireEvent.click(toggleSwitch);
+        });
 
         // Ensure the handler was called with the correct previous state
         expect(onToggle).toHaveBeenCalledWith(mockProfile.id, true, 12);
     });
 
-    it('calls onChangeInterval when select value changes', () => {
+    it('calls onChangeInterval when interval input changes', () => {
         const onChangeInterval = vi.fn();
         render(<ScheduleCard profile={mockProfile} onToggle={vi.fn()} onChangeInterval={onChangeInterval} onDelete={vi.fn()} />);
 
-        const select = screen.getByRole('combobox');
-        expect(select.value).toBe('12');
+        const intervalInput = screen.getByRole('spinbutton');
+        expect(intervalInput.value).toBe('12');
 
-        fireEvent.change(select, { target: { value: '24' } });
+        fireEvent.change(intervalInput, { target: { value: '240' } });
+
+        expect(onChangeInterval).toHaveBeenCalledWith(mockProfile.id, '240');
+    });
+
+    it('calls onChangeInterval when a preset button is clicked', () => {
+        const onChangeInterval = vi.fn();
+        render(<ScheduleCard profile={mockProfile} onToggle={vi.fn()} onChangeInterval={onChangeInterval} onDelete={vi.fn()} />);
+
+        fireEvent.click(screen.getByRole('button', { name: '24h' }));
 
         expect(onChangeInterval).toHaveBeenCalledWith(mockProfile.id, '24');
     });

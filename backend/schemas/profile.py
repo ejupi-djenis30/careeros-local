@@ -25,13 +25,10 @@ def _validate_profile_ranges(obj: Any) -> None:
         raise ValueError("salary_min_chf must be non-negative")
     if getattr(obj, "hard_max_distance_km", None) is not None and obj.hard_max_distance_km < 0:
         raise ValueError("hard_max_distance_km must be non-negative")
-    if getattr(obj, "max_distance", None) is not None and not 0 <= obj.max_distance <= 500:
-        raise ValueError("max_distance must be between 0 and 500 km")
-    if (
-        getattr(obj, "posted_within_days", None) is not None
-        and not 1 <= obj.posted_within_days <= 365
-    ):
-        raise ValueError("posted_within_days must be between 1 and 365 days")
+    if getattr(obj, "max_distance", None) is not None and obj.max_distance < 0:
+        raise ValueError("max_distance must be non-negative")
+    if getattr(obj, "posted_within_days", None) is not None and obj.posted_within_days < 1:
+        raise ValueError("posted_within_days must be at least 1 day")
     if (
         getattr(obj, "schedule_interval_hours", None) is not None
         and obj.schedule_interval_hours < 1

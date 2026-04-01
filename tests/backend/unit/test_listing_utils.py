@@ -16,6 +16,7 @@ from backend.services.search.listing_utils import (
     listing_fuzzy_key,
     listing_identity_key,
     listing_is_remote,
+    listing_url_token,
     normalize_listing_identifier,
     normalized_text_token,
     parse_listing_publication_date,
@@ -207,6 +208,26 @@ class TestListingFuzzyKey:
         listing = SimpleNamespace(title="")
         listing.company = None
         assert listing_fuzzy_key(listing) == ""
+
+
+class TestListingUrlToken:
+    def _make(self, external_url=None, url=None):
+        obj = SimpleNamespace()
+        obj.external_url = external_url
+        obj.url = url
+        return obj
+
+    def test_canonicalizes_tracking_params_fragments_and_www(self):
+        listing = self._make(
+            external_url="HTTPS://www.Example.com/jobs/123/?utm_source=test&fbclid=abc#section"
+        )
+        assert listing_url_token(listing) == "example.com/jobs/123"
+
+    def test_sorts_non_tracking_query_params(self):
+        listing_a = self._make(external_url="https://example.com/jobs/123?lang=DE&page=2")
+        listing_b = self._make(external_url="http://example.com/jobs/123/?page=2&lang=de")
+        assert listing_url_token(listing_a) == "example.com/jobs/123?lang=de&page=2"
+        assert listing_url_token(listing_a) == listing_url_token(listing_b)
 
 
 # ─── listing_is_remote ───────────────────────────────────────────────────────

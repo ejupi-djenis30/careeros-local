@@ -1,3 +1,4 @@
+import os
 from contextlib import nullcontext
 from unittest.mock import MagicMock, patch
 
@@ -39,6 +40,10 @@ def test_init_status():
     assert status["active_search_indices"] == []
     assert status["completed_search_indices"] == []
     assert len(status["searches_generated"]) == 1
+    assert status["jobs_duplicates_total"] == 0
+    assert status["jobs_duplicates_runtime"] == 0
+    assert status["jobs_duplicates_history"] == 0
+    assert status["jobs_duplicates_catalog_conflicts"] == 0
     assert "started_at" in status
 
 
@@ -141,6 +146,21 @@ def test_save_statuses_logs_warning_on_write_failure(caplog):
     with patch("backend.services.search_status.open", side_effect=OSError("disk full")):
         init_status(1)
     assert "Failed to persist search statuses" in caplog.text
+
+
+def test_load_statuses_falls_back_to_latest_temp_file(tmp_path):
+    status_file = tmp_path / "job_hunter_statuses.json"
+    older_temp = tmp_path / "job_hunter_statuses.json.1.1.tmp"
+    newer_temp = tmp_path / "job_hunter_statuses.json.2.2.tmp"
+    older_temp.write_text('{"1": {"state": "old"}}', encoding="utf-8")
+    newer_temp.write_text('{"2": {"state": "searching"}}', encoding="utf-8")
+    older_stat = older_temp.stat()
+    os.utime(newer_temp, (older_stat.st_atime + 5, older_stat.st_mtime + 5))
+
+    with patch("backend.services.search_status._STATUS_FILE", str(status_file)):
+        statuses = ss._load_statuses()
+
+    assert statuses == {2: {"state": "searching"}}
 
 
 def test_save_statuses_merges_with_newer_file_entry():

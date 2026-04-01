@@ -6,9 +6,6 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 logger = logging.getLogger(__name__)
 
-_G4F_MAX_REQUEST_ATTEMPTS_CAP = 6
-_LLM_PLAN_RETRY_ATTEMPTS_CAP = 3
-
 
 class Settings(BaseSettings):
     API_V1_STR: str = "/api/v1"
@@ -333,34 +330,20 @@ class Settings(BaseSettings):
 
     @field_validator("G4F_MAX_REQUEST_ATTEMPTS")
     @classmethod
-    def clamp_g4f_max_request_attempts(cls, value: int) -> int:
+    def validate_g4f_max_request_attempts(cls, value: int) -> int:
         attempts = int(value)
         if attempts < 1:
             logger.warning("G4F_MAX_REQUEST_ATTEMPTS=%s is invalid; clamping to 1.", value)
             return 1
-        if attempts > _G4F_MAX_REQUEST_ATTEMPTS_CAP:
-            logger.warning(
-                "G4F_MAX_REQUEST_ATTEMPTS=%s is too high; clamping to %s to avoid retry storms.",
-                value,
-                _G4F_MAX_REQUEST_ATTEMPTS_CAP,
-            )
-            return _G4F_MAX_REQUEST_ATTEMPTS_CAP
         return attempts
 
     @field_validator("LLM_PLAN_RETRY_ATTEMPTS")
     @classmethod
-    def clamp_plan_retry_attempts(cls, value: int) -> int:
+    def validate_plan_retry_attempts(cls, value: int) -> int:
         attempts = int(value)
         if attempts < 1:
             logger.warning("LLM_PLAN_RETRY_ATTEMPTS=%s is invalid; clamping to 1.", value)
             return 1
-        if attempts > _LLM_PLAN_RETRY_ATTEMPTS_CAP:
-            logger.warning(
-                "LLM_PLAN_RETRY_ATTEMPTS=%s is too high; clamping to %s.",
-                value,
-                _LLM_PLAN_RETRY_ATTEMPTS_CAP,
-            )
-            return _LLM_PLAN_RETRY_ATTEMPTS_CAP
         return attempts
 
     @field_validator(

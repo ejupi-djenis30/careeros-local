@@ -104,9 +104,7 @@ def test_profile_create_invalid_workload_range():
         ("salary_min_chf", -2),  # -1 is coerced to None (sentinel); -2 is genuinely invalid
         ("hard_max_distance_km", -2),
         ("max_distance", -1),
-        ("max_distance", 501),
         ("posted_within_days", 0),
-        ("posted_within_days", 366),
         ("schedule_interval_hours", 0),
         ("schedule_interval_hours", -5),
     ],
@@ -128,9 +126,7 @@ def test_profile_create_invalid_ranges(field, value):
         ("workload_max", 101),
         ("salary_min_chf", -1),
         ("hard_max_distance_km", -1),
-        ("max_distance", 501),
         ("posted_within_days", 0),
-        ("posted_within_days", 366),
         ("schedule_interval_hours", 0),
         ("schedule_interval_hours", -5),
     ],
@@ -146,6 +142,28 @@ def test_profile_update_valid_partial():
     assert update.workload_min == 20
     assert update.workload_max == 80
     assert update.schedule_interval_hours == 6
+
+
+def test_profile_create_accepts_large_non_semantic_numeric_values():
+    profile = SearchProfileCreate(
+        max_distance=999999,
+        posted_within_days=999999,
+        schedule_interval_hours=999999,
+    )
+    assert profile.max_distance == 999999
+    assert profile.posted_within_days == 999999
+    assert profile.schedule_interval_hours == 999999
+
+
+def test_profile_update_accepts_large_non_semantic_numeric_values():
+    update = SearchProfileUpdate(
+        max_distance=999999,
+        posted_within_days=999999,
+        schedule_interval_hours=999999,
+    )
+    assert update.max_distance == 999999
+    assert update.posted_within_days == 999999
+    assert update.schedule_interval_hours == 999999
 
 
 def test_profile_update_workload_cross_validation():

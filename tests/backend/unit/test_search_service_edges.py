@@ -105,6 +105,94 @@ async def test_deduplicate_fuzzy_without_anchor_still_deduplicates(mock_service)
     assert duplicates == 1
 
 
+async def test_search_and_produce_tracks_runtime_and_history_duplicate_breakdown(mock_service):
+    from types import SimpleNamespace
+
+    profile = SimpleNamespace(
+        location_filter="",
+        posted_within_days=7,
+        max_distance=50,
+        workload_filter="",
+        latitude=None,
+        longitude=None,
+        contract_type="",
+    )
+    search = {"query": "dev", "domain": "it", "type": "keyword", "language": "en"}
+    provider = MagicMock()
+    provider.throttle_delay = 0.0
+    provider.capabilities = SimpleNamespace(max_page_size=50)
+
+    history_job = SimpleNamespace(
+        source="job_room",
+        id="100",
+        external_url="https://example.com/jobs/100?utm_source=test",
+        title="Software Engineer",
+        company=SimpleNamespace(name="Acme"),
+    )
+    runtime_job_a = SimpleNamespace(
+        source="job_room",
+        id="200",
+        external_url="https://example.com/jobs/200?lang=de&page=2",
+        title="Backend Engineer",
+        company=SimpleNamespace(name="Beta"),
+    )
+    runtime_job_b = SimpleNamespace(
+        source="job_room",
+        id="201",
+        external_url="http://www.example.com/jobs/200/?page=2&lang=DE",
+        title="Backend Engineer",
+        company=SimpleNamespace(name="Beta"),
+    )
+
+    provider.search = AsyncMock(
+        return_value=SimpleNamespace(
+            items=[history_job, runtime_job_a, runtime_job_b], total_pages=1, total_count=3
+        )
+    )
+    mock_service.providers = {"job_room": provider}
+    job_queue = asyncio.Queue()
+
+    async def mark_catalog_state(profile_id, jobs):
+        for idx, job in enumerate(jobs, start=1):
+            job._catalog_persisted = True
+            job._scraped_job_id = idx
+            job._normalized_job_data = {"status": "provider_bootstrap"}
+        return len(jobs), 0
+
+    with (
+        patch("backend.services.search_service.get_status", return_value={"state": "searching"}),
+        patch("backend.services.search_service.route_provider_names", return_value=["job_room"]),
+        patch("backend.services.search_service.build_search_request", return_value=MagicMock()),
+        patch.object(mock_service, "_persist_scraped_job_catalog", new=mark_catalog_state),
+        patch("backend.services.search_service.update_status") as mock_update,
+        patch("backend.services.search_service.add_log"),
+    ):
+        total_found, total_duplicates = await mock_service._search_and_produce(
+            1,
+            profile,
+            [search],
+            {"job_room": MagicMock()},
+            job_queue,
+            {
+                "existing_keys": set(),
+                "existing_urls": {"example.com/jobs/100"},
+                "existing_fuzzy_keys": set(),
+                "existing_fuzzy_keys_strong": set(),
+                "applied_scraped_ids": set(),
+            },
+        )
+
+    queued_batch = await job_queue.get()
+    sentinel = await job_queue.get()
+    assert total_found == 3
+    assert total_duplicates == 2
+    assert [getattr(job, "id", None) for job in queued_batch] == ["200"]
+    assert sentinel is None
+    mock_update.assert_any_call(
+        1, jobs_duplicates_total=2, jobs_duplicates_runtime=1, jobs_duplicates_history=1
+    )
+
+
 async def test_analyze_and_save_success(mock_service):
     profile_dict = {
         "id": 1,

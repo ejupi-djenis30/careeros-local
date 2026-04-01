@@ -181,6 +181,7 @@ class SearchService:
         application_email = self._listing_application_field(listing, "email")
 
         created = False
+        recovered_catalog_conflict = False
         if not existing_sj:
             new_sj = ScrapedJob(
                 platform=platform,
@@ -207,6 +208,7 @@ class SearchService:
                 created = True
             except IntegrityError:
                 savepoint.rollback()
+                recovered_catalog_conflict = True
                 # Another concurrent worker inserted the same job between our query
                 # and our insert — re-fetch the winner without losing the batch.
                 existing_sj = (
@@ -239,6 +241,7 @@ class SearchService:
 
         setattr(listing, "_scraped_job_id", existing_sj.id)
         setattr(listing, "_normalized_job_data", existing_sj.normalized_job_data)
+        setattr(listing, "_catalog_conflict_recovered", recovered_catalog_conflict)
         setattr(listing, "_catalog_persisted", True)
         setattr(listing, "_catalog_persist_error", None)
         return existing_sj, created
@@ -256,6 +259,7 @@ class SearchService:
         created = 0
         updated = 0
         failed = 0
+        conflict_recoveries = 0
         for listing in jobs:
             setattr(listing, "_catalog_persisted", False)
             setattr(listing, "_catalog_persist_error", None)
@@ -265,6 +269,8 @@ class SearchService:
                 try:
                     _, was_created = self._upsert_scraped_job(listing)
                     savepoint.commit()
+                    if getattr(listing, "_catalog_conflict_recovered", False):
+                        conflict_recoveries += 1
                     if was_created:
                         created += 1
                     else:
@@ -292,10 +298,19 @@ class SearchService:
                 f"Failed to persist all {failed} scraped catalog job entries for profile {profile_id}"
             )
 
+        if conflict_recoveries:
+            self._increment_catalog_conflicts(profile_id, conflict_recoveries)
+
         add_log(
             profile_id,
             "Persisted shared job catalog entries before filtering: "
-            f"{created} created, {updated} refreshed" + (f", {failed} failed" if failed else ""),
+            f"{created} created, {updated} refreshed"
+            + (f", {failed} failed" if failed else "")
+            + (
+                f", {conflict_recoveries} catalog conflicts recovered"
+                if conflict_recoveries
+                else ""
+            ),
         )
         return created, updated
 
@@ -1218,11 +1233,13 @@ class SearchService:
             return []
 
         max_by_profile = getattr(profile, "max_queries", None)
-        configured_max = max(1, int(getattr(settings, "SEARCH_DEGRADED_PLAN_MAX_QUERIES", 3)))
+        configured_max = int(getattr(settings, "SEARCH_DEGRADED_PLAN_MAX_QUERIES", 3))
         if isinstance(max_by_profile, int) and max_by_profile > 0:
-            max_count = min(configured_max, max_by_profile)
-        else:
+            max_count = max_by_profile
+        elif configured_max > 0:
             max_count = configured_max
+        else:
+            max_count = None
 
         raw_candidates: List[Dict[str, Any]] = []
 
@@ -1273,13 +1290,18 @@ class SearchService:
 
         fallback_searches: List[Dict[str, str]] = []
         seen = set()
-        max_keywords = max(1, int(getattr(settings, "SEARCH_DEGRADED_PLAN_MAX_KEYWORDS", 2)))
+        configured_keyword_limit = int(getattr(settings, "SEARCH_DEGRADED_PLAN_MAX_KEYWORDS", 2))
+        max_keywords = configured_keyword_limit if configured_keyword_limit > 0 else None
         keyword_count = 0
         for candidate in raw_candidates:
             normalized_search, _ = normalize_search_item(candidate)
             if not normalized_search:
                 continue
-            if normalized_search.get("type") == "keyword" and keyword_count >= max_keywords:
+            if (
+                normalized_search.get("type") == "keyword"
+                and max_keywords is not None
+                and keyword_count >= max_keywords
+            ):
                 continue
             fingerprint = exact_query_fingerprint(normalized_search)
             if not fingerprint or fingerprint in seen:
@@ -1288,7 +1310,7 @@ class SearchService:
             fallback_searches.append(normalized_search)
             if normalized_search.get("type") == "keyword":
                 keyword_count += 1
-            if len(fallback_searches) >= max_count:
+            if max_count is not None and len(fallback_searches) >= max_count:
                 break
 
         return fallback_searches
@@ -1556,6 +1578,14 @@ class SearchService:
             self._processing_consumer(profile_id, profile_dict, profile_preferences, job_queue),
         )
         total_found, total_duplicates = producer_result
+        duplicate_metrics = self._status_duplicate_metrics(profile_id)
+        history_duplicates = duplicate_metrics["jobs_duplicates_history"]
+        runtime_duplicates = duplicate_metrics["jobs_duplicates_runtime"]
+        if total_duplicates > 0 and history_duplicates == 0 and runtime_duplicates == 0:
+            if had_profile_history:
+                history_duplicates = total_duplicates
+            else:
+                runtime_duplicates = total_duplicates
         if len(consumer_result) == 5:
             (
                 total_filtered,
@@ -1605,7 +1635,7 @@ class SearchService:
 
         unique_total = total_found - total_duplicates
         if unique_total == 0:
-            if had_profile_history:
+            if history_duplicates == total_duplicates and total_duplicates > 0:
                 add_log(profile_id, "All found jobs are already in profile history.")
                 add_log(
                     profile_id,
@@ -2090,6 +2120,7 @@ class SearchService:
         profile_id = getattr(profile, "id", profile)
 
         dedup_state = self._new_run_dedup_state()
+        duplicate_counts = self._new_duplicate_counts()
         unique_jobs: list = []
 
         existing_identifiers = self.job_repo.get_profile_job_identifiers(profile_id)
@@ -2154,16 +2185,19 @@ class SearchService:
             fuzzy_key = listing_fuzzy_key(listing)
             desc_fp = listing_description_fingerprint(listing)
 
-            if self._should_skip_duplicate(
+            duplicate_reason = self._duplicate_reason(
                 key=key,
                 url=url,
                 fuzzy=fuzzy_key,
                 desc_fp=desc_fp,
                 run_state=dedup_state,
                 history=profile_history,
-            ):
+            )
+            if duplicate_reason:
+                self._increment_duplicate_count(duplicate_counts, duplicate_reason)
                 logger.debug(
-                    "[DEDUP][T4] Skipping cross-provider repost: %s/%s (desc_fp=%s…)",
+                    "[DEDUP] Skipping %s duplicate: %s/%s (desc_fp=%s…)",
+                    duplicate_reason,
                     platform,
                     platform_id,
                     (desc_fp or "")[:8],
@@ -2185,7 +2219,7 @@ class SearchService:
             setattr(listing, "_applied_elsewhere", applied_elsewhere)
             unique_jobs.append(listing)
 
-        duplicates = len(all_jobs) - len(unique_jobs)
+        duplicates = self._duplicate_total(duplicate_counts)
         return unique_jobs, duplicates
 
     async def _analyze_and_save(
@@ -2568,6 +2602,59 @@ class SearchService:
             "provider_successes": as_int("provider_successes"),
         }
 
+    def _status_duplicate_metrics(self, profile_id: int) -> Dict[str, int]:
+        status = get_status(profile_id) or {}
+
+        def as_int(key: str) -> int:
+            value = status.get(key, 0)
+            try:
+                return int(value or 0)
+            except (TypeError, ValueError):
+                return 0
+
+        total = as_int("jobs_duplicates_total")
+        if total == 0:
+            total = as_int("jobs_duplicates")
+
+        return {
+            "jobs_duplicates_total": total,
+            "jobs_duplicates_runtime": as_int("jobs_duplicates_runtime"),
+            "jobs_duplicates_history": as_int("jobs_duplicates_history"),
+            "jobs_duplicates_catalog_conflicts": as_int("jobs_duplicates_catalog_conflicts"),
+        }
+
+    @staticmethod
+    def _new_duplicate_counts() -> Dict[str, int]:
+        return {
+            "runtime": 0,
+            "history": 0,
+        }
+
+    @staticmethod
+    def _duplicate_total(duplicate_counts: Dict[str, int]) -> int:
+        return int(duplicate_counts.get("runtime", 0)) + int(duplicate_counts.get("history", 0))
+
+    @staticmethod
+    def _increment_duplicate_count(duplicate_counts: Dict[str, int], reason: str) -> None:
+        bucket = "history" if reason == "history" else "runtime"
+        duplicate_counts[bucket] = int(duplicate_counts.get(bucket, 0)) + 1
+
+    def _update_duplicate_breakdown_status(
+        self, profile_id: int, duplicate_counts: Dict[str, int]
+    ) -> None:
+        update_status(
+            profile_id,
+            jobs_duplicates_total=self._duplicate_total(duplicate_counts),
+            jobs_duplicates_runtime=int(duplicate_counts.get("runtime", 0)),
+            jobs_duplicates_history=int(duplicate_counts.get("history", 0)),
+        )
+
+    def _increment_catalog_conflicts(self, profile_id: int, count: int) -> int:
+        current = self._status_duplicate_metrics(profile_id)["jobs_duplicates_catalog_conflicts"]
+        next_value = current + max(0, count)
+        update_status(profile_id, jobs_duplicates_catalog_conflicts=next_value)
+        return next_value
+
     def _increment_status_errors(self, profile_id: int, count: int = 1) -> int:
         next_errors = self._status_metrics(profile_id)["errors"] + max(0, count)
         update_status(profile_id, errors=next_errors)
@@ -2611,7 +2698,58 @@ class SearchService:
         }
 
     @staticmethod
+    def _duplicate_reason(
+        *,
+        key: Optional[str],
+        url: str,
+        fuzzy: str,
+        desc_fp: Optional[str],
+        run_state: dict,
+        history: dict,
+    ) -> Optional[str]:
+        if key and key in run_state["seen_identity_keys"]:
+            return "runtime"
+        if key and key in history["existing_keys"]:
+            return "history"
+
+        if url and url in run_state["seen_url_tokens"]:
+            return "runtime"
+        if url and url in history["existing_urls"]:
+            return "history"
+
+        if desc_fp and desc_fp in run_state["seen_desc_fingerprints"]:
+            return "runtime"
+
+        if not fuzzy:
+            return None
+
+        has_anchor = bool(key or url)
+        in_existing_fuzzy = fuzzy in history["existing_fuzzy_keys"]
+        in_seen_fuzzy = fuzzy in run_state["seen_fuzzy_keys_any"]
+
+        # Fuzzy is a standalone signal only for weakly identified listings.
+        if not has_anchor and in_existing_fuzzy:
+            return "history"
+        if not has_anchor and in_seen_fuzzy:
+            return "runtime"
+
+        # For strongly identified jobs, fuzzy collisions alone are too aggressive.
+        # Require same body fingerprint as additional evidence.
+        in_run_strong_fuzzy = fuzzy in run_state["seen_fuzzy_keys_strong"]
+        in_history_strong_fuzzy = fuzzy in history["existing_fuzzy_keys_strong"]
+        if (
+            has_anchor
+            and (in_run_strong_fuzzy or in_history_strong_fuzzy)
+            and desc_fp
+            and desc_fp in run_state["seen_desc_fingerprints"]
+        ):
+            return "history" if in_history_strong_fuzzy else "runtime"
+
+        return None
+
+    @classmethod
     def _should_skip_duplicate(
+        cls,
         *,
         key: Optional[str],
         url: str,
@@ -2620,41 +2758,17 @@ class SearchService:
         run_state: dict,
         history: dict,
     ) -> bool:
-        if key and (key in run_state["seen_identity_keys"] or key in history["existing_keys"]):
-            return True
-
-        if url and (url in run_state["seen_url_tokens"] or url in history["existing_urls"]):
-            return True
-
-        if desc_fp and desc_fp in run_state["seen_desc_fingerprints"]:
-            return True
-
-        if not fuzzy:
-            return False
-
-        has_anchor = bool(key or url)
-        in_existing_fuzzy = fuzzy in history["existing_fuzzy_keys"]
-        in_seen_fuzzy = fuzzy in run_state["seen_fuzzy_keys_any"]
-
-        # Fuzzy is a standalone signal only for weakly identified listings.
-        if not has_anchor and (in_existing_fuzzy or in_seen_fuzzy):
-            return True
-
-        # For strongly identified jobs, fuzzy collisions alone are too aggressive.
-        # Require same body fingerprint as additional evidence.
-        in_strong_fuzzy = (
-            fuzzy in run_state["seen_fuzzy_keys_strong"]
-            or fuzzy in history["existing_fuzzy_keys_strong"]
+        return (
+            cls._duplicate_reason(
+                key=key,
+                url=url,
+                fuzzy=fuzzy,
+                desc_fp=desc_fp,
+                run_state=run_state,
+                history=history,
+            )
+            is not None
         )
-        if (
-            has_anchor
-            and in_strong_fuzzy
-            and desc_fp
-            and desc_fp in run_state["seen_desc_fingerprints"]
-        ):
-            return True
-
-        return False
 
     @staticmethod
     def _record_dedup_markers(
@@ -2696,7 +2810,7 @@ class SearchService:
         Returns (total_found, total_duplicates).
         """
         total_found = 0
-        total_duplicates = 0
+        duplicate_counts = self._new_duplicate_counts()
         execution_metrics = {
             "queries_without_provider": 0,
             "provider_failures": 0,
@@ -2720,7 +2834,7 @@ class SearchService:
         applied_scraped_ids: set = profile_history["applied_scraped_ids"]
 
         async def execute_and_push(idx: int, search: dict):
-            nonlocal total_found, total_duplicates
+            nonlocal total_found
             query_idx = idx + 1
 
             async with semaphore:
@@ -2880,14 +2994,16 @@ class SearchService:
                         fuzzy = listing_fuzzy_key(job)
                         desc_fp = listing_description_fingerprint(job)
 
-                        if self._should_skip_duplicate(
+                        duplicate_reason = self._duplicate_reason(
                             key=key,
                             url=url,
                             fuzzy=fuzzy,
                             desc_fp=desc_fp,
                             run_state=dedup_state,
                             history=profile_history,
-                        ):
+                        )
+                        if duplicate_reason:
+                            self._increment_duplicate_count(duplicate_counts, duplicate_reason)
                             continue
 
                         self._record_dedup_markers(
@@ -2901,7 +3017,7 @@ class SearchService:
 
                         new_unique.append(job)
 
-                    total_duplicates += len(found_jobs) - len(new_unique)
+                    total_duplicates = self._duplicate_total(duplicate_counts)
 
                     update_status(
                         profile_id,
@@ -2909,6 +3025,7 @@ class SearchService:
                         jobs_duplicates=total_duplicates,
                         jobs_unique=total_found - total_duplicates,
                     )
+                    self._update_duplicate_breakdown_status(profile_id, duplicate_counts)
 
                     if not new_unique:
                         return
@@ -2976,6 +3093,7 @@ class SearchService:
             provider_successes=execution_metrics["provider_successes"],
             avam_fallback_count=execution_metrics["avam_fallback_count"],
         )
+        total_duplicates = self._duplicate_total(duplicate_counts)
         if total_duplicates > 0:
             add_log(
                 profile_id,
@@ -3158,7 +3276,7 @@ class SearchService:
         they are handled once across all batches by _finalize_and_save.
         """
         # Clamp concurrency to prevent mass LLM timeouts that trip the circuit breaker
-        safe_concurrency = min(settings.ANALYSIS_CONCURRENCY, 3)
+        safe_concurrency = max(1, int(settings.ANALYSIS_CONCURRENCY))
         semaphore = asyncio.Semaphore(safe_concurrency)
         batch_size = settings.ANALYSIS_BATCH_SIZE
         batches = [jobs[i : i + batch_size] for i in range(0, len(jobs), batch_size)]

@@ -4,6 +4,7 @@ Stores real-time progress of search workflows for frontend polling.
 """
 
 import copy
+import glob
 import json
 import logging
 import os
@@ -46,6 +47,10 @@ _VALID_STATUS_KEYS = {
     "jobs_new",
     "jobs_unique",
     "jobs_duplicates",
+    "jobs_duplicates_total",
+    "jobs_duplicates_runtime",
+    "jobs_duplicates_history",
+    "jobs_duplicates_catalog_conflicts",
     "jobs_skipped",
     "errors",
     "log",
@@ -71,13 +76,20 @@ _RESERVED_STATE = "reserved"
 
 
 def _load_statuses() -> Dict[int, Dict[str, Any]]:
+    candidates = []
     if os.path.exists(_STATUS_FILE):
+        candidates.append(_STATUS_FILE)
+
+    temp_candidates = sorted(glob.glob(f"{_STATUS_FILE}.*.tmp"), key=os.path.getmtime, reverse=True)
+    candidates.extend(path for path in temp_candidates if path not in candidates)
+
+    for candidate in candidates:
         try:
-            with open(_STATUS_FILE, "r") as f:
+            with open(candidate, "r", encoding="utf-8") as f:
                 data = json.load(f)
                 return {int(k): v for k, v in data.items()}
         except Exception as exc:
-            logger.warning("Failed to load search statuses from %s: %s", _STATUS_FILE, exc)
+            logger.warning("Failed to load search statuses from %s: %s", candidate, exc)
     return {}
 
 
@@ -155,6 +167,8 @@ def _write_status_payload(payload: Dict[int, Dict[str, Any]]):
     temp_file = f"{_STATUS_FILE}.{os.getpid()}.{threading.get_ident()}.tmp"
     with open(temp_file, "w", encoding="utf-8") as f:
         json.dump(payload, f)
+        f.flush()
+        os.fsync(f.fileno())
     os.replace(temp_file, _STATUS_FILE)
 
 
@@ -307,6 +321,10 @@ def init_status(
             "jobs_new": 0,
             "jobs_unique": 0,
             "jobs_duplicates": 0,
+            "jobs_duplicates_total": 0,
+            "jobs_duplicates_runtime": 0,
+            "jobs_duplicates_history": 0,
+            "jobs_duplicates_catalog_conflicts": 0,
             "jobs_skipped": 0,
             "jobs_analyzed": 0,
             "jobs_analyze_total": 0,
