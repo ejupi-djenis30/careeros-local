@@ -45,6 +45,11 @@ class SearchProfile(BaseModel, TimestampMixin):
     schedule_interval_hours = Column(Integer, default=24)
     last_scheduled_run = Column(DateTime(timezone=True), nullable=True)
 
+    # Runtime search lock (cross-worker safe ownership for active searches)
+    search_lock_token = Column(String, nullable=True)
+    search_lock_state = Column(String, nullable=True)
+    search_lock_acquired_at = Column(DateTime(timezone=True), nullable=True)
+
     # Advanced / Extensible preferences
     advanced_preferences = Column(JSON, nullable=True)
 

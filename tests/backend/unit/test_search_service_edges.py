@@ -3,6 +3,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from backend.repositories.job_repository import JobRepository
+from backend.repositories.profile_repository import ProfileRepository
 from backend.services.search_service import SearchService, get_search_service
 
 
@@ -12,6 +14,16 @@ def mock_service():
     mock_profile_repo = MagicMock()
     service = SearchService(job_repo=mock_job_repo, profile_repo=mock_profile_repo)
     return service
+
+
+@pytest.fixture
+def mock_service_with_real_repos():
+    mock_db = MagicMock()
+    return SearchService(
+        db=mock_db,
+        job_repo=JobRepository(mock_db),
+        profile_repo=ProfileRepository(mock_db),
+    )
 
 
 async def test_get_search_service():
@@ -549,7 +561,7 @@ async def test_save_single_job_invalid_publication_date_logs_warning(mock_servic
     mock_session.commit.assert_called_once()
 
 
-async def test_save_single_job_geocodes_missing_coordinates(mock_service):
+async def test_save_single_job_geocodes_missing_coordinates(mock_service_with_real_repos):
     listing = MagicMock()
     listing.source = "job_room"
     listing.id = "missing-coords"
@@ -562,14 +574,14 @@ async def test_save_single_job_geocodes_missing_coordinates(mock_service):
     listing.application = None
     listing.external_url = "https://example.com/job"
 
-    mock_session = mock_service.job_repo.db
+    mock_session = mock_service_with_real_repos.job_repo.db
     mock_session.query.return_value.filter.return_value.first.return_value = None
 
     with patch(
         "backend.services.search_service.geocode_location",
         new=AsyncMock(return_value=MagicMock(lat=46.948, lon=7.447)),
     ):
-        await mock_service._save_single_job(
+        await mock_service_with_real_repos._save_single_job(
             listing,
             {"affinity_score": 60, "affinity_analysis": "ok", "worth_applying": False},
             {"id": 1, "user_id": 99},
@@ -580,7 +592,7 @@ async def test_save_single_job_geocodes_missing_coordinates(mock_service):
     assert saved_job.distance_km is not None
 
 
-async def test_save_single_job_deferred_commit_does_not_commit(mock_service):
+async def test_save_single_job_deferred_commit_does_not_commit(mock_service_with_real_repos):
     listing = MagicMock()
     listing.source = "job_room"
     listing.id = "deferred-commit"
@@ -593,10 +605,10 @@ async def test_save_single_job_deferred_commit_does_not_commit(mock_service):
     listing.application = None
     listing.external_url = "https://example.com/job/deferred"
 
-    mock_session = mock_service.job_repo.db
+    mock_session = mock_service_with_real_repos.job_repo.db
     mock_session.query.return_value.filter.return_value.first.return_value = None
 
-    await mock_service._save_single_job(
+    await mock_service_with_real_repos._save_single_job(
         listing,
         {"affinity_score": 60, "affinity_analysis": "ok", "worth_applying": False},
         {"id": 1, "user_id": 99},
@@ -608,7 +620,7 @@ async def test_save_single_job_deferred_commit_does_not_commit(mock_service):
     mock_session.commit.assert_not_called()
 
 
-async def test_save_single_job_initializes_applied_false(mock_service):
+async def test_save_single_job_initializes_applied_false(mock_service_with_real_repos):
     listing = MagicMock()
     listing.source = "job_room"
     listing.id = "applied-flag"
@@ -622,10 +634,10 @@ async def test_save_single_job_initializes_applied_false(mock_service):
     listing.external_url = "https://example.com/job/applied"
     listing._applied_elsewhere = True
 
-    mock_session = mock_service.job_repo.db
+    mock_session = mock_service_with_real_repos.job_repo.db
     mock_session.query.return_value.filter.return_value.first.return_value = None
 
-    await mock_service._save_single_job(
+    await mock_service_with_real_repos._save_single_job(
         listing,
         {"affinity_score": 60, "affinity_analysis": "ok", "worth_applying": False},
         {"id": 1, "user_id": 99},
@@ -636,7 +648,7 @@ async def test_save_single_job_initializes_applied_false(mock_service):
     assert saved_job.applied is False
 
 
-async def test_save_single_job_bootstraps_normalized_fields(mock_service):
+async def test_save_single_job_bootstraps_normalized_fields(mock_service_with_real_repos):
     listing = MagicMock()
     listing.source = "job_room"
     listing.id = "normalized-bootstrap"
@@ -651,10 +663,10 @@ async def test_save_single_job_bootstraps_normalized_fields(mock_service):
     listing.application = None
     listing.external_url = "https://example.com/job/normalized-bootstrap"
 
-    mock_session = mock_service.job_repo.db
+    mock_session = mock_service_with_real_repos.job_repo.db
     mock_session.query.return_value.filter.return_value.first.return_value = None
 
-    await mock_service._save_single_job(
+    await mock_service_with_real_repos._save_single_job(
         listing,
         {"affinity_score": 60, "affinity_analysis": "ok", "worth_applying": False},
         {"id": 1, "user_id": 99},
@@ -670,7 +682,7 @@ async def test_save_single_job_bootstraps_normalized_fields(mock_service):
     assert saved_scraped_job.normalized_education_levels == ["vocational"]
 
 
-async def test_persist_scraped_job_catalog_commits_before_analysis(mock_service):
+async def test_persist_scraped_job_catalog_commits_before_analysis(mock_service_with_real_repos):
     listing = MagicMock()
     listing.source = "job_room"
     listing.id = "catalog-1"
@@ -685,7 +697,7 @@ async def test_persist_scraped_job_catalog_commits_before_analysis(mock_service)
     listing.application = None
     listing.external_url = "https://example.com/job/catalog-1"
 
-    mock_session = mock_service.job_repo.db
+    mock_session = mock_service_with_real_repos.job_repo.db
     mock_session.query.return_value.filter.return_value.first.return_value = None
 
     # New savepoint-based insert: savepoint.commit() fires instead of session.flush().
@@ -699,7 +711,7 @@ async def test_persist_scraped_job_catalog_commits_before_analysis(mock_service)
     savepoint_mock.commit.side_effect = _set_id_on_savepoint_commit
     mock_session.begin_nested.return_value = savepoint_mock
 
-    created, updated = await mock_service._persist_scraped_job_catalog(1, [listing])
+    created, updated = await mock_service_with_real_repos._persist_scraped_job_catalog(1, [listing])
 
     assert created == 1
     assert updated == 0
@@ -739,7 +751,7 @@ async def test_persist_scraped_job_catalog_marks_failed_entries_without_queueing
     assert "catalog failure" in getattr(listing_fail, "_catalog_persist_error", "")
 
 
-async def test_normalize_persisted_jobs_upgrades_bootstrap_rows(mock_service):
+async def test_normalize_persisted_jobs_upgrades_bootstrap_rows(mock_service_with_real_repos):
     listing = MagicMock()
     listing._scraped_job_id = 555
 
@@ -754,7 +766,7 @@ async def test_normalize_persisted_jobs_upgrades_bootstrap_rows(mock_service):
     scraped_job.normalized_metadata = {}
     scraped_job.normalized_job_data = {"status": "normalized", "domain": "it"}
 
-    mock_session = mock_service.job_repo.db
+    mock_session = mock_service_with_real_repos.job_repo.db
     mock_session.query.return_value.filter.return_value.all.return_value = [scraped_job]
 
     with patch(
@@ -784,7 +796,7 @@ async def test_normalize_persisted_jobs_upgrades_bootstrap_rows(mock_service):
             ]
         ),
     ):
-        upgraded = await mock_service._normalize_persisted_jobs(1, [listing])
+        upgraded = await mock_service_with_real_repos._normalize_persisted_jobs(1, [listing])
 
     assert upgraded == 1
     assert scraped_job.normalization_status == "normalized"
@@ -1465,10 +1477,12 @@ def _make_listing(source="job_room", job_id="abc123", title="Developer"):
 
 def _make_mock_service_with_real_upsert():
     """Return a SearchService backed by a MagicMock session for upsert tests."""
-    mock_job_repo = MagicMock()
-    mock_profile_repo = MagicMock()
-    service = SearchService(job_repo=mock_job_repo, profile_repo=mock_profile_repo)
-    return service
+    mock_db = MagicMock()
+    return SearchService(
+        db=mock_db,
+        job_repo=JobRepository(mock_db),
+        profile_repo=ProfileRepository(mock_db),
+    )
 
 
 def test_upsert_scraped_job_creates_new_when_not_exists():
@@ -1927,7 +1941,9 @@ async def test_analyze_and_save_match_payload_includes_all_normalized_fields(moc
     assert nd["required_skills"] == ["cleaning equipment"]
 
 
-async def test_normalize_persisted_jobs_marks_failed_when_batch_returns_empty(mock_service):
+async def test_normalize_persisted_jobs_marks_failed_when_batch_returns_empty(
+    mock_service_with_real_repos,
+):
     """When LLM returns {} for a job, normalization_status must become 'failed', not stay pending."""
     listing = MagicMock()
     listing._scraped_job_id = 777
@@ -1942,14 +1958,14 @@ async def test_normalize_persisted_jobs_marks_failed_when_batch_returns_empty(mo
     scraped_job.normalization_status = "provider_bootstrap"
     scraped_job.normalized_metadata = None
 
-    mock_session = mock_service.job_repo.db
+    mock_session = mock_service_with_real_repos.job_repo.db
     mock_session.query.return_value.filter.return_value.all.return_value = [scraped_job]
 
     with patch(
         "backend.services.search_service.llm_service.normalize_job_batch",
         new=AsyncMock(return_value=[{}]),  # empty dict = batch failure for this job
     ):
-        upgraded = await mock_service._normalize_persisted_jobs(1, [listing])
+        upgraded = await mock_service_with_real_repos._normalize_persisted_jobs(1, [listing])
 
     assert upgraded == 0
     assert scraped_job.normalization_status == "failed"

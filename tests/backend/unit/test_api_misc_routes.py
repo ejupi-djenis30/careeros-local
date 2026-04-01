@@ -153,6 +153,7 @@ def test_search_routes_full():
         with (
             patch("fastapi.BackgroundTasks.add_task"),
             patch("backend.api.routes.search.cancel_task"),
+            patch("backend.api.routes.search.reserve_task", return_value="token-1"),
         ):
             mock_repo.get.return_value = MagicMock(user_id=1, id=1)  # Authorized
             mock_repo.update.return_value = MagicMock(id=1)
@@ -239,6 +240,7 @@ def test_run_search_background_wrapper():
         patch("backend.api.routes.search.cancel_task"),
         patch("backend.api.routes.search.SessionLocal") as mock_session_local,
         patch("backend.api.routes.search.get_search_service") as mock_get_svc,
+        patch("backend.api.routes.search.reserve_task", return_value="token-99"),
     ):
         mock_repo = MagicMock()
         mock_repo.create.return_value = MagicMock(id=99)
@@ -312,6 +314,7 @@ def test_run_search_background_wrapper_releases_reservation_when_session_creatio
         patch("backend.api.routes.search.SessionLocal", side_effect=RuntimeError("db down")),
         patch("backend.api.routes.search.get_search_service"),
         patch("backend.api.routes.search.release_task") as mock_release,
+        patch("backend.api.routes.search.reserve_task", return_value="token-101"),
     ):
         mock_repo = MagicMock()
         mock_repo.create.return_value = MagicMock(id=101)
