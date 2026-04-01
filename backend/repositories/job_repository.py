@@ -1,6 +1,7 @@
-from typing import List, Optional, Tuple
+from typing import Dict, List, Optional, Sequence, Tuple
 
 from sqlalchemy import asc, case, desc, func
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from backend.models import Job, ScrapedJob
@@ -57,6 +58,84 @@ class JobRepository(BaseRepository[Job]):
             .all()
         )
         return {row[0] for row in rows}
+
+    def get_scraped_job_by_platform_and_id(
+        self, platform: str, platform_job_id: str
+    ) -> Optional[ScrapedJob]:
+        return (
+            self.db.query(ScrapedJob)
+            .filter(
+                ScrapedJob.platform == platform,
+                ScrapedJob.platform_job_id == platform_job_id,
+            )
+            .first()
+        )
+
+    def get_scraped_jobs_by_ids(self, scraped_job_ids: Sequence[int]) -> List[ScrapedJob]:
+        if not scraped_job_ids:
+            return []
+        return self.db.query(ScrapedJob).filter(ScrapedJob.id.in_(scraped_job_ids)).all()
+
+    def get_applied_scraped_pairs(
+        self,
+        platform_to_ids: Dict[str, Sequence[str]],
+        applied_scraped_ids: set,
+    ) -> Dict[Tuple[str, str], int]:
+        if not platform_to_ids or not applied_scraped_ids:
+            return {}
+
+        out: Dict[Tuple[str, str], int] = {}
+        for platform_name, platform_ids in platform_to_ids.items():
+            if not platform_ids:
+                continue
+            rows = (
+                self.db.query(ScrapedJob.id, ScrapedJob.platform, ScrapedJob.platform_job_id)
+                .filter(
+                    ScrapedJob.platform == platform_name,
+                    ScrapedJob.platform_job_id.in_(platform_ids),
+                )
+                .all()
+            )
+            for sj_id, sj_platform, sj_platform_id in rows:
+                if sj_id in applied_scraped_ids:
+                    out[(sj_platform, sj_platform_id)] = sj_id
+        return out
+
+    def create_scraped_job_nested(self, scraped_job: ScrapedJob) -> bool:
+        savepoint = self.db.begin_nested()
+        try:
+            self.db.add(scraped_job)
+            savepoint.commit()
+            return True
+        except IntegrityError:
+            savepoint.rollback()
+            return False
+
+    def get_job_by_user_scraped_profile(
+        self,
+        user_id: int,
+        scraped_job_id: int,
+        search_profile_id: Optional[int],
+    ) -> Optional[Job]:
+        return (
+            self.db.query(Job)
+            .filter(
+                Job.user_id == user_id,
+                Job.scraped_job_id == scraped_job_id,
+                Job.search_profile_id == search_profile_id,
+            )
+            .first()
+        )
+
+    def create_job_nested(self, job: Job) -> bool:
+        savepoint = self.db.begin_nested()
+        try:
+            self.db.add(job)
+            savepoint.commit()
+            return True
+        except IntegrityError:
+            savepoint.rollback()
+            return False
 
     def _build_filter_query(
         self,

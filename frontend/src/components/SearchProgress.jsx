@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useEffect, useRef } from "react";
 import { SearchService } from "../services/search";
 import { useToast } from "../context/ToastContext";
 import { ProgressHeader } from "./SearchProgress/ProgressHeader";
@@ -10,17 +10,7 @@ export function SearchProgress({ profileId, status, onStateChange, onClear }) {
     const logEndRef = useRef(null);
     const reportedState = useRef(null);
     const { showToast } = useToast();
-    const [cachedStatus, setCachedStatus] = useState(status);
-    // monotonic floor for progress bar — state value so reads during render are valid
-    const [progressFloor, setProgressFloor] = useState(0);
-
-    // "Adjust state based on props" pattern (react.dev/learn/you-might-not-need-an-effect#adjusting-some-state-when-a-prop-changes)
-    // Caches the last non-null status value so the UI doesn't blank when status briefly becomes null.
-    if (status && status !== cachedStatus) {
-        setCachedStatus(status);
-    }
-
-    const displayStatus = status || cachedStatus;
+    const displayStatus = status;
 
     useEffect(() => {
         if (!displayStatus) return;
@@ -70,14 +60,6 @@ export function SearchProgress({ profileId, status, onStateChange, onClear }) {
         }
     } else if (_isDone) {
         _rawProgressPct = 100;
-    }
-
-    // Monotonic floor — same "adjust state on derived value change" pattern as cachedStatus above.
-    // React re-renders immediately when this fires but does not loop (guard prevents re-firing).
-    if (_isDone || _isError) {
-        if (progressFloor !== 0) setProgressFloor(0);
-    } else if (_rawProgressPct > progressFloor) {
-        setProgressFloor(_rawProgressPct);
     }
 
     const handleStop = async () => {
@@ -151,9 +133,7 @@ export function SearchProgress({ profileId, status, onStateChange, onClear }) {
     const duplicateHistory = jobs_duplicates_history ?? 0;
     const duplicateCatalogConflicts = jobs_duplicates_catalog_conflicts ?? 0;
 
-    // Progress calculation was moved before the early return to keep all hooks unconditional.
-    // Apply the monotonic floor — progressFloor is state, so reading it in render is valid.
-    const progressPct = (_isDone || _isError) ? _rawProgressPct : Math.max(_rawProgressPct, progressFloor);
+    const progressPct = _rawProgressPct;
 
     const analyzedJobs = [];
     if (state === "analyzing" && log) {

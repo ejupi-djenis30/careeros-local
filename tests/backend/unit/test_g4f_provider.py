@@ -1,3 +1,4 @@
+import asyncio
 import sys
 import types
 from types import SimpleNamespace
@@ -300,7 +301,7 @@ async def test_g4f_provider_generate_text_stream_async_falls_back_to_non_streami
 
 
 @pytest.mark.asyncio
-async def test_g4f_provider_generate_text_async_with_timeout_caps_attempt_budget(
+async def test_g4f_provider_generate_text_async_with_timeout_retries_with_fixed_attempt_cap(
     monkeypatch, tmp_path
 ):
     _install_fake_g4f(monkeypatch)
@@ -312,25 +313,37 @@ async def test_g4f_provider_generate_text_async_with_timeout_caps_attempt_budget
         request_timeout_cap_seconds=3.0,
         timeout_buffer_seconds=0.5,
     )
-    provider.async_client.chat.completions.create.return_value = _make_response("Timed response")
+    provider.async_client.chat.completions.create.return_value = _make_response(
+        "Recovered response"
+    )
 
     timeouts = []
+    wait_for_calls = 0
 
     async def _capture_wait_for(coro, timeout):
+        nonlocal wait_for_calls
         timeouts.append(timeout)
+        wait_for_calls += 1
+        if wait_for_calls == 1:
+            coro.close()
+            raise asyncio.TimeoutError()
         return await coro
 
+    sleep_mock = AsyncMock()
     monkeypatch.setattr("backend.providers.llm.g4f_provider.asyncio.wait_for", _capture_wait_for)
+    monkeypatch.setattr("backend.providers.llm.g4f_provider.asyncio.sleep", sleep_mock)
 
     result = await provider.generate_text_async_with_timeout(
         "System",
         "User",
         step="plan",
-        timeout_override=20,
+        timeout_override=0.1,
     )
 
-    assert result == "Timed response"
-    assert timeouts == [3.0]
+    assert result == "Recovered response"
+    assert timeouts == [3.0, 3.0]
+    assert provider.async_client.chat.completions.create.call_count == 2
+    sleep_mock.assert_awaited_once()
 
 
 @pytest.mark.asyncio
@@ -373,3 +386,74 @@ async def test_g4f_provider_generate_text_async_does_not_retry_nonretriable_mode
 
     assert provider.async_client.chat.completions.create.call_count == 1
     sleep_mock.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "error_msg",
+    [
+        "Response 401: {'detail': 'User is not authorized to access this resource'}",
+        "HTTP 403 Forbidden",
+        "unauthorized",
+        "not authorized",
+    ],
+)
+async def test_g4f_provider_does_not_retry_auth_failures(error_msg, monkeypatch, tmp_path):
+    _install_fake_g4f(monkeypatch)
+    provider = G4FProvider(
+        model="",
+        providers_list=["DeepInfra"],
+        cookies_dir=str(tmp_path),
+        max_request_attempts=5,
+    )
+    provider.async_client.chat.completions.create.side_effect = RuntimeError(error_msg)
+
+    sleep_mock = AsyncMock()
+    monkeypatch.setattr("backend.providers.llm.g4f_provider.asyncio.sleep", sleep_mock)
+
+    with pytest.raises(RuntimeError):
+        await provider.generate_text_async("System", "User")
+
+    assert provider.async_client.chat.completions.create.call_count == 1
+    sleep_mock.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "error_msg",
+    [
+        "Request limit (100 per hour) exceeded for new tier. Made: 100 requests.",
+        "Rate limit exceeded: too many requests per hour",
+        "429: Too Many Requests",
+        "RetryProvider failed:\nGroq: Request limit (100 per hour) exceeded",
+    ],
+)
+async def test_g4f_provider_waits_rate_limit_wait_seconds_on_rate_limit(
+    error_msg, monkeypatch, tmp_path
+):
+    _install_fake_g4f(monkeypatch)
+    provider = G4FProvider(
+        model="",
+        providers_list=["DeepInfra"],
+        cookies_dir=str(tmp_path),
+        max_request_attempts=3,
+        rate_limit_wait_seconds=7200.0,
+    )
+    # First call rate-limited, second succeeds
+    success_response = MagicMock()
+    success_response.choices = [MagicMock()]
+    success_response.choices[0].message.content = "ok"
+    provider.async_client.chat.completions.create.side_effect = [
+        RuntimeError(error_msg),
+        success_response,
+    ]
+
+    sleep_mock = AsyncMock()
+    monkeypatch.setattr("backend.providers.llm.g4f_provider.asyncio.sleep", sleep_mock)
+
+    result = await provider.generate_text_async("System", "User")
+
+    assert result == "ok"
+    assert provider.async_client.chat.completions.create.call_count == 2
+    # Must have slept the full rate-limit wait, not a short backoff
+    sleep_mock.assert_awaited_once_with(7200.0)

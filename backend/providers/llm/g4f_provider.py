@@ -8,7 +8,6 @@ from typing import Any, AsyncIterator, Dict, Optional
 from backend.providers.llm.base import (
     LLMProvider,
     extract_json_payload,
-    resolve_step_timeout_seconds,
 )
 
 logger = logging.getLogger(__name__)
@@ -77,6 +76,7 @@ class G4FProvider(LLMProvider):
         max_request_attempts: int = 2,
         request_timeout_cap_seconds: float = 20.0,
         timeout_buffer_seconds: float = 1.0,
+        rate_limit_wait_seconds: float = 3600.0,
         shuffle_providers: bool = True,
         cookies_dir: Optional[str] = None,
         allow_auto_discovery: bool = True,
@@ -100,6 +100,7 @@ class G4FProvider(LLMProvider):
         self.max_request_attempts = max(1, int(max_request_attempts))
         self.request_timeout_cap_seconds = max(0.0, float(request_timeout_cap_seconds))
         self.timeout_buffer_seconds = max(0.0, float(timeout_buffer_seconds))
+        self.rate_limit_wait_seconds = max(0.0, float(rate_limit_wait_seconds))
         self.shuffle_providers = shuffle_providers
         self.allow_auto_discovery = allow_auto_discovery
         self.allow_internal_provider_fallback = allow_internal_provider_fallback
@@ -245,49 +246,32 @@ class G4FProvider(LLMProvider):
             kwargs["proxy"] = self.proxies
         return kwargs
 
-    def _build_timeout_deadline(
-        self, step: str, timeout_override: Optional[float] = None
-    ) -> Optional[float]:
-        effective_timeout = resolve_step_timeout_seconds(step, timeout_override)
-        if effective_timeout <= 0:
-            return None
-        return time.monotonic() + effective_timeout
-
-    def _remaining_budget(self, deadline: Optional[float]) -> Optional[float]:
-        if deadline is None:
-            return None
-        return max(0.0, deadline - time.monotonic())
-
-    def _compute_attempt_timeout(
-        self, deadline: Optional[float], attempts_left: int
-    ) -> Optional[float]:
+    def _compute_attempt_timeout(self) -> Optional[float]:
         timeout_cap = (
             self.request_timeout_cap_seconds if self.request_timeout_cap_seconds > 0 else None
         )
-        remaining_budget = self._remaining_budget(deadline)
-        if remaining_budget is None:
-            return timeout_cap
+        return timeout_cap
 
-        remaining_after_buffer = remaining_budget - self.timeout_buffer_seconds
-        if remaining_after_buffer <= 0:
-            raise asyncio.TimeoutError(
-                "G4F request budget exhausted before issuing the next attempt."
+    def _is_rate_limit_error(self, error_text: str) -> bool:
+        text = error_text.lower()
+        return any(
+            fragment in text
+            for fragment in (
+                "request limit",
+                "rate limit",
+                "per hour",
+                "too many requests",
+                "429",
             )
+        )
 
-        per_attempt_budget = remaining_after_buffer / max(1, attempts_left)
-        if timeout_cap is None:
-            return max(0.1, per_attempt_budget)
-        return max(0.1, min(timeout_cap, per_attempt_budget))
-
-    def _compute_backoff_seconds(self, attempt: int, deadline: Optional[float]) -> float:
-        backoff = min(
+    def _compute_backoff_seconds(self, attempt: int, exc: Optional[Exception] = None) -> float:
+        if exc is not None and self._is_rate_limit_error(str(exc)):
+            return self.rate_limit_wait_seconds
+        return min(
             self._MAX_RETRY_BACKOFF_SECONDS,
             (self._RETRY_DELAY_SECONDS * attempt) + (0.05 * max(0, attempt - 1)),
         )
-        remaining_budget = self._remaining_budget(deadline)
-        if remaining_budget is None:
-            return backoff
-        return max(0.0, min(backoff, max(0.0, remaining_budget - self.timeout_buffer_seconds)))
 
     def _log_async_attempt_result(
         self,
@@ -297,34 +281,29 @@ class G4FProvider(LLMProvider):
         attempt_timeout: Optional[float],
         elapsed: float,
         exc: Optional[Exception] = None,
-        deadline: Optional[float] = None,
     ) -> None:
-        remaining_budget = self._remaining_budget(deadline)
-        remaining_repr = f"{remaining_budget:.1f}s" if remaining_budget is not None else "unbounded"
         timeout_repr = f"{attempt_timeout:.1f}s" if attempt_timeout is not None else "disabled"
         if exc is None:
             logger.debug(
-                "Async G4F %s succeeded for %s on attempt %s/%s in %.2fs (attempt_timeout=%s, remaining_budget=%s, selection=%s).",
+                "Async G4F %s succeeded for %s on attempt %s/%s in %.2fs (attempt_timeout=%s, selection=%s).",
                 phase,
                 self.model_id,
                 attempt,
                 self.max_request_attempts,
                 elapsed,
                 timeout_repr,
-                remaining_repr,
                 self._provider_selection_mode,
             )
             return
 
         logger.warning(
-            "Async G4F %s failed for %s on attempt %s/%s after %.2fs (attempt_timeout=%s, remaining_budget=%s, selection=%s): %s",
+            "Async G4F %s failed for %s on attempt %s/%s after %.2fs (attempt_timeout=%s, selection=%s): %s",
             phase,
             self.model_id,
             attempt,
             self.max_request_attempts,
             elapsed,
             timeout_repr,
-            remaining_repr,
             self._provider_selection_mode,
             exc,
         )
@@ -476,6 +455,13 @@ class G4FProvider(LLMProvider):
             if any(fragment in error_text for fragment in ("unsupported", "unknown", "not found")):
                 return False
 
+        # Auth failures are permanent — retrying the same provider won't fix them.
+        if any(
+            fragment in error_text
+            for fragment in ("401", "403", "unauthorized", "forbidden", "not authorized")
+        ):
+            return False
+
         return True
 
     def _create_completion(self, params: Dict[str, Any]) -> Any:
@@ -496,7 +482,18 @@ class G4FProvider(LLMProvider):
                     self.model_id,
                     exc,
                 )
-                time.sleep(self._RETRY_DELAY_SECONDS * attempt)
+                backoff = self._compute_backoff_seconds(attempt, exc=exc)
+                if backoff > 60:
+                    logger.warning(
+                        "G4F rate limit detected (%s); waiting %.0fs (%.1f min) for provider "
+                        "quota reset before attempt %s/%s.",
+                        self.model_id,
+                        backoff,
+                        backoff / 60,
+                        attempt + 1,
+                        self.max_request_attempts,
+                    )
+                time.sleep(backoff)
 
         if last_error is not None:
             raise last_error
@@ -506,14 +503,11 @@ class G4FProvider(LLMProvider):
         self,
         params: Dict[str, Any],
         *,
-        deadline: Optional[float] = None,
         phase: str = "text",
     ) -> Any:
         last_error: Optional[Exception] = None
         for attempt in range(1, self.max_request_attempts + 1):
-            attempt_timeout = self._compute_attempt_timeout(
-                deadline, self.max_request_attempts - attempt + 1
-            )
+            attempt_timeout = self._compute_attempt_timeout()
             started_at = time.monotonic()
             try:
                 response_coro = self.async_client.chat.completions.create(**params)
@@ -526,7 +520,6 @@ class G4FProvider(LLMProvider):
                     attempt=attempt,
                     attempt_timeout=attempt_timeout,
                     elapsed=time.monotonic() - started_at,
-                    deadline=deadline,
                 )
                 return response
             except Exception as exc:
@@ -537,15 +530,24 @@ class G4FProvider(LLMProvider):
                     attempt_timeout=attempt_timeout,
                     elapsed=time.monotonic() - started_at,
                     exc=exc,
-                    deadline=deadline,
                 )
                 if attempt >= self.max_request_attempts or not self._should_retry_request(
                     exc, params
                 ):
                     break
-                backoff = self._compute_backoff_seconds(attempt, deadline)
+                backoff = self._compute_backoff_seconds(attempt, exc=exc)
                 if backoff <= 0:
                     break
+                if backoff > 60:
+                    logger.warning(
+                        "G4F rate limit detected (%s); waiting %.0fs (%.1f min) for provider "
+                        "quota reset before attempt %s/%s.",
+                        self.model_id,
+                        backoff,
+                        backoff / 60,
+                        attempt + 1,
+                        self.max_request_attempts,
+                    )
                 await asyncio.sleep(backoff)
 
         if last_error is not None:
@@ -619,11 +621,8 @@ class G4FProvider(LLMProvider):
         timeout_override: Optional[float] = None,
     ) -> str:
         params = self._build_completion_kwargs(system_prompt, user_prompt, max_tokens)
-        deadline = self._build_timeout_deadline(step, timeout_override)
         try:
-            response = await self._create_completion_async(
-                params, deadline=deadline, phase=f"{step}:text"
-            )
+            response = await self._create_completion_async(params, phase=f"{step}:text")
             return self._get_message_content(response)
         except Exception as exc:
             logger.error("Async G4F text error (%s): %s", self.model_id, exc)
@@ -679,7 +678,6 @@ class G4FProvider(LLMProvider):
             max_tokens,
             response_format={"type": "json_object"},
         )
-        deadline = self._build_timeout_deadline(step, timeout_override)
         last_error: Optional[Exception] = None
 
         for use_response_format in (True, False):
@@ -689,11 +687,7 @@ class G4FProvider(LLMProvider):
                 current_params.pop("response_format", None)
 
             try:
-                response = await self._create_completion_async(
-                    current_params,
-                    deadline=deadline,
-                    phase=phase,
-                )
+                response = await self._create_completion_async(current_params, phase=phase)
                 return self._parse_json_content(self._get_message_content(response))
             except Exception as exc:
                 last_error = exc

@@ -189,6 +189,7 @@ def _build_provider(cfg: dict, step: str = "default") -> LLMProvider:
                 max_request_attempts=settings.G4F_MAX_REQUEST_ATTEMPTS,
                 request_timeout_cap_seconds=settings.G4F_REQUEST_TIMEOUT_CAP_SECONDS,
                 timeout_buffer_seconds=settings.G4F_TIMEOUT_BUFFER_SECONDS,
+                rate_limit_wait_seconds=settings.G4F_RATE_LIMIT_WAIT_SECONDS,
                 shuffle_providers=settings.G4F_SHUFFLE_PROVIDERS,
                 allow_auto_discovery=settings.G4F_AUTO_DISCOVER_PROVIDERS,
                 allow_internal_provider_fallback=settings.G4F_ALLOW_INTERNAL_PROVIDER_FALLBACK,
