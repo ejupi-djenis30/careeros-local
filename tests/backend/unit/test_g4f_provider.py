@@ -297,3 +297,79 @@ async def test_g4f_provider_generate_text_stream_async_falls_back_to_non_streami
         tokens.append(token)
 
     assert tokens == ["Fallback response"]
+
+
+@pytest.mark.asyncio
+async def test_g4f_provider_generate_text_async_with_timeout_caps_attempt_budget(
+    monkeypatch, tmp_path
+):
+    _install_fake_g4f(monkeypatch)
+    provider = G4FProvider(
+        model="",
+        providers_list=["DeepInfra"],
+        cookies_dir=str(tmp_path),
+        max_request_attempts=2,
+        request_timeout_cap_seconds=3.0,
+        timeout_buffer_seconds=0.5,
+    )
+    provider.async_client.chat.completions.create.return_value = _make_response("Timed response")
+
+    timeouts = []
+
+    async def _capture_wait_for(coro, timeout):
+        timeouts.append(timeout)
+        return await coro
+
+    monkeypatch.setattr("backend.providers.llm.g4f_provider.asyncio.wait_for", _capture_wait_for)
+
+    result = await provider.generate_text_async_with_timeout(
+        "System",
+        "User",
+        step="plan",
+        timeout_override=20,
+    )
+
+    assert result == "Timed response"
+    assert timeouts == [3.0]
+
+
+@pytest.mark.asyncio
+async def test_g4f_provider_generate_text_async_retries_transient_failures(monkeypatch, tmp_path):
+    _install_fake_g4f(monkeypatch)
+    provider = G4FProvider(model="", providers_list=["DeepInfra"], cookies_dir=str(tmp_path))
+    provider.async_client.chat.completions.create.side_effect = [
+        RuntimeError("temporary connection reset"),
+        _make_response("Recovered response"),
+    ]
+
+    sleep_mock = AsyncMock()
+    monkeypatch.setattr("backend.providers.llm.g4f_provider.asyncio.sleep", sleep_mock)
+
+    result = await provider.generate_text_async("System", "User")
+
+    assert result == "Recovered response"
+    assert provider.async_client.chat.completions.create.call_count == 2
+    sleep_mock.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_g4f_provider_generate_text_async_does_not_retry_nonretriable_model_error(
+    monkeypatch, tmp_path
+):
+    _install_fake_g4f(monkeypatch)
+    provider = G4FProvider(
+        model="gpt-4o-mini",
+        providers_list=["DeepInfra"],
+        cookies_dir=str(tmp_path),
+        max_request_attempts=3,
+    )
+    provider.async_client.chat.completions.create.side_effect = RuntimeError("model not found")
+
+    sleep_mock = AsyncMock()
+    monkeypatch.setattr("backend.providers.llm.g4f_provider.asyncio.sleep", sleep_mock)
+
+    with pytest.raises(RuntimeError, match="model not found"):
+        await provider.generate_text_async("System", "User")
+
+    assert provider.async_client.chat.completions.create.call_count == 1
+    sleep_mock.assert_not_awaited()

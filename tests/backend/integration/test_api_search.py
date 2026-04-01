@@ -65,6 +65,39 @@ def test_start_search_authorized(client, auth_headers: dict, test_profile):
         assert kwargs["force_regenerate_queries"] is True
 
 
+def test_start_search_accepts_large_numeric_values_without_clamping(
+    client, auth_headers: dict, db_session
+):
+    from backend.models import SearchProfile
+
+    payload = {
+        "name": "Large Numeric Search",
+        "role_description": "Backend Engineer",
+        "cv_content": "FastAPI, PostgreSQL, Docker",
+        "location_filter": "Zurich",
+        "posted_within_days": 999999,
+        "max_distance": 999999,
+        "schedule_enabled": True,
+        "schedule_interval_hours": 999999,
+        "max_queries": 999999,
+        "max_occupation_queries": 999999,
+        "max_keyword_queries": 0,
+    }
+
+    with patch("backend.services.search_service.SearchService.run_search"):
+        response = client.post("/api/v1/search/start", json=payload, headers=auth_headers)
+
+    assert response.status_code == 200
+    profile_id = response.json()["profile_id"]
+    profile = db_session.get(SearchProfile, profile_id)
+    assert profile is not None
+    assert profile.posted_within_days == 999999
+    assert profile.max_distance == 999999
+    assert profile.schedule_interval_hours == 999999
+    assert profile.max_queries == 999999
+    assert profile.max_occupation_queries == 999999
+
+
 def test_stop_search_authorized(client: TestClient, auth_headers: dict, test_profile):
     profile_id = test_profile["id"]
     response = client.post(f"/api/v1/search/stop/{profile_id}", headers=auth_headers)

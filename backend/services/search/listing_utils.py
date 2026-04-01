@@ -12,6 +12,7 @@ import os
 import re
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 # ─── Lazy import of embedding tier (Phase 1) ─────────────────────────────────
 # Imported lazily inside semantic_skills_score() so this module stays importable
@@ -27,6 +28,19 @@ _INVALID_LISTING_ID_TOKENS = {
     "na",
     "undefined",
 }
+
+_TRACKING_QUERY_PARAM_NAMES = {
+    "fbclid",
+    "gclid",
+    "igshid",
+    "mc_cid",
+    "mc_eid",
+    "mkt_tok",
+    "ref",
+    "ref_src",
+    "yclid",
+}
+_TRACKING_QUERY_PARAM_PREFIXES = ("utm_",)
 
 
 # ─── Skill taxonomy loader ────────────────────────────────────────────────────
@@ -361,6 +375,56 @@ def normalize_listing_identifier(value: Any) -> str:
     return token
 
 
+def _is_tracking_query_param(name: str) -> bool:
+    token = str(name or "").strip().lower()
+    if not token:
+        return False
+    return token in _TRACKING_QUERY_PARAM_NAMES or any(
+        token.startswith(prefix) for prefix in _TRACKING_QUERY_PARAM_PREFIXES
+    )
+
+
+def _canonicalize_listing_url(value: Any) -> str:
+    raw = str(value or "").strip()
+    if not raw:
+        return ""
+
+    if "://" not in raw and raw.lower().startswith("www."):
+        raw = f"https://{raw}"
+
+    parsed = urlsplit(raw)
+    if not parsed.scheme and not parsed.netloc:
+        return raw.lower().rstrip("/")
+
+    hostname = (parsed.hostname or "").lower()
+    if hostname.startswith("www."):
+        hostname = hostname[4:]
+
+    netloc = hostname
+    if parsed.port is not None:
+        is_default_port = (parsed.scheme.lower() == "http" and parsed.port == 80) or (
+            parsed.scheme.lower() == "https" and parsed.port == 443
+        )
+        if not is_default_port:
+            netloc = f"{netloc}:{parsed.port}"
+
+    path = re.sub(r"/{2,}", "/", (parsed.path or "").strip()).lower() or "/"
+    if path != "/":
+        path = path.rstrip("/")
+
+    query_items = []
+    for key, value in parse_qsl(parsed.query, keep_blank_values=False):
+        normalized_key = key.strip().lower()
+        if _is_tracking_query_param(normalized_key):
+            continue
+        query_items.append((normalized_key, (value or "").strip().lower()))
+    query_items.sort()
+    query = urlencode(query_items, doseq=True)
+
+    canonical = urlunsplit(("", netloc, path, query, ""))
+    return canonical.lstrip("//")
+
+
 def listing_identity_key(listing) -> Optional[str]:
     """Return a ``platform:platform_id`` dedup key, or *None* if unavailable."""
     platform = getattr(listing, "source", None) or getattr(listing, "platform", None)
@@ -375,7 +439,7 @@ def listing_identity_key(listing) -> Optional[str]:
 def listing_url_token(listing) -> str:
     """Return the normalised external URL for URL-based deduplication."""
     url = getattr(listing, "external_url", None) or getattr(listing, "url", None) or ""
-    return (url or "").strip().lower()
+    return _canonicalize_listing_url(url)
 
 
 def listing_fuzzy_key(listing) -> str:

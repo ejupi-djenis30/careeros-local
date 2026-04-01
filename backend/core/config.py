@@ -1,7 +1,7 @@
 import logging
 from typing import Any, List, Optional
 
-from pydantic import field_validator
+from pydantic import ValidationInfo, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 logger = logging.getLogger(__name__)
@@ -101,6 +101,14 @@ class Settings(BaseSettings):
     G4F_COOKIES_DIR: str = ""
     G4F_PROXY: str = ""
     G4F_SHUFFLE_PROVIDERS: bool = True
+    # Number of retry attempts for each low-level g4f request.
+    G4F_MAX_REQUEST_ATTEMPTS: int = 2
+    # Hard cap for a single low-level g4f request attempt. Prevents a single provider call
+    # from consuming an entire step budget when the upstream endpoint stalls.
+    G4F_REQUEST_TIMEOUT_CAP_SECONDS: float = 20.0
+    # Reserve a small amount of wall-clock time so we can bail out cleanly before the
+    # step-level timeout is exhausted.
+    G4F_TIMEOUT_BUFFER_SECONDS: float = 1.0
     # When enabled and G4F_PROVIDERS is empty, g4f tries to discover a usable provider chain.
     G4F_AUTO_DISCOVER_PROVIDERS: bool = True
     # When disabled, an empty or broken provider chain raises explicitly instead of delegating
@@ -191,8 +199,17 @@ class Settings(BaseSettings):
     MAX_CONCURRENT_SEARCHES_PER_USER: int = 3
     # Per-step LLM call timeouts (seconds).  0 = disabled.
     LLM_CALL_TIMEOUT_PLAN: int = 60
+    # Optional tighter PLAN timeout budget for g4f to avoid long retry storms.
+    # 0 = disabled (use LLM_CALL_TIMEOUT_PLAN).
+    LLM_CALL_TIMEOUT_PLAN_G4F: int = 45
+    # Number of service-level retry attempts for PLAN generation.
+    LLM_PLAN_RETRY_ATTEMPTS: int = 2
     LLM_CALL_TIMEOUT_NORMALIZE: int = 90
+    # Optional tighter NORMALIZE / NORMALIZE_PROFILE / COMPRESS timeout budget for g4f.
+    LLM_CALL_TIMEOUT_NORMALIZE_G4F: int = 60
     LLM_CALL_TIMEOUT_MATCH: int = 120
+    # Optional tighter MATCH timeout budget for g4f.
+    LLM_CALL_TIMEOUT_MATCH_G4F: int = 90
 
     # Circuit breaker (per provider)
     # Number of consecutive failures before tripping to OPEN state.
@@ -268,7 +285,9 @@ class Settings(BaseSettings):
 
     # ─── Per-step timeouts: new steps ─────────────────────────────────────────
     LLM_CALL_TIMEOUT_CRITIQUE: int = 90
+    LLM_CALL_TIMEOUT_CRITIQUE_G4F: int = 60
     LLM_CALL_TIMEOUT_RERANK: int = 60
+    LLM_CALL_TIMEOUT_RERANK_G4F: int = 45
 
     # ─── Semantic Skill Matching (Phase 1 — embedding-based) ────────────────────
     # Enable embedding-based Tier 2.5 in semantic_skills_score().
@@ -308,6 +327,69 @@ class Settings(BaseSettings):
     # Ollama Defaults
     OLLAMA_BASE_URL: str = "http://localhost:11434/v1"
     OLLAMA_MODEL: str = "llama3"
+
+    @field_validator("G4F_MAX_REQUEST_ATTEMPTS")
+    @classmethod
+    def validate_g4f_max_request_attempts(cls, value: int) -> int:
+        attempts = int(value)
+        if attempts < 1:
+            logger.warning("G4F_MAX_REQUEST_ATTEMPTS=%s is invalid; clamping to 1.", value)
+            return 1
+        return attempts
+
+    @field_validator("LLM_PLAN_RETRY_ATTEMPTS")
+    @classmethod
+    def validate_plan_retry_attempts(cls, value: int) -> int:
+        attempts = int(value)
+        if attempts < 1:
+            logger.warning("LLM_PLAN_RETRY_ATTEMPTS=%s is invalid; clamping to 1.", value)
+            return 1
+        return attempts
+
+    @field_validator(
+        "LLM_CALL_TIMEOUT_PLAN_G4F",
+        "LLM_CALL_TIMEOUT_NORMALIZE_G4F",
+        "LLM_CALL_TIMEOUT_MATCH_G4F",
+        "LLM_CALL_TIMEOUT_CRITIQUE_G4F",
+        "LLM_CALL_TIMEOUT_RERANK_G4F",
+        mode="before",
+    )
+    @classmethod
+    def clamp_non_negative_int_timeout(cls, value: Any, info: ValidationInfo) -> int:
+        if value in (None, ""):
+            return 0
+        coerced = int(value)
+        if coerced < 0:
+            logger.warning("%s=%s is invalid; clamping to 0.", info.field_name, value)
+            return 0
+        return coerced
+
+    @field_validator("G4F_REQUEST_TIMEOUT_CAP_SECONDS", "G4F_TIMEOUT_BUFFER_SECONDS")
+    @classmethod
+    def clamp_non_negative_float(cls, value: float, info: ValidationInfo) -> float:
+        coerced = float(value)
+        if coerced < 0:
+            logger.warning("%s=%s is invalid; clamping to 0.", info.field_name, value)
+            return 0.0
+        return coerced
+
+    def model_post_init(self, __context: Any) -> None:
+        provider_name = (self.LLM_PROVIDER or "").strip().lower()
+        if provider_name != "g4f":
+            return
+
+        if not (self.LLM_FALLBACK_PROVIDER or "").strip():
+            logger.warning(
+                "LLM_PROVIDER=g4f without LLM_FALLBACK_PROVIDER configured; g4f outages will fail the pipeline instead of failing over."
+            )
+
+        if not (self.G4F_PROVIDERS or "").strip() and self.G4F_ALLOW_INTERNAL_PROVIDER_FALLBACK:
+            logger.warning(
+                "G4F_PROVIDERS is empty while G4F_ALLOW_INTERNAL_PROVIDER_FALLBACK=true; runtime provider selection will be opaque and less deterministic."
+            )
+
+        if self.LLM_THINKING:
+            logger.warning("LLM_THINKING is enabled but g4f providers ignore thinking mode.")
 
     model_config = SettingsConfigDict(case_sensitive=True, env_file=".env", extra="ignore")
 

@@ -6,6 +6,8 @@ const LANGUAGES = [
     { code: "fr", label: "FR" },
     { code: "it", label: "IT" },
 ];
+const POSTED_PRESETS = [1, 3, 7, 14, 30];
+const DISTANCE_PRESETS = [25, 50, 100, 250];
 
 export function SearchFormParameters({ profile, handleChange, setProfile }) {
     const toggleLanguage = (code) => {
@@ -53,36 +55,59 @@ export function SearchFormParameters({ profile, handleChange, setProfile }) {
             <div className="row g-3">
                 <div className="col-12">
                     <label className="form-label text-white small fw-bold text-uppercase x-small mb-2">Posted</label>
-                    <select
+                    <input
+                        type="number"
                         name="posted_within_days"
                         value={profile.posted_within_days}
                         onChange={handleChange}
-                        className="form-select form-select-sm bg-black-20 border-white-10 text-white"
-                    >
-                        <option value="1">Last 24h</option>
-                        <option value="3">Last 3 Days</option>
-                        <option value="7">Last Week</option>
-                        <option value="14">Last 2 Weeks</option>
-                        <option value="30">Last Month</option>
-                    </select>
+                        min="1"
+                        step="1"
+                        className="form-control form-control-sm bg-black-20 border-white-10 text-white"
+                    />
+                    <div className="d-flex flex-wrap gap-1 mt-2">
+                        {POSTED_PRESETS.map((days) => (
+                            <button
+                                key={days}
+                                type="button"
+                                onClick={() => setProfile(prev => ({ ...prev, posted_within_days: days }))}
+                                className={`btn btn-sm px-2 py-0 rounded-pill ${profile.posted_within_days == days ? "btn-info text-dark fw-bold" : "btn-outline-secondary opacity-75"}`}
+                            >
+                                {days}d
+                            </button>
+                        ))}
+                    </div>
                 </div>
             </div>
 
-            <div>
+            <div className="p-3 bg-white-5 rounded-3 border border-white-5">
                 <div className="d-flex justify-content-between mb-2">
                     <label className="form-label text-white small fw-bold text-uppercase x-small mb-0">Max Distance</label>
                     <span className="x-small text-info fw-bold">{profile.max_distance} km</span>
                 </div>
                 <input
-                    type="range"
+                    type="number"
                     name="max_distance"
-                    min="5"
-                    max="100"
-                    step="5"
+                    min="0"
+                    step="1"
                     value={profile.max_distance}
                     onChange={handleChange}
-                    className="form-range"
+                    className="form-control form-control-sm bg-black-20 border-white-10 text-white"
                 />
+                <div className="d-flex flex-wrap gap-1 mt-2">
+                    {DISTANCE_PRESETS.map((distance) => (
+                        <button
+                            key={distance}
+                            type="button"
+                            onClick={() => setProfile(prev => ({ ...prev, max_distance: distance }))}
+                            className={`btn btn-sm px-2 py-0 rounded-pill ${profile.max_distance == distance ? "btn-info text-dark fw-bold" : "btn-outline-secondary opacity-75"}`}
+                        >
+                            {distance} km
+                        </button>
+                    ))}
+                </div>
+                <div className="x-small text-secondary opacity-60 mt-2">
+                    Enter any non-negative distance. Presets are shortcuts, not limits.
+                </div>
             </div>
 
             {/* Precision Filters */}

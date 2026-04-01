@@ -1,5 +1,7 @@
 import React, { useState } from 'react';
 
+const SCHEDULE_PRESETS = [1, 3, 6, 12, 24];
+
 export function ScheduleCard({ profile, onToggle, onChangeInterval, onDelete }) {
     const [isTogglePending, setIsTogglePending] = useState(false);
 
@@ -65,26 +67,37 @@ export function ScheduleCard({ profile, onToggle, onChangeInterval, onDelete }) 
                         </div>
                     </div>
 
-                    <div className="d-flex gap-2">
-                        <select
-                            className="form-select form-select-sm bg-black-20 border-white-10 text-white shadow-none"
-                            value={profile.schedule_interval_hours || 24}
-                            onChange={(e) => onChangeInterval(profile.id, e.target.value)}
-                        >
-                            <option value="1">Every 1h</option>
-                            <option value="3">Every 3h</option>
-                            <option value="6">Every 6h</option>
-                            <option value="12">Every 12h</option>
-                            <option value="24">Every 24h</option>
-                        </select>
+                    <div className="d-flex flex-column gap-2">
+                        <div className="d-flex gap-2">
+                            <input
+                                type="number"
+                                min="1"
+                                step="1"
+                                className="form-control form-control-sm bg-black-20 border-white-10 text-white shadow-none"
+                                value={profile.schedule_interval_hours || 24}
+                                onChange={(e) => onChangeInterval(profile.id, e.target.value)}
+                            />
 
-                        <button
-                            className="btn btn-sm btn-outline-danger border-white-10 text-danger hover-bg-danger hover-text-white rounded-3 px-3 transition-colors"
-                            onClick={() => onDelete(profile.id)}
-                            title="Delete Campaign"
-                        >
-                            <i className="bi bi-trash"></i>
-                        </button>
+                            <button
+                                className="btn btn-sm btn-outline-danger border-white-10 text-danger hover-bg-danger hover-text-white rounded-3 px-3 transition-colors"
+                                onClick={() => onDelete(profile.id)}
+                                title="Delete Campaign"
+                            >
+                                <i className="bi bi-trash"></i>
+                            </button>
+                        </div>
+                        <div className="d-flex flex-wrap gap-1">
+                            {SCHEDULE_PRESETS.map((hours) => (
+                                <button
+                                    key={hours}
+                                    type="button"
+                                    className={`btn btn-sm px-2 py-0 rounded-pill ${profile.schedule_interval_hours == hours ? 'btn-light text-dark fw-bold' : 'btn-outline-secondary opacity-75'}`}
+                                    onClick={() => onChangeInterval(profile.id, String(hours))}
+                                >
+                                    {hours}h
+                                </button>
+                            ))}
+                        </div>
                     </div>
                 </div>
             </div>

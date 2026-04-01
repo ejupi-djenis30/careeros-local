@@ -1,5 +1,7 @@
 import React from "react";
 
+const SCHEDULE_PRESETS = [6, 12, 24];
+
 export function SearchFormAdvanced({ profile, handleChange, setProfile, existingNames = [] }) {
     // A profile is considered "existing" (re-run) when it has a non-null id
     const isRerun = profile.id != null;
@@ -24,19 +26,34 @@ export function SearchFormAdvanced({ profile, handleChange, setProfile, existing
                 </div>
 
                 {profile.schedule_enabled && (
-                    <div className="d-flex align-items-center justify-content-between border-top border-white-10 pt-3 opacity-animation">
-                        <span className="x-small text-secondary fw-bold text-uppercase">Interval</span>
+                    <div className="border-top border-white-10 pt-3 opacity-animation">
+                        <div className="d-flex align-items-center justify-content-between gap-3 mb-2">
+                            <span className="x-small text-secondary fw-bold text-uppercase">Interval (Hours)</span>
+                            <input
+                                type="number"
+                                name="schedule_interval_hours"
+                                value={profile.schedule_interval_hours}
+                                onChange={handleChange}
+                                min="1"
+                                step="1"
+                                className="form-control form-control-sm bg-black-20 border-white-10 text-white"
+                                style={{ maxWidth: 120 }}
+                            />
+                        </div>
                         <div className="btn-group btn-group-sm" role="group">
-                            {[6, 12, 24].map(h => (
+                            {SCHEDULE_PRESETS.map(h => (
                                 <button
                                     key={h}
                                     type="button"
                                     onClick={() => setProfile(prev => ({ ...prev, schedule_interval_hours: h }))}
-                                    className={`btn ${profile.schedule_interval_hours == h ? 'btn-light text-dark fw-bold' : 'btn-outline-secondary'}`}
+                                    className={"btn " + (profile.schedule_interval_hours == h ? 'btn-light text-dark fw-bold' : 'btn-outline-secondary')}
                                 >
                                     {h}h
                                 </button>
                             ))}
+                        </div>
+                        <div className="x-small text-secondary mt-2 opacity-60">
+                            Enter any interval &gt;= 1 hour. Presets are shortcuts only.
                         </div>
                     </div>
                 )}
@@ -50,7 +67,7 @@ export function SearchFormAdvanced({ profile, handleChange, setProfile, existing
                     value={profile.name}
                     onChange={handleChange}
                     placeholder="E.g. Senior Python Remote"
-                    className={`form-control form-control-sm bg-black-20 border-white-10 text-white ${nameIsDuplicate ? 'border-danger' : ''}`}
+                    className={"form-control form-control-sm bg-black-20 border-white-10 text-white " + (nameIsDuplicate ? 'border-danger' : '')}
                 />
                 {nameIsDuplicate ? (
                     <div className="x-small text-danger mt-1">A search with this name already exists</div>
@@ -124,9 +141,9 @@ export function SearchFormAdvanced({ profile, handleChange, setProfile, existing
                         <button
                             type="button"
                             onClick={() => setProfile(prev => ({ ...prev, force_regenerate_cv_summary: !prev.force_regenerate_cv_summary }))}
-                            className={`btn btn-sm w-100 d-flex align-items-center justify-content-center gap-2 ${profile.force_regenerate_cv_summary ? 'btn-warning text-dark fw-bold' : 'btn-outline-secondary'}`}
+                            className={"btn btn-sm w-100 d-flex align-items-center justify-content-center gap-2 " + (profile.force_regenerate_cv_summary ? 'btn-warning text-dark fw-bold' : 'btn-outline-secondary')}
                         >
-                            <i className={`bi ${profile.force_regenerate_cv_summary ? 'bi-check-circle-fill' : 'bi-arrow-clockwise'}`}></i>
+                            <i className={"bi " + (profile.force_regenerate_cv_summary ? 'bi-check-circle-fill' : 'bi-arrow-clockwise')}></i>
                             Refresh CV Summary
                         </button>
                         </div>
@@ -134,9 +151,9 @@ export function SearchFormAdvanced({ profile, handleChange, setProfile, existing
                         <button
                             type="button"
                             onClick={() => setProfile(prev => ({ ...prev, force_regenerate_queries: !prev.force_regenerate_queries }))}
-                            className={`btn btn-sm w-100 d-flex align-items-center justify-content-center gap-2 ${profile.force_regenerate_queries ? 'btn-warning text-dark fw-bold' : 'btn-outline-secondary'}`}
+                            className={"btn btn-sm w-100 d-flex align-items-center justify-content-center gap-2 " + (profile.force_regenerate_queries ? 'btn-warning text-dark fw-bold' : 'btn-outline-secondary')}
                         >
-                            <i className={`bi ${profile.force_regenerate_queries ? 'bi-check-circle-fill' : 'bi-arrow-clockwise'}`}></i>
+                            <i className={"bi " + (profile.force_regenerate_queries ? 'bi-check-circle-fill' : 'bi-arrow-clockwise')}></i>
                             Refresh Queries
                         </button>
                         </div>
