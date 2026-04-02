@@ -1,5 +1,3 @@
-import os
-from contextlib import nullcontext
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -146,34 +144,38 @@ def test_tokenized_reservation_requires_matching_token_for_registration_and_rele
     assert register_task(321, mock_task, reservation_token=token) is True
 
 
-def test_save_statuses_logs_warning_on_write_failure(caplog):
+def test_persist_status_logs_warning_on_repository_failure(caplog):
     caplog.set_level("WARNING")
-    with patch("backend.services.search_status.open", side_effect=OSError("disk full")):
+    with (
+        patch("backend.services.search_status.SessionLocal") as mock_session_local,
+        patch.object(
+            ss.ProfileRepository, "update_search_status", side_effect=RuntimeError("boom")
+        ),
+    ):
+        mock_session_local.return_value = MagicMock()
         init_status(1)
-    assert "Failed to persist search statuses" in caplog.text
+    assert "Failed to persist search status for profile 1" in caplog.text
 
 
-def test_load_statuses_falls_back_to_latest_temp_file(tmp_path):
-    status_file = tmp_path / "job_hunter_statuses.json"
-    older_temp = tmp_path / "job_hunter_statuses.json.1.1.tmp"
-    newer_temp = tmp_path / "job_hunter_statuses.json.2.2.tmp"
-    older_temp.write_text('{"1": {"state": "old"}}', encoding="utf-8")
-    newer_temp.write_text('{"2": {"state": "searching"}}', encoding="utf-8")
-    older_stat = older_temp.stat()
-    os.utime(newer_temp, (older_stat.st_atime + 5, older_stat.st_mtime + 5))
+def test_get_status_loads_persisted_status_when_missing_in_memory():
+    persisted = {
+        "state": "searching",
+        "started_at": "2024-01-01T00:00:00+00:00",
+        "updated_at": "2024-01-01T00:00:10+00:00",
+    }
 
-    with patch("backend.services.search_status._STATUS_FILE", str(status_file)):
-        statuses = ss._load_statuses()
+    with patch("backend.services.search_status._load_persisted_status", return_value=persisted):
+        status = get_status(2)
 
-    assert statuses == {2: {"state": "searching"}}
+    assert status["state"] == "searching"
 
 
-def test_save_statuses_merges_with_newer_file_entry():
+def test_merge_with_persisted_statuses_prefers_newer_persisted_entry():
     init_status(1)
     with ss._lock:
         snapshot = dict(ss._statuses)
 
-    file_entry = {
+    persisted_entry = {
         1: {**snapshot[1], "state": "searching", "updated_at": "9999-01-01T00:00:00+00:00"},
         2: {
             "state": "done",
@@ -182,80 +184,56 @@ def test_save_statuses_merges_with_newer_file_entry():
         },
     }
 
-    with (
-        patch("backend.services.search_status._load_statuses", return_value=file_entry),
-        patch("backend.services.search_status._write_status_payload") as mock_write,
-    ):
-        ss._save_statuses(force=True, statuses_snapshot=snapshot)
+    with patch("backend.services.search_status._load_statuses", return_value=persisted_entry):
+        merged = ss._merge_with_persisted_statuses(snapshot)
 
-    written_payload = mock_write.call_args.args[0]
-    assert written_payload[1]["state"] == "searching"
-    assert written_payload[2]["state"] == "done"
+    assert merged[1]["state"] == "searching"
+    assert merged[2]["state"] == "done"
 
 
 def test_add_log_persists_every_update_without_debounce_skip():
     init_status(1)
 
-    with (
-        patch("backend.services.search_status._load_statuses", return_value={}),
-        patch("backend.services.search_status._write_status_payload") as mock_write,
-    ):
+    with patch("backend.services.search_status._persist_status_entry") as mock_persist:
         add_log(1, "First persisted log")
         add_log(1, "Second persisted log")
 
-    assert mock_write.call_count == 2
-    final_payload = mock_write.call_args.args[0]
-    assert final_payload[1]["log"][-1]["message"] == "Second persisted log"
+    assert mock_persist.call_count == 2
+    final_payload = mock_persist.call_args.args[1]
+    assert final_payload["log"][-1]["message"] == "Second persisted log"
 
 
 def test_reserve_task_persists_shared_reserved_entry():
-    with (
-        patch("backend.services.search_status._status_file_lock", return_value=nullcontext()),
-        patch("backend.services.search_status._load_statuses", return_value={}),
-        patch("backend.services.search_status._write_status_payload") as mock_write,
-    ):
+    with patch("backend.services.search_status._persist_status_entry") as mock_persist:
         token = reserve_task(808, return_token=True)
 
-    payload = mock_write.call_args.args[0]
     assert isinstance(token, str)
-    assert payload[808]["state"] == "reserved"
-    assert payload[808]["reservation_token"] == token
+    persisted_profile_id, payload = mock_persist.call_args.args
+    assert persisted_profile_id == 808
+    assert payload["state"] == "reserved"
+    assert payload["reservation_token"] == token
 
 
 def test_reserve_task_persists_user_id_for_cross_worker_visibility():
-    with (
-        patch("backend.services.search_status._status_file_lock", return_value=nullcontext()),
-        patch("backend.services.search_status._load_statuses", return_value={}),
-        patch("backend.services.search_status._write_status_payload") as mock_write,
-    ):
+    with patch("backend.services.search_status._persist_status_entry") as mock_persist:
         token = reserve_task(811, return_token=True, user_id=77)
 
-    payload = mock_write.call_args.args[0]
     assert isinstance(token, str)
-    assert payload[811]["state"] == "reserved"
-    assert payload[811]["user_id"] == 77
+    _, payload = mock_persist.call_args.args
+    assert payload["state"] == "reserved"
+    assert payload["user_id"] == 77
 
 
 def test_release_task_removes_shared_reserved_entry():
     token = reserve_task(909, return_token=True)
-    file_data = {
-        909: {
-            "state": "reserved",
-            "started_at": "9999-01-01T00:00:00+00:00",
-            "updated_at": "9999-01-01T00:00:00+00:00",
-            "reservation_token": token,
-        }
-    }
 
     with (
-        patch("backend.services.search_status._status_file_lock", return_value=nullcontext()),
-        patch("backend.services.search_status._load_statuses", return_value=file_data),
-        patch("backend.services.search_status._write_status_payload") as mock_write,
+        patch("backend.services.search_status._clear_persisted_status") as mock_clear,
+        patch("backend.services.search_status._load_persisted_status", return_value=None),
     ):
         assert release_task(909, reservation_token=token) is True
 
-    written_payload = mock_write.call_args.args[0]
-    assert 909 not in written_payload
+    mock_clear.assert_called_once_with(909)
 
 
 def test_release_task_calls_db_release_even_without_in_memory_reservation():
@@ -267,22 +245,21 @@ def test_release_task_calls_db_release_even_without_in_memory_reservation():
     mock_release.assert_called_once_with(990, "shared-token")
 
 
-def test_reserve_task_ignores_shared_status_file_for_ownership_checks():
-    file_data = {
-        1001: {
-            "state": "searching",
-            "started_at": "9999-01-01T00:00:00+00:00",
-            "updated_at": "9999-01-01T00:00:00+00:00",
-        }
+def test_get_all_statuses_merges_local_and_persisted_statuses():
+    init_status(1001)
+    persisted = {
+        1001: {"state": "searching", "updated_at": "2024-01-01T00:00:00+00:00"},
+        1002: {"state": "done", "updated_at": "2024-01-01T00:00:01+00:00"},
     }
+
     with (
-        patch("backend.services.search_status._status_file_lock", return_value=nullcontext()),
-        patch("backend.services.search_status._load_statuses", return_value=file_data),
-        patch("backend.services.search_status._write_status_payload"),
+        patch("backend.services.search_status._clear_stale_persisted_statuses"),
+        patch("backend.services.search_status._load_statuses", return_value=persisted),
     ):
-        result = reserve_task(1001)
-    assert result is True
-    release_task(1001)
+        statuses = get_all_statuses()
+
+    assert 1001 in statuses
+    assert 1002 in statuses
 
 
 # ── DB-backed reserve_task tests ────────────────────────────────────────
@@ -385,7 +362,7 @@ def test_register_task_with_reservation_rolls_back_when_db_activation_fails():
         assert 405 not in ss._active_tasks
 
 
-def test_merge_with_file_prefers_newer_updated_entry_over_older_started_entry():
+def test_merge_with_persisted_statuses_prefers_newer_updated_entry_over_older_started_entry():
     memory = {
         77: {
             "state": "done",
@@ -394,7 +371,7 @@ def test_merge_with_file_prefers_newer_updated_entry_over_older_started_entry():
             "finished_at": "2024-01-01T00:05:00+00:00",
         }
     }
-    file_data = {
+    persisted_data = {
         77: {
             "state": "searching",
             "started_at": "2024-01-01T00:01:00+00:00",
@@ -402,7 +379,7 @@ def test_merge_with_file_prefers_newer_updated_entry_over_older_started_entry():
         }
     }
 
-    with patch("backend.services.search_status._load_statuses", return_value=file_data):
-        merged = ss._merge_with_file(memory)
+    with patch("backend.services.search_status._load_statuses", return_value=persisted_data):
+        merged = ss._merge_with_persisted_statuses(memory)
 
     assert merged[77]["state"] == "done"

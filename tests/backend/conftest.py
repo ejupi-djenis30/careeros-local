@@ -32,44 +32,17 @@ def setup_database():
     Base.metadata.drop_all(bind=engine)
 
 
-def _clear_status_file():
-    """Remove the on-disk status file so cross-worker guards don't bleed between tests."""
-    try:
-        if os.path.exists(search_status._STATUS_FILE):
-            os.remove(search_status._STATUS_FILE)
-    except OSError:
-        pass
-    try:
-        if os.path.exists(search_status._STATUS_LOCK_FILE):
-            os.remove(search_status._STATUS_LOCK_FILE)
-    except OSError:
-        pass
-    status_dir = os.path.dirname(search_status._STATUS_FILE)
-    prefix = os.path.basename(search_status._STATUS_FILE)
-    try:
-        for child in os.listdir(status_dir):
-            if child.startswith(f"{prefix}.") and child.endswith(".tmp"):
-                try:
-                    os.remove(os.path.join(status_dir, child))
-                except OSError:
-                    pass
-    except OSError:
-        pass
-
-
 @pytest.fixture(autouse=True)
 def reset_search_status_registry():
     with search_status._lock:
         search_status._statuses.clear()
         search_status._active_tasks.clear()
         search_status._reserved_tasks.clear()
-    _clear_status_file()
     yield
     with search_status._lock:
         search_status._statuses.clear()
         search_status._active_tasks.clear()
         search_status._reserved_tasks.clear()
-    _clear_status_file()
 
 
 @pytest.fixture(scope="function")

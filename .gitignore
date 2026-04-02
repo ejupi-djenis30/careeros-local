@@ -74,7 +74,6 @@ cmd_outputs/
 # ─── Runtime Data ───
 data/
 !backend/data/
-job_hunter_statuses.json
 
 # ─── Poetry / packaging ───
 poetry.lock

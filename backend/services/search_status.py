@@ -1,19 +1,19 @@
-"""
-In-memory search status tracker.
-Stores real-time progress of search workflows for frontend polling.
+"""DB-backed search status tracker.
+
+Search ownership already lives on SearchProfile via lock columns. This module
+persists progress/status snapshots to the same shared database so polling works
+across workers without relying on a shared JSON file.
 """
 
 import copy
-import glob
-import json
 import logging
-import os
 import threading
 import time
 import uuid
-from contextlib import contextmanager
 from datetime import datetime, timezone
-from typing import Any, Dict, Iterator, List, Optional
+from typing import Any, Dict, List, Optional
+
+from sqlalchemy.exc import OperationalError, ProgrammingError
 
 from backend.core.config import settings
 from backend.db.base import SessionLocal
@@ -21,21 +21,7 @@ from backend.repositories.profile_repository import ProfileRepository
 
 logger = logging.getLogger(__name__)
 
-# Platform-safe fcntl accessor: mypy on Windows doesn't have fcntl, so expose
-# a typed-any module variable that the lock code can use without static
-# attribute errors.
-try:
-    import fcntl  # type: ignore
-
-    _fcntl: Any = fcntl
-except Exception:
-    _fcntl: Any = None  # type: ignore
-
 _lock = threading.Lock()
-_DATA_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "data")
-os.makedirs(_DATA_DIR, exist_ok=True)
-_STATUS_FILE = os.path.join(_DATA_DIR, "job_hunter_statuses.json")
-_STATUS_LOCK_FILE = os.path.join(_DATA_DIR, "job_hunter_statuses.lock")
 
 _VALID_STATUS_KEYS = {
     "user_id",
@@ -77,65 +63,11 @@ _VALID_STATUS_KEYS = {
     "provider_successes",
     "avam_fallback_count",
 }
+_PERSISTED_STATUS_KEYS = _VALID_STATUS_KEYS | {"reservation_token"}
 _TERMINAL_STATES = {"done", "error", "stopped", "cancelled"}
 _RESERVED_STATE = "reserved"
-
-
-def _load_statuses() -> Dict[int, Dict[str, Any]]:
-    candidates = []
-    if os.path.exists(_STATUS_FILE):
-        candidates.append(_STATUS_FILE)
-
-    temp_candidates = sorted(glob.glob(f"{_STATUS_FILE}.*.tmp"), key=os.path.getmtime, reverse=True)
-    candidates.extend(path for path in temp_candidates if path not in candidates)
-
-    for candidate in candidates:
-        try:
-            with open(candidate, "r", encoding="utf-8") as f:
-                data = json.load(f)
-                return {int(k): v for k, v in data.items()}
-        except Exception as exc:
-            logger.warning("Failed to load search statuses from %s: %s", candidate, exc)
-    return {}
-
-
-@contextmanager
-def _status_file_lock(timeout_seconds: float = 5.0) -> Iterator[None]:
-    lock_handle = None
-    acquired = False
-    start = time.time()
-    try:
-        lock_handle = open(_STATUS_LOCK_FILE, "a+b")
-        while not acquired:
-            try:
-                if os.name == "nt":
-                    import msvcrt
-
-                    lock_handle.seek(0)
-                    msvcrt.locking(lock_handle.fileno(), msvcrt.LK_NBLCK, 1)  # type: ignore[attr-defined]
-                else:
-                    _fcntl.flock(lock_handle.fileno(), _fcntl.LOCK_EX | _fcntl.LOCK_NB)
-                acquired = True
-            except OSError:
-                if (time.time() - start) >= timeout_seconds:
-                    raise TimeoutError("Timed out waiting for search status file lock")
-                time.sleep(0.05)
-
-        yield
-    finally:
-        if acquired and lock_handle is not None:
-            try:
-                if os.name == "nt":
-                    import msvcrt
-
-                    lock_handle.seek(0)
-                    msvcrt.locking(lock_handle.fileno(), msvcrt.LK_UNLCK, 1)  # type: ignore[attr-defined]
-                else:
-                    _fcntl.flock(lock_handle.fileno(), _fcntl.LOCK_UN)
-            except OSError:
-                pass
-        if lock_handle is not None:
-            lock_handle.close()
+_STATUS_RETENTION_SECONDS = 86400.0
+_RESERVATION_TTL_SECONDS = 30.0
 
 
 def _entry_timestamp(entry: Dict[str, Any] | None) -> str:
@@ -150,7 +82,6 @@ def _parse_timestamp(value: Any) -> float:
     text = str(value).strip()
     if not text:
         return 0.0
-    # Normalize trailing Z to an explicit UTC offset for fromisoformat compatibility.
     if text.endswith("Z"):
         text = text[:-1] + "+00:00"
     try:
@@ -176,12 +107,13 @@ def _merge_status_maps(
         current = existing.get(profile_id)
         new_entry = incoming.get(profile_id)
         if current is None:
-            merged[profile_id] = new_entry  # type: ignore[assignment]
+            if new_entry is not None:
+                merged[profile_id] = copy.deepcopy(new_entry)
             continue
         if new_entry is None:
-            merged[profile_id] = current
+            merged[profile_id] = copy.deepcopy(current)
             continue
-        merged[profile_id] = (
+        merged[profile_id] = copy.deepcopy(
             new_entry
             if _entry_timestamp_value(new_entry) >= _entry_timestamp_value(current)
             else current
@@ -190,74 +122,16 @@ def _merge_status_maps(
     return merged
 
 
-def _write_status_payload(payload: Dict[int, Dict[str, Any]]):
-    temp_file = f"{_STATUS_FILE}.{os.getpid()}.{threading.get_ident()}.tmp"
-    with open(temp_file, "w", encoding="utf-8") as f:
-        json.dump(payload, f)
-        f.flush()
-        os.fsync(f.fileno())
-    os.replace(temp_file, _STATUS_FILE)
+def _normalize_status_entry(entry: Dict[str, Any]) -> Dict[str, Any]:
+    payload = {k: copy.deepcopy(v) for k, v in entry.items() if k in _PERSISTED_STATUS_KEYS}
+    if "updated_at" not in payload:
+        payload["updated_at"] = datetime.now(timezone.utc).isoformat()
+    return payload
 
 
 def _touch_status_entry(entry: Dict[str, Any]) -> Dict[str, Any]:
     entry["updated_at"] = datetime.now(timezone.utc).isoformat()
     return entry
-
-
-_RESERVATION_TTL_SECONDS = 30.0
-
-
-def _active_lock_ttl_seconds() -> int:
-    """Return a safe stale-lock TTL for active searches.
-
-    This TTL is derived from the configured pipeline timeout, but it is capped
-    so misconfigured environments cannot overflow datetime arithmetic or keep a
-    dead lock alive for an effectively unbounded time.
-    """
-    try:
-        configured_timeout = int(getattr(settings, "SEARCH_PIPELINE_TIMEOUT_SECONDS", 1800))
-    except (TypeError, ValueError, OverflowError):
-        configured_timeout = 1800
-
-    normalized_timeout = max(configured_timeout, int(_RESERVATION_TTL_SECONDS))
-    capped_timeout = min(normalized_timeout, 24 * 60 * 60)
-    return capped_timeout + 60
-
-
-def _snapshot_statuses() -> Dict[int, Dict[str, Any]]:
-    return copy.deepcopy(_statuses)
-
-
-def _acquire_profile_search_lock(profile_id: int, reservation_token: str) -> bool:
-    db = SessionLocal()
-    try:
-        repo = ProfileRepository(db)
-        return repo.acquire_search_lock(
-            profile_id,
-            reservation_token,
-            reservation_ttl_seconds=int(_RESERVATION_TTL_SECONDS),
-            active_ttl_seconds=_active_lock_ttl_seconds(),
-        )
-    finally:
-        db.close()
-
-
-def _activate_profile_search_lock(profile_id: int, reservation_token: str) -> bool:
-    db = SessionLocal()
-    try:
-        repo = ProfileRepository(db)
-        return repo.activate_search_lock(profile_id, reservation_token)
-    finally:
-        db.close()
-
-
-def _release_profile_search_lock(profile_id: int, reservation_token: str | None = None) -> bool:
-    db = SessionLocal()
-    try:
-        repo = ProfileRepository(db)
-        return repo.release_search_lock(profile_id, reservation_token)
-    finally:
-        db.close()
 
 
 def _build_reserved_status_entry(
@@ -300,61 +174,148 @@ def _prune_stale_reserved_entries(statuses: Dict[int, Dict[str, Any]]) -> Dict[i
     }
 
 
-def _entry_is_current_worker_visible(entry: Dict[str, Any] | None) -> bool:
-    return _entry_timestamp_value(entry) >= _WORKER_BOOT_TIME_TS
+def _prune_old_terminal_statuses(
+    statuses: Dict[int, Dict[str, Any]], max_age_seconds: float = _STATUS_RETENTION_SECONDS
+) -> Dict[int, Dict[str, Any]]:
+    cutoff = datetime.now(timezone.utc).timestamp() - max_age_seconds
+    pruned: Dict[int, Dict[str, Any]] = {}
+    for pid, entry in statuses.items():
+        if entry.get("state") not in _TERMINAL_STATES:
+            pruned[pid] = copy.deepcopy(entry)
+            continue
+        finished_at = entry.get("finished_at")
+        if not finished_at:
+            pruned[pid] = copy.deepcopy(entry)
+            continue
+        finished_ts = _parse_timestamp(finished_at)
+        if finished_ts <= 0.0 or finished_ts >= cutoff:
+            pruned[pid] = copy.deepcopy(entry)
+    return pruned
 
 
-def _shared_entry_blocks_reservation(entry: Dict[str, Any]) -> bool:
-    state = entry.get("state", "unknown")
-    if state in _TERMINAL_STATES or state == "unknown":
+def _status_is_expired(entry: Dict[str, Any]) -> bool:
+    if _is_stale_reserved_entry(entry):
+        return True
+    if entry.get("state") not in _TERMINAL_STATES:
         return False
-    if state == _RESERVED_STATE:
-        return not _is_stale_reserved_entry(entry)
+    finished_ts = _parse_timestamp(entry.get("finished_at"))
+    if finished_ts <= 0.0:
+        return False
+    return finished_ts < (datetime.now(timezone.utc).timestamp() - _STATUS_RETENTION_SECONDS)
 
-    return _entry_is_current_worker_visible(entry)
+
+def _snapshot_statuses() -> Dict[int, Dict[str, Any]]:
+    return copy.deepcopy(_statuses)
 
 
-def _save_statuses(force: bool = False, statuses_snapshot: Dict[int, Dict[str, Any]] | None = None):
-    payload = statuses_snapshot if statuses_snapshot is not None else _statuses
-
+def _with_profile_repo(operation_name: str, callback):
+    db = SessionLocal()
     try:
-        with _status_file_lock():
-            file_payload = _prune_stale_reserved_entries(_load_statuses())
-            merged = _merge_status_maps(file_payload, payload)
-            _write_status_payload(merged)
+        repo = ProfileRepository(db)
+        return callback(repo)
+    except (OperationalError, ProgrammingError) as exc:
+        logger.debug(
+            "Skipping %s because DB status storage is unavailable: %s", operation_name, exc
+        )
+        return None
     except Exception as exc:
-        logger.warning("Failed to persist search statuses to %s: %s", _STATUS_FILE, exc)
+        logger.warning("Failed to %s: %s", operation_name, exc)
+        return None
+    finally:
+        db.close()
 
 
-def _save_statuses_with_removals(
-    *,
-    force: bool = False,
-    statuses_snapshot: Dict[int, Dict[str, Any]] | None = None,
-    removed_ids: set[int] | None = None,
-):
-    payload = statuses_snapshot if statuses_snapshot is not None else _statuses
+def _persist_status_entry(profile_id: int, entry: Dict[str, Any]) -> None:
+    payload = _normalize_status_entry(entry)
+    _with_profile_repo(
+        f"persist search status for profile {profile_id}",
+        lambda repo: repo.update_search_status(profile_id, payload),
+    )
 
+
+def _clear_persisted_status(profile_id: int) -> None:
+    _with_profile_repo(
+        f"clear search status for profile {profile_id}",
+        lambda repo: repo.clear_search_status(profile_id),
+    )
+
+
+def _load_persisted_status(profile_id: int) -> Dict[str, Any] | None:
+    result = _with_profile_repo(
+        f"load search status for profile {profile_id}",
+        lambda repo: repo.get_search_status(profile_id),
+    )
+    return result if isinstance(result, dict) else None
+
+
+def _load_statuses(user_id: Optional[int] = None) -> Dict[int, Dict[str, Any]]:
+    result = _with_profile_repo(
+        "load persisted search statuses",
+        lambda repo: repo.get_search_statuses(user_id=user_id),
+    )
+    return result if isinstance(result, dict) else {}
+
+
+def _clear_stale_persisted_statuses() -> None:
+    _with_profile_repo(
+        "clear stale persisted search statuses",
+        lambda repo: repo.clear_stale_search_statuses(
+            max_age_seconds=_STATUS_RETENTION_SECONDS,
+            terminal_states=sorted(_TERMINAL_STATES),
+        ),
+    )
+
+
+def _active_lock_ttl_seconds() -> int:
+    """Return a safe stale-lock TTL for active searches."""
     try:
-        with _status_file_lock():
-            file_payload = _prune_stale_reserved_entries(_load_statuses())
-            merged = _merge_status_maps(file_payload, payload, removed_ids=removed_ids)
-            _write_status_payload(merged)
-    except Exception as exc:
-        logger.warning("Failed to persist search statuses to %s: %s", _STATUS_FILE, exc)
+        configured_timeout = int(getattr(settings, "SEARCH_PIPELINE_TIMEOUT_SECONDS", 1800))
+    except (TypeError, ValueError, OverflowError):
+        configured_timeout = 1800
+
+    normalized_timeout = max(configured_timeout, int(_RESERVATION_TTL_SECONDS))
+    capped_timeout = min(normalized_timeout, 24 * 60 * 60)
+    return capped_timeout + 60
 
 
-_statuses: Dict[int, Dict[str, Any]] = _load_statuses()
-_active_tasks: Dict[int, Any] = {}  # profile_id -> asyncio.Task
+def _acquire_profile_search_lock(profile_id: int, reservation_token: str) -> bool:
+    db = SessionLocal()
+    try:
+        repo = ProfileRepository(db)
+        return repo.acquire_search_lock(
+            profile_id,
+            reservation_token,
+            reservation_ttl_seconds=int(_RESERVATION_TTL_SECONDS),
+            active_ttl_seconds=_active_lock_ttl_seconds(),
+        )
+    finally:
+        db.close()
+
+
+def _activate_profile_search_lock(profile_id: int, reservation_token: str) -> bool:
+    db = SessionLocal()
+    try:
+        repo = ProfileRepository(db)
+        return repo.activate_search_lock(profile_id, reservation_token)
+    finally:
+        db.close()
+
+
+def _release_profile_search_lock(profile_id: int, reservation_token: str | None = None) -> bool:
+    db = SessionLocal()
+    try:
+        repo = ProfileRepository(db)
+        return repo.release_search_lock(profile_id, reservation_token)
+    finally:
+        db.close()
+
+
+_statuses: Dict[int, Dict[str, Any]] = {}
+_active_tasks: Dict[int, Any] = {}
 _reserved_tasks: Dict[int, Dict[str, Any]] = {}
-# ISO-8601 timestamp captured once when this worker process starts.
-# Used in _merge_with_file to distinguish live cross-worker search entries
-# (started after this boot) from stale entries left in the file by a prior
-# server run that crashed mid-search.
-_WORKER_BOOT_TIME: str = datetime.now(timezone.utc).isoformat()
-_WORKER_BOOT_TIME_TS: float = _parse_timestamp(_WORKER_BOOT_TIME)
 
 
-def _cleanup_stale_reservations(now: float | None = None):
+def _cleanup_stale_reservations(now: float | None = None) -> None:
     ts = now if now is not None else time.time()
     stale = [
         profile_id
@@ -363,7 +324,10 @@ def _cleanup_stale_reservations(now: float | None = None):
     ]
     for profile_id in stale:
         _reserved_tasks.pop(profile_id, None)
-    # Also evict active_tasks slots where the asyncio Task has already finished.
+        status_entry = _statuses.get(profile_id)
+        if status_entry and status_entry.get("state") == _RESERVED_STATE:
+            _statuses.pop(profile_id, None)
+
     done_tasks = [
         profile_id
         for profile_id, task in _active_tasks.items()
@@ -382,12 +346,44 @@ def _task_slot_is_available(task: Any | None) -> bool:
         return True
 
 
+def _get_local_status(profile_id: int) -> Dict[str, Any] | None:
+    with _lock:
+        status = _statuses.get(profile_id)
+        return copy.deepcopy(status) if status else None
+
+
+def _load_status_into_memory(profile_id: int) -> Dict[str, Any] | None:
+    persisted = _load_persisted_status(profile_id)
+    if not persisted:
+        return None
+    if _status_is_expired(persisted):
+        _clear_persisted_status(profile_id)
+        return None
+
+    with _lock:
+        existing = _statuses.get(profile_id)
+        if existing is None or _entry_timestamp_value(persisted) >= _entry_timestamp_value(
+            existing
+        ):
+            _statuses[profile_id] = copy.deepcopy(persisted)
+            return copy.deepcopy(_statuses[profile_id])
+        return copy.deepcopy(existing)
+
+
+def _persist_current_status(profile_id: int) -> None:
+    with _lock:
+        status = _statuses.get(profile_id)
+        snapshot = copy.deepcopy(status) if status else None
+    if snapshot is not None:
+        _persist_status_entry(profile_id, snapshot)
+
+
 def init_status(
     profile_id: int,
     total_searches: int = 0,
     searches: Optional[List[Dict]] = None,
     user_id: Optional[int] = None,
-):
+) -> None:
     """Initialize or reset status when search begins."""
     with _lock:
         _statuses[profile_id] = {
@@ -428,178 +424,111 @@ def init_status(
             "finished_at": None,
         }
         _touch_status_entry(_statuses[profile_id])
-        snapshot = _snapshot_statuses()
-    _save_statuses(force=True, statuses_snapshot=snapshot)
+    _persist_current_status(profile_id)
 
 
-def add_log(profile_id: int, message: str):
+def add_log(profile_id: int, message: str) -> None:
     """Append a log entry."""
+    status = _get_local_status(profile_id)
+    if status is None:
+        status = _load_status_into_memory(profile_id)
+    if status is None:
+        return
+
     with _lock:
-        s = _statuses.get(profile_id)
-        snapshot = None
-        if s:
-            s["log"].append(
-                {
-                    "time": datetime.now(timezone.utc).isoformat(),
-                    "message": message,
-                }
-            )
-            # Keep last 100 entries
-            if len(s["log"]) > 100:
-                s["log"] = s["log"][-100:]
-            _touch_status_entry(s)
-            snapshot = _snapshot_statuses()
-    if snapshot is not None:
-        _save_statuses(statuses_snapshot=snapshot)
+        live_status = _statuses.get(profile_id)
+        if live_status is None:
+            _statuses[profile_id] = copy.deepcopy(status)
+            live_status = _statuses[profile_id]
+
+        live_status.setdefault("log", [])
+        live_status["log"].append(
+            {
+                "time": datetime.now(timezone.utc).isoformat(),
+                "message": message,
+            }
+        )
+        if len(live_status["log"]) > 100:
+            live_status["log"] = live_status["log"][-100:]
+        _touch_status_entry(live_status)
+    _persist_current_status(profile_id)
 
 
-def update_status(profile_id: int, **kwargs):
+def update_status(profile_id: int, **kwargs) -> None:
     """Update any status fields."""
     invalid = set(kwargs.keys()) - _VALID_STATUS_KEYS
     if invalid:
-        import logging
+        logger.warning("update_status called with unknown keys: %s", invalid)
 
-        logging.getLogger(__name__).warning(f"update_status called with unknown keys: {invalid}")
+    status = _get_local_status(profile_id)
+    if status is None:
+        status = _load_status_into_memory(profile_id)
+    if status is None:
+        return
+
     with _lock:
-        s = _statuses.get(profile_id)
-        snapshot = None
-        should_force = False
-        if s:
-            s.update({k: v for k, v in kwargs.items() if k in _VALID_STATUS_KEYS})
-            # Auto-set finished_at on terminal states
-            is_terminal = s.get("state") in _TERMINAL_STATES
-            if is_terminal and not s.get("finished_at"):
-                s["finished_at"] = datetime.now(timezone.utc).isoformat()
-            _touch_status_entry(s)
-            snapshot = _snapshot_statuses()
-            should_force = is_terminal
-    if snapshot is not None:
-        _save_statuses(force=should_force, statuses_snapshot=snapshot)
+        live_status = _statuses.get(profile_id)
+        if live_status is None:
+            _statuses[profile_id] = copy.deepcopy(status)
+            live_status = _statuses[profile_id]
+
+        live_status.update({k: v for k, v in kwargs.items() if k in _VALID_STATUS_KEYS})
+        is_terminal = live_status.get("state") in _TERMINAL_STATES
+        if is_terminal and not live_status.get("finished_at"):
+            live_status["finished_at"] = datetime.now(timezone.utc).isoformat()
+        _touch_status_entry(live_status)
+    _persist_current_status(profile_id)
 
 
-def _merge_with_file(memory: Dict[int, Dict[str, Any]]) -> Dict[int, Dict[str, Any]]:
-    """Merge in-memory statuses with file-persisted ones.
-
-    Needed when running with multiple Gunicorn workers: a background search
-    task runs entirely inside one worker process and writes its status to
-    that process's in-memory dict.  Polling requests from other workers
-    would otherwise always return an empty result.  The JSON file is the
-    shared source of truth across processes — it is force-written on every
-    init_status() call and on every terminal-state transition.
-
-    Merge rule: for a given profile_id present in both sources, whichever
-    has the *newer* ``started_at`` ISO string wins.  In practice this means
-    the owning worker's live in-memory state wins for the current run, and
-    a fresher file entry wins for a run that was started by a different
-    worker (cross-process case).
-    """
-    merged: Dict[int, Dict[str, Any]] = {}
-    try:
-        file_data = _prune_stale_reserved_entries(_load_statuses())
-    except Exception:
-        file_data = {}
-
-    all_ids = set(memory.keys()) | set(file_data.keys())
-    for pid in all_ids:
-        mem_entry = memory.get(pid)
-        file_entry = file_data.get(pid)
-        if mem_entry is None:
-            # This worker has no in-memory record — might be a sibling-worker
-            # entry or a stale entry left by a prior server run.
-            file_state = (file_entry or {}).get("state", "unknown")
-            if file_state in _TERMINAL_STATES:
-                # Terminal states are always safe to surface.
-                merged[pid] = file_entry  # type: ignore[assignment]
-            elif _entry_is_current_worker_visible(file_entry):
-                merged[pid] = copy.deepcopy(file_entry)  # type: ignore[assignment, arg-type]
-            # else: stale non-terminal entry from a crashed prior run — skip.
-        elif file_entry is None:
-            merged[pid] = copy.deepcopy(mem_entry)
-        else:
-            merged[pid] = copy.deepcopy(
-                mem_entry
-                if _entry_timestamp_value(mem_entry) >= _entry_timestamp_value(file_entry)
-                else file_entry
-            )
-    return merged
-
-
-def _prune_old_terminal_statuses(
-    statuses: Dict[int, Dict[str, Any]], max_age_seconds: float = 86400.0
-) -> Dict[int, Dict[str, Any]]:
-    """Remove terminal status entries whose ``finished_at`` timestamp is older than max_age_seconds."""
-    cutoff = datetime.now(timezone.utc).timestamp() - max_age_seconds
-    pruned: Dict[int, Dict[str, Any]] = {}
-    for pid, entry in statuses.items():
-        if entry.get("state") not in _TERMINAL_STATES:
-            pruned[pid] = entry
-            continue
-        finished_at = entry.get("finished_at")
-        if not finished_at:
-            pruned[pid] = entry
-            continue
-        try:
-            finished_ts = datetime.fromisoformat(finished_at).timestamp()
-            if finished_ts >= cutoff:
-                pruned[pid] = entry
-            # else: expired terminal entry — silently drop it
-        except (ValueError, TypeError):
-            pruned[pid] = entry  # keep entries with unparseable timestamps
-    return pruned
+def _merge_with_persisted_statuses(memory: Dict[int, Dict[str, Any]]) -> Dict[int, Dict[str, Any]]:
+    persisted = _prune_stale_reserved_entries(_load_statuses())
+    persisted = _prune_old_terminal_statuses(persisted)
+    return _merge_status_maps(persisted, memory)
 
 
 def get_status(profile_id: int) -> Dict[str, Any]:
     """Get current status for a profile."""
-    with _lock:
-        if profile_id in _statuses:
-            return dict(_statuses[profile_id])
-    # Not present in this worker's memory — check the persisted file.
-    file_statuses = _prune_stale_reserved_entries(_load_statuses())
-    return dict(file_statuses.get(profile_id, {"state": "unknown"}))
+    _cleanup_stale_reservations()
+    local_status = _get_local_status(profile_id)
+    persisted_status = _load_persisted_status(profile_id)
+
+    if persisted_status and _status_is_expired(persisted_status):
+        _clear_persisted_status(profile_id)
+        persisted_status = None
+
+    merged = _merge_status_maps(
+        {profile_id: persisted_status} if persisted_status else {},
+        {profile_id: local_status} if local_status else {},
+    )
+    status = merged.get(profile_id)
+    return status if status is not None else {"state": "unknown"}
 
 
 def get_all_statuses(user_id: Optional[int] = None) -> Dict[int, Dict[str, Any]]:
-    """Get all current statuses (filtered by user_id if provided).
+    """Get all current statuses (filtered by user_id if provided)."""
+    _cleanup_stale_reservations()
+    _clear_stale_persisted_statuses()
 
-    Merges in-memory state with the shared JSON file so that searches
-    started on a different Gunicorn worker process are also visible.
-    Terminal entries older than 24 hours are pruned on each call.
-    """
     with _lock:
-        merged = _merge_with_file(dict(_statuses))
+        memory_snapshot = dict(_statuses)
 
-    # Prune stale terminal entries (>24h old) to prevent unbounded file growth.
-    merged = _prune_old_terminal_statuses(merged)
+    merged = _merge_with_persisted_statuses(memory_snapshot)
 
+    merged = _prune_old_terminal_statuses(_prune_stale_reserved_entries(merged))
     if user_id is None:
         return merged
     return {k: v for k, v in merged.items() if v.get("user_id") == user_id}
 
 
-def clear_status(profile_id: int):
-    """Remove status (optional cleanup)."""
+def clear_status(profile_id: int) -> None:
+    """Remove persisted/in-memory status for a profile."""
     with _lock:
-        snapshot = None
-        if profile_id in _statuses:
-            _statuses.pop(profile_id, None)
-            snapshot = _snapshot_statuses()
-    if snapshot is not None:
-        _save_statuses_with_removals(
-            force=True, statuses_snapshot=snapshot, removed_ids={profile_id}
-        )
+        _statuses.pop(profile_id, None)
+    _clear_persisted_status(profile_id)
 
 
 def register_task(profile_id: int, task: Any, reservation_token: str | None = None):
-    """Register an active search task.
-
-    Guards against a second worker overwriting an already-active task for the
-    same profile_id (cross-worker race).  If the slot is already occupied by a
-    live task the call is a no-op and returns False so the caller can abort.
-
-    When a reservation token is provided, DB-backed activation is performed
-    before the in-memory task is promoted from reserved to active so the two
-    authorities cannot diverge into a partial active state.
-    """
+    """Register an active search task."""
     needs_db_activation = reservation_token is not None
 
     with _lock:
@@ -678,7 +607,7 @@ def register_task(profile_id: int, task: Any, reservation_token: str | None = No
     return False
 
 
-def unregister_task(profile_id: int):
+def unregister_task(profile_id: int) -> None:
     """Remove a finished or cancelled task from registry."""
     with _lock:
         _reserved_tasks.pop(profile_id, None)
@@ -698,12 +627,7 @@ def reserve_task(
     reservation_token: str | None = None,
     user_id: int | None = None,
 ) -> bool | str:
-    """Reserve a profile before the background task is registered.
-
-    Cross-worker safe: in addition to checking the in-process task registries
-    this now acquires a persistent DB-backed lock on the SearchProfile row.
-    The shared JSON status file remains for progress visibility only.
-    """
+    """Reserve a profile before the background task is registered."""
     token = reservation_token or uuid.uuid4().hex
 
     with _lock:
@@ -724,9 +648,7 @@ def reserve_task(
             "token": token,
         }
         _statuses[profile_id] = _build_reserved_status_entry(token, user_id=user_id)
-        snapshot = _snapshot_statuses()
-
-    _save_statuses(force=True, statuses_snapshot=snapshot)
+    _persist_current_status(profile_id)
 
     return token if return_token else True
 
@@ -736,6 +658,7 @@ def release_task(profile_id: int, reservation_token: str | None = None) -> bool:
     with _lock:
         reservation = _reserved_tasks.get(profile_id)
         in_memory_released = False
+        clear_local_reserved_status = False
         if reservation is not None:
             if reservation_token is not None and reservation.get("token") != reservation_token:
                 return False
@@ -743,12 +666,9 @@ def release_task(profile_id: int, reservation_token: str | None = None) -> bool:
             in_memory_released = True
 
         status_entry = _statuses.get(profile_id)
-        removed_ids: set[int] | None = None
-        snapshot = None
         if status_entry and status_entry.get("state") == _RESERVED_STATE:
             _statuses.pop(profile_id, None)
-            removed_ids = {profile_id}
-            snapshot = _snapshot_statuses()
+            clear_local_reserved_status = True
 
     try:
         db_released = _release_profile_search_lock(profile_id, reservation_token)
@@ -756,12 +676,12 @@ def release_task(profile_id: int, reservation_token: str | None = None) -> bool:
         logger.warning("release_task: failed to clear DB-backed search lock: %s", exc)
         db_released = False
 
-    if snapshot is not None:
-        _save_statuses_with_removals(
-            force=True,
-            statuses_snapshot=snapshot,
-            removed_ids=removed_ids,
-        )
+    if clear_local_reserved_status:
+        _clear_persisted_status(profile_id)
+    else:
+        persisted_status = _load_persisted_status(profile_id)
+        if persisted_status and persisted_status.get("state") == _RESERVED_STATE:
+            _clear_persisted_status(profile_id)
 
     return in_memory_released or db_released
 
@@ -775,9 +695,3 @@ def cancel_task(profile_id: int):
             task.cancel()
             return True
     return False
-
-
-# Prune stale terminal statuses from prior server runs at module load so the
-# status file does not grow unboundedly across restarts.
-_statuses = _prune_old_terminal_statuses(_statuses)
-_statuses = _prune_stale_reserved_entries(_statuses)

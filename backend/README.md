@@ -29,7 +29,7 @@ The backend implements a **Clean Architecture** with a strict separation of conc
 
 ### 2. Service Layer (`backend/services`)
 - **Business Logic**: This is the "brain" of the application. It orchestrates complex workflows like the Search Pipeline.
-- **Search Status**: A real-time monitoring system that tracks the progress of asynchronous tasks using a reservation lifecycle (`reserve_task`/`release_task`).
+- **Search Status**: A real-time monitoring system that tracks the progress of asynchronous tasks using a reservation lifecycle (`reserve_task`/`release_task`) and persists progress snapshots on `search_profiles` for cross-worker polling.
 - **LLM Coordination**: Manages prompt templating, response parsing, and fallback strategies for different AI providers.
 
 ### 3. Repository Layer (`backend/repositories`)
