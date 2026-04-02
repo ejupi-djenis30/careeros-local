@@ -228,6 +228,158 @@ class SearchService:
             )
         return upgraded
 
+    @staticmethod
+    def _estimate_analysis_metadata_chars(metadata: Dict[str, Any]) -> int:
+        normalized_data = metadata.get("normalized_data") or {}
+        languages = metadata.get("languages") or []
+
+        def estimate_value_chars(value: Any) -> int:
+            if value is None:
+                return 0
+            if isinstance(value, dict):
+                return sum(
+                    len(str(key)) + estimate_value_chars(item) for key, item in value.items()
+                )
+            if isinstance(value, list):
+                return sum(estimate_value_chars(item) for item in value)
+            return len(str(value))
+
+        return (
+            len(str(metadata.get("title") or ""))
+            + len(str(metadata.get("description") or ""))
+            + len(str(metadata.get("location") or ""))
+            + len(str(metadata.get("workload") or ""))
+            + len(str(metadata.get("education") or ""))
+            + len(str(metadata.get("company") or ""))
+            + sum(len(str(language)) for language in languages)
+            + estimate_value_chars(normalized_data)
+            + 96
+        )
+
+    @staticmethod
+    def _pack_entries_by_prompt_budget(
+        entries: List[Any],
+        *,
+        max_items: int,
+        prompt_char_budget: int,
+        estimate_chars,
+    ) -> List[List[Any]]:
+        if not entries:
+            return []
+
+        normalized_max_items = max(1, int(max_items or 1))
+        normalized_budget = max(1, int(prompt_char_budget or 1))
+        packed: List[List[Any]] = []
+        current: List[Any] = []
+        current_chars = 0
+
+        for entry in entries:
+            entry_chars = max(1, int(estimate_chars(entry)))
+            if current and (
+                len(current) >= normalized_max_items
+                or current_chars + entry_chars > normalized_budget
+            ):
+                packed.append(current)
+                current = []
+                current_chars = 0
+
+            current.append(entry)
+            current_chars += entry_chars
+
+        if current:
+            packed.append(current)
+
+        return packed
+
+    async def _build_analysis_job_metadata(self, job: Any) -> Dict[str, Any]:
+        desc_text = ""
+        descs = getattr(job, "descriptions", [])
+        if descs:
+            desc_text = (
+                descs[0].description
+                if hasattr(descs[0], "description")
+                else (descs[0].get("description", "") if isinstance(descs[0], dict) else "")
+            )
+        desc_text = desc_text if isinstance(desc_text, str) else str(desc_text or "")
+
+        education_info = []
+        for occ in getattr(job, "occupations", []):
+            if getattr(occ, "education_code", None):
+                education_info.append(f"Edu: {occ.education_code}")
+
+        company_obj = getattr(job, "company", None)
+        company_name = company_obj.name if hasattr(company_obj, "name") else "Unknown"
+        raw_norm = getattr(job, "_normalized_job_data", None) or {}
+        if not isinstance(raw_norm, dict):
+            raw_norm = {}
+        normalized_data = {
+            "domain": raw_norm.get("domain"),
+            "role_type": raw_norm.get("role_type") or raw_norm.get("normalized_role_type"),
+            "industry_sector": raw_norm.get("industry_sector")
+            or raw_norm.get("normalized_industry_sector"),
+            "seniority": raw_norm.get("seniority"),
+            "qualification_level": raw_norm.get("qualification_level"),
+            "required_skills": raw_norm.get("required_skills"),
+            "preferred_skills": raw_norm.get("preferred_skills"),
+            "experience_min_years": raw_norm.get("experience_min_years"),
+            "experience_max_years": raw_norm.get("experience_max_years"),
+            "required_languages": raw_norm.get("required_languages"),
+            "entry_barrier": raw_norm.get("entry_barrier"),
+            "career_changer_friendly": raw_norm.get("career_changer_friendly"),
+            "hard_blockers": raw_norm.get("hard_blockers"),
+            "education_levels": raw_norm.get("education_levels"),
+            "key_requirements": raw_norm.get("key_requirements"),
+            "physical_requirements": raw_norm.get("physical_requirements"),
+            "soft_skills": raw_norm.get("soft_skills"),
+        }
+
+        description_cap = max(
+            1,
+            min(
+                int(getattr(settings, "MAX_DESCRIPTION_CHARS", 64000) or 64000),
+                int(getattr(settings, "MATCH_PROMPT_JOB_MAX_DESCRIPTION_CHARS", 1800) or 1800),
+            ),
+        )
+
+        return {
+            "title": getattr(job, "title", "Unknown"),
+            "description": await llm_service._compress_description_if_needed(
+                desc_text,
+                description_cap,
+            ),
+            "location": job.location.city if getattr(job, "location", None) else "Unknown",
+            "workload": (
+                f"{job.employment.workload_min}-{job.employment.workload_max}%"
+                if getattr(job, "employment", None)
+                else "Unknown"
+            ),
+            "languages": (
+                [
+                    f"{s.language_code} ({s.spoken_level})"
+                    for s in getattr(job, "language_skills", [])
+                ]
+                if getattr(job, "language_skills", None)
+                else []
+            ),
+            "education": ", ".join(education_info) if education_info else "None specified",
+            "company": company_name,
+            "normalized_data": normalized_data,
+        }
+
+    def _pack_analysis_batches(
+        self, jobs: List[Any], jobs_metadata: List[Dict[str, Any]]
+    ) -> List[Any]:
+        paired_entries = list(zip(jobs, jobs_metadata))
+        packed = self._pack_entries_by_prompt_budget(
+            paired_entries,
+            max_items=int(settings.ANALYSIS_BATCH_SIZE or 1),
+            prompt_char_budget=int(getattr(settings, "MATCH_PROMPT_TARGET_CHARS", 7000) or 7000),
+            estimate_chars=lambda entry: self._estimate_analysis_metadata_chars(entry[1]),
+        )
+        return [
+            ([job for job, _ in batch], [metadata for _, metadata in batch]) for batch in packed
+        ]
+
     # ─── Step 1.5: User/Candidate Profile Normalization ──────────────
 
     @staticmethod
@@ -1611,102 +1763,39 @@ class SearchService:
     async def _analyze_and_save(
         self, profile_id: int, profile_dict: dict, unique_jobs: list
     ) -> tuple[int, int]:
+        status_data = get_status(profile_id)
+        if status_data.get("state") in STOP_STATES:
+            return 0, len(unique_jobs)
+
+        # Legacy helper path used mainly by older tests and compatibility shims.
+        # The main runtime pipeline performs critique/rerank in _finalize_and_save.
+        # Keep this helper deterministic and self-contained unless a caller opts in.
+        enable_refinement_passes = bool(profile_dict.get("_enable_final_refinement_passes", False))
+
         semaphore = asyncio.Semaphore(settings.ANALYSIS_CONCURRENCY)
-        batch_size = settings.ANALYSIS_BATCH_SIZE
-        batches = [unique_jobs[i : i + batch_size] for i in range(0, len(unique_jobs), batch_size)]
+        jobs_metadata = [await self._build_analysis_job_metadata(job) for job in unique_jobs]
+        batches = self._pack_analysis_batches(unique_jobs, jobs_metadata)
 
         origin_coords = None
         if profile_dict.get("latitude") and profile_dict.get("longitude"):
             origin_coords = (profile_dict["latitude"], profile_dict["longitude"])
 
-        async def analyze_batch(batch):
+        async def analyze_batch(batch_jobs, batch_metadata):
             async with semaphore:
                 status_data = get_status(profile_id)
                 if status_data.get("state") in ["stopped", "cancelled", "finished", "failed"]:
                     return []
 
-                jobs_metadata = []
-                for job in batch:
-                    desc_text = ""
-                    descs = getattr(job, "descriptions", [])
-                    if descs:
-                        desc_text = (
-                            descs[0].description
-                            if hasattr(descs[0], "description")
-                            else (
-                                descs[0].get("description", "")
-                                if isinstance(descs[0], dict)
-                                else ""
-                            )
-                        )
-
-                    education_info = []
-                    for occ in getattr(job, "occupations", []):
-                        if getattr(occ, "education_code", None):
-                            education_info.append(f"Edu: {occ.education_code}")
-
-                    company_obj = getattr(job, "company", None)
-                    company_name = company_obj.name if hasattr(company_obj, "name") else "Unknown"
-
-                    # Include pre-computed normalized facts so the MATCH LLM has
-                    # structured data instead of re-extracting it from raw text.
-                    raw_norm = getattr(job, "_normalized_job_data", None) or {}
-                    normalized_data = {
-                        "domain": raw_norm.get("domain"),
-                        "role_type": raw_norm.get("role_type")
-                        or raw_norm.get("normalized_role_type"),
-                        "industry_sector": raw_norm.get("industry_sector")
-                        or raw_norm.get("normalized_industry_sector"),
-                        "seniority": raw_norm.get("seniority"),
-                        "qualification_level": raw_norm.get("qualification_level"),
-                        "required_skills": raw_norm.get("required_skills"),
-                        "preferred_skills": raw_norm.get("preferred_skills"),
-                        "experience_min_years": raw_norm.get("experience_min_years"),
-                        "experience_max_years": raw_norm.get("experience_max_years"),
-                        "required_languages": raw_norm.get("required_languages"),
-                        "entry_barrier": raw_norm.get("entry_barrier"),
-                        "career_changer_friendly": raw_norm.get("career_changer_friendly"),
-                        "hard_blockers": raw_norm.get("hard_blockers"),
-                        "education_levels": raw_norm.get("education_levels"),
-                        "key_requirements": raw_norm.get("key_requirements"),
-                        "physical_requirements": raw_norm.get("physical_requirements"),
-                        "soft_skills": raw_norm.get("soft_skills"),
-                    }
-
-                    jobs_metadata.append(
-                        {
-                            "title": getattr(job, "title", "Unknown"),
-                            "description": await llm_service._compress_description_if_needed(
-                                desc_text, settings.MAX_DESCRIPTION_CHARS
-                            ),
-                            "location": job.location.city
-                            if getattr(job, "location", None)
-                            else "Unknown",
-                            "workload": f"{job.employment.workload_min}-{job.employment.workload_max}%"
-                            if getattr(job, "employment", None)
-                            else "Unknown",
-                            "languages": [
-                                f"{s.language_code} ({s.spoken_level})"
-                                for s in getattr(job, "language_skills", [])
-                            ]
-                            if getattr(job, "language_skills", None)
-                            else [],
-                            "education": ", ".join(education_info)
-                            if education_info
-                            else "None specified",
-                            "company": company_name,
-                            "normalized_data": normalized_data,
-                        }
-                    )
-
                 try:
-                    results = await llm_service.analyze_job_batch(jobs_metadata, profile_dict)
-                    return list(zip(batch, results))
+                    results = await llm_service.analyze_job_batch(batch_metadata, profile_dict)
+                    return list(zip(batch_jobs, results))
                 except Exception as e:
                     logger.error(f"Analysis batch failed: {e}")
                     return []
 
-        tasks = [analyze_batch(batch) for batch in batches]
+        tasks = [
+            analyze_batch(batch_jobs, batch_metadata) for batch_jobs, batch_metadata in batches
+        ]
         results = await asyncio.gather(*tasks)
 
         # Re-check cancellation: a stop/cancel request arriving during gather should
@@ -1719,7 +1808,9 @@ class SearchService:
         jobs_to_persist = [item for batch_result in results for item in batch_result]
 
         # ── Phase 3.2: Two-pass critique for borderline scores ─────────────
-        critique_enabled = getattr(settings, "MATCH_CRITIQUE_ENABLED", False)
+        critique_enabled = enable_refinement_passes and getattr(
+            settings, "MATCH_CRITIQUE_ENABLED", False
+        )
         critique_min = int(getattr(settings, "MATCH_CRITIQUE_SCORE_RANGE_MIN", 40))
         critique_max = int(getattr(settings, "MATCH_CRITIQUE_SCORE_RANGE_MAX", 80))
         if critique_enabled and jobs_to_persist:
@@ -1768,7 +1859,9 @@ class SearchService:
                     logger.warning("[CRITIQUE] Critique pass failed: %s", exc)
 
         # ── Phase 3.4: Comparative re-ranking of top-N jobs ────────────────
-        rerank_enabled = getattr(settings, "MATCH_RERANK_ENABLED", False)
+        rerank_enabled = enable_refinement_passes and getattr(
+            settings, "MATCH_RERANK_ENABLED", False
+        )
         rerank_top_n = int(getattr(settings, "MATCH_RERANK_TOP_N", 20))
         if rerank_enabled and len(jobs_to_persist) >= 3:
             try:
@@ -1826,7 +1919,7 @@ class SearchService:
 
         saved_count = 0
         # ── Phase 3.3: Deterministic salary_below_market red flag injection ──
-        if getattr(settings, "SALARY_BENCHMARK_ENABLED", False):
+        if enable_refinement_passes and getattr(settings, "SALARY_BENCHMARK_ENABLED", False):
             try:
                 from backend.services.preference_service import compute_salary_benchmark
 
@@ -2569,93 +2662,18 @@ class SearchService:
         # Clamp concurrency to prevent mass LLM timeouts that trip the circuit breaker
         safe_concurrency = max(1, int(settings.ANALYSIS_CONCURRENCY))
         semaphore = asyncio.Semaphore(safe_concurrency)
-        batch_size = settings.ANALYSIS_BATCH_SIZE
-        batches = [jobs[i : i + batch_size] for i in range(0, len(jobs), batch_size)]
+        jobs_metadata = [await self._build_analysis_job_metadata(job) for job in jobs]
+        batches = self._pack_analysis_batches(jobs, jobs_metadata)
 
-        async def analyze_batch(batch):
+        async def analyze_batch(batch_jobs, batch_metadata):
             async with semaphore:
                 status_data = get_status(profile_id)
                 if status_data.get("state") in STOP_STATES:
                     return []
 
-                jobs_metadata = []
-                for job in batch:
-                    desc_text = ""
-                    descs = getattr(job, "descriptions", [])
-                    if descs:
-                        desc_text = (
-                            descs[0].description
-                            if hasattr(descs[0], "description")
-                            else (
-                                descs[0].get("description", "")
-                                if isinstance(descs[0], dict)
-                                else ""
-                            )
-                        )
-
-                    education_info = []
-                    for occ in getattr(job, "occupations", []):
-                        if getattr(occ, "education_code", None):
-                            education_info.append(f"Edu: {occ.education_code}")
-
-                    company_obj = getattr(job, "company", None)
-                    company_name = company_obj.name if hasattr(company_obj, "name") else "Unknown"
-
-                    raw_norm = getattr(job, "_normalized_job_data", None) or {}
-                    normalized_data = {
-                        "domain": raw_norm.get("domain"),
-                        "role_type": raw_norm.get("role_type")
-                        or raw_norm.get("normalized_role_type"),
-                        "industry_sector": raw_norm.get("industry_sector")
-                        or raw_norm.get("normalized_industry_sector"),
-                        "seniority": raw_norm.get("seniority"),
-                        "qualification_level": raw_norm.get("qualification_level"),
-                        "required_skills": raw_norm.get("required_skills"),
-                        "preferred_skills": raw_norm.get("preferred_skills"),
-                        "experience_min_years": raw_norm.get("experience_min_years"),
-                        "experience_max_years": raw_norm.get("experience_max_years"),
-                        "required_languages": raw_norm.get("required_languages"),
-                        "entry_barrier": raw_norm.get("entry_barrier"),
-                        "career_changer_friendly": raw_norm.get("career_changer_friendly"),
-                        "hard_blockers": raw_norm.get("hard_blockers"),
-                        "education_levels": raw_norm.get("education_levels"),
-                        "key_requirements": raw_norm.get("key_requirements"),
-                        "physical_requirements": raw_norm.get("physical_requirements"),
-                        "soft_skills": raw_norm.get("soft_skills"),
-                    }
-                    jobs_metadata.append(
-                        {
-                            "title": getattr(job, "title", "Unknown"),
-                            "description": await llm_service._compress_description_if_needed(
-                                desc_text, settings.MAX_DESCRIPTION_CHARS
-                            ),
-                            "location": job.location.city
-                            if getattr(job, "location", None)
-                            else "Unknown",
-                            "workload": (
-                                f"{job.employment.workload_min}-{job.employment.workload_max}%"
-                                if getattr(job, "employment", None)
-                                else "Unknown"
-                            ),
-                            "languages": (
-                                [
-                                    f"{s.language_code} ({s.spoken_level})"
-                                    for s in getattr(job, "language_skills", [])
-                                ]
-                                if getattr(job, "language_skills", None)
-                                else []
-                            ),
-                            "education": ", ".join(education_info)
-                            if education_info
-                            else "None specified",
-                            "company": company_name,
-                            "normalized_data": normalized_data,
-                        }
-                    )
-
                 try:
-                    results = await llm_service.analyze_job_batch(jobs_metadata, profile_dict)
-                    return list(zip(batch, results))
+                    results = await llm_service.analyze_job_batch(batch_metadata, profile_dict)
+                    return list(zip(batch_jobs, results))
                 except CircuitOpenError as exc:
                     logger.warning(
                         "Analysis batch skipped for profile %s because match circuit is open: %s",
@@ -2668,7 +2686,9 @@ class SearchService:
                     logger.error(f"Analysis batch failed: {e}")
                     return []
 
-        tasks = [analyze_batch(b) for b in batches]
+        tasks = [
+            analyze_batch(batch_jobs, batch_metadata) for batch_jobs, batch_metadata in batches
+        ]
         results = await asyncio.gather(*tasks)
         return [item for batch_result in results for item in batch_result]
 

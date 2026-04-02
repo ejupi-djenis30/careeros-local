@@ -50,6 +50,13 @@ class SearchProfile(BaseModel, TimestampMixin):
     search_lock_state = Column(String, nullable=True)
     search_lock_acquired_at = Column(DateTime(timezone=True), nullable=True)
 
+    # Runtime search progress/state (cross-worker visible payload for frontend polling)
+    search_status_state = Column(String, nullable=True)
+    search_status_payload = Column(JSON, nullable=True)
+    search_status_started_at = Column(DateTime(timezone=True), nullable=True)
+    search_status_updated_at = Column(DateTime(timezone=True), nullable=True)
+    search_status_finished_at = Column(DateTime(timezone=True), nullable=True)
+
     # Advanced / Extensible preferences
     advanced_preferences = Column(JSON, nullable=True)
 

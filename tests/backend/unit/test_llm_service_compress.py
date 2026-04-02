@@ -1,6 +1,6 @@
-"""Tests for LLMService._compress_description_if_needed."""
+"""Tests for deterministic prompt compaction in LLMService."""
 
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 
@@ -15,7 +15,7 @@ def llm_service():
 
 
 async def test_compress_skips_when_under_limit(llm_service):
-    """Short descriptions are returned unchanged without any LLM call."""
+    """Short descriptions are returned unchanged without any provider call."""
     short = "This is a short description."
     with patch.object(llm_service, "_get_provider") as mock_get_provider:
         result = await llm_service._compress_description_if_needed(short, max_chars=1000)
@@ -29,64 +29,36 @@ async def test_compress_skips_on_empty_string(llm_service):
     assert result == ""
 
 
-async def test_compress_calls_llm_when_over_limit(llm_service):
-    """When description exceeds max_chars, the LLM compressor is called."""
-    long_desc = "A" * 9000  # exceeds 8000-char NORMALIZE limit
-    compressed_output = "Compressed: " + "A" * 100
+async def test_compress_prioritizes_requirement_fragments(llm_service):
+    long_desc = (
+        "Welcome to our company. We build amazing things for the future. " * 40
+        + "Must have German C1 and valid Swiss work permit. "
+        + "Forklift license required. "
+        + "Salary 70000 CHF. "
+    )
 
-    mock_provider = MagicMock()
-    mock_provider.generate_text_async = AsyncMock(return_value=compressed_output)
-    mock_provider.generate_text_async_with_timeout = mock_provider.generate_text_async
+    with patch.object(llm_service, "_get_provider") as mock_get_provider:
+        result = await llm_service._compress_description_if_needed(long_desc, max_chars=220)
 
-    with patch.object(llm_service, "_get_provider", return_value=mock_provider):
-        result = await llm_service._compress_description_if_needed(long_desc, max_chars=8000)
-
-    mock_provider.generate_text_async.assert_called_once()
-    assert result == compressed_output
-    # Original was 9000; compressed should be the LLM output
-    assert result != long_desc
-
-
-async def test_compress_falls_back_to_truncation_on_llm_failure(llm_service):
-    """If the LLM call raises, we fall back to hard truncation (no crash)."""
-    long_desc = "B" * 9000
-
-    mock_provider = MagicMock()
-    mock_provider.generate_text_async = AsyncMock(side_effect=RuntimeError("LLM timeout"))
-    mock_provider.generate_text_async_with_timeout = mock_provider.generate_text_async
-
-    with patch.object(llm_service, "_get_provider", return_value=mock_provider):
-        result = await llm_service._compress_description_if_needed(long_desc, max_chars=8000)
-
-    # Falls back to exact truncation
-    assert result == long_desc[:8000]
-    assert len(result) == 8000
+    assert "German C1" in result
+    assert "Swiss work permit" in result
+    assert "Forklift license" in result
+    mock_get_provider.assert_not_called()
 
 
-async def test_compress_falls_back_to_truncation_when_llm_returns_empty(llm_service):
-    """If the LLM returns an empty / nonsense response, truncation is used."""
-    long_desc = "C" * 9000
+async def test_compress_strips_html_and_respects_limit(llm_service):
+    long_desc = "<p>Required: English B2.</p><p>Experience: 3 years.</p>" + (" filler" * 500)
 
-    mock_provider = MagicMock()
-    mock_provider.generate_text_async = AsyncMock(return_value="  ")  # whitespace only
-    mock_provider.generate_text_async_with_timeout = mock_provider.generate_text_async
+    result = await llm_service._compress_description_if_needed(long_desc, max_chars=120)
 
-    with patch.object(llm_service, "_get_provider", return_value=mock_provider):
-        result = await llm_service._compress_description_if_needed(long_desc, max_chars=8000)
-
-    assert result == long_desc[:8000]
+    assert "<p>" not in result
+    assert "English B2" in result
+    assert len(result) <= 120
 
 
-async def test_compress_uses_compress_step_provider(llm_service):
-    """Verifies the 'compress' step is used so users can configure it separately."""
-    long_desc = "D" * 9000
-    mock_provider = MagicMock()
-    mock_provider.generate_text_async = AsyncMock(return_value="Compressed output " + "D" * 60)
-    mock_provider.generate_text_async_with_timeout = mock_provider.generate_text_async
+async def test_compress_keeps_short_text_without_trimming_keywords(llm_service):
+    long_desc = "Required: Python. Required: SQL. Required: Docker."
 
-    with patch.object(
-        llm_service, "_get_provider", return_value=mock_provider
-    ) as mock_get_provider:
-        await llm_service._compress_description_if_needed(long_desc, max_chars=8000)
+    result = await llm_service._compress_description_if_needed(long_desc, max_chars=200)
 
-    mock_get_provider.assert_called_once_with("compress")
+    assert result == long_desc

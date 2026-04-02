@@ -1,5 +1,6 @@
+import copy
 from datetime import datetime, timedelta, timezone
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 
 from sqlalchemy import and_, or_
 from sqlalchemy.orm import Session
@@ -9,6 +10,27 @@ from backend.repositories.base import BaseRepository
 
 SEARCH_LOCK_RESERVED = "reserved"
 SEARCH_LOCK_ACTIVE = "active"
+
+
+def _coerce_status_timestamp(value: Any) -> Optional[datetime]:
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        timestamp = value
+    else:
+        text = str(value).strip()
+        if not text:
+            return None
+        if text.endswith("Z"):
+            text = text[:-1] + "+00:00"
+        try:
+            timestamp = datetime.fromisoformat(text)
+        except (TypeError, ValueError):
+            return None
+
+    if timestamp.tzinfo is None:
+        return timestamp.replace(tzinfo=timezone.utc)
+    return timestamp
 
 
 class ProfileRepository(BaseRepository[SearchProfile]):
@@ -142,6 +164,128 @@ class ProfileRepository(BaseRepository[SearchProfile]):
             self.db.commit()
             self.db.expire_all()
             return True
+        except Exception:
+            self.db.rollback()
+            raise
+
+    def update_search_status(self, profile_id: int, status_payload: Dict[str, Any]) -> bool:
+        payload = copy.deepcopy(status_payload)
+        state = payload.get("state")
+        updated_at = _coerce_status_timestamp(payload.get("updated_at")) or datetime.now(
+            timezone.utc
+        )
+        started_at = _coerce_status_timestamp(payload.get("started_at"))
+        finished_at = _coerce_status_timestamp(payload.get("finished_at"))
+
+        try:
+            updated = (
+                self.db.query(self.model)
+                .filter(self.model.id == profile_id)
+                .update(
+                    {
+                        self.model.search_status_state: state,
+                        self.model.search_status_payload: payload,
+                        self.model.search_status_started_at: started_at,
+                        self.model.search_status_updated_at: updated_at,
+                        self.model.search_status_finished_at: finished_at,
+                    },
+                    synchronize_session=False,
+                )
+            )
+            if not updated:
+                self.db.rollback()
+                return False
+            self.db.commit()
+            self.db.expire_all()
+            return True
+        except Exception:
+            self.db.rollback()
+            raise
+
+    def clear_search_status(self, profile_id: int) -> bool:
+        try:
+            updated = (
+                self.db.query(self.model)
+                .filter(self.model.id == profile_id)
+                .update(
+                    {
+                        self.model.search_status_state: None,
+                        self.model.search_status_payload: None,
+                        self.model.search_status_started_at: None,
+                        self.model.search_status_updated_at: None,
+                        self.model.search_status_finished_at: None,
+                    },
+                    synchronize_session=False,
+                )
+            )
+            if not updated:
+                self.db.rollback()
+                return False
+            self.db.commit()
+            self.db.expire_all()
+            return True
+        except Exception:
+            self.db.rollback()
+            raise
+
+    def get_search_status(self, profile_id: int) -> Optional[Dict[str, Any]]:
+        profile = (
+            self.db.query(self.model.search_status_payload)
+            .filter(self.model.id == profile_id)
+            .first()
+        )
+        if not profile:
+            return None
+
+        payload = profile[0]
+        return copy.deepcopy(payload) if isinstance(payload, dict) else None
+
+    def get_search_statuses(self, user_id: Optional[int] = None) -> Dict[int, Dict[str, Any]]:
+        query = self.db.query(self.model.id, self.model.search_status_payload).filter(
+            self.model.search_status_state.isnot(None)
+        )
+        if user_id is not None:
+            query = query.filter(self.model.user_id == user_id)
+
+        statuses: Dict[int, Dict[str, Any]] = {}
+        for profile_id, payload in query.all():
+            if isinstance(payload, dict):
+                statuses[int(profile_id)] = copy.deepcopy(payload)
+        return statuses
+
+    def clear_stale_search_statuses(
+        self,
+        *,
+        max_age_seconds: float,
+        terminal_states: List[str],
+    ) -> int:
+        cutoff = datetime.now(timezone.utc) - timedelta(seconds=max_age_seconds)
+
+        try:
+            updated = (
+                self.db.query(self.model)
+                .filter(
+                    self.model.search_status_state.in_(terminal_states),
+                    self.model.search_status_finished_at.is_not(None),
+                    self.model.search_status_finished_at < cutoff,
+                )
+                .update(
+                    {
+                        self.model.search_status_state: None,
+                        self.model.search_status_payload: None,
+                        self.model.search_status_started_at: None,
+                        self.model.search_status_updated_at: None,
+                        self.model.search_status_finished_at: None,
+                    },
+                    synchronize_session=False,
+                )
+            )
+            if not updated:
+                self.db.rollback()
+                return 0
+            self.db.commit()
+            self.db.expire_all()
+            return int(updated)
         except Exception:
             self.db.rollback()
             raise

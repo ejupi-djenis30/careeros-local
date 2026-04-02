@@ -14,6 +14,7 @@ from typing import Any, Callable
 
 import httpx
 
+from backend.core.config import settings
 from backend.providers.jobs.adecco.filters import build_query_string, filter_jobs
 from backend.providers.jobs.adecco.transformer import transform_job_data
 from backend.providers.jobs.base import JobProvider as BaseJobProvider
@@ -22,6 +23,7 @@ from backend.providers.jobs.exceptions import (
     ResponseParseError,
 )
 from backend.providers.jobs.models import (
+    ContractType,
     JobSearchRequest,
     JobSearchResponse,
     ProviderCapabilities,
@@ -46,12 +48,15 @@ class AdeccoProvider(BaseJobProvider):
     # Lazily-initialized semaphore to ensure it binds to the running event loop,
     # not the import-time loop (which can differ in tests or worker restarts).
     _global_sem: asyncio.Semaphore | None = None
+    _global_sem_limit: int | None = None
 
     @classmethod
     def _get_semaphore(cls) -> asyncio.Semaphore:
         """Return the class-level semaphore, creating it on the current event loop if needed."""
-        if cls._global_sem is None:
-            cls._global_sem = asyncio.Semaphore(2)
+        desired_limit = max(1, int(getattr(settings, "ADECCO_DETAIL_CONCURRENCY", 4) or 4))
+        if cls._global_sem is None or cls._global_sem_limit != desired_limit:
+            cls._global_sem = asyncio.Semaphore(desired_limit)
+            cls._global_sem_limit = desired_limit
         return cls._global_sem
 
     def __init__(self, include_raw_data: bool = False):
@@ -136,6 +141,21 @@ class AdeccoProvider(BaseJobProvider):
         if self._client is None or self._client.is_closed:
             self._client = httpx.AsyncClient(timeout=30.0, headers=self._headers)
         return self._client
+
+    @staticmethod
+    def _should_prefilter_light_jobs(request: JobSearchRequest) -> bool:
+        return (
+            request.contract_type != ContractType.ANY
+            or request.workload_min > 0
+            or request.workload_max < 100
+            or bool(request.work_forms)
+        )
+
+    def _passes_light_filters(self, light_job: dict[str, Any], request: JobSearchRequest) -> bool:
+        preview_listing = transform_job_data(light_job, None, self.name, False)
+        if preview_listing is None:
+            return True
+        return bool(filter_jobs([preview_listing], request))
 
     async def _execute_with_retry(
         self,
@@ -251,6 +271,8 @@ class AdeccoProvider(BaseJobProvider):
 
             jobs_light = summary_data["jobs"]
             total_count = summary_data.get("pagination", {}).get("total", len(jobs_light))
+            should_prefilter = self._should_prefilter_light_jobs(request)
+            prefilter_skip = object()
 
             # 3. Fetch Full Details
             hydrated_jobs = []
@@ -260,11 +282,10 @@ class AdeccoProvider(BaseJobProvider):
                 if not job_id:
                     return None
 
-                lang_code = payload["languageCode"]
+                if should_prefilter and not self._passes_light_filters(light_job, request):
+                    return prefilter_skip
 
-                # Random delay BEFORE fetching details to spread out requests
-                # without wasting a concurrency slot in the global semaphore
-                await asyncio.sleep(random.uniform(1.0, 2.5))
+                lang_code = payload["languageCode"]
 
                 try:
                     detail_url = f"{API_BASE_URL}/job-description-details/{job_id}/adecco/CH/{lang_code}/job-details"
@@ -310,11 +331,18 @@ class AdeccoProvider(BaseJobProvider):
 
             tasks = [process_job(job) for job in jobs_light]
             results = await asyncio.gather(*tasks)
+            skipped_light_filtered = 0
 
             for job_listing in results:
+                if job_listing is prefilter_skip:
+                    skipped_light_filtered += 1
+                    continue
                 if job_listing:
                     job_listing.source = self.name
                     hydrated_jobs.append(job_listing)
+
+            if skipped_light_filtered:
+                total_count = max(0, total_count - skipped_light_filtered)
 
             # 4. Apply In-Memory Filters (Contract Type, Workload, etc.)
             successfully_hydrated_count = len(hydrated_jobs)
