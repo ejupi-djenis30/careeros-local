@@ -89,6 +89,8 @@ class ScrapedJob(BaseModel, TimestampMixin):
 
     # Keep track of where it originally came from (optional but useful)
     source_query = Column(String, nullable=True)
+    content_fingerprint = Column(String, nullable=True)
+    compact_description = Column(Text, nullable=True)
 
     # Relationships
     # No cascade delete-orphan: deleting a ScrapedJob must never silently remove

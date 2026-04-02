@@ -19,11 +19,16 @@ from backend.services.search.listing_utils import (
     extract_listing_workload_string,
     parse_listing_publication_date,
 )
+from backend.services.search.prompt_compaction import (
+    build_scraped_job_content_fingerprint,
+    compact_prompt_text,
+)
 from backend.services.utils import clean_html_tags, haversine_distance
 
 logger = logging.getLogger(__name__)
 
 NormalizeJobBatch = Callable[[List[Dict[str, Any]]], Awaitable[List[Dict[str, Any]]]]
+ResolveRuntimePolicy = Callable[[str], Dict[str, Any]]
 UpsertScrapedJob = Callable[[Any], tuple[ScrapedJob, bool]]
 GeocodeLocation = Callable[[str], Awaitable[Any]]
 IncrementStatusErrors = Callable[[int, int], int]
@@ -67,12 +72,15 @@ class SearchPipelinePersistence:
     def _pack_normalize_candidates(
         cls,
         candidates: Sequence[Dict[str, Any]],
+        *,
+        max_items: int,
+        prompt_budget: int,
     ) -> List[List[Dict[str, Any]]]:
         if not candidates:
             return []
 
-        max_items = max(1, int(settings.NORMALIZE_BATCH_SIZE or 1))
-        prompt_budget = max(1, int(settings.NORMALIZE_PROMPT_TARGET_CHARS or 1))
+        max_items = max(1, int(max_items or 1))
+        prompt_budget = max(1, int(prompt_budget or 1))
         packed: List[List[Dict[str, Any]]] = []
         current: List[Dict[str, Any]] = []
         current_chars = 0
@@ -123,6 +131,17 @@ class SearchPipelinePersistence:
         company_name = extract_company_name_fn(listing) or "Unknown"
         location_str = extract_listing_location_string_fn(listing)
         workload_str = extract_listing_workload_string_fn(listing)
+        compact_description_limit = int(
+            getattr(settings, "SEARCH_COMPACT_DESCRIPTION_CACHE_MAX_CHARS", 1400) or 1400
+        )
+        compact_description = compact_prompt_text(desc_text or "", compact_description_limit)
+        content_fingerprint = build_scraped_job_content_fingerprint(
+            title=clean_html_tags(getattr(listing, "title", "Unknown")),
+            company=company_name,
+            location=location_str,
+            workload=workload_str,
+            description=desc_text,
+        )
         pub_date = parse_listing_publication_date_fn(listing, platform, platform_id)
         normalized_bootstrap = bootstrap_normalized_job_data_fn(
             listing,
@@ -151,6 +170,8 @@ class SearchPipelinePersistence:
                 workload=workload_str or None,
                 publication_date=pub_date,
                 source_query=getattr(listing, "_source_query", "Unknown"),
+                content_fingerprint=content_fingerprint,
+                compact_description=compact_description or None,
                 **normalized_bootstrap,
             )
             created_ok = self.job_repo.create_scraped_job_nested(new_sj)
@@ -163,6 +184,10 @@ class SearchPipelinePersistence:
                     platform, platform_id
                 )
         else:
+            stored_fingerprint = getattr(existing_sj, "content_fingerprint", None)
+            if not isinstance(stored_fingerprint, str) or not stored_fingerprint.strip():
+                stored_fingerprint = None
+            content_changed = bool(stored_fingerprint and stored_fingerprint != content_fingerprint)
             refresh_fields = {
                 "description": clean_html_tags(desc_text) if desc_text else None,
                 "location": location_str or None,
@@ -171,10 +196,24 @@ class SearchPipelinePersistence:
                 "workload": workload_str or None,
                 "publication_date": pub_date,
                 "source_query": getattr(listing, "_source_query", None),
+                "content_fingerprint": content_fingerprint,
+                "compact_description": compact_description or None,
             }
-            for field, value in refresh_fields.items():
-                if getattr(existing_sj, field, None) is None and value is not None:
-                    setattr(existing_sj, field, value)
+            if content_changed:
+                for field, value in refresh_fields.items():
+                    if value is not None:
+                        setattr(existing_sj, field, value)
+                existing_sj.normalization_status = "provider_bootstrap"
+                existing_sj.normalized_at = None
+                existing_sj.normalization_source = None
+                existing_sj.normalization_confidence = None
+                metadata = existing_sj.normalized_metadata or {}
+                metadata["content_changed_at"] = datetime.now(timezone.utc).isoformat()
+                existing_sj.normalized_metadata = metadata
+            else:
+                for field, value in refresh_fields.items():
+                    if getattr(existing_sj, field, None) is None and value is not None:
+                        setattr(existing_sj, field, value)
 
             for field, value in normalized_bootstrap.items():
                 if getattr(existing_sj, field, None) is None and value is not None:
@@ -183,7 +222,18 @@ class SearchPipelinePersistence:
                 existing_sj.normalization_status = "provider_bootstrap"
 
         setattr(listing, "_scraped_job_id", existing_sj.id)
-        setattr(listing, "_normalized_job_data", existing_sj.normalized_job_data)
+        setattr(
+            listing,
+            "_normalized_job_data",
+            {}
+            if "content_changed" in locals() and content_changed
+            else existing_sj.normalized_job_data,
+        )
+        setattr(
+            listing,
+            "_compact_description",
+            compact_description or getattr(existing_sj, "compact_description", None),
+        )
         setattr(listing, "_catalog_conflict_recovered", recovered_catalog_conflict)
         setattr(listing, "_catalog_persisted", True)
         setattr(listing, "_catalog_persist_error", None)
@@ -242,6 +292,7 @@ class SearchPipelinePersistence:
         jobs: Sequence[Any],
         *,
         normalize_job_batch: NormalizeJobBatch,
+        resolve_runtime_policy: ResolveRuntimePolicy | None = None,
     ) -> int:
         if not jobs:
             return 0
@@ -267,13 +318,17 @@ class SearchPipelinePersistence:
                 setattr(listing, "_normalized_job_data", scraped_job.normalized_job_data)
                 continue
 
+            compact_description = getattr(scraped_job, "compact_description", None)
+            if not isinstance(compact_description, str) or not compact_description.strip():
+                compact_description = scraped_job.description
+
             candidates.append(
                 {
                     "title": scraped_job.title,
                     "company": scraped_job.company,
                     "location": scraped_job.location,
                     "workload": scraped_job.workload,
-                    "description": scraped_job.description,
+                    "description": compact_description,
                 }
             )
             candidate_records.append(scraped_job)
@@ -282,7 +337,16 @@ class SearchPipelinePersistence:
             return 0
 
         normalized_rows: List[Dict[str, Any]] = []
-        packed_chunks = self._pack_normalize_candidates(candidates)
+        runtime_policy = resolve_runtime_policy("normalize") if resolve_runtime_policy else {}
+        packed_chunks = self._pack_normalize_candidates(
+            candidates,
+            max_items=int(runtime_policy.get("batch_size") or settings.NORMALIZE_BATCH_SIZE or 1),
+            prompt_budget=int(
+                runtime_policy.get("prompt_budget_chars")
+                or settings.NORMALIZE_PROMPT_TARGET_CHARS
+                or 1
+            ),
+        )
         for chunk_index, chunk in enumerate(packed_chunks):
             chunk_start = sum(len(previous_chunk) for previous_chunk in packed_chunks[:chunk_index])
             try:

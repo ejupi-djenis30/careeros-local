@@ -1,6 +1,5 @@
 import asyncio
 import logging
-import re
 from typing import Any, Dict, List, Optional
 
 from tenacity import RetryError, retry, retry_if_exception, stop_after_attempt, wait_exponential
@@ -12,6 +11,7 @@ from backend.providers.llm.factory import (
     get_provider_for_step,
     get_provider_name_for_step,
 )
+from backend.services.search.prompt_compaction import compact_prompt_text
 from backend.services.search.query_contracts import (
     compute_plan_input_fingerprint,
     exact_query_fingerprint,
@@ -20,40 +20,8 @@ from backend.services.search.query_contracts import (
     normalize_search_item,
     sanitize_prompt_text,
 )
-from backend.services.utils import clean_html_tags
 
 logger = logging.getLogger(__name__)
-
-_PROMPT_FRAGMENT_SPLIT_RE = re.compile(r"(?:\n+|(?<=[.!?;:])\s+)")
-_PROMPT_BULLET_PREFIX_RE = re.compile(r"^(?:[-*•]|\d+[.)])\s*")
-_PROMPT_PRIORITY_KEYWORDS = (
-    "must",
-    "required",
-    "requirement",
-    "experience",
-    "language",
-    "english",
-    "german",
-    "deutsch",
-    "french",
-    "italian",
-    "cert",
-    "license",
-    "permit",
-    "skill",
-    "qualification",
-    "degree",
-    "education",
-    "salary",
-    "workload",
-    "remote",
-    "hybrid",
-    "on-site",
-    "onsite",
-    "responsibil",
-    "task",
-    "contract",
-)
 
 _G4F_TIMEOUT_OVERRIDE_ATTRS = {
     "plan": "LLM_CALL_TIMEOUT_PLAN_G4F",
@@ -127,85 +95,142 @@ class LLMService:
     def __init__(self):
         self._provider_cache: Dict[str, Any] = {}
 
-    @staticmethod
-    def _description_fragments(text: str) -> List[str]:
-        fragments: List[str] = []
-        for block in _PROMPT_FRAGMENT_SPLIT_RE.split(text):
-            fragment = sanitize_prompt_text(_PROMPT_BULLET_PREFIX_RE.sub("", block))
-            if len(fragment) < 16:
-                continue
-            fragments.append(fragment)
-        return fragments
+    _STEP_PROMPT_TARGET_ATTRS = {
+        "match": "MATCH_PROMPT_TARGET_CHARS",
+        "normalize": "NORMALIZE_PROMPT_TARGET_CHARS",
+    }
+    _STEP_DESCRIPTION_TARGET_ATTRS = {
+        "match": "MATCH_PROMPT_JOB_MAX_DESCRIPTION_CHARS",
+        "normalize": "NORMALIZE_PROMPT_JOB_MAX_DESCRIPTION_CHARS",
+    }
+    _STEP_BATCH_ATTRS = {
+        "match": "ANALYSIS_BATCH_SIZE",
+        "normalize": "NORMALIZE_BATCH_SIZE",
+    }
 
-    @staticmethod
-    def _description_fragment_score(fragment: str) -> int:
-        lowered = fragment.lower()
-        score = 0
-        for keyword in _PROMPT_PRIORITY_KEYWORDS:
-            if keyword in lowered:
-                score += 4
-        if any(char.isdigit() for char in fragment):
-            score += 2
-        if _PROMPT_BULLET_PREFIX_RE.match(fragment):
-            score += 1
-        if 24 <= len(fragment) <= 220:
-            score += 1
-        return score
+    def _resolve_step_context_window(self, step: str, provider: Any) -> int:
+        step_attr = f"LLM_{step.upper()}_CONTEXT_WINDOW"
+        step_window = int(getattr(settings, step_attr, 0) or 0)
+        if step_window > 0:
+            return step_window
 
-    @classmethod
-    def _compact_description(cls, description: str, max_chars: int) -> str:
-        cleaned = sanitize_prompt_text(
-            clean_html_tags(description), max_chars=settings.MAX_DESCRIPTION_CHARS
+        global_window = int(getattr(settings, "LLM_CONTEXT_WINDOW", 0) or 0)
+        if global_window > 0:
+            return global_window
+
+        provider_window = int(getattr(provider, "max_tokens", 0) or 0)
+        return provider_window if provider_window > 0 else 0
+
+    def get_step_runtime_policy(self, step: str) -> Dict[str, Any]:
+        provider = self._get_provider(step)
+        context_window = self._resolve_step_context_window(step, provider)
+        low_context_mode = str(getattr(settings, "SEARCH_LOW_CONTEXT_MODE", "auto") or "auto")
+        low_context_mode = low_context_mode.strip().lower()
+        threshold = int(
+            getattr(settings, "SEARCH_LOW_CONTEXT_CONTEXT_WINDOW_THRESHOLD", 6000) or 6000
         )
-        if not cleaned or len(cleaned) <= max_chars:
-            return cleaned
+        if low_context_mode in {"on", "always", "true", "1"}:
+            low_context = True
+        elif low_context_mode in {"off", "never", "false", "0"}:
+            low_context = False
+        else:
+            low_context = context_window > 0 and context_window <= threshold
 
-        fragments = cls._description_fragments(cleaned)
-        if not fragments:
-            return cleaned[:max_chars].rstrip()
+        batch_attr = self._STEP_BATCH_ATTRS.get(step)
+        prompt_attr = self._STEP_PROMPT_TARGET_ATTRS.get(step)
+        description_attr = self._STEP_DESCRIPTION_TARGET_ATTRS.get(step)
 
-        max_fragments = max(4, int(getattr(settings, "PROMPT_COMPACTION_MAX_FRAGMENTS", 12) or 12))
-        ranked = sorted(
-            enumerate(fragments),
-            key=lambda item: (-cls._description_fragment_score(item[1]), item[0]),
+        batch_size = int(getattr(settings, batch_attr, 1) or 1) if batch_attr else 1
+        prompt_budget_chars = int(getattr(settings, prompt_attr, 0) or 0) if prompt_attr else 0
+        description_limit_chars = (
+            int(getattr(settings, description_attr, 0) or 0) if description_attr else 0
         )
+        legacy_description_cap = int(getattr(settings, "MAX_DESCRIPTION_CHARS", 0) or 0)
+        if description_limit_chars > 0 and legacy_description_cap > 0:
+            description_limit_chars = min(description_limit_chars, legacy_description_cap)
 
-        selected: List[str] = []
-        selected_keys: set[str] = set()
-        used_chars = 0
+        if step == "match" and low_context:
+            batch_size = min(
+                batch_size,
+                int(getattr(settings, "SEARCH_LOW_CONTEXT_ANALYSIS_BATCH_SIZE", 1) or 1),
+            )
+            prompt_budget_chars = min(
+                prompt_budget_chars,
+                int(
+                    getattr(settings, "SEARCH_LOW_CONTEXT_MATCH_PROMPT_TARGET_CHARS", 3600) or 3600
+                ),
+            )
+            description_limit_chars = min(
+                description_limit_chars,
+                int(
+                    getattr(settings, "SEARCH_LOW_CONTEXT_MATCH_JOB_MAX_DESCRIPTION_CHARS", 900)
+                    or 900
+                ),
+            )
+        elif step == "normalize" and low_context:
+            batch_size = min(
+                batch_size,
+                int(getattr(settings, "SEARCH_LOW_CONTEXT_NORMALIZE_BATCH_SIZE", 2) or 2),
+            )
+            prompt_budget_chars = min(
+                prompt_budget_chars,
+                int(
+                    getattr(settings, "SEARCH_LOW_CONTEXT_NORMALIZE_PROMPT_TARGET_CHARS", 4200)
+                    or 4200
+                ),
+            )
+            description_limit_chars = min(
+                description_limit_chars,
+                int(
+                    getattr(
+                        settings,
+                        "SEARCH_LOW_CONTEXT_NORMALIZE_JOB_MAX_DESCRIPTION_CHARS",
+                        1200,
+                    )
+                    or 1200
+                ),
+            )
 
-        def try_add(fragment: str) -> bool:
-            nonlocal used_chars
-            normalized = fragment.lower()
-            if normalized in selected_keys:
-                return False
-            extra = len(fragment) + (1 if selected else 0)
-            if selected and used_chars + extra > max_chars:
-                return False
-            if not selected and len(fragment) > max_chars:
-                fragment = fragment[:max_chars].rstrip()
-                extra = len(fragment)
-            selected.append(fragment)
-            selected_keys.add(normalized)
-            used_chars += extra
-            return True
+        if context_window > 0 and prompt_budget_chars > 0:
+            chars_per_token = float(
+                getattr(settings, "LLM_PROMPT_CHARS_PER_TOKEN_ESTIMATE", 3.6) or 3.6
+            )
+            ratio = float(
+                getattr(
+                    settings,
+                    "SEARCH_LOW_CONTEXT_PROMPT_INPUT_RATIO"
+                    if low_context
+                    else "SEARCH_STANDARD_PROMPT_INPUT_RATIO",
+                    0.28 if low_context else 0.42,
+                )
+                or (0.28 if low_context else 0.42)
+            )
+            derived_prompt_budget = max(800, int(context_window * chars_per_token * ratio))
+            prompt_budget_chars = min(prompt_budget_chars, derived_prompt_budget)
 
-        for _, fragment in ranked:
-            if len(selected) >= max_fragments:
-                break
-            if cls._description_fragment_score(fragment) <= 0:
-                continue
-            try_add(fragment)
+            if description_limit_chars > 0:
+                description_ratio = 0.22 if step == "match" else 0.28
+                derived_description_limit = max(
+                    300 if step == "match" else 400,
+                    int(prompt_budget_chars * description_ratio),
+                )
+                description_limit_chars = min(description_limit_chars, derived_description_limit)
 
-        for fragment in fragments:
-            if len(selected) >= max_fragments or used_chars >= max_chars:
-                break
-            try_add(fragment)
+            if batch_size > 1 and description_limit_chars > 0:
+                per_item_cost = description_limit_chars + (900 if step == "match" else 700)
+                derived_batch_size = max(1, prompt_budget_chars // max(1, per_item_cost))
+                batch_size = min(batch_size, derived_batch_size)
 
-        if not selected:
-            return cleaned[:max_chars].rstrip()
-
-        return "\n".join(selected)[:max_chars].rstrip()
+        return {
+            "provider": provider,
+            "context_window": context_window,
+            "low_context": low_context,
+            "batch_size": max(1, batch_size),
+            "prompt_budget_chars": max(1, prompt_budget_chars) if prompt_budget_chars else 0,
+            "description_limit_chars": max(1, description_limit_chars)
+            if description_limit_chars
+            else 0,
+        }
 
     def _provider_cache_key(self, step: str, *, fallback: bool = False) -> str:
         return f"{step}::fallback" if fallback else step
@@ -1072,6 +1097,7 @@ Return ONLY pure JSON with a 'searches' list. Example:
         profile: Dict[str, Any],
     ) -> List[Dict[str, Any]]:
         provider = self._get_provider("match")
+        runtime_policy = self.get_step_runtime_policy("match")
 
         system_prompt = (
             "You are a strict, evidence-driven career coach AI. "
@@ -1084,10 +1110,7 @@ Return ONLY pure JSON with a 'searches' list. Example:
 
         import asyncio as _asyncio
 
-        match_desc_limit = max(
-            400,
-            int(getattr(settings, "MATCH_PROMPT_JOB_MAX_DESCRIPTION_CHARS", 1800) or 1800),
-        )
+        match_desc_limit = max(400, int(runtime_policy.get("description_limit_chars") or 1800))
         descriptions = await _asyncio.gather(
             *[
                 self._compress_description_if_needed(job.get("description") or "", match_desc_limit)
@@ -1132,10 +1155,26 @@ Return ONLY pure JSON with a 'searches' list. Example:
 
         strategy = profile.get("search_strategy")
         strategy_block = f"\n- Extra AI Instructions / Preferences: {strategy}" if strategy else ""
+        compact_profile_snapshot = sanitize_prompt_text(
+            profile.get("match_profile_snapshot") or "",
+            max_chars=(
+                int(
+                    getattr(
+                        settings,
+                        "SEARCH_LOW_CONTEXT_PROFILE_SNAPSHOT_MAX_CHARS",
+                        700,
+                    )
+                    or 700
+                )
+                if runtime_policy.get("low_context")
+                else int(getattr(settings, "SEARCH_PROFILE_SNAPSHOT_MAX_CHARS", 1000) or 1000)
+            ),
+        )
 
         # Build structured profile context from normalized data
         profile_norm = profile.get("profile_normalization") or {}
         candidate_structured = ""
+        intent_structured = ""
         if profile_norm:
             candidate_structured = (
                 f"\n- CV Domain: {profile_norm.get('domain')} | CV Role Type: {profile_norm.get('role_type')}"
@@ -1162,7 +1201,10 @@ Return ONLY pure JSON with a 'searches' list. Example:
                 f"\n- Flexibility: domain={flexibility.get('domain')}, seniority={flexibility.get('seniority')}"
                 f", qualification={flexibility.get('qualification')}, location={flexibility.get('location')}"
             )
-        else:
+
+        if compact_profile_snapshot:
+            strategy_block = ""
+            candidate_structured = ""
             intent_structured = ""
 
         # ── Phase 2: Behavioural preference injection ─────────────────────────
@@ -1221,7 +1263,7 @@ Return ONLY pure JSON with a 'searches' list. Example:
         except Exception:
             preference_block = ""  # Never let preference injection break the prompt
 
-        candidate_context = sanitize_prompt_text(
+        candidate_context = compact_profile_snapshot or sanitize_prompt_text(
             profile.get("cv_summary") or profile.get("cv_content") or "",
             max_chars=1400,
         )
@@ -1489,7 +1531,7 @@ Return ONLY JSON with a "results" array, one entry per job, IN ORDER:
         requirement-heavy fragments locally so prompt size stays predictable even
         for small-context models and no extra tokens are spent on compression.
         """
-        return self._compact_description(description, max_chars)
+        return compact_prompt_text(description, max_chars)
 
     @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=5))
     async def normalize_job_batch(self, jobs: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
@@ -1500,9 +1542,10 @@ Return ONLY JSON with a "results" array, one entry per job, IN ORDER:
         import asyncio as _asyncio
 
         provider = self._get_provider("normalize")
+        runtime_policy = self.get_step_runtime_policy("normalize")
         normalize_desc_limit = max(
             500,
-            int(getattr(settings, "NORMALIZE_PROMPT_JOB_MAX_DESCRIPTION_CHARS", 2400) or 2400),
+            int(runtime_policy.get("description_limit_chars") or 2400),
         )
         descriptions = await _asyncio.gather(
             *[

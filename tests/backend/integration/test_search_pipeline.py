@@ -282,12 +282,16 @@ async def test_run_search_pipeline_persists_catalog_filters_and_refines_jobs(
     persisted_profile = db_session.get(SearchProfile, profile.id)
     assert persisted_profile.cached_cv_summary == "Condensed backend CV summary"
     assert persisted_profile.cached_queries is not None
+    assert persisted_profile.cached_profile_snapshot is not None
+    assert persisted_profile.cached_profile_snapshot_fingerprint is not None
     assert persisted_profile.profile_normalization_status == "normalized"
 
     scraped_jobs = db_session.query(ScrapedJob).order_by(ScrapedJob.platform_job_id.asc()).all()
     assert [job.platform_job_id for job in scraped_jobs] == ["dev-1", "fin-1"]
     assert [job.normalization_status for job in scraped_jobs] == ["normalized", "normalized"]
     assert [job.normalized_domain for job in scraped_jobs] == ["it", "finance"]
+    assert all(job.content_fingerprint for job in scraped_jobs)
+    assert all(job.compact_description for job in scraped_jobs)
 
     saved_jobs = db_session.query(Job).all()
     assert len(saved_jobs) == 1

@@ -82,6 +82,9 @@ class Settings(BaseSettings):
     LLM_PROVIDER: str = "groq"
     LLM_API_KEY: str = ""
     LLM_BASE_URL: str = ""
+    # Optional effective context-window hint used by adaptive batching.
+    # When 0, the runtime falls back to provider.max_tokens as the best signal.
+    LLM_CONTEXT_WINDOW: int = 0
     # Default model: moonshotai/kimi-k2-instruct-0905 is available on Groq and offers
     # strong reasoning at a low cost. Override via LLM_MODEL env var.
     LLM_MODEL: str = "moonshotai/kimi-k2-instruct-0905"
@@ -137,6 +140,7 @@ class Settings(BaseSettings):
     LLM_PLAN_MODEL: str = ""
     LLM_PLAN_API_KEY: str = ""
     LLM_PLAN_BASE_URL: str = ""
+    LLM_PLAN_CONTEXT_WINDOW: int = 0
     LLM_PLAN_TEMPERATURE: Optional[float] = None
     LLM_PLAN_TOP_P: Optional[float] = None
     LLM_PLAN_MAX_TOKENS: Optional[int] = None
@@ -148,6 +152,7 @@ class Settings(BaseSettings):
     LLM_MATCH_MODEL: str = ""
     LLM_MATCH_API_KEY: str = ""
     LLM_MATCH_BASE_URL: str = ""
+    LLM_MATCH_CONTEXT_WINDOW: int = 0
     LLM_MATCH_TEMPERATURE: Optional[float] = None
     LLM_MATCH_TOP_P: Optional[float] = None
     LLM_MATCH_MAX_TOKENS: Optional[int] = None
@@ -159,6 +164,7 @@ class Settings(BaseSettings):
     LLM_NORMALIZE_MODEL: str = ""
     LLM_NORMALIZE_API_KEY: str = ""
     LLM_NORMALIZE_BASE_URL: str = ""
+    LLM_NORMALIZE_CONTEXT_WINDOW: int = 0
     LLM_NORMALIZE_TEMPERATURE: Optional[float] = None
     LLM_NORMALIZE_TOP_P: Optional[float] = None
     LLM_NORMALIZE_MAX_TOKENS: Optional[int] = None
@@ -170,6 +176,7 @@ class Settings(BaseSettings):
     LLM_NORMALIZE_PROFILE_MODEL: str = ""
     LLM_NORMALIZE_PROFILE_API_KEY: str = ""
     LLM_NORMALIZE_PROFILE_BASE_URL: str = ""
+    LLM_NORMALIZE_PROFILE_CONTEXT_WINDOW: int = 0
     LLM_NORMALIZE_PROFILE_TEMPERATURE: Optional[float] = None
     LLM_NORMALIZE_PROFILE_TOP_P: Optional[float] = None
     LLM_NORMALIZE_PROFILE_MAX_TOKENS: Optional[int] = None
@@ -205,6 +212,24 @@ class Settings(BaseSettings):
     NORMALIZE_PROMPT_JOB_MAX_DESCRIPTION_CHARS: int = 2400
     # Max number of high-signal fragments preserved when compacting long job text.
     PROMPT_COMPACTION_MAX_FRAGMENTS: int = 12
+    # Persisted deterministic compact excerpt reused across NORMALIZE and MATCH.
+    SEARCH_COMPACT_DESCRIPTION_CACHE_MAX_CHARS: int = 1400
+    # Persisted deterministic compact profile snapshot reused by MATCH.
+    SEARCH_PROFILE_SNAPSHOT_MAX_CHARS: int = 1000
+
+    # Low-context execution policy for small-window models.
+    SEARCH_LOW_CONTEXT_MODE: str = "auto"
+    SEARCH_LOW_CONTEXT_CONTEXT_WINDOW_THRESHOLD: int = 6000
+    LLM_PROMPT_CHARS_PER_TOKEN_ESTIMATE: float = 3.6
+    SEARCH_STANDARD_PROMPT_INPUT_RATIO: float = 0.42
+    SEARCH_LOW_CONTEXT_PROMPT_INPUT_RATIO: float = 0.28
+    SEARCH_LOW_CONTEXT_ANALYSIS_BATCH_SIZE: int = 1
+    SEARCH_LOW_CONTEXT_NORMALIZE_BATCH_SIZE: int = 2
+    SEARCH_LOW_CONTEXT_MATCH_PROMPT_TARGET_CHARS: int = 3600
+    SEARCH_LOW_CONTEXT_NORMALIZE_PROMPT_TARGET_CHARS: int = 4200
+    SEARCH_LOW_CONTEXT_MATCH_JOB_MAX_DESCRIPTION_CHARS: int = 900
+    SEARCH_LOW_CONTEXT_NORMALIZE_JOB_MAX_DESCRIPTION_CHARS: int = 1200
+    SEARCH_LOW_CONTEXT_PROFILE_SNAPSHOT_MAX_CHARS: int = 700
 
     # Adecco source tuning
     ADECCO_DETAIL_CONCURRENCY: int = 4

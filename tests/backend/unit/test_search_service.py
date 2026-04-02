@@ -44,6 +44,21 @@ def test_get_compatible_providers_no_match():
     assert result == []
 
 
+def test_profile_norm_fingerprint_ignores_whitespace():
+    first = SearchService._compute_profile_norm_fingerprint(
+        "Python   FastAPI\n\nSQL",
+        "Backend engineer",
+        "Focus   remote roles",
+    )
+    second = SearchService._compute_profile_norm_fingerprint(
+        "Python FastAPI SQL",
+        "Backend engineer",
+        "Focus remote roles",
+    )
+
+    assert first == second
+
+
 # ─── SearchService Tests ───
 
 

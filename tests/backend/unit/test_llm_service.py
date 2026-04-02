@@ -15,6 +15,7 @@ def mock_provider():
     provider.generate_text_async = AsyncMock()
     provider.generate_text_async_with_timeout = provider.generate_text_async
     provider.model_id = "groq/test-model"
+    provider.max_tokens = 16384
     # Alias: generate_json_async_with_timeout routes through generate_json_async in tests
     provider.generate_json_async_with_timeout = provider.generate_json_async
     return provider
@@ -28,6 +29,7 @@ def fallback_provider():
     provider.generate_text_async_with_timeout = provider.generate_text_async
     provider.generate_json_async_with_timeout = provider.generate_json_async
     provider.model_id = "groq/fallback-model"
+    provider.max_tokens = 16384
     return provider
 
 
@@ -358,6 +360,35 @@ async def test_summarize_cv_success(mock_provider):
         assert "HR analyst" in sys_prompt
         assert "Lorem ipsum" in user_prompt
         assert "Education" in user_prompt
+
+
+def test_get_step_runtime_policy_clamps_match_budget_for_low_context(mock_provider):
+    mock_provider.max_tokens = 4000
+
+    with patch("backend.services.llm_service.get_provider_for_step", return_value=mock_provider):
+        service = LLMService()
+        policy = service.get_step_runtime_policy("match")
+
+    assert policy["low_context"] is True
+    assert policy["batch_size"] == settings.SEARCH_LOW_CONTEXT_ANALYSIS_BATCH_SIZE
+    assert policy["prompt_budget_chars"] <= settings.SEARCH_LOW_CONTEXT_MATCH_PROMPT_TARGET_CHARS
+    assert (
+        policy["description_limit_chars"]
+        <= settings.SEARCH_LOW_CONTEXT_MATCH_JOB_MAX_DESCRIPTION_CHARS
+    )
+
+
+def test_get_step_runtime_policy_respects_legacy_description_cap(mock_provider):
+    mock_provider.max_tokens = 16384
+
+    with (
+        patch("backend.services.llm_service.settings.MAX_DESCRIPTION_CHARS", 100),
+        patch("backend.services.llm_service.get_provider_for_step", return_value=mock_provider),
+    ):
+        service = LLMService()
+        policy = service.get_step_runtime_policy("match")
+
+    assert policy["description_limit_chars"] == 100
 
 
 @pytest.mark.asyncio

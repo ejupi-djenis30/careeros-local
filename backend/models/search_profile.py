@@ -67,6 +67,8 @@ class SearchProfile(BaseModel, TimestampMixin):
     # Caching layer (Feature 3): saves CV summary and generated queries between runs
     cached_cv_summary = Column(Text, nullable=True)
     cached_queries = Column(JSON, nullable=True)
+    cached_profile_snapshot = Column(Text, nullable=True)
+    cached_profile_snapshot_fingerprint = Column(String, nullable=True)
 
     # ── Normalized user / candidate profile (mirrors ScrapedJob normalization) ──
     # Extracted once per profile (CV + role_description) via LLM, cached until inputs change.

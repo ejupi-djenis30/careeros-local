@@ -1,7 +1,5 @@
 import asyncio
-import hashlib
 import inspect
-import json
 import logging
 import re
 from datetime import datetime, timezone
@@ -36,6 +34,10 @@ from backend.services.search.listing_utils import (
 )
 from backend.services.search.matching_engine import SearchNormalizationFilterEngine
 from backend.services.search.persistence import SearchPipelinePersistence
+from backend.services.search.prompt_compaction import (
+    build_profile_match_snapshot,
+    build_profile_normalization_fingerprint,
+)
 from backend.services.search.search_validator import build_search_request
 from backend.services.utils import (
     geocode_location,
@@ -220,6 +222,7 @@ class SearchService:
             profile_id,
             jobs,
             normalize_job_batch=llm_service.normalize_job_batch,
+            resolve_runtime_policy=llm_service.get_step_runtime_policy,
         )
 
         if upgraded > 0:
@@ -333,20 +336,18 @@ class SearchService:
             "soft_skills": raw_norm.get("soft_skills"),
         }
 
-        description_cap = max(
-            1,
-            min(
-                int(getattr(settings, "MAX_DESCRIPTION_CHARS", 64000) or 64000),
-                int(getattr(settings, "MATCH_PROMPT_JOB_MAX_DESCRIPTION_CHARS", 1800) or 1800),
-            ),
-        )
+        runtime_policy = llm_service.get_step_runtime_policy("match")
+        description_cap = max(1, int(runtime_policy.get("description_limit_chars") or 1800))
+        compact_description = getattr(job, "_compact_description", None)
+        if not isinstance(compact_description, str) or not compact_description.strip():
+            compact_description = await llm_service._compress_description_if_needed(
+                desc_text,
+                description_cap,
+            )
 
         return {
             "title": getattr(job, "title", "Unknown"),
-            "description": await llm_service._compress_description_if_needed(
-                desc_text,
-                description_cap,
-            ),
+            "description": compact_description,
             "location": job.location.city if getattr(job, "location", None) else "Unknown",
             "workload": (
                 f"{job.employment.workload_min}-{job.employment.workload_max}%"
@@ -370,10 +371,15 @@ class SearchService:
         self, jobs: List[Any], jobs_metadata: List[Dict[str, Any]]
     ) -> List[Any]:
         paired_entries = list(zip(jobs, jobs_metadata))
+        runtime_policy = llm_service.get_step_runtime_policy("match")
         packed = self._pack_entries_by_prompt_budget(
             paired_entries,
-            max_items=int(settings.ANALYSIS_BATCH_SIZE or 1),
-            prompt_char_budget=int(getattr(settings, "MATCH_PROMPT_TARGET_CHARS", 7000) or 7000),
+            max_items=int(runtime_policy.get("batch_size") or settings.ANALYSIS_BATCH_SIZE or 1),
+            prompt_char_budget=int(
+                runtime_policy.get("prompt_budget_chars")
+                or getattr(settings, "MATCH_PROMPT_TARGET_CHARS", 7000)
+                or 7000
+            ),
             estimate_chars=lambda entry: self._estimate_analysis_metadata_chars(entry[1]),
         )
         return [
@@ -386,14 +392,59 @@ class SearchService:
     def _compute_profile_norm_fingerprint(
         cv_content: str, role_description: str, search_strategy: str
     ) -> str:
-        payload = {
-            "cv": str(cv_content or "")[:12000],
-            "role": str(role_description or "")[:4000],
-            "strategy": str(search_strategy or "")[:1200],
-        }
-        return hashlib.sha256(
-            json.dumps(payload, sort_keys=True, ensure_ascii=True).encode("utf-8")
-        ).hexdigest()
+        return build_profile_normalization_fingerprint(
+            cv_content,
+            role_description,
+            search_strategy,
+        )
+
+    def _ensure_match_profile_snapshot(
+        self,
+        profile_id: int,
+        profile: SearchProfile,
+        profile_dict: dict,
+        profile_normalization: dict,
+        *,
+        force: bool = False,
+    ) -> str:
+        cv_content = str(profile_dict.get("cv_content") or "")
+        role_description = str(profile_dict.get("role_description") or "")
+        search_strategy = str(profile_dict.get("search_strategy") or "")
+        cv_summary = str(profile_dict.get("cv_summary") or "")
+        snapshot_fingerprint = self._compute_profile_norm_fingerprint(
+            cv_content,
+            role_description,
+            search_strategy,
+        )
+        cached_snapshot = getattr(profile, "cached_profile_snapshot", None)
+        cached_fingerprint = getattr(profile, "cached_profile_snapshot_fingerprint", None)
+
+        if cached_snapshot and cached_fingerprint == snapshot_fingerprint and not force:
+            add_log(profile_id, "✓ Using cached compact MATCH profile snapshot")
+            return cached_snapshot
+
+        runtime_policy = llm_service.get_step_runtime_policy("match")
+        snapshot_max_chars = (
+            int(getattr(settings, "SEARCH_LOW_CONTEXT_PROFILE_SNAPSHOT_MAX_CHARS", 700) or 700)
+            if runtime_policy.get("low_context")
+            else int(getattr(settings, "SEARCH_PROFILE_SNAPSHOT_MAX_CHARS", 1000) or 1000)
+        )
+        snapshot = build_profile_match_snapshot(
+            role_description=role_description,
+            search_strategy=search_strategy,
+            cv_summary=cv_summary,
+            profile_normalization=profile_normalization,
+            max_chars=snapshot_max_chars,
+        )
+        if snapshot:
+            self.profile_repo.update(
+                profile,
+                {
+                    "cached_profile_snapshot": snapshot,
+                    "cached_profile_snapshot_fingerprint": snapshot_fingerprint,
+                },
+            )
+        return snapshot
 
     async def _normalize_user_profile(
         self, profile_id: int, profile: SearchProfile, profile_dict: dict, force: bool = False
@@ -1089,6 +1140,13 @@ class SearchService:
             profile_id, profile, profile_dict, force=force_regen_cv
         )
         profile_dict["profile_normalization"] = profile_normalization
+        profile_dict["match_profile_snapshot"] = self._ensure_match_profile_snapshot(
+            profile_id,
+            profile,
+            profile_dict,
+            profile_normalization,
+            force=force_regen_cv,
+        )
 
         # ── Step 1.6: Load user preference signals for prescore gating ──
         try:
