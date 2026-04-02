@@ -301,7 +301,7 @@ async def test_g4f_provider_generate_text_stream_async_falls_back_to_non_streami
 
 
 @pytest.mark.asyncio
-async def test_g4f_provider_generate_text_async_with_timeout_retries_with_fixed_attempt_cap(
+async def test_g4f_provider_generate_text_async_with_timeout_respects_budget_override(
     monkeypatch, tmp_path
 ):
     _install_fake_g4f(monkeypatch)
@@ -337,11 +337,13 @@ async def test_g4f_provider_generate_text_async_with_timeout_retries_with_fixed_
         "System",
         "User",
         step="plan",
-        timeout_override=0.1,
+        timeout_override=2.5,
     )
 
     assert result == "Recovered response"
-    assert timeouts == [3.0, 3.0]
+    assert len(timeouts) == 2
+    assert timeouts[0] == pytest.approx(2.0, abs=0.05)
+    assert all(0 < timeout <= 2.0 + 0.05 for timeout in timeouts)
     assert provider.async_client.chat.completions.create.call_count == 2
     sleep_mock.assert_awaited_once()
 
@@ -457,3 +459,61 @@ async def test_g4f_provider_waits_rate_limit_wait_seconds_on_rate_limit(
     assert provider.async_client.chat.completions.create.call_count == 2
     # Must have slept the full rate-limit wait, not a short backoff
     sleep_mock.assert_awaited_once_with(7200.0)
+
+
+@pytest.mark.asyncio
+async def test_g4f_provider_rate_limit_backoff_honors_timeout_budget(monkeypatch, tmp_path):
+    _install_fake_g4f(monkeypatch)
+    provider = G4FProvider(
+        model="",
+        providers_list=["DeepInfra"],
+        cookies_dir=str(tmp_path),
+        max_request_attempts=3,
+        request_timeout_cap_seconds=20.0,
+        timeout_buffer_seconds=0.5,
+        rate_limit_wait_seconds=7200.0,
+    )
+    provider.async_client.chat.completions.create.side_effect = RuntimeError(
+        "429: Too Many Requests"
+    )
+
+    sleep_mock = AsyncMock()
+    monkeypatch.setattr("backend.providers.llm.g4f_provider.asyncio.sleep", sleep_mock)
+
+    with pytest.raises(TimeoutError, match="retry backoff"):
+        await provider.generate_text_async_with_timeout(
+            "System",
+            "User",
+            step="match",
+            timeout_override=5.0,
+        )
+
+    assert provider.async_client.chat.completions.create.call_count == 1
+    sleep_mock.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_g4f_provider_json_timeout_budget_is_shared_with_response_format_fallback(
+    monkeypatch, tmp_path
+):
+    _install_fake_g4f(monkeypatch)
+    provider = G4FProvider(model="", providers_list=["DeepInfra"], cookies_dir=str(tmp_path))
+    provider._create_completion_async = AsyncMock(
+        side_effect=[
+            RuntimeError("response_format unsupported"),
+            _make_response('{"hello": "world"}'),
+        ]
+    )
+
+    result = await provider.generate_json_async_with_timeout(
+        "System",
+        "User",
+        step="normalize",
+        timeout_override=12.0,
+    )
+
+    assert result == {"hello": "world"}
+    assert provider._create_completion_async.await_count == 2
+    first_call, second_call = provider._create_completion_async.await_args_list
+    assert first_call.kwargs["call_deadline"] is not None
+    assert second_call.kwargs["call_deadline"] == first_call.kwargs["call_deadline"]

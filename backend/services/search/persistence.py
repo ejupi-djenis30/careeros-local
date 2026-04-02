@@ -53,6 +53,48 @@ class SearchPipelinePersistence:
         self.job_repo = job_repo
 
     @staticmethod
+    def _estimate_normalize_candidate_chars(candidate: Dict[str, Any]) -> int:
+        return (
+            len(str(candidate.get("title") or ""))
+            + len(str(candidate.get("company") or ""))
+            + len(str(candidate.get("location") or ""))
+            + len(str(candidate.get("workload") or ""))
+            + len(str(candidate.get("description") or ""))
+            + 64
+        )
+
+    @classmethod
+    def _pack_normalize_candidates(
+        cls,
+        candidates: Sequence[Dict[str, Any]],
+    ) -> List[List[Dict[str, Any]]]:
+        if not candidates:
+            return []
+
+        max_items = max(1, int(settings.NORMALIZE_BATCH_SIZE or 1))
+        prompt_budget = max(1, int(settings.NORMALIZE_PROMPT_TARGET_CHARS or 1))
+        packed: List[List[Dict[str, Any]]] = []
+        current: List[Dict[str, Any]] = []
+        current_chars = 0
+
+        for candidate in candidates:
+            candidate_chars = max(1, cls._estimate_normalize_candidate_chars(candidate))
+            if current and (
+                len(current) >= max_items or current_chars + candidate_chars > prompt_budget
+            ):
+                packed.append(current)
+                current = []
+                current_chars = 0
+
+            current.append(candidate)
+            current_chars += candidate_chars
+
+        if current:
+            packed.append(current)
+
+        return packed
+
+    @staticmethod
     def _listing_application_field(listing: Any, field_name: str) -> Any:
         application = getattr(listing, "application", None)
         if application is None:
@@ -239,10 +281,10 @@ class SearchPipelinePersistence:
         if not candidates:
             return 0
 
-        batch_size = max(1, settings.NORMALIZE_BATCH_SIZE)
         normalized_rows: List[Dict[str, Any]] = []
-        for chunk_start in range(0, len(candidates), batch_size):
-            chunk = candidates[chunk_start : chunk_start + batch_size]
+        packed_chunks = self._pack_normalize_candidates(candidates)
+        for chunk_index, chunk in enumerate(packed_chunks):
+            chunk_start = sum(len(previous_chunk) for previous_chunk in packed_chunks[:chunk_index])
             try:
                 chunk_result = await normalize_job_batch(chunk)
                 normalized_rows.extend(chunk_result)

@@ -192,8 +192,22 @@ class Settings(BaseSettings):
     SEARCH_DEGRADED_PLAN_MAX_KEYWORDS: int = 2
     ANALYSIS_CONCURRENCY: int = 5
     ANALYSIS_BATCH_SIZE: int = 5
+    # Soft prompt-size target for MATCH batches. The final prompt also includes
+    # long instructions and profile context, so keep this conservative.
+    MATCH_PROMPT_TARGET_CHARS: int = 7000
+    # Max chars of compacted job description evidence sent per job in MATCH.
+    MATCH_PROMPT_JOB_MAX_DESCRIPTION_CHARS: int = 1800
     # Jobs per normalization LLM prompt. Smaller = fewer context-limit errors.
     NORMALIZE_BATCH_SIZE: int = 10
+    # Soft prompt-size target for NORMALIZE batches.
+    NORMALIZE_PROMPT_TARGET_CHARS: int = 9000
+    # Max chars of compacted job description evidence sent per job in NORMALIZE.
+    NORMALIZE_PROMPT_JOB_MAX_DESCRIPTION_CHARS: int = 2400
+    # Max number of high-signal fragments preserved when compacting long job text.
+    PROMPT_COMPACTION_MAX_FRAGMENTS: int = 12
+
+    # Adecco source tuning
+    ADECCO_DETAIL_CONCURRENCY: int = 4
 
     # Pipeline & LLM call timeouts
     # Total allowed wall-clock time for a single end-to-end search run (seconds).

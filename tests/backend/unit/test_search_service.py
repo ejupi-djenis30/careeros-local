@@ -750,6 +750,49 @@ async def test_run_analysis_batches_does_not_increment_errors_for_circuit_open(s
     mock_increment_errors.assert_not_called()
 
 
+@pytest.mark.asyncio
+async def test_run_analysis_batches_splits_batches_by_prompt_budget(search_service):
+    def build_job(job_id: str):
+        job = MagicMock()
+        job.id = job_id
+        job.title = f"Role {job_id}"
+        job.descriptions = [MagicMock(description="Required: Python. " + ("detail " * 120))]
+        job.occupations = []
+        job.company = MagicMock(name="ACME")
+        job.location = MagicMock(city="Zurich")
+        job.employment = MagicMock(workload_min=80, workload_max=100)
+        job.language_skills = []
+        job._normalized_job_data = {}
+        return job
+
+    captured_batches = []
+
+    async def capture(batch, profile):
+        captured_batches.append(batch)
+        return [
+            {"affinity_score": 71, "affinity_analysis": "ok", "worth_applying": True} for _ in batch
+        ]
+
+    with (
+        patch("backend.services.search_service.get_status", return_value={"state": "searching"}),
+        patch("backend.services.search_service.settings.ANALYSIS_BATCH_SIZE", 10),
+        patch("backend.services.search_service.settings.MATCH_PROMPT_TARGET_CHARS", 450),
+        patch(
+            "backend.services.search_service.llm_service._compress_description_if_needed",
+            new=AsyncMock(return_value="Required: Python. Required: SQL. Required: Docker."),
+        ),
+        patch(
+            "backend.services.search_service.llm_service.analyze_job_batch",
+            side_effect=capture,
+        ),
+    ):
+        result = await search_service._run_analysis_batches(1, {}, [build_job("1"), build_job("2")])
+
+    assert len(result) == 2
+    assert len(captured_batches) == 2
+    assert all(len(batch) == 1 for batch in captured_batches)
+
+
 # ─── Structured filter normalization-status gate ─────────────────────────────
 
 

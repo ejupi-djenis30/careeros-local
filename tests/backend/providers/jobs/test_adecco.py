@@ -62,6 +62,20 @@ async def test_adecco_health_check_failure(adept_provider):
         assert health.status == ProviderStatus.DEGRADED
 
 
+def test_adecco_semaphore_uses_configured_concurrency():
+    original_sem = AdeccoProvider._global_sem
+    original_limit = AdeccoProvider._global_sem_limit
+    try:
+        AdeccoProvider._global_sem = None
+        AdeccoProvider._global_sem_limit = None
+        with patch("backend.providers.jobs.adecco.client.settings.ADECCO_DETAIL_CONCURRENCY", 5):
+            semaphore = AdeccoProvider._get_semaphore()
+        assert semaphore._value == 5
+    finally:
+        AdeccoProvider._global_sem = original_sem
+        AdeccoProvider._global_sem_limit = original_limit
+
+
 @pytest.mark.asyncio
 async def test_adecco_search_success(adept_provider):
     with (
@@ -205,12 +219,35 @@ async def test_adecco_search_429_retry(adept_provider):
 
         # It should have called POST twice (once failed, once success)
         assert mock_post.call_count == 2
-        # It should have called sleep for Retry-After = 2 seconds
-        # Actually it might call sleep(2) for 429, plus random.uniform(1.0, 2.5) for the detail request delay
+        # It should have called sleep for Retry-After = 2 seconds.
         sleep_calls = [call.args[0] for call in mock_sleep.call_args_list]
         assert 2.0 in sleep_calls
         assert response.total_count == 1
         assert len(response.items) == 1
+
+
+@pytest.mark.asyncio
+async def test_adecco_search_skips_detail_fetch_for_light_filtered_jobs(adept_provider):
+    with (
+        patch("httpx.AsyncClient.post", new_callable=AsyncMock) as mock_post,
+        patch("httpx.AsyncClient.get", new_callable=AsyncMock) as mock_get,
+    ):
+        mock_post_resp = MagicMock()
+        mock_post_resp.status_code = 200
+        mock_post_resp.json.return_value = SAMPLE_SUMMARIZED_RESPONSE
+        mock_post.return_value = mock_post_resp
+
+        request = JobSearchRequest(
+            query="Software",
+            location="Zurich",
+            contract_type=ContractType.TEMPORARY,
+            page=0,
+        )
+        response = await adept_provider.search(request)
+
+        assert response.total_count == 0
+        assert len(response.items) == 0
+        mock_get.assert_not_awaited()
 
 
 @pytest.mark.asyncio

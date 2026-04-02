@@ -1971,3 +1971,59 @@ async def test_normalize_persisted_jobs_marks_failed_when_batch_returns_empty(
     assert scraped_job.normalization_status == "failed"
     assert scraped_job.normalized_metadata is not None
     assert "normalization_failed_at" in scraped_job.normalized_metadata
+
+
+async def test_normalize_persisted_jobs_splits_batches_by_prompt_budget(
+    mock_service_with_real_repos,
+):
+    listing_one = MagicMock()
+    listing_one._scraped_job_id = 101
+    listing_two = MagicMock()
+    listing_two._scraped_job_id = 102
+
+    scraped_one = MagicMock()
+    scraped_one.id = 101
+    scraped_one.title = "Warehouse Worker"
+    scraped_one.company = "Logistics Co"
+    scraped_one.location = "Zurich"
+    scraped_one.workload = "100%"
+    scraped_one.description = "Required forklift license. " + ("detail " * 120)
+    scraped_one.normalization_status = "provider_bootstrap"
+    scraped_one.normalized_metadata = None
+    scraped_one.normalized_job_data = {}
+
+    scraped_two = MagicMock()
+    scraped_two.id = 102
+    scraped_two.title = "Kitchen Assistant"
+    scraped_two.company = "Hotel Co"
+    scraped_two.location = "Bern"
+    scraped_two.workload = "100%"
+    scraped_two.description = "Required hygiene training. " + ("detail " * 120)
+    scraped_two.normalization_status = "provider_bootstrap"
+    scraped_two.normalized_metadata = None
+    scraped_two.normalized_job_data = {}
+
+    mock_session = mock_service_with_real_repos.job_repo.db
+    mock_session.query.return_value.filter.return_value.all.return_value = [
+        scraped_one,
+        scraped_two,
+    ]
+
+    captured_chunks = []
+
+    async def capture(chunk):
+        captured_chunks.append(chunk)
+        return [{}, {}][: len(chunk)]
+
+    with (
+        patch("backend.services.search_service.settings.NORMALIZE_BATCH_SIZE", 10),
+        patch("backend.services.search_service.settings.NORMALIZE_PROMPT_TARGET_CHARS", 350),
+        patch(
+            "backend.services.search_service.llm_service.normalize_job_batch",
+            side_effect=capture,
+        ),
+    ):
+        await mock_service_with_real_repos._normalize_persisted_jobs(1, [listing_one, listing_two])
+
+    assert len(captured_chunks) == 2
+    assert all(len(chunk) == 1 for chunk in captured_chunks)

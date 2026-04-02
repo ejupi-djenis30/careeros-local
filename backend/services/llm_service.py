@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import re
 from typing import Any, Dict, List, Optional
 
 from tenacity import RetryError, retry, retry_if_exception, stop_after_attempt, wait_exponential
@@ -19,8 +20,40 @@ from backend.services.search.query_contracts import (
     normalize_search_item,
     sanitize_prompt_text,
 )
+from backend.services.utils import clean_html_tags
 
 logger = logging.getLogger(__name__)
+
+_PROMPT_FRAGMENT_SPLIT_RE = re.compile(r"(?:\n+|(?<=[.!?;:])\s+)")
+_PROMPT_BULLET_PREFIX_RE = re.compile(r"^(?:[-*•]|\d+[.)])\s*")
+_PROMPT_PRIORITY_KEYWORDS = (
+    "must",
+    "required",
+    "requirement",
+    "experience",
+    "language",
+    "english",
+    "german",
+    "deutsch",
+    "french",
+    "italian",
+    "cert",
+    "license",
+    "permit",
+    "skill",
+    "qualification",
+    "degree",
+    "education",
+    "salary",
+    "workload",
+    "remote",
+    "hybrid",
+    "on-site",
+    "onsite",
+    "responsibil",
+    "task",
+    "contract",
+)
 
 _G4F_TIMEOUT_OVERRIDE_ATTRS = {
     "plan": "LLM_CALL_TIMEOUT_PLAN_G4F",
@@ -93,6 +126,86 @@ class LLMService:
 
     def __init__(self):
         self._provider_cache: Dict[str, Any] = {}
+
+    @staticmethod
+    def _description_fragments(text: str) -> List[str]:
+        fragments: List[str] = []
+        for block in _PROMPT_FRAGMENT_SPLIT_RE.split(text):
+            fragment = sanitize_prompt_text(_PROMPT_BULLET_PREFIX_RE.sub("", block))
+            if len(fragment) < 16:
+                continue
+            fragments.append(fragment)
+        return fragments
+
+    @staticmethod
+    def _description_fragment_score(fragment: str) -> int:
+        lowered = fragment.lower()
+        score = 0
+        for keyword in _PROMPT_PRIORITY_KEYWORDS:
+            if keyword in lowered:
+                score += 4
+        if any(char.isdigit() for char in fragment):
+            score += 2
+        if _PROMPT_BULLET_PREFIX_RE.match(fragment):
+            score += 1
+        if 24 <= len(fragment) <= 220:
+            score += 1
+        return score
+
+    @classmethod
+    def _compact_description(cls, description: str, max_chars: int) -> str:
+        cleaned = sanitize_prompt_text(
+            clean_html_tags(description), max_chars=settings.MAX_DESCRIPTION_CHARS
+        )
+        if not cleaned or len(cleaned) <= max_chars:
+            return cleaned
+
+        fragments = cls._description_fragments(cleaned)
+        if not fragments:
+            return cleaned[:max_chars].rstrip()
+
+        max_fragments = max(4, int(getattr(settings, "PROMPT_COMPACTION_MAX_FRAGMENTS", 12) or 12))
+        ranked = sorted(
+            enumerate(fragments),
+            key=lambda item: (-cls._description_fragment_score(item[1]), item[0]),
+        )
+
+        selected: List[str] = []
+        selected_keys: set[str] = set()
+        used_chars = 0
+
+        def try_add(fragment: str) -> bool:
+            nonlocal used_chars
+            normalized = fragment.lower()
+            if normalized in selected_keys:
+                return False
+            extra = len(fragment) + (1 if selected else 0)
+            if selected and used_chars + extra > max_chars:
+                return False
+            if not selected and len(fragment) > max_chars:
+                fragment = fragment[:max_chars].rstrip()
+                extra = len(fragment)
+            selected.append(fragment)
+            selected_keys.add(normalized)
+            used_chars += extra
+            return True
+
+        for _, fragment in ranked:
+            if len(selected) >= max_fragments:
+                break
+            if cls._description_fragment_score(fragment) <= 0:
+                continue
+            try_add(fragment)
+
+        for fragment in fragments:
+            if len(selected) >= max_fragments or used_chars >= max_chars:
+                break
+            try_add(fragment)
+
+        if not selected:
+            return cleaned[:max_chars].rstrip()
+
+        return "\n".join(selected)[:max_chars].rstrip()
 
     def _provider_cache_key(self, step: str, *, fallback: bool = False) -> str:
         return f"{step}::fallback" if fallback else step
@@ -971,12 +1084,13 @@ Return ONLY pure JSON with a 'searches' list. Example:
 
         import asyncio as _asyncio
 
-        MATCH_DESC_LIMIT = 6000
-        # Compress descriptions that exceed the limit before building the batch prompt.
-        # Keeps the MATCH step within context limits while preserving all explicit requirements.
+        match_desc_limit = max(
+            400,
+            int(getattr(settings, "MATCH_PROMPT_JOB_MAX_DESCRIPTION_CHARS", 1800) or 1800),
+        )
         descriptions = await _asyncio.gather(
             *[
-                self._compress_description_if_needed(job.get("description") or "", MATCH_DESC_LIMIT)
+                self._compress_description_if_needed(job.get("description") or "", match_desc_limit)
                 for job in jobs_metadata
             ]
         )
@@ -1107,11 +1221,16 @@ Return ONLY pure JSON with a 'searches' list. Example:
         except Exception:
             preference_block = ""  # Never let preference injection break the prompt
 
+        candidate_context = sanitize_prompt_text(
+            profile.get("cv_summary") or profile.get("cv_content") or "",
+            max_chars=1400,
+        )
+
         user_prompt = f"""Analyze the match between this candidate and each job below.
 
 CANDIDATE PROFILE:
 - Expected Role: {profile.get("role_description")}{strategy_block}
-- Experience Context: {profile.get("cv_summary") or profile.get("cv_content")}{candidate_structured}
+    - Experience Context: {candidate_context}{candidate_structured}
 
 SEARCH INTENT:{intent_structured if intent_structured else " (use role description above)"}{preference_block}
 
@@ -1364,62 +1483,13 @@ Return ONLY JSON with a "results" array, one entry per job, IN ORDER:
         return out
 
     async def _compress_description_if_needed(self, description: str, max_chars: int) -> str:
-        """Compress a job description with the LLM when it exceeds max_chars.
+        """Build a deterministic compact description excerpt for LLM prompts.
 
-        This is a lossless operation: the compressor preserves ALL explicit factual
-        requirements (language levels, certifications, skills, experience minimums,
-        qualifications, hard blockers, work permits) and removes only marketing filler,
-        repeated sentences, and generic company introductions.
-
-        Falls back to hard truncation if the LLM call fails, so the caller always
-        gets a usable string within the limit.
+        This replaces the old LLM-based compression pass. It keeps explicit
+        requirement-heavy fragments locally so prompt size stays predictable even
+        for small-context models and no extra tokens are spent on compression.
         """
-        if not description or len(description) <= max_chars:
-            return description
-
-        logger.info(
-            "[COMPRESS] Description (%d chars) exceeds %d — compressing with LLM",
-            len(description),
-            max_chars,
-        )
-        provider = self._get_provider("compress")
-        system_prompt = (
-            "You are a lossless job-description compressor. "
-            "Your task: compress a job posting to fit within a character limit while preserving "
-            "EVERY explicit factual requirement without exception. "
-            "MUST preserve: language requirements with CEFR levels (e.g. 'German C2 required'), "
-            "certifications, licenses, work permits, required and preferred skills, "
-            "minimum/maximum experience years, education requirements, salary ranges, "
-            "workload percentages, employment mode, contract type, hard blockers, "
-            "physical requirements, and all qualification constraints. "
-            "REMOVE ONLY: company marketing language, mission/vision statements, "
-            "repeated sentences, redundant 'we offer' filler, and generic introductions. "
-            "Never soften, paraphrase away, or omit any stated factual requirement. "
-            "Output plain text only — no JSON, no bullet points, no headers unless the original had them."
-        )
-        user_prompt = (
-            f"Compress the following job description to under {max_chars} characters. "
-            "PRESERVE ALL explicit requirements (language levels, certifications, skills, "
-            "experience, qualifications, hard blockers). "
-            "REMOVE ONLY marketing fluff and repetition.\n\n"
-            f"{description}"
-        )
-        try:
-            compressed = await self._call_provider_text(
-                provider,
-                "compress",
-                system_prompt,
-                user_prompt,
-            )
-            if compressed and len(compressed.strip()) > 50:
-                result = compressed.strip()
-                logger.info("[COMPRESS] Compressed %d → %d chars", len(description), len(result))
-                return result
-        except Exception as exc:
-            logger.warning(
-                "[COMPRESS] LLM compression failed (%s); falling back to hard truncation", exc
-            )
-        return description[:max_chars]
+        return self._compact_description(description, max_chars)
 
     @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=5))
     async def normalize_job_batch(self, jobs: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
@@ -1430,13 +1500,14 @@ Return ONLY JSON with a "results" array, one entry per job, IN ORDER:
         import asyncio as _asyncio
 
         provider = self._get_provider("normalize")
-        NORMALIZE_DESC_LIMIT = 8000
-        # Compress descriptions that exceed the limit in parallel before building the batch text.
-        # Lossless: the compressor preserves all factual requirements, removes only marketing filler.
+        normalize_desc_limit = max(
+            500,
+            int(getattr(settings, "NORMALIZE_PROMPT_JOB_MAX_DESCRIPTION_CHARS", 2400) or 2400),
+        )
         descriptions = await _asyncio.gather(
             *[
                 self._compress_description_if_needed(
-                    job.get("description") or "", NORMALIZE_DESC_LIMIT
+                    job.get("description") or "", normalize_desc_limit
                 )
                 for job in jobs
             ]
