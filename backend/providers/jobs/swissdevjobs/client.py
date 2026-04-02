@@ -46,12 +46,19 @@ class SwissDevJobsProvider(BaseJobProvider):
         ))
     """
 
+    _LIGHT_JOBS_CACHE_TTL_SECONDS = 3600.0
+    _DETAIL_JOBS_CACHE_TTL_SECONDS = 3600.0
+    _DETAIL_CONCURRENCY = 5
+
     def __init__(self, include_raw_data: bool = False):
         self._include_raw_data = include_raw_data
         self._client: httpx.AsyncClient | None = None
         self._light_jobs_cache: Any = None
         self._cache_time: float = 0
         self._cache_lock: asyncio.Lock = asyncio.Lock()
+        self._detail_jobs_cache: dict[str, tuple[float, Any]] = {}
+        self._detail_jobs_inflight: dict[str, asyncio.Task[Any]] = {}
+        self._detail_cache_lock: asyncio.Lock = asyncio.Lock()
 
     @property
     def name(self) -> str:
@@ -97,34 +104,96 @@ class SwissDevJobsProvider(BaseJobProvider):
         if self._client:
             await self._client.aclose()
             self._client = None
+        self._light_jobs_cache = None
+        self._cache_time = 0
+        self._detail_jobs_cache.clear()
+        self._detail_jobs_inflight.clear()
+
+    def _ensure_client(self) -> httpx.AsyncClient:
+        if self._client is None or self._client.is_closed:
+            self._client = httpx.AsyncClient(timeout=30.0)
+        return self._client
+
+    @retry(
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=2, max=10),
+    )
+    async def _fetch_light_jobs_with_retry(self) -> Any:
+        client = self._ensure_client()
+        resp = await client.get(f"{API_BASE_URL}/jobsLight")
+        resp.raise_for_status()
+        return resp.json()
+
+    @retry(
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=2, max=10),
+    )
+    async def _fetch_job_details_with_retry(self, job_url_slug: str) -> Any:
+        client = self._ensure_client()
+        detail_res = await client.get(f"{API_BASE_URL}/jobWithUrl/{job_url_slug}")
+        detail_res.raise_for_status()
+        detail_data = detail_res.json()
+        if isinstance(detail_data, list):
+            return detail_data[0] if detail_data else {}
+        return detail_data
+
+    async def _get_light_jobs(self) -> list[dict[str, Any]]:
+        async with self._cache_lock:
+            if (
+                self._light_jobs_cache is None
+                or time.time() - self._cache_time > self._LIGHT_JOBS_CACHE_TTL_SECONDS
+            ):
+                self._light_jobs_cache = await self._fetch_light_jobs_with_retry()
+                self._cache_time = time.time()
+
+            all_jobs_light = self._light_jobs_cache
+
+        if not isinstance(all_jobs_light, list):
+            raise ResponseParseError(self.name, "Expected a list from jobsLight API")
+        return all_jobs_light
+
+    async def _get_job_details(self, job_url_slug: str) -> Any:
+        now = time.time()
+        async with self._detail_cache_lock:
+            cached_entry = self._detail_jobs_cache.get(job_url_slug)
+            if cached_entry is not None:
+                cached_at, cached_detail = cached_entry
+                if now - cached_at <= self._DETAIL_JOBS_CACHE_TTL_SECONDS:
+                    return cached_detail
+                self._detail_jobs_cache.pop(job_url_slug, None)
+
+            inflight_task = self._detail_jobs_inflight.get(job_url_slug)
+            owns_task = False
+            if inflight_task is None:
+                inflight_task = asyncio.create_task(
+                    self._fetch_job_details_with_retry(job_url_slug)
+                )
+                self._detail_jobs_inflight[job_url_slug] = inflight_task
+                owns_task = True
+
+        try:
+            detail_data = await inflight_task
+        except Exception:
+            if owns_task:
+                async with self._detail_cache_lock:
+                    self._detail_jobs_inflight.pop(job_url_slug, None)
+            raise
+
+        if owns_task:
+            async with self._detail_cache_lock:
+                self._detail_jobs_cache[job_url_slug] = (time.time(), detail_data)
+                self._detail_jobs_inflight.pop(job_url_slug, None)
+
+        return detail_data
 
     async def search(self, request: JobSearchRequest) -> JobSearchResponse:
         """Search for jobs on swissdevjobs.ch."""
         start_time = time.time()
 
-        if not self._client:
-            self._client = httpx.AsyncClient(timeout=30.0)
+        self._ensure_client()
 
         try:
-            # Step 1: Fetch the bulk list (with simple 1-hour cache across the session)
-            async with self._cache_lock:
-                if self._light_jobs_cache is None or time.time() - self._cache_time > 3600:
-
-                    @retry(
-                        stop=stop_after_attempt(3),
-                        wait=wait_exponential(multiplier=1, min=2, max=10),
-                    )
-                    async def fetch_light_jobs():
-                        resp = await self._client.get(f"{API_BASE_URL}/jobsLight")
-                        resp.raise_for_status()
-                        return resp.json()
-
-                    self._light_jobs_cache = await fetch_light_jobs()
-                    self._cache_time = time.time()
-
-                all_jobs_light = self._light_jobs_cache
-            if not isinstance(all_jobs_light, list):
-                raise ResponseParseError(self.name, "Expected a list from jobsLight API")
+            all_jobs_light = await self._get_light_jobs()
 
             # Step 2: Use extracted filters to process jobs
             filtered_jobs = filter_jobs(all_jobs_light, request)
@@ -140,16 +209,7 @@ class SwissDevJobsProvider(BaseJobProvider):
 
             # Step 4: Fetch details for the paginated items and transform (Parallelized with sem)
             hydrated_jobs = []
-            sem = asyncio.Semaphore(5)  # Concurrent fetching limit
-
-            @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=10))
-            async def fetch_job_details_with_retry(job_url_slug):
-                detail_res = await self._client.get(f"{API_BASE_URL}/jobWithUrl/{job_url_slug}")
-                detail_res.raise_for_status()
-                detail_data = detail_res.json()
-                if isinstance(detail_data, list) and len(detail_data) > 0:
-                    detail_data = detail_data[0]
-                return detail_data
+            sem = asyncio.Semaphore(self._DETAIL_CONCURRENCY)
 
             async def fetch_job_details(light_job):
                 job_url_slug = light_job.get("jobUrl")
@@ -158,7 +218,7 @@ class SwissDevJobsProvider(BaseJobProvider):
 
                 async with sem:
                     try:
-                        detail_data = await fetch_job_details_with_retry(job_url_slug)
+                        detail_data = await self._get_job_details(job_url_slug)
                         job_listing = transform_job_data(
                             detail_data, light_job, self.name, self._include_raw_data
                         )
@@ -203,7 +263,7 @@ class SwissDevJobsProvider(BaseJobProvider):
             should_close = True
 
         try:
-            response = await self._client.get(f"{API_BASE_URL}/jobsLight")
+            response = await self._ensure_client().get(f"{API_BASE_URL}/jobsLight")
             latency_ms = int((time.time() - start_time) * 1000)
 
             if response.status_code == 200:
