@@ -127,6 +127,29 @@ class JobRepository(BaseRepository[Job]):
             .first()
         )
 
+    def get_jobs_with_scraped_job_for_user(self, user_id: int) -> List[Job]:
+        return (
+            self.db.query(self.model)
+            .join(self.model.scraped_job)
+            .filter(self.model.user_id == user_id)
+            .all()
+        )
+
+    def get_salary_benchmark_values(
+        self,
+        domain: str,
+        seniority: Optional[str] = None,
+    ) -> List[int]:
+        query = self.db.query(ScrapedJob.normalized_salary_max_chf).filter(
+            ScrapedJob.normalized_salary_max_chf.isnot(None),
+            ScrapedJob.normalized_domain == domain,
+        )
+        if seniority:
+            query = query.filter(ScrapedJob.normalized_seniority == seniority)
+
+        rows = query.all()
+        return [row[0] for row in rows if row[0] and row[0] > 0]
+
     def create_job_nested(self, job: Job) -> bool:
         savepoint = self.db.begin_nested()
         try:

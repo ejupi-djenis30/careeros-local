@@ -30,6 +30,7 @@ vi.mock('./SearchProgress/TargetQueue', () => ({
       data-testid="target-queue"
       data-active-indices={(props.active_search_indices || []).join(',')}
       data-completed-indices={(props.completed_search_indices || []).join(',')}
+      data-analyzed-count={props.analyzedJobs?.length ?? 0}
     />
   ),
 }));
@@ -275,5 +276,33 @@ describe('SearchProgress', () => {
     // analysisPct ≈ 56, searchPct = 26. Bar should reflect analysis progress.
     expect(pct).toBeGreaterThanOrEqual(50);
     expect(pct).toBeLessThanOrEqual(65);
+  });
+
+  it('builds the refinement queue from structured analysis targets instead of log parsing', () => {
+    const status = {
+      state: 'analyzing',
+      terminal_reason: null,
+      total_searches: 1,
+      current_search_index: 1,
+      current_query: 'backend engineer',
+      searches_generated: [{ query: 'backend engineer' }],
+      jobs_new: 0,
+      jobs_duplicates: 0,
+      jobs_skipped: 0,
+      jobs_analyzed: 1,
+      jobs_analyze_total: 3,
+      analysis_current_index: 2,
+      analysis_targets: [
+        { title: 'Backend Engineer' },
+        { title: 'Platform Engineer' },
+        { title: 'Data Engineer' },
+      ],
+      errors: 0,
+      log: [{ message: 'legacy log that should be ignored' }],
+    };
+
+    render(<ToastProvider><SearchProgress profileId="1" status={status} onStateChange={vi.fn()} onClear={vi.fn()} /></ToastProvider>);
+
+    expect(screen.getByTestId('target-queue')).toHaveAttribute('data-analyzed-count', '3');
   });
 });

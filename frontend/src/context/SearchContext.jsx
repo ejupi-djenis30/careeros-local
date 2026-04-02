@@ -110,7 +110,7 @@ export function SearchProvider({ children }) {
                 }
 
                 const runningIds = Object.entries(res)
-                    .filter(([, status]) => status && ['generating', 'searching', 'analyzing'].includes(status.state))
+                    .filter(([, status]) => status && ['reserved', 'generating', 'searching', 'analyzing'].includes(status.state))
                     .map(([id]) => String(id));
 
                 // Merge server-confirmed running IDs with any IDs pending first server acknowledgement

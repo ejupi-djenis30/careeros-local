@@ -26,8 +26,9 @@ from typing import Any, Dict, Optional
 from sqlalchemy.orm import Session
 
 from backend.core.config import settings
-from backend.models.job import Job, ScrapedJob
-from backend.models.user import User
+from backend.models.job import Job
+from backend.repositories.job_repository import JobRepository
+from backend.repositories.user_repository import UserRepository
 
 logger = logging.getLogger(__name__)
 
@@ -53,7 +54,7 @@ def compute_and_save_preferences(user_id: int, db: Session) -> Dict[str, Any]:
 
 def get_preference_signals(user_id: int, db: Session) -> Optional[Dict[str, Any]]:
     """Return cached preference_signals from the user row, or None if absent."""
-    user = db.query(User).filter(User.id == user_id).first()
+    user = UserRepository(db).get(user_id)
     if not user:
         return None
     signals = user.preference_signals or {}
@@ -68,7 +69,7 @@ def get_preference_signals(user_id: int, db: Session) -> Optional[Dict[str, Any]
 
 
 def _compute(user_id: int, db: Session) -> Dict[str, Any]:
-    jobs = db.query(Job).join(Job.scraped_job).filter(Job.user_id == user_id).all()
+    jobs = JobRepository(db).get_jobs_with_scraped_job_for_user(user_id)
 
     applied_jobs = [j for j in jobs if j.applied]
     dismissed_jobs = [j for j in jobs if j.dismissed]
@@ -165,14 +166,18 @@ def _compute(user_id: int, db: Session) -> Dict[str, Any]:
 
 
 def _persist(user_id: int, signals: Dict[str, Any], db: Session) -> None:
-    user = db.query(User).filter(User.id == user_id).first()
+    user_repo = UserRepository(db)
+    user = user_repo.get(user_id)
     if not user:
         logger.warning("preference_service: user_id=%s not found, skipping persist", user_id)
         return
-    user.preference_signals = signals
-    user.preference_updated_at = datetime.now(timezone.utc)
-    db.add(user)
-    db.commit()
+    user_repo.update(
+        user,
+        {
+            "preference_signals": signals,
+            "preference_updated_at": datetime.now(timezone.utc),
+        },
+    )
 
 
 def compute_salary_benchmark(
@@ -195,15 +200,7 @@ def compute_salary_benchmark(
         return None
 
     try:
-        q = db.query(ScrapedJob.normalized_salary_max_chf).filter(
-            ScrapedJob.normalized_salary_max_chf.isnot(None),
-            ScrapedJob.normalized_domain == domain,
-        )
-        if seniority:
-            q = q.filter(ScrapedJob.normalized_seniority == seniority)
-
-        rows = q.all()
-        values = sorted([r[0] for r in rows if r[0] and r[0] > 0])
+        values = sorted(JobRepository(db).get_salary_benchmark_values(domain, seniority))
 
         if len(values) < 5:
             return None

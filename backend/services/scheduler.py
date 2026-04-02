@@ -12,7 +12,7 @@ from apscheduler.triggers.interval import IntervalTrigger
 from sqlalchemy.orm import Session
 
 from backend.db.base import SessionLocal
-from backend.models import SearchProfile
+from backend.repositories.profile_repository import ProfileRepository
 from backend.services.search_service import get_search_service
 from backend.services.search_status import release_task, reserve_task
 
@@ -47,7 +47,8 @@ async def _run_scheduled_search(profile_id: int):
     db: Session | None = None
     try:
         db = SessionLocal()
-        profile = db.query(SearchProfile).filter(SearchProfile.id == profile_id).first()
+        profile_repo = ProfileRepository(db)
+        profile = profile_repo.get(profile_id)
         if not profile:
             logger.warning(f"[Scheduler] Profile {profile_id} not found, removing job")
             release_task(profile_id, reservation_token)
@@ -60,8 +61,7 @@ async def _run_scheduled_search(profile_id: int):
             return
 
         # Update last run time
-        profile.last_scheduled_run = datetime.now(timezone.utc)
-        db.commit()
+        profile_repo.update(profile, {"last_scheduled_run": datetime.now(timezone.utc)})
 
         # Run the search workflow — run_search calls register_task internally,
         # which moves the slot from reserved → active.
@@ -123,10 +123,8 @@ def get_all_schedules(user_id: int = None, db: Session = None) -> list[dict]:
         close_db = True
 
     try:
-        query = db.query(SearchProfile).filter(SearchProfile.schedule_enabled.is_(True))
-        if user_id is not None:
-            query = query.filter(SearchProfile.user_id == user_id)
-        valid_profile_ids = {p.id for p in query.all()}
+        profile_repo = ProfileRepository(db)
+        valid_profile_ids = {p.id for p in profile_repo.get_scheduled_profiles(user_id=user_id)}
     finally:
         if close_db:
             db.close()
@@ -160,7 +158,8 @@ def start_scheduler():
     # Load saved schedules from DB
     db: Session = SessionLocal()
     try:
-        profiles = db.query(SearchProfile).filter(SearchProfile.schedule_enabled.is_(True)).all()
+        profile_repo = ProfileRepository(db)
+        profiles = profile_repo.get_scheduled_profiles()
 
         for profile in profiles:
             interval = profile.schedule_interval_hours or 24

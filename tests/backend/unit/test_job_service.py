@@ -19,6 +19,7 @@ def mock_repo():
 def job_service(mock_repo):
     service = JobService(MagicMock())
     service.repo = mock_repo
+    service.profile_repo = MagicMock()
     return service
 
 
@@ -57,14 +58,15 @@ def test_create_job(job_service, mock_repo):
     job_in = JobCreate(
         title="New Job", company="Test Corp", external_url="https://test.com", scraped_job_id=1
     )
-    mock_repo.db.query.return_value.filter.return_value.first.return_value = None
+    mock_repo.get_scraped_job_by_platform_and_id.return_value = None
+    mock_repo.create_scraped_job_nested.return_value = True
     job_service.create_job(1, job_in)
     mock_repo.create.assert_called_once()
 
 
 def test_create_job_uses_deterministic_manual_platform_job_id(job_service, mock_repo):
-    mock_repo.db.query.return_value.filter.return_value.first.return_value = None
-    mock_repo.db.add.reset_mock()
+    mock_repo.get_scraped_job_by_platform_and_id.return_value = None
+    mock_repo.create_scraped_job_nested.return_value = True
 
     job_in = JobCreate(
         title="Stable Job",
@@ -73,24 +75,19 @@ def test_create_job_uses_deterministic_manual_platform_job_id(job_service, mock_
     )
 
     job_service.create_job(1, job_in)
-    first_scraped = mock_repo.db.add.call_args_list[0].args[0]
+    first_scraped = mock_repo.create_scraped_job_nested.call_args_list[0].args[0]
 
-    mock_repo.db.add.reset_mock()
-    mock_repo.db.query.return_value.filter.return_value.first.return_value = None
+    mock_repo.create_scraped_job_nested.reset_mock()
+    mock_repo.get_scraped_job_by_platform_and_id.return_value = None
     job_service.create_job(1, job_in)
-    second_scraped = mock_repo.db.add.call_args_list[0].args[0]
+    second_scraped = mock_repo.create_scraped_job_nested.call_args_list[0].args[0]
 
     assert isinstance(first_scraped, ScrapedJob)
     assert first_scraped.platform_job_id == second_scraped.platform_job_id
 
 
 def test_create_job_rejects_foreign_profile(job_service, mock_repo):
-    query_result = mock_repo.db.query.return_value.filter.return_value
-    query_result.first.side_effect = [None]
-
-    profile_query = MagicMock()
-    profile_query.filter.return_value.first.return_value = None
-    mock_repo.db.query.side_effect = [profile_query]
+    job_service.profile_repo.get_for_user.return_value = None
 
     with pytest.raises(HTTPException) as exc:
         job_service.create_job(

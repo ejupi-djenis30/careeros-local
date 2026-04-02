@@ -15,6 +15,13 @@ class ProfileRepository(BaseRepository[SearchProfile]):
     def __init__(self, db: Session):
         super().__init__(SearchProfile, db)
 
+    def get_for_user(self, profile_id: int, user_id: int) -> Optional[SearchProfile]:
+        return (
+            self.db.query(self.model)
+            .filter(self.model.id == profile_id, self.model.user_id == user_id)
+            .first()
+        )
+
     def get_by_user(self, user_id: int, skip: int = 0, limit: int = 100) -> List[SearchProfile]:
         return (
             self.db.query(self.model)
@@ -23,6 +30,12 @@ class ProfileRepository(BaseRepository[SearchProfile]):
             .limit(limit)
             .all()
         )
+
+    def get_scheduled_profiles(self, user_id: Optional[int] = None) -> List[SearchProfile]:
+        query = self.db.query(self.model).filter(self.model.schedule_enabled.is_(True))
+        if user_id is not None:
+            query = query.filter(self.model.user_id == user_id)
+        return query.all()
 
     def acquire_search_lock(
         self,

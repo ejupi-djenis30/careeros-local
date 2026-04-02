@@ -174,8 +174,8 @@ The `frontend/` directory is a highly modern React 19 application.
 ### Data Flow Lifecycle (Search Execution)
 
 1. Client POSTs to `/api/v1/search/start` with a `profile_id`.
-2. The endpoint passes the ID to FastAPI `BackgroundTasks` and immediately returns a 202 Accepted.
-3. The `SearchService` wakes up in the background. It reads the Profile from `ProfileRepository`.
+2. The endpoint first reserves the profile atomically using the DB-backed search lock on `search_profiles` plus the in-memory task registry, then passes the ID to FastAPI `BackgroundTasks` and immediately returns a 202 Accepted.
+3. The `SearchService` wakes up in the background and promotes the reservation to an active task in a single startup step. It then reads the Profile from `ProfileRepository`.
 4. It calls the `LLMService` to generate an execution plan.
 5. It iterates over the generated queries, calling the `JobRoomProvider`.
 6. Results are deduplicated against profile history.
@@ -183,7 +183,8 @@ The `frontend/` directory is a highly modern React 19 application.
 8. Persisted jobs are normalized (`provider_bootstrap` then optional LLM normalization).
 9. Structured deterministic filters are applied.
 10. Eligible jobs are deeply analyzed/scored and persisted as user-specific `Job` rows.
-11. The frontend `SearchContext` polling detects completion and gracefully ceases refresh loops.
+11. Optional final refinement passes (critique, rerank, salary benchmark) run on already-saved jobs, and progress is exposed as structured status fields instead of log-derived parsing.
+12. The frontend `SearchContext` polling detects `reserved`, `generating`, `searching`, and `analyzing` states and gracefully ceases refresh loops on terminal states.
 
 ---
 
@@ -492,6 +493,7 @@ To extract value from the system, you must configure its parameters carefully.
    - The LLM generating precise queries.
    - The Scrapers launching across API endpoints.
    - The parallel asynchronous analysis of each unique job found against your uploaded CV.
+   - A structured progress model behind the UI: `reserved` while the task is booting, query-level execution progress during `searching`, and a dedicated refinement queue during `analyzing`.
 4. The system will gracefully conclude, displaying how many completely new, non-duplicate jobs were permanently appended to your database.
 
 ### Interpreting Job Scores & Applying
@@ -533,7 +535,7 @@ FastAPI automatically generates comprehensive API documentation conforming to th
 - **Search Execution**:
   - `POST /api/v1/search/upload-cv` → Multipart form upload for parsing.
   - `POST /api/v1/search/start` → Initiates the execution pipeline. Returns the `profile_id`.
-  - `GET /api/v1/search/status/all` → Returns a deeply nested JSON object of all current executing statuses and terminal logs for the frontend to render.
+   - `GET /api/v1/search/status/all` → Returns the structured live status payload consumed by the frontend polling layer, including lifecycle state, query progress counters, duplicate metrics, refinement progress, and terminal logs.
 - **Profiles**:
   - `GET /api/v1/profiles/` → Fetches the user's available search configs.
 

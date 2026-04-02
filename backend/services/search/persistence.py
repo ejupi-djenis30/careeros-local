@@ -30,6 +30,7 @@ IncrementStatusErrors = Callable[[int, int], int]
 BootstrapNormalizedJobData = Callable[..., Dict[str, Any]]
 ExtractListingText = Callable[[Any], str]
 ParseListingPublicationDate = Callable[[Any, str, str], Any]
+ReportRefinedAnalysisProgress = Callable[[int, str], None]
 
 
 @dataclass(frozen=True)
@@ -423,9 +424,12 @@ class SearchPipelinePersistence:
         jobs_to_refine: Sequence[tuple[Any, Dict[str, Any]]],
         *,
         increment_status_errors: IncrementStatusErrors,
+        report_progress: ReportRefinedAnalysisProgress | None = None,
     ) -> int:
         updated_count = 0
-        for job, analysis in jobs_to_refine:
+        for current_index, (job, analysis) in enumerate(jobs_to_refine, start=1):
+            if report_progress is not None:
+                report_progress(current_index, getattr(job, "title", "Unknown"))
             scraped_job_id = getattr(job, "_scraped_job_id", None)
             if scraped_job_id is None:
                 continue

@@ -744,29 +744,13 @@ class SearchService:
             unregister_task(profile_id)
 
     def _activate_search_task(self, profile_id: int, reservation_token: str | None) -> bool:
-        registered = bool(
+        return bool(
             register_task(
                 profile_id,
                 asyncio.current_task(),
                 reservation_token=reservation_token,
             )
         )
-        if not registered:
-            return False
-
-        if reservation_token is None:
-            return True
-
-        activated = self.profile_repo.activate_search_lock(profile_id, reservation_token)
-        if activated:
-            return True
-
-        unregister_task(profile_id)
-        logger.warning(
-            "Aborting search startup for profile %d because DB-backed lock activation failed",
-            profile_id,
-        )
-        return False
 
     async def _run_pipeline_with_timeout(
         self,
@@ -2718,6 +2702,17 @@ class SearchService:
             return
 
         jobs_to_refine = list(analyzed_pairs)
+        analysis_targets = [
+            {"title": getattr(job, "title", "Unknown")} for job, _ in jobs_to_refine
+        ]
+        if analysis_targets:
+            update_status(
+                profile_id,
+                analysis_targets=analysis_targets,
+                analysis_current_index=1,
+                jobs_analyze_total=len(analysis_targets),
+                jobs_analyzed=0,
+            )
 
         # ── Phase: Two-pass critique for borderline scores ────────────────
         critique_enabled = getattr(settings, "MATCH_CRITIQUE_ENABLED", False)
@@ -2847,12 +2842,29 @@ class SearchService:
             except Exception:
                 logger.debug("salary_below_market check skipped (non-critical)")
 
+        def report_refinement_progress(current_index: int, title: str) -> None:
+            update_status(
+                profile_id,
+                analysis_current_index=current_index,
+                jobs_analyzed=max(0, current_index - 1),
+            )
+
         updated_count = self.search_persistence.apply_refined_analysis_updates(
             profile_id,
             profile_dict,
             jobs_to_refine,
             increment_status_errors=self._increment_status_errors,
+            report_progress=report_refinement_progress,
         )
+
+        if analysis_targets:
+            update_status(
+                profile_id,
+                analysis_targets=analysis_targets,
+                analysis_current_index=len(analysis_targets),
+                jobs_analyze_total=len(analysis_targets),
+                jobs_analyzed=len(analysis_targets),
+            )
 
         if updated_count > 0:
             add_log(profile_id, f"Final passes applied: {updated_count} jobs refined in-place.")

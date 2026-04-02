@@ -355,6 +355,36 @@ def test_register_task_allows_registration_after_task_done():
         loop.close()
 
 
+def test_register_task_with_reservation_promotes_only_after_db_activation():
+    token = reserve_task(404, return_token=True)
+    task = MagicMock()
+
+    with patch(
+        "backend.services.search_status._activate_profile_search_lock", return_value=True
+    ) as mock_activate:
+        assert register_task(404, task, reservation_token=token) is True
+
+    mock_activate.assert_called_once_with(404, token)
+    with ss._lock:
+        assert 404 not in ss._reserved_tasks
+        assert ss._active_tasks[404] is task
+
+
+def test_register_task_with_reservation_rolls_back_when_db_activation_fails():
+    token = reserve_task(405, return_token=True)
+    task = MagicMock()
+
+    with patch(
+        "backend.services.search_status._activate_profile_search_lock", return_value=False
+    ) as mock_activate:
+        assert register_task(405, task, reservation_token=token) is False
+
+    mock_activate.assert_called_once_with(405, token)
+    with ss._lock:
+        assert ss._reserved_tasks[405]["token"] == token
+        assert 405 not in ss._active_tasks
+
+
 def test_merge_with_file_prefers_newer_updated_entry_over_older_started_entry():
     memory = {
         77: {

@@ -27,13 +27,16 @@ export function TargetQueue({ state, analyzedJobs, searches_generated, active_se
                         {state === "analyzing" ? (
                             analyzedJobs.map((j, i) => {
                                 const isCurrent = j.status === 'analyzing';
+                                const isDone = j.status === 'done';
                                 return (
                                     <li key={i} ref={isCurrent ? activeItemRef : null} className={`list-group-item bg-transparent border-bottom border-white-5 px-3 py-3 d-flex gap-3 ${isCurrent ? 'bg-primary-10' : ''}`}>
                                         <div className="mt-1">
-                                            {j.status === 'done' ? (
+                                            {isDone ? (
                                                 <i className="bi bi-check-circle-fill text-success"></i>
-                                            ) : (
+                                            ) : isCurrent ? (
                                                 <div className="spinner-border spinner-border-sm text-primary"></div>
+                                            ) : (
+                                                <div className="rounded-circle bg-white-10 border border-white-10" style={{ width: 16, height: 16 }}></div>
                                             )}
                                         </div>
                                         <div>

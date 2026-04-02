@@ -54,7 +54,7 @@ export function SearchForm({ onStartSearch, isLoading, prefill }) {
             .catch((error) => {
                 showToast("Failed to load existing profile names: " + (error?.message || "Unknown error"));
             });
-    }, []);
+    }, [showToast]);
 
     const handleChange = (e) => {
         const { name, value } = e.target;
@@ -140,9 +140,8 @@ export function SearchForm({ onStartSearch, isLoading, prefill }) {
             return;
         }
 
-        const { scrape_mode: _legacyScrapeMode, ...profilePayload } = profile;
         const searchProfile = {
-            ...profilePayload,
+            ...profile,
             posted_within_days: postedWithinDays,
             max_distance: maxDistance,
             schedule_interval_hours: scheduleIntervalHours,

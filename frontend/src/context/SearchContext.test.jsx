@@ -152,6 +152,21 @@ describe('SearchContext', () => {
       expect(screen.getByTestId('status-heartbeat')).toHaveTextContent('1');
     });
   });
+
+  it('treats reserved statuses as active while the background task is still starting', async () => {
+    mockGetAllStatuses.mockResolvedValue({ 1: { state: 'reserved' } });
+
+    render(
+      <SearchProvider>
+        <Consumer />
+      </SearchProvider>
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId('active-ids')).toHaveTextContent('1');
+      expect(screen.getByTestId('status-state')).toHaveTextContent('reserved');
+    });
+  });
 });
 
 // ── Ghost-PID TTL tests ────────────────────────────────────────────────────────

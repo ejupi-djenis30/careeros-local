@@ -58,6 +58,8 @@ _VALID_STATUS_KEYS = {
     "jobs_skipped",
     "errors",
     "log",
+    "analysis_targets",
+    "analysis_current_index",
     "started_at",
     "finished_at",
     "updated_at",
@@ -371,6 +373,15 @@ def _cleanup_stale_reservations(now: float | None = None):
         _active_tasks.pop(profile_id, None)
 
 
+def _task_slot_is_available(task: Any | None) -> bool:
+    if task is None:
+        return True
+    try:
+        return bool(task.done())
+    except Exception:
+        return True
+
+
 def init_status(
     profile_id: int,
     total_searches: int = 0,
@@ -401,6 +412,8 @@ def init_status(
             "jobs_skipped": 0,
             "jobs_analyzed": 0,
             "jobs_analyze_total": 0,
+            "analysis_targets": [],
+            "analysis_current_index": 0,
             "plan_cache_hit": 0,
             "plan_cache_miss": 0,
             "plan_raw_count": 0,
@@ -582,10 +595,16 @@ def register_task(profile_id: int, task: Any, reservation_token: str | None = No
     Guards against a second worker overwriting an already-active task for the
     same profile_id (cross-worker race).  If the slot is already occupied by a
     live task the call is a no-op and returns False so the caller can abort.
+
+    When a reservation token is provided, DB-backed activation is performed
+    before the in-memory task is promoted from reserved to active so the two
+    authorities cannot diverge into a partial active state.
     """
+    needs_db_activation = reservation_token is not None
+
     with _lock:
         reservation = _reserved_tasks.get(profile_id)
-        if reservation_token is not None:
+        if needs_db_activation:
             if reservation is None:
                 logger.warning(
                     "register_task: profile %d has no matching reservation token; refusing activation",
@@ -599,20 +618,64 @@ def register_task(profile_id: int, task: Any, reservation_token: str | None = No
                 )
                 return False
         existing = _active_tasks.get(profile_id)
-        if existing is not None:
-            # Check if the existing task is still alive before refusing.
-            try:
-                if not existing.done():
-                    logger.warning(
-                        "register_task: profile %d already has an active task — ignoring duplicate registration",
-                        profile_id,
-                    )
-                    return False
-            except Exception:
-                pass  # Non-asyncio task object — treat as replaced
-        _reserved_tasks.pop(profile_id, None)
-        _active_tasks[profile_id] = task
-        return True
+        if not _task_slot_is_available(existing):
+            logger.warning(
+                "register_task: profile %d already has an active task — ignoring duplicate registration",
+                profile_id,
+            )
+            return False
+
+    if needs_db_activation:
+        activation_token = reservation_token
+        if activation_token is None:
+            return False
+        try:
+            if not _activate_profile_search_lock(profile_id, activation_token):
+                logger.warning(
+                    "register_task: profile %d DB-backed lock activation failed",
+                    profile_id,
+                )
+                return False
+        except Exception as exc:
+            logger.warning(
+                "register_task: profile %d DB-backed lock activation raised %s",
+                profile_id,
+                exc,
+            )
+            return False
+
+    rollback_db_activation = False
+    with _lock:
+        existing = _active_tasks.get(profile_id)
+        if not _task_slot_is_available(existing):
+            rollback_db_activation = needs_db_activation
+        elif needs_db_activation:
+            reservation = _reserved_tasks.get(profile_id)
+            if reservation is None or reservation.get("token") != reservation_token:
+                rollback_db_activation = True
+            else:
+                _reserved_tasks.pop(profile_id, None)
+                _active_tasks[profile_id] = task
+                return True
+        else:
+            _active_tasks[profile_id] = task
+            return True
+
+    if rollback_db_activation:
+        try:
+            _release_profile_search_lock(profile_id, activation_token)
+        except Exception as exc:
+            logger.warning(
+                "register_task: profile %d failed DB-backed activation rollback: %s",
+                profile_id,
+                exc,
+            )
+
+    logger.warning(
+        "register_task: profile %d activation could not be finalized in memory",
+        profile_id,
+    )
+    return False
 
 
 def unregister_task(profile_id: int):

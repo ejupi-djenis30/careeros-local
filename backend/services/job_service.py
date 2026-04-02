@@ -5,14 +5,15 @@ from typing import Any, Dict
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
-from backend.models import SearchProfile
 from backend.repositories.job_repository import JobRepository
+from backend.repositories.profile_repository import ProfileRepository
 from backend.schemas import JobCreate, JobUpdate
 
 
 class JobService:
     def __init__(self, db: Session):
         self.repo = JobRepository(db)
+        self.profile_repo = ProfileRepository(db)
 
     @staticmethod
     def _stable_manual_platform_job_id(job_dict: Dict[str, Any]) -> str:
@@ -64,11 +65,7 @@ class JobService:
         job_dict = job_in.model_dump()
         profile_id = job_dict.get("search_profile_id")
         if profile_id is not None:
-            profile = (
-                self.repo.db.query(SearchProfile)
-                .filter(SearchProfile.id == profile_id, SearchProfile.user_id == user_id)
-                .first()
-            )
+            profile = self.profile_repo.get_for_user(profile_id, user_id)
             if not profile:
                 raise HTTPException(status_code=403, detail="Unauthorized profile access")
 
@@ -86,20 +83,27 @@ class JobService:
         }
 
         # Upsert or create ScrapedJob
-        existing_scraped = (
-            self.repo.db.query(ScrapedJob)
-            .filter(
-                ScrapedJob.platform == scraped_fields["platform"],
-                ScrapedJob.platform_job_id == scraped_fields["platform_job_id"],
-            )
-            .first()
+        existing_scraped = self.repo.get_scraped_job_by_platform_and_id(
+            scraped_fields["platform"],
+            scraped_fields["platform_job_id"],
         )
+        scraped_job = existing_scraped
         if not existing_scraped:
             scraped_job = ScrapedJob(**{k: v for k, v in scraped_fields.items() if v is not None})
-            self.repo.db.add(scraped_job)
-            self.repo.db.flush()
-        else:
-            scraped_job = existing_scraped
+            created_ok = self.repo.create_scraped_job_nested(scraped_job)
+            if not created_ok:
+                scraped_job = self.repo.get_scraped_job_by_platform_and_id(
+                    scraped_fields["platform"],
+                    scraped_fields["platform_job_id"],
+                )
+                if not scraped_job:
+                    raise HTTPException(
+                        status_code=500,
+                        detail="Failed to create shared scraped job record",
+                    )
+
+        if scraped_job is None:
+            raise HTTPException(status_code=500, detail="Shared scraped job record is unavailable")
 
         # Create the user-specific Job record
         job_data = {

@@ -98,6 +98,8 @@ export function SearchProgress({ profileId, status, onStateChange, onClear }) {
         jobs_skipped,
         jobs_analyzed,
         jobs_analyze_total,
+        analysis_targets,
+        analysis_current_index,
         errors,
         log,
         terminal_reason,
@@ -135,25 +137,26 @@ export function SearchProgress({ profileId, status, onStateChange, onClear }) {
 
     const progressPct = _rawProgressPct;
 
-    const analyzedJobs = [];
-    if (state === "analyzing" && log) {
-        let currentJob = null;
-        log.forEach(entry => {
-            const analyzingMatch = entry.message.match(/Analyzing (\d+)\/(\d+)[:\s]*(.*)/);
-            if (analyzingMatch) {
-                if (currentJob) {
-                    currentJob.status = 'done';
-                    analyzedJobs.push(currentJob);
-                }
-                currentJob = {
-                    idx: parseInt(analyzingMatch[1], 10),
-                    total: parseInt(analyzingMatch[2], 10),
-                    title: analyzingMatch[3],
-                    status: 'analyzing'
+    let analyzedJobs = [];
+    if (state === "analyzing") {
+        if (Array.isArray(analysis_targets) && analysis_targets.length > 0) {
+            const completedCount = jobs_analyzed || 0;
+            const currentIndex = analysis_current_index || 0;
+            analyzedJobs = analysis_targets.map((entry, index) => {
+                const itemIndex = index + 1;
+                const title = typeof entry === 'string'
+                    ? entry
+                    : entry?.title || `Target ${itemIndex}`;
+                const isDone = itemIndex <= completedCount;
+                const isCurrent = !isDone && itemIndex === currentIndex;
+                return {
+                    idx: itemIndex,
+                    total: analysis_targets.length,
+                    title,
+                    status: isDone ? 'done' : isCurrent ? 'analyzing' : 'pending'
                 };
-            }
-        });
-        if (currentJob) analyzedJobs.push(currentJob);
+            });
+        }
     }
 
     return (
