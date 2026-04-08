@@ -108,7 +108,7 @@ class LLMService:
         "normalize": "NORMALIZE_BATCH_SIZE",
     }
 
-    def _resolve_step_context_window(self, step: str, provider: Any) -> int:
+    def _resolve_step_context_window(self, step: str, provider: Any | None) -> int:
         step_attr = f"LLM_{step.upper()}_CONTEXT_WINDOW"
         step_window = int(getattr(settings, step_attr, 0) or 0)
         if step_window > 0:
@@ -122,7 +122,15 @@ class LLMService:
         return provider_window if provider_window > 0 else 0
 
     def get_step_runtime_policy(self, step: str) -> Dict[str, Any]:
-        provider = self._get_provider(step)
+        provider = None
+        try:
+            provider = self._get_provider(step)
+        except Exception as exc:
+            logger.warning(
+                "[LLM] step=%s could not resolve provider for runtime policy; using settings defaults: %s",
+                step,
+                exc,
+            )
         context_window = self._resolve_step_context_window(step, provider)
         low_context_mode = str(getattr(settings, "SEARCH_LOW_CONTEXT_MODE", "auto") or "auto")
         low_context_mode = low_context_mode.strip().lower()

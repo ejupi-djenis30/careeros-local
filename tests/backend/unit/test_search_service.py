@@ -354,6 +354,67 @@ async def test_run_search_uses_degraded_fallback_plan_when_enabled(
     mock_update.assert_any_call(1, state="done", terminal_reason="no_results")
 
 
+@pytest.mark.asyncio
+async def test_run_search_no_results_tolerates_match_runtime_policy_provider_failure(
+    search_service, mock_profile_repo, mock_db
+):
+    mock_profile = MagicMock()
+    mock_profile.id = 1
+    mock_profile.user_id = 42
+    mock_profile.max_queries = 5
+    mock_profile.max_occupation_queries = None
+    mock_profile.max_keyword_queries = None
+    mock_profile.cv_content = "CV"
+    mock_profile.role_description = "Backend Developer"
+    mock_profile.search_strategy = ""
+    mock_profile.latitude = None
+    mock_profile.longitude = None
+    mock_profile.cached_queries = None
+    mock_profile.cached_cv_summary = None
+    mock_profile.cached_profile_snapshot = None
+    mock_profile.cached_profile_snapshot_fingerprint = None
+    mock_profile_repo.get.return_value = mock_profile
+    mock_db.query.return_value.filter.return_value.first.return_value = None
+
+    with (
+        patch.object(
+            search_service,
+            "_generate_plan",
+            new=AsyncMock(
+                return_value=[
+                    {
+                        "query": "Backend Developer",
+                        "type": "occupation",
+                        "domain": "general",
+                        "language": "en",
+                    }
+                ]
+            ),
+        ),
+        patch.object(search_service, "_normalize_user_profile", new=AsyncMock(return_value={})),
+        patch.object(search_service, "_search_and_produce", new=AsyncMock(return_value=(0, 0))),
+        patch.object(
+            search_service,
+            "_processing_consumer",
+            new=AsyncMock(return_value=(0, 0, [], 0, 0)),
+        ),
+        patch(
+            "backend.services.search_service.llm_service.summarize_cv",
+            new=AsyncMock(return_value=""),
+        ),
+        patch(
+            "backend.services.llm_service.get_provider_for_step",
+            side_effect=ValueError("missing api key"),
+        ),
+        patch("backend.services.search_service.add_log"),
+        patch("backend.services.search_service.init_status"),
+        patch("backend.services.search_service.update_status") as mock_update,
+    ):
+        await search_service.run_search(1)
+
+    mock_update.assert_any_call(1, state="done", terminal_reason="no_results")
+
+
 def test_apply_query_preferences_language_not_filtered_domain_is(search_service):
     """preferred_languages must NOT filter queries — only preferred_domains does.
 

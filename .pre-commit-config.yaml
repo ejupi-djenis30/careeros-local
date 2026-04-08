@@ -41,7 +41,7 @@ repos:
     hooks:
       - id: frontend-lint
         name: Frontend Lint (ESLint)
-        entry: python -c "import shutil, subprocess, sys; npm = shutil.which('npm') or shutil.which('npm.cmd'); raise SystemExit(subprocess.call([npm, 'run', 'lint'], cwd='frontend')) if npm else sys.exit('npm executable not found in PATH')"
+        entry: python -c "import os, shutil, subprocess, sys; git = shutil.which('git') or 'git'; candidates = ['npm.cmd', 'npm', 'npm.ps1'] if os.name == 'nt' else ['npm']; npm = next((path for name in candidates if (path := shutil.which(name))), None); sys.exit('npm executable not found in PATH') if not npm else None; repo_root = subprocess.check_output([git, 'rev-parse', '--show-toplevel'], text=True).strip(); frontend_dir = os.path.join(repo_root, 'frontend'); eslint = os.path.join(frontend_dir, 'node_modules', '.bin', 'eslint.cmd' if os.name == 'nt' else 'eslint'); code = subprocess.call([eslint, '.'], cwd=frontend_dir) if os.path.exists(eslint) else subprocess.call([npm, 'ci', '--no-audit', '--no-fund'], cwd=frontend_dir) or subprocess.call([npm, 'run', 'lint'], cwd=frontend_dir); raise SystemExit(code)"
         language: system
         files: ^frontend/src/.*\.(js|jsx|ts|tsx)$
         pass_filenames: false

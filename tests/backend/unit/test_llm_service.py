@@ -391,6 +391,34 @@ def test_get_step_runtime_policy_respects_legacy_description_cap(mock_provider):
     assert policy["description_limit_chars"] == 100
 
 
+def test_get_step_runtime_policy_falls_back_to_settings_when_provider_init_fails():
+    with (
+        patch(
+            "backend.services.llm_service.get_provider_for_step",
+            side_effect=ValueError("missing api key"),
+        ),
+        patch("backend.services.llm_service.settings.LLM_CONTEXT_WINDOW", 0),
+        patch("backend.services.llm_service.settings.LLM_MATCH_CONTEXT_WINDOW", 0),
+        patch("backend.services.llm_service.settings.SEARCH_LOW_CONTEXT_MODE", "auto"),
+        patch("backend.services.llm_service.settings.ANALYSIS_BATCH_SIZE", 7),
+        patch("backend.services.llm_service.settings.MATCH_PROMPT_TARGET_CHARS", 3456),
+        patch(
+            "backend.services.llm_service.settings.MATCH_PROMPT_JOB_MAX_DESCRIPTION_CHARS",
+            789,
+        ),
+        patch("backend.services.llm_service.settings.MAX_DESCRIPTION_CHARS", 5000),
+    ):
+        service = LLMService()
+        policy = service.get_step_runtime_policy("match")
+
+    assert policy["provider"] is None
+    assert policy["context_window"] == 0
+    assert policy["low_context"] is False
+    assert policy["batch_size"] == 7
+    assert policy["prompt_budget_chars"] == 3456
+    assert policy["description_limit_chars"] == 789
+
+
 @pytest.mark.asyncio
 async def test_analyze_job_batch_success(mock_provider):
     mock_provider.generate_json_async.return_value = {
