@@ -13,7 +13,9 @@ from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import mm
 from reportlab.platypus import (
     BalancedColumns,
+    Flowable,
     Image,
+    KeepTogether,
     PageBreak,
     Paragraph,
     SimpleDocTemplate,
@@ -115,19 +117,27 @@ def _pdf_styles(content: ResumeContent) -> dict[str, ParagraphStyle]:
     }
 
 
-def _section_flowables(section, styles: dict[str, ParagraphStyle]) -> list:
-    result = [Paragraph(_text(section.heading), styles["section"])]
+def _section_flowables(section, styles: dict[str, ParagraphStyle]) -> list[Flowable]:
+    result: list[Flowable] = [Paragraph(_text(section.heading), styles["section"])]
     for entry in section.entries:
-        result.append(Paragraph(_text(entry.title), styles["title"]))
+        flowables: list[Flowable] = []
+        spacing_before = float(entry.layout.get("spacing_before_pt", 0))
+        if spacing_before:
+            flowables.append(Spacer(1, spacing_before))
+        flowables.append(Paragraph(_text(entry.title), styles["title"]))
         metadata = " | ".join(value for value in (entry.subtitle, entry.date_range) if value)
         if metadata:
-            result.append(Paragraph(_text(metadata), styles["meta"]))
+            flowables.append(Paragraph(_text(metadata), styles["meta"]))
         if entry.description:
-            result.append(Paragraph(_text(entry.description), styles["body"]))
-        result.extend(
+            flowables.append(Paragraph(_text(entry.description), styles["body"]))
+        flowables.extend(
             Paragraph(f"&bull;&nbsp;{_text(bullet)}", styles["bullet"])
             for bullet in entry.bullets
         )
+        if entry.layout.get("keep_together", True):
+            result.append(KeepTogether(flowables))
+        else:
+            result.extend(flowables)
     return result
 
 
@@ -147,7 +157,7 @@ def render_two_column_pdf(snapshot: dict, photo: bytes | None) -> bytes:
         subject="Resume",
     )
     styles = _pdf_styles(content)
-    story = []
+    story: list[Flowable] = []
     if photo:
         image = Image(BytesIO(photo), width=28 * mm, height=28 * mm)
         image.hAlign = "CENTER"
@@ -161,7 +171,7 @@ def render_two_column_pdf(snapshot: dict, photo: bytes | None) -> bytes:
         story.append(Paragraph(_text(content.summary_heading), styles["section"]))
         story.append(Paragraph(_text(content.summary), styles["body"]))
 
-    segments: list[list] = [[]]
+    segments: list[list[Flowable]] = [[]]
     for section in content.sections:
         if section.page_break_before and segments[-1]:
             segments.append([])

@@ -7,9 +7,12 @@ from pydantic import BaseModel
 
 from backend.ai.contracts import (
     CoachResult,
+    JobCritiqueResult,
     JobMatchResult,
     JobNormalizationResult,
+    JobRerankResult,
     ProfileNormalizationResult,
+    ResumeTailoringResult,
     SearchPlanResult,
 )
 
@@ -47,6 +50,20 @@ TASK_SPECS: dict[str, TaskSpec] = {
         ),
         max_context_chars=12_000,
         max_output_tokens=1_200,
+        evidence_required=True,
+    ),
+    "resume_tailor": TaskSpec(
+        task_id="resume_tailor",
+        version="1.0.0",
+        output_model=ResumeTailoringResult,
+        system_instruction=(
+            "Tailor resume statements to a target job without inventing experience, metrics, "
+            "skills or credentials. Every proposed statement must cite exact candidate facts "
+            "and relevant job evidence. Report unsupported requirements as gaps, never as claims. "
+            + _UNTRUSTED_DATA
+        ),
+        max_context_chars=14_000,
+        max_output_tokens=1_800,
         evidence_required=True,
     ),
     "profile_normalize": TaskSpec(
@@ -94,5 +111,28 @@ TASK_SPECS: dict[str, TaskSpec] = {
         max_context_chars=12_000,
         max_output_tokens=2_000,
         evidence_required=True,
+    ),
+    "job_critique": TaskSpec(
+        task_id="job_critique",
+        version="1.0.0",
+        output_model=JobCritiqueResult,
+        system_instruction=(
+            "Challenge initial job-fit scores using only supplied candidate and job data. Keep "
+            "input order and change a score only when concrete blockers or missed fit justify it. "
+            + _UNTRUSTED_DATA
+        ),
+        max_context_chars=12_000,
+        max_output_tokens=1_200,
+    ),
+    "job_rerank": TaskSpec(
+        task_id="job_rerank",
+        version="1.0.0",
+        output_model=JobRerankResult,
+        system_instruction=(
+            "Compare pre-scored jobs head-to-head, preserve input order and produce unique ranks. "
+            "Adjust scores only when comparative evidence supports the change. " + _UNTRUSTED_DATA
+        ),
+        max_context_chars=14_000,
+        max_output_tokens=1_400,
     ),
 }

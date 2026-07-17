@@ -3,11 +3,12 @@ import { useLocalModelStatus } from "./useLocalModelStatus";
 export function LocalModelStatus({ compact = false }) {
     const { status, refresh } = useLocalModelStatus();
     const state = status.loading ? "checking" : status.ready ? "ready" : status.available ? "missing" : "offline";
+    const runtimeName = status.runtime === "llama.cpp" ? "llama.cpp" : "runtime locale";
     const label = {
         checking: "Verifica modello…",
-        ready: `Locale · ${status.configured_model}`,
-        missing: "Modello non installato",
-        offline: "Ollama non raggiungibile",
+        ready: `${runtimeName} · ${status.configured_model}`,
+        missing: "Configurazione modello necessaria",
+        offline: "Runtime locale non disponibile",
     }[state];
 
     return (

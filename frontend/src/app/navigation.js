@@ -26,11 +26,10 @@ export const PAGE_CONTEXT = {
     "/profile": { eyebrow: "Fonte di verità", title: "Career Vault", description: "Il profilo completo da cui nascono CV, matching e coaching." },
     "/resumes": { eyebrow: "Documenti verificabili", title: "CV Studio", description: "Crea CV ATS o con foto, versionati e pronti da inviare." },
     "/applications": { eyebrow: "Pipeline personale", title: "Candidature", description: "Mantieni uno storico immutabile di ogni opportunità." },
-    "/coach": { eyebrow: "Ollama · solo locale", title: "Coach carriera", description: "Ragiona sui fatti che scegli, con citazioni verificabili." },
+    "/coach": { eyebrow: "AI sul dispositivo", title: "Coach carriera", description: "Ragiona sui fatti che scegli, con citazioni verificabili." },
     "/jobs": { eyebrow: "Opportunity engine", title: "Annunci", description: "Valuta e organizza le opportunità raccolte." },
     "/search": { eyebrow: "Opportunity engine", title: "Nuova ricerca", description: "Configura una ricerca mirata con fallback deterministico." },
     "/progress": { eyebrow: "Workflow", title: "Attività", description: "Stato e log delle ricerche in corso." },
     "/history": { eyebrow: "Archivio", title: "Cronologia ricerche", description: "Rivedi le esecuzioni precedenti." },
     "/schedules": { eyebrow: "Automazioni locali", title: "Pianificazioni", description: "Gestisci le ricerche programmate." },
 };
-

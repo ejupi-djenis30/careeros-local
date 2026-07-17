@@ -4,7 +4,7 @@ import uuid
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import JSON, Boolean, DateTime, ForeignKey, Integer, String, func
+from sqlalchemy import JSON, Boolean, DateTime, ForeignKey, Index, Integer, String, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from backend.models.base_model import Base
@@ -16,6 +16,10 @@ def _uuid() -> str:
 
 class AIExecution(Base):
     __tablename__ = "ai_executions"
+    __table_args__ = (
+        Index("ix_ai_executions_task_created_at", "task", "created_at"),
+        Index("ix_ai_executions_model_created_at", "model_id", "created_at"),
+    )
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
     user_id: Mapped[int | None] = mapped_column(
@@ -43,6 +47,9 @@ class AIExecution(Base):
 
 class AIEvaluationRun(Base):
     __tablename__ = "ai_evaluation_runs"
+    __table_args__ = (
+        Index("ix_ai_evaluation_dataset_model", "dataset_version", "model_id"),
+    )
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
     dataset_version: Mapped[str] = mapped_column(String(30), nullable=False, index=True)

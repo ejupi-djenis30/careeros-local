@@ -8,6 +8,7 @@ from backend.resumes.canvas_schemas import (
     CanvasBlock,
     CanvasContent,
     CanvasSection,
+    CanvasSectionKind,
     CanvasStyle,
     ResumeCanvasDocument,
 )
@@ -24,6 +25,9 @@ SECTION_TITLES = {
     "volunteering": "VOLUNTEERING",
     "publication": "PUBLICATIONS",
     "link": "LINKS",
+    "award": "AWARDS",
+    "membership": "MEMBERSHIPS",
+    "portfolio": "PORTFOLIO",
 }
 
 
@@ -44,7 +48,9 @@ def _date_label(value: str | date | None) -> str:
 
 
 def _date_range(payload: Mapping[str, Any]) -> str:
-    start = _date_label(payload.get("start_date") or payload.get("issued_on"))
+    start = _date_label(
+        payload.get("start_date") or payload.get("issued_on") or payload.get("awarded_on")
+    )
     end = "Present" if payload.get("current") else _date_label(
         payload.get("end_date") or payload.get("expires_on") or payload.get("published_on")
     )
@@ -111,6 +117,27 @@ def fact_content(fact: Any) -> CanvasContent:
         )
     if fact_type == "link":
         return CanvasContent(title=payload["label"], subtitle=payload["url"])
+    if fact_type == "award":
+        return CanvasContent(
+            title=payload["title"],
+            subtitle=_join(payload.get("issuer"), payload.get("url")),
+            date_range=_date_label(payload.get("awarded_on")),
+            description=payload.get("description", ""),
+        )
+    if fact_type == "membership":
+        return CanvasContent(
+            title=payload["role"],
+            subtitle=_join(payload["organization"], payload.get("url")),
+            date_range=_date_range(payload),
+            description=payload.get("description", ""),
+        )
+    if fact_type == "portfolio":
+        return CanvasContent(
+            title=payload["name"],
+            subtitle=payload["url"],
+            description=payload.get("description", ""),
+            bullets=list(payload.get("skills", [])),
+        )
     return CanvasContent(
         title=payload["title"],
         subtitle=_join(payload.get("organization"), payload.get("publisher")),
@@ -224,14 +251,14 @@ def build_canvas(
             sections.append(
                 CanvasSection(
                     id=fact_type,
-                    kind=fact_type,
+                    kind=cast(CanvasSectionKind, fact_type),
                     title=SECTION_TITLES[fact_type],
                     blocks=blocks,
                 )
             )
     return ResumeCanvasDocument(
         sections=sections,
-        style=CanvasStyle(columns=1 if template_kind == "ats" else 1),
+        style=CanvasStyle(columns=1),
     )
 
 

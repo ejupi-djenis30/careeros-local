@@ -103,7 +103,7 @@ def test_cancel_retry_and_redacted_failure_lifecycle(db_session, test_user):
 
 
 def test_sqlite_atomic_claim_allows_only_one_worker():
-    with TemporaryDirectory(dir="cmd_outputs") as directory:
+    with TemporaryDirectory() as directory:
         database_path = Path(directory) / "workflow.db"
         engine = create_engine(
             f"sqlite:///{database_path.as_posix()}", connect_args={"check_same_thread": False}

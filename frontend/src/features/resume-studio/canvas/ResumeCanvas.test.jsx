@@ -2,6 +2,7 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import { readFileSync } from "node:fs";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
+import { assertAccessible } from "../../../test/accessibility";
 import { resumeDraft } from "../../../test/fixtures";
 import { ResumeCanvas } from "./ResumeCanvas";
 
@@ -12,7 +13,7 @@ describe("ResumeCanvas", () => {
         render(<ResumeCanvas document={resumeDraft().canvas_document} templateKind="ats" onChange={onChange} />);
         const title = screen.getByLabelText("Titolo blocco 1", { selector: "input[value='Principal Engineer']" });
         fireEvent.change(title, { target: { value: "Staff Engineer" } });
-        expect(onChange).toHaveBeenLastCalledWith(expect.objectContaining({ schema_version: 1 }));
+        expect(onChange).toHaveBeenLastCalledWith(expect.objectContaining({ schema_version: 2 }));
 
         await user.click(screen.getByRole("button", { name: "Annulla modifica" }));
         expect(screen.getByDisplayValue("Principal Engineer")).toBeInTheDocument();
@@ -32,6 +33,23 @@ describe("ResumeCanvas", () => {
         await user.click(screen.getByRole("button", { name: "Interruzione pagina prima di Esperienza" }));
         fireEvent.change(screen.getByLabelText("Dimensione testo"), { target: { value: "11" } });
         expect(screen.getByLabelText("Canvas modificabile del CV")).toHaveStyle({ "--canvas-size": "11pt" });
+    });
+
+    it("provides zoom, page guides and bounded block spacing controls", async () => {
+        const user = userEvent.setup();
+        const onChange = vi.fn();
+        const careerCss = readFileSync("src/career-os.css", "utf8");
+        render(<ResumeCanvas document={resumeDraft().canvas_document} templateKind="ats" onChange={onChange} />);
+
+        fireEvent.change(screen.getByLabelText("Zoom canvas"), { target: { value: "1.25" } });
+        expect(screen.getByLabelText("Foglio A4 con guide pagina")).toHaveStyle({ transform: "scale(1.25)" });
+        expect(careerCss).toMatch(/resume-canvas-paper::after[\s\S]*repeating-linear-gradient/);
+
+        await user.click(screen.getByDisplayValue("Principal Engineer"));
+        fireEvent.change(screen.getByLabelText("Spazio prima del blocco"), { target: { value: "12" } });
+        await user.click(screen.getByLabelText("Mantieni blocco unito"));
+        const changed = onChange.mock.calls.at(-1)[0].sections[1].blocks[0];
+        expect(changed.layout).toEqual({ spacing_before_pt: 12, keep_together: false });
     });
 
     it("retains mobile, reduced-motion and keyboard fallbacks", async () => {
@@ -75,5 +93,17 @@ describe("ResumeCanvas", () => {
         expect(screen.getByRole("img", { name: "Foto profilo normalizzata" })).toHaveAttribute("src", "blob:normalized-photo");
         expect(screen.getByLabelText("Canvas modificabile del CV")).toHaveStyle({ "--canvas-columns": "2" });
         expect(careerCss).toMatch(/resume-canvas-paper--photo[\s\S]*column-count:\s*var\(--canvas-columns\)/);
+    });
+
+    it("passes the editable canvas accessibility and tab-order gate", async () => {
+        const user = userEvent.setup();
+        const { container } = render(<main><ResumeCanvas document={resumeDraft().canvas_document} templateKind="ats" onChange={vi.fn()} /></main>);
+
+        await assertAccessible(container);
+        await user.tab();
+        const addClaim = screen.getByRole("button", { name: "Nuovo claim" });
+        expect(addClaim).toHaveFocus();
+        await user.keyboard("{Enter}");
+        expect(screen.getByText("Claim senza fonte")).toBeInTheDocument();
     });
 });

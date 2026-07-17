@@ -279,33 +279,35 @@ class AVAMProfessionMapper:
 
         result = list(matches)
         if result:
-            logger.debug(f"Mapped occupation '{title}' to AVAM codes (Static L1): {result}")
+            logger.debug("Mapped occupation using static AVAM cache code_count=%d", len(result))
             return result
 
         # 2. Check L2 TTL API Cache
         if normalized in self._api_cache:
             cache_codes, timestamp = self._api_cache[normalized]
             if time.time() - timestamp < self._ttl_seconds:
-                logger.debug(f"Mapped occupation '{title}' to AVAM codes (Cache L2): {cache_codes}")
+                logger.debug(
+                    "Mapped occupation using dynamic AVAM cache code_count=%d", len(cache_codes)
+                )
                 return cache_codes
 
         # 3. L3 Live API Fallback
         try:
             api_codes = await self._fetch_from_api(title)
             if api_codes:
-                logger.info(
-                    f"Dynamically mapped occupation '{title}' via API to AVAM codes: {api_codes}"
-                )
+                logger.info("Mapped occupation using AVAM API code_count=%d", len(api_codes))
             else:
-                logger.debug(f"No AVAM mapping found for occupation '{title}' via API.")
+                logger.debug("AVAM API returned no occupation mapping")
             # Cache result (including empty) to prevent re-querying dead-ends; evict oldest if at capacity
             if len(self._api_cache) >= self._api_cache_max_size:
                 self._api_cache.pop(next(iter(self._api_cache)))
             self._api_cache[normalized] = (api_codes, time.time())
             if api_codes:
                 return api_codes
-        except Exception as e:
-            logger.warning(f"Failed to fetch dynamic AVAM codes for '{title}': {e}")
+        except Exception as exc:
+            logger.warning(
+                "AVAM occupation mapping failed exception_type=%s", type(exc).__name__
+            )
 
         return []
 

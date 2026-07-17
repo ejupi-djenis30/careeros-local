@@ -3,6 +3,7 @@
 from typing import Any
 
 from backend.core.config import settings
+from backend.inference.managed_runtime import get_managed_runtime
 from backend.inference.ollama import OllamaProvider
 
 _KNOWN_STEPS = {
@@ -54,7 +55,7 @@ def _build_provider(cfg: dict[str, Any], step: str = "default") -> OllamaProvide
 
 def get_provider_name_for_step(step: str = "default") -> str:
     del step
-    return "ollama-local"
+    return "llama-cpp-managed" if get_managed_runtime().snapshot().ready else "ollama-local"
 
 
 def get_fallback_provider_for_step(step: str = "default") -> None:
@@ -62,9 +63,12 @@ def get_fallback_provider_for_step(step: str = "default") -> None:
     return None
 
 
-def get_provider_for_step(step: str = "default") -> OllamaProvider:
+def get_provider_for_step(step: str = "default"):
+    manager = get_managed_runtime()
+    if manager.snapshot().ready:
+        return manager.provider()
     return _build_provider(_resolve_step_config(step), step=step)
 
 
-def get_llm_provider() -> OllamaProvider:
+def get_llm_provider():
     return get_provider_for_step("default")

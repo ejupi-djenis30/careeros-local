@@ -9,6 +9,10 @@ export const FACT_TYPES = [
     ["volunteering", "Volontariato"],
     ["publication", "Pubblicazione"],
     ["link", "Link"],
+    ["award", "Premio"],
+    ["membership", "Associazione"],
+    ["reference", "Referenza"],
+    ["portfolio", "Portfolio"],
 ];
 
 export const FACT_LABELS = Object.fromEntries(FACT_TYPES);
@@ -24,6 +28,10 @@ export const FACT_DEFAULTS = {
     volunteering: { title: "", organization: "", description: "", achievements: [] },
     publication: { title: "", publisher: "", published_on: "", description: "", url: "" },
     link: { label: "", url: "" },
+    award: { title: "", issuer: "", awarded_on: "", description: "", url: "" },
+    membership: { organization: "", role: "Membro", description: "", start_date: "", end_date: "", current: false, url: "" },
+    reference: { name: "", relationship: "", organization: "", email: "", phone: "", notes: "", permission_to_contact: false },
+    portfolio: { name: "", url: "", description: "", skills: [] },
 };
 
 export function emptyProfile(displayName = "Profilo locale") {
@@ -44,6 +52,7 @@ export function emptyProfile(displayName = "Profilo locale") {
         preferences: {},
         facts: [],
         goals: [],
+        analysis: null,
     };
 }
 
@@ -81,6 +90,7 @@ export function profileResponseToDraft(profile) {
         preferences: profile.preferences || {},
         facts: (profile.facts || []).map((fact) => ({ ...fact, clientKey: fact.id })),
         goals: (profile.goals || []).map((goal) => ({ ...goal, clientKey: goal.id })),
+        analysis: profile.analysis || null,
     };
 }
 
@@ -124,7 +134,7 @@ export function newFact(type) {
 
 export function factTitle(fact) {
     const payload = fact.payload || {};
-    return payload.role || payload.name || payload.title || payload.qualification || payload.language || payload.label || FACT_LABELS[fact.fact_type];
+    return payload.role || payload.name || payload.title || payload.qualification || payload.language || payload.label || payload.organization || FACT_LABELS[fact.fact_type];
 }
 
 export function newGoal() {
@@ -142,33 +152,35 @@ export function newGoal() {
             work_modes: [],
             contract_types: [],
             compensation: null,
+            rationale: "",
+            start_date: "",
             target_date: "",
+            progress_percent: 0,
+            success_criteria: [],
             must_haves: [],
             deal_breakers: [],
             skill_gaps: [],
             milestones: [],
+            actions: [],
             progress_notes: [],
         },
     };
 }
 
 export function profileCompleteness(profile) {
-    const checks = [
-        profile.display_name,
-        profile.headline,
-        profile.summary,
-        profile.email,
-        profile.location?.name || profile.location?.city,
-        profile.facts?.some((fact) => fact.fact_type === "experience"),
-        profile.facts?.some((fact) => fact.fact_type === "skill"),
-        profile.facts?.some((fact) => fact.fact_type === "education"),
-        profile.facts?.some((fact) => fact.fact_type === "project"),
-        profile.facts?.some((fact) => fact.verification_status === "confirmed"),
-        profile.goals?.length > 0,
-        profile.goals?.some((goal) => goal.payload?.target_roles?.length),
-        profile.goals?.some((goal) => goal.payload?.milestones?.length),
-        profile.preferences?.workload_min != null || profile.preferences?.remote_only,
-        profile.website || profile.linkedin || profile.github,
+    const facts = profile.facts || [];
+    const has = (type) => facts.some((fact) => fact.fact_type === type);
+    const primaryGoal = profile.goals?.find((goal) => goal.is_primary) || profile.goals?.[0];
+    const sections = [
+        [15, [profile.display_name, profile.headline, profile.summary, profile.email || profile.phone, profile.location?.name || profile.location?.city || profile.location?.country]],
+        [20, [has("experience"), facts.some((fact) => fact.fact_type === "experience" && fact.verification_status === "confirmed"), facts.some((fact) => fact.fact_type === "experience" && (fact.payload?.achievements?.length || fact.payload?.description))]],
+        [15, [has("skill"), facts.some((fact) => fact.fact_type === "skill" && fact.verification_status === "confirmed"), facts.some((fact) => fact.fact_type === "skill" && fact.payload?.evidence_fact_ids?.length)]],
+        [10, [has("education")]],
+        [10, [has("achievement")]],
+        [10, [has("project")]],
+        [5, [facts.some((fact) => ["certification", "language", "award", "membership", "volunteering", "publication", "portfolio"].includes(fact.fact_type))]],
+        [5, [profile.preferences?.target_roles?.length, profile.preferences?.preferred_work_modes?.length || profile.preferences?.remote_only, profile.preferences?.salary || profile.preferences?.salary_min_chf]],
+        [10, [primaryGoal, primaryGoal?.payload?.target_roles?.length, primaryGoal?.payload?.target_date, primaryGoal?.payload?.success_criteria?.length, primaryGoal?.payload?.milestones?.length, primaryGoal?.payload?.actions?.length]],
     ];
-    return Math.round((checks.filter(Boolean).length / checks.length) * 100);
+    return Math.round(sections.reduce((total, [weight, checks]) => total + weight * checks.filter(Boolean).length / checks.length, 0));
 }

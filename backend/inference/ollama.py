@@ -1,9 +1,15 @@
 import json
+import time
 from typing import Any, Dict, Optional
 
 import httpx
 
 from backend.inference.endpoint import validate_local_inference_url
+from backend.inference.ports import (
+    InferenceUsage,
+    StructuredInferenceRequest,
+    StructuredInferenceResult,
+)
 from backend.providers.llm.base import LLMProvider, extract_json_payload
 
 
@@ -22,6 +28,8 @@ class OllamaProvider(LLMProvider):
         context_window: int = 8192,
         connect_timeout: float = 2.0,
         request_timeout: float = 120.0,
+        transport: httpx.BaseTransport | None = None,
+        async_transport: httpx.AsyncBaseTransport | None = None,
     ) -> None:
         self.endpoint = validate_local_inference_url(endpoint, allowed_hosts=allowed_hosts)
         self.model = model.strip()
@@ -37,10 +45,58 @@ class OllamaProvider(LLMProvider):
             timeout=float(request_timeout),
             connect=float(connect_timeout),
         )
+        self.transport = transport
+        self.async_transport = async_transport
 
     @property
     def model_id(self) -> str:
         return f"ollama-local/{self.model}"
+
+    @property
+    def runtime_capabilities(self) -> frozenset[str]:
+        return frozenset({"json-schema", "usage", "seed"})
+
+    def _structured_payload(self, request: StructuredInferenceRequest) -> dict[str, Any]:
+        payload = self._payload(request.system_prompt, request.user_prompt, request.max_tokens)
+        payload["format"] = request.json_schema
+        payload["options"].update(
+            {
+                "temperature": request.temperature,
+                "top_p": request.top_p,
+                "seed": request.seed,
+            }
+        )
+        return payload
+
+    async def generate_structured_async(
+        self, request: StructuredInferenceRequest
+    ) -> StructuredInferenceResult:
+        started = time.monotonic()
+        async with httpx.AsyncClient(
+            base_url=self.endpoint,
+            timeout=self.timeout,
+            trust_env=False,
+            transport=self.async_transport,
+        ) as client:
+            response = await client.post("/api/chat", json=self._structured_payload(request))
+        response.raise_for_status()
+        body = response.json()
+        content = body.get("message", {}).get("content")
+        if not isinstance(content, str) or not content.strip():
+            raise RuntimeError("Local model returned an empty structured response")
+        parsed = json.loads(extract_json_payload(content))
+        if not isinstance(parsed, dict):
+            raise RuntimeError("Local model structured response must be a JSON object")
+        return StructuredInferenceResult(
+            payload=parsed,
+            model_id=self.model_id,
+            runtime="ollama",
+            usage=InferenceUsage(
+                prompt_tokens=body.get("prompt_eval_count"),
+                completion_tokens=body.get("eval_count"),
+            ),
+            duration_ms=max(0, round((time.monotonic() - started) * 1000)),
+        )
 
     def _payload(self, system_prompt: str, user_prompt: str, max_tokens: Optional[int]) -> dict:
         return {
@@ -71,7 +127,12 @@ class OllamaProvider(LLMProvider):
     def generate_text(
         self, system_prompt: str, user_prompt: str, max_tokens: Optional[int] = None
     ) -> str:
-        with httpx.Client(base_url=self.endpoint, timeout=self.timeout, trust_env=False) as client:
+        with httpx.Client(
+            base_url=self.endpoint,
+            timeout=self.timeout,
+            trust_env=False,
+            transport=self.transport,
+        ) as client:
             response = client.post(
                 "/api/chat", json=self._payload(system_prompt, user_prompt, max_tokens)
             )
@@ -82,7 +143,12 @@ class OllamaProvider(LLMProvider):
     ) -> Dict[str, Any]:
         payload = self._payload(system_prompt, user_prompt, max_tokens)
         payload["format"] = "json"
-        with httpx.Client(base_url=self.endpoint, timeout=self.timeout, trust_env=False) as client:
+        with httpx.Client(
+            base_url=self.endpoint,
+            timeout=self.timeout,
+            trust_env=False,
+            transport=self.transport,
+        ) as client:
             response = client.post("/api/chat", json=payload)
         parsed = json.loads(extract_json_payload(self._content(response)))
         if not isinstance(parsed, dict):
@@ -93,7 +159,10 @@ class OllamaProvider(LLMProvider):
         self, system_prompt: str, user_prompt: str, max_tokens: Optional[int] = None
     ) -> str:
         async with httpx.AsyncClient(
-            base_url=self.endpoint, timeout=self.timeout, trust_env=False
+            base_url=self.endpoint,
+            timeout=self.timeout,
+            trust_env=False,
+            transport=self.async_transport,
         ) as client:
             response = await client.post(
                 "/api/chat", json=self._payload(system_prompt, user_prompt, max_tokens)
@@ -106,7 +175,10 @@ class OllamaProvider(LLMProvider):
         payload = self._payload(system_prompt, user_prompt, max_tokens)
         payload["format"] = "json"
         async with httpx.AsyncClient(
-            base_url=self.endpoint, timeout=self.timeout, trust_env=False
+            base_url=self.endpoint,
+            timeout=self.timeout,
+            trust_env=False,
+            transport=self.async_transport,
         ) as client:
             response = await client.post("/api/chat", json=payload)
         parsed = json.loads(extract_json_payload(self._content(response)))
@@ -115,7 +187,12 @@ class OllamaProvider(LLMProvider):
         return parsed
 
     def list_models(self) -> list[str]:
-        with httpx.Client(base_url=self.endpoint, timeout=self.timeout, trust_env=False) as client:
+        with httpx.Client(
+            base_url=self.endpoint,
+            timeout=self.timeout,
+            trust_env=False,
+            transport=self.transport,
+        ) as client:
             response = client.get("/api/tags")
         response.raise_for_status()
         return [
@@ -126,7 +203,10 @@ class OllamaProvider(LLMProvider):
 
     async def list_models_async(self) -> list[str]:
         async with httpx.AsyncClient(
-            base_url=self.endpoint, timeout=self.timeout, trust_env=False
+            base_url=self.endpoint,
+            timeout=self.timeout,
+            trust_env=False,
+            transport=self.async_transport,
         ) as client:
             response = await client.get("/api/tags")
         response.raise_for_status()

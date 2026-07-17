@@ -215,11 +215,17 @@ def _with_profile_repo(operation_name: str, callback):
         return callback(repo)
     except (OperationalError, ProgrammingError) as exc:
         logger.debug(
-            "Skipping %s because DB status storage is unavailable: %s", operation_name, exc
+            "Search status repository unavailable operation_present=%s exception_type=%s",
+            bool(operation_name),
+            type(exc).__name__,
         )
         return None
     except Exception as exc:
-        logger.warning("Failed to %s: %s", operation_name, exc)
+        logger.warning(
+            "Search status repository operation failed operation_present=%s exception_type=%s",
+            bool(operation_name),
+            type(exc).__name__,
+        )
         return None
     finally:
         db.close()

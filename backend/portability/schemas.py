@@ -19,7 +19,7 @@ class ArchiveEntry(BaseModel):
 
 class ArchiveManifest(BaseModel):
     format: Literal["careeros-portable-archive"]
-    format_version: Literal[1]
+    format_version: Literal[1, 2]
     created_at: datetime
     owner_scope: Literal["career-vault"]
     record_counts: dict[str, int]
@@ -31,4 +31,3 @@ class RestoreResponse(BaseModel):
     archive_sha256: str
     restored_records: dict[str, int]
     restored_files: int
-

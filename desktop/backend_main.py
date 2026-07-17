@@ -300,8 +300,11 @@ def start_parent_watchdog(process_id: int, *, interval_seconds: float = 0.5) -> 
 
 def main(argv: Sequence[str] | None = None) -> int:
     configured = configure_environment(parse_args(argv))
-    migrate_database(configured.database_path, configured.backup_directory)
-    run_server(configured)
+    from backend.desktop.lifecycle import desktop_instance_lease
+
+    with desktop_instance_lease(root=configured.arguments.data_dir):
+        migrate_database(configured.database_path, configured.backup_directory)
+        run_server(configured)
     return 0
 
 

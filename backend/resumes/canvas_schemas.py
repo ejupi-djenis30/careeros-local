@@ -18,6 +18,9 @@ CanvasSectionKind = Literal[
     "volunteering",
     "publication",
     "link",
+    "award",
+    "membership",
+    "portfolio",
 ]
 CanvasBlockKind = Literal["identity", "summary", "fact"]
 ManualField = Literal["title", "subtitle", "date_range", "description", "bullets"]
@@ -60,6 +63,11 @@ class CanvasContent(BaseModel):
         return normalized
 
 
+class CanvasBlockLayout(BaseModel):
+    spacing_before_pt: float = Field(default=0, ge=0, le=24)
+    keep_together: bool = True
+
+
 class CanvasBlock(BaseModel):
     id: str = Field(min_length=1, max_length=120, pattern=r"^[A-Za-z0-9][A-Za-z0-9_.:-]*$")
     kind: CanvasBlockKind
@@ -67,6 +75,7 @@ class CanvasBlock(BaseModel):
     visible: bool = True
     content: CanvasContent = Field(default_factory=CanvasContent)
     manual_fields: list[ManualField] = Field(default_factory=list, max_length=5)
+    layout: CanvasBlockLayout = Field(default_factory=CanvasBlockLayout)
 
     @field_validator("fact_ids")
     @classmethod
@@ -115,12 +124,13 @@ class CanvasStyle(BaseModel):
 
 
 class ResumeCanvasDocument(BaseModel):
-    schema_version: Literal[1] = 1
+    schema_version: Literal[1, 2] = 2
     sections: list[CanvasSection] = Field(min_length=1, max_length=20)
     style: CanvasStyle = Field(default_factory=CanvasStyle)
 
     @model_validator(mode="after")
     def validate_document(self):
+        self.schema_version = 2
         section_ids = [section.id for section in self.sections]
         section_kinds = [section.kind for section in self.sections]
         block_ids = [block.id for section in self.sections for block in section.blocks]
@@ -156,8 +166,22 @@ class GenerationContext(BaseModel):
     target_job_id: int | None = Field(default=None, ge=1)
     target_snapshot: dict = Field(default_factory=dict)
     reason_codes: list[str] = Field(default_factory=list, max_length=100)
+    claim_evidence_map: dict[str, list[str]] = Field(default_factory=dict)
 
     @field_validator("career_goal_id")
     @classmethod
     def validate_goal_id(cls, value: str | None) -> str | None:
         return canonical_uuid(value) if value else None
+
+    @field_validator("claim_evidence_map")
+    @classmethod
+    def validate_claim_evidence_map(cls, value: dict[str, list[str]]) -> dict[str, list[str]]:
+        result: dict[str, list[str]] = {}
+        for block_id, fact_ids in value.items():
+            if not block_id or len(block_id) > 120:
+                raise ValueError("claim evidence map contains an invalid block id")
+            canonical = [canonical_uuid(item) for item in fact_ids]
+            if not canonical or len(canonical) != len(set(canonical)):
+                raise ValueError("claim evidence map entries require unique career facts")
+            result[block_id] = canonical
+        return result

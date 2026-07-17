@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Any, Dict, Optional
 
 from backend.core.config import settings
-from backend.services.search.listing_utils import (
+from backend.search.normalization.listings import (
     _word_bounded_substring,
     coerce_int,
     compute_prescore,

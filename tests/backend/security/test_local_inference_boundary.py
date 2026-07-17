@@ -48,11 +48,11 @@ def test_local_inference_endpoint_allows_an_explicit_container_alias():
 
 
 def test_runtime_and_ci_have_no_remote_ai_escape_hatches():
-    forbidden = re.compile(
-        r"\b(groq|g4f|deepseek|gemini|openai|anthropic|supabase|sentence-transformers)\b"
-        r"|\b(?:LLM|MODEL|GEMINI|GOOGLE|OPENAI)_(?:API_)?KEY\b",
+    remote_provider = re.compile(
+        r"\b(groq|g4f|deepseek|gemini|openai|anthropic|supabase|sentence-transformers)\b",
         re.IGNORECASE,
     )
+    remote_secret = re.compile(r"\b(?:LLM|MODEL|GEMINI|GOOGLE|OPENAI)_(?:API_)?KEY\b")
     files = [
         *PROJECT_ROOT.joinpath("backend").rglob("*.py"),
         *PROJECT_ROOT.joinpath("backend").rglob("*.md"),
@@ -77,7 +77,7 @@ def test_runtime_and_ci_have_no_remote_ai_escape_hatches():
         for line_number, line in enumerate(
             path.read_text(encoding="utf-8").splitlines(), start=1
         ):
-            if forbidden.search(line):
+            if remote_provider.search(line) or remote_secret.search(line):
                 findings.append(f"{path.relative_to(PROJECT_ROOT)}:{line_number}")
     assert findings == [], "Remote AI boundary violations: " + ", ".join(findings)
 

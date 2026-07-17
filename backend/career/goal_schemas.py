@@ -66,9 +66,17 @@ class CareerAction(BaseModel):
     linked_fact_ids: list[str] = Field(default_factory=list, max_length=100)
     linked_job_ids: list[str] = Field(default_factory=list, max_length=100)
     linked_application_ids: list[str] = Field(default_factory=list, max_length=100)
+    linked_learning_activity_ids: list[str] = Field(default_factory=list, max_length=100)
+    linked_resume_version_ids: list[str] = Field(default_factory=list, max_length=100)
     learning_resource_url: str | None = Field(default=None, max_length=2048)
 
-    @field_validator("linked_fact_ids", "linked_job_ids", "linked_application_ids")
+    @field_validator(
+        "linked_fact_ids",
+        "linked_job_ids",
+        "linked_application_ids",
+        "linked_learning_activity_ids",
+        "linked_resume_version_ids",
+    )
     @classmethod
     def validate_unique_links(cls, value: list[str], info) -> list[str]:
         normalized = [str(item).strip() for item in value]
@@ -169,6 +177,17 @@ class CareerGoalPayload(BaseModel):
         action_ids = [item.id for item in self.actions]
         if len(action_ids) != len(set(action_ids)):
             raise ValueError("action ids must be unique")
+        learning_activity_ids = {
+            item.id for item in self.actions if item.kind == "learning"
+        }
+        for action in self.actions:
+            linked_learning = set(action.linked_learning_activity_ids)
+            if linked_learning - learning_activity_ids:
+                raise ValueError(
+                    "linked learning activities must be learning actions in the same goal"
+                )
+            if action.id in linked_learning:
+                raise ValueError("an action cannot link to itself as a learning activity")
         if self.target_date:
             if any(item.target_date and item.target_date > self.target_date for item in self.milestones):
                 raise ValueError("milestone target_date cannot exceed goal target_date")

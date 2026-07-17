@@ -9,6 +9,7 @@ from backend.career.models import CandidateProfile, CareerFact, CareerGoal
 from backend.career.schemas import FactType
 from backend.resumes.canvas import SECTION_TITLES, build_canvas
 from backend.resumes.canvas_schemas import GenerationContext, ResumeCanvasDocument
+from backend.resumes.canvas_validation import build_claim_evidence_map
 from backend.resumes.schemas import ResumeSectionConfig, TemplateKind
 
 FACT_LIMITS: dict[str, int] = {
@@ -22,6 +23,9 @@ FACT_LIMITS: dict[str, int] = {
     "volunteering": 12,
     "publication": 20,
     "link": 10,
+    "award": 12,
+    "membership": 12,
+    "portfolio": 12,
 }
 CHRONOLOGY_RESERVE = {"experience": 5, "education": 3}
 
@@ -34,8 +38,21 @@ class GeneratedResume:
     generation_context: GenerationContext
 
 
-def _goal_terms(goal: CareerGoal | None, target_snapshot: Mapping[str, Any] | None) -> set[str]:
+def _goal_terms(
+    profile: CandidateProfile,
+    goal: CareerGoal | None,
+    target_snapshot: Mapping[str, Any] | None,
+) -> set[str]:
     values: list[Any] = []
+    preferences = profile.preferences or {}
+    for key in (
+        "target_roles",
+        "target_industries",
+        "preferred_locations",
+        "preferred_languages",
+        "company_values",
+    ):
+        values.extend(preferences.get(key, []))
     if goal:
         payload = goal.payload or {}
         for key in (
@@ -44,12 +61,21 @@ def _goal_terms(goal: CareerGoal | None, target_snapshot: Mapping[str, Any] | No
             "target_locations",
             "target_seniority",
             "must_haves",
+            "success_criteria",
         ):
             values.extend(payload.get(key, []))
+        for item in payload.get("skill_gaps", []):
+            values.extend((item.get("skill"), item.get("action")))
+        for item in payload.get("milestones", []):
+            values.append(item.get("title"))
+        for item in payload.get("actions", []):
+            values.extend((item.get("title"), item.get("notes")))
     if target_snapshot:
         values.extend(target_snapshot.values())
     terms: set[str] = set()
     for value in values:
+        if value in (None, ""):
+            continue
         for term in str(value).casefold().replace("/", " ").replace(",", " ").split():
             if len(term) >= 3:
                 terms.add(term)
@@ -117,12 +143,14 @@ def generate_resume(
     publishable = [
         fact
         for fact in facts
-        if fact.archived_at is None and fact.verification_status == "confirmed"
+        if fact.archived_at is None
+        and fact.verification_status == "confirmed"
+        and fact.fact_type != "reference"
     ]
     if not publishable:
         raise ValueError("The career profile has no confirmed facts for a resume")
 
-    terms = _goal_terms(goal, target_snapshot)
+    terms = _goal_terms(profile, goal, target_snapshot)
     grouped: dict[str, list[CareerFact]] = {}
     for fact in publishable:
         grouped.setdefault(fact.fact_type, []).append(fact)
@@ -153,6 +181,7 @@ def generate_resume(
         target_job_id=target_job_id,
         target_snapshot=dict(target_snapshot or {}),
         reason_codes=reason_codes,
+        claim_evidence_map=build_claim_evidence_map(canvas),
     )
     return GeneratedResume(
         canvas=canvas,

@@ -62,3 +62,39 @@ export async function bootstrapDesktop({ timeoutMs = 90_000, initialDelayMs = 10
         dataDirectory: configuration.dataDirectory,
     };
 }
+
+const BACKUP_FILTER = [{ name: "CareerOS Local backup", extensions: ["zip"] }];
+
+export async function saveBackupWithNativeDialog({ blob, filename }) {
+    if (!isDesktopShell()) return false;
+    const [{ save }, { writeFile }] = await Promise.all([
+        import("@tauri-apps/plugin-dialog"),
+        import("@tauri-apps/plugin-fs"),
+    ]);
+    const selected = await save({
+        title: "Salva backup CareerOS Local",
+        defaultPath: filename,
+        filters: BACKUP_FILTER,
+    });
+    if (!selected) return false;
+    await writeFile(selected, new Uint8Array(await blob.arrayBuffer()));
+    return true;
+}
+
+export async function openBackupWithNativeDialog() {
+    if (!isDesktopShell()) return null;
+    const [{ open }, { readFile }] = await Promise.all([
+        import("@tauri-apps/plugin-dialog"),
+        import("@tauri-apps/plugin-fs"),
+    ]);
+    const selected = await open({
+        title: "Apri backup CareerOS Local",
+        multiple: false,
+        directory: false,
+        filters: BACKUP_FILTER,
+    });
+    if (!selected || Array.isArray(selected)) return null;
+    const bytes = await readFile(selected);
+    const filename = selected.split(/[\\/]/).pop() || "careeros-backup.zip";
+    return new File([bytes], filename, { type: "application/zip" });
+}

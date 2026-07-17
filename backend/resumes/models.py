@@ -67,6 +67,9 @@ class ResumeVersion(Base):
     )
     version_number: Mapped[int] = mapped_column(Integer, nullable=False)
     semantic_version: Mapped[str] = mapped_column(String(30), nullable=False)
+    name: Mapped[str] = mapped_column(
+        String(200), nullable=False, default="Published version"
+    )
     snapshot: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
     snapshot_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
     profile_revision: Mapped[int] = mapped_column(Integer, nullable=False)

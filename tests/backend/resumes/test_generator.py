@@ -143,3 +143,59 @@ def test_generator_selects_targeted_facts_within_canvas_limits_and_keeps_recent_
     experience = next(section for section in result.canvas.sections if section.kind == "experience")
     assert experience.blocks[0].fact_ids == [current_relevant.id]
     assert "bounded-fact-selection" in result.generation_context.reason_codes
+
+
+def test_generator_supports_extended_profile_sections_and_excludes_private_references():
+    profile = _detached_profile()
+    facts = [
+        CareerFact(
+            id=str(uuid4()),
+            profile_id=profile.id,
+            fact_type="award",
+            position=0,
+            payload={"title": "Privacy Engineering Award", "issuer": "Local Guild"},
+            verification_status="confirmed",
+        ),
+        CareerFact(
+            id=str(uuid4()),
+            profile_id=profile.id,
+            fact_type="membership",
+            position=1,
+            payload={"organization": "Architecture Guild", "role": "Fellow"},
+            verification_status="confirmed",
+        ),
+        CareerFact(
+            id=str(uuid4()),
+            profile_id=profile.id,
+            fact_type="portfolio",
+            position=2,
+            payload={"name": "System design cases", "url": "https://work.example"},
+            verification_status="confirmed",
+        ),
+        CareerFact(
+            id=str(uuid4()),
+            profile_id=profile.id,
+            fact_type="reference",
+            position=3,
+            payload={
+                "name": "Private Manager",
+                "relationship": "Former manager",
+                "email": "private@example.test",
+                "permission_to_contact": True,
+            },
+            verification_status="confirmed",
+        ),
+    ]
+
+    result = generate_resume(profile, facts, template_kind="ats")
+
+    kinds = [section.kind for section in result.canvas.sections]
+    assert {"award", "membership", "portfolio"} <= set(kinds)
+    assert "reference" not in kinds
+    assert facts[-1].id not in result.selected_fact_ids
+    assert all(
+        result.generation_context.claim_evidence_map[block.id] == block.fact_ids
+        for section in result.canvas.sections
+        for block in section.blocks
+        if block.kind in {"summary", "fact"}
+    )

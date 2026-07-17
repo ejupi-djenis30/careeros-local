@@ -20,8 +20,6 @@ jobs:
     timeout-minutes: 25
     env:
       SECRET_KEY: ci-local-secret-with-at-least-thirty-two-characters
-      DATABASE_URL: sqlite:///${{ runner.temp }}/careeros/ci.db
-      DATA_DIR: ${{ runner.temp }}/careeros/ci-data
       LOCAL_INFERENCE_URL: http://127.0.0.1:11434
       PYTHONUTF8: "1"
     steps:
@@ -29,6 +27,11 @@ jobs:
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           persist-credentials: false
+      - name: Configure ephemeral career vault
+        run: |
+          mkdir -p "$RUNNER_TEMP/careeros/ci-data"
+          echo "DATABASE_URL=sqlite:///$RUNNER_TEMP/careeros/ci.db" >> "$GITHUB_ENV"
+          echo "DATA_DIR=$RUNNER_TEMP/careeros/ci-data" >> "$GITHUB_ENV"
       - name: Set up Python
         uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
         with:
@@ -41,12 +44,16 @@ jobs:
           python -m pip install --require-hashes --requirement requirements-dev.lock
       - name: Verify local-only inference boundary
         run: python -m pytest tests/backend/security -q
-      - name: Audit dependencies and create CycloneDX SBOM
+      - name: Audit dependencies and create Python supply-chain evidence
         run: |
           python -m pip_audit --disable-pip --require-hashes --requirement requirements.lock
           python -m pip_audit --disable-pip --require-hashes --requirement requirements-dev.lock
           python -m pip_audit --disable-pip --require-hashes --requirement requirements.lock \
             --format cyclonedx-json --output "$RUNNER_TEMP/careeros/backend-sbom.cdx.json"
+          pip-licenses --from=mixed --format=json \
+            --output-file "$RUNNER_TEMP/careeros/backend-licenses.json" \
+            --fail-on "GNU General Public License;GNU Affero General Public License;AGPL-1.0;AGPL-3.0;Server Side Public License;SSPL-1.0;Business Source License;BUSL-1.1" \
+            --partial-match
       - name: Lint
         run: ruff check backend tests/backend alembic/versions
       - name: Type-check
@@ -70,6 +77,7 @@ jobs:
           path: |
             coverage.xml
             ${{ runner.temp }}/careeros/backend-sbom.cdx.json
+            ${{ runner.temp }}/careeros/backend-licenses.json
           if-no-files-found: ignore
 
   frontend:
@@ -101,6 +109,13 @@ jobs:
           mkdir -p "$RUNNER_TEMP/careeros"
           cd frontend
           npm sbom --sbom-format cyclonedx > "$RUNNER_TEMP/careeros/frontend-sbom.cdx.json"
+      - name: Audit production licenses
+        working-directory: frontend
+        run: >-
+          npx --no-install license-checker-rseidelsohn --production
+          --excludePrivatePackages
+          --onlyAllow "MIT;MIT OR Apache-2.0;Apache-2.0 OR MIT"
+          --json --out "$RUNNER_TEMP/careeros/frontend-licenses.json"
       - name: Lint
         working-directory: frontend
         run: npm run lint
@@ -112,7 +127,51 @@ jobs:
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: frontend-sbom
-          path: ${{ runner.temp }}/careeros/frontend-sbom.cdx.json
+          path: |
+            ${{ runner.temp }}/careeros/frontend-sbom.cdx.json
+            ${{ runner.temp }}/careeros/frontend-licenses.json
+          if-no-files-found: ignore
+
+  rust-supply-chain:
+    name: Rust · SBOM · licenses · vulnerabilities
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4
+        with:
+          toolchain: stable
+      - name: Install pinned supply-chain tools
+        run: |
+          cargo install cargo-audit --version 0.22.2 --locked
+          cargo install cargo-cyclonedx --version 0.5.9 --locked
+          cargo install cargo-deny --version 0.20.2 --locked
+      - name: Audit advisories and licenses
+        working-directory: frontend/src-tauri
+        run: |
+          cargo audit
+          cargo deny --all-features check licenses
+      - name: Create Cargo CycloneDX SBOM and license inventory
+        working-directory: frontend/src-tauri
+        run: |
+          mkdir -p "$RUNNER_TEMP/careeros"
+          cargo cyclonedx --all-features --target all --format json \
+            --spec-version 1.5 --override-filename rust-sbom
+          mv rust-sbom.json "$RUNNER_TEMP/careeros/rust-sbom.cdx.json"
+          cargo deny --all-features list --format json \
+            > "$RUNNER_TEMP/careeros/rust-licenses.json"
+      - name: Upload Rust supply-chain evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: rust-supply-chain
+          path: |
+            ${{ runner.temp }}/careeros/rust-sbom.cdx.json
+            ${{ runner.temp }}/careeros/rust-licenses.json
           if-no-files-found: ignore
 
   containers:

@@ -33,7 +33,7 @@ DATABASE_URL = (
 # Actually, let's just use settings.DATABASE_URL directly, assuming correct driver is installed or string format is correct.
 DATABASE_URL = settings.DATABASE_URL
 
-from backend import models  # noqa: E402, F401
+from backend import model_registry  # noqa: E402, F401
 
 config = context.config
 

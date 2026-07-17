@@ -2,8 +2,9 @@ const lines = (value) => value.split("\n").map((item) => item.trim()).filter(Boo
 
 export function CanvasBlock({ block, sectionId, index, total, dispatch, onSelect }) {
     const update = (field, value) => dispatch({ type: "UPDATE_BLOCK", sectionId, blockId: block.id, field, value });
+    const layout = { spacing_before_pt: 0, keep_together: true, ...(block.layout || {}) };
     return (
-        <article className={`canvas-block ${block.visible ? "" : "is-hidden"}`} draggable onDragStart={(event) => { event.stopPropagation(); event.dataTransfer.setData("application/x-careeros-block", JSON.stringify({ sectionId, blockId: block.id })); }} onClick={() => onSelect(block)}>
+        <article className={`canvas-block ${block.visible ? "" : "is-hidden"}`} style={{ marginTop: `${layout.spacing_before_pt}pt`, breakInside: layout.keep_together ? "avoid" : "auto" }} draggable onDragStart={(event) => { event.stopPropagation(); event.dataTransfer.setData("application/x-careeros-block", JSON.stringify({ sectionId, blockId: block.id })); }} onClick={() => onSelect(block, sectionId)}>
             <div className="canvas-block__controls">
                 <span className="canvas-drag" aria-hidden="true"><i className="bi bi-grip-vertical" /></span>
                 <button type="button" className="icon-button" disabled={index === 0} onClick={() => dispatch({ type: "MOVE_BLOCK", sectionId, blockId: block.id, direction: -1 })} aria-label={`Sposta ${block.content.title || "blocco"} su`}><i className="bi bi-arrow-up" /></button>

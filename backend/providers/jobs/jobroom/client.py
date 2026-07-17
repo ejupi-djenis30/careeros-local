@@ -33,6 +33,7 @@ from backend.providers.jobs.models import (
     JobSearchResponse,
     ProviderCapabilities,
     ProviderHealth,
+    ProviderInfo,
     ProviderStatus,
 )
 
@@ -81,9 +82,7 @@ class JobRoomProvider(BaseJobProvider):
     def display_name(self) -> str:
         return "Job-Room.ch (SECO)"
 
-    def get_provider_info(self) -> "ProviderInfo":  # noqa: F821
-        from backend.providers.jobs.models import ProviderInfo
-
+    def get_provider_info(self) -> ProviderInfo:
         return ProviderInfo(
             name=self.name,
             description="Generalist Swiss federal job portal. Contains jobs across all industries and professions (IT, construction, hospitality, medical, etc.). Good default choice.",

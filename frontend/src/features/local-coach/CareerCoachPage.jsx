@@ -60,7 +60,7 @@ export function CareerCoachPage() {
             setConversation(loaded);
             await refreshConversations();
         } catch (sendError) {
-            setError(sendError.status === 503 ? "Il modello locale non è disponibile. Avvia Ollama e verifica il modello configurato." : sendError.message);
+            setError(sendError.status === 503 ? "Il modello locale non è disponibile. Controlla o riavvia il runtime dalla schermata Oggi." : sendError.message);
             refreshModel();
         } finally {
             setSending(false);
@@ -84,7 +84,7 @@ export function CareerCoachPage() {
             <ConversationList conversations={conversations} activeId={conversation?.id} onSelect={openConversation} onNew={() => { setConversation(null); setMessage(""); }} onDelete={removeConversation} />
             <section className="coach-panel">
                 <header className="coach-panel__header"><div><span className={`model-dot ${modelStatus.ready ? "is-ready" : ""}`} /><div><strong>{conversation?.title || "Nuova conversazione"}</strong><span>{modelStatus.ready ? `${modelStatus.configured_model} · inferenza locale` : "Modello non pronto"}</span></div></div><span className="privacy-chip"><i className="bi bi-incognito" /> contesto selettivo</span></header>
-                {!modelStatus.loading && !modelStatus.ready && <div className="model-setup" role="status"><i className="bi bi-terminal" /><div><strong>Completa il runtime locale</strong><p>Avvia <code>ollama serve</code>, poi installa il modello con <code>ollama pull {modelStatus.configured_model || "qwen3:1.7b"}</code>.</p></div><button type="button" className="button button--secondary" onClick={refreshModel}>Ricontrolla</button></div>}
+                {!modelStatus.loading && !modelStatus.ready && <div className="model-setup" role="status"><i className="bi bi-cpu" /><div><strong>Completa il runtime locale</strong><p>Installa il modello verificato direttamente dall’app. Non servono terminale, account o chiavi API.</p></div><Link className="button button--secondary" to="/">Configura modello</Link><button type="button" className="button button--ghost" onClick={refreshModel}>Ricontrolla</button></div>}
                 {error && <div className="inline-alert inline-alert--danger" role="alert">{error}</div>}
                 <ContextPicker facts={profile?.facts || []} selectedIds={selectedFactIds} onChange={setSelectedFactIds} jobIds={jobIds} onJobIds={setJobIds} />
                 <div className="coach-messages" aria-live="polite">{conversation?.messages?.length ? conversation.messages.map((entry) => <Message key={entry.id} message={entry} />) : <div className="coach-empty"><span className="coach-empty__mark">C</span><h2>Un coach che conosce solo ciò che autorizzi</h2><p>Chiedi una revisione del posizionamento, una strategia per un colloquio o un confronto tra il tuo profilo e uno degli annunci locali.</p><div><button type="button" onClick={() => setMessage("Quali sono i punti più forti del mio profilo e come posso dimostrarli?")}>Identifica i miei punti forti</button><button type="button" onClick={() => setMessage("Aiutami a preparare una risposta concreta alla domanda: parlami di te.")}>Prepara “parlami di te”</button></div></div>}</div>

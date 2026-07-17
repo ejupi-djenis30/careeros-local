@@ -23,8 +23,78 @@ permissions:
   contents: read
 
 jobs:
+  supply-chain:
+    name: Release supply-chain evidence
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Check out source
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          persist-credentials: false
+      - name: Install Python 3.12
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version-file: .python-version
+          cache: pip
+          cache-dependency-path: requirements-dev.lock
+      - name: Install Node.js
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4
+        with:
+          toolchain: stable
+      - name: Install locked application and audit dependencies
+        run: |
+          mkdir -p "$RUNNER_TEMP/careeros"
+          python -m pip install --require-hashes --requirement requirements-dev.lock
+          npm ci --prefix frontend --ignore-scripts
+          cargo install cargo-audit --version 0.22.2 --locked
+          cargo install cargo-cyclonedx --version 0.5.9 --locked
+          cargo install cargo-deny --version 0.20.2 --locked
+      - name: Audit Python and create evidence
+        run: |
+          python -m pip_audit --disable-pip --require-hashes --requirement requirements.lock
+          python -m pip_audit --disable-pip --require-hashes --requirement requirements-dev.lock
+          python -m pip_audit --disable-pip --require-hashes --requirement requirements.lock \
+            --format cyclonedx-json --output "$RUNNER_TEMP/careeros/backend-sbom.cdx.json"
+          pip-licenses --from=mixed --format=json \
+            --output-file "$RUNNER_TEMP/careeros/backend-licenses.json" \
+            --fail-on "GNU General Public License;GNU Affero General Public License;AGPL-1.0;AGPL-3.0;Server Side Public License;SSPL-1.0;Business Source License;BUSL-1.1" \
+            --partial-match
+      - name: Audit npm and create evidence
+        working-directory: frontend
+        run: |
+          npm audit --audit-level=high
+          npm sbom --sbom-format cyclonedx > "$RUNNER_TEMP/careeros/frontend-sbom.cdx.json"
+          npx --no-install license-checker-rseidelsohn --production \
+            --excludePrivatePackages \
+            --onlyAllow "MIT;MIT OR Apache-2.0;Apache-2.0 OR MIT" \
+            --json --out "$RUNNER_TEMP/careeros/frontend-licenses.json"
+      - name: Audit Cargo and create evidence
+        working-directory: frontend/src-tauri
+        run: |
+          cargo audit
+          cargo deny --all-features check licenses
+          cargo cyclonedx --all-features --target all --format json \
+            --spec-version 1.5 --override-filename rust-sbom
+          mv rust-sbom.json "$RUNNER_TEMP/careeros/rust-sbom.cdx.json"
+          cargo deny --all-features list --format json \
+            > "$RUNNER_TEMP/careeros/rust-licenses.json"
+      - name: Upload release supply-chain evidence
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: release-supply-chain
+          path: ${{ runner.temp }}/careeros
+          if-no-files-found: error
+
   native:
     name: ${{ matrix.label }}
+    needs: supply-chain
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 90
     permissions:
@@ -85,7 +155,7 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf xvfb
 
       - name: Install locked dependencies
         run: |
@@ -122,6 +192,15 @@ jobs:
             Artifacts are unsigned unless the release notes explicitly state otherwise.
           releaseDraft: true
           prerelease: false
+
+      - name: Exercise Windows MSI and NSIS lifecycle
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: ./scripts/smoke_windows_installer.ps1 -Target '${{ matrix.target }}' -IncludeNsisInstall
+
+      - name: Exercise macOS and Linux native packages
+        if: runner.os != 'Windows'
+        run: python scripts/smoke_native_bundle.py --target '${{ matrix.target }}'
 
       - name: Write bundle checksums
         run: >-

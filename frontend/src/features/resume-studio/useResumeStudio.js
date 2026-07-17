@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { ApiError } from "../../lib/client";
 import { CareerService } from "../../services/career";
 import { ResumeService } from "../../services/resumes";
@@ -18,6 +18,11 @@ export function useResumeStudio() {
     const [generationGoalId, setGenerationGoalId] = useState("");
     const [syncPreview, setSyncPreview] = useState(null);
     const [syncSelection, setSyncSelection] = useState([]);
+    const [versionName, setVersionName] = useState("Versione CV");
+    const [versionComparison, setVersionComparison] = useState(null);
+    const [autosaveState, setAutosaveState] = useState("idle");
+    const changeSequence = useRef(0);
+    const autosaveInFlight = useRef(false);
 
     const loadDraft = useCallback(async (id) => {
         setBusy("load");
@@ -26,6 +31,7 @@ export function useResumeStudio() {
             setDraft(await ResumeService.get(id));
             setDirty(false);
             setSyncPreview(null);
+            setVersionComparison(null);
         } catch (loadError) {
             setError(loadError.message);
         } finally {
@@ -55,19 +61,35 @@ export function useResumeStudio() {
 
     useEffect(() => { initialize(); }, [initialize]);
     const refreshList = async () => setResumes(await ResumeService.list());
-    const changeDraft = (patch) => { setDraft((current) => ({ ...current, ...patch })); setDirty(true); };
-    const startNew = () => { setDraft(newResumeDraft(profile.facts)); setDirty(false); setSyncPreview(null); };
+    const changeDraft = (patch) => { changeSequence.current += 1; setDraft((current) => ({ ...current, ...patch })); setDirty(true); setAutosaveState("pending"); };
+    const startNew = () => { changeSequence.current += 1; setDraft(newResumeDraft(profile.facts)); setDirty(false); setSyncPreview(null); setVersionComparison(null); setVersionName("Versione CV"); setAutosaveState("idle"); };
+
+    const applySavedResponse = (response, sequence) => {
+        if (changeSequence.current === sequence) {
+            setDraft(response);
+            setDirty(false);
+            return;
+        }
+        setDraft((current) => ({
+            ...current,
+            id: response.id,
+            revision: response.revision,
+            profile_revision: response.profile_revision,
+            versions: response.versions,
+        }));
+    };
 
     const persist = async () => {
         if (!draft.title.trim()) throw new Error("Inserisci un titolo per il CV");
         if (!draft.selected_fact_ids.length) throw new Error("Seleziona almeno un fatto di carriera");
         if (draft.template_kind === "photo" && !draft.photo_asset_id) throw new Error("Carica una foto per questo template");
         if (draft.id && !dirty) return draft;
-        const response = draft.id
-            ? await ResumeService.update(draft.id, resumeWritePayload(draft))
-            : await ResumeService.create(resumeWritePayload(draft));
-        setDraft(response);
-        setDirty(false);
+        const sequence = changeSequence.current;
+        const snapshot = draft;
+        const response = snapshot.id
+            ? await ResumeService.update(snapshot.id, resumeWritePayload(snapshot))
+            : await ResumeService.create(resumeWritePayload(snapshot));
+        applySavedResponse(response, sequence);
         await refreshList();
         return response;
     };
@@ -78,8 +100,10 @@ export function useResumeStudio() {
     });
     const publish = async () => run("publish", async () => {
         const saved = await persist();
-        await ResumeService.publish(saved.id);
+        if (!versionName.trim()) throw new Error("Inserisci un nome per la versione");
+        await ResumeService.publish(saved.id, versionName.trim());
         setDraft(await ResumeService.get(saved.id));
+        setVersionName(`${saved.title} · nuova versione`);
         await refreshList();
         showToast("PDF e DOCX generati e verificati.", "success");
     });
@@ -92,6 +116,7 @@ export function useResumeStudio() {
         });
         setDraft(response);
         setDirty(false);
+        setVersionComparison(null);
         await refreshList();
         showToast("CV creato automaticamente dal Career Vault.", "success");
     });
@@ -152,6 +177,22 @@ export function useResumeStudio() {
             setDirty(false);
         });
     };
+    const compareVersions = async (versionIds) => run("compare-versions", async () => {
+        if (versionIds.length !== 2) return;
+        setVersionComparison(await ResumeService.compareVersions(versionIds[0], versionIds[1]));
+    });
+    const restoreVersion = async (version) => {
+        if (!window.confirm(`Ripristinare “${version.name}” nella bozza? Le versioni pubblicate resteranno intatte.`)) return;
+        await run("restore-version", async () => {
+            const response = await ResumeService.restoreVersion(draft.id, version.id, draft.revision);
+            changeSequence.current += 1;
+            setDraft(response);
+            setDirty(false);
+            setVersionComparison(null);
+            await refreshList();
+            showToast("Versione ripristinata in una nuova revisione della bozza.", "success");
+        });
+    };
 
     async function run(name, operation) {
         setBusy(name);
@@ -159,5 +200,33 @@ export function useResumeStudio() {
         try { await operation(); } catch (operationError) { setError(operationError.message); } finally { setBusy(""); }
     }
 
-    return { profile, resumes, draft, dirty, loading, busy, error, profileMissing, generationGoalId, syncPreview, syncSelection, initialize, loadDraft, changeDraft, startNew, save, publish, generateFromProfile, duplicate, promoteClaim, reviewSync, applySync, uploadPhoto, remove, setGenerationGoalId, setSyncSelection, closeSync: () => setSyncPreview(null), setError };
+    useEffect(() => {
+        if (!dirty || !draft || busy || autosaveInFlight.current) return undefined;
+        if (!draft.title.trim() || !draft.selected_fact_ids.length) return undefined;
+        if (draft.template_kind === "photo" && !draft.photo_asset_id) return undefined;
+        const timer = window.setTimeout(async () => {
+            autosaveInFlight.current = true;
+            setBusy("autosave");
+            setAutosaveState("saving");
+            const sequence = changeSequence.current;
+            const snapshot = draft;
+            try {
+                const response = snapshot.id
+                    ? await ResumeService.update(snapshot.id, resumeWritePayload(snapshot))
+                    : await ResumeService.create(resumeWritePayload(snapshot));
+                applySavedResponse(response, sequence);
+                setResumes(await ResumeService.list());
+                setAutosaveState(changeSequence.current === sequence ? "saved" : "pending");
+            } catch (autosaveError) {
+                setAutosaveState("error");
+                setError(`Autosave non riuscito: ${autosaveError.message}`);
+            } finally {
+                autosaveInFlight.current = false;
+                setBusy("");
+            }
+        }, 1_000);
+        return () => window.clearTimeout(timer);
+    }, [busy, dirty, draft]);
+
+    return { profile, resumes, draft, dirty, loading, busy, error, profileMissing, generationGoalId, syncPreview, syncSelection, versionName, versionComparison, autosaveState, initialize, loadDraft, changeDraft, startNew, save, publish, generateFromProfile, duplicate, promoteClaim, reviewSync, applySync, uploadPhoto, remove, compareVersions, restoreVersion, setGenerationGoalId, setSyncSelection, setVersionName, closeSync: () => setSyncPreview(null), setError };
 }

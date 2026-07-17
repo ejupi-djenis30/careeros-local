@@ -16,7 +16,7 @@ from backend.resumes.exceptions import (
     ResumeValidationError,
 )
 from backend.resumes.generator import generate_resume
-from backend.resumes.models import ResumeDraft
+from backend.resumes.models import ResumeDraft, ResumeVersion
 from backend.resumes.schemas import (
     ResumeDraftCreate,
     ResumeDraftResponse,
@@ -24,6 +24,7 @@ from backend.resumes.schemas import (
     ResumeDuplicate,
     ResumeGenerate,
     ResumeSummary,
+    ResumeVersionLinkOption,
 )
 from backend.resumes.storage import remove_stored_artifact
 
@@ -50,6 +51,8 @@ class ResumeDraftService:
         return draft
 
     def validate_selection(self, profile: CandidateProfile, data: Any) -> list[CareerFact]:
+        if data.template_kind == "photo" and not data.photo_asset_id:
+            raise ResumeValidationError("Photo resumes require a normalized profile photo")
         facts = (
             self.db.query(CareerFact)
             .filter(
@@ -64,6 +67,16 @@ class ResumeDraftService:
         if missing:
             raise ResumeValidationError(
                 "Resume references missing career facts: " + ", ".join(missing)
+            )
+        unsafe = [
+            fact.id
+            for fact in facts
+            if fact.verification_status != "confirmed" or fact.fact_type == "reference"
+        ]
+        if unsafe:
+            raise ResumeValidationError(
+                "Resumes can use only confirmed, non-private career facts: "
+                + ", ".join(sorted(unsafe))
             )
         if data.photo_asset_id:
             self.photo(profile, data.photo_asset_id)
@@ -177,6 +190,29 @@ class ResumeDraftService:
                 updated_at=draft.updated_at,
             )
             for draft in drafts
+        ]
+
+    def list_versions(self, user_id: int) -> list[ResumeVersionLinkOption]:
+        profile = CareerProfileRepository(self.db).get_by_user(user_id)
+        if profile is None:
+            return []
+        versions = (
+            self.db.query(ResumeVersion)
+            .join(ResumeDraft, ResumeVersion.draft_id == ResumeDraft.id)
+            .filter(ResumeDraft.profile_id == profile.id)
+            .order_by(ResumeVersion.published_at.desc())
+            .all()
+        )
+        return [
+            ResumeVersionLinkOption(
+                id=version.id,
+                draft_id=version.draft_id,
+                draft_title=version.draft.title,
+                semantic_version=version.semantic_version,
+                name=version.name,
+                published_at=version.published_at,
+            )
+            for version in versions
         ]
 
     def generate(self, user_id: int, data: ResumeGenerate) -> ResumeDraftResponse:

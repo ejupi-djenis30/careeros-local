@@ -32,7 +32,7 @@ export function Login() {
             <section className="login-story">
                 <div className="workspace-brand workspace-brand--login"><div className="workspace-brand__mark">C</div><div><strong>CareerOS</strong><span>local workspace</span></div></div>
                 <div><span className="page-eyebrow">Il tuo agente carriera personale</span><h1>La memoria professionale che resta tua.</h1><p>Profilo, CV, opportunità, candidature e coaching in un unico workspace locale.</p></div>
-                <ul><li><i className="bi bi-device-ssd" /><span><strong>Local first</strong>Dati e documenti sul tuo dispositivo</span></li><li><i className="bi bi-cpu" /><span><strong>Modelli locali</strong>Inferenza tramite Ollama, senza fallback cloud</span></li><li><i className="bi bi-patch-check" /><span><strong>Fatti verificabili</strong>Provenienza, revisioni e artefatti immutabili</span></li></ul>
+                <ul><li><i className="bi bi-device-ssd" /><span><strong>Local first</strong>Dati e documenti sul tuo dispositivo</span></li><li><i className="bi bi-cpu" /><span><strong>Modelli locali</strong>Runtime llama.cpp gestito dall’app, senza fallback cloud</span></li><li><i className="bi bi-patch-check" /><span><strong>Fatti verificabili</strong>Provenienza, revisioni e artefatti immutabili</span></li></ul>
                 <footer>CareerOS funziona anche senza modello: il tuo archivio resta sempre accessibile.</footer>
             </section>
             <section className="login-panel" aria-labelledby="login-title">

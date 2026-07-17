@@ -93,9 +93,11 @@ async def test_extract_text_from_file_pdf_success():
 
     from unittest.mock import MagicMock, patch
 
-    with patch("backend.services.utils.fitz.open") as mock_open:
-        mock_doc = [MagicMock(get_text=lambda: "page 1"), MagicMock(get_text=lambda: " page 2")]
-        mock_open.return_value = mock_doc
+    with patch("backend.services.utils.PdfReader") as mock_reader:
+        mock_reader.return_value.pages = [
+            MagicMock(extract_text=lambda: "page 1"),
+            MagicMock(extract_text=lambda: " page 2"),
+        ]
         text = await extract_text_from_file(mock_file)
         assert text == "page 1 page 2"
 

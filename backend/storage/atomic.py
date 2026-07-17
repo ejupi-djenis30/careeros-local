@@ -1,9 +1,32 @@
+import errno
 import hashlib
 import os
 import tempfile
 from pathlib import Path
 
 from backend.core.config import settings
+
+
+class StorageWriteError(RuntimeError):
+    """A local durable write failed before it could be committed atomically."""
+
+
+_STORAGE_ERRNOS = {errno.ENOSPC, getattr(errno, "EDQUOT", errno.ENOSPC)}
+
+
+def is_storage_exhaustion(error: BaseException) -> bool:
+    current: BaseException | None = error
+    while current is not None:
+        if isinstance(current, OSError) and current.errno in _STORAGE_ERRNOS:
+            return True
+        message = str(current).casefold()
+        if any(
+            marker in message
+            for marker in ("database or disk is full", "disk is full", "no space left")
+        ):
+            return True
+        current = current.__cause__ or current.__context__
+    return False
 
 
 def data_root() -> Path:
@@ -24,24 +47,35 @@ def resolve_data_path(relative_path: str | Path) -> Path:
 
 
 def atomic_write(relative_path: str | Path, data: bytes) -> tuple[Path, bool]:
-    destination = resolve_data_path(relative_path)
-    destination.parent.mkdir(parents=True, exist_ok=True)
-    if destination.exists():
-        if destination.read_bytes() != data:
-            raise ValueError("Existing stored file does not match the requested content")
-        return destination, False
-
-    handle, temporary_name = tempfile.mkstemp(prefix=".write-", dir=destination.parent)
+    temporary_name: str | None = None
     try:
+        destination = resolve_data_path(relative_path)
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        if destination.exists():
+            if destination.read_bytes() != data:
+                raise ValueError("Existing stored file does not match the requested content")
+            return destination, False
+
+        handle, temporary_name = tempfile.mkstemp(prefix=".write-", dir=destination.parent)
         with os.fdopen(handle, "wb") as temporary:
             temporary.write(data)
             temporary.flush()
             os.fsync(temporary.fileno())
         os.replace(temporary_name, destination)
         return destination, True
+    except OSError as exc:
+        try:
+            if temporary_name is not None:
+                os.unlink(temporary_name)
+        except FileNotFoundError:
+            pass
+        raise StorageWriteError(
+            "Local storage write failed; verify free disk space and folder access, then retry."
+        ) from exc
     except Exception:
         try:
-            os.unlink(temporary_name)
+            if temporary_name is not None:
+                os.unlink(temporary_name)
         except FileNotFoundError:
             pass
         raise

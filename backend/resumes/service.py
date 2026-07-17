@@ -16,10 +16,14 @@ from backend.resumes.schemas import (
     ResumeDraftUpdate,
     ResumeDuplicate,
     ResumeGenerate,
+    ResumePublishRequest,
     ResumeSummary,
     ResumeSync,
     ResumeSyncResponse,
+    ResumeVersionComparison,
+    ResumeVersionLinkOption,
     ResumeVersionResponse,
+    ResumeVersionRestore,
 )
 from backend.resumes.sync_service import ResumeSynchronizationService
 
@@ -52,6 +56,9 @@ class ResumeService:
     def list_resumes(self, user_id: int) -> list[ResumeSummary]:
         return self.drafts.list_resumes(user_id)
 
+    def list_versions(self, user_id: int) -> list[ResumeVersionLinkOption]:
+        return self.drafts.list_versions(user_id)
+
     def generate(self, user_id: int, data: ResumeGenerate) -> ResumeDraftResponse:
         return self.drafts.generate(user_id, data)
 
@@ -70,8 +77,26 @@ class ResumeService:
     ) -> ResumeSyncResponse:
         return self.synchronization.synchronize(user_id, draft_id, data)
 
-    def publish(self, user_id: int, draft_id: str) -> ResumeVersionResponse:
-        return self.publication.publish(user_id, draft_id)
+    def publish(
+        self, user_id: int, draft_id: str, data: ResumePublishRequest
+    ) -> ResumeVersionResponse:
+        return self.publication.publish(user_id, draft_id, data.name)
+
+    def compare_versions(
+        self, user_id: int, left_version_id: str, right_version_id: str
+    ) -> ResumeVersionComparison:
+        return self.publication.compare(user_id, left_version_id, right_version_id)
+
+    def restore_version(
+        self,
+        user_id: int,
+        draft_id: str,
+        version_id: str,
+        data: ResumeVersionRestore,
+    ) -> ResumeDraftResponse:
+        return self.publication.restore(
+            user_id, draft_id, version_id, data.expected_revision
+        )
 
     def artifact(self, user_id: int, artifact_id: str) -> tuple[ResumeArtifact, bytes, str]:
         return self.publication.artifact(user_id, artifact_id)

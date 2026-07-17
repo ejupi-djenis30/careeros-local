@@ -4,7 +4,7 @@ from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
 from backend.repositories.profile_repository import ProfileRepository
-from backend.schemas import ScheduleToggle, SearchProfileCreate
+from backend.schemas import ScheduleToggle, SearchProfileCreate, SearchProfileUpdate
 
 _PREFERENCE_FIELDS = {
     "preferred_languages",
@@ -110,7 +110,7 @@ class ProfileService:
 
         return self.repo.create(data)
 
-    def update_profile(self, user_id: int, profile_id: int, profile_in: "SearchProfileUpdate"):  # noqa: F821
+    def update_profile(self, user_id: int, profile_id: int, profile_in: SearchProfileUpdate):
         profile = self.repo.get(profile_id)
         if not profile:
             raise HTTPException(status_code=404, detail="Profile not found")

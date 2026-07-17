@@ -1,8 +1,9 @@
-import { newGoal } from "./profileModel";
+import { FACT_LABELS, factTitle, newGoal } from "./profileModel";
 import { GoalDetails } from "./goals/GoalDetails";
 import { GoalProgress } from "./goals/GoalProgress";
 
-export function GoalsEditor({ goals, onChange }) {
+export function GoalsEditor({ goals, facts = [], resumeVersions = [], onChange }) {
+    const evidenceOptions = facts.filter((fact) => fact.id).map((fact) => ({ id: fact.id, label: factTitle(fact), type: FACT_LABELS[fact.fact_type] || fact.fact_type }));
     const updateGoal = (index, next) => onChange(
         goals.map((goal, position) => position === index ? next : goal),
     );
@@ -27,7 +28,7 @@ export function GoalsEditor({ goals, onChange }) {
                         <button type="button" className="icon-button icon-button--danger" onClick={() => removeGoal(index)} aria-label={`Rimuovi ${goal.name}`}><i className="bi bi-trash3" /></button>
                     </div>
                     <GoalDetails payload={goal.payload} onChange={(payload) => updateGoal(index, { ...goal, payload })} />
-                    <GoalProgress payload={goal.payload} onChange={(payload) => updateGoal(index, { ...goal, payload })} />
+                    <GoalProgress payload={goal.payload} evidenceOptions={evidenceOptions} resumeVersions={resumeVersions} onChange={(payload) => updateGoal(index, { ...goal, payload })} />
                 </article>
             ))}
         </section>

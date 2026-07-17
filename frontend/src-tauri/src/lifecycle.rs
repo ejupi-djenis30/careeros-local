@@ -6,7 +6,7 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
 
-use tauri::AppHandle;
+use tauri::{AppHandle, Manager};
 use tauri_plugin_shell::process::{CommandChild, CommandEvent};
 use tauri_plugin_shell::ShellExt;
 
@@ -235,6 +235,34 @@ pub fn start_backend_supervisor(app: AppHandle, state: Arc<BackendLifecycle>) {
                 break;
             }
         }
+    });
+}
+
+pub fn start_smoke_exit_monitor(app: AppHandle) {
+    thread::spawn(move || {
+        let deadline = Instant::now() + Duration::from_secs(90);
+        while Instant::now() < deadline {
+            let phase = app
+                .state::<Arc<BackendLifecycle>>()
+                .snapshot
+                .lock()
+                .expect("lifecycle snapshot poisoned")
+                .phase;
+            match phase {
+                BackendPhase::Ready => {
+                    app.exit(0);
+                    return;
+                }
+                BackendPhase::Failed => {
+                    app.exit(1);
+                    return;
+                }
+                BackendPhase::Spawning | BackendPhase::WaitingReady => {
+                    thread::sleep(Duration::from_millis(100));
+                }
+            }
+        }
+        app.exit(1);
     });
 }
 

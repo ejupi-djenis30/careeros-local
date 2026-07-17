@@ -3,7 +3,7 @@ import logging
 from sqlalchemy import text
 from tenacity import after_log, before_log, retry, stop_after_attempt, wait_fixed
 
-from backend import models  # noqa: F401
+from backend import model_registry  # noqa: F401
 from backend.core.config import settings
 from backend.core.logging import configure_logging
 from backend.db.base import engine

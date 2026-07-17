@@ -3,12 +3,23 @@ from __future__ import annotations
 import os
 import shutil
 import sqlite3
+from multiprocessing import get_context
 from pathlib import Path
 from uuid import uuid4
 
 import pytest
 
 from desktop import backend_main
+
+
+def _try_instance_lease(root: str, result_queue) -> None:
+    from backend.desktop.lifecycle import DesktopInstanceAlreadyRunning, desktop_instance_lease
+
+    try:
+        with desktop_instance_lease(root=Path(root)):
+            result_queue.put("acquired")
+    except DesktopInstanceAlreadyRunning:
+        result_queue.put("blocked")
 
 
 def _case_directory(name: str) -> Path:
@@ -117,3 +128,33 @@ def test_current_database_skips_backup_and_upgrade(monkeypatch: pytest.MonkeyPat
 def test_parent_liveness_probe_recognizes_the_test_process() -> None:
     assert backend_main.parent_process_is_alive(os.getpid()) is True
     assert backend_main.parent_process_is_alive(0) is False
+
+
+def test_desktop_instance_lease_blocks_a_second_process() -> None:
+    from backend.desktop.lifecycle import desktop_instance_lease
+
+    data_dir = _case_directory("instance-lease")
+    context = get_context("spawn")
+    result_queue = context.Queue()
+    try:
+        with desktop_instance_lease(root=data_dir):
+            contender = context.Process(
+                target=_try_instance_lease,
+                args=(str(data_dir), result_queue),
+            )
+            contender.start()
+            contender.join(timeout=15)
+            assert contender.exitcode == 0
+            assert result_queue.get(timeout=2) == "blocked"
+
+        successor = context.Process(
+            target=_try_instance_lease,
+            args=(str(data_dir), result_queue),
+        )
+        successor.start()
+        successor.join(timeout=15)
+        assert successor.exitcode == 0
+        assert result_queue.get(timeout=2) == "acquired"
+    finally:
+        result_queue.close()
+        shutil.rmtree(data_dir, ignore_errors=True)

@@ -326,10 +326,10 @@ class BFSLocationMapper:
                 self._postal_cache.update(data["postal_codes"])
 
             self._extended_data = data
-            logger.info(f"Loaded extended BFS data from {path}")
+            logger.info("Loaded extended BFS location data")
 
-        except Exception as e:
-            logger.warning(f"Failed to load BFS data from {path}: {e}")
+        except Exception as exc:
+            logger.warning("BFS data load failed exception_type=%s", type(exc).__name__)
 
     def resolve(self, location: str) -> list[str]:
         """
@@ -348,22 +348,22 @@ class BFSLocationMapper:
         if location.isdigit() and len(location) == 4:
             codes = self._postal_cache.get(location)
             if codes:
-                logger.debug(f"Resolved postal code {location} to BFS codes: {codes}")
+                logger.debug("Resolved postal code to BFS code_count=%d", len(codes))
                 return codes
 
         # Try as city name
         codes = self._city_cache.get(normalized)
         if codes:
-            logger.debug(f"Resolved city '{location}' to BFS codes: {codes}")
+            logger.debug("Resolved city to BFS code_count=%d", len(codes))
             return codes
 
         # Try partial match
         for city, bfs_codes in self._city_cache.items():
             if normalized in city or city in normalized:
-                logger.debug(f"Partial match '{location}' -> '{city}' BFS: {bfs_codes}")
+                logger.debug("Resolved partial city match to BFS code_count=%d", len(bfs_codes))
                 return bfs_codes
 
-        logger.warning(f"Could not resolve location: {location}")
+        logger.warning("Could not resolve requested location")
         raise LocationNotFoundError(location)
 
     def resolve_safe(self, location: str) -> list[str]:

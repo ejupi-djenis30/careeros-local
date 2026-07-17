@@ -38,7 +38,7 @@ def test_production_rejects_development_secret():
 
 def test_production_loads_persisted_installation_secret(monkeypatch):
     secret = "a" * 64
-    with TemporaryDirectory(dir=Path.cwd() / "cmd_outputs") as directory:
+    with TemporaryDirectory() as directory:
         data_dir = Path(directory)
         (data_dir / ".secret-key").write_text(secret, encoding="utf-8")
         monkeypatch.delenv("SECRET_KEY", raising=False)

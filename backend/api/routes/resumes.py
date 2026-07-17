@@ -17,10 +17,14 @@ from backend.resumes.schemas import (
     ResumeDraftUpdate,
     ResumeDuplicate,
     ResumeGenerate,
+    ResumePublishRequest,
     ResumeSummary,
     ResumeSync,
     ResumeSyncResponse,
+    ResumeVersionComparison,
+    ResumeVersionLinkOption,
     ResumeVersionResponse,
+    ResumeVersionRestore,
 )
 from backend.resumes.service import (
     ResumeConflictError,
@@ -28,6 +32,7 @@ from backend.resumes.service import (
     ResumeService,
     ResumeValidationError,
 )
+from backend.storage.atomic import StorageWriteError
 
 router = APIRouter()
 artifact_router = APIRouter()
@@ -76,6 +81,26 @@ def generate_resume(
         return ResumeService(db).generate(user_id, data)
     except (ResumeValidationError, ResumeConflictError, ResumeNotFoundError, ValueError) as exc:
         db.rollback()
+        raise _http_error(exc) from exc
+
+
+@router.get("/versions", response_model=list[ResumeVersionLinkOption])
+def list_resume_versions(
+    user_id: int = Depends(get_current_user_id), db: Session = Depends(get_db)
+) -> list[ResumeVersionLinkOption]:
+    return ResumeService(db).list_versions(user_id)
+
+
+@router.get("/versions/compare", response_model=ResumeVersionComparison)
+def compare_resume_versions(
+    left_id: str,
+    right_id: str,
+    user_id: int = Depends(get_current_user_id),
+    db: Session = Depends(get_db),
+) -> ResumeVersionComparison:
+    try:
+        return ResumeService(db).compare_versions(user_id, left_id, right_id)
+    except (ResumeValidationError, ResumeNotFoundError) as exc:
         raise _http_error(exc) from exc
 
 
@@ -160,11 +185,37 @@ def synchronize_resume(
 def publish_resume(
     request: Request,
     resume_id: str,
+    data: ResumePublishRequest | None = None,
     user_id: int = Depends(get_current_user_id),
     db: Session = Depends(get_db),
 ) -> ResumeVersionResponse:
     try:
-        return ResumeService(db).publish(user_id, resume_id)
+        return ResumeService(db).publish(user_id, resume_id, data or ResumePublishRequest())
+    except StorageWriteError as exc:
+        db.rollback()
+        raise HTTPException(status_code=507, detail=str(exc)) from exc
+    except (ResumeValidationError, ResumeConflictError, ResumeNotFoundError, ValueError) as exc:
+        db.rollback()
+        raise _http_error(exc) from exc
+
+
+@router.post(
+    "/{resume_id}/versions/{version_id}/restore",
+    response_model=ResumeDraftResponse,
+)
+@limiter.limit("10/minute")
+def restore_resume_version(
+    request: Request,
+    resume_id: str,
+    version_id: str,
+    data: ResumeVersionRestore,
+    user_id: int = Depends(get_current_user_id),
+    db: Session = Depends(get_db),
+) -> ResumeDraftResponse:
+    try:
+        return ResumeService(db).restore_version(
+            user_id, resume_id, version_id, data
+        )
     except (ResumeValidationError, ResumeConflictError, ResumeNotFoundError, ValueError) as exc:
         db.rollback()
         raise _http_error(exc) from exc

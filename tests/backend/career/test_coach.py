@@ -1,5 +1,17 @@
 from unittest.mock import AsyncMock, MagicMock
 
+from backend.inference.ports import InferenceUsage, StructuredInferenceResult
+
+
+def _structured(payload):
+    return StructuredInferenceResult(
+        payload=payload,
+        model_id="ollama-local/test-model",
+        runtime="test",
+        usage=InferenceUsage(prompt_tokens=30, completion_tokens=12),
+        duration_ms=3,
+    )
+
 
 def _profile_payload():
     return {
@@ -38,12 +50,21 @@ def test_grounded_coach_persists_valid_local_citations_and_can_be_deleted(
     provider = MagicMock()
     provider.model_id = "ollama-local/test-model"
     provider.endpoint = "http://127.0.0.1:11434"
-    provider.generate_json_async = AsyncMock(
-        return_value={
+    provider.generate_structured_async = AsyncMock(
+        return_value=_structured({
             "answer": "Lead with the verified 40 percent build-time reduction.",
+            "claims": [
+                {
+                    "text": "Verified 40 percent build time reduction.",
+                    "fact_ids": [fact_id],
+                    "job_ids": [],
+                }
+            ],
             "fact_citations": [fact_id],
             "job_citations": [],
-        }
+            "confidence": 0.95,
+            "missing_evidence": [],
+        })
     )
     factory = MagicMock(return_value=provider)
     monkeypatch.setattr("backend.api.routes.career_coach.get_provider_for_step", factory)
@@ -59,12 +80,13 @@ def test_grounded_coach_persists_valid_local_citations_and_can_be_deleted(
     assert reply["message"]["model_id"] == "ollama-local/test-model"
     assert reply["message"]["generation_metadata"]["mode"] == "local"
     factory.assert_called_once_with("default")
-    system_prompt, user_prompt = provider.generate_json_async.await_args.args[:2]
-    assert "untrusted data" in system_prompt
-    assert fact_id in user_prompt
-    assert "Reduced local build time" in user_prompt
-    assert "private@example.test" not in user_prompt
-    assert "+41 79" not in user_prompt
+    request = provider.generate_structured_async.await_args.args[0]
+    assert "untrusted data" in request.system_prompt
+    assert fact_id in request.user_prompt
+    assert "Reduced local build time" in request.user_prompt
+    assert "private@example.test" not in request.user_prompt
+    assert "+41 79" not in request.user_prompt
+    assert reply["message"]["generation_metadata"]["confidence"] == 0.95
 
     summaries = client.get("/api/v1/career-coach/conversations", headers=auth_headers)
     assert summaries.status_code == 200
@@ -98,12 +120,21 @@ def test_coach_rejects_unsupported_citation(client, auth_headers, monkeypatch):
     ).json()
     provider = MagicMock()
     provider.model_id = "ollama-local/test-model"
-    provider.generate_json_async = AsyncMock(
-        return_value={
+    provider.generate_structured_async = AsyncMock(
+        return_value=_structured({
             "answer": "Unsupported claim",
+            "claims": [
+                {
+                    "text": "Unsupported claim",
+                    "fact_ids": ["00000000-0000-0000-0000-000000000000"],
+                    "job_ids": [],
+                }
+            ],
             "fact_citations": ["00000000-0000-0000-0000-000000000000"],
             "job_citations": [],
-        }
+            "confidence": 0.1,
+            "missing_evidence": [],
+        })
     )
     monkeypatch.setattr(
         "backend.api.routes.career_coach.get_provider_for_step", lambda _step: provider
@@ -117,7 +148,7 @@ def test_coach_rejects_unsupported_citation(client, auth_headers, monkeypatch):
         headers=auth_headers,
     )
     assert response.status_code == 422
-    assert "unsupported career-fact citations" in response.text
+    assert "could not be grounded" in response.text
     conversations = client.get("/api/v1/career-coach/conversations", headers=auth_headers)
     assert conversations.status_code == 200
     assert conversations.json() == []
@@ -129,7 +160,7 @@ def test_coach_reports_local_model_unavailable_without_blocking_vault(
     client.put("/api/v1/career-profile", json=_profile_payload(), headers=auth_headers)
     provider = MagicMock()
     provider.model_id = "ollama-local/unavailable"
-    provider.generate_json_async = AsyncMock(side_effect=OSError("offline"))
+    provider.generate_structured_async = AsyncMock(side_effect=OSError("offline"))
     monkeypatch.setattr(
         "backend.api.routes.career_coach.get_provider_for_step", lambda _step: provider
     )

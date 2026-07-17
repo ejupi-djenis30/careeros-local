@@ -41,6 +41,24 @@ async def lifespan(app: FastAPI):
 
     start_scheduler()
 
+    managed_start_task = None
+    if desktop_runtime.enabled:
+        from backend.inference.managed_runtime import get_managed_runtime
+
+        manager = get_managed_runtime()
+        snapshot = manager.snapshot()
+        if snapshot.runtime_installed and snapshot.model_installed:
+            async def start_managed_runtime() -> None:
+                try:
+                    await asyncio.to_thread(manager.start)
+                except Exception as exc:
+                    logger.warning(
+                        "managed_runtime_start_failed exception_type=%s",
+                        type(exc).__name__,
+                    )
+
+            managed_start_task = asyncio.create_task(start_managed_runtime())
+
     yield
 
     # Shutdown: cancel any in-flight search tasks, then stop scheduler
@@ -65,6 +83,11 @@ async def lifespan(app: FastAPI):
         await asyncio.gather(*active.values(), return_exceptions=True)
 
     stop_scheduler()
+    from backend.inference.managed_runtime import stop_managed_runtime
+
+    stop_managed_runtime()
+    if managed_start_task is not None:
+        await asyncio.gather(managed_start_task, return_exceptions=True)
 
 
 # ─── App ───
@@ -101,7 +124,7 @@ app.add_middleware(TrustedHostMiddleware, allowed_hosts=settings.ALLOWED_HOSTS)
 
 # ─── CORS ───
 if settings.cors_origins_list:
-    logger.info(f"Configuring CORS with origins: {settings.cors_origins_list}")
+    logger.info("Configuring CORS origin_count=%d", len(settings.cors_origins_list))
     app.add_middleware(
         CORSMiddleware,
         allow_origins=[str(origin) for origin in settings.cors_origins_list],

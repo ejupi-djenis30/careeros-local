@@ -16,7 +16,7 @@ describe("LocalModelStatus", () => {
     it("identifies the configured local model and can refresh it", async () => {
         const user = userEvent.setup();
         render(<LocalModelStatus />);
-        expect(screen.getByText("Locale · qwen3:1.7b")).toBeInTheDocument();
+        expect(screen.getByText("runtime locale · qwen3:1.7b")).toBeInTheDocument();
         expect(screen.getByText(/solo su questo dispositivo/)).toBeInTheDocument();
         await user.click(screen.getByRole("button", { name: "Ricontrolla modello locale" }));
         expect(refresh).toHaveBeenCalledTimes(1);
@@ -25,7 +25,7 @@ describe("LocalModelStatus", () => {
     it("makes runtime unavailability explicit without hiding offline capabilities", () => {
         hook.mockReturnValue({ status: { loading: false, available: false, ready: false, configured_model: "qwen3:1.7b", installed_models: [], error_code: "local_runtime_unreachable" }, refresh });
         render(<LocalModelStatus />);
-        expect(screen.getByText("Ollama non raggiungibile")).toBeInTheDocument();
+        expect(screen.getByText("Runtime locale non disponibile")).toBeInTheDocument();
         expect(screen.getByText(/archivio restano disponibili/)).toBeInTheDocument();
     });
 });

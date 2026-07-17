@@ -407,12 +407,10 @@ class TestNormalizeUserProfile:
 class TestLLMServiceNormalizeUserProfile:
     async def test_returns_empty_dict_on_non_dict_llm_response(self, llm):
         """If LLM returns non-dict (e.g. None, list), should return {}."""
-        with patch.object(llm, "_get_provider") as mock_get_prov:
-            mock_provider = AsyncMock()
-            mock_provider.generate_json_async = AsyncMock(return_value=None)
-            mock_provider.generate_json_async_with_timeout = mock_provider.generate_json_async
-            mock_provider.model_id = "test/mock-model"
-            mock_get_prov.return_value = mock_provider
+        with (
+            patch.object(llm, "_get_provider", return_value=MagicMock(model_id="test/mock-model")),
+            patch.object(llm, "_call_provider_json", AsyncMock(return_value=None)),
+        ):
             result = await llm.normalize_user_profile("cv text", "developer", "")
         assert result == {}
 
@@ -428,12 +426,12 @@ class TestLLMServiceNormalizeUserProfile:
             "skills": ["Python", "FastAPI"],
             "confidence": 0.9,
         }
-        with patch.object(llm, "_get_provider") as mock_get_prov:
-            mock_provider = AsyncMock()
-            mock_provider.generate_json_async = AsyncMock(return_value=valid_llm_output)
-            mock_provider.generate_json_async_with_timeout = mock_provider.generate_json_async
-            mock_provider.model_id = "test/mock-model"
-            mock_get_prov.return_value = mock_provider
+        with (
+            patch.object(llm, "_get_provider", return_value=MagicMock(model_id="test/mock-model")),
+            patch.object(
+                llm, "_call_provider_json", AsyncMock(return_value=valid_llm_output)
+            ),
+        ):
             result = await llm.normalize_user_profile("cv text", "Python developer", "")
 
         assert result["seniority"] == "mid"
@@ -452,12 +450,10 @@ class TestLLMServiceNormalizeUserProfile:
             "skills": [],
             "confidence": 0.7,
         }
-        with patch.object(llm, "_get_provider") as mock_get_prov:
-            mock_provider = AsyncMock()
-            mock_provider.generate_json_async = AsyncMock(return_value=llm_output)
-            mock_provider.generate_json_async_with_timeout = mock_provider.generate_json_async
-            mock_provider.model_id = "test/mock-model"
-            mock_get_prov.return_value = mock_provider
+        with (
+            patch.object(llm, "_get_provider", return_value=MagicMock(model_id="test/mock-model")),
+            patch.object(llm, "_call_provider_json", AsyncMock(return_value=llm_output)),
+        ):
             result = await llm.normalize_user_profile("cv text", "executive role", "")
 
         assert result["seniority"] is None
@@ -474,12 +470,10 @@ class TestLLMServiceNormalizeUserProfile:
             "skills": [],
             "confidence": 0.6,
         }
-        with patch.object(llm, "_get_provider") as mock_get_prov:
-            mock_provider = AsyncMock()
-            mock_provider.generate_json_async = AsyncMock(return_value=llm_output)
-            mock_provider.generate_json_async_with_timeout = mock_provider.generate_json_async
-            mock_provider.model_id = "test/mock-model"
-            mock_get_prov.return_value = mock_provider
+        with (
+            patch.object(llm, "_get_provider", return_value=MagicMock(model_id="test/mock-model")),
+            patch.object(llm, "_call_provider_json", AsyncMock(return_value=llm_output)),
+        ):
             result = await llm.normalize_user_profile("cv", "developer", "")
 
         assert result["qualification_level"] is None
@@ -496,12 +490,10 @@ class TestLLMServiceNormalizeUserProfile:
             "skills": [],
             "confidence": 0.5,
         }
-        with patch.object(llm, "_get_provider") as mock_get_prov:
-            mock_provider = AsyncMock()
-            mock_provider.generate_json_async = AsyncMock(return_value=llm_output)
-            mock_provider.generate_json_async_with_timeout = mock_provider.generate_json_async
-            mock_provider.model_id = "test/mock-model"
-            mock_get_prov.return_value = mock_provider
+        with (
+            patch.object(llm, "_get_provider", return_value=MagicMock(model_id="test/mock-model")),
+            patch.object(llm, "_call_provider_json", AsyncMock(return_value=llm_output)),
+        ):
             result = await llm.normalize_user_profile("cv", "junior dev", "")
 
         assert result["experience_years"] == 0

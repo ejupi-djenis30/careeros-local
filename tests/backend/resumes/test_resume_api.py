@@ -1,16 +1,18 @@
+import errno
 import hashlib
 from io import BytesIO
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from uuid import uuid4
 
-import fitz
 import pytest
 from docx import Document
 from PIL import Image
+from pypdf import PdfReader
 
 from backend.career.models import CareerAsset
-from backend.resumes.models import ResumeVersion
+from backend.resumes.models import ResumeArtifact, ResumeVersion
+from backend.storage import atomic
 
 
 def _profile_payload(expected_revision=0):
@@ -84,7 +86,7 @@ def _draft_payload(profile, *, template="ats", photo_asset_id=None):
 def test_ats_resume_publishes_text_extractable_immutable_artifacts(
     client, auth_headers, db_session, monkeypatch
 ):
-    with TemporaryDirectory(dir="cmd_outputs") as directory:
+    with TemporaryDirectory() as directory:
         monkeypatch.setattr("backend.storage.atomic.settings.DATA_DIR", directory)
         profile = _create_profile(client, auth_headers)
         created = client.post("/api/v1/resumes", json=_draft_payload(profile), headers=auth_headers)
@@ -112,11 +114,11 @@ def test_ats_resume_publishes_text_extractable_immutable_artifacts(
         )
         assert pdf_response.status_code == 200
         assert hashlib.sha256(pdf_response.content).hexdigest() == artifacts["pdf"]["sha256"]
-        with fitz.open(stream=pdf_response.content, filetype="pdf") as pdf:
-            text = "\n".join(page.get_text() for page in pdf)
-            assert "Ada Lovelace" in text
-            assert "EXPERIENCE" in text
-            assert sum(len(page.get_images(full=True)) for page in pdf) == 0
+        pdf = PdfReader(BytesIO(pdf_response.content))
+        text = "\n".join(page.extract_text() or "" for page in pdf.pages)
+        assert "Ada Lovelace" in text
+        assert "EXPERIENCE" in text
+        assert sum(len(page.images) for page in pdf.pages) == 0
 
         docx_response = client.get(
             f"/api/v1/resume-artifacts/{artifacts['docx']['id']}", headers=auth_headers
@@ -145,6 +147,119 @@ def test_ats_resume_publishes_text_extractable_immutable_artifacts(
         db_session.rollback()
 
 
+def test_publish_disk_full_removes_first_artifact_and_rolls_back_version(
+    client, auth_headers, db_session, monkeypatch
+):
+    with TemporaryDirectory() as directory:
+        data_dir = Path(directory)
+        monkeypatch.setattr("backend.storage.atomic.settings.DATA_DIR", directory)
+        profile = _create_profile(client, auth_headers)
+        created = client.post(
+            "/api/v1/resumes", json=_draft_payload(profile), headers=auth_headers
+        )
+        assert created.status_code == 201, created.text
+
+        original_fsync = atomic.os.fsync
+        calls = 0
+
+        def fail_second_write(descriptor):
+            nonlocal calls
+            calls += 1
+            if calls == 2:
+                raise OSError(errno.ENOSPC, "No space left on device")
+            return original_fsync(descriptor)
+
+        monkeypatch.setattr(atomic.os, "fsync", fail_second_write)
+        response = client.post(
+            f"/api/v1/resumes/{created.json()['id']}/publish", headers=auth_headers
+        )
+
+        assert response.status_code == 507, response.text
+        db_session.expire_all()
+        assert db_session.query(ResumeVersion).count() == 0
+        assert db_session.query(ResumeArtifact).count() == 0
+        assert [path for path in data_dir.rglob("*") if path.is_file()] == []
+
+
+def test_named_versions_compare_and_restore_without_mutating_history(
+    client, auth_headers, db_session, monkeypatch
+):
+    with TemporaryDirectory() as directory:
+        monkeypatch.setattr("backend.storage.atomic.settings.DATA_DIR", directory)
+        profile = _create_profile(client, auth_headers)
+        created = client.post(
+            "/api/v1/resumes", json=_draft_payload(profile), headers=auth_headers
+        )
+        assert created.status_code == 201, created.text
+        draft = created.json()
+
+        first_response = client.post(
+            f"/api/v1/resumes/{draft['id']}/publish",
+            json={"name": "Candidatura Alpha"},
+            headers=auth_headers,
+        )
+        assert first_response.status_code == 201, first_response.text
+        first = first_response.json()
+        assert first["name"] == "Candidatura Alpha"
+
+        changed = _draft_payload(profile)
+        changed["expected_revision"] = draft["revision"]
+        changed["title"] = "Tailored Resume"
+        changed["section_config"]["include_phone"] = False
+        updated = client.put(
+            f"/api/v1/resumes/{draft['id']}", json=changed, headers=auth_headers
+        )
+        assert updated.status_code == 200, updated.text
+
+        second_response = client.post(
+            f"/api/v1/resumes/{draft['id']}/publish",
+            json={"name": "Candidatura Beta"},
+            headers=auth_headers,
+        )
+        assert second_response.status_code == 201, second_response.text
+        second = second_response.json()
+
+        comparison = client.get(
+            "/api/v1/resumes/versions/compare",
+            params={"left_id": first["id"], "right_id": second["id"]},
+            headers=auth_headers,
+        )
+        assert comparison.status_code == 200, comparison.text
+        comparison_payload = comparison.json()
+        assert comparison_payload["left_name"] == "Candidatura Alpha"
+        assert comparison_payload["right_name"] == "Candidatura Beta"
+        assert {"title", "section_config"} <= set(
+            comparison_payload["resume_changes"]
+        )
+
+        before_hashes = {
+            item.id: item.snapshot_sha256
+            for item in db_session.query(ResumeVersion).all()
+        }
+        restored = client.post(
+            f"/api/v1/resumes/{draft['id']}/versions/{first['id']}/restore",
+            json={"expected_revision": updated.json()["revision"]},
+            headers=auth_headers,
+        )
+        assert restored.status_code == 200, restored.text
+        restored_payload = restored.json()
+        assert restored_payload["revision"] == updated.json()["revision"] + 1
+        assert restored_payload["title"] == "Analytical Engineer Resume"
+        assert len(restored_payload["versions"]) == 2
+
+        listed = client.get("/api/v1/resumes/versions", headers=auth_headers)
+        assert listed.status_code == 200
+        assert {item["name"] for item in listed.json()} == {
+            "Candidatura Alpha",
+            "Candidatura Beta",
+        }
+        db_session.expire_all()
+        assert {
+            item.id: item.snapshot_sha256
+            for item in db_session.query(ResumeVersion).all()
+        } == before_hashes
+
+
 def test_resume_rejects_missing_fact_and_ats_photo(client, auth_headers):
     profile = _create_profile(client, auth_headers)
     missing = _draft_payload(profile)
@@ -162,7 +277,7 @@ def test_resume_rejects_missing_fact_and_ats_photo(client, auth_headers):
 def test_photo_resume_strips_exif_and_embeds_only_normalized_photo(
     client, auth_headers, db_session, monkeypatch
 ):
-    with TemporaryDirectory(dir="cmd_outputs") as directory:
+    with TemporaryDirectory() as directory:
         monkeypatch.setattr("backend.storage.atomic.settings.DATA_DIR", directory)
         profile = _create_profile(client, auth_headers)
         source = Image.new("RGB", (1200, 800), (62, 89, 120))
@@ -226,7 +341,7 @@ def test_generate_resume_endpoint_creates_goal_aware_canvas(
     assert draft["profile_revision"] == saved_detailed_profile["revision"]
     assert draft["generation_context"]["mode"] == "deterministic"
     assert draft["generation_context"]["career_goal_id"] == goal["id"]
-    assert draft["canvas_document"]["schema_version"] == 1
+    assert draft["canvas_document"]["schema_version"] == 2
     assert draft["canvas_document"]["style"]["columns"] == 1
     assert {section["kind"] for section in draft["canvas_document"]["sections"]} >= {
         "identity",

@@ -13,6 +13,9 @@ SECTION_HEADINGS = {
     "volunteering": "VOLUNTEERING",
     "publication": "PUBLICATIONS",
     "link": "LINKS",
+    "award": "AWARDS",
+    "membership": "MEMBERSHIPS",
+    "portfolio": "PORTFOLIO",
 }
 
 
@@ -24,6 +27,7 @@ class ResumeEntry:
     date_range: str = ""
     description: str = ""
     bullets: list[str] = field(default_factory=list)
+    layout: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -136,6 +140,30 @@ def _base_entry(fact: dict[str, Any]) -> ResumeEntry:
         )
     if fact_type == "link":
         return ResumeEntry(fact_id=fact_id, title=payload["label"], subtitle=payload["url"])
+    if fact_type == "award":
+        return ResumeEntry(
+            fact_id=fact_id,
+            title=payload["title"],
+            subtitle=_join(payload.get("issuer"), payload.get("url")),
+            date_range=_date_label(payload.get("awarded_on")),
+            description=payload.get("description", ""),
+        )
+    if fact_type == "membership":
+        return ResumeEntry(
+            fact_id=fact_id,
+            title=payload["role"],
+            subtitle=_join(payload["organization"], payload.get("url")),
+            date_range=_date_range(payload),
+            description=payload.get("description", ""),
+        )
+    if fact_type == "portfolio":
+        return ResumeEntry(
+            fact_id=fact_id,
+            title=payload["name"],
+            subtitle=payload["url"],
+            description=payload.get("description", ""),
+            bullets=list(payload.get("skills", [])),
+        )
     return ResumeEntry(
         fact_id=fact_id,
         title=payload["title"],
@@ -158,6 +186,7 @@ def _apply_override(entry: ResumeEntry, override: dict[str, Any] | None) -> Resu
             else entry.description
         ),
         bullets=(override["bullets"] if override.get("bullets") is not None else entry.bullets),
+        layout=entry.layout,
     )
 
 
@@ -210,6 +239,7 @@ def _build_canvas_content(snapshot: dict[str, Any], canvas: dict[str, Any]) -> R
                     date_range=content.get("date_range", ""),
                     description=content.get("description", ""),
                     bullets=list(content.get("bullets", [])),
+                    layout=dict(block.get("layout", {})),
                 )
             )
         if entries:

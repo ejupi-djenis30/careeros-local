@@ -303,6 +303,9 @@ class CareerPreferences(BaseModel):
     desired_benefits: list[str] = Field(default_factory=list, max_length=50)
     excluded_companies: list[str] = Field(default_factory=list, max_length=100)
     excluded_industries: list[str] = Field(default_factory=list, max_length=100)
+    job_source_consents: dict[
+        Literal["job_room", "swissdevjobs", "adecco"], bool
+    ] = Field(default_factory=dict, max_length=3)
 
     @field_validator(
         "target_roles",

@@ -4,7 +4,7 @@ import json
 import logging
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Any, Awaitable, Callable, Dict, List, Sequence
+from typing import Any, Awaitable, Callable, Dict, List, Sequence, cast
 
 from sqlalchemy.orm import Session
 
@@ -12,7 +12,7 @@ from backend.core.config import settings
 from backend.jobs.urls import normalize_job_url
 from backend.models import Job, ScrapedJob
 from backend.repositories.job_repository import JobRepository
-from backend.services.search.listing_utils import (
+from backend.search.normalization.listings import (
     bootstrap_normalized_job_data,
     compute_posting_quality,
     extract_company_name,
@@ -250,7 +250,9 @@ class SearchPipelinePersistence:
                 self._clear_normalization(existing_sj)
                 for field, value in normalized_bootstrap.items():
                     setattr(existing_sj, field, value)
-                metadata = dict(existing_sj.normalized_metadata or {})
+                metadata = dict(
+                    cast(Dict[str, Any] | None, existing_sj.normalized_metadata) or {}
+                )
                 metadata["content_changed_at"] = datetime.now(timezone.utc).isoformat()
                 existing_sj.normalized_metadata = metadata
             else:
@@ -259,6 +261,9 @@ class SearchPipelinePersistence:
                         setattr(existing_sj, field, value)
             if not existing_sj.normalization_status:
                 existing_sj.normalization_status = "provider_bootstrap"
+
+        if existing_sj is None:
+            raise RuntimeError("Scraped job upsert did not return a persisted catalog record")
 
         setattr(listing, "_scraped_job_id", existing_sj.id)
         setattr(
@@ -405,7 +410,9 @@ class SearchPipelinePersistence:
         for scraped_job, normalized in zip(candidate_records, normalized_rows):
             if not normalized:
                 scraped_job.normalization_status = "failed"
-                fail_meta = scraped_job.normalized_metadata or {}
+                fail_meta = dict(
+                    cast(Dict[str, Any] | None, scraped_job.normalized_metadata) or {}
+                )
                 fail_meta["normalization_failed_at"] = datetime.now(timezone.utc).isoformat()
                 scraped_job.normalized_metadata = fail_meta
                 continue

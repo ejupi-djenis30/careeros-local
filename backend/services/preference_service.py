@@ -146,9 +146,10 @@ def _compute(user_id: int, db: Session) -> Dict[str, Any]:
     # ── Dealbreaker patterns (feedback_signal frequencies from dismissed) ──────
     dealbreaker_patterns: Dict[str, int] = {}
     for j in dismissed_jobs:
-        if j.feedback_signal:
-            dealbreaker_patterns[j.feedback_signal] = (
-                dealbreaker_patterns.get(j.feedback_signal, 0) + 1
+        feedback_signal = str(j.feedback_signal or "")
+        if feedback_signal:
+            dealbreaker_patterns[feedback_signal] = (
+                dealbreaker_patterns.get(feedback_signal, 0) + 1
             )
 
     return {

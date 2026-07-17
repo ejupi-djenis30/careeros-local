@@ -16,7 +16,7 @@ from backend.resumes.renderers.base import DOCX_MEDIA_TYPE, PDF_MEDIA_TYPE
 from backend.resumes.renderers.photo import render_photo_docx, render_photo_pdf
 from backend.resumes.storage import remove_stored_artifact, store_resume_artifact
 
-RENDERER_VERSION = "careeros-canvas-2.0"
+RENDERER_VERSION = "careeros-canvas-3.0"
 
 
 def _snapshot(
@@ -26,7 +26,7 @@ def _snapshot(
     photo: CareerAsset | None,
 ) -> dict:
     return {
-        "schema_version": 2,
+        "schema_version": 3,
         "profile_revision": profile.revision,
         "profile": {
             "display_name": profile.display_name,
@@ -71,6 +71,7 @@ def publish_draft(
     facts: list[CareerFact],
     photo: CareerAsset | None,
     photo_bytes: bytes | None,
+    version_name: str | None = None,
 ) -> ResumeVersion:
     snapshot = _snapshot(profile, draft, facts, photo)
     snapshot_json = json.dumps(
@@ -109,6 +110,7 @@ def publish_draft(
         draft_id=draft.id,
         version_number=next_number,
         semantic_version=f"1.0.{next_number - 1}",
+        name=(version_name or f"{draft.title} · v1.0.{next_number - 1}").strip()[:200],
         snapshot=snapshot,
         snapshot_sha256=snapshot_sha256,
         profile_revision=profile.revision,

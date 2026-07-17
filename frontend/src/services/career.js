@@ -7,6 +7,9 @@ export const CareerService = {
     getSummary(options = {}) {
         return ApiClient.get("/career-profile/summary", undefined, options);
     },
+    getJobSources(options = {}) {
+        return ApiClient.get("/search/sources", undefined, options);
+    },
     saveProfile(profile) {
         return ApiClient.put("/career-profile", profile);
     },

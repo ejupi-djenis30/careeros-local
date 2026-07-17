@@ -1,5 +1,11 @@
+import errno
 from copy import deepcopy
 
+import pytest
+
+from backend.career.repository import CareerProfileRepository
+from backend.career.schemas import CareerProfileWrite
+from backend.storage.atomic import StorageWriteError
 
 EXPERIENCE_ONE = "10000000-0000-4000-8000-000000000001"
 EXPERIENCE_TWO = "10000000-0000-4000-8000-000000000002"
@@ -142,3 +148,31 @@ def test_goal_rejects_impossible_action_and_milestone_dates(client, auth_headers
     response = client.put("/api/v1/career-profile", json=payload, headers=auth_headers)
     assert response.status_code == 422
     assert "completed_date" in response.text
+
+
+def test_profile_disk_full_rolls_back_to_last_durable_revision(
+    client, auth_headers, db_session, test_user, monkeypatch
+):
+    created = client.put("/api/v1/career-profile", json=_profile(), headers=auth_headers)
+    assert created.status_code == 200, created.text
+    current = created.json()
+    update = deepcopy(_profile())
+    update["expected_revision"] = current["revision"]
+    update["headline"] = "This update must not survive"
+    for position, fact in enumerate(update["facts"]):
+        fact["id"] = current["facts"][position]["id"]
+    update["goals"][0]["id"] = current["goals"][0]["id"]
+
+    def disk_full_commit():
+        raise OSError(errno.ENOSPC, "database or disk is full")
+
+    monkeypatch.setattr(db_session, "commit", disk_full_commit)
+    repository = CareerProfileRepository(db_session)
+    with pytest.raises(StorageWriteError, match="storage is full"):
+        repository.save(test_user.id, CareerProfileWrite.model_validate(update))
+
+    db_session.expire_all()
+    persisted = repository.get_by_user(test_user.id)
+    assert persisted is not None
+    assert persisted.revision == current["revision"]
+    assert persisted.headline == current["headline"]

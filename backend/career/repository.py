@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session
 
 from backend.career.models import CandidateProfile, CareerFact, CareerGoal, SourceDocument
 from backend.career.schemas import CareerProfileWrite
+from backend.storage.atomic import StorageWriteError, is_storage_exhaustion
 
 
 class CareerProfileConflictError(RuntimeError):
@@ -53,7 +54,13 @@ class CareerProfileRepository:
             fact_id = fact_input.id or str(uuid.uuid4())
             fact = existing_facts.get(fact_id)
             if fact_input.id and fact is None:
-                raise ValueError(f"Career fact '{fact_id}' does not belong to this profile")
+                owner = (
+                    self.db.query(CareerFact.profile_id)
+                    .filter(CareerFact.id == fact_id)
+                    .scalar()
+                )
+                if owner is not None:
+                    raise ValueError(f"Career fact '{fact_id}' does not belong to this profile")
             if fact_input.source_document_id:
                 source_exists = (
                     self.db.query(SourceDocument.id)
@@ -86,7 +93,13 @@ class CareerProfileRepository:
             goal_id = goal_input.id or str(uuid.uuid4())
             goal = existing_goals.get(goal_id)
             if goal_input.id and goal is None:
-                raise ValueError(f"Career goal '{goal_id}' does not belong to this profile")
+                owner = (
+                    self.db.query(CareerGoal.profile_id)
+                    .filter(CareerGoal.id == goal_id)
+                    .scalar()
+                )
+                if owner is not None:
+                    raise ValueError(f"Career goal '{goal_id}' does not belong to this profile")
             if goal is None:
                 goal = CareerGoal(id=goal_id, profile_id=profile.id)
                 self.db.add(goal)
@@ -99,7 +112,15 @@ class CareerProfileRepository:
                 self.db.delete(goal)
 
         profile.revision += 1
-        self.db.commit()
+        try:
+            self.db.commit()
+        except Exception as exc:
+            self.db.rollback()
+            if is_storage_exhaustion(exc):
+                raise StorageWriteError(
+                    "Career Vault could not be saved because local storage is full."
+                ) from exc
+            raise
         self.db.expire_all()
         result = self.get_by_user(user_id)
         if result is None:

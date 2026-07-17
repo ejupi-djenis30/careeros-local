@@ -81,6 +81,11 @@ def sha256(path: Path) -> str:
 
 def prepare_tauri_runtime(source_directory: Path, target: str) -> Path:
     TAURI_BINARIES.mkdir(parents=True, exist_ok=True)
+    legacy_name = f"careeros-backend-{target}{'.exe' if os.name == 'nt' else ''}"
+    legacy_external_binary = (TAURI_BINARIES / legacy_name).resolve()
+    if legacy_external_binary.parent != TAURI_BINARIES.resolve():
+        raise RuntimeError("Refusing to remove a legacy sidecar outside the binaries directory")
+    legacy_external_binary.unlink(missing_ok=True)
     runtime_directory = (TAURI_BINARIES / "careeros-backend-runtime").resolve()
     if runtime_directory.parent != TAURI_BINARIES.resolve():
         raise RuntimeError("Refusing to replace a runtime outside the Tauri binaries directory")

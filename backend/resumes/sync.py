@@ -82,6 +82,7 @@ def _merge_block(old: CanvasBlock, new: CanvasBlock) -> CanvasBlock:
         data["content"][field] = old_content[field]
     data["manual_fields"] = list(old.manual_fields)
     data["visible"] = old.visible
+    data["layout"] = old.layout.model_dump(mode="json")
     return CanvasBlock.model_validate(data)
 
 

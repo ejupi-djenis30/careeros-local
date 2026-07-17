@@ -154,7 +154,8 @@ def test_persist_status_logs_warning_on_repository_failure(caplog):
     ):
         mock_session_local.return_value = MagicMock()
         init_status(1)
-    assert "Failed to persist search status for profile 1" in caplog.text
+    assert "Search status repository operation failed" in caplog.text
+    assert "boom" not in caplog.text
 
 
 def test_get_status_loads_persisted_status_when_missing_in_memory():

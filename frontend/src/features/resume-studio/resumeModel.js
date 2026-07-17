@@ -1,4 +1,4 @@
-export const SECTION_ORDER = ["experience", "education", "project", "skill", "language", "certification", "achievement", "volunteering", "publication", "link"];
+export const SECTION_ORDER = ["experience", "education", "project", "skill", "language", "certification", "achievement", "award", "membership", "portfolio", "volunteering", "publication", "link"];
 
 export const SECTION_LABELS = {
     experience: "Esperienza",
@@ -11,6 +11,9 @@ export const SECTION_LABELS = {
     volunteering: "Volontariato",
     publication: "Pubblicazioni",
     link: "Link",
+    award: "Premi",
+    membership: "Associazioni",
+    portfolio: "Portfolio",
 };
 
 export function newResumeDraft(facts = []) {
@@ -27,7 +30,7 @@ export function newResumeDraft(facts = []) {
             include_location: true,
             include_links: true,
         },
-        selected_fact_ids: facts.filter((fact) => fact.verification_status === "confirmed").map((fact) => fact.id),
+        selected_fact_ids: facts.filter((fact) => fact.verification_status === "confirmed" && fact.fact_type !== "reference").map((fact) => fact.id),
         content_overrides: {},
         canvas_document: null,
         generation_context: null,

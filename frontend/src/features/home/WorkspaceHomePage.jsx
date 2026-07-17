@@ -3,8 +3,9 @@ import { Link } from "react-router-dom";
 import { CareerService } from "../../services/career";
 import { ResumeService } from "../../services/resumes";
 import { ApplicationService } from "../../services/applications";
-import { LocalModelStatus } from "../local-model/LocalModelStatus";
+import { ModelManager } from "../local-model/ModelManager";
 import { STAGE_LABELS } from "../applications/applicationModel";
+import { DataRecoveryPanel } from "./DataRecoveryPanel";
 
 const EMPTY = { profile: null, resumes: [], applications: [] };
 
@@ -53,8 +54,8 @@ export function WorkspaceHomePage() {
 
             <section className="surface-section home-activity"><div className="section-heading"><div><span className="section-kicker">Pipeline</span><h2>Attività recente</h2></div><Link to="/applications">Vedi tutto</Link></div>{recent.length ? <div className="recent-list">{recent.map((application) => <Link key={application.id} to="/applications"><span className={`stage-dot stage-dot--${application.current_stage}`} /><div><strong>{application.title}</strong><small>{application.company}</small></div><span>{STAGE_LABELS[application.current_stage]}</span></Link>)}</div> : <div className="empty-inline"><p>Nessuna candidatura registrata.</p></div>}</section>
 
-            <section className="surface-section home-runtime"><div className="section-heading"><div><span className="section-kicker">Runtime</span><h2>Modello sul dispositivo</h2></div></div><LocalModelStatus /><div className="local-architecture"><span>Career Vault</span><i className="bi bi-arrow-right" /><span>Contesto scelto</span><i className="bi bi-arrow-right" /><span>Ollama</span></div><p>Il modello non riceve automaticamente l’intero profilo: ogni conversazione dichiara i fatti e gli annunci autorizzati.</p></section>
+            <section className="surface-section home-runtime"><div className="section-heading"><div><span className="section-kicker">Runtime</span><h2>Modello sul dispositivo</h2></div></div><ModelManager /><div className="local-architecture"><span>Career Vault</span><i className="bi bi-arrow-right" /><span>Contesto scelto</span><i className="bi bi-arrow-right" /><span>llama.cpp locale</span></div><p>Il modello non riceve automaticamente l’intero profilo: ogni conversazione dichiara i fatti e gli annunci autorizzati.</p></section>
+            <DataRecoveryPanel hasProfile={Boolean(data.profile)} onErased={() => setData(EMPTY)} />
         </div>
     );
 }
-

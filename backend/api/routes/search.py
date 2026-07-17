@@ -11,6 +11,8 @@ from backend.db.base import SessionLocal, get_db
 from backend.repositories.profile_repository import ProfileRepository
 from backend.schemas.profile import StartSearchRequest
 from backend.schemas.search import CVUploadResponse, SearchStartResponse, SearchStopResponse
+from backend.search.consent import load_job_source_consents, public_job_source_catalog
+from backend.search.orchestrator import AdeccoProvider
 from backend.services.search_service import get_search_service
 from backend.services.search_status import (
     cancel_task,
@@ -36,6 +38,20 @@ _PREFERENCE_FIELDS = {
     "workload_max",
     "hard_max_distance_km",
 }
+
+
+@router.get("/sources")
+def job_sources(
+    user_id: int = Depends(get_current_user_id),
+    db: Session = Depends(get_db),
+) -> list[dict[str, object]]:
+    available = {"job_room", "swissdevjobs"}
+    if AdeccoProvider is not None:
+        available.add("adecco")
+    return public_job_source_catalog(
+        load_job_source_consents(db, user_id),
+        available=available,
+    )
 
 
 @router.post("/upload-cv", response_model=CVUploadResponse)

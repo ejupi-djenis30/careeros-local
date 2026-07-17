@@ -28,6 +28,9 @@ def _default_section_order() -> list[FactType]:
         "volunteering",
         "publication",
         "link",
+        "award",
+        "membership",
+        "portfolio",
     ]
 
 
@@ -44,6 +47,8 @@ class ResumeSectionConfig(BaseModel):
     def unique_sections(cls, value):
         if len(value) != len(set(value)):
             raise ValueError("section order cannot contain duplicates")
+        if "reference" in value:
+            raise ValueError("private references cannot be included in resumes")
         return value
 
 
@@ -118,11 +123,21 @@ class ResumeGenerate(BaseModel):
     def validate_template(self):
         if self.template_kind == "ats" and self.photo_asset_id:
             raise ValueError("ATS resumes cannot reference a photo")
+        if self.template_kind == "photo" and not self.photo_asset_id:
+            raise ValueError("photo resumes require a normalized profile photo")
         return self
 
 
 class ResumeDuplicate(BaseModel):
     title: str | None = Field(default=None, min_length=1, max_length=200)
+
+
+class ResumePublishRequest(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=200)
+
+
+class ResumeVersionRestore(BaseModel):
+    expected_revision: int = Field(ge=1)
 
 
 class ResumeClaimPromote(BaseModel):
@@ -165,6 +180,7 @@ class ResumeVersionResponse(BaseModel):
     id: str
     version_number: int
     semantic_version: str
+    name: str
     profile_revision: int
     selected_fact_ids: list[str]
     template_kind: TemplateKind
@@ -172,6 +188,27 @@ class ResumeVersionResponse(BaseModel):
     published_at: datetime
     quality_report: dict[str, Any]
     artifacts: list[ResumeArtifactResponse]
+
+
+class ResumeVersionLinkOption(BaseModel):
+    id: str
+    draft_id: str
+    draft_title: str
+    semantic_version: str
+    name: str
+    published_at: datetime
+
+
+class ResumeVersionComparison(BaseModel):
+    left_version_id: str
+    right_version_id: str
+    left_name: str
+    right_name: str
+    profile_changes: list[str] = Field(default_factory=list)
+    resume_changes: list[str] = Field(default_factory=list)
+    added_fact_ids: list[str] = Field(default_factory=list)
+    removed_fact_ids: list[str] = Field(default_factory=list)
+    changed_fact_ids: list[str] = Field(default_factory=list)
 
 
 class ResumeDraftResponse(ResumeDraftBase):

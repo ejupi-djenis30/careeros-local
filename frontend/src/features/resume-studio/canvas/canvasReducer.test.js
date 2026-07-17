@@ -42,6 +42,28 @@ describe("canvasReducer", () => {
         expect(state.past).toHaveLength(1);
     });
 
+    it("applies bounded block layout controls and keeps them undoable", () => {
+        const document = resumeDraft().canvas_document;
+        const blockId = document.sections[1].blocks[0].id;
+        let state = canvasReducer(createCanvasState(document), {
+            type: "SET_BLOCK_LAYOUT",
+            sectionId: "experience",
+            blockId,
+            field: "spacing_before_pt",
+            value: 99,
+        });
+        expect(state.present.sections[1].blocks[0].layout.spacing_before_pt).toBe(24);
+        state = canvasReducer(state, {
+            type: "SET_BLOCK_LAYOUT",
+            sectionId: "experience",
+            blockId,
+            field: "keep_together",
+            value: false,
+        });
+        expect(state.present.sections[1].blocks[0].layout.keep_together).toBe(false);
+        expect(canvasReducer(state, { type: "UNDO" }).present.sections[1].blocks[0].layout.keep_together).not.toBe(false);
+    });
+
     it("adds and removes a draft-only manual claim without inventing provenance", () => {
         const initial = createCanvasState(resumeDraft().canvas_document);
         const added = canvasReducer(initial, {

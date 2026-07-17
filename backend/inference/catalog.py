@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import platform
 import sys
 from functools import lru_cache
@@ -31,6 +32,13 @@ class RuntimeAsset(BaseModel):
     executable: str = Field(min_length=1, max_length=120)
 
     _url_is_approved = field_validator("url")(_verified_https_url)
+
+    @field_validator("executable")
+    @classmethod
+    def executable_is_a_filename(cls, value: str) -> str:
+        if value in {".", ".."} or any(char in value for char in ("/", "\\", ":")):
+            raise ValueError("runtime executable must be a plain filename")
+        return value
 
 
 class RuntimeCatalog(BaseModel):
@@ -81,12 +89,36 @@ class ModelCatalog(BaseModel):
 @lru_cache(maxsize=1)
 def load_model_catalog() -> ModelCatalog:
     catalog_path = Path(__file__).with_name("model_catalog.json")
+    signature_path = catalog_path.with_suffix(".sha256")
+    return load_verified_catalog(catalog_path, signature_path)
+
+
+def verify_file_sha256(path: Path, expected_sha256: str) -> None:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    if digest.hexdigest() != expected_sha256.casefold():
+        raise ValueError(f"SHA-256 verification failed for {path.name}")
+
+
+def load_verified_catalog(catalog_path: Path, signature_path: Path) -> ModelCatalog:
+    signature = signature_path.read_text(encoding="ascii").strip().split()
+    if len(signature) != 2 or signature[1] != catalog_path.name:
+        raise ValueError("model catalog signature file is malformed")
+    expected = signature[0].casefold()
+    if len(expected) != 64 or any(char not in "0123456789abcdef" for char in expected):
+        raise ValueError("model catalog signature is not a SHA-256 digest")
+    verify_file_sha256(catalog_path, expected)
     return ModelCatalog.model_validate_json(catalog_path.read_text(encoding="utf-8"))
 
 
-def current_platform_key() -> str:
-    system = {"win32": "windows", "darwin": "macos"}.get(sys.platform, "linux")
-    machine = platform.machine().lower()
+def current_platform_key(
+    *, system_name: str | None = None, machine_name: str | None = None
+) -> str:
+    system_value = system_name or sys.platform
+    system = {"win32": "windows", "darwin": "macos"}.get(system_value, "linux")
+    machine = (machine_name or platform.machine()).lower()
     architecture = "aarch64" if machine in {"arm64", "aarch64"} else "x86_64"
     key = f"{system}-{architecture}"
     if key not in load_model_catalog().runtime.assets:

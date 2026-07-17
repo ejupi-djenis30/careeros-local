@@ -11,6 +11,7 @@ from pydantic import (
     model_validator,
 )
 
+from backend.career.completeness import ProfileAnalysis
 from backend.career.goal_schemas import CareerGoalPayload
 from backend.career.payloads import PAYLOAD_SCHEMAS, CareerPreferences, safe_url
 
@@ -25,6 +26,10 @@ FactType = Literal[
     "volunteering",
     "publication",
     "link",
+    "award",
+    "membership",
+    "reference",
+    "portfolio",
 ]
 VerificationStatus = Literal["draft", "confirmed", "imported"]
 
@@ -45,6 +50,11 @@ class CareerFactInput(BaseModel):
         self.payload = schema.model_validate(self.payload).model_dump(
             mode="json", exclude_none=True
         )
+        if self.verification_status == "imported":
+            if not self.source_document_id:
+                raise ValueError("imported facts require a source document")
+            if self.confidence is None:
+                raise ValueError("imported facts require a confidence score")
         return self
 
 
@@ -106,11 +116,27 @@ class CareerProfileWrite(BaseModel):
         }
         if evidence_ids - known_fact_ids:
             raise ValueError("skill evidence facts must belong to the same profile")
+        for item in self.facts:
+            if item.id and item.id in item.payload.get("evidence_fact_ids", []):
+                raise ValueError("a career fact cannot reference itself as evidence")
         goal_ids = [item.id for item in self.goals if item.id]
         if len(goal_ids) != len(set(goal_ids)):
             raise ValueError("goal ids must be unique")
         if sum(1 for item in self.goals if item.is_primary) > 1:
             raise ValueError("only one career goal can be primary")
+        goal_fact_ids = {
+            fact_id
+            for goal in self.goals
+            for collection in (
+                goal.payload.get("milestones", []),
+                goal.payload.get("actions", []),
+                goal.payload.get("progress_notes", []),
+            )
+            for group in collection
+            for fact_id in group.get("evidence_fact_ids", group.get("linked_fact_ids", []))
+        }
+        if goal_fact_ids - known_fact_ids:
+            raise ValueError("goal evidence facts must belong to the same profile")
         self.preferences = CareerPreferences.model_validate(self.preferences).model_dump(
             mode="json", exclude_none=True
         )
@@ -153,6 +179,7 @@ class CareerProfileResponse(BaseModel):
     preferences: dict[str, Any]
     facts: list[CareerFactResponse]
     goals: list[CareerGoalResponse]
+    analysis: ProfileAnalysis | None = None
     created_at: datetime
     updated_at: datetime
 
@@ -164,7 +191,25 @@ class CareerProfileSummary(BaseModel):
     headline: str
     fact_counts: dict[str, int]
     goal_count: int
+    completeness_score: int
+    issue_count: int
     updated_at: datetime
+
+
+class SourceFactCandidate(BaseModel):
+    candidate_id: str = Field(pattern=r"^[0-9a-f]{64}$")
+    fact_type: FactType
+    payload: dict[str, Any]
+    source_locator: str = Field(min_length=1, max_length=255)
+    confidence: float = Field(ge=0, le=1)
+    excerpt: str = Field(min_length=1, max_length=1000)
+
+    @model_validator(mode="after")
+    def validate_candidate_payload(self) -> "SourceFactCandidate":
+        self.payload = PAYLOAD_SCHEMAS[self.fact_type].model_validate(self.payload).model_dump(
+            mode="json", exclude_none=True
+        )
+        return self
 
 
 class SourceDocumentResponse(BaseModel):
@@ -176,4 +221,6 @@ class SourceDocumentResponse(BaseModel):
     byte_size: int
     document_type: str
     extracted_characters: int
+    text_preview: str = Field(max_length=4000)
+    candidates: list[SourceFactCandidate] = Field(default_factory=list, max_length=24)
     created_at: datetime

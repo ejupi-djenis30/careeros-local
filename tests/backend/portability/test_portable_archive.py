@@ -1,10 +1,11 @@
+import errno
 import hashlib
-import shutil
 import uuid
 import zipfile
 from datetime import datetime, timezone
 from io import BytesIO
 from pathlib import Path
+from tempfile import TemporaryDirectory
 
 import pytest
 
@@ -12,7 +13,9 @@ from backend.applications.models import Application, ApplicationEvent
 from backend.career.coach_models import CoachConversation, CoachMessage
 from backend.career.models import CandidateProfile, CareerAsset
 from backend.core.config import settings
+from backend.portability import archive as archive_module
 from backend.resumes.models import ResumeArtifact, ResumeDraft, ResumeVersion
+from backend.storage import atomic
 from backend.storage.atomic import atomic_write, resolve_data_path
 from backend.workflows.models import WorkflowRun
 
@@ -46,11 +49,10 @@ def _profile_payload():
 
 @pytest.fixture
 def portable_data_dir(monkeypatch):
-    path = Path.cwd() / "cmd_outputs" / f"test-portability-{uuid.uuid4()}"
-    path.mkdir(parents=True, exist_ok=False)
-    monkeypatch.setattr(settings, "DATA_DIR", str(path))
-    yield path
-    shutil.rmtree(path, ignore_errors=True)
+    with TemporaryDirectory() as directory:
+        path = Path(directory)
+        monkeypatch.setattr(settings, "DATA_DIR", str(path))
+        yield path
 
 
 def _seed_related_records(db, user_id: int, profile_id: str, fact_id: str) -> str:
@@ -260,3 +262,88 @@ def test_export_delete_restore_round_trip(
     assert exported_again.status_code == 200
     with zipfile.ZipFile(BytesIO(exported_again.content)) as archive:
         assert archive.read("payload.json") == payload_before
+
+
+def test_backup_restore_disk_full_rolls_back_records_and_first_file(
+    client, auth_headers, db_session, test_user, portable_data_dir, monkeypatch
+):
+    profile_response = client.put(
+        "/api/v1/career-profile", json=_profile_payload(), headers=auth_headers
+    )
+    assert profile_response.status_code == 200, profile_response.text
+    profile = profile_response.json()
+    source_response = client.post(
+        "/api/v1/career-profile/sources",
+        files={"file": ("source.txt", b"private source", "text/plain")},
+        headers=auth_headers,
+    )
+    assert source_response.status_code == 201, source_response.text
+    db_session.expire_all()
+    artifact_path = _seed_related_records(
+        db_session, test_user.id, profile["id"], profile["facts"][0]["id"]
+    )
+    source_path = (
+        db_session.query(CareerAsset)
+        .filter(CareerAsset.profile_id == profile["id"])
+        .one()
+        .storage_path
+    )
+    archive_data = client.get(
+        "/api/v1/portability/export", headers=auth_headers
+    ).content
+    deleted = client.delete(
+        "/api/v1/career-profile",
+        headers={**auth_headers, "X-Confirm-Delete": "DELETE-MY-CAREER-VAULT"},
+    )
+    assert deleted.status_code == 204, deleted.text
+
+    original_fsync = atomic.os.fsync
+    calls = 0
+
+    def fail_second_write(descriptor):
+        nonlocal calls
+        calls += 1
+        if calls == 2:
+            raise OSError(errno.ENOSPC, "No space left on device")
+        return original_fsync(descriptor)
+
+    monkeypatch.setattr(atomic.os, "fsync", fail_second_write)
+    restored = client.post(
+        "/api/v1/portability/restore",
+        files={"file": ("backup.zip", archive_data, "application/zip")},
+        headers=auth_headers,
+    )
+
+    assert restored.status_code == 507, restored.text
+    db_session.expire_all()
+    assert db_session.query(CandidateProfile).count() == 0
+    assert not resolve_data_path(source_path).exists()
+    assert not resolve_data_path(artifact_path).exists()
+    assert list(portable_data_dir.rglob(".write-*")) == []
+
+
+def test_backup_export_interruption_returns_507_without_mutating_vault(
+    client, auth_headers, db_session, monkeypatch
+):
+    created = client.put(
+        "/api/v1/career-profile", json=_profile_payload(), headers=auth_headers
+    )
+    assert created.status_code == 200, created.text
+    original_write = archive_module.zipfile.ZipFile.writestr
+    calls = 0
+
+    def interrupted_write(self, member, data, *args, **kwargs):
+        nonlocal calls
+        calls += 1
+        if calls == 2:
+            raise OSError(errno.ENOSPC, "No space left on device")
+        return original_write(self, member, data, *args, **kwargs)
+
+    monkeypatch.setattr(archive_module.zipfile.ZipFile, "writestr", interrupted_write)
+    response = client.get("/api/v1/portability/export", headers=auth_headers)
+
+    assert response.status_code == 507, response.text
+    db_session.expire_all()
+    persisted = db_session.query(CandidateProfile).one()
+    assert persisted.id == created.json()["id"]
+    assert persisted.revision == created.json()["revision"]

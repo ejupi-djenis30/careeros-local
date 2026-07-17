@@ -1,6 +1,7 @@
 from fastapi import APIRouter
 
 from backend.api.routes import (
+    ai_evaluations,
     applications,
     auth,
     career_coach,
@@ -16,6 +17,11 @@ from backend.api.routes import (
 )
 
 api_router = APIRouter()
+api_router.include_router(
+    ai_evaluations.router,
+    prefix="/ai-evaluations",
+    tags=["ai-evaluations"],
+)
 api_router.include_router(auth.router, prefix="/auth", tags=["auth"])
 api_router.include_router(applications.router, prefix="/applications", tags=["applications"])
 api_router.include_router(jobs.router, prefix="/jobs", tags=["jobs"])

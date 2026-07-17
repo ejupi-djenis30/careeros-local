@@ -6,8 +6,11 @@ from pathlib import Path
 
 from sqlalchemy.orm import Session
 
+from backend.ai.models import AIExecution
 from backend.applications.models import Application
 from backend.career.models import CandidateProfile, CareerAsset
+from backend.desktop.lifecycle import desktop_vault_lock
+from backend.inference.managed_runtime import erase_managed_runtime_installation
 from backend.resumes.models import ResumeArtifact, ResumeDraft, ResumeVersion
 from backend.storage.atomic import data_root, resolve_data_path
 from backend.workflows.models import WorkflowRun
@@ -82,44 +85,55 @@ def _restore_files(staged: list[tuple[Path, Path]]) -> None:
         os.replace(destination, source)
 
 
-def delete_complete_vault(db: Session, user_id: int) -> dict[str, int]:
-    profile = db.query(CandidateProfile).filter(CandidateProfile.user_id == user_id).first()
-    operation_id = str(uuid.uuid4())
-    paths = _exclusive_storage_paths(db, profile.id) if profile else set()
-    staged = _stage_files(paths, operation_id)
-    counts = {
-        "profiles": 1 if profile else 0,
-        "applications": db.query(Application).filter(Application.user_id == user_id).count(),
-        "workflows": db.query(WorkflowRun).filter(WorkflowRun.user_id == user_id).count(),
-        "files": len(staged),
-    }
-    try:
-        db.query(Application).filter(Application.user_id == user_id).delete(
-            synchronize_session=False
-        )
-        db.query(WorkflowRun).filter(WorkflowRun.user_id == user_id).delete(
-            synchronize_session=False
-        )
-        if profile is not None:
-            db.delete(profile)
-        db.commit()
-    except Exception:
-        db.rollback()
-        _restore_files(staged)
-        raise
+def delete_complete_vault(
+    db: Session, user_id: int, *, erase_managed_runtime: bool = False
+) -> dict[str, int]:
+    with desktop_vault_lock():
+        profile = db.query(CandidateProfile).filter(CandidateProfile.user_id == user_id).first()
+        operation_id = str(uuid.uuid4())
+        paths = _exclusive_storage_paths(db, profile.id) if profile else set()
+        staged = _stage_files(paths, operation_id)
+        counts = {
+            "profiles": 1 if profile else 0,
+            "applications": db.query(Application).filter(Application.user_id == user_id).count(),
+            "workflows": db.query(WorkflowRun).filter(WorkflowRun.user_id == user_id).count(),
+            "ai_executions": db.query(AIExecution).filter(AIExecution.user_id == user_id).count(),
+            "files": len(staged),
+            "model_files": 0,
+            "model_bytes": 0,
+        }
+        try:
+            db.query(AIExecution).filter(AIExecution.user_id == user_id).delete(
+                synchronize_session=False
+            )
+            db.query(Application).filter(Application.user_id == user_id).delete(
+                synchronize_session=False
+            )
+            db.query(WorkflowRun).filter(WorkflowRun.user_id == user_id).delete(
+                synchronize_session=False
+            )
+            if profile is not None:
+                db.delete(profile)
+            db.commit()
+        except Exception:
+            db.rollback()
+            _restore_files(staged)
+            raise
 
-    trash = data_root() / ".trash" / operation_id
-    try:
-        shutil.rmtree(trash, ignore_errors=False)
-        trash_parent = trash.parent
-        if trash_parent.exists() and not any(trash_parent.iterdir()):
-            trash_parent.rmdir()
-    except FileNotFoundError:
-        pass
-    except OSError as exc:
-        logger.critical("Vault file cleanup failed for operation_id=%s", operation_id)
-        raise VaultDeletionError(
-            "Database rows were deleted but staged files could not be removed"
-        ) from exc
-    return counts
+        trash = data_root() / ".trash" / operation_id
+        try:
+            shutil.rmtree(trash, ignore_errors=False)
+            trash_parent = trash.parent
+            if trash_parent.exists() and not any(trash_parent.iterdir()):
+                trash_parent.rmdir()
+        except FileNotFoundError:
+            pass
+        except OSError as exc:
+            logger.critical("Vault file cleanup failed for operation_id=%s", operation_id)
+            raise VaultDeletionError(
+                "Database rows were deleted but staged files could not be removed"
+            ) from exc
 
+        if erase_managed_runtime:
+            counts.update(erase_managed_runtime_installation())
+        return counts

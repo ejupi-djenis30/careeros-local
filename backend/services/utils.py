@@ -1,10 +1,11 @@
 import asyncio
 import math
 import re
+from io import BytesIO
 from typing import TYPE_CHECKING
 
-import fitz  # PyMuPDF
 from fastapi import HTTPException, UploadFile
+from pypdf import PdfReader
 
 if TYPE_CHECKING:
     from backend.providers.jobs.models import Coordinates
@@ -117,11 +118,8 @@ async def extract_text_from_file(file: UploadFile) -> str:
 
 def _extract_from_pdf(content: bytes) -> str:
     try:
-        doc = fitz.open(stream=content, filetype="pdf")
-        text = ""
-        for page in doc:
-            text += page.get_text()
-        return text
+        document = PdfReader(BytesIO(content))
+        return "".join(page.extract_text() or "" for page in document.pages)
     except Exception as e:
         raise Exception(f"PDF parsing error: {str(e)}")
 

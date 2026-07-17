@@ -71,14 +71,18 @@ def _fact_id(fact: Any, index: int) -> str:
 def _fact_score(facts: list[Any], *, rich_fields: tuple[str, ...] = ()) -> int:
     if not facts:
         return 0
-    confirmed = sum(_value(item, "verification_status") == "confirmed" for item in facts)
-    rich = sum(any(_payload(item).get(field) for field in rich_fields) for item in facts)
+    confirmed = sum(
+        1 for item in facts if _value(item, "verification_status") == "confirmed"
+    )
+    rich = sum(
+        1 for item in facts if any(_payload(item).get(field) for field in rich_fields)
+    )
     score = 50 + round(25 * confirmed / len(facts))
     if rich_fields:
         score += round(25 * rich / len(facts))
     else:
         score += 25
-    return min(100, score)
+    return int(min(100, score))
 
 
 def _identity_score(profile: Any) -> int:
@@ -125,6 +129,7 @@ def _evidence(facts: list[Any]) -> list[FactEvidenceState]:
     for index, fact in enumerate(facts):
         payload = _payload(fact)
         linked = [str(item) for item in payload.get("evidence_fact_ids", [])]
+        state: Literal["documented", "linked", "confirmed", "traceable", "missing"]
         if _value(fact, "source_document_id"):
             state = "documented"
         elif linked:
@@ -175,7 +180,7 @@ def _overlap_issues(facts: list[Any]) -> list[ProfileIssue]:
 
 
 def _future_date_issues(facts: list[Any], reference_date: date) -> list[ProfileIssue]:
-    date_fields = {
+    date_fields: dict[str, tuple[str, ...]] = {
         "achievement": ("achieved_on",),
         "award": ("awarded_on",),
         "certification": ("issued_on",),
@@ -183,7 +188,7 @@ def _future_date_issues(facts: list[Any], reference_date: date) -> list[ProfileI
     }
     issues: list[ProfileIssue] = []
     for index, fact in enumerate(facts):
-        for field in date_fields.get(_value(fact, "fact_type"), ()):
+        for field in date_fields.get(str(_value(fact, "fact_type") or ""), ()):
             value = _parse_date(_payload(fact).get(field))
             if value and value > reference_date:
                 issues.append(
@@ -214,7 +219,8 @@ def _duplicate_issues(facts: list[Any]) -> list[ProfileIssue]:
         payload = _payload(fact)
         values = tuple(str(payload.get(field, "")).strip().casefold() for field in fields)
         if values[0]:
-            seen[(fact_type, *values)].append(_fact_id(fact, index))
+            key = (fact_type, values[0], values[1])
+            seen[key].append(_fact_id(fact, index))
     return [
         ProfileIssue(
             code="possible_duplicate_fact",

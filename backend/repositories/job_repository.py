@@ -1,4 +1,4 @@
-from typing import Dict, List, Optional, Sequence, Tuple
+from typing import Dict, List, Optional, Sequence, Tuple, cast
 
 from sqlalchemy import asc, case, desc, func
 from sqlalchemy.exc import IntegrityError
@@ -14,7 +14,7 @@ class JobRepository(BaseRepository[Job]):
 
     def get_user_job_identifiers(self, user_id: int) -> List[Tuple[str, str, str, str, str]]:
         """Returns lightweight tuples of (platform, platform_job_id, external_url, title, company) for all user jobs."""
-        return (
+        rows = (
             self.db.query(
                 ScrapedJob.platform,
                 ScrapedJob.platform_job_id,
@@ -26,10 +26,11 @@ class JobRepository(BaseRepository[Job]):
             .filter(self.model.user_id == user_id)
             .all()
         )
+        return [cast(Tuple[str, str, str, str, str], tuple(row)) for row in rows]
 
     def get_profile_job_identifiers(self, profile_id: int) -> List[Tuple[str, str, str, str, str]]:
         """Returns lightweight tuples of (platform, platform_job_id, external_url, title, company) for jobs in a specific profile."""
-        return (
+        rows = (
             self.db.query(
                 ScrapedJob.platform,
                 ScrapedJob.platform_job_id,
@@ -41,6 +42,7 @@ class JobRepository(BaseRepository[Job]):
             .filter(self.model.search_profile_id == profile_id)
             .all()
         )
+        return [cast(Tuple[str, str, str, str, str], tuple(row)) for row in rows]
 
     def get_applied_scraped_job_ids(self, user_id: int) -> set:
         """Return a set of scraped_job_id values where user has applied=True.

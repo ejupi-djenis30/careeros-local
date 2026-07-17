@@ -60,7 +60,8 @@ paths:
               schema: { $ref: "#/components/schemas/LocalModelStatus" }
         "409": { description: Another installation or incompatible state is active. }
         "422": { description: Catalog choice, version or consent is invalid. }
-    delete:
+  /local-model/cancel:
+    post:
       operationId: cancelLocalModelInstall
       responses:
         "202": { description: Cancellation requested and partial files scheduled for removal. }
@@ -70,12 +71,13 @@ paths:
       responses:
         "202": { description: A bounded local runtime restart was requested. }
         "409": { description: No verified model is installed. }
-  /local-model/evaluations:
+  /ai-evaluations:
     get:
       operationId: listLocalModelEvaluations
       responses:
         "200":
           description: Content-free aggregate evaluation history.
+  /ai-evaluations/run:
     post:
       operationId: runLocalModelEvaluation
       requestBody:
@@ -85,9 +87,9 @@ paths:
             schema:
               type: object
               additionalProperties: false
-              required: [datasetVersion]
+              required: [mode]
               properties:
-                datasetVersion: { type: string }
+                mode: { type: string, enum: [offline, live] }
       responses:
         "202": { description: Offline evaluation accepted. }
         "409": { description: Model unavailable or evaluation already active. }

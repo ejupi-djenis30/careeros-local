@@ -12,12 +12,29 @@ MODE = os.environ.get("CAREEROS_PYINSTALLER_MODE", "onedir").strip().lower()
 if MODE not in {"onedir", "onefile"}:
     raise ValueError("CAREEROS_PYINSTALLER_MODE must be onedir or onefile")
 
+
+def collect_project_files(source_root, destination_root):
+    """Collect source-controlled runtime data without interpreter caches."""
+    collected = []
+    for source in source_root.rglob("*"):
+        if not source.is_file():
+            continue
+        relative = source.relative_to(source_root)
+        if "__pycache__" in relative.parts or source.suffix in {".pyc", ".pyo"}:
+            continue
+        destination = Path(destination_root) / relative.parent
+        collected.append((str(source), str(destination)))
+    return collected
+
+
 datas = [
     (str(PROJECT_ROOT / "alembic.ini"), "."),
-    (str(PROJECT_ROOT / "alembic"), "alembic"),
-    (str(PROJECT_ROOT / "backend" / "data"), "backend/data"),
     (str(PROJECT_ROOT / "backend" / "inference" / "model_catalog.json"), "backend/inference"),
+    (str(PROJECT_ROOT / "backend" / "inference" / "model_catalog.sha256"), "backend/inference"),
+    (str(PROJECT_ROOT / "backend" / "ai" / "fixtures"), "backend/ai/fixtures"),
 ]
+datas += collect_project_files(PROJECT_ROOT / "alembic", "alembic")
+datas += collect_project_files(PROJECT_ROOT / "backend" / "data", "backend/data")
 for package in ("alembic", "docx", "reportlab"):
     datas += collect_data_files(package)
 for distribution in ("alembic", "fastapi", "pydantic", "uvicorn"):
@@ -49,11 +66,19 @@ analysis = Analysis(
     runtime_hooks=[],
     excludes=[
         "MySQLdb",
+        "anthropic",
+        "fitz",
+        "g4f",
+        "google.generativeai",
+        "groq",
         "mypy",
+        "openai",
         "psycopg2",
+        "pymupdf",
         "pymysql",
         "pytest",
         "ruff",
+        "supabase",
         "tkinter",
         "watchfiles",
     ],

@@ -87,15 +87,15 @@ date conflicts, restart, and verify completeness, relationships and progress are
 
 ### Tests for User Story 2
 
-- [ ] T029 [P] [US2] Expand payload-schema, date-consistency and fact-provenance tests in `tests/backend/career/test_payloads.py` and `tests/backend/career/test_service.py`
-- [ ] T030 [P] [US2] Add profile completeness and goal milestone interaction tests in `frontend/src/features/career-profile/CareerProfilePage.test.jsx`
+- [X] T029 [P] [US2] Expand payload-schema, date-consistency and fact-provenance tests in `tests/backend/career/test_payloads.py` and `tests/backend/career/test_service.py`
+- [X] T030 [P] [US2] Add profile completeness and goal milestone interaction tests in `frontend/src/features/career-profile/CareerProfilePage.test.jsx`
 
 ### Implementation for User Story 2
 
-- [ ] T031 [US2] Complete typed payload validation for experience, achievements, skills, projects, education, credentials, languages and activities in `backend/career/payloads.py` and `backend/career/schemas.py`
-- [ ] T032 [US2] Add deterministic completeness, temporal-conflict and missing-evidence analysis in `backend/career/completeness.py` and `backend/career/service.py`
-- [ ] T033 [US2] Extend goal payloads with target constraints, milestones, actions, skill gaps and progress validation in `backend/career/goal_schemas.py` and `backend/career/service.py`
-- [ ] T034 [US2] Surface detailed sections, evidence state, completeness and goal progress with keyboard-safe controls in `frontend/src/features/career-profile/`
+- [X] T031 [US2] Complete typed payload validation for experience, achievements, skills, projects, education, credentials, languages and activities in `backend/career/payloads.py` and `backend/career/schemas.py`
+- [X] T032 [US2] Add deterministic completeness, temporal-conflict and missing-evidence analysis in `backend/career/completeness.py` and `backend/career/service.py`
+- [X] T033 [US2] Extend goal payloads with target constraints, milestones, actions, skill gaps and progress validation in `backend/career/goal_schemas.py` and `backend/career/service.py`
+- [X] T034 [US2] Surface detailed sections, evidence state, completeness and goal progress with keyboard-safe controls in `frontend/src/features/career-profile/`
 
 **Checkpoint**: User Story 2 is independently usable as a detailed local career vault.
 
@@ -110,16 +110,16 @@ restore versions, export PDF/DOCX, and verify evidence, text extraction and over
 
 ### Tests for User Story 3
 
-- [ ] T035 [P] [US3] Expand automatic-selection, claim-grounding and template-policy tests in `tests/backend/resumes/test_generator.py` and `tests/backend/resumes/test_claims.py`
-- [ ] T036 [P] [US3] Add canvas keyboard, direct-edit, geometry, undo and overflow tests in `frontend/src/features/resume-studio/canvas/ResumeCanvas.test.jsx` and `frontend/src/features/resume-studio/canvas/canvasReducer.test.js`
-- [ ] T037 [P] [US3] Add PDF/DOCX text-order, metadata and overflow integration tests in `tests/backend/resumes/test_renderers.py`
+- [X] T035 [P] [US3] Expand automatic-selection, claim-grounding and template-policy tests in `tests/backend/resumes/test_generator.py` and `tests/backend/resumes/test_claims.py`
+- [X] T036 [P] [US3] Add canvas keyboard, direct-edit, geometry, undo and overflow tests in `frontend/src/features/resume-studio/canvas/ResumeCanvas.test.jsx` and `frontend/src/features/resume-studio/canvas/canvasReducer.test.js`
+- [X] T037 [P] [US3] Add PDF/DOCX text-order, metadata and overflow integration tests in `tests/backend/resumes/test_renderers.py`
 
 ### Implementation for User Story 3
 
-- [ ] T038 [US3] Harden deterministic profile/goal-based fact selection and evidence maps in `backend/resumes/generator.py` and `backend/resumes/claim_service.py`
-- [ ] T039 [US3] Complete versioned canvas schema, bounded layout validation and ATS/photo invariants in `backend/resumes/canvas_schemas.py`, `backend/resumes/canvas_validation.py`, and `backend/resumes/canvas.py`
-- [ ] T040 [US3] Complete direct editing, keyboard movement, reorder, visibility, sizing, zoom, page guides and undo/redo in `frontend/src/features/resume-studio/canvas/`
-- [ ] T041 [US3] Harden local PDF/DOCX publishing, photo metadata stripping and pre-export quality gates in `backend/resumes/renderers/`, `backend/resumes/photos.py`, and `backend/resumes/publication_service.py`
+- [X] T038 [US3] Harden deterministic profile/goal-based fact selection and evidence maps in `backend/resumes/generator.py` and `backend/resumes/claim_service.py`
+- [X] T039 [US3] Complete versioned canvas schema, bounded layout validation and ATS/photo invariants in `backend/resumes/canvas_schemas.py`, `backend/resumes/canvas_validation.py`, and `backend/resumes/canvas.py`
+- [X] T040 [US3] Complete direct editing, keyboard movement, reorder, visibility, sizing, zoom, page guides and undo/redo in `frontend/src/features/resume-studio/canvas/`
+- [X] T041 [US3] Harden local PDF/DOCX publishing, photo metadata stripping and pre-export quality gates in `backend/resumes/renderers/`, `backend/resumes/photos.py`, and `backend/resumes/publication_service.py`
 
 **Checkpoint**: User Story 3 independently produces validated, editable career documents.
 
@@ -135,26 +135,26 @@ families on the compact profile, and meet schema, evidence, hallucination and ac
 
 ### Tests for User Story 4
 
-- [ ] T042 [P] [US4] Add catalog signature, platform selection, hash and unsafe-archive tests in `tests/backend/inference/test_catalog.py` and `tests/backend/inference/test_managed_runtime.py`
-- [ ] T043 [P] [US4] Add schema-constrained llama.cpp/Ollama adapter contract tests in `tests/backend/inference/test_structured_adapters.py`
-- [ ] T044 [P] [US4] Add BM25 ranking, context-budget and prompt-injection isolation tests in `tests/backend/ai/test_retrieval.py`
-- [ ] T045 [P] [US4] Add schema, grounding, semantic validation and single-repair tests in `tests/backend/ai/test_orchestrator.py` and `tests/backend/ai/test_grounding.py`
-- [ ] T046 [P] [US4] Add versioned synthetic golden cases and evaluator metric tests in `tests/ai/fixtures/`, `tests/backend/ai/test_evaluation.py`, and `tests/backend/ai/test_golden_contracts.py`
-- [ ] T047 [P] [US4] Add model setup/progress/cancellation UI tests in `frontend/src/features/local-model/LocalModelStatus.test.jsx` and `frontend/src/features/local-model/ModelManager.test.jsx`
+- [x] T042 [P] [US4] Add catalog signature, platform selection, hash and unsafe-archive tests in `tests/backend/inference/test_catalog.py` and `tests/backend/inference/test_managed_runtime.py`
+- [x] T043 [P] [US4] Add schema-constrained llama.cpp/Ollama adapter contract tests in `tests/backend/inference/test_structured_adapters.py`
+- [x] T044 [P] [US4] Add BM25 ranking, context-budget and prompt-injection isolation tests in `tests/backend/ai/test_retrieval.py`
+- [x] T045 [P] [US4] Add schema, grounding, semantic validation and single-repair tests in `tests/backend/ai/test_orchestrator.py` and `tests/backend/ai/test_grounding.py`
+- [x] T046 [P] [US4] Add versioned synthetic golden cases and evaluator metric tests in `tests/ai/fixtures/`, `tests/backend/ai/test_evaluation.py`, and `tests/backend/ai/test_golden_contracts.py`
+- [x] T047 [P] [US4] Add model setup/progress/cancellation UI tests in `frontend/src/features/local-model/LocalModelStatus.test.jsx` and `frontend/src/features/local-model/ModelManager.test.jsx`
 
 ### Implementation for User Story 4
 
-- [ ] T048 [US4] Generalize the local inference port for JSON Schema, metadata and runtime capabilities in `backend/inference/ports.py` and `backend/providers/llm/base.py`
-- [ ] T049 [US4] Implement the authenticated llama.cpp chat/list adapter and schema response format in `backend/inference/llama_cpp.py`
-- [ ] T050 [US4] Upgrade the Ollama adapter to the same schema contract and deterministic task options in `backend/inference/ollama.py`
-- [ ] T051 [US4] Implement atomic cancellable runtime/model download, safe extraction, verification, process health and bounded restart in `backend/inference/managed_runtime.py`
-- [ ] T052 [US4] Expose catalog, status, install, cancel and restart contracts in `backend/api/routes/local_model.py`, `backend/inference/service.py`, and `frontend/src/services/localModel.js`
-- [ ] T053 [US4] Implement deterministic bounded evidence ranking in `backend/ai/retrieval.py` and per-claim grounding checks in `backend/ai/grounding.py`
-- [ ] T054 [US4] Implement generate-validate-single-repair orchestration and content-free audit integration in `backend/ai/orchestrator.py`
-- [ ] T055 [US4] Migrate coach output to constrained claims/citations/confidence while preserving API compatibility in `backend/career/coach.py` and `backend/career/coach_schemas.py`
-- [ ] T056 [US4] Apply task schemas and semantic validators to profile normalization, search planning, job normalization, matching, critique and reranking through `backend/services/llm_service.py`
-- [ ] T057 [US4] Implement offline fixture validation, live compact-model execution and aggregate reports in `backend/ai/evaluation.py` and `backend/api/routes/ai_evaluations.py`
-- [ ] T058 [US4] Replace Ollama command-line instructions with consent, license, size, progress, cancellation and retry UI in `frontend/src/features/local-model/`
+- [x] T048 [US4] Generalize the local inference port for JSON Schema, metadata and runtime capabilities in `backend/inference/ports.py` and `backend/providers/llm/base.py`
+- [x] T049 [US4] Implement the authenticated llama.cpp chat/list adapter and schema response format in `backend/inference/llama_cpp.py`
+- [x] T050 [US4] Upgrade the Ollama adapter to the same schema contract and deterministic task options in `backend/inference/ollama.py`
+- [x] T051 [US4] Implement atomic cancellable runtime/model download, safe extraction, verification, process health and bounded restart in `backend/inference/managed_runtime.py`
+- [x] T052 [US4] Expose catalog, status, install, cancel and restart contracts in `backend/api/routes/local_model.py`, `backend/inference/service.py`, and `frontend/src/services/localModel.js`
+- [x] T053 [US4] Implement deterministic bounded evidence ranking in `backend/ai/retrieval.py` and per-claim grounding checks in `backend/ai/grounding.py`
+- [x] T054 [US4] Implement generate-validate-single-repair orchestration and content-free audit integration in `backend/ai/orchestrator.py`
+- [x] T055 [US4] Migrate coach output to constrained claims/citations/confidence while preserving API compatibility in `backend/career/coach.py` and `backend/career/coach_schemas.py`
+- [x] T056 [US4] Apply task schemas and semantic validators to profile normalization, search planning, job normalization, matching, critique and reranking through `backend/services/llm_service.py`
+- [x] T057 [US4] Implement offline fixture validation, live compact-model execution and aggregate reports in `backend/ai/evaluation.py` and `backend/api/routes/ai_evaluations.py`
+- [x] T058 [US4] Replace Ollama command-line instructions with consent, license, size, progress, cancellation and retry UI in `frontend/src/features/local-model/`
 
 **Checkpoint**: User Story 4 passes offline on the pinned compact model and rejects unsupported output.
 
@@ -170,15 +170,15 @@ unrelated sentinel file.
 
 ### Tests for User Story 5
 
-- [ ] T059 [P] [US5] Add desktop app-data backup/restore and interrupted-upgrade tests in `tests/backend/portability/test_desktop_roundtrip.py`
-- [ ] T060 [P] [US5] Add managed model/temp erasure and unrelated-file safety tests in `tests/backend/career/test_desktop_deletion.py`
+- [x] T059 [P] [US5] Add desktop app-data backup/restore and interrupted-upgrade tests in `tests/backend/portability/test_desktop_roundtrip.py`
+- [x] T060 [P] [US5] Add managed model/temp erasure and unrelated-file safety tests in `tests/backend/career/test_desktop_deletion.py`
 
 ### Implementation for User Story 5
 
-- [ ] T061 [US5] Include AI audit schema, resume assets and manifest compatibility in `backend/portability/archive.py` and `backend/portability/manifest.py`
-- [ ] T062 [US5] Make restore transactional under the desktop vault lock with preflight and rollback in `backend/portability/restore.py` and `backend/desktop/lifecycle.py`
-- [ ] T063 [US5] Extend explicit deletion to managed model/runtime, sensitive staging and desktop vault paths in `backend/career/deletion.py` and `backend/inference/managed_runtime.py`
-- [ ] T064 [US5] Add desktop-native backup destination, restore source and erasure confirmation flows in `frontend/src/features/home/` and `frontend/src/services/portability.js`
+- [x] T061 [US5] Include AI audit schema, resume assets and manifest compatibility in `backend/portability/archive.py` and `backend/portability/manifest.py`
+- [x] T062 [US5] Make restore transactional under the desktop vault lock with preflight and rollback in `backend/portability/restore.py` and `backend/desktop/lifecycle.py`
+- [x] T063 [US5] Extend explicit deletion to managed model/runtime, sensitive staging and desktop vault paths in `backend/career/deletion.py` and `backend/inference/managed_runtime.py`
+- [x] T064 [US5] Add desktop-native backup destination, restore source and erasure confirmation flows in `frontend/src/features/home/` and `frontend/src/services/portability.js`
 
 **Checkpoint**: User Story 5 proves ownership, recovery and precise local erasure.
 
@@ -188,17 +188,17 @@ unrelated sentinel file.
 
 **Purpose**: Remove migration debt, recreate operator/developer guidance and prove release quality.
 
-- [ ] T065 Split AI runtime policy, planning, profile normalization, job normalization, matching and reranking from `backend/services/llm_service.py` into `backend/ai/` and leave a compatibility facade below 300 lines
-- [ ] T066 Split acquisition, persistence, normalization, matching and finalization from `backend/services/search_service.py` into `backend/search/` and leave a compatibility facade below 300 lines
-- [ ] T067 Split provider-independent mapping domains from `backend/services/search/listing_utils.py` into `backend/search/normalization/` with snapshot parity tests in `tests/backend/search/`
-- [ ] T068 [P] Recreate owner, developer, security and architecture documentation in `README.md`, `AGENTS.md`, `SECURITY.md`, `docs/architecture.md`, `docs/development.md`, `docs/privacy.md`, and `docs/releasing.md`
-- [ ] T069 [P] Recreate focused backend and frontend contributor guides in `backend/README.md` and `frontend/README.md`
-- [ ] T070 Remove all obsolete Markdown/output artifacts and add a repository-hygiene test in `tests/backend/security/test_repository_hygiene.py`
-- [ ] T071 Run and fix Python lint, type checks, full pytest, migration round-trips and performance acceptance using `pyproject.toml`, `pyrightconfig.json`, and `tests/backend/`
-- [ ] T072 Run and fix frontend lint, full Vitest coverage build, Cargo format/clippy/test and native debug launch using `frontend/package.json` and `frontend/src-tauri/Cargo.toml`
-- [ ] T073 Generate and audit Python/npm/Cargo SBOMs, licenses and vulnerabilities in `.github/workflows/ci.yml` and `.github/workflows/desktop-release.yml`
-- [ ] T074 Build and smoke-test the Windows installer locally, recording only reproducible commands and truthful results in `specs/001-desktop-career-agent/release-evidence.md`
-- [ ] T075 Perform Spec Kit cross-artifact analysis and convergence, append any missing tasks to `specs/001-desktop-career-agent/tasks.md`, and execute them before release
+- [x] T065 Split AI runtime policy, planning, profile normalization, job normalization, matching and reranking from `backend/services/llm_service.py` into `backend/ai/` and leave a compatibility facade below 300 lines
+- [x] T066 Split acquisition, persistence, normalization, matching and finalization from `backend/services/search_service.py` into `backend/search/` and leave a compatibility facade below 300 lines
+- [x] T067 Split provider-independent mapping domains from `backend/services/search/listing_utils.py` into `backend/search/normalization/` with snapshot parity tests in `tests/backend/search/`
+- [x] T068 [P] Recreate owner, developer, security and architecture documentation in `README.md`, `AGENTS.md`, `SECURITY.md`, `docs/architecture.md`, `docs/development.md`, `docs/privacy.md`, and `docs/releasing.md`
+- [x] T069 [P] Recreate focused backend and frontend contributor guides in `backend/README.md` and `frontend/README.md`
+- [x] T070 Remove all obsolete Markdown/output artifacts and add a repository-hygiene test in `tests/backend/security/test_repository_hygiene.py`
+- [x] T071 Run and fix Python lint, type checks, full pytest, migration round-trips and performance acceptance using `pyproject.toml`, `pyrightconfig.json`, and `tests/backend/`
+- [x] T072 Run and fix frontend lint, full Vitest coverage build, Cargo format/clippy/test and native debug launch using `frontend/package.json` and `frontend/src-tauri/Cargo.toml`
+- [x] T073 Generate and audit Python/npm/Cargo SBOMs, licenses and vulnerabilities in `.github/workflows/ci.yml` and `.github/workflows/desktop-release.yml`
+- [x] T074 Build and smoke-test the Windows installer locally, recording only reproducible commands and truthful results in `specs/001-desktop-career-agent/release-evidence.md`
+- [x] T075 Perform Spec Kit cross-artifact analysis and convergence, append any missing tasks to `specs/001-desktop-career-agent/tasks.md`, and execute them before release
 - [ ] T076 Rename the physical workspace directory to `careeros-local`, verify Git remote `ejupi-djenis30/careeros-local`, and rerun a clean status/build check from the new absolute path
 
 ---
@@ -272,12 +272,27 @@ T047 model-manager UI tests
 
 ## Task validation
 
-- Total tasks: 76.
+- Total tasks: 87.
 - User Story 1: 14 tasks (T015–T028).
 - User Story 2: 6 tasks (T029–T034).
 - User Story 3: 7 tasks (T035–T041).
 - User Story 4: 17 tasks (T042–T058).
 - User Story 5: 6 tasks (T059–T064).
-- Setup/Foundation/Polish: 26 tasks.
+- Setup/Foundation/Polish/Convergence: 37 tasks.
+- Convergence: 11 tasks (T077–T087).
 - Every task uses the required checkbox, sequential ID, appropriate story label and exact path.
 - Suggested MVP scope: Setup + Foundation + User Story 1.
+
+## Phase 9: Convergence
+
+- [x] T077 CRITICAL add post-bundle native lifecycle, offline-reopen, vault-preservation and uninstall acceptance gates for the release matrix in `.github/workflows/desktop-release.yml` and `scripts/` per Constitution I/V/VII and SC-010 (contradicts)
+- [x] T078 Add local source-text preview, deterministic fact candidates, explicit review/acceptance and provenance tests in `backend/career/sources.py`, `backend/api/routes/career_profile.py`, and `frontend/src/features/career-profile/SourceImporter.jsx` per FR-013 (partial)
+- [x] T079 Implement resumable pause, resume, remove and replace operations for managed models across `backend/inference/managed_runtime.py`, `backend/api/routes/local_model.py`, and `frontend/src/features/local-model/` per FR-007 (partial)
+- [x] T080 Add an evidence-grounded resume-tailoring AI contract and golden case, and record live evaluation peak memory/model-profile telemetry in `backend/ai/` and `tests/backend/ai/` per FR-027, FR-028 and SC-004 (missing)
+- [x] T081 Add deny-by-default per-source job-network consent with API/UI controls and audit-safe tests in `backend/search/`, `backend/api/routes/`, and `frontend/src/` per FR-029 (missing)
+- [x] T082 Add resume-draft autosave, explicit version names, version comparison and non-destructive restore across `backend/resumes/` and `frontend/src/features/resume-studio/` per FR-020 (partial)
+- [x] T083 Harden structured diagnostic redaction and add cross-domain content-leak tests in `backend/core/logging.py` and `tests/backend/security/` per FR-033 (partial)
+- [x] T084 Add automated accessibility and keyboard/focus gates for setup, profile, goals, resume canvas/export, model management and recovery in `frontend/src/` per FR-035 and SC-011 (partial)
+- [x] T085 Enforce one desktop shell and one lifetime vault-writer lease with multi-process tests in `frontend/src-tauri/`, `desktop/backend_main.py`, and `tests/desktop/` per FR-031 and the multi-instance edge case (missing)
+- [x] T086 Add disk-full and interrupted-write fault injection for profile, resume, backup and export writers in `backend/storage/`, `backend/portability/`, and `tests/backend/` per the durability edge cases (partial)
+- [x] T087 Extend career-goal links to learning activities and immutable resume versions in `backend/career/goal_schemas.py` and `frontend/src/features/career-profile/goals/` per FR-012 (partial)

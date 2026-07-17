@@ -38,6 +38,7 @@ function manualClaim(blockId) {
         visible: true,
         content: { title: "", subtitle: "", date_range: "", description: "", bullets: [] },
         manual_fields: ["title", "subtitle", "description", "bullets"],
+        layout: { spacing_before_pt: 0, keep_together: true },
     };
 }
 
@@ -65,7 +66,7 @@ function reduceDocument(document, action) {
         const sections = move(document.sections, from, to);
         return sections === document.sections ? document : { ...document, sections };
     }
-    if (["SET_SECTION_VISIBLE", "SET_SECTION_TITLE", "SET_PAGE_BREAK", "MOVE_BLOCK", "UPDATE_BLOCK", "SET_BLOCK_VISIBLE"].includes(action.type)) {
+    if (["SET_SECTION_VISIBLE", "SET_SECTION_TITLE", "SET_PAGE_BREAK", "MOVE_BLOCK", "UPDATE_BLOCK", "SET_BLOCK_VISIBLE", "SET_BLOCK_LAYOUT"].includes(action.type)) {
         return updateSection(document, action.sectionId, (section) => {
             if (action.type === "SET_SECTION_VISIBLE") return { ...section, visible: action.visible };
             if (action.type === "SET_SECTION_TITLE") return { ...section, title: action.title };
@@ -81,6 +82,13 @@ function reduceDocument(document, action) {
                 blocks: section.blocks.map((block) => {
                     if (block.id !== action.blockId) return block;
                     if (action.type === "SET_BLOCK_VISIBLE") return { ...block, visible: action.visible };
+                    if (action.type === "SET_BLOCK_LAYOUT") {
+                        const layout = { spacing_before_pt: 0, keep_together: true, ...(block.layout || {}) };
+                        const value = action.field === "spacing_before_pt"
+                            ? Math.max(0, Math.min(24, Number(action.value) || 0))
+                            : Boolean(action.value);
+                        return { ...block, layout: { ...layout, [action.field]: value } };
+                    }
                     const manual = new Set(block.manual_fields || []);
                     manual.add(action.field);
                     return {

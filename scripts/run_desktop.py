@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -12,6 +13,14 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 FRONTEND = PROJECT_ROOT / "frontend"
 MANIFEST = FRONTEND / "src-tauri" / "binaries" / "sidecar-build.json"
+
+
+def command_path(name: str) -> str:
+    """Resolve commands such as npx.cmd before passing them to CreateProcess."""
+    resolved = shutil.which(name)
+    if resolved is None:
+        raise RuntimeError(f"Required desktop build command is unavailable: {name}")
+    return resolved
 
 
 def workspace_python() -> Path:
@@ -35,8 +44,8 @@ def main() -> int:
     parser.add_argument("--debug", action="store_true")
     arguments = parser.parse_args()
     target = prepare_sidecar()
-    subprocess.run(["rustup", "target", "add", target], check=True)
-    command = ["npx", "tauri", arguments.command, "--target", target]
+    subprocess.run([command_path("rustup"), "target", "add", target], check=True)
+    command = [command_path("npx"), "tauri", arguments.command, "--target", target]
     if arguments.command == "build" and arguments.debug:
         command.append("--debug")
     subprocess.run(command, cwd=FRONTEND, check=True)

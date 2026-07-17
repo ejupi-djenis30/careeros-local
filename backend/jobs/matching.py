@@ -1,6 +1,6 @@
 from typing import Any
 
-from backend.services.search.listing_utils import (
+from backend.search.normalization.listings import (
     coerce_int,
     compute_prescore,
     normalized_text_token,

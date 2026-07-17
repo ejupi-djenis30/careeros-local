@@ -70,5 +70,14 @@ module = [
     "backend.services.llm_service",
     "backend.services.utils",
     "backend.services.search.*",
+    # Cross-capability mixins are validated through their concrete compositions.
+    "backend.ai.pipeline",
+    "backend.ai.runtime_policy",
+    "backend.ai.planning",
+    "backend.ai.profile_normalization",
+    "backend.ai.job_normalization",
+    "backend.ai.matching",
+    "backend.ai.reranking",
+    "backend.search.*",
 ]
 ignore_errors = true

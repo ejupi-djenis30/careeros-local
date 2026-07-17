@@ -2,15 +2,15 @@ from io import BytesIO
 from tempfile import TemporaryDirectory
 from zipfile import ZipFile
 
-import fitz
 from docx import Document
 from PIL import Image
+from pypdf import PdfReader
 
 
 def test_saved_canvas_drives_pdf_docx_order_visibility_and_ats_quality(
     client, auth_headers, saved_detailed_profile, monkeypatch
 ):
-    with TemporaryDirectory(dir="cmd_outputs") as directory:
+    with TemporaryDirectory() as directory:
         monkeypatch.setattr("backend.storage.atomic.settings.DATA_DIR", directory)
         generated = client.post(
             "/api/v1/resumes/generate",
@@ -64,8 +64,8 @@ def test_saved_canvas_drives_pdf_docx_order_visibility_and_ats_quality(
         pdf_bytes = client.get(
             f"/api/v1/resume-artifacts/{artifacts['pdf']['id']}", headers=auth_headers
         ).content
-        with fitz.open(stream=pdf_bytes, filetype="pdf") as pdf:
-            pdf_text = "\n".join(page.get_text() for page in pdf)
+        pdf = PdfReader(BytesIO(pdf_bytes))
+        pdf_text = "\n".join(page.extract_text() or "" for page in pdf.pages)
         docx_bytes = client.get(
             f"/api/v1/resume-artifacts/{artifacts['docx']['id']}", headers=auth_headers
         ).content
@@ -80,7 +80,7 @@ def test_saved_canvas_drives_pdf_docx_order_visibility_and_ats_quality(
 def test_photo_canvas_uses_normalized_preview_and_two_column_pdf_docx(
     client, auth_headers, saved_detailed_profile, monkeypatch
 ):
-    with TemporaryDirectory(dir="cmd_outputs") as directory:
+    with TemporaryDirectory() as directory:
         monkeypatch.setattr("backend.storage.atomic.settings.DATA_DIR", directory)
         source = BytesIO()
         Image.new("RGB", (900, 700), (38, 70, 83)).save(source, format="PNG")
@@ -140,15 +140,22 @@ def test_photo_canvas_uses_normalized_preview_and_two_column_pdf_docx(
         pdf_bytes = client.get(
             f"/api/v1/resume-artifacts/{artifacts['pdf']['id']}", headers=auth_headers
         ).content
-        with fitz.open(stream=pdf_bytes, filetype="pdf") as pdf:
-            page = pdf[0]
-            heading_x = [
-                block[0]
-                for block in page.get_text("blocks")
-                if any(heading in block[4] for heading in ("EXPERIENCE", "EDUCATION", "SKILLS"))
-            ]
-            assert min(heading_x) < page.rect.width * 0.35
-            assert max(heading_x) > page.rect.width * 0.45
+        page = PdfReader(BytesIO(pdf_bytes)).pages[0]
+        heading_x: list[float] = []
+
+        def capture_heading(text, current_matrix, text_matrix, _font, _size):
+            if any(heading in text for heading in ("EXPERIENCE", "EDUCATION", "SKILLS")):
+                x_position = (
+                    float(text_matrix[4]) * float(current_matrix[0])
+                    + float(text_matrix[5]) * float(current_matrix[2])
+                    + float(current_matrix[4])
+                )
+                heading_x.append(x_position)
+
+        page.extract_text(visitor_text=capture_heading)
+        page_width = float(page.mediabox.width)
+        assert min(heading_x) < page_width * 0.35
+        assert max(heading_x) > page_width * 0.45
 
         docx_bytes = client.get(
             f"/api/v1/resume-artifacts/{artifacts['docx']['id']}", headers=auth_headers

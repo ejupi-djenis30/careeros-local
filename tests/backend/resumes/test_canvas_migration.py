@@ -21,7 +21,7 @@ def _config(database_url: str) -> Config:
 
 
 def test_canvas_migration_preserves_legacy_drafts_and_round_trips(monkeypatch):
-    with TemporaryDirectory(dir=PROJECT_ROOT / "cmd_outputs") as directory:
+    with TemporaryDirectory() as directory:
         path = Path(directory) / "canvas-migration.db"
         database_url = f"sqlite:///{path.as_posix()}"
         monkeypatch.setattr(settings, "DATABASE_URL", database_url)
@@ -106,7 +106,7 @@ def test_legacy_empty_canvas_is_normalized_lazily(
     db_session.commit()
     response = client.get(f"/api/v1/resumes/{draft.id}", headers=auth_headers)
     assert response.status_code == 200, response.text
-    assert response.json()["canvas_document"]["schema_version"] == 1
+    assert response.json()["canvas_document"]["schema_version"] == 2
     assert response.json()["canvas_document"]["sections"][0]["kind"] == "identity"
     db_session.expire_all()
     assert (
@@ -115,7 +115,7 @@ def test_legacy_empty_canvas_is_normalized_lazily(
 
 
 def test_head_schema_matches_models_and_preserves_relational_integrity(monkeypatch):
-    with TemporaryDirectory(dir=PROJECT_ROOT / "cmd_outputs") as directory:
+    with TemporaryDirectory() as directory:
         path = Path(directory) / "head-schema.db"
         database_url = f"sqlite:///{path.as_posix()}"
         monkeypatch.setattr(settings, "DATABASE_URL", database_url)

@@ -67,6 +67,49 @@ class CoachResult(StrictContract):
         return self
 
 
+class ResumeTailoringClaim(GroundedClaim):
+    section: Literal["headline", "summary", "experience", "skills", "projects", "education"]
+    operation: Literal["keep", "rewrite", "add", "remove"]
+    source_text: str | None = Field(default=None, max_length=800)
+    matched_keywords: list[str] = Field(default_factory=list, max_length=12)
+
+
+class ResumeRequirementGap(StrictContract):
+    requirement: str = Field(min_length=1, max_length=240)
+    job_ids: list[int] = Field(min_length=1, max_length=12)
+
+    @model_validator(mode="after")
+    def unique_positive_job_ids(self) -> "ResumeRequirementGap":
+        if len(set(self.job_ids)) != len(self.job_ids) or any(
+            item < 1 for item in self.job_ids
+        ):
+            raise ValueError("resume gaps require unique positive job identifiers")
+        return self
+
+
+class ResumeTailoringResult(StrictContract):
+    claims: list[ResumeTailoringClaim] = Field(min_length=1, max_length=20)
+    gaps: list[ResumeRequirementGap] = Field(default_factory=list, max_length=12)
+    fact_citations: list[UuidString] = Field(default_factory=list, max_length=32)
+    job_citations: list[int] = Field(default_factory=list, max_length=32)
+    confidence: float = Field(ge=0, le=1)
+
+    @model_validator(mode="after")
+    def citations_cover_tailoring(self) -> "ResumeTailoringResult":
+        claim_facts = {item for claim in self.claims for item in claim.fact_ids}
+        claim_jobs = {item for claim in self.claims for item in claim.job_ids}
+        gap_jobs = {item for gap in self.gaps for item in gap.job_ids}
+        if not claim_facts <= set(self.fact_citations):
+            raise ValueError("aggregate fact citations do not cover every resume claim")
+        if not (claim_jobs | gap_jobs) <= set(self.job_citations):
+            raise ValueError("aggregate job citations do not cover resume claims and gaps")
+        if len(set(self.fact_citations)) != len(self.fact_citations):
+            raise ValueError("resume fact citations must be unique")
+        if len(set(self.job_citations)) != len(self.job_citations):
+            raise ValueError("resume job citations must be unique")
+        return self
+
+
 class LanguageLevel(StrictContract):
     code: str = Field(pattern=r"^[a-z]{2}$")
     level: str | None = Field(
@@ -178,6 +221,20 @@ class JobNormalizationResult(StrictContract):
     results: list[JobNormalization] = Field(min_length=1, max_length=12)
 
 
+class MatchEvidence(StrictContract):
+    type: str = Field(min_length=1, max_length=60)
+    job_evidence: str = Field(min_length=1, max_length=160)
+    candidate_evidence: str = Field(min_length=1, max_length=240)
+
+
+class MatchAnalysis(StrictContract):
+    strengths: list[str] = Field(default_factory=list, max_length=5)
+    weaknesses: list[str] = Field(default_factory=list, max_length=5)
+    gaps: list[str] = Field(default_factory=list, max_length=8)
+    verdict: str = Field(min_length=1, max_length=240)
+    evidence_citations: list[MatchEvidence] = Field(default_factory=list, max_length=4)
+
+
 class JobMatch(StrictContract):
     affinity_score: int = Field(ge=0, le=100)
     affinity_analysis: str = Field(min_length=1, max_length=2000)
@@ -189,8 +246,37 @@ class JobMatch(StrictContract):
     location_match_score: int = Field(ge=0, le=100)
     transferability_score: int = Field(ge=0, le=100)
     qualification_gap_score: int = Field(ge=0, le=100)
+    analysis_structured: MatchAnalysis | None = None
     red_flags: list[str] = Field(default_factory=list, max_length=10)
 
 
 class JobMatchResult(StrictContract):
     results: list[JobMatch] = Field(min_length=1, max_length=12)
+
+
+class JobCritique(StrictContract):
+    affinity_score: int = Field(ge=0, le=100)
+    worth_applying: bool
+    critique_notes: str = Field(min_length=1, max_length=800)
+    score_changed: bool
+
+
+class JobCritiqueResult(StrictContract):
+    results: list[JobCritique] = Field(min_length=1, max_length=12)
+
+
+class JobRerank(StrictContract):
+    final_score: int = Field(ge=0, le=100)
+    rank: int = Field(ge=1, le=100)
+    rank_notes: str = Field(min_length=1, max_length=500)
+
+
+class JobRerankResult(StrictContract):
+    results: list[JobRerank] = Field(min_length=1, max_length=30)
+
+    @model_validator(mode="after")
+    def unique_ranks(self) -> "JobRerankResult":
+        ranks = [item.rank for item in self.results]
+        if len(ranks) != len(set(ranks)):
+            raise ValueError("comparative job ranks must be unique")
+        return self

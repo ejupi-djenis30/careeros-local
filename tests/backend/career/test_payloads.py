@@ -6,7 +6,6 @@ from pydantic import ValidationError
 from backend.career.payloads import PAYLOAD_SCHEMAS, CareerPreferences
 from backend.career.schemas import CareerFactInput, CareerProfileWrite
 
-
 FACT_PAYLOADS = {
     "experience": {"role": "Engineer", "organization": "Local Co"},
     "education": {"institution": "ETH", "qualification": "MSc"},

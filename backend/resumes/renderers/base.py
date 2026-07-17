@@ -10,7 +10,15 @@ from reportlab.lib.enums import TA_CENTER
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import mm
-from reportlab.platypus import Image, PageBreak, Paragraph, SimpleDocTemplate, Spacer
+from reportlab.platypus import (
+    Flowable,
+    Image,
+    KeepTogether,
+    PageBreak,
+    Paragraph,
+    SimpleDocTemplate,
+    Spacer,
+)
 
 from backend.resumes.content import ResumeContent, build_content
 
@@ -127,7 +135,7 @@ def render_pdf(snapshot: dict, *, photo: bytes | None = None) -> bytes:
         bulletIndent=2,
     )
 
-    story = []
+    story: list[Flowable] = []
     if photo:
         image = Image(BytesIO(photo), width=28 * mm, height=28 * mm)
         image.hAlign = "CENTER"
@@ -145,14 +153,24 @@ def render_pdf(snapshot: dict, *, photo: bytes | None = None) -> bytes:
             story.append(PageBreak())
         story.append(Paragraph(_paragraph_text(section.heading), section_style))
         for entry in section.entries:
-            story.append(Paragraph(_paragraph_text(entry.title), entry_title_style))
+            flowables: list[Flowable] = []
+            spacing_before = float(entry.layout.get("spacing_before_pt", 0))
+            if spacing_before:
+                flowables.append(Spacer(1, spacing_before))
+            flowables.append(Paragraph(_paragraph_text(entry.title), entry_title_style))
             metadata = " | ".join(value for value in (entry.subtitle, entry.date_range) if value)
             if metadata:
-                story.append(Paragraph(_paragraph_text(metadata), meta_style))
+                flowables.append(Paragraph(_paragraph_text(metadata), meta_style))
             if entry.description:
-                story.append(Paragraph(_paragraph_text(entry.description), body_style))
+                flowables.append(Paragraph(_paragraph_text(entry.description), body_style))
             for bullet in entry.bullets:
-                story.append(Paragraph(f"&bull;&nbsp;{_paragraph_text(bullet)}", bullet_style))
+                flowables.append(
+                    Paragraph(f"&bull;&nbsp;{_paragraph_text(bullet)}", bullet_style)
+                )
+            if entry.layout.get("keep_together", True):
+                story.append(KeepTogether(flowables))
+            else:
+                story.extend(flowables)
     document.build(story)
     return output.getvalue()
 
@@ -188,8 +206,12 @@ def _add_docx_heading(document: DocxDocument, text: str) -> None:
 
 def _add_docx_entry(document: DocxDocument, entry) -> None:
     paragraph = document.add_paragraph()
-    paragraph.paragraph_format.space_before = Pt(3)
+    paragraph.paragraph_format.space_before = Pt(
+        max(3, float(entry.layout.get("spacing_before_pt", 0)))
+    )
     paragraph.paragraph_format.space_after = Pt(0)
+    paragraph.paragraph_format.keep_with_next = True
+    paragraph.paragraph_format.keep_together = bool(entry.layout.get("keep_together", True))
     run = paragraph.add_run(entry.title)
     run.bold = True
     run.font.name = "Arial"
