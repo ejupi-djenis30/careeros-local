@@ -1,10 +1,9 @@
-import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
 from backend.core.config import settings
-from backend.providers.circuit_breaker import CircuitOpenError, CircuitState
+from backend.providers.circuit_breaker import CircuitState
 from backend.services.llm_service import LLMService
 
 
@@ -14,22 +13,10 @@ def mock_provider():
     provider.generate_json_async = AsyncMock()
     provider.generate_text_async = AsyncMock()
     provider.generate_text_async_with_timeout = provider.generate_text_async
-    provider.model_id = "groq/test-model"
+    provider.model_id = "ollama-local/test-model"
     provider.max_tokens = 16384
     # Alias: generate_json_async_with_timeout routes through generate_json_async in tests
     provider.generate_json_async_with_timeout = provider.generate_json_async
-    return provider
-
-
-@pytest.fixture
-def fallback_provider():
-    provider = MagicMock()
-    provider.generate_json_async = AsyncMock()
-    provider.generate_text_async = AsyncMock()
-    provider.generate_text_async_with_timeout = provider.generate_text_async
-    provider.generate_json_async_with_timeout = provider.generate_json_async
-    provider.model_id = "groq/fallback-model"
-    provider.max_tokens = 16384
     return provider
 
 
@@ -39,95 +26,18 @@ def llm_service(mock_provider):
         return LLMService()
 
 
-def test_get_provider_falls_back_when_g4f_initialization_fails(fallback_provider):
-    with (
-        patch(
-            "backend.services.llm_service.get_provider_for_step",
-            side_effect=ValueError("g4f init failed"),
-        ),
-        patch("backend.services.llm_service.get_provider_name_for_step", return_value="g4f"),
-        patch(
-            "backend.services.llm_service.get_fallback_provider_for_step",
-            return_value=fallback_provider,
-        ),
+def test_get_provider_propagates_local_runtime_configuration_errors():
+    with patch(
+        "backend.services.llm_service.get_provider_for_step",
+        side_effect=ValueError("invalid local endpoint"),
     ):
         service = LLMService()
-        provider = service._get_provider("plan")
-
-    assert provider is fallback_provider
+        with pytest.raises(ValueError, match="invalid local endpoint"):
+            service._get_provider("plan")
 
 
 @pytest.mark.asyncio
-async def test_call_provider_json_falls_back_on_g4f_circuit_open(mock_provider, fallback_provider):
-    mock_provider.model_id = "g4f/auto"
-    fallback_provider.generate_json_async.return_value = {"searches": []}
-
-    async def _raise_open(coro):
-        coro.close()
-        raise CircuitOpenError(mock_provider.model_id, 30)
-
-    async def _passthrough(coro):
-        return await coro
-
-    primary_breaker = MagicMock(state=CircuitState.CLOSED)
-    primary_breaker.call = AsyncMock(side_effect=_raise_open)
-    fallback_breaker = MagicMock(state=CircuitState.CLOSED)
-    fallback_breaker.call = AsyncMock(side_effect=_passthrough)
-
-    with (
-        patch(
-            "backend.services.llm_service.get_fallback_provider_for_step",
-            return_value=fallback_provider,
-        ),
-        patch(
-            "backend.services.llm_service.circuit_registry.get",
-            side_effect=[primary_breaker, fallback_breaker],
-        ),
-    ):
-        service = LLMService()
-        result = await service._call_provider_json(mock_provider, "plan", "sys", "user")
-
-    assert result == {"searches": []}
-    assert service._provider_cache["plan"] is fallback_provider
-
-
-@pytest.mark.asyncio
-async def test_call_provider_json_falls_back_on_g4f_timeout(mock_provider, fallback_provider):
-    mock_provider.model_id = "g4f/auto"
-    fallback_provider.generate_json_async.return_value = {"searches": []}
-
-    async def _raise_timeout(coro):
-        coro.close()
-        raise asyncio.TimeoutError()
-
-    async def _passthrough(coro):
-        return await coro
-
-    primary_breaker = MagicMock(state=CircuitState.CLOSED)
-    primary_breaker.call = AsyncMock(side_effect=_raise_timeout)
-    fallback_breaker = MagicMock(state=CircuitState.CLOSED)
-    fallback_breaker.call = AsyncMock(side_effect=_passthrough)
-
-    with (
-        patch(
-            "backend.services.llm_service.get_fallback_provider_for_step",
-            return_value=fallback_provider,
-        ),
-        patch(
-            "backend.services.llm_service.circuit_registry.get",
-            side_effect=[primary_breaker, fallback_breaker],
-        ),
-    ):
-        service = LLMService()
-        result = await service._call_provider_json(mock_provider, "plan", "sys", "user")
-
-    assert result == {"searches": []}
-    assert service._provider_cache["plan"] is fallback_provider
-
-
-@pytest.mark.asyncio
-async def test_call_provider_json_applies_plan_g4f_timeout_override(mock_provider):
-    mock_provider.model_id = "g4f/auto"
+async def test_local_provider_call_uses_standard_timeout_without_fallback(mock_provider):
     mock_provider.generate_json_async_with_timeout = AsyncMock(return_value={"searches": []})
 
     async def _passthrough(coro):
@@ -135,84 +45,16 @@ async def test_call_provider_json_applies_plan_g4f_timeout_override(mock_provide
 
     breaker = MagicMock(state=CircuitState.CLOSED)
     breaker.call = AsyncMock(side_effect=_passthrough)
-
     with patch("backend.services.llm_service.circuit_registry.get", return_value=breaker):
-        service = LLMService()
-        await service._call_provider_json(mock_provider, "plan", "sys", "user")
+        result = await LLMService()._call_provider_json(
+            mock_provider, "plan", "system", "user"
+        )
 
-    timeout_override = mock_provider.generate_json_async_with_timeout.call_args.kwargs.get(
-        "timeout_override"
+    assert result == {"searches": []}
+    assert (
+        mock_provider.generate_json_async_with_timeout.call_args.kwargs["timeout_override"]
+        is None
     )
-    assert timeout_override == min(
-        settings.LLM_CALL_TIMEOUT_PLAN_G4F, settings.LLM_CALL_TIMEOUT_PLAN
-    )
-
-
-@pytest.mark.asyncio
-async def test_call_provider_json_applies_normalize_g4f_timeout_override(mock_provider):
-    mock_provider.model_id = "g4f/auto"
-    mock_provider.generate_json_async_with_timeout = AsyncMock(return_value={"results": []})
-
-    async def _passthrough(coro):
-        return await coro
-
-    breaker = MagicMock(state=CircuitState.CLOSED)
-    breaker.call = AsyncMock(side_effect=_passthrough)
-
-    with patch("backend.services.llm_service.circuit_registry.get", return_value=breaker):
-        service = LLMService()
-        await service._call_provider_json(mock_provider, "normalize", "sys", "user")
-
-    timeout_override = mock_provider.generate_json_async_with_timeout.call_args.kwargs.get(
-        "timeout_override"
-    )
-    assert timeout_override == min(
-        settings.LLM_CALL_TIMEOUT_NORMALIZE_G4F,
-        settings.LLM_CALL_TIMEOUT_NORMALIZE,
-    )
-
-
-@pytest.mark.asyncio
-async def test_call_provider_text_applies_match_g4f_timeout_override(mock_provider):
-    mock_provider.model_id = "g4f/auto"
-    mock_provider.generate_text_async_with_timeout = AsyncMock(return_value="summary")
-
-    async def _passthrough(coro):
-        return await coro
-
-    breaker = MagicMock(state=CircuitState.CLOSED)
-    breaker.call = AsyncMock(side_effect=_passthrough)
-
-    with patch("backend.services.llm_service.circuit_registry.get", return_value=breaker):
-        service = LLMService()
-        result = await service._call_provider_text(mock_provider, "match", "sys", "user")
-
-    assert result == "summary"
-    timeout_override = mock_provider.generate_text_async_with_timeout.call_args.kwargs.get(
-        "timeout_override"
-    )
-    assert timeout_override == min(
-        settings.LLM_CALL_TIMEOUT_MATCH_G4F, settings.LLM_CALL_TIMEOUT_MATCH
-    )
-
-
-@pytest.mark.asyncio
-async def test_summarize_cv_falls_back_on_g4f_text_error(mock_provider, fallback_provider):
-    mock_provider.model_id = "g4f/auto"
-    mock_provider.generate_text_async.side_effect = RuntimeError("g4f request failed")
-    fallback_provider.generate_text_async.return_value = "Fallback summary"
-
-    with (
-        patch("backend.services.llm_service.get_provider_for_step", return_value=mock_provider),
-        patch(
-            "backend.services.llm_service.get_fallback_provider_for_step",
-            return_value=fallback_provider,
-        ),
-    ):
-        service = LLMService()
-        summary = await service.summarize_cv("Lorem ipsum CV content...")
-
-    assert summary == "Fallback summary"
 
 
 @pytest.mark.asyncio
@@ -363,7 +205,7 @@ async def test_summarize_cv_success(mock_provider):
 
 
 def test_get_step_runtime_policy_clamps_match_budget_for_low_context(mock_provider):
-    mock_provider.max_tokens = 4000
+    mock_provider.context_window = 4000
 
     with patch("backend.services.llm_service.get_provider_for_step", return_value=mock_provider):
         service = LLMService()
@@ -542,7 +384,7 @@ def test_is_step_circuit_open_uses_step_scoped_circuit_key(mock_provider):
         ) as get_breaker:
             assert service.is_step_circuit_open("plan") is False
 
-    assert get_breaker.call_args.args[0] == "plan:groq/test-model"
+    assert get_breaker.call_args.args[0] == "plan:ollama-local/test-model"
 
 
 # ─── Feature 4: Query Count Retry Enforcement Tests ───────────────────────────
@@ -725,9 +567,6 @@ async def test_generate_search_plan_returns_partial_if_later_batch_fails(mock_pr
         patch("backend.services.llm_service.get_provider_for_step", return_value=mock_provider),
         patch("backend.services.llm_service.settings") as mock_settings,
     ):
-        mock_settings.LLM_SUMMARY_PROVIDER = ""
-        mock_settings.LLM_SUMMARY_API_KEY = ""
-        mock_settings.LLM_SUMMARY_MODEL = ""
         mock_settings.SEARCH_PLAN_BATCH_SIZE = 2
 
         service = LLMService()
@@ -763,9 +602,6 @@ async def test_generate_search_plan_uses_best_partial_batch_on_error(mock_provid
         patch("backend.services.llm_service.get_provider_for_step", return_value=mock_provider),
         patch("backend.services.llm_service.settings") as mock_settings,
     ):
-        mock_settings.LLM_SUMMARY_PROVIDER = ""
-        mock_settings.LLM_SUMMARY_API_KEY = ""
-        mock_settings.LLM_SUMMARY_MODEL = ""
         mock_settings.SEARCH_PLAN_BATCH_SIZE = 2
 
         service = LLMService()

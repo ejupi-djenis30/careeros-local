@@ -41,7 +41,9 @@ config = context.config
 config.set_main_option("sqlalchemy.url", DATABASE_URL)
 
 if config.config_file_name is not None:
-    fileConfig(config.config_file_name)
+    # Alembic runs in-process in tests and operational tooling. Disabling
+    # application loggers here silently breaks observability after a migration.
+    fileConfig(config.config_file_name, disable_existing_loggers=False)
 
 target_metadata = Base.metadata
 

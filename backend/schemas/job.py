@@ -3,6 +3,8 @@ from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from backend.jobs.urls import normalize_job_url
+
 # ═══════════════════════════════════════
 # Job Schemas
 # ═══════════════════════════════════════
@@ -27,6 +29,19 @@ class JobBase(BaseModel):
         if not v or not v.strip():
             raise ValueError("Field must not be empty")
         return v
+
+    @field_validator("external_url")
+    @classmethod
+    def validate_external_url(cls, value: str) -> str:
+        normalized = normalize_job_url(value, required=True)
+        if normalized is None:  # Defensive guard for the shared optional URL normalizer.
+            raise ValueError("External URL is required")
+        return normalized
+
+    @field_validator("application_url")
+    @classmethod
+    def validate_application_url(cls, value: Optional[str]) -> Optional[str]:
+        return normalize_job_url(value, required=False)
 
     @property
     def url(self):

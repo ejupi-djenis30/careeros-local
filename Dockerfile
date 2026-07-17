@@ -1,63 +1,43 @@
-# ─────────────────────────────────────
-# Job Hunter AI — Dockerfile
-# ─────────────────────────────────────
-# Multi-stage build: Python backend + static frontend
-# Usage:
-#   docker build -t job-hunter-ai .
-#   docker run -p 8000:8000 --env-file .env job-hunter-ai
+# syntax=docker/dockerfile:1.7
 
-# === Stage 1: Build frontend ===
-FROM node:20-alpine AS frontend-build
-WORKDIR /app/frontend
-COPY frontend/package*.json ./
-RUN npm ci --production=false
-COPY frontend/ ./
-RUN npm run build
+FROM python:3.12.13-slim-bookworm@sha256:d50fb7611f86d04a3b0471b46d7557818d88983fc3136726336b2a4c657aa30b
 
-# === Stage 2: Python backend ===
-FROM python:3.12-slim AS runtime
+LABEL org.opencontainers.image.title="CareerOS Local backend" \
+      org.opencontainers.image.description="Local-first personal career agent API" \
+      org.opencontainers.image.source="https://github.com/ejupi-djenis30/careeros-local"
 
-# System deps for psycopg2 and PyMuPDF
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    libpq-dev gcc \
-    && rm -rf /var/lib/apt/lists/*
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    PIP_NO_CACHE_DIR=1 \
+    PYTHONPATH=/app \
+    HOME=/app/data/home \
+    XDG_CONFIG_HOME=/app/data/config \
+    XDG_CACHE_HOME=/app/data/cache
 
 WORKDIR /app
 
-# Install Python deps
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt gunicorn
+RUN groupadd --gid 10001 careernos \
+    && useradd --uid 10001 --gid careernos --no-create-home --shell /usr/sbin/nologin careernos
 
-# Copy backend code
-COPY backend/ backend/
-COPY alembic/ alembic/
-COPY alembic.ini .
-COPY run.py .
+COPY requirements.lock ./
+RUN python -m pip install --no-cache-dir --require-hashes --requirement requirements.lock
 
-# Copy built frontend
-COPY --from=frontend-build /app/frontend/dist frontend/dist
+COPY alembic ./alembic
+COPY alembic.ini ./
+COPY backend ./backend
+COPY docker/backend-entrypoint.sh /usr/local/bin/careeros-entrypoint
 
-# Default env
-ENV API_HOST=0.0.0.0
-ENV API_PORT=8000
-ENV LOG_LEVEL=INFO
-ENV DATABASE_URL=sqlite:///./data/job_hunter.db
+RUN chmod 0555 /usr/local/bin/careeros-entrypoint \
+    && install -d -o careernos -g careernos -m 0700 /app/data
 
-# Data volume for SQLite persistence
+USER careernos:careernos
+
 VOLUME ["/app/data"]
-
-# Run as non-root for security
-RUN addgroup --system appuser && adduser --system --ingroup appuser appuser \
-    && mkdir -p /app/data && chown -R appuser:appuser /app
-USER appuser
-
 EXPOSE 8000
 
-# Run with gunicorn for production, uvicorn worker
-# NOTE: Workers must be set to 1! If increased, APScheduler will spawn
-# duplicate search jobs in each worker process, leading to repeated queries.
-CMD ["gunicorn", "backend.main:app", \
-    "--worker-class", "uvicorn.workers.UvicornWorker", \
-    "--bind", "0.0.0.0:8000", \
-    "--workers", "1", \
-    "--timeout", "120"]
+HEALTHCHECK --interval=15s --timeout=5s --start-period=20s --retries=5 \
+    CMD ["python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/v1/health/live', timeout=3)"]
+
+ENTRYPOINT ["careeros-entrypoint"]
+CMD ["uvicorn", "backend.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "1", "--proxy-headers", "--forwarded-allow-ips", "*"]

@@ -11,7 +11,7 @@ import threading
 import time
 import uuid
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Literal, Optional, overload
 
 from sqlalchemy.exc import OperationalError, ProgrammingError
 
@@ -618,6 +618,26 @@ def get_all_active_tasks() -> dict:
     """Return a snapshot of {profile_id: task} for graceful shutdown."""
     with _lock:
         return dict(_active_tasks)
+
+
+@overload
+def reserve_task(
+    profile_id: int,
+    *,
+    return_token: Literal[True],
+    reservation_token: str | None = None,
+    user_id: int | None = None,
+) -> str | Literal[False]: ...
+
+
+@overload
+def reserve_task(
+    profile_id: int,
+    *,
+    return_token: Literal[False] = False,
+    reservation_token: str | None = None,
+    user_id: int | None = None,
+) -> bool: ...
 
 
 def reserve_task(

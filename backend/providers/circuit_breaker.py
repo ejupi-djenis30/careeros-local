@@ -7,7 +7,7 @@ States:
 
 Usage::
 
-    cb = CircuitBreaker("groq", failure_threshold=5, recovery_seconds=60)
+    cb = CircuitBreaker("ollama-local", failure_threshold=5, recovery_seconds=60)
 
     try:
         result = await cb.call(provider.generate_json_async(sys_p, usr_p))

@@ -6,11 +6,7 @@ from tenacity import RetryError, retry, retry_if_exception, stop_after_attempt, 
 
 from backend.core.config import settings
 from backend.providers.circuit_breaker import CircuitOpenError, CircuitState, circuit_registry
-from backend.providers.llm.factory import (
-    get_fallback_provider_for_step,
-    get_provider_for_step,
-    get_provider_name_for_step,
-)
+from backend.providers.llm.factory import get_provider_for_step
 from backend.services.search.prompt_compaction import compact_prompt_text
 from backend.services.search.query_contracts import (
     compute_plan_input_fingerprint,
@@ -22,17 +18,6 @@ from backend.services.search.query_contracts import (
 )
 
 logger = logging.getLogger(__name__)
-
-_G4F_TIMEOUT_OVERRIDE_ATTRS = {
-    "plan": "LLM_CALL_TIMEOUT_PLAN_G4F",
-    "normalize": "LLM_CALL_TIMEOUT_NORMALIZE_G4F",
-    "normalize_profile": "LLM_CALL_TIMEOUT_NORMALIZE_G4F",
-    "compress": "LLM_CALL_TIMEOUT_NORMALIZE_G4F",
-    "match": "LLM_CALL_TIMEOUT_MATCH_G4F",
-    "critique": "LLM_CALL_TIMEOUT_CRITIQUE_G4F",
-    "rerank": "LLM_CALL_TIMEOUT_RERANK_G4F",
-}
-
 
 def _is_retryable_plan_error(exc: Exception) -> bool:
     """Return True for transient PLAN-step failures worth retrying."""
@@ -114,12 +99,12 @@ class LLMService:
         if step_window > 0:
             return step_window
 
-        global_window = int(getattr(settings, "LLM_CONTEXT_WINDOW", 0) or 0)
-        if global_window > 0:
-            return global_window
+        provider_window = getattr(provider, "context_window", 0)
+        if isinstance(provider_window, int) and provider_window > 0:
+            return provider_window
 
-        provider_window = int(getattr(provider, "max_tokens", 0) or 0)
-        return provider_window if provider_window > 0 else 0
+        global_window = int(getattr(settings, "LLM_CONTEXT_WINDOW", 0) or 0)
+        return global_window if global_window > 0 else 0
 
     def get_step_runtime_policy(self, step: str) -> Dict[str, Any]:
         provider = None
@@ -240,99 +225,18 @@ class LLMService:
             else 0,
         }
 
-    def _provider_cache_key(self, step: str, *, fallback: bool = False) -> str:
-        return f"{step}::fallback" if fallback else step
-
-    def _is_g4f_provider(self, provider: Any) -> bool:
-        model_id = str(getattr(provider, "model_id", "") or "").strip().lower()
-        return model_id.startswith("g4f")
-
     def _resolve_timeout_override(self, provider: Any, step: str) -> Optional[float]:
-        """Apply step/provider-specific timeout budgets to speed up failover."""
-        if not self._is_g4f_provider(provider):
-            return None
-
-        timeout_attr = _G4F_TIMEOUT_OVERRIDE_ATTRS.get(step)
-        if not timeout_attr:
-            return None
-
-        g4f_timeout = float(getattr(settings, timeout_attr, 0) or 0)
-        if g4f_timeout <= 0:
-            return None
-
-        base_timeout_attr = timeout_attr.removesuffix("_G4F")
-        base_timeout = float(getattr(settings, base_timeout_attr, 0) or 0)
-        return min(g4f_timeout, base_timeout) if base_timeout > 0 else g4f_timeout
+        """The local adapter uses the normal per-step timeout from the provider base."""
+        del provider, step
+        return None
 
     def _circuit_service_name(self, provider: Any, step: str) -> str:
         return f"{step}:{provider.model_id}"
 
-    def _get_provider(self, step: str, *, fallback: bool = False):
-        # asyncio is single-threaded; no lock needed for dict access
-        cache_key = self._provider_cache_key(step, fallback=fallback)
-        if cache_key not in self._provider_cache:
-            resolver = get_fallback_provider_for_step if fallback else get_provider_for_step
-            try:
-                provider = resolver(step)
-            except Exception as exc:
-                if fallback:
-                    raise
-                if get_provider_name_for_step(step) != "g4f":
-                    raise
-                provider = self._activate_fallback_provider(
-                    step,
-                    reason="provider initialization failed",
-                    error=exc,
-                    persist=True,
-                )
-                if provider is None:
-                    raise
-            if provider is None and fallback:
-                return None
-            self._provider_cache[cache_key] = provider
-        return self._provider_cache[cache_key]
-
-    def _activate_fallback_provider(
-        self,
-        step: str,
-        *,
-        reason: str,
-        error: Optional[Exception] = None,
-        persist: bool = False,
-    ):
-        try:
-            fallback_provider = self._get_provider(step, fallback=True)
-        except Exception as fallback_exc:
-            if error is None:
-                raise
-            raise RuntimeError(
-                f"Primary g4f provider failed for step '{step}' ({reason}): {error}. "
-                f"Fallback provider initialization also failed: {fallback_exc}"
-            ) from fallback_exc
-
-        if fallback_provider is None:
-            return None
-
-        if error is None:
-            logger.warning(
-                "[LLM] step=%s switching from g4f to fallback provider %s (%s).",
-                step,
-                fallback_provider.model_id,
-                reason,
-            )
-        else:
-            logger.warning(
-                "[LLM] step=%s switching from g4f to fallback provider %s (%s: %s).",
-                step,
-                fallback_provider.model_id,
-                reason,
-                error,
-            )
-
-        if persist:
-            self._provider_cache[self._provider_cache_key(step)] = fallback_provider
-
-        return fallback_provider
+    def _get_provider(self, step: str):
+        if step not in self._provider_cache:
+            self._provider_cache[step] = get_provider_for_step(step)
+        return self._provider_cache[step]
 
     def clear_provider_cache(self):
         """Force reload of all LLM providers (e.g. if config changes)."""
@@ -357,8 +261,6 @@ class LLMService:
         system_prompt: str,
         user_prompt: str,
         max_tokens: Optional[int] = None,
-        *,
-        _allow_fallback: bool = True,
     ) -> Dict[str, Any]:
         """Invoke provider.generate_json_async with per-step timeout + circuit breaker.
 
@@ -382,37 +284,7 @@ class LLMService:
                 timeout_override=timeout_override,
             )
 
-        try:
-            return await cb.call(_do_call())
-        except Exception as exc:
-            if not _allow_fallback or not self._is_g4f_provider(provider):
-                raise
-
-            fallback_provider = self._activate_fallback_provider(
-                step,
-                reason=(
-                    "request timed out"
-                    if isinstance(exc, asyncio.TimeoutError)
-                    else (
-                        "circuit breaker opened"
-                        if isinstance(exc, CircuitOpenError)
-                        else "request failed"
-                    )
-                ),
-                error=exc,
-                persist=isinstance(exc, (CircuitOpenError, asyncio.TimeoutError)),
-            )
-            if fallback_provider is None:
-                raise
-
-            return await self._call_provider_json(
-                fallback_provider,
-                step,
-                system_prompt,
-                user_prompt,
-                max_tokens,
-                _allow_fallback=False,
-            )
+        return await cb.call(_do_call())
 
     async def _call_provider_text(
         self,
@@ -421,8 +293,6 @@ class LLMService:
         system_prompt: str,
         user_prompt: str,
         max_tokens: Optional[int] = None,
-        *,
-        _allow_fallback: bool = True,
     ) -> str:
         cb = circuit_registry.get(
             self._circuit_service_name(provider, step),
@@ -440,37 +310,7 @@ class LLMService:
                 timeout_override=timeout_override,
             )
 
-        try:
-            return await cb.call(_do_call())
-        except Exception as exc:
-            if not _allow_fallback or not self._is_g4f_provider(provider):
-                raise
-
-            fallback_provider = self._activate_fallback_provider(
-                step,
-                reason=(
-                    "text request timed out"
-                    if isinstance(exc, asyncio.TimeoutError)
-                    else (
-                        "circuit breaker opened"
-                        if isinstance(exc, CircuitOpenError)
-                        else "text request failed"
-                    )
-                ),
-                error=exc,
-                persist=isinstance(exc, (CircuitOpenError, asyncio.TimeoutError)),
-            )
-            if fallback_provider is None:
-                raise
-
-            return await self._call_provider_text(
-                fallback_provider,
-                step,
-                system_prompt,
-                user_prompt,
-                max_tokens,
-                _allow_fallback=False,
-            )
+        return await cb.call(_do_call())
 
     def _extract_searches_payload(self, result: Any) -> tuple[List[Dict[str, Any]], str, bool]:
         """Extract search list using strict-first parsing with legacy fallback.

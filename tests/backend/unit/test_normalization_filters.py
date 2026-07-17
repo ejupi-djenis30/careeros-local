@@ -920,6 +920,46 @@ class TestV2AdvancedMatching:
         # 3 <= 2+2=4 → passes
         assert ok, f"Expected exp tolerance to allow senior job but got: {reason}"
 
+    def test_seniority_range_job_below_explicit_minimum_is_rejected(self, service):
+        ok, reason = service._passes_normalization_filters(
+            {"seniority": "junior", "experience_max_years": 2},
+            {
+                "experience_years": 8,
+                "intent_seniority_min": "senior",
+                "intent_seniority_max": "lead",
+            },
+        )
+        assert not ok
+        assert reason == "norm_seniority_underqualified"
+
+    def test_prescore_reads_public_normalized_dto_keys(self):
+        from backend.services.search.listing_utils import compute_prescore
+
+        public_dto = {
+            "domain": "it",
+            "seniority": "senior",
+            "role_type": "technical",
+            "required_skills": ["python", "sql"],
+            "experience_min_years": 5,
+            "experience_max_years": 10,
+            "entry_barrier": "medium",
+            "required_languages": [{"code": "en", "level": "C1"}],
+            "qualification_level": "bachelor",
+        }
+        legacy_prefixed = {f"normalized_{key}": value for key, value in public_dto.items()}
+        profile = {
+            "intent_domain": "it",
+            "intent_seniority": "senior",
+            "skills": ["python", "sql"],
+            "experience_years": 7,
+            "qualification_level": "master",
+            "languages": [{"code": "en", "level": "C2"}],
+        }
+        public_score = compute_prescore(public_dto, profile)
+        prefixed_score = compute_prescore(legacy_prefixed, profile)
+        assert public_score == prefixed_score
+        assert public_score >= 80
+
     # ── Entry barrier gate ───────────────────────────────────────────────────
 
     def test_entry_barrier_high_open_to_unrelated_rejected(self, service):

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import logging
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -8,6 +9,7 @@ from typing import Any, Awaitable, Callable, Dict, List, Sequence
 from sqlalchemy.orm import Session
 
 from backend.core.config import settings
+from backend.jobs.urls import normalize_job_url
 from backend.models import Job, ScrapedJob
 from backend.repositories.job_repository import JobRepository
 from backend.services.search.listing_utils import (
@@ -111,6 +113,27 @@ class SearchPipelinePersistence:
             return application.get(field_name)
         return getattr(application, field_name, None)
 
+    @staticmethod
+    def _listing_raw_metadata(listing: Any) -> Dict[str, Any] | None:
+        value = getattr(listing, "raw_data", None)
+        if value is None:
+            value = getattr(listing, "raw_metadata", None)
+        if value is None:
+            return None
+        if hasattr(value, "model_dump"):
+            value = value.model_dump(mode="json")
+        if not isinstance(value, dict):
+            value = {"value": value}
+        return json.loads(json.dumps(value, default=str))
+
+    @staticmethod
+    def _clear_normalization(record: ScrapedJob) -> None:
+        for column in ScrapedJob.__table__.columns:
+            if column.name.startswith(("normalization_", "normalized_")) or column.name == (
+                "posting_quality"
+            ):
+                setattr(record, column.name, None)
+
     def upsert_scraped_job(
         self,
         listing: Any,
@@ -122,8 +145,14 @@ class SearchPipelinePersistence:
         extract_listing_workload_string_fn: ExtractListingText = extract_listing_workload_string,
         parse_listing_publication_date_fn: ParseListingPublicationDate = parse_listing_publication_date,
     ) -> tuple[ScrapedJob, bool]:
-        platform = getattr(listing, "source", None) or getattr(listing, "platform", "unknown")
-        platform_id = str(getattr(listing, "id", "") or getattr(listing, "platform_job_id", ""))
+        platform = str(
+            getattr(listing, "source", None) or getattr(listing, "platform", "unknown")
+        ).strip()
+        platform_id = str(
+            getattr(listing, "id", "") or getattr(listing, "platform_job_id", "")
+        ).strip()
+        if not platform_id:
+            raise ValueError("A provider job identifier is required")
 
         existing_sj = self.job_repo.get_scraped_job_by_platform_and_id(platform, platform_id)
 
@@ -151,6 +180,13 @@ class SearchPipelinePersistence:
         )
         application_url = self._listing_application_field(listing, "form_url")
         application_email = self._listing_application_field(listing, "email")
+        external_url = normalize_job_url(
+            getattr(listing, "external_url", None) or getattr(listing, "url", None),
+            required=True,
+        )
+        application_url = normalize_job_url(application_url, required=False)
+        raw_metadata = self._listing_raw_metadata(listing)
+        clean_title = clean_html_tags(getattr(listing, "title", "Unknown"))
 
         created = False
         recovered_catalog_conflict = False
@@ -158,18 +194,17 @@ class SearchPipelinePersistence:
             new_sj = ScrapedJob(
                 platform=platform,
                 platform_job_id=platform_id,
-                title=clean_html_tags(getattr(listing, "title", "Unknown")),
+                title=clean_title,
                 company=company_name,
                 description=clean_html_tags(desc_text) if desc_text else None,
                 location=location_str,
-                external_url=getattr(listing, "external_url", None)
-                or getattr(listing, "url", None)
-                or platform_id,
+                external_url=external_url,
                 application_url=application_url,
                 application_email=application_email,
                 workload=workload_str or None,
                 publication_date=pub_date,
                 source_query=getattr(listing, "_source_query", "Unknown"),
+                raw_metadata=raw_metadata,
                 content_fingerprint=content_fingerprint,
                 compact_description=compact_description or None,
                 **normalized_bootstrap,
@@ -189,35 +224,39 @@ class SearchPipelinePersistence:
                 stored_fingerprint = None
             content_changed = bool(stored_fingerprint and stored_fingerprint != content_fingerprint)
             refresh_fields = {
+                "title": clean_title,
+                "company": company_name,
                 "description": clean_html_tags(desc_text) if desc_text else None,
                 "location": location_str or None,
+                "external_url": external_url,
                 "application_url": application_url,
                 "application_email": application_email,
                 "workload": workload_str or None,
                 "publication_date": pub_date,
                 "source_query": getattr(listing, "_source_query", None),
+                "raw_metadata": raw_metadata,
                 "content_fingerprint": content_fingerprint,
                 "compact_description": compact_description or None,
             }
+            if stored_fingerprint is None:
+                content_changed = any(
+                    getattr(existing_sj, field, None) != value
+                    for field, value in refresh_fields.items()
+                    if field in {"title", "company", "description", "location", "workload"}
+                )
+            for field, value in refresh_fields.items():
+                setattr(existing_sj, field, value)
             if content_changed:
-                for field, value in refresh_fields.items():
-                    if value is not None:
-                        setattr(existing_sj, field, value)
-                existing_sj.normalization_status = "provider_bootstrap"
-                existing_sj.normalized_at = None
-                existing_sj.normalization_source = None
-                existing_sj.normalization_confidence = None
-                metadata = existing_sj.normalized_metadata or {}
+                self._clear_normalization(existing_sj)
+                for field, value in normalized_bootstrap.items():
+                    setattr(existing_sj, field, value)
+                metadata = dict(existing_sj.normalized_metadata or {})
                 metadata["content_changed_at"] = datetime.now(timezone.utc).isoformat()
                 existing_sj.normalized_metadata = metadata
             else:
-                for field, value in refresh_fields.items():
+                for field, value in normalized_bootstrap.items():
                     if getattr(existing_sj, field, None) is None and value is not None:
                         setattr(existing_sj, field, value)
-
-            for field, value in normalized_bootstrap.items():
-                if getattr(existing_sj, field, None) is None and value is not None:
-                    setattr(existing_sj, field, value)
             if not existing_sj.normalization_status:
                 existing_sj.normalization_status = "provider_bootstrap"
 

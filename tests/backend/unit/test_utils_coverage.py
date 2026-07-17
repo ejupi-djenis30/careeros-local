@@ -1,55 +1,19 @@
-from unittest.mock import MagicMock, patch
-
-import httpx
 import pytest
 
 from backend.services.utils import clean_html_tags, geocode_location
 
 
 @pytest.mark.asyncio
-async def test_geocode_location_nominatim_success():
-    """Test successful geocoding via Nominatim fallback."""
-    # Ensure cache is clear for this test
-    from collections import OrderedDict
-
-    with patch("backend.services.utils._geocode_cache", OrderedDict()):
-        mock_resp = MagicMock()
-        mock_resp.status_code = 200
-        mock_resp.json.return_value = [{"lat": "46.5", "lon": "6.5"}]
-
-        async def mock_get(*args, **kwargs):
-            return mock_resp
-
-        with patch("httpx.AsyncClient.get", side_effect=mock_get):
-            coords = await geocode_location("MockCity")
-            assert coords.lat == 46.5
-            assert coords.lon == 6.5
+async def test_geocode_location_normalizes_surrounding_whitespace():
+    coords = await geocode_location("  Basel  ")
+    assert coords is not None
+    assert coords.lat == 47.5596
+    assert coords.lon == 7.5886
 
 
 @pytest.mark.asyncio
-async def test_geocode_location_nominatim_failure():
-    """Test geocoding failure (Nominatim returns 404 or empty)."""
-    from collections import OrderedDict
-
-    with patch("backend.services.utils._geocode_cache", OrderedDict()):
-        mock_resp = MagicMock()
-        mock_resp.status_code = 404
-
-        async def mock_get(*args, **kwargs):
-            return mock_resp
-
-        with patch("httpx.AsyncClient.get", side_effect=mock_get):
-            coords = await geocode_location("NonExistentCity")
-            assert coords is None
-
-
-@pytest.mark.asyncio
-async def test_geocode_location_exception():
-    """Test geocoding resilience when network error occurs."""
-    with patch("backend.services.utils._geocode_cache", {}):
-        with patch("httpx.AsyncClient.get", side_effect=httpx.RequestError("Network Down")):
-            coords = await geocode_location("FailingCity")
-            assert coords is None
+async def test_geocode_location_does_not_guess_unknown_places():
+    assert await geocode_location("NonExistentCity") is None
 
 
 def test_clean_html_tags_empty():

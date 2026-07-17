@@ -1,69 +1,92 @@
+name: careeros-local
+
 services:
-  db:
-    image: postgres:16-alpine
-    restart: always
+  ollama:
+    image: ollama/ollama:0.30.8@sha256:05b6fe5143ed006d6d4abd39bdd575f962a5822bdf81e6fbb5e6894eb984ab9c
+    restart: unless-stopped
     environment:
-      POSTGRES_USER: ${POSTGRES_USER:-postgres}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
-      POSTGRES_DB: ${POSTGRES_DB:-jobhunter}
+      OLLAMA_HOST: 0.0.0.0:11434
+      OLLAMA_KEEP_ALIVE: 15m
+      OLLAMA_NO_CLOUD: "true"
     volumes:
-      - postgres_data:/var/lib/postgresql/data
-    ports:
-      - "5432:5432"
+      - ollama_data:/root/.ollama
+    expose:
+      - "11434"
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres}"]
-      interval: 5s
+      test: ["CMD", "ollama", "list"]
+      interval: 10s
       timeout: 5s
-      retries: 5
+      retries: 12
+      start_period: 10s
+    security_opt:
+      - no-new-privileges:true
 
   backend:
     build:
       context: .
       dockerfile: Dockerfile
-    restart: always
+    restart: unless-stopped
+    init: true
     depends_on:
-      db:
+      ollama:
         condition: service_healthy
-    env_file:
-      - .env
     environment:
-      - DATABASE_URL=postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-jobhunter}
-      - CORS_ORIGINS=http://localhost:5173,http://127.0.0.1:5173,http://localhost:80,http://127.0.0.1:80
-      - ENVIRONMENT=${ENVIRONMENT:-development}
-      - HOME=/app/data/home
-      - XDG_CONFIG_HOME=/app/data/config
-      - XDG_CACHE_HOME=/app/data/cache
-    ports:
-      - "8000:8000"
-    command: >
-      sh -c "python -m backend.pre_start &&
-             alembic upgrade head &&
-             gunicorn backend.main:app --worker-class uvicorn.workers.UvicornWorker --bind 0.0.0.0:8000 --workers 1 --timeout 120"
+      ENVIRONMENT: production
+      OFFLINE_MODE: ${OFFLINE_MODE:-false}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      DATABASE_URL: sqlite:////app/data/careeros.db
+      DATA_DIR: /app/data
+      LOCAL_INFERENCE_URL: http://ollama:11434
+      LOCAL_INFERENCE_ALLOWED_HOSTS: ollama
+      LOCAL_MODEL: ${LOCAL_MODEL:-qwen3:1.7b}
+      CORS_ORIGINS: http://localhost:5173,http://127.0.0.1:5173
+      CORS_ALLOW_ORIGIN_REGEX: ^https?://(localhost|127\.0\.0\.1)(:5173)?$
+      ALLOWED_HOSTS: '["localhost","127.0.0.1","backend","testserver"]'
     volumes:
       - app_data:/app/data
-      - ./tests:/app/tests
+    ports:
+      - "127.0.0.1:8000:8000"
+    read_only: true
+    tmpfs:
+      - /tmp:size=128m,mode=1777
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
     healthcheck:
-      test:
-        [
-          "CMD",
-          "python",
-          "-c",
-          "import sys,urllib.request; sys.exit(0 if urllib.request.urlopen('http://localhost:8000/api/v1/health/live', timeout=3).getcode() == 200 else 1)",
-        ]
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/v1/health/ready', timeout=3)"]
       interval: 10s
       timeout: 5s
-      retries: 5
+      retries: 10
+      start_period: 20s
 
   frontend:
     build:
       context: ./frontend
       dockerfile: Dockerfile
-    restart: always
+    restart: unless-stopped
+    init: true
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy
     ports:
-      - "5173:80"
+      - "127.0.0.1:5173:8080"
+    read_only: true
+    tmpfs:
+      - /tmp:size=64m,mode=1777
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--output-document=-", "http://127.0.0.1:8080/"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
 
 volumes:
-  postgres_data:
   app_data:
+    name: careeros-local-vault
+  ollama_data:
+    name: careeros-local-models

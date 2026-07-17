@@ -1,5 +1,5 @@
 import React from 'react';
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import { describe, it, expect, vi } from 'vitest';
 import { SearchProgress } from './SearchProgress';
 import { ToastProvider } from '../context/ToastContext';
@@ -40,6 +40,25 @@ vi.mock('./SearchProgress/LiveLogs', () => ({
 }));
 
 describe('SearchProgress', () => {
+  it('reports a user-stopped search as a terminal state', async () => {
+    const onStateChange = vi.fn();
+    const status = {
+      state: 'stopped',
+      total_searches: 1,
+      searches_generated: [],
+      active_search_indices: [],
+      completed_search_indices: [],
+      jobs_new: 0,
+      jobs_unique: 0,
+      jobs_skipped: 0,
+      errors: 0,
+      log: [],
+    };
+
+    render(<ToastProvider><SearchProgress profileId="1" status={status} onStateChange={onStateChange} onClear={vi.fn()} /></ToastProvider>);
+    await waitFor(() => expect(onStateChange).toHaveBeenCalledWith('stopped'));
+  });
+
   it('shows completion notice for no_results terminal reason', () => {
     const status = {
       state: 'done',

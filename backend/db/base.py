@@ -1,11 +1,22 @@
 import os
 
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, event
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from backend.core.config import settings
 from backend.models.base_model import Base as Base
+
+
+def configure_sqlite_connection(dbapi_connection, _connection_record) -> None:
+    """Apply durability and integrity settings to every SQLite connection."""
+    cursor = dbapi_connection.cursor()
+    try:
+        cursor.execute("PRAGMA foreign_keys=ON")
+        cursor.execute("PRAGMA journal_mode=WAL")
+        cursor.execute(f"PRAGMA busy_timeout={int(settings.SQLITE_BUSY_TIMEOUT_MS)}")
+    finally:
+        cursor.close()
 
 # Configure connection pooling appropriately based on the database type
 if os.environ.get("TESTING") == "1":
@@ -27,6 +38,9 @@ else:
         pool_pre_ping=True,
         pool_recycle=1800,
     )
+
+if "sqlite" in str(engine.url):
+    event.listen(engine, "connect", configure_sqlite_connection)
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, expire_on_commit=False, bind=engine)
 

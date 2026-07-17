@@ -1,0 +1,31 @@
+import { render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { LocalModelStatus } from "./LocalModelStatus";
+
+const refresh = vi.fn();
+const hook = vi.fn();
+vi.mock("./useLocalModelStatus", () => ({ useLocalModelStatus: () => hook() }));
+
+describe("LocalModelStatus", () => {
+    beforeEach(() => {
+        vi.clearAllMocks();
+        hook.mockReturnValue({ status: { loading: false, available: true, ready: true, configured_model: "qwen3:1.7b", installed_models: ["qwen3:1.7b"] }, refresh });
+    });
+
+    it("identifies the configured local model and can refresh it", async () => {
+        const user = userEvent.setup();
+        render(<LocalModelStatus />);
+        expect(screen.getByText("Locale · qwen3:1.7b")).toBeInTheDocument();
+        expect(screen.getByText(/solo su questo dispositivo/)).toBeInTheDocument();
+        await user.click(screen.getByRole("button", { name: "Ricontrolla modello locale" }));
+        expect(refresh).toHaveBeenCalledTimes(1);
+    });
+
+    it("makes runtime unavailability explicit without hiding offline capabilities", () => {
+        hook.mockReturnValue({ status: { loading: false, available: false, ready: false, configured_model: "qwen3:1.7b", installed_models: [], error_code: "local_runtime_unreachable" }, refresh });
+        render(<LocalModelStatus />);
+        expect(screen.getByText("Ollama non raggiungibile")).toBeInTheDocument();
+        expect(screen.getByText(/archivio restano disponibili/)).toBeInTheDocument();
+    });
+});

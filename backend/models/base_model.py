@@ -1,26 +1,30 @@
-from sqlalchemy import Column, DateTime, Integer
-from sqlalchemy.orm import declarative_base, declared_attr
+from datetime import datetime
+
+from sqlalchemy import DateTime, Integer
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 from sqlalchemy.sql import func
 
-Base = declarative_base()
+
+class Base(DeclarativeBase):
+    """Typed SQLAlchemy 2 declarative base shared by every persistence model."""
 
 
 class TimestampMixin:
     """Mixin to add created_at and updated_at timestamps."""
 
-    @declared_attr
-    def created_at(cls):
-        return Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
-
-    @declared_attr
-    def updated_at(cls):
-        return Column(
-            DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
-        )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+        nullable=False,
+    )
 
 
 class BaseModel(Base):
     """Base class for all models with an integer ID."""
 
     __abstract__ = True
-    id = Column(Integer, primary_key=True, index=True)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)

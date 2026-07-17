@@ -16,7 +16,7 @@ from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 # ─── Lazy import of embedding tier (Phase 1) ─────────────────────────────────
 # Imported lazily inside semantic_skills_score() so this module stays importable
-# even when sentence-transformers is not installed.
+# without downloading a model or depending on a machine-learning package.
 
 logger = logging.getLogger(__name__)
 
@@ -867,8 +867,7 @@ def semantic_skills_score(job_skills: List[str], profile_skills: List[str]) -> f
     1. Exact canonical match → weight 1.0
     2. Alias match → weight 1.0 (resolved via _ALIAS_TO_CANONICAL)
     3. Taxonomy-weighted related skill → weight from taxonomy (0.0–1.0)
-    4. Embedding cosine similarity (NEW) → cosine weight if above threshold
-       (requires sentence-transformers; skipped gracefully if absent)
+    4. Deterministic local similarity → similarity weight if above threshold
     5. String containment fallback → weight 0.3 (reduced from 0.5 for precision)
 
     Returns a float 0.0–1.0 representing the *weighted* coverage of the job's
@@ -982,15 +981,23 @@ def compute_prescore(
     """
     score = 0.0
 
+    def job_value(field: str):
+        value = job_norm.get(field)
+        return value if value is not None else job_norm.get(f"normalized_{field}")
+
     try:
         from backend.data.domain_affinity import get_domain_affinity  # type: ignore
     except Exception:
         get_domain_affinity = None  # type: ignore
 
     # 1. Domain alignment (0–20 pts)
-    job_domain = (job_norm.get("normalized_domain") or "").lower().strip()
+    job_domain = str(job_value("domain") or "").lower().strip()
     profile_domains = (
-        profile_norm.get("target_domains") or profile_norm.get("normalized_domains") or []
+        profile_norm.get("target_domains")
+        or profile_norm.get("normalized_domains")
+        or profile_norm.get("intent_domain")
+        or profile_norm.get("domain")
+        or []
     )
     if isinstance(profile_domains, str):
         profile_domains = [profile_domains]
@@ -1009,9 +1016,12 @@ def compute_prescore(
         score += 10.0  # neutral if domain unknown
 
     # 2. Seniority fit (0–15 pts)
-    job_seniority = (job_norm.get("normalized_seniority") or "").lower()
+    job_seniority = str(job_value("seniority") or "").lower()
     profile_seniority = (
-        profile_norm.get("seniority") or profile_norm.get("target_seniority") or ""
+        profile_norm.get("intent_seniority")
+        or profile_norm.get("target_seniority")
+        or profile_norm.get("seniority")
+        or ""
     ).lower()
     _SENIORITY_SCORES: Dict[Tuple[str, str], float] = {
         ("junior", "junior"): 1.0,
@@ -1034,7 +1044,7 @@ def compute_prescore(
     # Manual and service roles rarely list technical skills — penalising a qualified
     # warehouse worker for not having Python is counterproductive.  Reduce the skill
     # maximum for non-technical role types and redistribute to experience/entry-barrier.
-    job_role_type_for_skills = (job_norm.get("normalized_role_type") or "").lower().strip()
+    job_role_type_for_skills = str(job_value("role_type") or "").lower().strip()
     _SKILL_MAX_BY_ROLE_TYPE: Dict[str, float] = {
         "manual": 10.0,
         "service": 15.0,
@@ -1047,9 +1057,12 @@ def compute_prescore(
     skill_max = _SKILL_MAX_BY_ROLE_TYPE.get(job_role_type_for_skills, 25.0)
     skill_neutral = skill_max / 2.0  # neutral when data is missing
 
-    job_skills: List[str] = job_norm.get("normalized_required_skills") or []
+    job_skills: List[str] = job_value("required_skills") or []
     profile_skills: List[str] = (
-        profile_norm.get("skills") or profile_norm.get("normalized_skills") or []
+        profile_norm.get("intent_skills")
+        or profile_norm.get("skills")
+        or profile_norm.get("normalized_skills")
+        or []
     )
     if job_skills and profile_skills:
         sem_score = semantic_skills_score(job_skills, profile_skills)
@@ -1058,8 +1071,8 @@ def compute_prescore(
         score += skill_neutral  # neutral if missing
 
     # 4. Experience years fit (0–15 pts)
-    job_exp_min = job_norm.get("normalized_experience_min_years")
-    job_exp_max = job_norm.get("normalized_experience_max_years")
+    job_exp_min = job_value("experience_min_years")
+    job_exp_max = job_value("experience_max_years")
     profile_exp = profile_norm.get("experience_years") or profile_norm.get("years_of_experience")
     if profile_exp is not None and (job_exp_min is not None or job_exp_max is not None):
         try:
@@ -1079,9 +1092,10 @@ def compute_prescore(
         score += 7.5  # neutral
 
     # 5. Entry barrier vs. qualifications (0–10 pts)
-    job_barrier = (job_norm.get("normalized_entry_barrier") or "").lower()
+    job_barrier = str(job_value("entry_barrier") or "").lower()
     profile_qualification = (
-        profile_norm.get("qualification_level")
+        profile_norm.get("intent_qualification_level")
+        or profile_norm.get("qualification_level")
         or profile_norm.get("normalized_qualification_level")
         or ""
     ).lower()
@@ -1110,7 +1124,7 @@ def compute_prescore(
         score += 5.0  # neutral
 
     # 6. Language requirements (0–10 pts)
-    job_langs: List[Dict] = job_norm.get("normalized_required_languages") or []
+    job_langs: List[Dict] = job_value("required_languages") or []
     profile_langs = profile_norm.get("languages") or profile_norm.get("normalized_languages") or []
     if job_langs and profile_langs:
         profile_lang_codes = set()
@@ -1130,7 +1144,7 @@ def compute_prescore(
         score += 5.0  # neutral
 
     # 7. Qualification level match (0–5 pts)
-    job_qual = (job_norm.get("normalized_qualification_level") or "").lower()
+    job_qual = str(job_value("qualification_level") or "").lower()
     if profile_qualification and job_qual:
         _QUAL_RANK = {
             "none": 0,
@@ -1176,9 +1190,9 @@ def compute_prescore(
             and preference_signals.get("signal_count", 0) >= _cfg.PREFERENCE_MIN_SIGNAL_COUNT
         ):
             pref_delta = 0.0
-            job_domain = (job_norm.get("normalized_domain") or "").lower().strip()
-            job_seniority = (job_norm.get("normalized_seniority") or "").lower().strip()
-            job_skills_set = {s.lower() for s in (job_norm.get("normalized_required_skills") or [])}
+            job_domain = str(job_value("domain") or "").lower().strip()
+            job_seniority = str(job_value("seniority") or "").lower().strip()
+            job_skills_set = {s.lower() for s in (job_value("required_skills") or [])}
 
             # +3 if domain is in top preferred domains
             preferred_domains = [

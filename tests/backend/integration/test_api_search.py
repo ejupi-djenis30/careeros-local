@@ -65,6 +65,26 @@ def test_start_search_authorized(client, auth_headers: dict, test_profile):
         assert kwargs["force_regenerate_queries"] is True
 
 
+def test_start_search_is_rejected_before_provider_work_in_offline_mode(
+    client, auth_headers: dict, test_profile
+):
+    with (
+        patch("backend.api.routes.search.settings.OFFLINE_MODE", True),
+        patch("backend.api.routes.search.reserve_task") as mock_reserve,
+    ):
+        response = client.post(
+            "/api/v1/search/start",
+            json={"id": test_profile["id"], "name": "Offline search"},
+            headers=auth_headers,
+        )
+
+    assert response.status_code == 503
+    assert response.json()["detail"] == (
+        "Live job-source access is disabled while offline mode is active"
+    )
+    mock_reserve.assert_not_called()
+
+
 def test_start_search_accepts_large_numeric_values_without_clamping(
     client, auth_headers: dict, db_session
 ):
@@ -178,6 +198,7 @@ def test_start_search_rejects_when_user_has_too_many_active_searches(
             101: {"state": "analyzing"},
         }
         mock_settings.MAX_CONCURRENT_SEARCHES_PER_USER = 2
+        mock_settings.OFFLINE_MODE = False
 
         response = client.post(
             "/api/v1/search/start",

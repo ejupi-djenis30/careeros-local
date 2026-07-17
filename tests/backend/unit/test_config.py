@@ -1,4 +1,8 @@
 import logging
+from pathlib import Path
+from tempfile import TemporaryDirectory
+
+import pytest
 
 from backend.core.config import Settings
 
@@ -19,32 +23,27 @@ def test_allowed_hosts_warns_and_falls_back(caplog):
     assert "Invalid ALLOWED_HOSTS JSON" in caplog.text
 
 
-def test_g4f_retry_attempts_preserve_large_values(caplog):
-    caplog.set_level(logging.WARNING)
-    settings = Settings(
-        SECRET_KEY="custom-secret",
-        LLM_PROVIDER="g4f",
-        LLM_FALLBACK_PROVIDER="groq",
-        G4F_PROVIDERS="DeepInfra",
-        G4F_MAX_REQUEST_ATTEMPTS=999999999,
-    )
-
-    assert settings.G4F_MAX_REQUEST_ATTEMPTS == 999999999
-    assert "clamping to 6" not in caplog.text
+def test_remote_inference_endpoint_is_rejected():
+    with pytest.raises(ValueError, match="Local inference"):
+        Settings(
+            SECRET_KEY="custom-secret",
+            LOCAL_INFERENCE_URL="https://api.example.com/v1",
+        )
 
 
-def test_negative_g4f_timeouts_are_clamped_to_zero(caplog):
-    caplog.set_level(logging.WARNING)
-    settings = Settings(
-        SECRET_KEY="custom-secret",
-        LLM_PROVIDER="g4f",
-        LLM_FALLBACK_PROVIDER="groq",
-        G4F_PROVIDERS="DeepInfra",
-        LLM_CALL_TIMEOUT_MATCH_G4F=-12,
-        G4F_TIMEOUT_BUFFER_SECONDS=-1,
-    )
+def test_production_rejects_development_secret():
+    with pytest.raises(ValueError, match="SECRET_KEY"):
+        Settings(ENVIRONMENT="production", SECRET_KEY="local-development-only")
 
-    assert settings.LLM_CALL_TIMEOUT_MATCH_G4F == 0
-    assert settings.G4F_TIMEOUT_BUFFER_SECONDS == 0.0
-    assert "LLM_CALL_TIMEOUT_MATCH_G4F=-12 is invalid" in caplog.text
-    assert "G4F_TIMEOUT_BUFFER_SECONDS=-1.0 is invalid" in caplog.text
+
+def test_production_loads_persisted_installation_secret(monkeypatch):
+    secret = "a" * 64
+    with TemporaryDirectory(dir=Path.cwd() / "cmd_outputs") as directory:
+        data_dir = Path(directory)
+        (data_dir / ".secret-key").write_text(secret, encoding="utf-8")
+        monkeypatch.delenv("SECRET_KEY", raising=False)
+        monkeypatch.setenv("DATA_DIR", str(data_dir))
+
+        loaded = Settings(_env_file=None, ENVIRONMENT="production")
+
+        assert loaded.SECRET_KEY == secret

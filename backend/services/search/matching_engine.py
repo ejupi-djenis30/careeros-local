@@ -245,7 +245,7 @@ class SearchNormalizationFilterEngine:
                 if intent_seniority_min:
                     min_rank = self._SENIORITY_ORDER.get(intent_seniority_min, -1)
                     if min_rank >= 0 and job_rank < min_rank:
-                        pass
+                        return False, "norm_seniority_underqualified"
                 if intent_seniority_max:
                     max_rank = self._SENIORITY_ORDER.get(intent_seniority_max, -1)
                     if max_rank >= 0 and job_rank > max_rank:

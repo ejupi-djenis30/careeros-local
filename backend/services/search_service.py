@@ -8,6 +8,7 @@ from typing import Any, Dict, List, Optional
 from sqlalchemy.orm import Session
 
 from backend.core.config import settings
+from backend.jobs.matching import deterministic_job_match
 from backend.models import ScrapedJob, SearchProfile
 from backend.providers.circuit_breaker import CircuitOpenError
 from backend.providers.jobs.jobroom.client import JobRoomProvider
@@ -918,6 +919,10 @@ class SearchService:
         reservation_token: str | None = None,
     ):
         """Run the full search workflow for a saved profile."""
+        if settings.OFFLINE_MODE is True:
+            logger.info("Skipping live job search because offline mode is active")
+            release_task(profile_id, reservation_token)
+            return
         if not self._activate_search_task(profile_id, reservation_token):
             logger.warning(
                 "Aborting search startup for profile %d because task activation was rejected",
@@ -1848,8 +1853,19 @@ class SearchService:
                     results = await llm_service.analyze_job_batch(batch_metadata, profile_dict)
                     return list(zip(batch_jobs, results))
                 except Exception as e:
-                    logger.error(f"Analysis batch failed: {e}")
-                    return []
+                    logger.warning(
+                        "Local model analysis unavailable; using deterministic match: %s", e
+                    )
+                    normalized_profile = profile_dict.get("profile_normalization") or profile_dict
+                    return [
+                        (
+                            job,
+                            deterministic_job_match(
+                                metadata.get("normalized_data") or {}, normalized_profile
+                            ),
+                        )
+                        for job, metadata in zip(batch_jobs, batch_metadata)
+                    ]
 
         tasks = [
             analyze_batch(batch_jobs, batch_metadata) for batch_jobs, batch_metadata in batches
@@ -2734,15 +2750,33 @@ class SearchService:
                     return list(zip(batch_jobs, results))
                 except CircuitOpenError as exc:
                     logger.warning(
-                        "Analysis batch skipped for profile %s because match circuit is open: %s",
+                        "Match circuit is open for profile %s; using deterministic local match: %s",
                         profile_id,
                         exc,
                     )
-                    return []
+                    normalized_profile = profile_dict.get("profile_normalization") or profile_dict
+                    return [
+                        (
+                            job,
+                            deterministic_job_match(
+                                metadata.get("normalized_data") or {}, normalized_profile
+                            ),
+                        )
+                        for job, metadata in zip(batch_jobs, batch_metadata)
+                    ]
                 except Exception as e:
                     self._increment_status_errors(profile_id)
-                    logger.error(f"Analysis batch failed: {e}")
-                    return []
+                    logger.warning("Local model analysis failed; using deterministic match: %s", e)
+                    normalized_profile = profile_dict.get("profile_normalization") or profile_dict
+                    return [
+                        (
+                            job,
+                            deterministic_job_match(
+                                metadata.get("normalized_data") or {}, normalized_profile
+                            ),
+                        )
+                        for job, metadata in zip(batch_jobs, batch_metadata)
+                    ]
 
         tasks = [
             analyze_batch(batch_jobs, batch_metadata) for batch_jobs, batch_metadata in batches

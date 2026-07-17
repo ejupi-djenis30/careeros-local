@@ -1,203 +1,90 @@
-import React, { useState } from 'react';
-import { BrowserRouter, Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom';
-import { AuthProvider, useAuth } from './context/AuthContext';
-import { ToastProvider } from './context/ToastContext';
-import { SearchProvider } from './context/SearchContext';
+import React, { Suspense, lazy } from "react";
+import { BrowserRouter, HashRouter, Navigate, Route, Routes } from "react-router-dom";
+import { WorkspaceShell } from "./app/WorkspaceShell";
+import { Login } from "./components/Login";
+import { AuthProvider, useAuth } from "./context/AuthContext";
+import { SearchProvider } from "./context/SearchContext";
+import { ToastProvider } from "./context/ToastContext";
+import { isDesktopShell } from "./platform/desktop";
+
+const ApplicationsPage = lazy(() => import("./features/applications/ApplicationsPage").then((module) => ({ default: module.ApplicationsPage })));
+const CareerProfilePage = lazy(() => import("./features/career-profile/CareerProfilePage").then((module) => ({ default: module.CareerProfilePage })));
+const WorkspaceHomePage = lazy(() => import("./features/home/WorkspaceHomePage").then((module) => ({ default: module.WorkspaceHomePage })));
+const CareerCoachPage = lazy(() => import("./features/local-coach/CareerCoachPage").then((module) => ({ default: module.CareerCoachPage })));
+const ResumeStudioPage = lazy(() => import("./features/resume-studio/ResumeStudioPage").then((module) => ({ default: module.ResumeStudioPage })));
+const HistoryPage = lazy(() => import("./pages/HistoryPage").then((module) => ({ default: module.HistoryPage })));
+const JobsPage = lazy(() => import("./pages/JobsPage").then((module) => ({ default: module.JobsPage })));
+const NewSearchPage = lazy(() => import("./pages/NewSearchPage").then((module) => ({ default: module.NewSearchPage })));
+const ProgressPage = lazy(() => import("./pages/ProgressPage").then((module) => ({ default: module.ProgressPage })));
+const SchedulesPage = lazy(() => import("./pages/SchedulesPage").then((module) => ({ default: module.SchedulesPage })));
 
 class ErrorBoundary extends React.Component {
-  constructor(props) {
-    super(props);
-    this.state = { hasError: false };
-  }
-  static getDerivedStateFromError() {
-    return { hasError: true };
-  }
-  componentDidCatch(error, info) {
-    console.error('Unhandled UI error:', error, info.componentStack);
-  }
-  render() {
-    if (this.state.hasError) {
-      return (
-        <div className="d-flex flex-column align-items-center justify-content-center min-vh-100 text-center p-4">
-          <i className="bi bi-exclamation-triangle-fill text-warning fs-1 mb-3"></i>
-          <h4 className="text-white mb-2">Something went wrong</h4>
-          <p className="text-secondary mb-4">An unexpected error occurred. Please refresh the page.</p>
-          <button className="btn btn-primary" onClick={() => this.setState({ hasError: false })}>
-            Try again
-          </button>
-        </div>
-      );
+    constructor(props) {
+        super(props);
+        this.state = { error: null };
     }
-    return this.props.children;
-  }
-}
 
-import { Login } from './components/Login';
-import { Sidebar } from './components/Layout/Sidebar';
-
-import { JobsPage } from './pages/JobsPage';
-import { NewSearchPage } from './pages/NewSearchPage';
-import { SchedulesPage } from './pages/SchedulesPage';
-import { HistoryPage } from './pages/HistoryPage';
-import { ProgressPage } from './pages/ProgressPage';
-
-function DashboardLayout() {
-  const { isLoggedIn, user, logout } = useAuth();
-  const location = useLocation();
-  const navigate = useNavigate();
-  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
-  const [isDesktopSidebarCollapsed, setIsDesktopSidebarCollapsed] = useState(false);
-
-  if (!isLoggedIn) {
-      return <Login />;
-  }
-
-  const getPageContext = (pathname) => {
-    switch (pathname) {
-      case '/jobs':
-        return {
-          title: 'Dashboard',
-          desc: 'Overview of your search activities',
-          primaryAction: { label: 'New Search', icon: 'bi-search', to: '/new' }
-        };
-      case '/new':
-        return {
-          title: 'New Search',
-          desc: 'Configure and launch a new search',
-          secondaryAction: { label: 'Back to Dashboard', icon: 'bi-arrow-left', to: '/jobs' }
-        };
-      case '/schedules':
-        return {
-          title: 'Schedules',
-          desc: 'Manage your automated searches',
-          primaryAction: { label: 'Create Search', icon: 'bi-plus-circle', to: '/new' }
-        };
-      case '/history':
-        return {
-          title: 'Search History',
-          desc: 'Review your search history',
-          primaryAction: { label: 'Run New Search', icon: 'bi-search', to: '/new' }
-        };
-      case '/progress':
-        return {
-          title: 'Search in Progress',
-          desc: 'Real-time search status',
-          secondaryAction: { label: 'Dashboard', icon: 'bi-grid', to: '/jobs' }
-        };
-      default:
-        return { title: 'JobHunter', desc: '' };
+    static getDerivedStateFromError(error) {
+        return { error };
     }
-  };
 
-  const currentContext = getPageContext(location.pathname);
+    componentDidCatch(error, info) {
+        console.error("Unhandled UI error", error, info.componentStack);
+    }
 
-  return (
-    <>
-      <div className="animated-bg">
-        <div className="animated-bg-blob blob-1"></div>
-        <div className="animated-bg-blob blob-2"></div>
-        <div className="animated-bg-blob blob-3"></div>
-      </div>
-
-      <div className="d-flex min-vh-100 position-relative overflow-hidden">
-        <div className={`sidebar-backdrop ${isSidebarOpen ? 'show' : ''}`} onClick={() => setIsSidebarOpen(false)} />
-
-        <Sidebar
-          username={user}
-          onLogout={logout}
-          isOpen={isSidebarOpen}
-          onClose={() => setIsSidebarOpen(false)}
-          isCollapsed={isDesktopSidebarCollapsed}
-          onToggleCollapse={() => setIsDesktopSidebarCollapsed(!isDesktopSidebarCollapsed)}
-        />
-
-        <div className={`flex-grow-1 w-100 ${isDesktopSidebarCollapsed ? 'd-lg-ml-80' : 'd-lg-ml-280'}`} style={{ transition: 'margin 0.3s ease, width 0.3s ease' }}>
-          <div className="container-fluid p-2 p-lg-5">
-            <div className="d-flex justify-content-between align-items-start mb-4 mb-lg-5 pt-4 pt-lg-0">
-              <div className="d-flex align-items-center">
-                <button className="btn btn-icon btn-secondary me-3 d-lg-none" onClick={() => setIsSidebarOpen(true)}>
-                  <i className="bi bi-list fs-4"></i>
-                </button>
-                <div>
-                  <h1 className="fw-bold text-white mb-1 d-none d-md-block">{currentContext.title}</h1>
-                  <h4 className="fw-bold text-white mb-0 d-md-none">{currentContext.title}</h4>
-                  <p className="text-secondary mb-0 d-none d-md-block">{currentContext.desc}</p>
+    render() {
+        if (this.state.error) {
+            return (
+                <div className="state-panel state-panel--danger" role="alert">
+                    <i className="bi bi-exclamation-triangle" aria-hidden="true" />
+                    <h2>Questa vista si è interrotta</h2>
+                    <p>I dati locali non sono stati modificati. Ricarica l’interfaccia per riprovare.</p>
+                    <button type="button" className="button button--primary" onClick={() => window.location.reload()}>Ricarica applicazione</button>
                 </div>
-              </div>
+            );
+        }
+        return this.props.children;
+    }
+}
+function AuthenticatedApp() {
+    const { isLoggedIn } = useAuth();
+    if (!isLoggedIn) return <Login />;
 
-              <div className="d-flex align-items-center gap-2 d-none d-md-flex">
-                {currentContext.secondaryAction && (
-                  <button
-                    className="btn btn-secondary btn-sm px-3"
-                    onClick={() => navigate(currentContext.secondaryAction.to)}
-                  >
-                    <i className={`bi ${currentContext.secondaryAction.icon} me-2`}></i>
-                    {currentContext.secondaryAction.label}
-                  </button>
-                )}
-                {currentContext.primaryAction && (
-                  <button
-                    className="btn btn-primary btn-sm px-3"
-                    onClick={() => navigate(currentContext.primaryAction.to)}
-                  >
-                    <i className={`bi ${currentContext.primaryAction.icon} me-2`}></i>
-                    {currentContext.primaryAction.label}
-                  </button>
-                )}
-              </div>
-            </div>
-
-            {(currentContext.secondaryAction || currentContext.primaryAction) && (
-              <div className="d-flex d-md-none gap-2 mb-3">
-                {currentContext.secondaryAction && (
-                  <button
-                    className="btn btn-secondary btn-sm flex-fill"
-                    onClick={() => navigate(currentContext.secondaryAction.to)}
-                  >
-                    <i className={`bi ${currentContext.secondaryAction.icon} me-2`}></i>
-                    {currentContext.secondaryAction.label}
-                  </button>
-                )}
-                {currentContext.primaryAction && (
-                  <button
-                    className="btn btn-primary btn-sm flex-fill"
-                    onClick={() => navigate(currentContext.primaryAction.to)}
-                  >
-                    <i className={`bi ${currentContext.primaryAction.icon} me-2`}></i>
-                    {currentContext.primaryAction.label}
-                  </button>
-                )}
-              </div>
-            )}
-
+    return (
+        <WorkspaceShell>
             <ErrorBoundary>
-              <Routes>
-                  <Route path="/" element={<Navigate to="/jobs" replace />} />
-                  <Route path="/jobs" element={<JobsPage />} />
-                  <Route path="/new" element={<NewSearchPage />} />
-                  <Route path="/schedules" element={<SchedulesPage />} />
-                  <Route path="/history" element={<HistoryPage />} />
-                  <Route path="/progress" element={<ProgressPage />} />
-                  <Route path="*" element={<Navigate to="/jobs" replace />} />
-              </Routes>
+                <Suspense fallback={<div className="state-panel" role="status">Caricamento vista locale…</div>}>
+                    <Routes>
+                        <Route path="/" element={<WorkspaceHomePage />} />
+                        <Route path="/profile" element={<CareerProfilePage />} />
+                        <Route path="/resumes" element={<ResumeStudioPage />} />
+                        <Route path="/applications" element={<ApplicationsPage />} />
+                        <Route path="/coach" element={<CareerCoachPage />} />
+                        <Route path="/jobs" element={<JobsPage />} />
+                        <Route path="/search" element={<NewSearchPage />} />
+                        <Route path="/new" element={<Navigate to="/search" replace />} />
+                        <Route path="/schedules" element={<SchedulesPage />} />
+                        <Route path="/history" element={<HistoryPage />} />
+                        <Route path="/progress" element={<ProgressPage />} />
+                        <Route path="*" element={<Navigate to="/" replace />} />
+                    </Routes>
+                </Suspense>
             </ErrorBoundary>
-          </div>
-        </div>
-      </div>
-    </>
-  );
+        </WorkspaceShell>
+    );
 }
 
 export default function App() {
-  return (
-    <BrowserRouter>
-      <AuthProvider>
-        <SearchProvider>
-          <ToastProvider>
-            <DashboardLayout />
-          </ToastProvider>
-        </SearchProvider>
-      </AuthProvider>
-    </BrowserRouter>
-  );
+    const Router = isDesktopShell() ? HashRouter : BrowserRouter;
+    return (
+        <Router>
+            <AuthProvider>
+                <SearchProvider>
+                    <ToastProvider>
+                        <AuthenticatedApp />
+                    </ToastProvider>
+                </SearchProvider>
+            </AuthProvider>
+        </Router>
+    );
 }

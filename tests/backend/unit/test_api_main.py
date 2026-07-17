@@ -9,14 +9,19 @@ client = TestClient(app, raise_server_exceptions=False)
 
 
 def test_health():
-    with patch("backend.db.base.SessionLocal") as mock_session:
+    with (
+        patch("backend.db.base.SessionLocal") as mock_session,
+        patch("backend.main._check_migration_status", return_value="current"),
+    ):
         mock_db = MagicMock()
         mock_session.return_value = mock_db
         response = client.get("/api/v1/health")
         assert response.status_code == 200
         data = response.json()
-        assert data["status"] == "ok"
+        assert data["status"] == "ready"
         assert data["database"] == "connected"
+        assert data["storage"] == "writable"
+        assert data["migrations"] == "current"
 
 
 def test_health_returns_503_when_database_unavailable():
@@ -30,7 +35,59 @@ def test_health_live_ignores_database_state():
     with patch("backend.main._check_db_status", return_value="unavailable"):
         response = client.get("/api/v1/health/live")
     assert response.status_code == 200
-    assert response.json() == {"status": "ok"}
+    assert response.json() == {"status": "alive"}
+
+
+def test_readiness_checks_database_and_storage_independently():
+    with (
+        patch("backend.main._check_db_status", return_value="connected"),
+        patch("backend.main._check_storage_status", return_value="unavailable"),
+        patch("backend.main._check_migration_status", return_value="current"),
+    ):
+        response = client.get("/api/v1/health/ready")
+    assert response.status_code == 503
+    assert response.json() == {
+        "status": "degraded",
+        "database": "connected",
+        "storage": "unavailable",
+        "migrations": "current",
+    }
+
+
+def test_readiness_rejects_an_outdated_schema():
+    with (
+        patch("backend.main._check_db_status", return_value="connected"),
+        patch("backend.main._check_storage_status", return_value="writable"),
+        patch("backend.main._check_migration_status", return_value="outdated"),
+    ):
+        response = client.get("/api/v1/health/ready")
+    assert response.status_code == 503
+    assert response.json()["migrations"] == "outdated"
+
+
+def test_migration_status_handles_probe_failure():
+    from backend.main import _check_migration_status
+
+    with patch("backend.db.base.engine.connect", side_effect=RuntimeError("cannot connect")):
+        assert _check_migration_status() == "unavailable"
+
+
+def test_model_health_is_non_blocking_when_runtime_is_unavailable():
+    from backend.inference.service import LocalModelStatus
+
+    status = LocalModelStatus(
+        available=False,
+        ready=False,
+        endpoint="http://127.0.0.1:11434",
+        configured_model="qwen3:4b",
+        installed_models=[],
+        error_code="local_runtime_unreachable",
+    )
+    with patch("backend.inference.service.get_local_model_status", return_value=status):
+        response = client.get("/api/v1/health/model")
+    assert response.status_code == 200
+    assert response.json()["status"] == "unavailable"
+    assert response.json()["ready"] is False
 
 
 def test_check_db_status_handles_session_creation_failure():

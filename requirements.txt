@@ -1,49 +1,30 @@
-# ═══════════════════════════════════════
-# Job Hunter AI — Python Dependencies
-# ═══════════════════════════════════════
+# Direct production dependencies. Regenerate requirements.lock with:
+# pip-compile --generate-hashes --output-file requirements.lock requirements.txt
 
-# ─── Web Framework ───
-fastapi>=0.115.0
-uvicorn[standard]>=0.34.0
-python-multipart>=0.0.17
+fastapi==0.139.2
+uvicorn[standard]==0.51.0
+python-multipart==0.0.32
 
-# ─── Database ───
-sqlalchemy>=2.0.36
-alembic>=1.14.0
+SQLAlchemy==2.0.51
+# SQLAlchemy's architecture marker misses Windows-on-ARM while Linux ARM64 needs this.
+# Pinning it directly keeps the hashed lock portable across both build targets.
+greenlet==3.5.3
+alembic==1.18.5
 
-# ─── PostgreSQL Driver (optional, for production) ───
-psycopg2-binary>=2.9.9
+PyJWT==2.13.0
+bcrypt==5.0.0
 
-# ─── Authentication ───
-PyJWT>=2.9.0
-passlib[bcrypt]>=1.7.4
-supabase>=2.0.0
+httpx[http2]==0.28.1
+tenacity==9.1.4
 
-# ─── LLM Integration ───
-openai>=1.58.1
-google-genai>=1.0.0,<2.0.0
-g4f>=0.4.9.7
+pydantic==2.13.4
+pydantic-settings==2.14.2
+APScheduler==3.11.3
 
-# ─── HTTP Client (scraper) ───
-httpx[http2]>=0.28.0
-tenacity>=9.0.0
+PyMuPDF==1.28.0
+Pillow==12.3.0
+reportlab==4.5.1
+python-docx==1.2.0
 
-# ─── Data Validation ───
-pydantic>=2.10.0
-pydantic-settings>=2.0.0
-
-# ─── Scheduling ───
-apscheduler>=3.10.0
-
-# ─── File Processing ───
-PyMuPDF>=1.24.0
-
-# ─── Environment ───
-python-dotenv>=1.0.0
-
-# ─── Rate Limiting ───
-slowapi>=0.1.9
-
-# ─── Semantic Skill Matching (Phase 1) ───
-# Lightweight local embedding model (all-MiniLM-L6-v2 ~22MB, multilingual, no API cost)
-sentence-transformers>=3.0.0
+python-dotenv==1.2.2
+slowapi==0.1.10

@@ -76,8 +76,8 @@ def extract_json_payload(text: str) -> str:
 class LLMProvider(ABC):
     """Abstract base for all LLM providers.
 
-    Concrete implementations receive all runtime parameters (api_key, model,
-    temperature, ...) via their constructor — they must NOT read from
+    Concrete implementations receive all runtime parameters (model,
+    temperature, ...) via their constructor — they must not read from
     ``backend.core.config.settings`` directly.  Parameter resolution is
     handled by the **factory** layer (``get_provider_for_step``).
     """

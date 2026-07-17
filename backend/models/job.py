@@ -20,6 +20,12 @@ class ScrapedJob(BaseModel, TimestampMixin):
     __tablename__ = "scraped_jobs"
     __table_args__ = (
         UniqueConstraint("platform", "platform_job_id", name="uq_scraped_job_platform_id"),
+        Index(
+            "ix_scraped_jobs_domain_seniority_role",
+            "normalized_domain",
+            "normalized_seniority",
+            "normalized_role_type",
+        ),
     )
 
     platform = Column(String, index=True, nullable=False)
@@ -131,6 +137,7 @@ class ScrapedJob(BaseModel, TimestampMixin):
             "education_levels": self.normalized_education_levels or [],
             "key_requirements": self.normalized_key_requirements or [],
             "metadata": self.normalized_metadata or {},
+            "posting_quality": self.posting_quality,
         }
 
 
@@ -140,7 +147,8 @@ class Job(BaseModel, TimestampMixin):
         UniqueConstraint(
             "user_id", "scraped_job_id", "search_profile_id", name="uq_job_user_scraped_profile"
         ),
-        Index("ix_job_user_profile", "user_id", "search_profile_id"),
+        Index("ix_jobs_user_profile", "user_id", "search_profile_id"),
+        Index("ix_jobs_user_score", "user_id", "affinity_score"),
         Index("ix_jobs_user_dismissed_created_at", "user_id", "dismissed", "created_at"),
     )
 

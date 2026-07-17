@@ -83,6 +83,19 @@ def search_service(mock_db, mock_job_repo, mock_profile_repo):
 
 
 @pytest.mark.asyncio
+async def test_run_search_releases_reservation_without_activation_in_offline_mode(search_service):
+    with (
+        patch("backend.services.search_service.settings.OFFLINE_MODE", True),
+        patch.object(search_service, "_activate_search_task") as mock_activate,
+        patch("backend.services.search_service.release_task") as mock_release,
+    ):
+        await search_service.run_search(1, reservation_token="offline-token")
+
+    mock_activate.assert_not_called()
+    mock_release.assert_called_once_with(1, "offline-token")
+
+
+@pytest.mark.asyncio
 async def test_run_search_success(search_service, mock_profile_repo, mock_job_repo, mock_db):
     # Setup mocks
     mock_profile = MagicMock()
@@ -794,7 +807,7 @@ async def test_processing_consumer_skips_analysis_when_circuit_open(search_servi
 
 
 @pytest.mark.asyncio
-async def test_run_analysis_batches_does_not_increment_errors_for_circuit_open(search_service):
+async def test_run_analysis_batches_uses_deterministic_fallback_for_circuit_open(search_service):
     job = MagicMock()
     job.title = "Backend Engineer"
     job.descriptions = [MagicMock(description="Python role")]
@@ -822,7 +835,9 @@ async def test_run_analysis_batches_does_not_increment_errors_for_circuit_open(s
     ):
         result = await search_service._run_analysis_batches(1, {}, [job])
 
-    assert result == []
+    assert len(result) == 1
+    assert result[0][0] is job
+    assert result[0][1]["analysis_structured"]["mode"] == "deterministic_local"
     mock_increment_errors.assert_not_called()
 
 

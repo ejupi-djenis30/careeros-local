@@ -15,7 +15,7 @@ export function SearchProgress({ profileId, status, onStateChange, onClear }) {
     useEffect(() => {
         if (!displayStatus) return;
         const s = displayStatus.state;
-        if ((s === "done" || s === "error") && reportedState.current !== s) {
+        if (["done", "error", "stopped"].includes(s) && reportedState.current !== s) {
             reportedState.current = s;
             onStateChange?.(s);
         }
@@ -41,7 +41,9 @@ export function SearchProgress({ profileId, status, onStateChange, onClear }) {
 
     let _rawProgressPct = 0;
     let analyzingText = "ANALYZING TARGETS...";
-    if (_state === "generating") {
+    if (_state === "running") {
+        _rawProgressPct = 2;
+    } else if (_state === "generating") {
         _rawProgressPct = 5;
     } else if (_state === "searching" && _totalSearches > 0) {
         const searchPct = 5 + Math.round((_searchesCompleted / _totalSearches) * 85);
@@ -104,16 +106,19 @@ export function SearchProgress({ profileId, status, onStateChange, onClear }) {
         log,
         terminal_reason,
     } = displayStatus;
-    const isRunning = state === "generating" || state === "searching" || state === "analyzing";
+    const isRunning = ["running", "generating", "searching", "analyzing"].includes(state);
     const isDone = state === "done";
     const isError = state === "error" || state === "stopped";
     const doneNoticeByReason = {
         no_queries: "Search completed with notice: no valid queries were generated.",
+        no_valid_queries_after_filter: "Search completed with notice: generated queries did not pass local validation.",
+        no_queries_matching_preferences: "Search completed with notice: no query matched your explicit preferences.",
         no_results: "Search completed with notice: no jobs were found for the generated queries.",
         all_duplicates: "Search completed with notice: all found jobs were already present in history.",
         no_jobs_after_dedup: "Search completed with notice: fetched jobs collapsed during runtime deduplication.",
         no_relevant_jobs: "Search completed with notice: no jobs passed relevance filtering.",
         no_jobs_after_structured_filters: "Search completed with notice: all fetched jobs were filtered out by structured constraints.",
+        degraded_plan_fallback: "The local model was unavailable, so the deterministic search plan was used.",
     };
     const errorNoticeByReason = {
         search_execution_failed: "Search failed before any provider returned usable results.",
@@ -121,6 +126,8 @@ export function SearchProgress({ profileId, status, onStateChange, onClear }) {
         job_persistence_failed: "Jobs were analyzed, but saving them failed.",
         pipeline_timeout: "Search exceeded the maximum allowed processing time.",
         server_shutdown: "Search was interrupted because the server shut down.",
+        llm_plan_error: "The local model could not generate a search plan.",
+        llm_plan_rate_limited: "The local inference runtime is busy. Retry when capacity is available.",
     };
     const statusNotice = isDone
         ? doneNoticeByReason[terminal_reason]

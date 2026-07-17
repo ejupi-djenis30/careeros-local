@@ -69,6 +69,11 @@ async def start_search(
     db: Session = Depends(get_db),
     user_id: int = Depends(get_current_user_id),
 ):
+    if settings.OFFLINE_MODE is True:
+        raise HTTPException(
+            status_code=503,
+            detail="Live job-source access is disabled while offline mode is active",
+        )
     profile_repo = ProfileRepository(db)
 
     active_states = {"reserved", "generating", "searching", "analyzing"}

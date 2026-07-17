@@ -226,7 +226,7 @@ async def test_analyze_and_save_success(mock_service):
     job1.company = MagicMock()
     job1.company.name = "BigTech"
     job1.application = MagicMock(form_url="http://app", email="hr@ht")
-    job1.external_url = None
+    job1.external_url = "https://example.test/jobs/100"
     job1.publication = MagicMock(start_date="2024-01-01T10:00:00Z")
 
     # Needs geocode resolution
@@ -485,7 +485,7 @@ async def test_analyze_and_save_stopped_and_truncation(mock_service):
         location=SimpleNamespace(city="Bern", coordinates=None),
         employment=SimpleNamespace(workload_min=100, workload_max=100),
         application=None,
-        external_url="x",
+        external_url="https://example.test/jobs/1",
         publication=None,
         descriptions=[SimpleNamespace(description=long_desc)],
     )
