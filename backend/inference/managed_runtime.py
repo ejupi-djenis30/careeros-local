@@ -528,7 +528,11 @@ class ManagedRuntime:
             "--parallel",
             "1",
         ]
-        creationflags = subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0
+        creationflags = (
+            subprocess.CREATE_NO_WINDOW  # type: ignore[attr-defined]
+            if os.name == "nt"
+            else 0
+        )
         with self._lock:
             self._phase = "starting"
             self._model_key = selected

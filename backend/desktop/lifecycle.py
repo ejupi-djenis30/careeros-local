@@ -28,7 +28,9 @@ def _try_lock(handle: BinaryIO) -> bool:
         if os.name == "nt":
             import msvcrt
 
-            msvcrt.locking(handle.fileno(), msvcrt.LK_NBLCK, 1)
+            msvcrt.locking(  # type: ignore[attr-defined]
+                handle.fileno(), msvcrt.LK_NBLCK, 1  # type: ignore[attr-defined]
+            )
         else:
             import fcntl
 
@@ -45,7 +47,9 @@ def _unlock(handle: BinaryIO) -> None:
     if os.name == "nt":
         import msvcrt
 
-        msvcrt.locking(handle.fileno(), msvcrt.LK_UNLCK, 1)
+        msvcrt.locking(  # type: ignore[attr-defined]
+            handle.fileno(), msvcrt.LK_UNLCK, 1  # type: ignore[attr-defined]
+        )
     else:
         import fcntl
 
