@@ -14,13 +14,13 @@ export function JobAnalysisModal({ job, onClose }) {
                 className="glass-panel p-4 m-3 animate-slide-up shadow-2xl custom-modal-content"
                 role="dialog"
                 aria-modal="true"
-                aria-label="AI Match Analysis"
+                aria-label="Analisi locale del match"
             >
                 <div className="d-flex justify-content-between align-items-center mb-4 border-bottom border-white-10 pb-3">
                     <div>
                         <h5 className="mb-1 text-white d-flex align-items-center gap-2">
-                            <i className="bi bi-robot text-info"></i>
-                            AI Match Analysis
+                            <i className="bi bi-cpu text-info"></i>
+                            Analisi locale del match
                         </h5>
                         <div className="x-small text-secondary fw-bold text-uppercase tracking-wider">
                             {job.title} <span className="mx-1 text-muted">•</span> {job.company}

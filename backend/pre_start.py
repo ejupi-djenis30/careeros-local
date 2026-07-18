@@ -3,13 +3,15 @@ import logging
 from sqlalchemy import text
 from tenacity import after_log, before_log, retry, stop_after_attempt, wait_fixed
 
-from backend import models  # noqa: F401
+from backend import model_registry  # noqa: F401
+from backend.core.config import settings
+from backend.core.logging import configure_logging
 from backend.db.base import engine
 
-logging.basicConfig(level=logging.INFO)
+configure_logging(settings.LOG_LEVEL)
 logger = logging.getLogger(__name__)
 
-max_tries = 60 * 5  # 5 minutes
+max_tries = 30
 wait_seconds = 1
 
 
@@ -31,9 +33,9 @@ def init() -> None:
         # Base.metadata.create_all(bind=engine)
         # logger.info("Database tables created successfully.")
 
-    except Exception as e:
-        logger.error(e)
-        raise e
+    except Exception as exc:
+        logger.error("Database readiness check failed (%s)", type(exc).__name__)
+        raise
 
 
 def main() -> None:

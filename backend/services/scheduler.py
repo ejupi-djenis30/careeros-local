@@ -11,6 +11,7 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.interval import IntervalTrigger
 from sqlalchemy.orm import Session
 
+from backend.core.config import settings
 from backend.db.base import SessionLocal
 from backend.repositories.profile_repository import ProfileRepository
 from backend.services.search_service import get_search_service
@@ -32,6 +33,9 @@ def get_scheduler() -> AsyncIOScheduler:
 
 async def _run_scheduled_search(profile_id: int):
     """Execute a scheduled search for the given profile."""
+    if settings.OFFLINE_MODE is True:
+        logger.info("[Scheduler] Skipping scheduled search because offline mode is active")
+        return
     logger.info(f"[Scheduler] Running scheduled search for profile {profile_id}")
 
     # Respect the same reservation lifecycle as manual searches so that a

@@ -1,66 +1,58 @@
-# **Guidelines for AI Agents: Job Hunter AI**
+# Agent Working Agreement
 
-Welcome, AI Agent. Follow these rules to keep implementations reliable, testable, and aligned with the current architecture.
+This repository is CareerOS Local, a privacy-sensitive desktop application. These instructions apply to human and AI contributors.
 
-## **1. Absolute Objectivity, Truthfulness, and Completeness (CRITICAL)**
+## Non-negotiable product boundaries
 
-*   **Do not invent success:** If a test fails, state clearly that it failed. NEVER hallucinate or pretend that tests passed when they did not.
-*   **Do not invent functionality:** If something is broken, report it as broken. Do not assume an implementation works without verification.
-*   **Do not invent skills:** If you lack the necessary context to develop a specific feature safely, explicitly state "I cannot do this reliably."
-*   **No placeholders:** Never use placeholders like `// ...` or `TODO` instead of real implementation.
+1. Keep career data, generated documents, model weights, prompts, and inference local. Do not add cloud AI, telemetry, remote error reporting, or silent downloads.
+2. Core workflows must remain usable without a model. AI output is advisory, evidence-bound, schema-validated, and never written as a confirmed fact without explicit user confirmation.
+3. Accept inference endpoints only on loopback or the explicit local-container allowlist. Never weaken this validation for convenience.
+4. Preserve manifest verification, path containment, archive limits, atomic writes, and the desktop vault lock.
+5. Never log access tokens, desktop session tokens, prompts, resume content, source documents, model output, or personal profile fields.
 
-## **2. Workspace, Logging, and Temporary Files**
+## Spec-driven workflow
 
-The `cmd_outputs/` directory is your designated safe workspace and scratchpad. It is ignored by Git (`.gitignore`).
+For material behavior changes, update the active Spec Kit artifacts in this order: constitution, specification, plan, tasks, implementation, analysis, convergence. Requirements and acceptance tests take precedence over incidental legacy structure.
 
-*   **Command Logging:** Redirect significant terminal output to `cmd_outputs/` (example: `npm run build > cmd_outputs/frontend_build.log 2>&1`).
-*   **Verification:** After logging a command, read the log file to verify success instead of relying solely on truncated snapshot outputs.
-*   **Temporary & Utility Files:** Use `cmd_outputs/` to store temporary text dumps, JSON API payloads, data validations, or utility scripts that are not meant to be integrated into the final `Job Hunter AI` production codebase. Do not pollute the root directory.
+Do not delete `.agents/skills`, `.specify`, or active `specs` artifacts as repository cleanup. They are development infrastructure.
 
-## **3. Git Workflow & Branching Strategy**
+## Architecture
 
-You must adhere to a clean and safe Git workflow to protect the stability of the application.
+- `frontend/src-tauri`: native lifecycle, capabilities, and packaging. Keep permissions minimal.
+- `frontend/src`: React feature UI and the loopback API client.
+- `backend/api`: transport only; no domain decisions.
+- `backend/career`, `resumes`, `applications`, `workflows`: domain models and services.
+- `backend/ai`: strict contracts, retrieval, grounding, evaluation, and local-AI capabilities.
+- `backend/inference`: managed llama.cpp lifecycle and optional local development adapters.
+- `backend/search`: acquisition, normalization, matching, persistence, and finalization.
+- `backend/portability`: versioned backup manifest, archive, and transactional restore.
 
-*   **Branching for large/risky features:** Do not work directly on `main`/`master` for major changes. Create an isolated branch.
-*   **Local Testing Requisite:** Write the necessary unit or integration tests for the new feature while on the branch. Validate that *all* existing project tests still pass.
-*   **Merging:** Only after finishing the feature entirely and testing it locally should you merge the branch back into `master`/`main` (or instruct the user that it is safe to do so).
-*   **Commit Atomicity:** Keep your commits logical and organized. Use descriptive commit messages detailing *what* changed and *why*.
+Keep new production modules focused. A compatibility facade must remain under 300 lines; do not grow a facade into an implementation.
 
-## **4. Testing and Deployment Philosophy**
+## Change discipline
 
-*   **Docker First:** Prefer Docker (`docker-compose up -d --build`) for full-stack validation.
-*   **Manual Fallback:** Only if Docker setup fails fundamentally, run frontend/backend manually.
-*   **Test Integrity:** Before concluding implementation, run relevant backend/frontend tests and verify logs.
-*   **CI/CD Pipeline Awareness:** Consider how your code modifications interact with the GitHub Actions pipelines defined in `.github/workflows/ci.yml`. If you create a new suite of tests, ensure they are registered in the CI configuration so they run automatically on the user's PRs.
+- Inspect existing behavior and tests before editing.
+- Preserve unrelated user changes and never use destructive Git recovery commands.
+- Use Alembic for every persistent schema change.
+- Add tests for defects, security boundaries, migrations, and failure rollback.
+- Use the operating system temporary directory for ephemeral test/output data. Do not create `cmd_outputs`, command dumps, ad-hoc logs, or scratch scripts in the repository.
+- Avoid placeholders, silent exception handling, and claims that were not verified.
 
-## **5. Project Architecture Principles**
+## Required validation
 
-Job Hunter AI employs a strict separation of concerns. Monolithic files are strictly forbidden unless temporary.
+Run checks proportional to the change, then run all gates before release:
 
-### **Backend (FastAPI & Clean Architecture)**
-*   **API Layer (`backend/api/routes/`)**: Pure HTTP transport layer. Handles receiving requests and Pydantic validation via dependencies. No business logic.
-*   **Service Layer (`backend/services/`)**: The core business rules and orchestration engines (e.g., LLM generation coordination, job lifecycle execution).
-*   **Repository Layer (`backend/repositories/`)**: Abstract data persistence implementing the Repository Pattern. Decouples Services from SQLAlchemy.
-*   **Provider Layer (`backend/providers/`)**: External world integrations (e.g., LLM API clients, target Web Scrapers).
-*   **Schemas & Models**: Pydantic validation goes in `backend/schemas/`. SQLAlchemy ORM mapping goes in `backend/models/`.
-*   **Search Runtime Rule:** Current pipeline is normalization-first:
-	1) fetch + deduplicate,
-	2) persist to shared `ScrapedJob`,
-	3) normalize (`provider_bootstrap` then LLM NORMALIZE step),
-	4) structured filtering via normalized fields (domain, seniority, qualification, experience, skills),
-	5) deep analysis (MATCH step) and user-job save.
-	Normalization is the **sole gatekeeper** before the expensive MATCH step — there is no separate RELEVANCE or SUMMARY step.
-*   **Search Task Concurrency Rule:** Use reservation lifecycle (`reserve_task`/`release_task`) around background search task startup to prevent duplicate concurrent runs.
+```text
+ruff check backend tests/backend alembic/versions
+mypy backend --ignore-missing-imports --no-error-summary
+pytest tests/backend -q
+npm test; npm run lint; npm run build
+cargo fmt --check; cargo clippy --all-targets -- -D warnings; cargo test
+alembic upgrade head; alembic downgrade -1; alembic upgrade head
+```
 
-### **Frontend (React 19 & Vite)**
-*   **Component Structure**: We use React with Vite. Keep components extremely small and functionally focused (Single Responsibility). If a component exceeds 15KB or ~150 lines, plan to extract its sub-elements.
-*   **State Management**: Use the Context API (`AuthContext`, `SearchContext`) for global polling and state propagation.
-*   **Styling**: Rely heavily on vanilla CSS architecture or existing UI frameworks imported within the project, aiming for modern glassmorphism or sleek, responsive standard designs.
+Report failed or skipped checks exactly. Never describe an unexecuted check as passing.
 
-## **6. General Working Rules**
+## Git and release safety
 
-*   **Context Discovery:** Read `README.md` before changing core domain logic (LLM prompts, scoring, normalization, or filtering behavior).
-*   **Reuse Existing Tools:** Do not reinvent the wheel. Check `backend/services/utils.py` and existing database helpers before proposing new utility functions.
-*   **Database Schema Evolutions:** If you encounter a database schema issue or add a new SQLAlchemy column during development, perform the necessary Alembic migrations. Alternatively, if testing on a totally fresh, stateless run (and explicit permission is granted), you may wipe the Docker volumes (`docker-compose down -v`) to reset the schema.
-
-**Acknowledge these rules intrinsically before you proceed with code execution.**
+Use a `codex/` branch for broad changes. Do not stage, commit, push, publish a release, rename the remote repository, or open a pull request unless the user requested that action. Release artifacts require checksums; signing status must be stated truthfully.

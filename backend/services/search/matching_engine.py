@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Any, Dict, Optional
 
 from backend.core.config import settings
-from backend.services.search.listing_utils import (
+from backend.search.normalization.listings import (
     _word_bounded_substring,
     coerce_int,
     compute_prescore,
@@ -245,7 +245,7 @@ class SearchNormalizationFilterEngine:
                 if intent_seniority_min:
                     min_rank = self._SENIORITY_ORDER.get(intent_seniority_min, -1)
                     if min_rank >= 0 and job_rank < min_rank:
-                        pass
+                        return False, "norm_seniority_underqualified"
                 if intent_seniority_max:
                     max_rank = self._SENIORITY_ORDER.get(intent_seniority_max, -1)
                     if max_rank >= 0 and job_rank > max_rank:

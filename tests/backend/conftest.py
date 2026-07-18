@@ -1,6 +1,9 @@
+import ipaddress
 import os
+import socket
 
 os.environ["TESTING"] = "1"
+os.environ.setdefault("SECRET_KEY", "test-only-local-secret-key-at-least-32-bytes")
 import pytest
 from fastapi.testclient import TestClient
 
@@ -12,6 +15,45 @@ from backend.services.auth import get_password_hash
 
 # Use the centralized Testing session from backend.db.base (triggered by TESTING=1)
 TestingSessionLocal = SessionLocal
+
+
+def _is_loopback_host(host: object) -> bool:
+    value = str(host).strip().lower().strip("[]")
+    if value in {"localhost", "testserver", "ollama"}:
+        return True
+    try:
+        return ipaddress.ip_address(value).is_loopback
+    except ValueError:
+        return False
+
+
+@pytest.fixture(autouse=True)
+def deny_public_network(request, monkeypatch):
+    """Fail fast on accidental egress; only explicit ``live`` tests may use it."""
+    if request.node.get_closest_marker("live"):
+        yield
+        return
+
+    original_connect = socket.socket.connect
+    original_create_connection = socket.create_connection
+
+    def guarded_connect(sock, address):
+        if sock.family == getattr(socket, "AF_UNIX", None):
+            return original_connect(sock, address)
+        host = address[0] if isinstance(address, tuple) and address else address
+        if not _is_loopback_host(host):
+            raise AssertionError(f"Public network access is disabled in tests: {host}")
+        return original_connect(sock, address)
+
+    def guarded_create_connection(address, *args, **kwargs):
+        host = address[0] if isinstance(address, tuple) and address else address
+        if not _is_loopback_host(host):
+            raise AssertionError(f"Public network access is disabled in tests: {host}")
+        return original_create_connection(address, *args, **kwargs)
+
+    monkeypatch.setattr(socket.socket, "connect", guarded_connect)
+    monkeypatch.setattr(socket, "create_connection", guarded_create_connection)
+    yield
 
 
 def override_get_db():

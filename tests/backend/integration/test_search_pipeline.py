@@ -4,6 +4,7 @@ from unittest.mock import AsyncMock
 import pytest
 
 import backend.services.search_service as search_service_module
+from backend.career.models import CandidateProfile
 from backend.models import Job, ScrapedJob, SearchProfile
 from backend.services.search_service import SearchService
 from backend.services.search_status import get_status
@@ -65,6 +66,13 @@ async def test_run_search_pipeline_persists_catalog_filters_and_refines_jobs(
         max_keyword_queries=1,
     )
     db_session.add(profile)
+    db_session.add(
+        CandidateProfile(
+            user_id=test_user.id,
+            display_name="Pipeline Integration",
+            preferences={"job_source_consents": {"job_room": True}},
+        )
+    )
     db_session.commit()
     db_session.refresh(profile)
 

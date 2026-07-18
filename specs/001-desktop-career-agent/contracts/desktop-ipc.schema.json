@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://careeros.local/contracts/desktop-ipc.schema.json",
+  "title": "CareerOS Local desktop_bootstrap result",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["desktop", "apiBaseUrl", "sessionToken", "appVersion", "dataDirectory"],
+  "properties": {
+    "desktop": { "const": true },
+    "apiBaseUrl": {
+      "type": "string",
+      "pattern": "^http://127\\.0\\.0\\.1:[1-9][0-9]{0,4}/api/v1$"
+    },
+    "sessionToken": {
+      "type": "string",
+      "minLength": 43,
+      "maxLength": 128,
+      "pattern": "^[A-Za-z0-9_-]+$"
+    },
+    "appVersion": { "type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+" },
+    "dataDirectory": { "type": "string", "minLength": 1 },
+    "backendState": {
+      "type": "string",
+      "enum": ["spawning", "waiting_ready", "ready", "failed"]
+    }
+  }
+}

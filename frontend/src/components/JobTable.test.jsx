@@ -144,13 +144,13 @@ describe('JobTable', () => {
         fireEvent.click(viewBtns[1] || viewBtns[0]);
 
         expect(mockRecordView).toHaveBeenCalledWith('1');
-        expect(screen.getByText('AI Match Analysis')).toBeInTheDocument();
+        expect(screen.getByText('Analisi locale del match')).toBeInTheDocument();
         expect(screen.getByText('Great fit because...')).toBeInTheDocument();
 
         const closeBtn = screen.getByText('Close');
         fireEvent.click(closeBtn);
 
-        expect(screen.queryByText('AI Match Analysis')).not.toBeInTheDocument();
+        expect(screen.queryByText('Analisi locale del match')).not.toBeInTheDocument();
     });
 
     it('opens modal from mobile view and closes with X icon', () => {
@@ -166,12 +166,12 @@ describe('JobTable', () => {
         const viewBtns = screen.getAllByTitle('View Analysis');
         fireEvent.click(viewBtns[0]); // Mobile variant is rendered first
 
-        expect(screen.getByText('AI Match Analysis')).toBeInTheDocument();
+        expect(screen.getByText('Analisi locale del match')).toBeInTheDocument();
 
         const xIcon = document.querySelector('.bi-x-lg');
         fireEvent.click(xIcon.closest('button'));
 
-        expect(screen.queryByText('AI Match Analysis')).not.toBeInTheDocument();
+        expect(screen.queryByText('Analisi locale del match')).not.toBeInTheDocument();
     });
 
     it('logs recordView failures instead of swallowing them silently', async () => {

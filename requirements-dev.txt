@@ -1,21 +1,18 @@
-# ═══════════════════════════════════════
-# Job Hunter AI — Development & Test Dependencies
-# ═══════════════════════════════════════
-# Install alongside requirements.txt:
-#   pip install -r requirements.txt -r requirements-dev.txt
+# Complete development environment. Regenerate requirements-dev.lock with:
+# pip-compile --generate-hashes --allow-unsafe --output-file requirements-dev.lock requirements-dev.txt
 
 -r requirements.txt
 
-# ─── Testing ───
-pytest>=8.0.0
-pytest-asyncio>=0.24.0
-pytest-cov>=6.0.0
-pytest-mock>=3.14.0
+pytest==9.0.3
+pytest-asyncio==1.4.0
+pytest-cov==7.1.0
+pytest-mock==3.15.1
+httpx2==2.7.0
 
-# ─── Linting ───
-ruff>=0.9.0
-mypy>=1.10.0
-pre-commit>=4.0.0
+ruff==0.15.22
+mypy==2.3.0
+types-reportlab==4.5.1.20260712
+pre-commit==4.6.0
 
-# ─── Security Auditing ───
-pip-audit>=2.7.0
+pip-audit==2.10.1
+pip-licenses==5.5.5

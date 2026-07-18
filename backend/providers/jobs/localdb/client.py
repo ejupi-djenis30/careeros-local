@@ -65,7 +65,11 @@ class LocalDbProvider(JobProvider):
         )
 
     async def search(self, request: JobSearchRequest) -> JobSearchResponse:
-        logger.info(f"[{self.name}] Starting search for '{request.query}' in '{request.location}'")
+        logger.info(
+            "Local database search started query_present=%s location_present=%s",
+            bool(request.query),
+            bool(request.location),
+        )
         start_time = time.time()
 
         # Start building the ORM query

@@ -113,6 +113,19 @@ async def test_run_scheduled_search_skipped_when_already_running():
 
 
 @pytest.mark.asyncio
+async def test_run_scheduled_search_skips_all_provider_work_in_offline_mode():
+    with (
+        patch("backend.services.scheduler.settings.OFFLINE_MODE", True),
+        patch("backend.services.scheduler.reserve_task") as mock_reserve,
+        patch("backend.services.scheduler.SessionLocal") as mock_session,
+    ):
+        await _run_scheduled_search(1)
+
+    mock_reserve.assert_not_called()
+    mock_session.assert_not_called()
+
+
+@pytest.mark.asyncio
 async def test_run_scheduled_search_profile_not_found():
     mock_db = MagicMock()
     mock_db.query.return_value.filter.return_value.first.return_value = None

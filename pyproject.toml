@@ -1,30 +1,33 @@
 [project]
-name = "job-hunter-ai"
+name = "careeros-local"
 version = "1.0.0"
-description = "AI-powered Swiss job search platform with automated scraping, LLM analysis, and smart search scheduling"
-requires-python = ">=3.11"
+description = "Private desktop career agent with a local vault, resume studio, and local AI"
+requires-python = ">=3.12,<3.14"
 
 [tool.pytest.ini_options]
+addopts = ["--import-mode=importlib"]
 testpaths = ["tests"]
 python_files = ["test_*.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]
 markers = [
+    "acceptance: artifact-level tests enabled by an explicit packaged binary or service",
     "live: marks tests that hit live external APIs (deselect with '-m \"not live\"')",
     "slow: marks tests as slow-running",
+    "performance: opt-in repeatable performance acceptance tests",
 ]
 asyncio_mode = "auto"
 
 [tool.ruff]
 line-length = 100
-target-version = "py311"
+target-version = "py312"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "W"]
 ignore = ["E501"]
 
 [tool.mypy]
-python_version = "3.11"
+python_version = "3.12"
 warn_return_any = true
 warn_unused_configs = true
 disallow_untyped_defs = false
@@ -33,8 +36,8 @@ disallow_untyped_defs = false
 # The codebase uses SQLAlchemy 1.x Column-based ORM models whose attribute
 # assignments are typed as "Column[X]" rather than "X", causing widespread
 # false-positive assignment errors that do not reflect real bugs.
-# Provider integrations use dynamic patterns (httpx, Gemini SDK, etc.) that
-# require the corresponding stubs which are not installed.
+# Provider integrations use dynamic HTTP client patterns that require
+# corresponding third-party stubs which are not installed.
 # These overrides suppress pre-existing noise so CI remains green.
 
 [[tool.mypy.overrides]]
@@ -67,5 +70,14 @@ module = [
     "backend.services.llm_service",
     "backend.services.utils",
     "backend.services.search.*",
+    # Cross-capability mixins are validated through their concrete compositions.
+    "backend.ai.pipeline",
+    "backend.ai.runtime_policy",
+    "backend.ai.planning",
+    "backend.ai.profile_normalization",
+    "backend.ai.job_normalization",
+    "backend.ai.matching",
+    "backend.ai.reranking",
+    "backend.search.*",
 ]
 ignore_errors = true

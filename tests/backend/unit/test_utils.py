@@ -93,9 +93,11 @@ async def test_extract_text_from_file_pdf_success():
 
     from unittest.mock import MagicMock, patch
 
-    with patch("backend.services.utils.fitz.open") as mock_open:
-        mock_doc = [MagicMock(get_text=lambda: "page 1"), MagicMock(get_text=lambda: " page 2")]
-        mock_open.return_value = mock_doc
+    with patch("backend.services.utils.PdfReader") as mock_reader:
+        mock_reader.return_value.pages = [
+            MagicMock(extract_text=lambda: "page 1"),
+            MagicMock(extract_text=lambda: " page 2"),
+        ]
         text = await extract_text_from_file(mock_file)
         assert text == "page 1 page 2"
 
@@ -115,18 +117,12 @@ async def test_geocode_location_known():
 
 
 @pytest.mark.asyncio
-async def test_geocode_location_cache():
-    from backend.providers.jobs.models import Coordinates
-    from backend.services.utils import _geocode_cache, geocode_location
+async def test_geocode_location_supports_local_aliases():
+    from backend.services.utils import geocode_location
 
-    _geocode_cache["fakecity"] = Coordinates(lat=1.0, lon=2.0)
-
-    res = await geocode_location("fakecity")
+    res = await geocode_location("Genève")
     assert res is not None
-    assert res.lat == 1.0
-
-    # Cleanup
-    del _geocode_cache["fakecity"]
+    assert math.isclose(res.lat, 46.2044, abs_tol=0.01)
 
 
 @pytest.mark.asyncio
@@ -138,50 +134,7 @@ async def test_geocode_location_empty_city():
 
 
 @pytest.mark.asyncio
-async def test_geocode_location_api_success():
-    from unittest.mock import AsyncMock, MagicMock, patch
-
+async def test_geocode_location_unknown_city_stays_local():
     from backend.services.utils import geocode_location
 
-    mock_resp = AsyncMock()
-    mock_resp.status_code = 200
-    mock_resp.json = MagicMock(return_value=[{"lat": "48.0", "lon": "9.0"}])
-
-    mock_get = AsyncMock(return_value=mock_resp)
-
-    with patch("httpx.AsyncClient.get", mock_get):
-        res = await geocode_location("UnknownCity")
-        assert res is not None
-        assert res.lat == 48.0
-
-
-@pytest.mark.asyncio
-async def test_geocode_location_api_provided_client():
-    from unittest.mock import AsyncMock, MagicMock
-
-    from backend.services.utils import geocode_location
-
-    mock_resp = AsyncMock()
-    mock_resp.status_code = 200
-    mock_resp.json = MagicMock(return_value=[])  # Empty list to trigger return None on line 142
-
-    client_mock = AsyncMock()
-    client_mock.get = AsyncMock(return_value=mock_resp)
-
-    res = await geocode_location("UnknownCity2", client=client_mock)
-    assert res is None
-
-
-@pytest.mark.asyncio
-async def test_geocode_location_api_exception():
-    from unittest.mock import AsyncMock, patch
-
-    import httpx
-
-    from backend.services.utils import geocode_location
-
-    mock_get = AsyncMock(side_effect=httpx.RequestError("Timeout"))
-
-    with patch("httpx.AsyncClient.get", mock_get):
-        res = await geocode_location("ErrorCity")
-        assert res is None
+    assert await geocode_location("UnknownCity") is None

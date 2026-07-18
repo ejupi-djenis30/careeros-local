@@ -1,6 +1,3 @@
-/* Google Fonts: Inter & Outfit */
-@import url("https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;500;600;700&display=swap");
-
 :root {
   /* ─── Premium Dark Palette ─── */
   --bg-body: #09090b; /* Deepest black/zinc */
@@ -56,7 +53,7 @@
 }
 
 body {
-  font-family: "Inter", sans-serif;
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   background-color: var(--bg-body);
   color: var(--text-primary);
   overflow-x: hidden;
@@ -68,7 +65,7 @@ h3,
 h4,
 h5,
 h6 {
-  font-family: "Outfit", sans-serif;
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   letter-spacing: -0.02em;
 }
 

@@ -22,6 +22,7 @@ from backend.providers.jobs.models import (
     JobSearchResponse,
     ProviderCapabilities,
     ProviderHealth,
+    ProviderInfo,
     ProviderStatus,
 )
 
@@ -68,9 +69,7 @@ class SwissDevJobsProvider(BaseJobProvider):
     def display_name(self) -> str:
         return "SwissDevJobs.ch"
 
-    def get_provider_info(self) -> "ProviderInfo":  # noqa: F821
-        from backend.providers.jobs.models import ProviderInfo
-
+    def get_provider_info(self) -> ProviderInfo:
         return ProviderInfo(
             name=self.name,
             description="Exclusive job board for Software Engineers and IT professionals in Switzerland. Do NOT use this for non-IT jobs (e.g. HR, marketing, medical).",

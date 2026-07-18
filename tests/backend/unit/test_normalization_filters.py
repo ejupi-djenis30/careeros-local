@@ -407,12 +407,10 @@ class TestNormalizeUserProfile:
 class TestLLMServiceNormalizeUserProfile:
     async def test_returns_empty_dict_on_non_dict_llm_response(self, llm):
         """If LLM returns non-dict (e.g. None, list), should return {}."""
-        with patch.object(llm, "_get_provider") as mock_get_prov:
-            mock_provider = AsyncMock()
-            mock_provider.generate_json_async = AsyncMock(return_value=None)
-            mock_provider.generate_json_async_with_timeout = mock_provider.generate_json_async
-            mock_provider.model_id = "test/mock-model"
-            mock_get_prov.return_value = mock_provider
+        with (
+            patch.object(llm, "_get_provider", return_value=MagicMock(model_id="test/mock-model")),
+            patch.object(llm, "_call_provider_json", AsyncMock(return_value=None)),
+        ):
             result = await llm.normalize_user_profile("cv text", "developer", "")
         assert result == {}
 
@@ -428,12 +426,12 @@ class TestLLMServiceNormalizeUserProfile:
             "skills": ["Python", "FastAPI"],
             "confidence": 0.9,
         }
-        with patch.object(llm, "_get_provider") as mock_get_prov:
-            mock_provider = AsyncMock()
-            mock_provider.generate_json_async = AsyncMock(return_value=valid_llm_output)
-            mock_provider.generate_json_async_with_timeout = mock_provider.generate_json_async
-            mock_provider.model_id = "test/mock-model"
-            mock_get_prov.return_value = mock_provider
+        with (
+            patch.object(llm, "_get_provider", return_value=MagicMock(model_id="test/mock-model")),
+            patch.object(
+                llm, "_call_provider_json", AsyncMock(return_value=valid_llm_output)
+            ),
+        ):
             result = await llm.normalize_user_profile("cv text", "Python developer", "")
 
         assert result["seniority"] == "mid"
@@ -452,12 +450,10 @@ class TestLLMServiceNormalizeUserProfile:
             "skills": [],
             "confidence": 0.7,
         }
-        with patch.object(llm, "_get_provider") as mock_get_prov:
-            mock_provider = AsyncMock()
-            mock_provider.generate_json_async = AsyncMock(return_value=llm_output)
-            mock_provider.generate_json_async_with_timeout = mock_provider.generate_json_async
-            mock_provider.model_id = "test/mock-model"
-            mock_get_prov.return_value = mock_provider
+        with (
+            patch.object(llm, "_get_provider", return_value=MagicMock(model_id="test/mock-model")),
+            patch.object(llm, "_call_provider_json", AsyncMock(return_value=llm_output)),
+        ):
             result = await llm.normalize_user_profile("cv text", "executive role", "")
 
         assert result["seniority"] is None
@@ -474,12 +470,10 @@ class TestLLMServiceNormalizeUserProfile:
             "skills": [],
             "confidence": 0.6,
         }
-        with patch.object(llm, "_get_provider") as mock_get_prov:
-            mock_provider = AsyncMock()
-            mock_provider.generate_json_async = AsyncMock(return_value=llm_output)
-            mock_provider.generate_json_async_with_timeout = mock_provider.generate_json_async
-            mock_provider.model_id = "test/mock-model"
-            mock_get_prov.return_value = mock_provider
+        with (
+            patch.object(llm, "_get_provider", return_value=MagicMock(model_id="test/mock-model")),
+            patch.object(llm, "_call_provider_json", AsyncMock(return_value=llm_output)),
+        ):
             result = await llm.normalize_user_profile("cv", "developer", "")
 
         assert result["qualification_level"] is None
@@ -496,12 +490,10 @@ class TestLLMServiceNormalizeUserProfile:
             "skills": [],
             "confidence": 0.5,
         }
-        with patch.object(llm, "_get_provider") as mock_get_prov:
-            mock_provider = AsyncMock()
-            mock_provider.generate_json_async = AsyncMock(return_value=llm_output)
-            mock_provider.generate_json_async_with_timeout = mock_provider.generate_json_async
-            mock_provider.model_id = "test/mock-model"
-            mock_get_prov.return_value = mock_provider
+        with (
+            patch.object(llm, "_get_provider", return_value=MagicMock(model_id="test/mock-model")),
+            patch.object(llm, "_call_provider_json", AsyncMock(return_value=llm_output)),
+        ):
             result = await llm.normalize_user_profile("cv", "junior dev", "")
 
         assert result["experience_years"] == 0
@@ -919,6 +911,46 @@ class TestV2AdvancedMatching:
         )
         # 3 <= 2+2=4 → passes
         assert ok, f"Expected exp tolerance to allow senior job but got: {reason}"
+
+    def test_seniority_range_job_below_explicit_minimum_is_rejected(self, service):
+        ok, reason = service._passes_normalization_filters(
+            {"seniority": "junior", "experience_max_years": 2},
+            {
+                "experience_years": 8,
+                "intent_seniority_min": "senior",
+                "intent_seniority_max": "lead",
+            },
+        )
+        assert not ok
+        assert reason == "norm_seniority_underqualified"
+
+    def test_prescore_reads_public_normalized_dto_keys(self):
+        from backend.services.search.listing_utils import compute_prescore
+
+        public_dto = {
+            "domain": "it",
+            "seniority": "senior",
+            "role_type": "technical",
+            "required_skills": ["python", "sql"],
+            "experience_min_years": 5,
+            "experience_max_years": 10,
+            "entry_barrier": "medium",
+            "required_languages": [{"code": "en", "level": "C1"}],
+            "qualification_level": "bachelor",
+        }
+        legacy_prefixed = {f"normalized_{key}": value for key, value in public_dto.items()}
+        profile = {
+            "intent_domain": "it",
+            "intent_seniority": "senior",
+            "skills": ["python", "sql"],
+            "experience_years": 7,
+            "qualification_level": "master",
+            "languages": [{"code": "en", "level": "C2"}],
+        }
+        public_score = compute_prescore(public_dto, profile)
+        prefixed_score = compute_prescore(legacy_prefixed, profile)
+        assert public_score == prefixed_score
+        assert public_score >= 80
 
     # ── Entry barrier gate ───────────────────────────────────────────────────
 

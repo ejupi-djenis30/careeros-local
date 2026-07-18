@@ -76,8 +76,8 @@ def extract_json_payload(text: str) -> str:
 class LLMProvider(ABC):
     """Abstract base for all LLM providers.
 
-    Concrete implementations receive all runtime parameters (api_key, model,
-    temperature, ...) via their constructor — they must NOT read from
+    Concrete implementations receive all runtime parameters (model,
+    temperature, ...) via their constructor — they must not read from
     ``backend.core.config.settings`` directly.  Parameter resolution is
     handled by the **factory** layer (``get_provider_for_step``).
     """
@@ -113,6 +113,25 @@ class LLMProvider(ABC):
     ) -> Dict[str, Any]:
         """Async version — default falls back to sync via to_thread."""
         return await asyncio.to_thread(self.generate_json, system_prompt, user_prompt, max_tokens)
+
+    async def generate_structured_async(self, request):
+        """Generate schema-bound local output; adapters should override when supported."""
+        from backend.inference.ports import (
+            StructuredInferenceResult,
+        )
+
+        started_at = time.monotonic()
+        payload = await self.generate_json_async(
+            request.system_prompt,
+            request.user_prompt,
+            request.max_tokens,
+        )
+        return StructuredInferenceResult(
+            payload=payload,
+            model_id=self.model_id,
+            runtime=self.model_id.split("/", 1)[0],
+            duration_ms=max(0, round((time.monotonic() - started_at) * 1000)),
+        )
 
     async def generate_text_async_with_timeout(
         self,

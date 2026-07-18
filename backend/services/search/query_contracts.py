@@ -234,7 +234,9 @@ def loose_query_fingerprint(search: Any) -> str:
         query = canonicalize_query_text(search).lower()
         prefix = ""
 
-    query = " ".join(sorted(token for token in query.split() if token))
+    query = " ".join(
+        sorted(token for token in re.split(r"[\s./-]+", query) if token)
+    )
     return f"{prefix}|{query}".strip("|")
 
 

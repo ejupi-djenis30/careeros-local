@@ -1,0 +1,147 @@
+openapi: 3.1.0
+info:
+  title: CareerOS Local Desktop Additions
+  version: 1.0.0
+  description: New local model management and evaluation interfaces for feature 001.
+servers:
+  - url: http://127.0.0.1:{port}/api/v1
+    variables:
+      port:
+        default: "8000"
+security:
+  - desktopSession: []
+paths:
+  /local-model/status:
+    get:
+      operationId: getLocalModelStatus
+      responses:
+        "200":
+          description: Runtime, installation and evaluation readiness without sensitive paths.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LocalModelStatus"
+  /local-model/catalog:
+    get:
+      operationId: getLocalModelCatalog
+      responses:
+        "200":
+          description: Checked-in model choices safe for explicit local acquisition.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [catalogVersion, models]
+                properties:
+                  catalogVersion: { type: string }
+                  models:
+                    type: array
+                    items: { $ref: "#/components/schemas/ModelCatalogEntry" }
+  /local-model/install:
+    post:
+      operationId: installLocalModel
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [modelKey, expectedCatalogVersion, consent]
+              properties:
+                modelKey: { type: string, pattern: "^[a-z0-9][a-z0-9._-]{1,80}$" }
+                expectedCatalogVersion: { type: string }
+                consent: { const: true }
+      responses:
+        "202":
+          description: Installation started or resumed.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/LocalModelStatus" }
+        "409": { description: Another installation or incompatible state is active. }
+        "422": { description: Catalog choice, version or consent is invalid. }
+  /local-model/cancel:
+    post:
+      operationId: cancelLocalModelInstall
+      responses:
+        "202": { description: Cancellation requested and partial files scheduled for removal. }
+  /local-model/restart:
+    post:
+      operationId: restartLocalModel
+      responses:
+        "202": { description: A bounded local runtime restart was requested. }
+        "409": { description: No verified model is installed. }
+  /ai-evaluations:
+    get:
+      operationId: listLocalModelEvaluations
+      responses:
+        "200":
+          description: Content-free aggregate evaluation history.
+  /ai-evaluations/run:
+    post:
+      operationId: runLocalModelEvaluation
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [mode]
+              properties:
+                mode: { type: string, enum: [offline, live] }
+      responses:
+        "202": { description: Offline evaluation accepted. }
+        "409": { description: Model unavailable or evaluation already active. }
+components:
+  securitySchemes:
+    desktopSession:
+      type: apiKey
+      in: header
+      name: X-CareerOS-Session
+      description: Per-launch secret supplied by the native shell; disabled in explicit browser development.
+  schemas:
+    LocalModelStatus:
+      type: object
+      additionalProperties: false
+      required:
+        - runtimeMode
+        - runtimeState
+        - ready
+        - configuredModel
+        - installState
+        - downloadedBytes
+        - totalBytes
+        - canInstall
+        - canCancel
+      properties:
+        runtimeMode: { type: string, enum: [managed_llama_cpp, ollama] }
+        runtimeState: { type: string, enum: [unavailable, stopped, starting, ready, failed] }
+        ready: { type: boolean }
+        configuredModel: { type: string }
+        installedModels: { type: array, items: { type: string } }
+        installState:
+          type: string
+          enum: [absent, checking_space, downloading_runtime, verifying_runtime, downloading_model, verifying_model, installing, ready, cancelling, failed]
+        downloadedBytes: { type: integer, minimum: 0 }
+        totalBytes: { type: integer, minimum: 0 }
+        errorCode: { type: [string, "null"] }
+        canInstall: { type: boolean }
+        canCancel: { type: boolean }
+        catalogVersion: { type: string }
+        modelLicense: { type: [string, "null"] }
+    ModelCatalogEntry:
+      type: object
+      additionalProperties: false
+      required: [key, displayName, author, license, parameters, quantization, sizeBytes, minimumRamBytes, recommendedRamBytes]
+      properties:
+        key: { type: string }
+        displayName: { type: string }
+        author: { type: string }
+        license: { type: string }
+        parameters: { type: string }
+        quantization: { type: string }
+        sizeBytes: { type: integer, minimum: 1 }
+        minimumRamBytes: { type: integer, minimum: 1 }
+        recommendedRamBytes: { type: integer, minimum: 1 }
+        contextTokens: { type: integer, minimum: 1024 }

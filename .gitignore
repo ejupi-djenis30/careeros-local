@@ -1,5 +1,5 @@
 # ═══════════════════════════════════════
-# Job Hunter AI — .gitignore
+# CareerOS Local — generated and private paths
 # ═══════════════════════════════════════
 
 # ─── Python ───
@@ -52,6 +52,8 @@ $RECYCLE.BIN/
 node_modules/
 frontend/dist/
 frontend/coverage/
+frontend/src-tauri/target/
+frontend/src-tauri/binaries/
 
 # ─── Testing & Coverage ───
 htmlcov/
@@ -64,12 +66,15 @@ frontend/coverage/
 coverage/
 test_*.txt
 
-# ─── Logs & Temp ───
+# ─── Logs, package outputs & Temp ───
 logs/
 *.log
 tmp/
 *.tmp
-cmd_outputs/
+.artifacts/
+.build/
+desktop/build/
+desktop/dist/
 
 # ─── Runtime Data ───
 data/
@@ -78,5 +83,5 @@ data/
 # ─── Poetry / packaging ───
 poetry.lock
 
-# ─── Gemini ───
+# ─── Local assistants ───
 .gemini/

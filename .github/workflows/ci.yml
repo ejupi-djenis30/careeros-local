@@ -1,153 +1,231 @@
-# ─────────────────────────────────────
-# CI — Test Suite
-# ─────────────────────────────────────
-# Runs on every push/PR to main/master.
-# Steps: lint, unit/integration tests, coverage report.
-
-name: CI — Tests
+name: CI
 
 on:
   push:
-    branches: [main, master]
+    branches: [main, master, develop]
   pull_request:
-    branches: [main, master]
-  workflow_call: # allow reuse from deploy.yml
+    branches: [main, master, develop]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
-  test:
-    name: Python Tests
+  backend:
+    name: Backend · Python 3.12 · SQLite
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        python-version: ["3.11", "3.12"]
-
-    services:
-      postgres:
-        image: postgres:16-alpine
-        env:
-          POSTGRES_USER: testuser
-          POSTGRES_PASSWORD: testpass
-          POSTGRES_DB: testdb
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd "pg_isready -U testuser"
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 5
-
+    timeout-minutes: 25
+    env:
+      SECRET_KEY: ci-local-secret-with-at-least-thirty-two-characters
+      LOCAL_INFERENCE_URL: http://127.0.0.1:11434
+      PYTHONUTF8: "1"
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v5
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
-          python-version: ${{ matrix.python-version }}
+          persist-credentials: false
+      - name: Configure ephemeral career vault
+        run: |
+          mkdir -p "$RUNNER_TEMP/careeros/ci-data"
+          echo "DATABASE_URL=sqlite:///$RUNNER_TEMP/careeros/ci.db" >> "$GITHUB_ENV"
+          echo "DATA_DIR=$RUNNER_TEMP/careeros/ci-data" >> "$GITHUB_ENV"
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        with:
+          python-version-file: .python-version
           cache: pip
-
-      - name: Install dependencies
+          cache-dependency-path: requirements-dev.lock
+      - name: Install hash-locked dependencies
         run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt -r requirements-dev.txt
-
-      - name: Lint backend (ruff)
+          mkdir -p "$RUNNER_TEMP/careeros"
+          python -m pip install --require-hashes --requirement requirements-dev.lock
+      - name: Verify local-only inference boundary
+        run: python -m pytest tests/backend/security -q
+      - name: Audit dependencies and create Python supply-chain evidence
         run: |
-          ruff check backend/
-
-      - name: Type-check backend (mypy)
-        env:
-          SECRET_KEY: ci-test-secret-key-not-for-production
-          DATABASE_URL: sqlite:///./test.db
-        run: |
-          mypy backend/services backend/schemas backend/repositories --ignore-missing-imports --no-error-summary
-
-      - name: Validate Alembic migrations (SQLite)
-        env:
-          SECRET_KEY: ci-test-secret-key-not-for-production
-          DATABASE_URL: sqlite:///./migration_test.db
+          python -m pip_audit --disable-pip --require-hashes --requirement requirements.lock
+          python -m pip_audit --disable-pip --require-hashes --requirement requirements-dev.lock
+          python -m pip_audit --disable-pip --require-hashes --requirement requirements.lock \
+            --format cyclonedx-json --output "$RUNNER_TEMP/careeros/backend-sbom.cdx.json"
+          pip-licenses --from=mixed --format=json \
+            --output-file "$RUNNER_TEMP/careeros/backend-licenses.json" \
+            --fail-on "GNU General Public License;GNU Affero General Public License;AGPL-1.0;AGPL-3.0;Server Side Public License;SSPL-1.0;Business Source License;BUSL-1.1" \
+            --partial-match
+      - name: Lint
+        run: ruff check backend tests/backend alembic/versions
+      - name: Type-check
+        run: mypy backend --ignore-missing-imports --no-error-summary
+      - name: Validate migration round-trip
         run: |
           alembic upgrade head
-
-      - name: Validate Alembic round-trip (SQLite)
-        env:
-          SECRET_KEY: ci-test-secret-key-not-for-production
-          DATABASE_URL: sqlite:///./migration_test.db
-        run: |
           alembic downgrade -1
           alembic upgrade head
-
-      - name: Validate Alembic migrations (PostgreSQL)
+      - name: Test
+        run: python -m pytest tests/backend -q --tb=short --cov=backend --cov-report=xml
+      - name: Run 10k-record performance acceptance
         env:
-          SECRET_KEY: ci-test-secret-key-not-for-production
-          DATABASE_URL: postgresql://testuser:testpass@localhost:5432/testdb
-        run: |
-          alembic upgrade head
-
-      - name: Validate Alembic round-trip (PostgreSQL)
-        env:
-          SECRET_KEY: ci-test-secret-key-not-for-production
-          DATABASE_URL: postgresql://testuser:testpass@localhost:5432/testdb
-        run: |
-          alembic downgrade -1
-          alembic upgrade head
-
-      - name: Run tests (SQLite)
-        env:
-          SECRET_KEY: ci-test-secret-key-not-for-production
-          LLM_PROVIDER: groq
-          DATABASE_URL: sqlite:///./test.db
-        run: |
-          python -m pytest tests/ -v --tb=short --cov=backend --cov-report=term-missing --cov-report=xml
-
-      - name: Run tests (PostgreSQL)
-        env:
-          SECRET_KEY: ci-test-secret-key-not-for-production
-          LLM_PROVIDER: groq
-          DATABASE_URL: postgresql://testuser:testpass@localhost:5432/testdb
-        run: |
-          python -m pytest tests/ -v --tb=short
-
-      - name: Upload coverage report
-        if: matrix.python-version == '3.12'
-        uses: actions/upload-artifact@v4
+          RUN_PERFORMANCE_TESTS: "1"
+        run: python -m pytest tests/backend/performance/test_local_read_p95.py -q -s
+      - name: Upload backend evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: coverage-report
-          path: coverage.xml
+          name: backend-evidence
+          path: |
+            coverage.xml
+            ${{ runner.temp }}/careeros/backend-sbom.cdx.json
+            ${{ runner.temp }}/careeros/backend-licenses.json
+          if-no-files-found: ignore
 
   frontend:
-    name: Frontend Verification & Build
+    name: Frontend · Node 22
     runs-on: ubuntu-latest
-
+    timeout-minutes: 20
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
-          node-version: 20
+          persist-credentials: false
+      - name: Set up Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .nvmrc
           cache: npm
           cache-dependency-path: frontend/package-lock.json
-
-      - name: Install dependencies
+      - name: Install locked dependencies
         working-directory: frontend
-        run: npm ci
-
-      - name: Run frontend tests
+        run: npm ci --ignore-scripts
+      - name: Test
         working-directory: frontend
-        run: npm run test -- --run --coverage
-
-      - name: Lint frontend (eslint)
+        run: npm test
+      - name: Audit dependencies
+        working-directory: frontend
+        run: npm audit --audit-level=high
+      - name: Create CycloneDX SBOM
+        run: |
+          mkdir -p "$RUNNER_TEMP/careeros"
+          cd frontend
+          npm sbom --sbom-format cyclonedx > "$RUNNER_TEMP/careeros/frontend-sbom.cdx.json"
+      - name: Audit production licenses
+        working-directory: frontend
+        run: >-
+          npx --no-install license-checker-rseidelsohn --production
+          --excludePrivatePackages
+          --onlyAllow "MIT;MIT OR Apache-2.0;Apache-2.0 OR MIT"
+          --json --out "$RUNNER_TEMP/careeros/frontend-licenses.json"
+      - name: Lint
         working-directory: frontend
         run: npm run lint
-
-      - name: Upload frontend coverage
-        uses: actions/upload-artifact@v4
-        with:
-          name: frontend-coverage
-          path: frontend/coverage/
-
-      - name: Build frontend
+      - name: Build
         working-directory: frontend
         run: npm run build
+      - name: Upload frontend SBOM
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: frontend-sbom
+          path: |
+            ${{ runner.temp }}/careeros/frontend-sbom.cdx.json
+            ${{ runner.temp }}/careeros/frontend-licenses.json
+          if-no-files-found: ignore
+
+  rust-supply-chain:
+    name: Rust · SBOM · licenses · vulnerabilities
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4
+        with:
+          toolchain: stable
+      - name: Install pinned supply-chain tools
+        run: |
+          cargo install cargo-audit --version 0.22.2 --locked
+          cargo install cargo-cyclonedx --version 0.5.9 --locked
+          cargo install cargo-deny --version 0.20.2 --locked
+      - name: Audit advisories and licenses
+        working-directory: frontend/src-tauri
+        run: |
+          cargo audit
+          cargo deny --all-features check licenses
+      - name: Create Cargo CycloneDX SBOM and license inventory
+        working-directory: frontend/src-tauri
+        run: |
+          mkdir -p "$RUNNER_TEMP/careeros"
+          cargo cyclonedx --all-features --target all --format json \
+            --spec-version 1.5 --override-filename rust-sbom
+          mv rust-sbom.json "$RUNNER_TEMP/careeros/rust-sbom.cdx.json"
+          cargo deny --all-features list --format json \
+            > "$RUNNER_TEMP/careeros/rust-licenses.json"
+      - name: Upload Rust supply-chain evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: rust-supply-chain
+          path: |
+            ${{ runner.temp }}/careeros/rust-sbom.cdx.json
+            ${{ runner.temp }}/careeros/rust-licenses.json
+          if-no-files-found: ignore
+
+  containers:
+    name: Containers · SBOM · vulnerability gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      TRIVY_IMAGE: aquasec/trivy:0.72.0@sha256:cffe3f5161a47a6823fbd23d985795b3ed72a4c806da4c4df16266c02accdd6f
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+      - name: Validate Compose
+        run: docker compose config --quiet
+      - name: Build application images
+        run: docker compose build backend frontend
+      - name: Scan repository configuration and secrets
+        run: |
+          docker run --rm -v trivy-cache:/root/.cache/ -v "$PWD:/workspace:ro" "$TRIVY_IMAGE" \
+            filesystem --skip-version-check --scanners misconfig,secret \
+            --severity HIGH,CRITICAL --exit-code 1 \
+            --skip-dirs '**/.git' --skip-dirs '**/.artifacts' \
+            --skip-dirs '**/node_modules' /workspace
+      - name: Gate fixed high and critical container vulnerabilities
+        run: |
+          docker run --rm -v trivy-cache:/root/.cache/ \
+            -v /var/run/docker.sock:/var/run/docker.sock "$TRIVY_IMAGE" \
+            image --skip-version-check --scanners vuln --ignore-unfixed \
+            --severity HIGH,CRITICAL --exit-code 1 \
+            careeros-local-backend:latest
+          docker run --rm -v trivy-cache:/root/.cache/ \
+            -v /var/run/docker.sock:/var/run/docker.sock "$TRIVY_IMAGE" \
+            image --skip-version-check --scanners vuln --ignore-unfixed \
+            --severity HIGH,CRITICAL --exit-code 1 \
+            careeros-local-frontend:latest
+      - name: Create container CycloneDX SBOMs
+        if: always()
+        run: |
+          mkdir -p "$RUNNER_TEMP/careeros"
+          docker run --rm -v trivy-cache:/root/.cache/ \
+            -v /var/run/docker.sock:/var/run/docker.sock \
+            -v "$RUNNER_TEMP/careeros:/reports" "$TRIVY_IMAGE" image --format cyclonedx \
+            --skip-version-check --output /reports/backend-container.cdx.json \
+            careeros-local-backend:latest
+          docker run --rm -v trivy-cache:/root/.cache/ \
+            -v /var/run/docker.sock:/var/run/docker.sock \
+            -v "$RUNNER_TEMP/careeros:/reports" "$TRIVY_IMAGE" image --format cyclonedx \
+            --skip-version-check --output /reports/frontend-container.cdx.json \
+            careeros-local-frontend:latest
+      - name: Upload container SBOMs
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: container-sboms
+          path: ${{ runner.temp }}/careeros/*-container.cdx.json
+          if-no-files-found: ignore

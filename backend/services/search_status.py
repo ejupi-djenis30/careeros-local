@@ -11,7 +11,7 @@ import threading
 import time
 import uuid
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Literal, Optional, overload
 
 from sqlalchemy.exc import OperationalError, ProgrammingError
 
@@ -215,11 +215,17 @@ def _with_profile_repo(operation_name: str, callback):
         return callback(repo)
     except (OperationalError, ProgrammingError) as exc:
         logger.debug(
-            "Skipping %s because DB status storage is unavailable: %s", operation_name, exc
+            "Search status repository unavailable operation_present=%s exception_type=%s",
+            bool(operation_name),
+            type(exc).__name__,
         )
         return None
     except Exception as exc:
-        logger.warning("Failed to %s: %s", operation_name, exc)
+        logger.warning(
+            "Search status repository operation failed operation_present=%s exception_type=%s",
+            bool(operation_name),
+            type(exc).__name__,
+        )
         return None
     finally:
         db.close()
@@ -618,6 +624,26 @@ def get_all_active_tasks() -> dict:
     """Return a snapshot of {profile_id: task} for graceful shutdown."""
     with _lock:
         return dict(_active_tasks)
+
+
+@overload
+def reserve_task(
+    profile_id: int,
+    *,
+    return_token: Literal[True],
+    reservation_token: str | None = None,
+    user_id: int | None = None,
+) -> str | Literal[False]: ...
+
+
+@overload
+def reserve_task(
+    profile_id: int,
+    *,
+    return_token: Literal[False] = False,
+    reservation_token: str | None = None,
+    user_id: int | None = None,
+) -> bool: ...
 
 
 def reserve_task(

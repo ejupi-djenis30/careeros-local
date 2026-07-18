@@ -168,9 +168,9 @@ class TestCircuitBreakerRecovery:
 
 class TestCircuitBreakerRepr:
     def test_repr_contains_state_and_service(self):
-        cb = CircuitBreaker("groq", failure_threshold=5, recovery_seconds=60)
+        cb = CircuitBreaker("ollama-local", failure_threshold=5, recovery_seconds=60)
         r = repr(cb)
-        assert "groq" in r
+        assert "ollama-local" in r
         assert "closed" in r
 
 

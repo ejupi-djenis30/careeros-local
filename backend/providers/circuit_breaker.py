@@ -7,7 +7,7 @@ States:
 
 Usage::
 
-    cb = CircuitBreaker("groq", failure_threshold=5, recovery_seconds=60)
+    cb = CircuitBreaker("ollama-local", failure_threshold=5, recovery_seconds=60)
 
     try:
         result = await cb.call(provider.generate_json_async(sys_p, usr_p))
@@ -19,8 +19,9 @@ Usage::
 import asyncio
 import logging
 import time
+from collections.abc import Awaitable, Callable
 from enum import Enum
-from typing import Any, Awaitable
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -69,8 +70,14 @@ class CircuitBreaker:
     def failure_count(self) -> int:
         return self._failure_count
 
-    async def call(self, coro: Awaitable[Any]) -> Any:
-        """Execute *coro* guarded by the circuit breaker.
+    async def call(
+        self,
+        operation: Awaitable[Any] | Callable[[], Awaitable[Any]],
+    ) -> Any:
+        """Execute an async operation guarded by the circuit breaker.
+
+        A callable is preferred because it does not create a coroutine when the
+        breaker fails fast. Awaitables remain accepted for compatibility.
 
         Raises:
             CircuitOpenError: when the breaker is OPEN and the recovery
@@ -81,11 +88,15 @@ class CircuitBreaker:
 
             if self._state == CircuitState.OPEN:
                 retry_after = self._recovery_seconds - (time.monotonic() - self._last_failure_time)
+                close = getattr(operation, "close", None)
+                if callable(close):
+                    close()
                 raise CircuitOpenError(self._service, max(0.0, retry_after))
 
             was_half_open = self._state == CircuitState.HALF_OPEN
 
         try:
+            coro = operation() if callable(operation) else operation
             result = await coro
         except Exception as exc:
             async with self._lock:

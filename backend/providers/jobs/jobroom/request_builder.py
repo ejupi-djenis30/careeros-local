@@ -63,7 +63,12 @@ def build_search_payload(request: JobSearchRequest, mapper: BFSLocationMapper) -
     if radius_search:
         payload["radiusSearchRequest"] = radius_search
 
-    logger.debug(f"Built search payload: {payload}")
+    logger.debug(
+        "Built search payload fields=%d keywords=%d communal_codes=%d",
+        len(payload),
+        len(keywords),
+        len(communal_codes),
+    )
     return payload
 
 
