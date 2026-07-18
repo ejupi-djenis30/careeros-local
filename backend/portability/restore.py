@@ -4,7 +4,7 @@ import json
 from datetime import date, datetime
 from typing import Any
 
-from sqlalchemy import Date, DateTime
+from sqlalchemy import JSON, Date, DateTime, or_, update
 from sqlalchemy.exc import IntegrityError, StatementError
 from sqlalchemy.orm import Session
 
@@ -15,8 +15,11 @@ from backend.desktop.lifecycle import VaultLockTimeout, desktop_vault_lock
 from backend.models import Job, ScrapedJob, SearchProfile, User
 from backend.portability.archive import (
     EXPORT_MODELS,
+    SCRAPED_JOB_PRIVATE_FIELDS,
+    SEARCH_PROFILE_RUNTIME_FIELDS,
     ArchiveConflictError,
     ArchiveError,
+    _json_value,
     _validated_members,
 )
 from backend.portability.manifest import (
@@ -197,6 +200,13 @@ def _decode_payload(
         decoded[table_name] = [
             _decode_row(model, row) for row in tables.get(table_name, [])
         ]
+        if table_name == "scraped_jobs":
+            # Version 3 archives created before the privacy hardening included
+            # this shared-model field. Accept those archives, but never carry
+            # their user-specific discovery query into the restored database.
+            for row in decoded[table_name]:
+                for field in SCRAPED_JOB_PRIVATE_FIELDS:
+                    row.pop(field, None)
         _assert_unique_archive_ids(table_name, decoded[table_name])
         if table_name not in REMAPPABLE_TABLES:
             _assert_ids_available(db, model, decoded[table_name])
@@ -205,7 +215,7 @@ def _decode_payload(
     return decoded, bindings, preference_state
 
 
-def _assert_empty_vault(db: Session, user_id: int) -> None:
+def _assert_empty_vault(db: Session, user_id: int, format_version: int) -> None:
     checks = (
         (CandidateProfile, CandidateProfile.user_id, "career vault"),
         (SearchProfile, SearchProfile.user_id, "search profile history"),
@@ -216,6 +226,12 @@ def _assert_empty_vault(db: Session, user_id: int) -> None:
     for model, user_column, label in checks:
         if db.query(model).filter(user_column == user_id).first() is not None:
             raise ArchiveConflictError(f"Restore requires an empty {label}")
+    if format_version >= 3:
+        owner = db.get(User, user_id)
+        if owner is None:
+            raise ArchiveError("The local vault owner does not exist")
+        if owner.preference_signals is not None or owner.preference_updated_at is not None:
+            raise ArchiveConflictError("Restore requires empty preference signals")
 
 
 def _prepare_file_writes(
@@ -313,6 +329,19 @@ def _add_remappable_row(
     return instance
 
 
+def _shared_listing_content(record: ScrapedJob | dict[str, Any]) -> dict[str, Any]:
+    ignored = {"id", "created_at", "updated_at", *SCRAPED_JOB_PRIVATE_FIELDS}
+    return {
+        column.name: _json_value(
+            record.get(column.name)
+            if isinstance(record, dict)
+            else getattr(record, column.name)
+        )
+        for column in ScrapedJob.__table__.columns
+        if column.name not in ignored
+    }
+
+
 def _restore_search_records(
     db: Session,
     user_id: int,
@@ -323,9 +352,8 @@ def _restore_search_records(
         prepared = dict(row)
         archived_id = prepared["id"]
         prepared["user_id"] = user_id
-        prepared["search_lock_token"] = None
-        prepared["search_lock_state"] = None
-        prepared["search_lock_acquired_at"] = None
+        for field in SEARCH_PROFILE_RUNTIME_FIELDS:
+            prepared[field] = None
         restored = _add_remappable_row(db, SearchProfile, prepared)
         profile_id_map[archived_id] = restored.id
 
@@ -340,7 +368,17 @@ def _restore_search_records(
             )
             .one_or_none()
         )
-        restored = existing or _add_remappable_row(db, ScrapedJob, row)
+        if existing is not None:
+            if (
+                existing.source_query is not None
+                or _shared_listing_content(existing) != _shared_listing_content(row)
+            ):
+                raise ArchiveConflictError(
+                    "A shared scraped listing already exists with private or different content"
+                )
+            restored = existing
+        else:
+            restored = _add_remappable_row(db, ScrapedJob, row)
         scraped_job_id_map[archived_id] = restored.id
 
     job_id_map: dict[int, int] = {}
@@ -363,11 +401,24 @@ def _restore_preference_state(
 ) -> None:
     if preference_state is None:
         return
-    owner = db.get(User, user_id)
-    if owner is None:
-        raise ArchiveError("The local vault owner does not exist")
-    owner.preference_signals = preference_state["preference_signals"]
-    owner.preference_updated_at = preference_state["preference_updated_at"]
+    result = db.execute(
+        update(User)
+        .where(
+            User.id == user_id,
+            or_(
+                User.preference_signals.is_(None),
+                User.preference_signals == JSON.NULL,
+            ),
+            User.preference_updated_at.is_(None),
+        )
+        .values(
+            preference_signals=preference_state["preference_signals"],
+            preference_updated_at=preference_state["preference_updated_at"],
+        )
+        .execution_options(synchronize_session=False)
+    )
+    if getattr(result, "rowcount", 0) != 1:
+        raise ArchiveConflictError("Restore requires empty preference signals")
 
 
 def _restore_transaction(
@@ -417,7 +468,7 @@ def restore_archive(db: Session, user_id: int, data: bytes) -> RestoreResponse:
     try:
         with desktop_vault_lock():
             manifest, members = _validated_members(data)
-            _assert_empty_vault(db, user_id)
+            _assert_empty_vault(db, user_id, manifest.format_version)
             decoded, bindings, preference_state = _decode_payload(db, manifest, members)
             writes = _prepare_file_writes(decoded, bindings, members)
             _restore_transaction(

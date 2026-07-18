@@ -35,6 +35,18 @@ def test_runtime_dependencies_have_no_remote_ai_client() -> None:
         assert not forbidden.search(_text(relative)), relative
 
 
+def test_frontend_events_have_no_job_hunter_namespace() -> None:
+    frontend_sources = "\n".join(
+        path.read_text(encoding="utf-8")
+        for path in (ROOT / "frontend" / "src").rglob("*")
+        if path.suffix in {".js", ".jsx"}
+    )
+    assert "jh_api_error" not in frontend_sources
+    assert "jh_unauthorized" not in frontend_sources
+    assert "careeros:api-error" in frontend_sources
+    assert "careeros:unauthorized" in frontend_sources
+
+
 def test_repository_uses_no_legacy_scratch_directory() -> None:
     checked = (
         ".gitignore",

@@ -14,7 +14,7 @@ from backend.desktop.lifecycle import desktop_vault_lock
 from backend.inference.managed_runtime import erase_managed_runtime_installation
 from backend.models import Job, ScrapedJob, SearchProfile, User
 from backend.resumes.models import ResumeArtifact, ResumeDraft, ResumeVersion
-from backend.storage.atomic import data_root, resolve_data_path
+from backend.storage.atomic import resolve_data_path
 from backend.workflows.models import WorkflowRun
 
 logger = logging.getLogger(__name__)
@@ -107,7 +107,7 @@ def _exclusive_storage_paths(db: Session, profile_id: str) -> set[str]:
     return paths
 
 
-def _stage_files(relative_paths: set[str], operation_id: str) -> list[tuple[Path, Path]]:
+def _stage_files(relative_paths: set[str], operation_id: Path) -> list[tuple[Path, Path]]:
     staged: list[tuple[Path, Path]] = []
     try:
         for relative_path in sorted(relative_paths):
@@ -134,11 +134,75 @@ def _restore_files(staged: list[tuple[Path, Path]]) -> None:
         os.replace(destination, source)
 
 
+def _remove_staged_files_for_user(user_id: int) -> None:
+    """Remove this user's committed trash, including leftovers from a failed retry.
+
+    Staging is namespaced per user so retrying one account cannot remove another
+    account's interrupted operation. The database transaction commits before this
+    function runs; a failure therefore leaves the private files in the same
+    discoverable namespace for the next complete-vault deletion attempt.
+    """
+    try:
+        trash = resolve_data_path(Path(".trash") / f"user-{user_id}")
+        shutil.rmtree(trash, ignore_errors=False)
+    except FileNotFoundError:
+        return
+    except (OSError, ValueError) as exc:
+        raise VaultDeletionError(
+            "Staged private files could not be removed; retry complete vault deletion"
+        ) from exc
+
+    trash_parent = trash.parent
+    try:
+        if not any(trash_parent.iterdir()):
+            trash_parent.rmdir()
+    except OSError:
+        # The user-scoped tree is already gone; an empty metadata directory is
+        # not private residue and can be left for a later cleanup.
+        pass
+
+
+def _finish_committed_deletion(db: Session, user_id: int) -> None:
+    """Attempt every post-commit privacy cleanup before reporting failure."""
+    sanitization_error: Exception | None = None
+    file_cleanup_error: Exception | None = None
+
+    try:
+        _sanitize_sqlite_storage(db)
+    except Exception as exc:
+        sanitization_error = exc
+        logger.critical("SQLite vault sanitization failed", exc_info=True)
+
+    try:
+        _remove_staged_files_for_user(user_id)
+    except Exception as exc:
+        file_cleanup_error = exc
+        logger.critical(
+            "Vault file cleanup failed for user_id=%s", user_id, exc_info=True
+        )
+
+    if sanitization_error is not None and file_cleanup_error is not None:
+        raise VaultDeletionError(
+            "Database rows were deleted, but SQLite sanitization and staged file "
+            "cleanup are incomplete; retry complete vault deletion"
+        ) from sanitization_error
+    if sanitization_error is not None:
+        raise VaultDeletionError(
+            "Database rows were deleted, but SQLite sanitization is incomplete; "
+            "retry complete vault deletion"
+        ) from sanitization_error
+    if file_cleanup_error is not None:
+        raise VaultDeletionError(
+            "Database rows were deleted and SQLite sanitization completed, but staged "
+            "private files remain; retry complete vault deletion"
+        ) from file_cleanup_error
+
+
 def delete_complete_vault(
     db: Session, user_id: int, *, erase_managed_runtime: bool = False
 ) -> dict[str, int]:
     with desktop_vault_lock():
-        operation_id = str(uuid.uuid4())
+        operation_id = Path(f"user-{user_id}") / str(uuid.uuid4())
         staged: list[tuple[Path, Path]] = []
         try:
             _enable_sqlite_secure_delete(db)
@@ -230,25 +294,7 @@ def delete_complete_vault(
             _restore_files(staged)
             raise
 
-        trash = data_root() / ".trash" / operation_id
-        try:
-            shutil.rmtree(trash, ignore_errors=False)
-            trash_parent = trash.parent
-            if trash_parent.exists() and not any(trash_parent.iterdir()):
-                trash_parent.rmdir()
-        except FileNotFoundError:
-            pass
-        except OSError as exc:
-            logger.critical("Vault file cleanup failed for operation_id=%s", operation_id)
-            raise VaultDeletionError(
-                "Database rows were deleted but staged files could not be removed"
-            ) from exc
-
-        try:
-            _sanitize_sqlite_storage(db)
-        except VaultDeletionError:
-            logger.critical("SQLite vault sanitization failed")
-            raise
+        _finish_committed_deletion(db, user_id)
 
         if erase_managed_runtime:
             counts.update(erase_managed_runtime_installation())

@@ -12,12 +12,16 @@ client = TestClient(app)
 
 # --- AUTH ROUTES ---
 def test_auth_refresh_missing_token():
+    client.cookies.clear()
     response = client.post("/api/v1/auth/refresh")
     assert response.status_code == 401
 
 
 def test_auth_refresh_invalid_token():
-    client.cookies.set("jh_refresh_token", "invalid")
+    client.cookies.clear()
+    client.cookies.set(
+        "careeros_refresh_token", "invalid", domain="testserver.local", path="/"
+    )
     with patch("backend.api.routes.auth.decode_refresh_token", return_value=None):
         response = client.post("/api/v1/auth/refresh")
     assert response.status_code == 401
@@ -25,7 +29,10 @@ def test_auth_refresh_invalid_token():
 
 
 def test_auth_refresh_user_vanished():
-    client.cookies.set("jh_refresh_token", "valid")
+    client.cookies.clear()
+    client.cookies.set(
+        "careeros_refresh_token", "valid", domain="testserver.local", path="/"
+    )
     with (
         patch("backend.api.routes.auth.decode_refresh_token", return_value={"sub": "testuser"}),
         patch("backend.api.routes.auth.get_db"),

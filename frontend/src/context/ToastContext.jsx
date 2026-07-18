@@ -1,5 +1,6 @@
 /* eslint-disable react-refresh/only-export-components */
 import React, { createContext, useContext, useState, useCallback, useEffect, useRef } from 'react';
+import { CAREEROS_API_ERROR_EVENT } from '../lib/events';
 
 const ToastContext = createContext(null);
 
@@ -31,9 +32,9 @@ export function ToastProvider({ children }) {
             }
         };
 
-        window.addEventListener('jh_api_error', handleApiError);
+        window.addEventListener(CAREEROS_API_ERROR_EVENT, handleApiError);
         return () => {
-            window.removeEventListener('jh_api_error', handleApiError);
+            window.removeEventListener(CAREEROS_API_ERROR_EVENT, handleApiError);
             if (hideTimeoutRef.current) {
                 clearTimeout(hideTimeoutRef.current);
             }

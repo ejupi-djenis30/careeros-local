@@ -7,11 +7,16 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 
 import pytest
+from sqlalchemy import create_engine, event
+from sqlalchemy.orm import sessionmaker
 
 from backend.ai.models import AIExecution
-from backend.career.models import CandidateProfile, CareerAsset
+from backend.career.models import CandidateProfile, CareerAsset, CareerGoal
 from backend.core.config import settings
+from backend.db.base import Base, configure_sqlite_connection
 from backend.desktop.lifecycle import VaultLockTimeout, desktop_vault_lock
+from backend.models import User
+from backend.portability.archive import export_archive
 from backend.portability.restore import restore_archive
 from backend.storage.atomic import resolve_data_path
 
@@ -204,3 +209,97 @@ def test_desktop_vault_lock_times_out_for_competing_operation(desktop_data_dir):
         release.set()
         thread.join(timeout=1)
     assert not thread.is_alive()
+
+
+def test_export_reads_one_sqlite_snapshot_while_a_writer_commits(desktop_data_dir):
+    database_path = desktop_data_dir / "snapshot.db"
+    local_engine = create_engine(
+        f"sqlite:///{database_path}", connect_args={"check_same_thread": False}
+    )
+    event.listen(local_engine, "connect", configure_sqlite_connection)
+    Base.metadata.create_all(local_engine)
+    local_session = sessionmaker(
+        bind=local_engine, autoflush=False, expire_on_commit=False
+    )
+    seed = local_session()
+    owner = User(username="snapshot-owner", hashed_password="unused-local-hash")
+    seed.add(owner)
+    seed.flush()
+    profile = CandidateProfile(
+        user_id=owner.id,
+        revision=1,
+        display_name="Snapshot Before",
+        headline="Stable export",
+        summary="The archive must represent one point in time.",
+        location={},
+        work_authorization=[],
+        preferences={},
+    )
+    seed.add(profile)
+    seed.commit()
+    user_id = owner.id
+    profile_id = profile.id
+    seed.close()
+
+    profile_selected = threading.Event()
+    writer_committed = threading.Event()
+    writer_errors: list[BaseException] = []
+    export_thread_id = threading.get_ident()
+
+    def pause_after_profile_select(
+        _connection, _cursor, statement, _parameters, _context, _executemany
+    ):
+        if (
+            threading.get_ident() == export_thread_id
+            and "FROM candidate_profiles" in statement
+            and not profile_selected.is_set()
+        ):
+            profile_selected.set()
+            if not writer_committed.wait(timeout=5):
+                raise AssertionError("concurrent writer did not commit during export")
+
+    event.listen(local_engine, "after_cursor_execute", pause_after_profile_select)
+
+    def write_goal() -> None:
+        writer = local_session()
+        try:
+            if not profile_selected.wait(timeout=5):
+                raise AssertionError("export did not reach the profile query")
+            writer.add(
+                CareerGoal(
+                    profile_id=profile_id,
+                    name="Committed during export",
+                    is_primary=True,
+                    payload={"target_roles": ["Staff Engineer"]},
+                )
+            )
+            writer.commit()
+        except BaseException as exc:
+            writer_errors.append(exc)
+        finally:
+            writer.close()
+            writer_committed.set()
+
+    writer_thread = threading.Thread(target=write_goal)
+    writer_thread.start()
+    reader = local_session()
+    try:
+        archive_data = export_archive(reader, user_id)
+    finally:
+        reader.close()
+    writer_thread.join(timeout=5)
+    assert not writer_thread.is_alive()
+    assert writer_errors == []
+
+    with zipfile.ZipFile(BytesIO(archive_data)) as archive:
+        payload = json.loads(archive.read("payload.json"))
+    assert payload["tables"]["candidate_profiles"][0]["display_name"] == "Snapshot Before"
+    assert payload["tables"]["career_goals"] == []
+
+    verification = local_session()
+    try:
+        assert verification.query(CareerGoal).filter_by(profile_id=profile_id).count() == 1
+    finally:
+        verification.close()
+        event.remove(local_engine, "after_cursor_execute", pause_after_profile_select)
+        local_engine.dispose()

@@ -1,6 +1,7 @@
 /* eslint-disable react-refresh/only-export-components */
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { AuthService } from '../services/auth';
+import { CAREEROS_UNAUTHORIZED_EVENT } from '../lib/events';
 
 const AuthContext = createContext(null);
 
@@ -41,10 +42,10 @@ export function AuthProvider({ children }) {
             logout();
         };
 
-        window.addEventListener("jh_unauthorized", handleUnauthorized);
+        window.addEventListener(CAREEROS_UNAUTHORIZED_EVENT, handleUnauthorized);
         initAuth();
 
-        return () => window.removeEventListener("jh_unauthorized", handleUnauthorized);
+        return () => window.removeEventListener(CAREEROS_UNAUTHORIZED_EVENT, handleUnauthorized);
     }, []);
 
     const login = async (username, password) => {

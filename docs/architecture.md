@@ -25,7 +25,7 @@ Rust allocates an ephemeral IPv4 loopback port, generates a desktop session secr
 
 The Career Vault is the canonical user-owned record. Typed profile facts carry verification state and provenance. Resume drafts reference selected facts; publishing creates immutable versions and content-addressed PDF/DOCX artifacts. Applications, events, workflows, conversations, and AI audit records reference the owning local user.
 
-SQLite connections enforce foreign keys, WAL mode, and a busy timeout. Alembic owns schema changes. Files are always resolved beneath the configured data root and written with flush, fsync, and atomic replacement.
+SQLite connections enforce foreign keys, secure deletion, WAL mode, and a busy timeout. Alembic owns schema changes. Files are always resolved beneath the configured data root and written with flush, fsync, and atomic replacement.
 
 ## Local AI
 
@@ -47,4 +47,6 @@ The public desktop path uses a checksum-pinned model catalog and managed llama.c
 
 ## Backup and erasure
 
-Archive format v2 includes profile data, goals, resume data and assets, applications, workflows, coaching, and per-user AI audit rows. Version 1 remains readable. Restore requires an empty vault and runs preflight, file writes, and database insertion under an exclusive desktop vault lock with rollback. Explicit device erasure removes user records and app-owned model/runtime/staging paths without traversing unrelated directories.
+Archive format v3 adds search profiles, user-scoped job matches, referenced public listings, learned preference signals, and application-to-job relationships to the profile, goal, resume, application, workflow, coaching, and AI-audit data already covered by earlier versions. Versions 1 and 2 remain readable. Export runs against one database snapshot and excludes in-flight search state and user-specific query data from shared listing records.
+
+Restore requires an empty vault, rejects ambiguous shared-listing or preference collisions, neutralizes runtime search state, and runs preflight, file writes, and database insertion under an exclusive desktop vault lock with rollback. Explicit erasure deletes every user-scoped vault domain, checkpoints and vacuums SQLite, and removes user-namespaced staging paths. Post-commit cleanup failures remain discoverable and retryable without traversing unrelated directories.

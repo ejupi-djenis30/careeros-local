@@ -53,6 +53,11 @@ def test_runtime_and_ci_have_no_remote_ai_escape_hatches():
         re.IGNORECASE,
     )
     remote_secret = re.compile(r"\b(?:LLM|MODEL|GEMINI|GOOGLE|OPENAI)_(?:API_)?KEY\b")
+    build_time_docs = {
+        PROJECT_ROOT / "README.md",
+        PROJECT_ROOT / "docs" / "devpost.md",
+    }
+    build_time_phrases = ("OpenAI Build Week", "OpenAI Codex")
     files = [
         *PROJECT_ROOT.joinpath("backend").rglob("*.py"),
         *PROJECT_ROOT.joinpath("backend").rglob("*.md"),
@@ -77,7 +82,15 @@ def test_runtime_and_ci_have_no_remote_ai_escape_hatches():
         for line_number, line in enumerate(
             path.read_text(encoding="utf-8").splitlines(), start=1
         ):
-            if remote_provider.search(line) or remote_secret.search(line):
+            providers = {
+                match.group(0).lower() for match in remote_provider.finditer(line)
+            }
+            approved_build_time_reference = (
+                path in build_time_docs
+                and providers == {"openai"}
+                and any(phrase in line for phrase in build_time_phrases)
+            )
+            if (providers and not approved_build_time_reference) or remote_secret.search(line):
                 findings.append(f"{path.relative_to(PROJECT_ROOT)}:{line_number}")
     assert findings == [], "Remote AI boundary violations: " + ", ".join(findings)
 

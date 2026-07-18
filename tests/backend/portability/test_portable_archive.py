@@ -203,6 +203,44 @@ def _rewrite_application_job(archive_data: bytes, job_id: int) -> bytes:
     return output.getvalue()
 
 
+def _rewrite_legacy_v3_private_and_runtime_fields(
+    archive_data: bytes, source_query: str
+) -> bytes:
+    with zipfile.ZipFile(BytesIO(archive_data), "r") as source:
+        files = {name: source.read(name) for name in source.namelist()}
+    payload = json.loads(files["payload.json"])
+    payload["tables"]["scraped_jobs"][0]["source_query"] = source_query
+    payload["tables"]["search_profiles"][0].update(
+        {
+            "search_lock_token": "legacy-private-token",
+            "search_lock_state": "active",
+            "search_lock_acquired_at": "2026-07-01T09:30:00+00:00",
+            "search_status_state": "matching",
+            "search_status_payload": {"query": "legacy private runtime query"},
+            "search_status_started_at": "2026-07-01T09:30:00+00:00",
+            "search_status_updated_at": "2026-07-01T09:31:00+00:00",
+            "search_status_finished_at": None,
+        }
+    )
+    files["payload.json"] = json.dumps(
+        payload, ensure_ascii=False, separators=(",", ":"), sort_keys=True
+    ).encode("utf-8")
+    manifest = json.loads(files["manifest.json"])
+    payload_entry = next(
+        entry for entry in manifest["entries"] if entry["path"] == "payload.json"
+    )
+    payload_entry["byte_size"] = len(files["payload.json"])
+    payload_entry["sha256"] = hashlib.sha256(files["payload.json"]).hexdigest()
+    files["manifest.json"] = json.dumps(
+        manifest, ensure_ascii=False, separators=(",", ":"), sort_keys=True
+    ).encode("utf-8")
+    output = BytesIO()
+    with zipfile.ZipFile(output, "w", zipfile.ZIP_DEFLATED) as target:
+        for name, content in files.items():
+            target.writestr(name, content)
+    return output.getvalue()
+
+
 def _seed_search_portability_records(db, user_id: int):
     updated_at = datetime(2026, 7, 1, 9, 30, tzinfo=timezone.utc)
     signals = {
@@ -218,6 +256,14 @@ def _seed_search_portability_records(db, user_id: int):
         name="Portable backend search",
         role_description="Local Python systems",
         advanced_preferences={"remote_only": True},
+        search_lock_token="private-runtime-token",
+        search_lock_state="active",
+        search_lock_acquired_at=updated_at,
+        search_status_state="matching",
+        search_status_payload={"query": "private runtime query", "completed": 3},
+        search_status_started_at=updated_at,
+        search_status_updated_at=updated_at,
+        search_status_finished_at=updated_at,
     )
     scraped = ScrapedJob(
         platform="portable-test",
@@ -228,6 +274,7 @@ def _seed_search_portability_records(db, user_id: int):
         location="Zurich",
         external_url="https://example.test/jobs/42",
         normalized_domain="it",
+        source_query="private Python search terms",
     )
     db.add_all([profile, scraped])
     db.flush()
@@ -384,6 +431,18 @@ def test_v3_round_trip_remaps_search_ids_and_preserves_application_job(
     } == expected_search_counts
     assert payload["tables"]["applications"][0]["job_id"] == job_id
     assert payload["tables"]["preference_signals"][0]["preference_signals"] == signals
+    assert "source_query" not in payload["tables"]["scraped_jobs"][0]
+    runtime_fields = {
+        "search_lock_token",
+        "search_lock_state",
+        "search_lock_acquired_at",
+        "search_status_state",
+        "search_status_payload",
+        "search_status_started_at",
+        "search_status_updated_at",
+        "search_status_finished_at",
+    }
+    assert runtime_fields.isdisjoint(payload["tables"]["search_profiles"][0])
 
     deleted = client.delete(
         "/api/v1/career-profile",
@@ -436,7 +495,9 @@ def test_v3_round_trip_remaps_search_ids_and_preserves_application_job(
     assert restored_job.search_profile_id == restored_profile.id
     assert restored_job.scraped_job_id != scraped_id
     assert restored_job.scraped_job.title == "Local Backend Engineer"
+    assert restored_job.scraped_job.source_query is None
     assert restored_application.job_id == restored_job.id
+    assert all(getattr(restored_profile, field) is None for field in runtime_fields)
     owner = db_session.get(User, test_user.id)
     assert owner.preference_signals == signals
     assert owner.preference_updated_at is not None
@@ -463,11 +524,6 @@ def test_damaged_v3_relationship_leaves_search_vault_and_preferences_unchanged(
     assert deleted.status_code == 204, deleted.text
     db_session.expire_all()
     _clear_search_records(db_session, test_user.id, scraped_id)
-    owner = db_session.get(User, test_user.id)
-    sentinel = {"signal_count": 1, "preferred_domains": {"finance": 1.0}}
-    owner.preference_signals = sentinel
-    db_session.commit()
-
     restored = client.post(
         "/api/v1/portability/restore",
         files={"file": ("damaged.zip", damaged, "application/zip")},
@@ -486,7 +542,206 @@ def test_damaged_v3_relationship_leaves_search_vault_and_preferences_unchanged(
         .count()
         == 0
     )
+    assert db_session.get(User, test_user.id).preference_signals is None
+
+
+def test_v3_restore_rejects_preexisting_preference_signals_without_mutation(
+    client, auth_headers, db_session, test_user, portable_data_dir
+):
+    created = client.put(
+        "/api/v1/career-profile", json=_profile_payload(), headers=auth_headers
+    )
+    assert created.status_code == 200, created.text
+    _profile_id, scraped_id, _job_id, _application_id, _signals = (
+        _seed_search_portability_records(db_session, test_user.id)
+    )
+    exported = client.get("/api/v1/portability/export", headers=auth_headers)
+    assert exported.status_code == 200, exported.text
+
+    deleted = client.delete(
+        "/api/v1/career-profile",
+        headers={**auth_headers, "X-Confirm-Delete": "DELETE-MY-CAREER-VAULT"},
+    )
+    assert deleted.status_code == 204, deleted.text
+    db_session.expire_all()
+    _clear_search_records(db_session, test_user.id, scraped_id)
+    owner = db_session.get(User, test_user.id)
+    sentinel = {"signal_count": 1, "preferred_domains": {"finance": 1.0}}
+    owner.preference_signals = sentinel
+    owner.preference_updated_at = datetime(2026, 7, 2, 10, 0, tzinfo=timezone.utc)
+    db_session.commit()
+
+    restored = client.post(
+        "/api/v1/portability/restore",
+        files={"file": ("backup.zip", exported.content, "application/zip")},
+        headers=auth_headers,
+    )
+
+    assert restored.status_code == 409, restored.text
+    assert "empty preference signals" in restored.json()["detail"]
+    db_session.expire_all()
+    assert db_session.query(CandidateProfile).filter_by(user_id=test_user.id).count() == 0
+    assert db_session.query(SearchProfile).filter_by(user_id=test_user.id).count() == 0
     assert db_session.get(User, test_user.id).preference_signals == sentinel
+
+
+@pytest.mark.parametrize(
+    ("existing_title", "existing_source_query"),
+    [
+        ("Local Backend Engineer", "another user's private query"),
+        ("Stale Backend Engineer", None),
+    ],
+)
+def test_v3_restore_rejects_unsafe_existing_shared_listing(
+    client,
+    auth_headers,
+    db_session,
+    test_user,
+    portable_data_dir,
+    existing_title,
+    existing_source_query,
+):
+    created = client.put(
+        "/api/v1/career-profile", json=_profile_payload(), headers=auth_headers
+    )
+    assert created.status_code == 200, created.text
+    _profile_id, scraped_id, _job_id, _application_id, _signals = (
+        _seed_search_portability_records(db_session, test_user.id)
+    )
+    exported = client.get("/api/v1/portability/export", headers=auth_headers)
+    assert exported.status_code == 200, exported.text
+    deleted = client.delete(
+        "/api/v1/career-profile",
+        headers={**auth_headers, "X-Confirm-Delete": "DELETE-MY-CAREER-VAULT"},
+    )
+    assert deleted.status_code == 204, deleted.text
+    db_session.expire_all()
+    _clear_search_records(db_session, test_user.id, scraped_id)
+
+    other_user = User(username="shared-owner", hashed_password="unused-local-hash")
+    existing = ScrapedJob(
+        platform="portable-test",
+        platform_job_id="listing-42",
+        title=existing_title,
+        company="Portable Co",
+        description="Build local-first systems.",
+        location="Zurich",
+        external_url="https://example.test/jobs/42",
+        normalized_domain="it",
+        source_query=existing_source_query,
+    )
+    db_session.add_all([other_user, existing])
+    db_session.flush()
+    db_session.add(Job(user_id=other_user.id, scraped_job_id=existing.id))
+    db_session.commit()
+
+    restored = client.post(
+        "/api/v1/portability/restore",
+        files={"file": ("backup.zip", exported.content, "application/zip")},
+        headers=auth_headers,
+    )
+
+    assert restored.status_code == 409, restored.text
+    assert "shared scraped listing" in restored.json()["detail"]
+    db_session.expire_all()
+    assert db_session.query(CandidateProfile).filter_by(user_id=test_user.id).count() == 0
+    assert db_session.query(Job).filter_by(user_id=test_user.id).count() == 0
+    assert db_session.query(Job).filter_by(user_id=other_user.id).count() == 1
+    assert db_session.get(ScrapedJob, existing.id).source_query == existing_source_query
+
+
+def test_v3_restore_reuses_only_identical_public_shared_listing(
+    client, auth_headers, db_session, test_user, portable_data_dir
+):
+    created = client.put(
+        "/api/v1/career-profile", json=_profile_payload(), headers=auth_headers
+    )
+    assert created.status_code == 200, created.text
+    _profile_id, scraped_id, _job_id, _application_id, _signals = (
+        _seed_search_portability_records(db_session, test_user.id)
+    )
+    exported = client.get("/api/v1/portability/export", headers=auth_headers)
+    assert exported.status_code == 200, exported.text
+    deleted = client.delete(
+        "/api/v1/career-profile",
+        headers={**auth_headers, "X-Confirm-Delete": "DELETE-MY-CAREER-VAULT"},
+    )
+    assert deleted.status_code == 204, deleted.text
+    db_session.expire_all()
+    _clear_search_records(db_session, test_user.id, scraped_id)
+
+    other_user = User(username="safe-shared-owner", hashed_password="unused-local-hash")
+    existing = ScrapedJob(
+        platform="portable-test",
+        platform_job_id="listing-42",
+        title="Local Backend Engineer",
+        company="Portable Co",
+        description="Build local-first systems.",
+        location="Zurich",
+        external_url="https://example.test/jobs/42",
+        normalized_domain="it",
+    )
+    db_session.add_all([other_user, existing])
+    db_session.flush()
+    existing_id = existing.id
+    db_session.add(Job(user_id=other_user.id, scraped_job_id=existing_id))
+    db_session.commit()
+
+    restored = client.post(
+        "/api/v1/portability/restore",
+        files={"file": ("backup.zip", exported.content, "application/zip")},
+        headers=auth_headers,
+    )
+
+    assert restored.status_code == 200, restored.text
+    db_session.expire_all()
+    restored_job = db_session.query(Job).filter_by(user_id=test_user.id).one()
+    assert restored_job.scraped_job_id == existing_id
+    assert restored_job.scraped_job.source_query is None
+
+
+def test_v3_restore_accepts_legacy_private_field_but_does_not_propagate_it(
+    client, auth_headers, db_session, test_user, portable_data_dir
+):
+    created = client.put(
+        "/api/v1/career-profile", json=_profile_payload(), headers=auth_headers
+    )
+    assert created.status_code == 200, created.text
+    _profile_id, scraped_id, _job_id, _application_id, _signals = (
+        _seed_search_portability_records(db_session, test_user.id)
+    )
+    exported = client.get("/api/v1/portability/export", headers=auth_headers)
+    assert exported.status_code == 200, exported.text
+    legacy_v3 = _rewrite_legacy_v3_private_and_runtime_fields(
+        exported.content, "legacy user's private discovery query"
+    )
+    deleted = client.delete(
+        "/api/v1/career-profile",
+        headers={**auth_headers, "X-Confirm-Delete": "DELETE-MY-CAREER-VAULT"},
+    )
+    assert deleted.status_code == 204, deleted.text
+    db_session.expire_all()
+    _clear_search_records(db_session, test_user.id, scraped_id)
+
+    restored = client.post(
+        "/api/v1/portability/restore",
+        files={"file": ("legacy-v3.zip", legacy_v3, "application/zip")},
+        headers=auth_headers,
+    )
+
+    assert restored.status_code == 200, restored.text
+    db_session.expire_all()
+    restored_job = db_session.query(Job).filter_by(user_id=test_user.id).one()
+    restored_profile = db_session.query(SearchProfile).filter_by(user_id=test_user.id).one()
+    assert restored_job.scraped_job.source_query is None
+    assert restored_profile.search_lock_token is None
+    assert restored_profile.search_lock_state is None
+    assert restored_profile.search_lock_acquired_at is None
+    assert restored_profile.search_status_state is None
+    assert restored_profile.search_status_payload is None
+    assert restored_profile.search_status_started_at is None
+    assert restored_profile.search_status_updated_at is None
+    assert restored_profile.search_status_finished_at is None
 
 
 def test_backup_restore_disk_full_rolls_back_records_and_first_file(

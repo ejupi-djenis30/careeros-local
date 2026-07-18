@@ -222,7 +222,7 @@ describe('SearchContext — ghost PID TTL', () => {
 
   it('locally added pid is dropped after TTL when server never confirms it', async () => {
     const listener = vi.fn();
-    window.addEventListener('jh_api_error', listener);
+    window.addEventListener('careeros:api-error', listener);
 
     // Server never returns pid 42
     mockGetAllStatuses.mockResolvedValue({});
@@ -264,7 +264,7 @@ describe('SearchContext — ghost PID TTL', () => {
       })
     );
 
-    window.removeEventListener('jh_api_error', listener);
+    window.removeEventListener('careeros:api-error', listener);
   });
 
   it('locally added pid is retained permanently once server confirms it', async () => {

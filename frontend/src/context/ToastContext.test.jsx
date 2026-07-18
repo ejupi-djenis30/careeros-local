@@ -20,7 +20,7 @@ describe('ToastContext', () => {
     );
 
     act(() => {
-      window.dispatchEvent(new CustomEvent('jh_api_error', { detail: { message: 'Boom' } }));
+      window.dispatchEvent(new CustomEvent('careeros:api-error', { detail: { message: 'Boom' } }));
     });
 
     expect(screen.getByText('Boom')).toBeInTheDocument();

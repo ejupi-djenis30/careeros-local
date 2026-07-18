@@ -99,7 +99,7 @@ describe('ApiClient — extended coverage', () => {
 
   it('uses detail string from error body', async () => {
     const listener = vi.fn();
-    window.addEventListener('jh_api_error', listener);
+    window.addEventListener('careeros:api-error', listener);
     vi.spyOn(globalThis, 'fetch').mockResolvedValue({
       status: 400,
       ok: false,
@@ -107,38 +107,38 @@ describe('ApiClient — extended coverage', () => {
     });
     await expect(ApiClient.get('/bad')).rejects.toThrow('Bad request');
     expect(listener.mock.calls[0][0].detail.message).toBe('Bad request');
-    window.removeEventListener('jh_api_error', listener);
+    window.removeEventListener('careeros:api-error', listener);
   });
 
   it('joins array detail messages', async () => {
     const listener = vi.fn();
-    window.addEventListener('jh_api_error', listener);
+    window.addEventListener('careeros:api-error', listener);
     vi.spyOn(globalThis, 'fetch').mockResolvedValue({
       status: 422,
       ok: false,
       json: async () => ({ detail: [{ msg: 'field required' }, { msg: 'invalid value' }] }),
     });
     await expect(ApiClient.get('/validate')).rejects.toThrow('field required, invalid value');
-    window.removeEventListener('jh_api_error', listener);
+    window.removeEventListener('careeros:api-error', listener);
   });
 
   it('falls back to message field when detail absent', async () => {
     const listener = vi.fn();
-    window.addEventListener('jh_api_error', listener);
+    window.addEventListener('careeros:api-error', listener);
     vi.spyOn(globalThis, 'fetch').mockResolvedValue({
       status: 500,
       ok: false,
       json: async () => ({ message: 'Internal error' }),
     });
     await expect(ApiClient.get('/fail')).rejects.toThrow('Internal error');
-    window.removeEventListener('jh_api_error', listener);
+    window.removeEventListener('careeros:api-error', listener);
   });
 
   // ── Unauthorised / refresh flow ─────────────────────────────────────────────
 
-  it('dispatches jh_unauthorized when refresh fails', async () => {
+  it('dispatches the CareerOS unauthorized event when refresh fails', async () => {
     const listener = vi.fn();
-    window.addEventListener('jh_unauthorized', listener);
+    window.addEventListener('careeros:unauthorized', listener);
 
     vi.spyOn(globalThis, 'fetch')
       .mockResolvedValueOnce({ status: 401, ok: false, json: async () => ({}) })
@@ -146,7 +146,7 @@ describe('ApiClient — extended coverage', () => {
 
     await expect(ApiClient.get('/protected')).rejects.toThrow();
     expect(listener).toHaveBeenCalledTimes(1);
-    window.removeEventListener('jh_unauthorized', listener);
+    window.removeEventListener('careeros:unauthorized', listener);
   });
 
   it('retries original request after successful refresh', async () => {

@@ -2,6 +2,7 @@
 import React, { createContext, useContext, useState, useEffect, useRef, useCallback } from 'react';
 import { SearchService } from '../services/search';
 import { useAuth } from './AuthContext';
+import { CAREEROS_API_ERROR_EVENT } from '../lib/events';
 
 const SearchContext = createContext(null);
 
@@ -129,7 +130,7 @@ export function SearchProvider({ children }) {
                                 next.push(id);
                             } else if (addedAt !== undefined) {
                                 delete pendingAddedAtRef.current[id];
-                                window.dispatchEvent(new CustomEvent('jh_api_error', {
+                                window.dispatchEvent(new CustomEvent(CAREEROS_API_ERROR_EVENT, {
                                     detail: {
                                         message: `Search ${id} did not start successfully. Please try again.`
                                     }
@@ -147,7 +148,7 @@ export function SearchProvider({ children }) {
             } catch (e) {
                 if (e.name === 'AbortError') return;
                 console.error("Failed to poll statuses:", e);
-                window.dispatchEvent(new CustomEvent('jh_api_error', {
+                window.dispatchEvent(new CustomEvent(CAREEROS_API_ERROR_EVENT, {
                     detail: {
                         message: 'Live search status updates are temporarily unavailable. Retrying...'
                     }

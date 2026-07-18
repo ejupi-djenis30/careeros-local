@@ -1,4 +1,6 @@
 import zipfile
+from collections.abc import Iterator
+from contextlib import contextmanager
 from datetime import date, datetime, timezone
 from io import BytesIO
 from pathlib import PurePosixPath
@@ -65,6 +67,27 @@ EXPORT_MODELS: list[tuple[str, type[Any]]] = [
     ("ai_executions", AIExecution),
 ]
 MODEL_BY_TABLE = dict(EXPORT_MODELS)
+
+# A scraped listing is shared by every user who saved the same provider record.
+# ``source_query`` describes how one user discovered that listing, so it must
+# never leave the originating vault as part of the shared record.
+SCRAPED_JOB_PRIVATE_FIELDS = frozenset({"source_query"})
+
+# Locks and progress payloads describe an in-flight process, not durable search
+# configuration. Excluding them also keeps a backup from retaining stale query
+# progress that restore must never resume.
+SEARCH_PROFILE_RUNTIME_FIELDS = frozenset(
+    {
+        "search_lock_token",
+        "search_lock_state",
+        "search_lock_acquired_at",
+        "search_status_state",
+        "search_status_payload",
+        "search_status_started_at",
+        "search_status_updated_at",
+        "search_status_finished_at",
+    }
+)
 
 
 def _json_value(value: Any) -> Any:
@@ -189,8 +212,38 @@ def _queries(db: Session, user_id: int) -> dict[str, list[Any]]:
     }
 
 
+@contextmanager
+def _consistent_export_snapshot(db: Session) -> Iterator[None]:
+    """Run all archive reads against one committed database snapshot.
+
+    Authentication may already have opened a SQLAlchemy transaction without
+    opening a SQLite transaction at the driver level. Start the snapshot
+    explicitly so later table reads cannot observe a concurrent commit. A
+    repeatable-read transaction provides the equivalent guarantee for the
+    non-SQLite development configuration.
+    """
+
+    if db.new or db.dirty or db.deleted:
+        raise ArchiveError("Backup requires committed vault state")
+
+    # End the request's read-only authentication transaction before selecting
+    # the isolation level for the export snapshot.
+    db.rollback()
+    bind = db.get_bind()
+    if bind.dialect.name == "sqlite":
+        db.connection().exec_driver_sql("BEGIN")
+    else:
+        db.connection(execution_options={"isolation_level": "REPEATABLE READ"})
+    try:
+        yield
+    finally:
+        # Export is read-only. Rolling back releases the snapshot without
+        # introducing a commit into the caller's session lifecycle.
+        db.rollback()
+
+
 def export_archive(db: Session, user_id: int) -> bytes:
-    with desktop_vault_lock():
+    with desktop_vault_lock(), _consistent_export_snapshot(db):
         rows = _queries(db, user_id)
         if not rows["candidate_profiles"]:
             raise ArchiveError("There is no career vault data to export")
@@ -206,6 +259,10 @@ def export_archive(db: Session, user_id: int) -> bytes:
         }
         for table_name, _model in EXPORT_MODELS:
             omit = {"user_id"} if table_name in user_scoped else set()
+            if table_name == "scraped_jobs":
+                omit.update(SCRAPED_JOB_PRIVATE_FIELDS)
+            elif table_name == "search_profiles":
+                omit.update(SEARCH_PROFILE_RUNTIME_FIELDS)
             tables[table_name] = [_row(item, omit=omit) for item in rows[table_name]]
         owner = rows["preference_signals"][0]
         tables["preference_signals"] = [

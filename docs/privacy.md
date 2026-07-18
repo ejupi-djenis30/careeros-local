@@ -16,7 +16,9 @@ The local model does not automatically receive the complete vault. Each task sel
 
 ## Control and portability
 
-Users can export a manifest-verified ZIP backup, restore it into an empty vault, and erase profile data plus managed model/runtime files using an exact confirmation phrase. Backup files are not encrypted by the application; store them in an encrypted location if confidentiality is required.
+Users can export a manifest-verified ZIP backup from one consistent database snapshot and restore it into an empty vault. Shared job-listing records exclude user-specific discovery queries, while restore rejects private or stale cross-user collisions instead of silently merging them.
+
+The exact confirmation phrase erases profile, resume, search, match, application, workflow, coaching, learned-preference, and AI-audit data plus app-owned files. SQLite secure deletion, WAL checkpoints, and vacuuming reduce recoverable database remnants; user-scoped staged-file cleanup is retryable if an operating-system error interrupts it. Managed model/runtime files can be removed in the same operation. Backup files are not encrypted by the application; store them in an encrypted location if confidentiality is required.
 
 ## Operating-system protections
 

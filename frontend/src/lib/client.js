@@ -1,3 +1,5 @@
+import { CAREEROS_API_ERROR_EVENT, CAREEROS_UNAUTHORIZED_EVENT } from "./events";
+
 const DEFAULT_API_BASE = "/api/v1";
 const LOOPBACK_HOSTS = new Set(["localhost", "127.0.0.1", "[::1]", "::1"]);
 
@@ -59,7 +61,7 @@ export class ApiClient {
     static _suppressUnauthorized = false;
 
     static _dispatchApiError(message) {
-        window.dispatchEvent(new CustomEvent("jh_api_error", { detail: { message } }));
+        window.dispatchEvent(new CustomEvent(CAREEROS_API_ERROR_EVENT, { detail: { message } }));
     }
 
     static _extractErrorMessage(errorData, fallbackMessage) {
@@ -119,7 +121,7 @@ export class ApiClient {
             });
         }
 
-        window.dispatchEvent(new Event("jh_unauthorized"));
+        window.dispatchEvent(new Event(CAREEROS_UNAUTHORIZED_EVENT));
         return null;
     }
 

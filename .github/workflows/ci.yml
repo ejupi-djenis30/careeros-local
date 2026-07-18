@@ -55,9 +55,9 @@ jobs:
             --fail-on "GNU General Public License;GNU Affero General Public License;AGPL-1.0;AGPL-3.0;Server Side Public License;SSPL-1.0;Business Source License;BUSL-1.1" \
             --partial-match
       - name: Lint
-        run: ruff check backend tests/backend alembic/versions
+        run: ruff check backend tests/backend alembic/versions scripts/seed_demo.py
       - name: Type-check
-        run: mypy backend --ignore-missing-imports --no-error-summary
+        run: mypy backend scripts/seed_demo.py --ignore-missing-imports --no-error-summary
       - name: Validate migration round-trip
         run: |
           alembic upgrade head

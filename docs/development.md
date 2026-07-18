@@ -51,8 +51,8 @@ Never replace a migration with a runtime `create_all` workaround.
 ## Tests and quality
 
 ```powershell
-.venv\Scripts\python.exe -m ruff check backend tests/backend alembic/versions
-.venv\Scripts\python.exe -m mypy backend --ignore-missing-imports --no-error-summary
+.venv\Scripts\python.exe -m ruff check backend tests/backend alembic/versions scripts/seed_demo.py
+.venv\Scripts\python.exe -m mypy backend scripts/seed_demo.py --ignore-missing-imports --no-error-summary
 .venv\Scripts\python.exe -m pytest tests/backend -q
 npm --prefix frontend test
 npm --prefix frontend run lint

@@ -182,14 +182,14 @@ describe('AuthContext', () => {
     expect(screen.getByTestId('user').textContent).toBe('null');
   });
 
-  it('handles jh_unauthorized event by calling logout', async () => {
+  it('handles the CareerOS unauthorized event by calling logout', async () => {
     mockRefresh.mockResolvedValue({ username: 'alice' });
 
     await renderAndWait(<Consumer />);
     expect(screen.getByTestId('user').textContent).toBe('alice');
 
     await act(async () => {
-      window.dispatchEvent(new Event('jh_unauthorized'));
+      window.dispatchEvent(new Event('careeros:unauthorized'));
     });
 
     await waitFor(() => {

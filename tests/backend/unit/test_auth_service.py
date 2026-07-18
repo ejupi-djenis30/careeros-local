@@ -16,8 +16,20 @@ from backend.services.auth import (
 
 client = TestClient(app, raise_server_exceptions=False)
 
+REFRESH_COOKIE_NAME = "careeros_refresh_token"
+LEGACY_REFRESH_COOKIE_NAME = "jh_refresh_token"
+
+
+def _cookie_was_deleted(response, cookie_name):
+    return any(
+        header.startswith(f"{cookie_name}=")
+        and ("Max-Age=0" in header or "expires=" in header.lower())
+        for header in response.headers.get_list("set-cookie")
+    )
+
 
 def test_register_success():
+    client.cookies.clear()
     mock_db = MagicMock()
     mock_db.query.return_value.filter.return_value.first.return_value = None
     app.dependency_overrides[get_db] = lambda: mock_db
@@ -39,7 +51,8 @@ def test_register_success():
             "token_type": "bearer",
             "username": "newuser",
         }
-        assert "jh_refresh_token=refresh" in response.headers.get("set-cookie", "")
+        assert f"{REFRESH_COOKIE_NAME}=refresh" in response.headers.get("set-cookie", "")
+        assert LEGACY_REFRESH_COOKIE_NAME not in client.cookies
 
     app.dependency_overrides.clear()
 
@@ -59,6 +72,10 @@ def test_register_existing_user():
 
 
 def test_login_success():
+    client.cookies.clear()
+    client.cookies.set(
+        LEGACY_REFRESH_COOKIE_NAME, "legacy-session", domain="testserver.local", path="/"
+    )
     mock_db = MagicMock()
     mock_user = MagicMock(username="user", hashed_password="pwd")
     mock_db.query.return_value.filter.return_value.first.return_value = mock_user
@@ -72,7 +89,9 @@ def test_login_success():
         response = client.post("/api/v1/auth/login", data={"username": "user", "password": "pwd"})
         assert response.status_code == 200
         assert response.json()["access_token"] == "acc"
-        assert "jh_refresh_token=ref" in response.headers.get("set-cookie", "")
+        assert f"{REFRESH_COOKIE_NAME}=ref" in response.headers.get("set-cookie", "")
+        assert LEGACY_REFRESH_COOKIE_NAME not in client.cookies
+        assert _cookie_was_deleted(response, LEGACY_REFRESH_COOKIE_NAME)
 
     app.dependency_overrides.clear()
 
@@ -89,6 +108,7 @@ def test_login_failure():
 
 
 def test_refresh_success():
+    client.cookies.clear()
     mock_db = MagicMock()
     mock_user = MagicMock(username="user")
     mock_db.query.return_value.filter.return_value.first.return_value = mock_user
@@ -99,35 +119,84 @@ def test_refresh_success():
         patch("backend.api.routes.auth.create_access_token", return_value="acc2"),
         patch("backend.api.routes.auth.create_refresh_token", return_value="ref2"),
     ):
-        client.cookies.set("jh_refresh_token", "old_ref")
+        client.cookies.set(
+            LEGACY_REFRESH_COOKIE_NAME, "old_ref", domain="testserver.local", path="/"
+        )
         response = client.post("/api/v1/auth/refresh")
         assert response.status_code == 200
         assert response.json()["access_token"] == "acc2"
-        assert "jh_refresh_token=ref2" in response.headers.get("set-cookie", "")
+        assert f"{REFRESH_COOKIE_NAME}=ref2" in response.headers.get("set-cookie", "")
+        assert REFRESH_COOKIE_NAME in client.cookies
+        assert LEGACY_REFRESH_COOKIE_NAME not in client.cookies
+        assert _cookie_was_deleted(response, LEGACY_REFRESH_COOKIE_NAME)
+
+    app.dependency_overrides.clear()
+    client.cookies.clear()
+
+
+def test_refresh_prefers_canonical_cookie_and_removes_legacy_cookie():
+    client.cookies.clear()
+    client.cookies.set(
+        REFRESH_COOKIE_NAME, "current_ref", domain="testserver.local", path="/"
+    )
+    client.cookies.set(
+        LEGACY_REFRESH_COOKIE_NAME, "legacy_ref", domain="testserver.local", path="/"
+    )
+    mock_db = MagicMock()
+    mock_db.query.return_value.filter.return_value.first.return_value = MagicMock(username="user")
+    app.dependency_overrides[get_db] = lambda: mock_db
+
+    with (
+        patch(
+            "backend.api.routes.auth.decode_refresh_token", return_value={"sub": "user"}
+        ) as decode_refresh,
+        patch("backend.api.routes.auth.create_access_token", return_value="access"),
+        patch("backend.api.routes.auth.create_refresh_token", return_value="rotated"),
+    ):
+        response = client.post("/api/v1/auth/refresh")
+
+    assert response.status_code == 200
+    decode_refresh.assert_called_once_with("current_ref")
+    assert client.cookies.get(REFRESH_COOKIE_NAME) == "rotated"
+    assert LEGACY_REFRESH_COOKIE_NAME not in client.cookies
+    assert _cookie_was_deleted(response, LEGACY_REFRESH_COOKIE_NAME)
 
     app.dependency_overrides.clear()
     client.cookies.clear()
 
 
 def test_refresh_vanished_user():
+    client.cookies.clear()
     mock_db = MagicMock()
     mock_db.query.return_value.filter.return_value.first.return_value = None
     app.dependency_overrides[get_db] = lambda: mock_db
 
     with patch("backend.api.routes.auth.decode_refresh_token", return_value={"sub": "user"}):
-        client.cookies.set("jh_refresh_token", "old_ref")
+        client.cookies.set(
+            LEGACY_REFRESH_COOKIE_NAME, "old_ref", domain="testserver.local", path="/"
+        )
         response = client.post("/api/v1/auth/refresh")
         assert response.status_code == 401
         assert response.json()["detail"] == "User vanished"
+        assert REFRESH_COOKIE_NAME not in client.cookies
+        assert LEGACY_REFRESH_COOKIE_NAME not in client.cookies
 
     app.dependency_overrides.clear()
     client.cookies.clear()
 
 
 def test_logout():
+    client.cookies.clear()
+    client.cookies.set(REFRESH_COOKIE_NAME, "current", domain="testserver.local", path="/")
+    client.cookies.set(
+        LEGACY_REFRESH_COOKIE_NAME, "legacy", domain="testserver.local", path="/"
+    )
     response = client.post("/api/v1/auth/logout")
     assert response.status_code == 200
-    assert "Max-Age=0" in response.headers.get("set-cookie", "")
+    assert _cookie_was_deleted(response, REFRESH_COOKIE_NAME)
+    assert _cookie_was_deleted(response, LEGACY_REFRESH_COOKIE_NAME)
+    assert REFRESH_COOKIE_NAME not in client.cookies
+    assert LEGACY_REFRESH_COOKIE_NAME not in client.cookies
 
 
 def test_password_hashing():

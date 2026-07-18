@@ -272,7 +272,7 @@ T047 model-manager UI tests
 
 ## Task validation
 
-- Total tasks: 91.
+- Total tasks: 92.
 - User Story 1: 14 tasks (T015–T028).
 - User Story 2: 6 tasks (T029–T034).
 - User Story 3: 7 tasks (T035–T041).
@@ -280,7 +280,7 @@ T047 model-manager UI tests
 - User Story 5: 6 tasks (T059–T064).
 - Setup/Foundation/Polish/Convergence: 37 tasks.
 - Convergence: 11 tasks (T077–T087).
-- Post-audit release hardening: 4 tasks (T088–T091).
+- Post-audit release hardening: 5 tasks (T088–T092).
 - Every task uses the required checkbox, sequential ID, appropriate story label and exact path.
 - Suggested MVP scope: Setup + Foundation + User Story 1.
 
@@ -303,4 +303,5 @@ T047 model-manager UI tests
 - [x] T088 Delete user-scoped search profiles, jobs and learned preference signals during complete-vault erasure, and prove SQLite/WAL content removal without touching unrelated user data per FR-032 and SC-002
 - [x] T089 Add a backward-compatible portable-archive version that round-trips search profiles, jobs, referenced scraped listings, preference signals and application-to-job relationships per FR-030 and SC-008
 - [x] T090 Correct compact-model and packaged-lifecycle release commands, and run CI for the `develop` integration branch
-- [ ] T091 Add a truthful, demo-first OpenAI Build Week submission kit with repository hero/thumbnail assets, judge quickstart, Codex/GPT-5.6 development notes and a sub-three-minute video script
+- [x] T091 Add a truthful, demo-first OpenAI Build Week submission kit with repository hero/thumbnail assets, real product captures, a loopback-only demo seeder, judge quickstart, Codex/GPT-5.6 development notes and a sub-three-minute video script
+- [x] T092 Complete the CareerOS identity migration for frontend events and refresh cookies while rotating and clearing the legacy cookie without breaking existing local sessions

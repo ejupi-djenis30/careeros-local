@@ -6,6 +6,7 @@ import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
+import backend.career.deletion as deletion
 from backend.ai.models import AIExecution
 from backend.career.deletion import _sanitize_sqlite_storage
 from backend.career.models import CareerAsset
@@ -206,6 +207,73 @@ def test_device_erasure_removes_legacy_search_data_and_preserves_shared_jobs(
     assert db_session.get(ScrapedJob, unrelated_scraped_job_id) is not None
     assert db_session.get(SearchProfile, other_profile_id) is not None
     assert db_session.query(Job).filter(Job.user_id == other_user.id).count() == 2
+
+
+def test_device_erasure_sanitizes_sqlite_and_retries_staged_file_cleanup(
+    client, auth_headers, db_session, test_user, deletion_root, monkeypatch
+):
+    profile = client.put(
+        "/api/v1/career-profile", json=PROFILE, headers=auth_headers
+    )
+    assert profile.status_code == 200, profile.text
+    source = client.post(
+        "/api/v1/career-profile/sources",
+        files={"file": ("private-proof.txt", b"private", "text/plain")},
+        headers=auth_headers,
+    )
+    assert source.status_code == 201, source.text
+
+    other_user_trash = deletion_root / ".trash" / "user-999" / "pending"
+    other_user_trash.mkdir(parents=True)
+    other_user_file = other_user_trash / "keep.bin"
+    other_user_file.write_bytes(b"other-account")
+
+    db_session.expire_all()
+    asset_path = db_session.query(CareerAsset).one().storage_path
+    real_rmtree = deletion.shutil.rmtree
+    real_sanitize = deletion._sanitize_sqlite_storage
+    cleanup_attempts = 0
+    sanitization_attempts = 0
+
+    def fail_first_trash_cleanup(path, *args, **kwargs):
+        nonlocal cleanup_attempts
+        if Path(path).name == f"user-{test_user.id}":
+            cleanup_attempts += 1
+            if cleanup_attempts == 1:
+                raise OSError("simulated locked trash")
+        return real_rmtree(path, *args, **kwargs)
+
+    def track_sanitization(session):
+        nonlocal sanitization_attempts
+        sanitization_attempts += 1
+        real_sanitize(session)
+
+    monkeypatch.setattr(deletion.shutil, "rmtree", fail_first_trash_cleanup)
+    monkeypatch.setattr(deletion, "_sanitize_sqlite_storage", track_sanitization)
+
+    first = client.delete(
+        "/api/v1/portability/erase",
+        headers={**auth_headers, "X-Confirm-Erase": "ERASE-LOCAL-CAREER-DATA"},
+    )
+
+    assert first.status_code == 500
+    assert "private files remain" in first.json()["detail"]
+    assert sanitization_attempts == 1
+    assert not (deletion_root / asset_path).exists()
+    user_trash = deletion_root / ".trash" / f"user-{test_user.id}"
+    assert [path for path in user_trash.rglob("*") if path.is_file()]
+
+    retried = client.delete(
+        "/api/v1/portability/erase",
+        headers={**auth_headers, "X-Confirm-Erase": "ERASE-LOCAL-CAREER-DATA"},
+    )
+
+    assert retried.status_code == 200, retried.text
+    assert retried.json()["profiles"] == 0
+    assert sanitization_attempts == 2
+    assert cleanup_attempts == 2
+    assert not user_trash.exists()
+    assert other_user_file.read_bytes() == b"other-account"
 
 
 def test_sqlite_vault_sanitization_truncates_wal_without_session_transaction():

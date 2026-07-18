@@ -13,7 +13,7 @@ describe('ApiClient', () => {
 
   it('dispatches a global api error event for failed JSON requests', async () => {
     const listener = vi.fn();
-    window.addEventListener('jh_api_error', listener);
+    window.addEventListener('careeros:api-error', listener);
 
     vi.spyOn(globalThis, 'fetch').mockResolvedValue({
       status: 500,
@@ -25,12 +25,12 @@ describe('ApiClient', () => {
 
     expect(listener).toHaveBeenCalledTimes(1);
     expect(listener.mock.calls[0][0].detail.message).toBe('Server broke');
-    window.removeEventListener('jh_api_error', listener);
+    window.removeEventListener('careeros:api-error', listener);
   });
 
   it('dispatches a global api error event for failed multipart uploads', async () => {
     const listener = vi.fn();
-    window.addEventListener('jh_api_error', listener);
+    window.addEventListener('careeros:api-error', listener);
 
     vi.spyOn(globalThis, 'fetch').mockResolvedValue({
       status: 400,
@@ -42,7 +42,7 @@ describe('ApiClient', () => {
 
     expect(listener).toHaveBeenCalledTimes(1);
     expect(listener.mock.calls[0][0].detail.message).toBe('Bad upload');
-    window.removeEventListener('jh_api_error', listener);
+    window.removeEventListener('careeros:api-error', listener);
   });
 
   // ── _suppressUnauthorized ──────────────────────────────────────────────────
@@ -53,7 +53,7 @@ describe('ApiClient', () => {
 
     const handleUnauthorizedSpy = vi.spyOn(ApiClient, '_handleUnauthorized');
     const unauthorizedListener = vi.fn();
-    window.addEventListener('jh_unauthorized', unauthorizedListener);
+    window.addEventListener('careeros:unauthorized', unauthorizedListener);
 
     vi.spyOn(globalThis, 'fetch').mockResolvedValue({
       status: 401,
@@ -66,15 +66,15 @@ describe('ApiClient', () => {
     expect(handleUnauthorizedSpy).not.toHaveBeenCalled();
     expect(unauthorizedListener).not.toHaveBeenCalled();
 
-    window.removeEventListener('jh_unauthorized', unauthorizedListener);
+    window.removeEventListener('careeros:unauthorized', unauthorizedListener);
   });
 
-  it('dispatches jh_unauthorized and throws when refresh fails and _suppressUnauthorized is false', async () => {
+  it('dispatches the CareerOS unauthorized event when refresh fails', async () => {
     ApiClient._suppressUnauthorized = false;
     ApiClient.setToken('old-tok');
 
     const unauthorizedListener = vi.fn();
-    window.addEventListener('jh_unauthorized', unauthorizedListener);
+    window.addEventListener('careeros:unauthorized', unauthorizedListener);
 
     vi.spyOn(globalThis, 'fetch')
       .mockResolvedValueOnce({ status: 401, ok: false }) // original request → 401
@@ -84,6 +84,6 @@ describe('ApiClient', () => {
 
     expect(unauthorizedListener).toHaveBeenCalledTimes(1);
 
-    window.removeEventListener('jh_unauthorized', unauthorizedListener);
+    window.removeEventListener('careeros:unauthorized', unauthorizedListener);
   });
 });
