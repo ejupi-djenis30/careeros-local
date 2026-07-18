@@ -10,16 +10,18 @@ def _text(path: str) -> str:
     return (ROOT / path).read_text(encoding="utf-8")
 
 
-def test_product_manifests_use_only_careeros_identity() -> None:
-    manifests = (
+def test_product_surfaces_use_only_careeros_identity() -> None:
+    product_surfaces = (
         "pyproject.toml",
         "frontend/package.json",
         "frontend/package-lock.json",
         "Dockerfile",
         "docker-compose.yml",
         "alembic.ini",
+        ".serena/project.yml",
+        "backend/ai/planning.py",
     )
-    combined = "\n".join(_text(path) for path in manifests).lower()
+    combined = "\n".join(_text(path) for path in product_surfaces).lower()
     assert "job-hunter-ai" not in combined
     assert "job_hunter" not in combined
     assert "ejupi-djenis30/job-hunter-ai" not in combined

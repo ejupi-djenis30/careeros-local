@@ -12,7 +12,8 @@
 
 ```powershell
 npm --prefix frontend run tauri:build -- --target x86_64-pc-windows-msvc
-.venv\Scripts\python.exe -m pytest tests/desktop/test_packaged_lifecycle.py -q
+$env:CAREEROS_SIDECAR_BINARY = (Resolve-Path "frontend\src-tauri\binaries\careeros-backend-runtime\careeros-backend.exe").Path
+.venv\Scripts\python.exe -m pytest tests/desktop/test_packaged_lifecycle.py -q -m acceptance
 .venv\Scripts\python.exe scripts/write_artifact_checksums.py --target x86_64-pc-windows-msvc --output .artifacts/checksums-x86_64-pc-windows-msvc.sha256
 ```
 

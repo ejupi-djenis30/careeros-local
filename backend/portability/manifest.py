@@ -9,8 +9,8 @@ from backend.portability.schemas import ArchiveManifest
 ARCHIVE_FORMAT: Final[Literal["careeros-portable-archive"]] = (
     "careeros-portable-archive"
 )
-CURRENT_ARCHIVE_VERSION: Final = 2
-SUPPORTED_ARCHIVE_VERSIONS: Final = frozenset({1, 2})
+CURRENT_ARCHIVE_VERSION: Final = 3
+SUPPORTED_ARCHIVE_VERSIONS: Final = frozenset({1, 2, 3})
 MANIFEST_MEMBER: Final = "manifest.json"
 PAYLOAD_MEMBER: Final = "payload.json"
 
@@ -30,7 +30,18 @@ V1_TABLES: Final = (
     "workflow_runs",
 )
 V2_TABLES: Final = (*V1_TABLES, "ai_executions")
-TABLES_BY_VERSION: Final = {1: frozenset(V1_TABLES), 2: frozenset(V2_TABLES)}
+V3_TABLES: Final = (
+    *V2_TABLES,
+    "search_profiles",
+    "scraped_jobs",
+    "jobs",
+    "preference_signals",
+)
+TABLES_BY_VERSION: Final = {
+    1: frozenset(V1_TABLES),
+    2: frozenset(V2_TABLES),
+    3: frozenset(V3_TABLES),
+}
 
 
 def canonical_json(value: Any) -> bytes:

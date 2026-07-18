@@ -91,8 +91,8 @@ Expected:
 ## 8. Run compact-model evaluation
 
 ```powershell
-.\.venv\Scripts\python.exe -m backend.ai.evaluation validate-fixtures
-.\.venv\Scripts\python.exe -m backend.ai.evaluation run --profile compact --offline
+.\.venv\Scripts\python.exe -m backend.ai.evaluation
+.\.venv\Scripts\python.exe -m backend.ai.evaluation --live
 ```
 
 Expected: schema acceptance is at least 99%, accepted unsupported claims are 0%, evidence coverage

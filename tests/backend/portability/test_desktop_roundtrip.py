@@ -51,17 +51,22 @@ def _delete_profile(client, auth_headers):
     assert response.status_code == 204, response.text
 
 
-def _convert_to_v1(data: bytes) -> bytes:
+def _convert_to_version(data: bytes, version: int) -> bytes:
     with zipfile.ZipFile(BytesIO(data), "r") as source:
         files = {name: source.read(name) for name in source.namelist()}
     payload = json.loads(files["payload.json"])
-    payload["tables"].pop("ai_executions")
+    removed_tables = ["search_profiles", "scraped_jobs", "jobs", "preference_signals"]
+    if version == 1:
+        removed_tables.append("ai_executions")
+    for table_name in removed_tables:
+        payload["tables"].pop(table_name)
     files["payload.json"] = json.dumps(
         payload, ensure_ascii=False, separators=(",", ":"), sort_keys=True
     ).encode("utf-8")
     manifest = json.loads(files["manifest.json"])
-    manifest["format_version"] = 1
-    manifest["record_counts"].pop("ai_executions")
+    manifest["format_version"] = version
+    for table_name in removed_tables:
+        manifest["record_counts"].pop(table_name)
     for entry in manifest["entries"]:
         if entry["path"] == "payload.json":
             entry["byte_size"] = len(files["payload.json"])
@@ -76,7 +81,7 @@ def _convert_to_v1(data: bytes) -> bytes:
     return output.getvalue()
 
 
-def test_v2_archive_restores_ai_audit_and_v1_remains_compatible(
+def test_v3_archive_restores_ai_audit_and_v2_v1_remain_compatible(
     client, auth_headers, db_session, test_user, desktop_data_dir
 ):
     _create_profile(client, auth_headers)
@@ -100,8 +105,9 @@ def test_v2_archive_restores_ai_audit_and_v1_remains_compatible(
     assert exported.status_code == 200, exported.text
     with zipfile.ZipFile(BytesIO(exported.content)) as archive:
         manifest = json.loads(archive.read("manifest.json"))
-    assert manifest["format_version"] == 2
+    assert manifest["format_version"] == 3
     assert manifest["record_counts"]["ai_executions"] == 1
+    assert manifest["record_counts"]["preference_signals"] == 1
 
     _delete_profile(client, auth_headers)
     restored = client.post(
@@ -114,7 +120,18 @@ def test_v2_archive_restores_ai_audit_and_v1_remains_compatible(
     assert db_session.query(AIExecution).filter(AIExecution.user_id == test_user.id).count() == 1
 
     _delete_profile(client, auth_headers)
-    v1_data = _convert_to_v1(exported.content)
+    v2_data = _convert_to_version(exported.content, 2)
+    restored_v2 = client.post(
+        "/api/v1/portability/restore",
+        files={"file": ("v2.zip", v2_data, "application/zip")},
+        headers=auth_headers,
+    )
+    assert restored_v2.status_code == 200, restored_v2.text
+    assert restored_v2.json()["format_version"] == 2
+    assert restored_v2.json()["restored_records"]["preference_signals"] == 0
+
+    _delete_profile(client, auth_headers)
+    v1_data = _convert_to_version(exported.content, 1)
     restored_v1 = client.post(
         "/api/v1/portability/restore",
         files={"file": ("legacy.zip", v1_data, "application/zip")},

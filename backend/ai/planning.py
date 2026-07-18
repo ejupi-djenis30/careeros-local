@@ -252,7 +252,7 @@ class PlanningMixin:
         )
 
         system_prompt = (
-            "You are an expert Job Hunter AI specialized in the Swiss job market. "
+            "You are CareerOS Local's career-search assistant specialized in the Swiss job market. "
             "You are fluent in English, German, French, and Italian. "
             "Your task is to generate HIGH-QUALITY, DIVERSE, and EXECUTABLE search queries "
             "that maximize precision first, then coverage, without wasting slots on duplicates or vague terms. "

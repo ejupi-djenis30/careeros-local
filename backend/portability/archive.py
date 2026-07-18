@@ -18,6 +18,7 @@ from backend.career.models import (
 )
 from backend.core.config import settings
 from backend.desktop.lifecycle import desktop_vault_lock
+from backend.models import Job, ScrapedJob, SearchProfile, User
 from backend.portability.manifest import (
     ARCHIVE_FORMAT,
     CURRENT_ARCHIVE_VERSION,
@@ -53,6 +54,9 @@ EXPORT_MODELS: list[tuple[str, type[Any]]] = [
     ("resume_drafts", ResumeDraft),
     ("resume_versions", ResumeVersion),
     ("resume_artifacts", ResumeArtifact),
+    ("search_profiles", SearchProfile),
+    ("scraped_jobs", ScrapedJob),
+    ("jobs", Job),
     ("applications", Application),
     ("application_events", ApplicationEvent),
     ("coach_conversations", CoachConversation),
@@ -83,6 +87,9 @@ def _row(instance: Any, *, omit: set[str] | None = None) -> dict[str, Any]:
 
 
 def _queries(db: Session, user_id: int) -> dict[str, list[Any]]:
+    user = db.get(User, user_id)
+    if user is None:
+        raise ArchiveError("The local vault owner does not exist")
     profile = db.query(CandidateProfile).filter(CandidateProfile.user_id == user_id).first()
     profile_id = profile.id if profile else None
     profile_rows = [profile] if profile else []
@@ -128,6 +135,14 @@ def _queries(db: Session, user_id: int) -> dict[str, list[Any]]:
         if profile_id
         else []
     )
+    search_profiles = db.query(SearchProfile).filter(SearchProfile.user_id == user_id).all()
+    jobs = db.query(Job).filter(Job.user_id == user_id).all()
+    scraped_job_ids = {job.scraped_job_id for job in jobs}
+    scraped_jobs = (
+        db.query(ScrapedJob).filter(ScrapedJob.id.in_(scraped_job_ids)).all()
+        if scraped_job_ids
+        else []
+    )
     applications = db.query(Application).filter(Application.user_id == user_id).all()
     application_events = (
         db.query(ApplicationEvent)
@@ -161,12 +176,16 @@ def _queries(db: Session, user_id: int) -> dict[str, list[Any]]:
         "resume_drafts": drafts,
         "resume_versions": versions,
         "resume_artifacts": artifacts,
+        "search_profiles": search_profiles,
+        "scraped_jobs": scraped_jobs,
+        "jobs": jobs,
         "applications": applications,
         "application_events": application_events,
         "coach_conversations": conversations,
         "coach_messages": messages,
         "workflow_runs": workflows,
         "ai_executions": executions,
+        "preference_signals": [user],
     }
 
 
@@ -179,6 +198,8 @@ def export_archive(db: Session, user_id: int) -> bytes:
         tables: dict[str, list[dict[str, Any]]] = {}
         user_scoped = {
             "candidate_profiles",
+            "search_profiles",
+            "jobs",
             "applications",
             "workflow_runs",
             "ai_executions",
@@ -186,6 +207,13 @@ def export_archive(db: Session, user_id: int) -> bytes:
         for table_name, _model in EXPORT_MODELS:
             omit = {"user_id"} if table_name in user_scoped else set()
             tables[table_name] = [_row(item, omit=omit) for item in rows[table_name]]
+        owner = rows["preference_signals"][0]
+        tables["preference_signals"] = [
+            {
+                "preference_signals": _json_value(owner.preference_signals),
+                "preference_updated_at": _json_value(owner.preference_updated_at),
+            }
+        ]
 
         bindings: list[dict[str, str]] = []
         file_members: dict[str, bytes] = {}
