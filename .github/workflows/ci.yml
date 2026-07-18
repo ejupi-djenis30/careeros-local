@@ -162,6 +162,12 @@ jobs:
         with:
           toolchain: stable
           components: rustfmt, clippy
+      - name: Prepare non-packaging resource path
+        working-directory: frontend/src-tauri
+        run: |
+          # The release workflow builds and verifies the real Python sidecar.
+          # tauri-build only needs the configured directory to exist for Rust checks.
+          mkdir -p binaries/careeros-backend-runtime
       - name: Format, lint and test desktop shell
         working-directory: frontend/src-tauri
         run: |
