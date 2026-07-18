@@ -191,8 +191,9 @@ Project and evidence:
 - [x] Publish the completed history on the public `main` branch.
 - [x] Confirm the public repository opens without authentication and still contains the MIT
   license, setup instructions, and representative source code.
-- [ ] Publish or link a reproducible Windows installer/release, or provide exact setup and test
-  instructions that were run successfully.
+- [x] Publish the source release and demo media at
+  [`v1.0.0`](https://github.com/ejupi-djenis30/careeros-local/releases/tag/v1.0.0), with exact
+  locked setup and verification instructions. No signed installer is claimed.
 - [x] Update the public repository description to the CareerOS Local positioning.
 - [ ] Link public commits or a comparison that demonstrates the significant Build Week
   extension of the pre-existing project.
@@ -222,7 +223,6 @@ actions:
 - no final public YouTube demo URL had been supplied;
 - the required `/feedback` Codex Session ID had not been obtained;
 - eligibility, country, submitter type, and final category still required owner confirmation;
-- a public release/install path still needed to be published or verified;
 - Devpost had not been verified in the `Submitted` state.
 
 Do not mark any of these items complete based only on a local build or this document.
