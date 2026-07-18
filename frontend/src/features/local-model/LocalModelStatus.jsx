@@ -8,7 +8,7 @@ export function LocalModelStatus({ compact = false }) {
         checking: "Verifica modello…",
         ready: `${runtimeName} · ${status.configured_model}`,
         missing: "Configurazione modello necessaria",
-        offline: "Runtime locale non disponibile",
+        offline: "AI locale opzionale",
     }[state];
 
     return (
@@ -20,7 +20,7 @@ export function LocalModelStatus({ compact = false }) {
                     <span>
                         {status.ready
                             ? "Inferenza disponibile solo su questo dispositivo"
-                            : "Ricerca e archivio restano disponibili senza modello"}
+                            : "Archivio, CV e candidature funzionano senza modello"}
                     </span>
                 )}
             </div>

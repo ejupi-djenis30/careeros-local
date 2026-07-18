@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security and privacy reports
+    url: https://github.com/ejupi-djenis30/careeros-local/security/policy
+    about: Report vulnerabilities or accidental private-data exposure through the security policy.

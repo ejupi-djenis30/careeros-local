@@ -22,10 +22,10 @@ describe("LocalModelStatus", () => {
         expect(refresh).toHaveBeenCalledTimes(1);
     });
 
-    it("makes runtime unavailability explicit without hiding offline capabilities", () => {
+    it("presents an unavailable optional runtime as a neutral setup state", () => {
         hook.mockReturnValue({ status: { loading: false, available: false, ready: false, configured_model: "qwen3:1.7b", installed_models: [], error_code: "local_runtime_unreachable" }, refresh });
         render(<LocalModelStatus />);
-        expect(screen.getByText("Runtime locale non disponibile")).toBeInTheDocument();
-        expect(screen.getByText(/archivio restano disponibili/)).toBeInTheDocument();
+        expect(screen.getByText("AI locale opzionale")).toBeInTheDocument();
+        expect(screen.getByText(/Archivio, CV e candidature funzionano/)).toBeInTheDocument();
     });
 });

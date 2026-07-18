@@ -2,9 +2,9 @@ name: CI
 
 on:
   push:
-    branches: [main, master, develop]
+    branches: [main]
   pull_request:
-    branches: [main, master, develop]
+    branches: [main]
 
 permissions:
   contents: read
@@ -55,9 +55,9 @@ jobs:
             --fail-on "GNU General Public License;GNU Affero General Public License;AGPL-1.0;AGPL-3.0;Server Side Public License;SSPL-1.0;Business Source License;BUSL-1.1" \
             --partial-match
       - name: Lint
-        run: ruff check backend tests/backend alembic/versions scripts/seed_demo.py
+        run: ruff check backend tests/backend alembic/versions scripts/seed_demo.py scripts/render_demo_assets.py
       - name: Type-check
-        run: mypy backend scripts/seed_demo.py --ignore-missing-imports --no-error-summary
+        run: mypy backend scripts/seed_demo.py scripts/render_demo_assets.py --ignore-missing-imports --no-error-summary
       - name: Validate migration round-trip
         run: |
           alembic upgrade head
@@ -81,7 +81,7 @@ jobs:
           if-no-files-found: ignore
 
   frontend:
-    name: Frontend · Node 22
+    name: Frontend · Node 24
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -122,6 +122,9 @@ jobs:
       - name: Build
         working-directory: frontend
         run: npm run build
+      - name: Validate demo recorder
+        working-directory: frontend
+        run: node --check ../scripts/record_demo.mjs
       - name: Upload frontend SBOM
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -145,6 +148,13 @@ jobs:
         uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4
         with:
           toolchain: stable
+          components: rustfmt, clippy
+      - name: Format, lint and test desktop shell
+        working-directory: frontend/src-tauri
+        run: |
+          cargo fmt --check
+          cargo clippy --locked --all-targets -- -D warnings
+          cargo test --locked
       - name: Install pinned supply-chain tools
         run: |
           cargo install cargo-audit --version 0.22.2 --locked

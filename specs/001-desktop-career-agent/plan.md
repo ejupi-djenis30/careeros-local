@@ -22,7 +22,7 @@ and introduces per-platform installer CI with checksums, SBOMs and smoke tests.
 ## Technical Context
 
 **Language/Version**: Python 3.12.13; Rust 1.84+ (current workspace 1.96); JavaScript/JSX
-on Node 22.23.1
+on Node 24.18.0 LTS
 
 **Primary Dependencies**: Tauri 2.11, React 19, Vite 7, FastAPI 0.139, SQLAlchemy 2,
 Alembic 1.18, Pydantic 2.13, PyInstaller 6.21, llama.cpp server b9637

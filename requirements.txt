@@ -2,7 +2,10 @@
 # pip-compile --generate-hashes --output-file requirements.lock requirements.txt
 
 fastapi==0.139.2
-uvicorn[standard]==0.51.0
+# Keep the loopback sidecar portable across Windows ARM64 and Linux runners.
+# The optional ``standard`` extra pulls platform-specific event loops that are not
+# required by CareerOS and make a single hash-locked dependency set impossible.
+uvicorn==0.51.0
 python-multipart==0.0.32
 
 SQLAlchemy==2.0.51

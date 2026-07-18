@@ -302,6 +302,6 @@ T047 model-manager UI tests
 
 - [x] T088 Delete user-scoped search profiles, jobs and learned preference signals during complete-vault erasure, and prove SQLite/WAL content removal without touching unrelated user data per FR-032 and SC-002
 - [x] T089 Add a backward-compatible portable-archive version that round-trips search profiles, jobs, referenced scraped listings, preference signals and application-to-job relationships per FR-030 and SC-008
-- [x] T090 Correct compact-model and packaged-lifecycle release commands, and run CI for the `develop` integration branch
+- [x] T090 Correct compact-model and packaged-lifecycle release commands, and run CI for the public `main` branch
 - [x] T091 Add a truthful, demo-first OpenAI Build Week submission kit with repository hero/thumbnail assets, real product captures, a loopback-only demo seeder, judge quickstart, Codex/GPT-5.6 development notes and a sub-three-minute video script
 - [x] T092 Complete the CareerOS identity migration for frontend events and refresh cookies while rotating and clearing the legacy cookie without breaking existing local sessions

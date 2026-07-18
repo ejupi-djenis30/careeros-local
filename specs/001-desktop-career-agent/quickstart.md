@@ -5,7 +5,7 @@ This guide validates the implementation; it is not an installation guide for end
 ## Prerequisites
 
 - Windows x64/arm64, macOS x64/arm64 or Linux x64/arm64 build host
-- Python 3.12.13, Node 22.23.1 and current stable Rust compatible with Tauri 2
+- Python 3.12.13, Node 24.18.0 LTS and current stable Rust compatible with Tauri 2
 - Platform prerequisites listed by Tauri for the active operating system
 - Network access only for dependency installation and the explicit model acquisition scenario
 

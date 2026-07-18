@@ -1,3 +1,4 @@
+import { StrictMode } from "react";
 import { fireEvent, render, screen } from "@testing-library/react";
 import { readFileSync } from "node:fs";
 import userEvent from "@testing-library/user-event";
@@ -7,6 +8,15 @@ import { resumeDraft } from "../../../test/fixtures";
 import { ResumeCanvas } from "./ResumeCanvas";
 
 describe("ResumeCanvas", () => {
+    it("does not emit an unchanged document during StrictMode effect replay", () => {
+        const onChange = vi.fn();
+        render(<StrictMode><ResumeCanvas document={resumeDraft().canvas_document} templateKind="ats" onChange={onChange} /></StrictMode>);
+
+        expect(onChange).not.toHaveBeenCalled();
+        fireEvent.change(screen.getByLabelText("Dimensione testo"), { target: { value: "11" } });
+        expect(onChange).toHaveBeenCalledTimes(1);
+    });
+
     it("supports inline edits, undo and keyboard-accessible ordering", async () => {
         const user = userEvent.setup();
         const onChange = vi.fn();

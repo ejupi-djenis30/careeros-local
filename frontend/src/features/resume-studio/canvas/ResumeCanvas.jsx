@@ -9,17 +9,18 @@ export function ResumeCanvas({ document, templateKind, onChange, onPromoteClaim,
     const [selection, setSelection] = useState(null);
     const [zoom, setZoom] = useState(0.85);
     const [pageCount, setPageCount] = useState(1);
-    const mounted = useRef(false);
     const onChangeRef = useRef(onChange);
+    const lastEmittedDocument = useRef(state.present);
     const paperRef = useRef(null);
 
     useEffect(() => { onChangeRef.current = onChange; }, [onChange]);
 
     useEffect(() => {
-        if (!mounted.current) {
-            mounted.current = true;
-            return;
-        }
+        // React StrictMode replays mount effects in development. Reference equality
+        // keeps that replay from marking an unchanged draft dirty and starting an
+        // autosave/remount loop; reducer edits always produce a new document object.
+        if (lastEmittedDocument.current === state.present) return;
+        lastEmittedDocument.current = state.present;
         onChangeRef.current(state.present);
     }, [state.present]);
 

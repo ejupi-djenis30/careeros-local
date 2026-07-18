@@ -1,8 +1,18 @@
 [project]
 name = "careeros-local"
 version = "1.0.0"
-description = "Private desktop career agent with a local vault, resume studio, and local AI"
+description = "Private, local-first AI career workspace for resumes, job matching, and application tracking"
+readme = "README.md"
+license = "MIT"
 requires-python = ">=3.12,<3.14"
+keywords = ["career", "local-first", "privacy", "tauri", "fastapi", "react"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: Microsoft :: Windows",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Office/Business",
+]
 
 [tool.pytest.ini_options]
 addopts = ["--import-mode=importlib"]

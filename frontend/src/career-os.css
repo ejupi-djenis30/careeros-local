@@ -663,8 +663,8 @@ summary:focus-visible {
   height: 8px;
   flex: 0 0 auto;
   border-radius: 50%;
-  background: var(--cos-danger);
-  box-shadow: 0 0 0 4px rgba(255, 140, 135, 0.08);
+  background: var(--cos-blue);
+  box-shadow: 0 0 0 4px rgba(130, 185, 255, 0.08);
 }
 
 .model-status--ready .model-status__dot,
@@ -1849,7 +1849,7 @@ summary:focus-visible {
   min-height: 520px;
   gap: 0.65rem;
   padding-bottom: 0.7rem;
-  grid-auto-columns: minmax(210px, 1fr);
+  grid-auto-columns: minmax(165px, 1fr);
   grid-auto-flow: column;
   overflow-x: auto;
 }

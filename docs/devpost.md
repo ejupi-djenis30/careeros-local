@@ -128,8 +128,12 @@ Build and verification:
   legible at Devpost card size.
 - `docs/assets/careeros-workspace.png` — real browser-mode capture of the daily workspace using
   a fictional local profile.
+- `docs/assets/careeros-vault.png` — real capture of the verified Career Vault.
 - `docs/assets/careeros-resume-studio.png` — real capture of the grounded ATS resume workflow.
 - `docs/assets/careeros-applications.png` — real capture of the local application pipeline.
+- `docs/assets/careeros-demo.webm` and `careeros-demo-poster.jpg` — reproducible 34-second
+  portfolio tour and clickable poster. This silent repository tour does **not** replace the
+  narrated YouTube deliverable required for submission.
 
 Before upload, preview each asset at Devpost's rendered size and retain the distinction between
 concept art and working-product captures in captions. The screenshots contain fictional demo
@@ -184,12 +188,12 @@ form mistakes; Devpost labels remain authoritative.
 
 Project and evidence:
 
-- [ ] Push the completed `develop` history and the intended public submission branch.
-- [ ] Confirm the public repository opens without authentication and still contains the MIT
+- [x] Publish the completed history on the public `main` branch.
+- [x] Confirm the public repository opens without authentication and still contains the MIT
   license, setup instructions, and representative source code.
 - [ ] Publish or link a reproducible Windows installer/release, or provide exact setup and test
   instructions that were run successfully.
-- [ ] Update the public repository description if it still says “Job Hunter AI”.
+- [x] Update the public repository description to the CareerOS Local positioning.
 - [ ] Link public commits or a comparison that demonstrates the significant Build Week
   extension of the pre-existing project.
 - [ ] Verify the exact demo build against backend, frontend, Rust, migration, and packaged-app
@@ -218,8 +222,7 @@ actions:
 - no final public YouTube demo URL had been supplied;
 - the required `/feedback` Codex Session ID had not been obtained;
 - eligibility, country, submitter type, and final category still required owner confirmation;
-- the completed local commits, public release/install path, and updated GitHub description
-  still needed to be published or verified;
+- a public release/install path still needed to be published or verified;
 - Devpost had not been verified in the `Submitted` state.
 
 Do not mark any of these items complete based only on a local build or this document.

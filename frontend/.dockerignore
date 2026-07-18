@@ -6,3 +6,4 @@ coverage
 *.log
 src/**/*.test.*
 src/test
+src-tauri

@@ -22,12 +22,16 @@ FORBIDDEN_OUTPUT_DIRECTORIES = {
 }
 APPROVED_MARKDOWN = {
     Path("AGENTS.md"),
+    Path("CHANGELOG.md"),
+    Path("CONTRIBUTING.md"),
     Path("README.md"),
     Path("SECURITY.md"),
+    Path(".github/pull_request_template.md"),
     Path("backend/README.md"),
     Path("frontend/README.md"),
     Path("docs/architecture.md"),
     Path("docs/development.md"),
+    Path("docs/demo.md"),
     Path("docs/devpost.md"),
     Path("docs/privacy.md"),
     Path("docs/releasing.md"),
@@ -81,6 +85,25 @@ def test_no_command_logs_or_temporary_dumps_are_source_files():
         if path.suffix.casefold() in {".log", ".out", ".tmp"}
     ]
     assert offenders == []
+
+
+def test_portfolio_demo_assets_are_present_and_github_sized():
+    assets = ROOT / "docs/assets"
+    screenshots = (
+        assets / "careeros-workspace.png",
+        assets / "careeros-vault.png",
+        assets / "careeros-resume-studio.png",
+        assets / "careeros-applications.png",
+    )
+    for screenshot in screenshots:
+        assert screenshot.is_file()
+        assert 10_000 < screenshot.stat().st_size < 2 * 1024 * 1024
+
+    video = assets / "careeros-demo.webm"
+    assert video.is_file()
+    assert 100_000 < video.stat().st_size < 10 * 1024 * 1024
+    assert (assets / "careeros-demo-poster.jpg").is_file()
+    assert (assets / "careeros-demo.gif").is_file()
 
 
 def test_legacy_service_facades_stay_thin():

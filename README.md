@@ -1,62 +1,92 @@
 # CareerOS Local
 
-![CareerOS Local — private desktop career workspace](docs/assets/careeros-local-hero.png)
+[![CI](https://github.com/ejupi-djenis30/careeros-local/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/ejupi-djenis30/careeros-local/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/ejupi-djenis30/careeros-local?display_name=tag&sort=semver&color=82b9ff)](https://github.com/ejupi-djenis30/careeros-local/releases/latest)
+[![License: MIT](https://img.shields.io/badge/license-MIT-b9f27c.svg)](LICENSE)
+![Local-first](https://img.shields.io/badge/architecture-local--first-82b9ff.svg)
 
-> Turn verified experience into resumes, job matches, and an application pipeline—without sending personal career data to cloud AI.
+> Turn verified experience into resumes, job matches and an application pipeline—without
+> handing your career history to a cloud AI service.
 
-CareerOS Local is a private desktop workspace for the full career journey. It keeps a structured Career Vault, evidence-backed facts, goals, resume versions, applications, coaching history, and AI audit metadata on the user's device.
+CareerOS Local is a working desktop career workspace built around one principle: professional
+data should remain useful, inspectable and owned by the person it describes. It combines a
+structured Career Vault, evidence-backed resume production, opportunity matching, application
+tracking and optional on-device AI in one private workspace.
 
-The project is being prepared for [OpenAI Build Week](docs/devpost.md). The repository is the source of truth; public release and Devpost submission links are intentionally not claimed until they exist.
+[![Watch the 34-second CareerOS Local product tour](docs/assets/careeros-demo-poster.jpg)](docs/assets/careeros-demo.webm)
 
-## See it in action
+**[Watch the 34-second product tour](docs/assets/careeros-demo.webm)** ·
+[Architecture](docs/architecture.md) · [Privacy model](docs/privacy.md) ·
+[Reproduce the demo](docs/demo.md)
 
-| Daily workspace | Resume Studio |
+## Why it matters
+
+- **One source of truth:** career facts carry provenance, verification status and revision
+  history instead of becoming untraceable generated claims.
+- **Useful without AI:** profile, resume, application, backup and editing workflows remain
+  available when no model is installed.
+- **Private by architecture:** the API, database, artifacts and optional model runtime stay on
+  the device; there is no telemetry or cloud-model fallback.
+- **Built for real workflows:** resumes become immutable PDF/DOCX versions, while applications
+  retain local job snapshots and an append-only timeline.
+
+## Product tour
+
+| Daily workspace | Career Vault |
 | --- | --- |
-| ![CareerOS Local daily workspace](docs/assets/careeros-workspace.png) | ![CareerOS Local Resume Studio](docs/assets/careeros-resume-studio.png) |
+| ![CareerOS Local daily workspace](docs/assets/careeros-workspace.png) | ![CareerOS Local Career Vault](docs/assets/careeros-vault.png) |
 
-![CareerOS Local application pipeline](docs/assets/careeros-applications.png)
+| Resume Studio | Application pipeline |
+| --- | --- |
+| ![CareerOS Local Resume Studio](docs/assets/careeros-resume-studio.png) | ![CareerOS Local application pipeline](docs/assets/careeros-applications.png) |
 
-The screenshots use a fictional local profile. No personal account or production data is included.
+All captures are generated from a disposable database with a fictional Ada Lovelace profile.
+The recorder rejects visible alerts, browser errors and failed API responses before publishing
+the assets.
 
-## What makes it different
+## Engineering highlights
 
-- **Career Vault:** structured identity, experience, education, skills, evidence provenance, preferences, and career goals.
-- **Verified resumes:** ATS-focused or photo layouts generated only from confirmed profile facts.
-- **Editable canvas:** direct content editing, section ordering, visibility, spacing, pagination, undo, and redo.
-- **Immutable outputs:** named resume versions with quality-checked PDF and DOCX artifacts.
-- **Opportunity workflow:** local job matching connected to an append-only application timeline.
-- **Grounded local AI:** explicit context selection, strict output schemas, evidence retrieval, one bounded repair attempt, and content-free audit metadata.
-- **Data ownership:** versioned portable backups, transactional restore, and explicit secure vault erasure.
+- Tauri 2 owns the desktop shell and supervised FastAPI sidecar lifecycle.
+- React 19 provides the keyboard-accessible workspace and editable resume canvas.
+- SQLite, SQLAlchemy and Alembic provide transactional storage and migrations.
+- Versioned archives restore atomically and exclude private cross-user or runtime state.
+- Vault erasure sanitizes SQLite even when artifact cleanup needs a retry.
+- Local AI calls use explicit context, strict schemas, bounded repair and content-free audit
+  metadata through a managed llama.cpp-compatible runtime.
+- CI verifies Python, React and Rust code, migrations, dependency licenses, SBOMs, containers
+  and fixed high/critical vulnerabilities.
 
-Core profile, resume, application, backup, and editing workflows work without an AI model.
-
-## Local-first boundary
-
-CareerOS Local does not include a cloud AI provider or a hidden cloud fallback. The optional model runs through a managed llama.cpp-compatible runtime on loopback, after the user reviews its license and grants download consent. Model artifacts are checksum-verified before activation.
-
-Job-source connectors are a separate, explicit network boundary: when enabled, they retrieve public listings. They do not turn the Career Vault into cloud-model context. There is no telemetry or remote analytics in the application.
+## Architecture
 
 ```mermaid
 flowchart LR
     UI["Tauri 2 + React 19"] --> API["Loopback FastAPI sidecar"]
     API --> Vault["SQLite vault + local artifacts"]
-    API --> AI["Optional local llama.cpp runtime"]
+    API --> AI["Optional llama.cpp runtime"]
     API -. "explicit source consent" .-> Jobs["Public job providers"]
 ```
 
-See [architecture](docs/architecture.md), [privacy](docs/privacy.md), and [security policy](SECURITY.md) for the detailed trust model.
+The local model receives only the context selected for a task. Job-source connectors are a
+separate, explicit network boundary used to retrieve public listings; they never become an
+inference fallback. See the [architecture](docs/architecture.md),
+[privacy model](docs/privacy.md) and [security policy](SECURITY.md) for the complete trust model.
 
-## Judge quickstart
+## Technology
 
-The fastest reproducible path is browser mode on Windows PowerShell. It exercises the same React UI, FastAPI API, SQLite schema, and local-only data paths as the desktop app.
+| Layer | Stack |
+| --- | --- |
+| Desktop | Tauri 2, Rust |
+| Interface | React 19, Vite, Bootstrap Icons |
+| Local API | Python 3.12, FastAPI, Pydantic |
+| Data | SQLite, SQLAlchemy, Alembic |
+| Documents | ReportLab, python-docx, pypdf, Pillow |
+| Optional AI | Managed llama.cpp-compatible runtime, schema-validated pipelines |
+| Quality | pytest, Vitest, ESLint, Ruff, mypy, Clippy, Cargo test, Trivy, CycloneDX |
 
-Requirements:
+## Run locally
 
-- Python 3.12
-- Node.js 22 and npm
-- Git
-
-Install the locked dependencies and migrate a local database:
+Requirements: Python 3.12, Node.js 24 LTS, npm and Git. Native desktop development additionally
+requires Rust stable and the [Tauri prerequisites](https://v2.tauri.app/start/prerequisites/).
 
 ```powershell
 python -m venv .venv
@@ -65,7 +95,7 @@ npm ci --prefix frontend
 .venv\Scripts\alembic.exe upgrade head
 ```
 
-Start the backend and frontend in separate terminals:
+Start the local API and interface in separate terminals:
 
 ```powershell
 .venv\Scripts\python.exe -m uvicorn backend.main:app --host 127.0.0.1 --port 8000
@@ -75,58 +105,74 @@ Start the backend and frontend in separate terminals:
 npm --prefix frontend run dev -- --host 127.0.0.1
 ```
 
-Open `http://127.0.0.1:5173`, create a local account, and follow the in-app workflow. To populate a fresh local database with a fictional Ada profile suitable for the same product tour, run the optional loopback-only demo seeder after the backend starts:
+Open `http://127.0.0.1:5173`. To create the same disposable fictional workspace used in the
+tour, run this only against a development database:
 
 ```powershell
-.venv\Scripts\python.exe scripts/seed_demo.py --password "CareerOS-Demo-2026!"
+.venv\Scripts\python.exe scripts\seed_demo.py --password "CareerOS-Demo-2026!"
 ```
 
-Then sign in as `ada_demo` with the password supplied above. The seeder refuses non-loopback destinations, follows no redirects, and is idempotent for its own demo records. Use it only with a disposable development database.
+Then sign in as `ada_demo` with the supplied password. The seeder accepts loopback destinations
+only, follows no redirects and does not overwrite unrelated profile data.
 
-## Native desktop development
-
-Native mode additionally requires Rust stable and the [Tauri 2 platform prerequisites](https://v2.tauri.app/start/prerequisites/):
+For the native shell:
 
 ```powershell
 npm --prefix frontend run tauri:dev
 ```
 
-The command builds the Python sidecar for the active architecture and launches the Tauri shell. The model is not bundled; AI-assisted features are optional and installed from the home screen. Packaging, checksums, and signing expectations are documented in [releasing](docs/releasing.md).
+## Reproduce the portfolio media
+
+The media pipeline starts an isolated database and services on free loopback ports, seeds
+fictional data, records the real product and removes its temporary vault afterward.
+
+```powershell
+npm --prefix frontend run demo:install
+npm --prefix frontend run demo:record
+```
+
+It outputs a 1280×720 WebM tour, a lightweight animated preview, a poster and four clean
+screenshots under `docs/assets/`. Full details are in the [demo recording guide](docs/demo.md).
 
 ## Verify
 
-The local release gates are intentionally offline by default:
-
 ```powershell
-.venv\Scripts\python.exe -m ruff check backend tests/backend alembic/versions scripts/seed_demo.py
-.venv\Scripts\python.exe -m mypy backend scripts/seed_demo.py --ignore-missing-imports --no-error-summary
+.venv\Scripts\python.exe -m ruff check backend tests/backend alembic/versions scripts/seed_demo.py scripts/render_demo_assets.py
+.venv\Scripts\python.exe -m mypy backend scripts/seed_demo.py scripts/render_demo_assets.py --ignore-missing-imports --no-error-summary
 .venv\Scripts\python.exe -m pytest tests/backend -q
 npm --prefix frontend test
 npm --prefix frontend run lint
 npm --prefix frontend run build
 cargo fmt --manifest-path frontend/src-tauri/Cargo.toml --check
-cargo clippy --manifest-path frontend/src-tauri/Cargo.toml --all-targets -- -D warnings
-cargo test --manifest-path frontend/src-tauri/Cargo.toml
+cargo clippy --manifest-path frontend/src-tauri/Cargo.toml --locked --all-targets -- -D warnings
+cargo test --manifest-path frontend/src-tauri/Cargo.toml --locked
 ```
 
-For database changes, also run `alembic upgrade head`, `alembic downgrade -1`, and `alembic upgrade head` against a disposable SQLite database.
+Database changes also require an `upgrade head → downgrade -1 → upgrade head` round trip against
+a disposable SQLite database.
 
-## Build Week provenance
+## Project background
 
-CareerOS Local is a substantial Build Week extension of the pre-existing Job Hunter AI codebase. The event work added the desktop product identity, Career Vault, grounded resume studio, application workflow, local model management, secure portability and erasure, Tauri sidecar lifecycle, and expanded Python/React/Rust validation.
+CareerOS Local is a substantial desktop and privacy-focused extension of the earlier Job Hunter
+AI codebase, developed during OpenAI Build Week. The work added the Career Vault, grounded resume
+studio, application workflow, managed local model lifecycle, secure portability and erasure,
+Tauri sidecar integration and expanded Python/React/Rust verification. The detailed, claim-aware
+hackathon material remains in the [Devpost submission kit](docs/devpost.md).
 
-OpenAI Codex was used as an implementation partner across architecture tracing, implementation, migrations, testing, privacy review, and packaging checks. Product scope, privacy boundaries, evidence requirements, release claims, and submission decisions remained human-owned. The exact GPT-5.6 session evidence is a submission-time gate tracked in the [Devpost editing brief](docs/devpost.md); it must be obtained through `/feedback` before the project is submitted.
-
-## Project map
+## Documentation
 
 - [Development guide](docs/development.md)
+- [Demo recording guide](docs/demo.md)
 - [Architecture](docs/architecture.md)
 - [Privacy model](docs/privacy.md)
 - [Release process](docs/releasing.md)
 - [Devpost submission kit](docs/devpost.md)
-- [Active product specification](specs/001-desktop-career-agent/spec.md)
+- [Product specification](specs/001-desktop-career-agent/spec.md)
 - [Release evidence](specs/001-desktop-career-agent/release-evidence.md)
+- [Contributing guide](CONTRIBUTING.md)
+- [Changelog](CHANGELOG.md)
 
 ## License
 
-CareerOS Local is released under the [MIT License](LICENSE). Third-party runtimes and models retain their own licenses; the application displays the selected model license before download.
+CareerOS Local is released under the [MIT License](LICENSE). Third-party runtimes and models
+retain their own licenses; the application displays the selected model license before download.
