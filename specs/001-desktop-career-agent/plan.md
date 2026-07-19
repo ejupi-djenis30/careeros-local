@@ -27,6 +27,9 @@ on Node 24.18.0 LTS
 **Primary Dependencies**: Tauri 2.11, React 19, Vite 7, FastAPI 0.139, SQLAlchemy 2,
 Alembic 1.18, Pydantic 2.13, PyInstaller 6.21, llama.cpp server b9637
 
+**Presentation**: dependency-free React message catalogue with English as the clean-install
+default and Italian as an on-device, user-selected alternative; no locale service or egress
+
 **Storage**: SQLite career vault in the operating-system application-data directory;
 content-addressed local assets; atomic JSON manifests for managed runtime/model state
 
@@ -132,6 +135,7 @@ desktop/
 
 frontend/
 ├── src/
+│   ├── i18n/
 │   ├── features/local-model/
 │   ├── lib/client.js
 │   └── platform/desktop.js
@@ -161,6 +165,10 @@ small Rust shell. Place accuracy policy in `backend/ai` and runtime mechanics in
 `backend/inference`; neither domain services nor UI components depend on a concrete runtime.
 The former `backend/services/llm_service.py` and `search_service.py` remain temporary import
 facades until consumers are migrated, then shrink below the constitutional guideline.
+
+The presentation layer keeps language state separate from domain data. Navigation, the
+workspace shell and demo-facing components resolve copy through `frontend/src/i18n/`; the
+selected language is a local interface preference and never changes stored career facts.
 
 ## Delivery Phases
 

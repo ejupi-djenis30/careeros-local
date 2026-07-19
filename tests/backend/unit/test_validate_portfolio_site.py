@@ -1,0 +1,32 @@
+from scripts.validate_portfolio_site import ROOT, PortfolioParser, validate
+
+
+def _parse(fragment: str) -> PortfolioParser:
+    parser = PortfolioParser()
+    parser.feed(fragment)
+    parser.close()
+    return parser
+
+
+def test_decorative_image_may_have_empty_alt_text():
+    parser = _parse('<img src="mark.svg" alt="">')
+
+    assert parser.images_missing_alt == []
+
+
+def test_image_without_alt_attribute_is_reported():
+    parser = _parse('<img src="product.png">')
+
+    assert parser.images_missing_alt == [1]
+
+
+def test_portfolio_media_preserves_its_intrinsic_ratio():
+    errors = validate()
+
+    assert errors == []
+
+    css = (ROOT / "docs" / "site" / "styles.css").read_text(encoding="utf-8")
+    for selector in (".product-window img", ".feature-image img"):
+        declarations = css.split(f"{selector} {{", maxsplit=1)[1].split("}", maxsplit=1)[0]
+        assert "height: auto;" in declarations
+        assert "object-fit: contain;" in declarations

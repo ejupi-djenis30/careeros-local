@@ -6,6 +6,7 @@ import { AuthProvider, useAuth } from "./context/AuthContext";
 import { SearchProvider } from "./context/SearchContext";
 import { ToastProvider } from "./context/ToastContext";
 import { isDesktopShell } from "./platform/desktop";
+import { useI18n } from "./i18n/useI18n";
 
 const ApplicationsPage = lazy(() => import("./features/applications/ApplicationsPage").then((module) => ({ default: module.ApplicationsPage })));
 const CareerProfilePage = lazy(() => import("./features/career-profile/CareerProfilePage").then((module) => ({ default: module.CareerProfilePage })));
@@ -37,9 +38,9 @@ class ErrorBoundary extends React.Component {
             return (
                 <div className="state-panel state-panel--danger" role="alert">
                     <i className="bi bi-exclamation-triangle" aria-hidden="true" />
-                    <h2>Questa vista si è interrotta</h2>
-                    <p>I dati locali non sono stati modificati. Ricarica l’interfaccia per riprovare.</p>
-                    <button type="button" className="button button--primary" onClick={() => window.location.reload()}>Ricarica applicazione</button>
+                    <h2>{this.props.title}</h2>
+                    <p>{this.props.description}</p>
+                    <button type="button" className="button button--primary" onClick={() => window.location.reload()}>{this.props.reloadLabel}</button>
                 </div>
             );
         }
@@ -48,12 +49,13 @@ class ErrorBoundary extends React.Component {
 }
 function AuthenticatedApp() {
     const { isLoggedIn } = useAuth();
+    const { t } = useI18n();
     if (!isLoggedIn) return <Login />;
 
     return (
         <WorkspaceShell>
-            <ErrorBoundary>
-                <Suspense fallback={<div className="state-panel" role="status">Caricamento vista locale…</div>}>
+            <ErrorBoundary title={t("shell.errorTitle")} description={t("shell.errorCopy")} reloadLabel={t("shell.reload")}>
+                <Suspense fallback={<div className="state-panel" role="status">{t("shell.loading")}</div>}>
                     <Routes>
                         <Route path="/" element={<WorkspaceHomePage />} />
                         <Route path="/profile" element={<CareerProfilePage />} />

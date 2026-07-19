@@ -1,14 +1,16 @@
 import { useLocalModelStatus } from "./useLocalModelStatus";
+import { useI18n } from "../../i18n/useI18n";
 
 export function LocalModelStatus({ compact = false }) {
+    const { t } = useI18n();
     const { status, refresh } = useLocalModelStatus();
     const state = status.loading ? "checking" : status.ready ? "ready" : status.available ? "missing" : "offline";
-    const runtimeName = status.runtime === "llama.cpp" ? "llama.cpp" : "runtime locale";
+    const runtimeName = status.runtime === "llama.cpp" ? "llama.cpp" : t("model.runtime");
     const label = {
-        checking: "Verifica modello…",
+        checking: t("model.checking"),
         ready: `${runtimeName} · ${status.configured_model}`,
-        missing: "Configurazione modello necessaria",
-        offline: "AI locale opzionale",
+        missing: t("model.configuration"),
+        offline: t("model.optional"),
     }[state];
 
     return (
@@ -19,13 +21,13 @@ export function LocalModelStatus({ compact = false }) {
                 {!compact && (
                     <span>
                         {status.ready
-                            ? "Inferenza disponibile solo su questo dispositivo"
-                            : "Archivio, CV e candidature funzionano senza modello"}
+                            ? t("model.readyCopy")
+                            : t("model.offlineCopy")}
                     </span>
                 )}
             </div>
             {!compact && !status.loading && (
-                <button type="button" className="icon-button" onClick={refresh} aria-label="Ricontrolla modello locale">
+                <button type="button" className="icon-button" onClick={refresh} aria-label={t("model.recheck")}>
                     <i className="bi bi-arrow-clockwise" aria-hidden="true" />
                 </button>
             )}

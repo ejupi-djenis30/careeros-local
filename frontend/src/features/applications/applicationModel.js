@@ -13,6 +13,10 @@ export const STAGE_LABELS = {
     archived: "Archiviata",
 };
 
+export function getStageLabels(t) {
+    return Object.fromEntries(STAGES.map((stage) => [stage, t(`stage.${stage}`)]));
+}
+
 export const TRANSITIONS = {
     saved: ["preparing", "applied", "withdrawn", "archived"],
     preparing: ["saved", "applied", "withdrawn", "archived"],
@@ -27,4 +31,3 @@ export const TRANSITIONS = {
 };
 
 export const BOARD_STAGES = ["saved", "preparing", "applied", "screening", "interview", "offer", "accepted"];
-

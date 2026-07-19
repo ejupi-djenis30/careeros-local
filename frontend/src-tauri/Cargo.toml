@@ -1,7 +1,7 @@
 [package]
 name = "careeros-local"
 version = "1.0.2"
-description = "Private local-first desktop career agent"
+description = "Private, local-first career workspace"
 authors = ["CareerOS Local contributors"]
 edition = "2021"
 rust-version = "1.84"

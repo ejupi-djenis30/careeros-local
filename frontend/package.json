@@ -2,7 +2,7 @@
   "name": "careeros-local-desktop",
   "private": true,
   "version": "1.0.2",
-  "description": "CareerOS Local desktop application",
+  "description": "Private, local-first career workspace for verified resumes and applications",
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -28,6 +28,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
+    "brand:icons": "tauri icon public/careeros.svg --output src-tauri/icons",
     "demo:install": "playwright install chromium",
     "demo:record": "node ../scripts/record_demo.mjs"
   },

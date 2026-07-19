@@ -19,7 +19,7 @@ class PortfolioParser(HTMLParser):
         super().__init__(convert_charrefs=True)
         self.ids: set[str] = set()
         self.references: list[tuple[str, str, int]] = []
-        self.images_without_alt: list[int] = []
+        self.images_missing_alt: list[int] = []
         self.h1_count = 0
         self.main_count = 0
         self.nav_labels: list[str | None] = []
@@ -40,8 +40,8 @@ class PortfolioParser(HTMLParser):
             self.main_count += 1
         elif tag == "nav":
             self.nav_labels.append(attributes.get("aria-label"))
-        elif tag == "img" and not (attributes.get("alt") or "").strip():
-            self.images_without_alt.append(line)
+        elif tag == "img" and "alt" not in attributes:
+            self.images_missing_alt.append(line)
         elif tag == "video" and "controls" not in attributes:
             self.videos_without_controls.append(line)
 
@@ -74,8 +74,8 @@ def validate() -> list[str]:
         errors.append(f"expected exactly one main landmark, found {parser.main_count}")
     if any(not label for label in parser.nav_labels):
         errors.append("every navigation landmark must have an aria-label")
-    for line in parser.images_without_alt:
-        errors.append(f"line {line}: image is missing non-empty alt text")
+    for line in parser.images_missing_alt:
+        errors.append(f"line {line}: image is missing an alt attribute")
     for line in parser.videos_without_controls:
         errors.append(f"line {line}: video must expose browser controls")
     for url, line in parser.external_executables:
