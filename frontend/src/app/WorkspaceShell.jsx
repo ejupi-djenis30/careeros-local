@@ -2,7 +2,8 @@ import { useEffect, useRef, useState } from "react";
 import { useLocation } from "react-router-dom";
 import { Sidebar } from "../components/Layout/Sidebar";
 import { useAuth } from "../context/AuthContext";
-import { PAGE_CONTEXT } from "./navigation";
+import { useI18n } from "../i18n/useI18n";
+import { getPageContext } from "./navigation";
 
 export function WorkspaceShell({ children }) {
     const { user, logout } = useAuth();
@@ -10,7 +11,8 @@ export function WorkspaceShell({ children }) {
     const [menuOpen, setMenuOpen] = useState(false);
     const menuButtonRef = useRef(null);
     const sidebarRef = useRef(null);
-    const context = PAGE_CONTEXT[pathname] || PAGE_CONTEXT["/"];
+    const { t } = useI18n();
+    const context = getPageContext(pathname, t);
 
     useEffect(() => {
         if (!menuOpen) return undefined;
@@ -47,7 +49,7 @@ export function WorkspaceShell({ children }) {
 
     return (
         <div className="workspace-layout">
-            <a className="skip-link" href="#main-content">Vai al contenuto</a>
+            <a className="skip-link" href="#main-content">{t("shell.skip")}</a>
             <Sidebar
                 username={user}
                 onLogout={logout}
@@ -59,7 +61,7 @@ export function WorkspaceShell({ children }) {
                 type="button"
                 className={`workspace-scrim ${menuOpen ? "is-visible" : ""}`}
                 onClick={() => setMenuOpen(false)}
-                aria-label="Chiudi menu"
+                aria-label={t("shell.closeMenu")}
                 aria-hidden={!menuOpen}
                 tabIndex={menuOpen ? 0 : -1}
             />
@@ -70,7 +72,7 @@ export function WorkspaceShell({ children }) {
                         type="button"
                         className="icon-button workspace-menu"
                         onClick={() => setMenuOpen(true)}
-                        aria-label="Apri menu"
+                        aria-label={t("shell.openMenu")}
                         aria-controls="workspace-sidebar"
                         aria-expanded={menuOpen}
                     >
@@ -81,9 +83,9 @@ export function WorkspaceShell({ children }) {
                         <h1>{context.title}</h1>
                         <p>{context.description}</p>
                     </div>
-                    <div className="privacy-chip" title="Il database e gli artefatti restano sul dispositivo">
+                    <div className="privacy-chip" title={t("shell.privateTitle")}>
                         <i className="bi bi-shield-lock" aria-hidden="true" />
-                        <span>Local first</span>
+                        <span>{t("shell.private")}</span>
                     </div>
                 </header>
                 <main id="main-content" className="workspace-content" tabIndex="-1">{children}</main>

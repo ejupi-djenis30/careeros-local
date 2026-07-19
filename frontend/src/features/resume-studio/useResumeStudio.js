@@ -3,10 +3,12 @@ import { ApiError } from "../../lib/client";
 import { CareerService } from "../../services/career";
 import { ResumeService } from "../../services/resumes";
 import { useToast } from "../../context/ToastContext";
+import { useI18n } from "../../i18n/useI18n";
 import { newResumeDraft, resumeWritePayload } from "./resumeModel";
 
 export function useResumeStudio() {
     const { showToast } = useToast();
+    const { t } = useI18n();
     const [profile, setProfile] = useState(null);
     const [resumes, setResumes] = useState([]);
     const [draft, setDraft] = useState(null);
@@ -18,11 +20,17 @@ export function useResumeStudio() {
     const [generationGoalId, setGenerationGoalId] = useState("");
     const [syncPreview, setSyncPreview] = useState(null);
     const [syncSelection, setSyncSelection] = useState([]);
-    const [versionName, setVersionName] = useState("Versione CV");
+    const [versionName, setVersionName] = useState(() => t("resume.defaultVersionName"));
     const [versionComparison, setVersionComparison] = useState(null);
     const [autosaveState, setAutosaveState] = useState("idle");
     const changeSequence = useRef(0);
     const autosaveInFlight = useRef(false);
+    const translatorRef = useRef(t);
+    useEffect(() => { translatorRef.current = t; }, [t]);
+    const freshDraft = useCallback((facts) => ({
+        ...newResumeDraft(facts),
+        title: translatorRef.current("resume.defaultDraftTitle"),
+    }), []);
 
     const loadDraft = useCallback(async (id) => {
         setBusy("load");
@@ -50,19 +58,19 @@ export function useResumeStudio() {
             setResumes(loadedResumes);
             setGenerationGoalId(loadedProfile.goals?.find((goal) => goal.is_primary)?.id || loadedProfile.goals?.[0]?.id || "");
             setProfileMissing(false);
-            setDraft(loadedResumes.length ? await ResumeService.get(loadedResumes[0].id) : newResumeDraft(loadedProfile.facts));
+            setDraft(loadedResumes.length ? await ResumeService.get(loadedResumes[0].id) : freshDraft(loadedProfile.facts));
         } catch (loadError) {
             if (loadError instanceof ApiError && loadError.status === 404) setProfileMissing(true);
             else setError(loadError.message);
         } finally {
             setLoading(false);
         }
-    }, []);
+    }, [freshDraft]);
 
     useEffect(() => { initialize(); }, [initialize]);
     const refreshList = async () => setResumes(await ResumeService.list());
     const changeDraft = (patch) => { changeSequence.current += 1; setDraft((current) => ({ ...current, ...patch })); setDirty(true); setAutosaveState("pending"); };
-    const startNew = () => { changeSequence.current += 1; setDraft(newResumeDraft(profile.facts)); setDirty(false); setSyncPreview(null); setVersionComparison(null); setVersionName("Versione CV"); setAutosaveState("idle"); };
+    const startNew = () => { changeSequence.current += 1; setDraft(freshDraft(profile.facts)); setDirty(false); setSyncPreview(null); setVersionComparison(null); setVersionName(t("resume.defaultVersionName")); setAutosaveState("idle"); };
 
     const applySavedResponse = (response, sequence) => {
         if (changeSequence.current === sequence) {
@@ -80,9 +88,9 @@ export function useResumeStudio() {
     };
 
     const persist = async () => {
-        if (!draft.title.trim()) throw new Error("Inserisci un titolo per il CV");
-        if (!draft.selected_fact_ids.length) throw new Error("Seleziona almeno un fatto di carriera");
-        if (draft.template_kind === "photo" && !draft.photo_asset_id) throw new Error("Carica una foto per questo template");
+        if (!draft.title.trim()) throw new Error(t("resume.errorTitle"));
+        if (!draft.selected_fact_ids.length) throw new Error(t("resume.errorFacts"));
+        if (draft.template_kind === "photo" && !draft.photo_asset_id) throw new Error(t("resume.errorPhoto"));
         if (draft.id && !dirty) return draft;
         const sequence = changeSequence.current;
         const snapshot = draft;
@@ -96,20 +104,20 @@ export function useResumeStudio() {
 
     const save = async () => run("save", async () => {
         await persist();
-        showToast("Bozza CV salvata localmente.", "success");
+        showToast(t("resume.savedToast"), "success");
     });
     const publish = async () => run("publish", async () => {
         const saved = await persist();
-        if (!versionName.trim()) throw new Error("Inserisci un nome per la versione");
+        if (!versionName.trim()) throw new Error(t("resume.errorVersion"));
         await ResumeService.publish(saved.id, versionName.trim());
         setDraft(await ResumeService.get(saved.id));
-        setVersionName(`${saved.title} · nuova versione`);
+        setVersionName(t("resume.nextNamedVersion", { title: saved.title }));
         await refreshList();
-        showToast("PDF e DOCX generati e verificati.", "success");
+        showToast(t("resume.publishedToast"), "success");
     });
     const generateFromProfile = async () => run("generate", async () => {
         const response = await ResumeService.generate({
-            title: draft.title.trim() || "CV dal profilo",
+            title: draft.title.trim() || t("resume.defaultDraftTitle"),
             template_kind: draft.template_kind,
             career_goal_id: generationGoalId || null,
             photo_asset_id: draft.template_kind === "photo" ? draft.photo_asset_id : null,
@@ -118,16 +126,16 @@ export function useResumeStudio() {
         setDirty(false);
         setVersionComparison(null);
         await refreshList();
-        showToast("CV creato automaticamente dal Career Vault.", "success");
+        showToast(t("resume.generatedToast"), "success");
     });
     const duplicate = async () => run("duplicate", async () => {
         if (!draft.id) return;
-        const response = await ResumeService.duplicate(draft.id, { title: `${draft.title} · copia` });
+        const response = await ResumeService.duplicate(draft.id, { title: t("resume.duplicateTitle", { title: draft.title }) });
         setDraft(response);
         setDirty(false);
         setSyncPreview(null);
         await refreshList();
-        showToast("Copia indipendente creata localmente.", "success");
+        showToast(t("resume.duplicatedToast"), "success");
     });
     const promoteClaim = async (blockId) => run("promote-claim", async () => {
         const saved = await persist();
@@ -141,7 +149,7 @@ export function useResumeStudio() {
         setDraft(response);
         setDirty(false);
         await refreshList();
-        showToast("Claim salvato come fatto verificato nel Career Vault.", "success");
+        showToast(t("resume.promotedToast"), "success");
     });
     const reviewSync = async () => run("sync-preview", async () => {
         const response = await ResumeService.sync(draft.id, { expected_revision: draft.revision, mode: "preview", sections: [] });
@@ -149,14 +157,14 @@ export function useResumeStudio() {
         setSyncSelection([]);
     });
     const applySync = async (mode = "apply") => {
-        if (mode === "reset" && !window.confirm("Rigenerare tutto dal profilo? Le modifiche manuali del canvas saranno rimosse.")) return;
+        if (mode === "reset" && !window.confirm(t("resume.resetConfirm"))) return;
         await run("sync", async () => {
             const response = await ResumeService.sync(draft.id, { expected_revision: draft.revision, mode, sections: mode === "apply" ? syncSelection : [] });
             setDraft(response.draft);
             setDirty(false);
             setSyncPreview(null);
             await refreshList();
-            showToast(mode === "reset" ? "CV rigenerato dal profilo." : "Sezioni sincronizzate; override preservati.", "success");
+            showToast(mode === "reset" ? t("resume.resetToast") : t("resume.syncToast"), "success");
         });
     };
     const uploadPhoto = async (file) => {
@@ -164,16 +172,16 @@ export function useResumeStudio() {
         await run("photo", async () => {
             const asset = await CareerService.uploadPhoto(file);
             changeDraft({ photo_asset_id: asset.id });
-            showToast("Foto normalizzata: metadati EXIF rimossi.", "success");
+            showToast(t("resume.photoToast"), "success");
         });
     };
     const remove = async () => {
-        if (!draft.id || !window.confirm(`Eliminare la bozza “${draft.title}”? Le versioni pubblicate collegate saranno rimosse.`)) return;
+        if (!draft.id || !window.confirm(t("resume.removeConfirm", { title: draft.title }))) return;
         await run("delete", async () => {
             await ResumeService.remove(draft.id);
             const next = await ResumeService.list();
             setResumes(next);
-            setDraft(next.length ? await ResumeService.get(next[0].id) : newResumeDraft(profile.facts));
+            setDraft(next.length ? await ResumeService.get(next[0].id) : freshDraft(profile.facts));
             setDirty(false);
         });
     };
@@ -182,7 +190,7 @@ export function useResumeStudio() {
         setVersionComparison(await ResumeService.compareVersions(versionIds[0], versionIds[1]));
     });
     const restoreVersion = async (version) => {
-        if (!window.confirm(`Ripristinare “${version.name}” nella bozza? Le versioni pubblicate resteranno intatte.`)) return;
+        if (!window.confirm(t("resume.restoreConfirm", { title: version.name }))) return;
         await run("restore-version", async () => {
             const response = await ResumeService.restoreVersion(draft.id, version.id, draft.revision);
             changeSequence.current += 1;
@@ -190,7 +198,7 @@ export function useResumeStudio() {
             setDirty(false);
             setVersionComparison(null);
             await refreshList();
-            showToast("Versione ripristinata in una nuova revisione della bozza.", "success");
+            showToast(t("resume.restoredToast"), "success");
         });
     };
 
@@ -219,14 +227,14 @@ export function useResumeStudio() {
                 setAutosaveState(changeSequence.current === sequence ? "saved" : "pending");
             } catch (autosaveError) {
                 setAutosaveState("error");
-                setError(`Autosave non riuscito: ${autosaveError.message}`);
+                setError(t("resume.autosaveFailed", { message: autosaveError.message }));
             } finally {
                 autosaveInFlight.current = false;
                 setBusy("");
             }
         }, 1_000);
         return () => window.clearTimeout(timer);
-    }, [busy, dirty, draft]);
+    }, [busy, dirty, draft, t]);
 
     return { profile, resumes, draft, dirty, loading, busy, error, profileMissing, generationGoalId, syncPreview, syncSelection, versionName, versionComparison, autosaveState, initialize, loadDraft, changeDraft, startNew, save, publish, generateFromProfile, duplicate, promoteClaim, reviewSync, applySync, uploadPhoto, remove, compareVersions, restoreVersion, setGenerationGoalId, setSyncSelection, setVersionName, closeSync: () => setSyncPreview(null), setError };
 }

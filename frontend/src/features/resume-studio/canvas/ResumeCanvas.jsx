@@ -3,8 +3,10 @@ import { CanvasInspector } from "./CanvasInspector";
 import { CanvasSection } from "./CanvasSection";
 import { CanvasToolbar } from "./CanvasToolbar";
 import { canvasReducer, createCanvasState } from "./canvasReducer";
+import { useI18n } from "../../../i18n/useI18n";
 
 export function ResumeCanvas({ document, templateKind, onChange, onPromoteClaim, promoting = false, photoUrl = null }) {
+    const { t } = useI18n();
     const [state, dispatch] = useReducer(canvasReducer, document, createCanvasState);
     const [selection, setSelection] = useState(null);
     const [zoom, setZoom] = useState(0.85);
@@ -53,9 +55,9 @@ export function ResumeCanvas({ document, templateKind, onChange, onPromoteClaim,
             <CanvasToolbar state={state} templateKind={templateKind} dispatch={dispatch} onAddClaim={addClaim} zoom={zoom} onZoom={setZoom} pageCount={pageCount} />
             <CanvasInspector selected={selected} sectionId={selection?.sectionId} dispatch={dispatch} onPromote={onPromoteClaim} promoting={promoting} />
             <div className="resume-canvas-viewport">
-                <div className="resume-canvas-stage" style={{ width: `${210 * zoom}mm`, minHeight: `${297 * zoom}mm`, "--canvas-accent": state.present.style.accent_color, "--canvas-font": state.present.style.font_family, "--canvas-size": `${state.present.style.base_font_size}pt`, "--canvas-leading": state.present.style.line_height, "--canvas-gap": `${state.present.style.section_spacing}pt`, "--canvas-margin": `${state.present.style.margin_mm}mm`, "--canvas-columns": state.present.style.columns }} aria-label="Canvas modificabile del CV">
-                <div ref={paperRef} className={`resume-canvas-paper resume-canvas-paper--${templateKind} ${photoUrl ? "has-photo" : ""}`} style={{ transform: `scale(${zoom})` }} aria-label="Foglio A4 con guide pagina">
-                    {templateKind === "photo" && photoUrl && <img className="canvas-profile-photo" src={photoUrl} alt="Foto profilo normalizzata" />}
+                <div className="resume-canvas-stage" style={{ width: `${210 * zoom}mm`, minHeight: `${297 * zoom}mm`, "--canvas-accent": state.present.style.accent_color, "--canvas-font": state.present.style.font_family, "--canvas-size": `${state.present.style.base_font_size}pt`, "--canvas-leading": state.present.style.line_height, "--canvas-gap": `${state.present.style.section_spacing}pt`, "--canvas-margin": `${state.present.style.margin_mm}mm`, "--canvas-columns": state.present.style.columns }} aria-label={t("canvas.editable")}>
+                <div ref={paperRef} className={`resume-canvas-paper resume-canvas-paper--${templateKind} ${photoUrl ? "has-photo" : ""}`} style={{ transform: `scale(${zoom})` }} aria-label={t("canvas.a4")}>
+                    {templateKind === "photo" && photoUrl && <img className="canvas-profile-photo" src={photoUrl} alt={t("canvas.profilePhoto")} />}
                     <div className="resume-canvas-sections">{state.present.sections.map((section, index) => <CanvasSection key={section.id} section={section} index={index} total={state.present.sections.length} dispatch={dispatch} onSelect={(block, sectionId) => setSelection({ sectionId, blockId: block.id })} />)}</div>
                 </div>
                 </div>

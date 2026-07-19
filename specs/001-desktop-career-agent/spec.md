@@ -244,6 +244,9 @@ temporary document content remains in application-managed storage.
   checksum and software inventory; signing status MUST be stated accurately.
 - **FR-035**: Core setup, profile, goal, resume-canvas, export, model and recovery workflows
   MUST be usable by keyboard with visible focus and actionable errors.
+- **FR-036**: The product MUST present English on first launch and allow the user to switch
+  the core shell, login and portfolio-demo workflows to Italian without a network request;
+  the explicit choice MUST remain on the same device and update the document language.
 
 ### Key Entities
 
@@ -300,6 +303,8 @@ temporary document content remains in application-managed storage.
   uninstall smoke tests and is accompanied by a checksum and software inventory.
 - **SC-011**: Core keyboard-only workflow tests complete without a trap and all actionable
   controls expose a visible focus state and accessible name.
+- **SC-012**: Automated UI tests confirm English on a clean first launch, an immediate
+  English/Italian switch, local persistence of that choice and English demo-recording selectors.
 
 ## Assumptions
 

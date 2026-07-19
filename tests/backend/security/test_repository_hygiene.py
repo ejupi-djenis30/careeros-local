@@ -32,6 +32,7 @@ APPROVED_MARKDOWN = {
     Path("backend/README.md"),
     Path("frontend/README.md"),
     Path("docs/architecture.md"),
+    Path("docs/brand.md"),
     Path("docs/development.md"),
     Path("docs/demo.md"),
     Path("docs/devpost.md"),

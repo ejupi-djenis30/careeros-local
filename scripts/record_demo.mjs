@@ -174,9 +174,9 @@ async function showScene(page, runtimeErrors, { navigation, heading, chapter, de
         await page.waitForTimeout(1_300);
         await page.waitForFunction(() => {
             const text = document.body.innerText;
-            return !text.includes("Autosave in attesa")
-                && !text.includes("Salvataggio automatico")
-                && !text.includes("Modifiche non salvate");
+            return !text.includes("Autosave pending")
+                && !text.includes("Autosaving")
+                && !text.includes("Unsaved changes");
         }, null, { timeout: 15_000 });
     }
     await page.waitForTimeout(500);
@@ -229,20 +229,20 @@ async function recordTour(frontendUrl, python, stagingDir) {
         await page.screencast.start({ path: rawVideo, size: videoSize, quality: 72 });
         await page.screencast.showActions({ position: "bottom-right", duration: 700, fontSize: 15 });
         await page.goto(frontendUrl, { waitUntil: "domcontentloaded" });
-        await page.getByRole("heading", { name: "Bentornato" }).waitFor({ state: "visible" });
+        await page.getByRole("heading", { name: "Welcome back" }).waitFor({ state: "visible" });
         await page.screencast.showChapter("CareerOS Local", {
             description: "A private, local-first workspace for the complete career journey",
             duration: 1_700,
         });
         await page.waitForTimeout(1_900);
-        await page.getByLabel("Nome utente").fill(demoUsername);
+        await page.getByLabel("Username").fill(demoUsername);
         await page.getByLabel("Password").fill(demoPassword);
-        await page.getByRole("button", { name: /Accedi al workspace/ }).click();
-        await page.getByRole("heading", { name: "Il tuo spazio carriera", level: 1 }).waitFor({ state: "visible" });
+        await page.getByRole("button", { name: /Open workspace/ }).click();
+        await page.getByRole("heading", { name: "Your career workspace", level: 1 }).waitFor({ state: "visible" });
         authenticated = true;
 
         await showScene(page, runtimeErrors, {
-            heading: "Il tuo spazio carriera",
+            heading: "Your career workspace",
             chapter: "One private workspace",
             description: "Verified facts, resumes and applications stay on this device",
             screenshot: screenshots.workspace,
@@ -255,16 +255,16 @@ async function recordTour(frontendUrl, python, stagingDir) {
             screenshot: screenshots.vault,
         });
         await showScene(page, runtimeErrors, {
-            navigation: "CV Studio",
-            heading: "CV Studio",
+            navigation: "Resume Studio",
+            heading: "Resume Studio",
             chapter: "Evidence-backed resumes",
             description: "ATS-ready drafts are generated only from confirmed profile facts",
             screenshot: screenshots.resume,
             waitForSavedDraft: true,
         });
         await showScene(page, runtimeErrors, {
-            navigation: "Candidature",
-            heading: "Candidature",
+            navigation: "Applications",
+            heading: "Applications",
             chapter: "Immutable application pipeline",
             description: "Each opportunity keeps a local snapshot and append-only timeline",
             screenshot: screenshots.applications,

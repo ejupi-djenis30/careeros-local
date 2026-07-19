@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="docs/assets/careeros-lockup.svg" width="680" alt="CareerOS Local — private career intelligence, on your device" />
+</p>
+
 # CareerOS Local
 
 [![CI](https://github.com/ejupi-djenis30/careeros-local/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/ejupi-djenis30/careeros-local/actions/workflows/ci.yml)
@@ -5,13 +9,12 @@
 [![License: MIT](https://img.shields.io/badge/license-MIT-b9f27c.svg)](LICENSE)
 ![Local-first](https://img.shields.io/badge/architecture-local--first-82b9ff.svg)
 
-> Turn verified experience into resumes, job matches and an application pipeline—without
-> handing your career history to a cloud AI service.
+> Your career history should become more useful over time, not more exposed.
 
-CareerOS Local is a working desktop career workspace built around one principle: professional
-data should remain useful, inspectable and owned by the person it describes. It combines a
-structured Career Vault, evidence-backed resume production, opportunity matching, application
-tracking and optional on-device AI in one private workspace.
+CareerOS Local is a private desktop system for turning verified experience into tailored
+resumes, relevant opportunities, and an application pipeline you can actually operate. The
+Career Vault preserves source facts and revision history; core workflows remain inspectable and
+usable without AI, while enabled inference uses the approved local runtime.
 
 [![Watch the 34-second CareerOS Local product tour](docs/assets/careeros-demo.gif)](https://ejupi-djenis30.github.io/careeros-local/#demo)
 
@@ -22,16 +25,16 @@ tracking and optional on-device AI in one private workspace.
 [View releases](https://github.com/ejupi-djenis30/careeros-local/releases) ·
 [Architecture](docs/architecture.md) · [Privacy model](docs/privacy.md)
 
-## Why it matters
+## Why CareerOS
 
-- **One source of truth:** career facts carry provenance, verification status and revision
-  history instead of becoming untraceable generated claims.
-- **Useful without AI:** profile, resume, application, backup and editing workflows remain
+- **Trust the record:** career facts retain provenance, verification status, and revision
+  history instead of dissolving into untraceable generated claims.
+- **Work with or without AI:** profile, resume, application, backup, and editing workflows stay
   available when no model is installed.
-- **Private by architecture:** the API, database, artifacts and optional model runtime stay on
-  the device; there is no telemetry or cloud-model fallback.
-- **Built for real workflows:** resumes become immutable PDF/DOCX versions, while applications
-  retain local job snapshots and an append-only timeline.
+- **Keep the private parts private:** the API, database, artifacts, and optional model runtime
+  remain on the device, with no telemetry and no cloud-model fallback.
+- **Move from intent to follow-through:** immutable PDF/DOCX resume versions, local job
+  snapshots, and an append-only application timeline keep the workflow coherent.
 
 ## Product tour
 
@@ -112,7 +115,7 @@ Open `http://127.0.0.1:5173`. To create the same disposable fictional workspace 
 tour, run this only against a development database:
 
 ```powershell
-.venv\Scripts\python.exe scripts\seed_demo.py --password "CareerOS-Demo-2026!"
+.venv\Scripts\python.exe scripts\seed_demo.py --password "AdaDemo2026!"
 ```
 
 Then sign in as `ada_demo` with the supplied password. The seeder accepts loopback destinations
@@ -166,6 +169,7 @@ hackathon material remains in the [Devpost submission kit](docs/devpost.md).
 ## Documentation
 
 - [Development guide](docs/development.md)
+- [Brand system](docs/brand.md)
 - [Demo recording guide](docs/demo.md)
 - [Architecture](docs/architecture.md)
 - [Privacy model](docs/privacy.md)

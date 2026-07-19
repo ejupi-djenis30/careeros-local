@@ -124,6 +124,13 @@ a {
   color: var(--lime);
 }
 
+.brand__mark {
+  width: 36px;
+  height: 36px;
+  flex: 0 0 auto;
+  filter: drop-shadow(0 9px 18px rgba(0, 0, 0, 0.28));
+}
+
 .brand span {
   color: var(--ink);
   font-size: 1rem;
@@ -411,8 +418,9 @@ h1 span {
 
 .product-window img {
   width: 100%;
+  height: auto;
   aspect-ratio: 16 / 9;
-  object-fit: cover;
+  object-fit: contain;
 }
 
 .privacy-float,
@@ -639,8 +647,9 @@ h2 {
 
 .feature-image img {
   width: 100%;
+  height: auto;
   aspect-ratio: 16 / 9;
-  object-fit: cover;
+  object-fit: contain;
 }
 
 .feature-image-tall {
