@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { ApplicationService } from "../../services/applications";
 import { ResumeService } from "../../services/resumes";
@@ -28,27 +28,61 @@ export function ApplicationsPage() {
     const [error, setError] = useState("");
     const [showCreate, setShowCreate] = useState(searchParams.has("jobId"));
     const [form, setForm] = useState(emptyForm(searchParams.get("jobId") || ""));
+    const applicationRequestRef = useRef({ controller: null, id: 0 });
     const stageLabels = getStageLabels(t);
     const locale = language === "it" ? "it-IT" : "en-GB";
 
-    const load = useCallback(async () => {
-        setLoading(true);
-        setError("");
-        try {
-            setApplications(await ApplicationService.list());
-        } catch (loadError) {
-            setError(loadError.message);
-        } finally {
-            setLoading(false);
-        }
+    const requestApplications = useCallback(() => {
+        const requestId = applicationRequestRef.current.id + 1;
+        applicationRequestRef.current.controller?.abort();
+        const controller = new AbortController();
+        applicationRequestRef.current = { controller, id: requestId };
+
+        return ApplicationService.list({ signal: controller.signal })
+            .then((items) => {
+                if (controller.signal.aborted || applicationRequestRef.current.id !== requestId) return;
+                setApplications(Array.isArray(items) ? items : []);
+                setError("");
+            })
+            .catch((loadError) => {
+                if (controller.signal.aborted || loadError?.name === "AbortError" || applicationRequestRef.current.id !== requestId) return;
+                setError(loadError.message);
+            })
+            .finally(() => {
+                if (!controller.signal.aborted && applicationRequestRef.current.id === requestId) {
+                    applicationRequestRef.current.controller = null;
+                    setLoading(false);
+                }
+            });
     }, []);
 
-    useEffect(() => { load(); }, [load]);
+    const load = useCallback(() => {
+        setLoading(true);
+        setError("");
+        return requestApplications();
+    }, [requestApplications]);
+
     useEffect(() => {
-        ResumeService.list().then(async (items) => {
-            const drafts = await Promise.all(items.map((item) => ResumeService.get(item.id)));
-            setResumeVersions(drafts.flatMap((draft) => draft.versions.map((version) => ({ id: version.id, label: `${draft.title} · v${version.semantic_version}` }))));
-        }).catch(() => setResumeVersions([]));
+        void requestApplications();
+        return () => {
+            applicationRequestRef.current.id += 1;
+            applicationRequestRef.current.controller?.abort();
+            applicationRequestRef.current.controller = null;
+        };
+    }, [requestApplications]);
+    useEffect(() => {
+        const controller = new AbortController();
+        ResumeService.list({ signal: controller.signal })
+            .then((items) => Promise.all(items.map((item) => ResumeService.get(item.id, { signal: controller.signal }))))
+            .then((drafts) => {
+                if (controller.signal.aborted) return;
+                setResumeVersions(drafts.flatMap((draft) => draft.versions.map((version) => ({ id: version.id, label: `${draft.title} · v${version.semantic_version}` }))));
+            })
+            .catch((loadError) => {
+                if (controller.signal.aborted || loadError?.name === "AbortError") return;
+                setResumeVersions([]);
+            });
+        return () => controller.abort();
     }, []);
 
     const grouped = useMemo(() => Object.fromEntries(STAGES.map((stage) => [stage, applications.filter((item) => item.current_stage === stage)])), [applications]);

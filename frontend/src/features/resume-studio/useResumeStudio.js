@@ -25,6 +25,7 @@ export function useResumeStudio() {
     const [autosaveState, setAutosaveState] = useState("idle");
     const changeSequence = useRef(0);
     const autosaveInFlight = useRef(false);
+    const initializationRequest = useRef({ controller: null, id: 0 });
     const translatorRef = useRef(t);
     useEffect(() => { translatorRef.current = t; }, [t]);
     const freshDraft = useCallback((facts) => ({
@@ -47,27 +48,68 @@ export function useResumeStudio() {
         }
     }, []);
 
-    const initialize = useCallback(async () => {
-        setLoading(true);
-        try {
-            const [loadedProfile, loadedResumes] = await Promise.all([
-                CareerService.getProfile({ suppressGlobalError: true }),
-                ResumeService.list(),
-            ]);
-            setProfile(loadedProfile);
-            setResumes(loadedResumes);
-            setGenerationGoalId(loadedProfile.goals?.find((goal) => goal.is_primary)?.id || loadedProfile.goals?.[0]?.id || "");
-            setProfileMissing(false);
-            setDraft(loadedResumes.length ? await ResumeService.get(loadedResumes[0].id) : freshDraft(loadedProfile.facts));
-        } catch (loadError) {
-            if (loadError instanceof ApiError && loadError.status === 404) setProfileMissing(true);
-            else setError(loadError.message);
-        } finally {
-            setLoading(false);
-        }
+    const requestInitialization = useCallback(() => {
+        const requestId = initializationRequest.current.id + 1;
+        initializationRequest.current.controller?.abort();
+        const controller = new AbortController();
+        initializationRequest.current = { controller, id: requestId };
+        const requestOptions = { signal: controller.signal };
+        const profileRequest = Promise.resolve()
+            .then(() => CareerService.getProfile({ ...requestOptions, suppressGlobalError: true }))
+            .then((value) => ({ value }))
+            .catch((requestError) => ({ error: requestError }));
+        const resumesRequest = Promise.resolve().then(() => ResumeService.list(requestOptions));
+
+        return Promise.all([profileRequest, resumesRequest])
+            .then(([profileResult, loadedResumes]) => {
+                if (profileResult.error) return { profileError: profileResult.error };
+                const loadedProfile = profileResult.value;
+                const draftRequest = loadedResumes.length
+                    ? ResumeService.get(loadedResumes[0].id, requestOptions)
+                    : Promise.resolve(freshDraft(loadedProfile.facts));
+                return Promise.resolve(draftRequest).then((loadedDraft) => ({ loadedDraft, loadedProfile, loadedResumes }));
+            })
+            .then((result) => {
+                if (controller.signal.aborted || initializationRequest.current.id !== requestId) return;
+                if (result.profileError) {
+                    if (result.profileError instanceof ApiError && result.profileError.status === 404) {
+                        setProfileMissing(true);
+                    } else {
+                        setError(result.profileError.message);
+                    }
+                } else {
+                    setProfile(result.loadedProfile);
+                    setResumes(result.loadedResumes);
+                    setGenerationGoalId(result.loadedProfile.goals?.find((goal) => goal.is_primary)?.id || result.loadedProfile.goals?.[0]?.id || "");
+                    setProfileMissing(false);
+                    setDraft(result.loadedDraft);
+                    setError("");
+                }
+                setLoading(false);
+                initializationRequest.current.controller = null;
+            })
+            .catch((loadError) => {
+                if (controller.signal.aborted || initializationRequest.current.id !== requestId) return;
+                setError(loadError.message);
+                setLoading(false);
+                initializationRequest.current.controller = null;
+            });
     }, [freshDraft]);
 
-    useEffect(() => { initialize(); }, [initialize]);
+    const initialize = useCallback(() => {
+        setLoading(true);
+        setError("");
+        setProfileMissing(false);
+        return requestInitialization();
+    }, [requestInitialization]);
+
+    useEffect(() => {
+        void requestInitialization();
+        return () => {
+            initializationRequest.current.id += 1;
+            initializationRequest.current.controller?.abort();
+        };
+    }, [requestInitialization]);
     const refreshList = async () => setResumes(await ResumeService.list());
     const changeDraft = (patch) => { changeSequence.current += 1; setDraft((current) => ({ ...current, ...patch })); setDirty(true); setAutosaveState("pending"); };
     const startNew = () => { changeSequence.current += 1; setDraft(freshDraft(profile.facts)); setDirty(false); setSyncPreview(null); setVersionComparison(null); setVersionName(t("resume.defaultVersionName")); setAutosaveState("idle"); };

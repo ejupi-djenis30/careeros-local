@@ -32,7 +32,8 @@ export function useJobs(logout) {
   const [pagination, setPaginationState] = useState(DEFAULT_PAGINATION);
   const [searchProfiles, setSearchProfiles] = useState([]);
   const isFirstFetch = useRef(true);
-  const fetchAbortControllerRef = useRef(null);
+  const jobsRequestRef = useRef({ controller: null, id: 0 });
+  const profilesRequestRef = useRef({ controller: null, id: 0 });
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [fetchError, setFetchError] = useState(null);
@@ -40,102 +41,116 @@ export function useJobs(logout) {
   const filters = filtersState;
 
   const setPagination = useCallback((next) => {
+    setIsRefreshing(true);
+    setFetchError(null);
+    jobsRequestRef.current.controller?.abort();
     setPaginationState((prev) => (typeof next === 'function' ? next(prev) : next));
   }, []);
 
   const setFilters = useCallback((next) => {
+    setIsRefreshing(true);
+    setFetchError(null);
     setFiltersState((prev) => {
       const resolved = typeof next === 'function' ? next(prev) : next;
       return { ...DEFAULT_FILTERS, ...resolved };
     });
     setPaginationState((prev) => (prev.page === 1 ? prev : { ...prev, page: 1 }));
-    // Abort any in-flight fetch so a stale response can't overwrite the new filter state
-    if (fetchAbortControllerRef.current) {
-      fetchAbortControllerRef.current.abort();
-    }
+    jobsRequestRef.current.controller?.abort();
   }, []);
 
-  const fetchJobs = useCallback(async (isBackground = false) => {
-    if (!isBackground) {
-      if (isFirstFetch.current) {
-        setIsLoading(true);
-      } else {
-        setIsRefreshing(true);
-      }
-    }
-
-    // Cancel any previous in-flight request before starting a new one
-    if (fetchAbortControllerRef.current) {
-      fetchAbortControllerRef.current.abort();
-    }
+  const requestJobs = useCallback(() => {
+    const requestId = jobsRequestRef.current.id + 1;
+    jobsRequestRef.current.controller?.abort();
     const controller = new AbortController();
-    fetchAbortControllerRef.current = controller;
+    jobsRequestRef.current = { controller, id: requestId };
 
-    try {
-      const response = await JobService.getAll({
-        ...filters,
-        page: pagination.page,
-        page_size: PAGE_SIZE
-      }, controller.signal);
-
-      // Ignore stale responses that completed after a newer request was aborted
-      if (controller.signal.aborted) return;
-
-      setJobs(response?.items || []);
-      setPaginationState((prev) => ({
-        ...prev,
-        page: response?.page ?? prev.page,
-        pages: response?.pages ?? 1,
-        total: response?.total ?? 0,
-        total_applied: response?.total_applied ?? 0,
-        avg_score: response?.avg_score ?? 0
-      }));
-    } catch (error) {
-      if (error.name === 'AbortError') return; // Stale request — discard silently
-      if (error.message === 'UNAUTHORIZED' && logout) {
-        logout();
-        return;
-      }
-      console.error('Fetch jobs error:', error);
-      setFetchError(error.message || 'Failed to load jobs.');
-    } finally {
-      if (!controller.signal.aborted) {
+    return Promise.resolve()
+      .then(() => JobService.getAll({
+          ...filters,
+          page: pagination.page,
+          page_size: PAGE_SIZE
+        }, controller.signal))
+      .then((response) => {
+        if (controller.signal.aborted || jobsRequestRef.current.id !== requestId) return;
+        setJobs(response?.items || []);
+        setPaginationState((prev) => ({
+          ...prev,
+          page: response?.page ?? prev.page,
+          pages: response?.pages ?? 1,
+          total: response?.total ?? 0,
+          total_applied: response?.total_applied ?? 0,
+          avg_score: response?.avg_score ?? 0
+        }));
+        setFetchError(null);
         isFirstFetch.current = false;
         setIsLoading(false);
         setIsRefreshing(false);
-      }
-    }
+        jobsRequestRef.current.controller = null;
+      })
+      .catch((error) => {
+        if (controller.signal.aborted || jobsRequestRef.current.id !== requestId || error.name === 'AbortError') return;
+        if (error.message === 'UNAUTHORIZED' && logout) {
+          logout();
+        } else {
+          console.error('Fetch jobs error:', error);
+          setFetchError(error.message || 'Failed to load jobs.');
+        }
+        isFirstFetch.current = false;
+        setIsLoading(false);
+        setIsRefreshing(false);
+        jobsRequestRef.current.controller = null;
+      });
   }, [filters, pagination.page, logout]);
 
-  const fetchProfiles = useCallback(async () => {
-    try {
-      const profiles = await SearchService.getProfiles();
-      setSearchProfiles(Array.isArray(profiles) ? profiles : []);
-    } catch (error) {
-      if (error.message === 'UNAUTHORIZED' && logout) {
-        logout();
-        return;
-      }
-      console.error('Failed to load search profiles', error);
-      showToast(error.message || 'Failed to load search profiles.');
+  const fetchJobs = useCallback((isBackground = false) => {
+    if (!isBackground) {
+      if (isFirstFetch.current) setIsLoading(true);
+      else setIsRefreshing(true);
     }
+    setFetchError(null);
+    return requestJobs();
+  }, [requestJobs]);
+
+  const requestProfiles = useCallback(() => {
+    const requestId = profilesRequestRef.current.id + 1;
+    profilesRequestRef.current.controller?.abort();
+    const controller = new AbortController();
+    profilesRequestRef.current = { controller, id: requestId };
+
+    return Promise.resolve()
+      .then(() => SearchService.getProfiles({ signal: controller.signal }))
+      .then((profiles) => {
+        if (controller.signal.aborted || profilesRequestRef.current.id !== requestId) return;
+        setSearchProfiles(Array.isArray(profiles) ? profiles : []);
+        profilesRequestRef.current.controller = null;
+      })
+      .catch((error) => {
+        if (controller.signal.aborted || profilesRequestRef.current.id !== requestId || error.name === 'AbortError') return;
+        if (error.message === 'UNAUTHORIZED' && logout) {
+          logout();
+        } else {
+          console.error('Failed to load search profiles', error);
+          showToast(error.message || 'Failed to load search profiles.');
+        }
+        profilesRequestRef.current.controller = null;
+      });
   }, [logout, showToast]);
 
   useEffect(() => {
-    fetchProfiles();
-  }, [fetchProfiles]);
-
-  useEffect(() => {
-    fetchJobs();
-  }, [fetchJobs]);
-
-  useEffect(() => {
+    void requestProfiles();
     return () => {
-      if (fetchAbortControllerRef.current) {
-        fetchAbortControllerRef.current.abort();
-      }
+      profilesRequestRef.current.id += 1;
+      profilesRequestRef.current.controller?.abort();
     };
-  }, []);
+  }, [requestProfiles]);
+
+  useEffect(() => {
+    void requestJobs();
+    return () => {
+      jobsRequestRef.current.id += 1;
+      jobsRequestRef.current.controller?.abort();
+    };
+  }, [requestJobs]);
 
   // Active searches refresh job data via SearchContext's status polling heartbeat.
   useEffect(() => {
@@ -143,8 +158,8 @@ export function useJobs(logout) {
       return;
     }
 
-    fetchJobs(true);
-  }, [activeProfileIds.length, statusHeartbeat, fetchJobs]);
+    void requestJobs();
+  }, [activeProfileIds.length, statusHeartbeat, requestJobs]);
 
   // Idle fallback polling when no searches are active.
   useEffect(() => {
@@ -154,22 +169,22 @@ export function useJobs(logout) {
 
     const intervalTime = 30000;
     const interval = setInterval(() => {
-      fetchJobs(true);
+      void requestJobs();
     }, intervalTime);
 
     return () => clearInterval(interval);
-  }, [fetchJobs, activeProfileIds.length]);
+  }, [requestJobs, activeProfileIds.length]);
 
   // Visibility change handler for fresh data when tab is focused
   useEffect(() => {
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'visible') {
-        fetchJobs(true);
+        void requestJobs();
       }
     };
     document.addEventListener("visibilitychange", handleVisibilityChange);
     return () => document.removeEventListener("visibilitychange", handleVisibilityChange);
-  }, [fetchJobs]);
+  }, [requestJobs]);
 
   const toggleApplied = async (job) => {
     const jobId = String(job.id);
@@ -206,7 +221,7 @@ export function useJobs(logout) {
       // Remove from the list immediately (dismissed jobs are hidden by default)
       setJobs(prev => prev.filter(j => j.id !== job.id));
       // Refresh pagination count
-      setPagination(prev => ({ ...prev, total: Math.max(0, prev.total - 1) }));
+      setPaginationState(prev => ({ ...prev, total: Math.max(0, prev.total - 1) }));
       // Undo toast — re-inserts job at original position
       showToast('Job dismissed', 'secondary', {
         label: 'Undo',
@@ -219,7 +234,7 @@ export function useJobs(logout) {
               newList.splice(Math.min(originalPosition, newList.length), 0, restoredJob);
               return newList;
             });
-            setPagination(prev => ({ ...prev, total: prev.total + 1 }));
+            setPaginationState(prev => ({ ...prev, total: prev.total + 1 }));
           } catch (undoError) {
             if (undoError.message === 'UNAUTHORIZED' && logout) { logout(); return; }
             console.error('Failed to undo dismiss', undoError);

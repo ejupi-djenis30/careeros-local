@@ -1,8 +1,8 @@
 import { ApiClient } from "../lib/client";
 
 export const ApplicationService = {
-    list() {
-        return ApiClient.get("/applications");
+    list(options = {}) {
+        return ApiClient.get("/applications", undefined, options);
     },
     get(id) {
         return ApiClient.get(`/applications/${encodeURIComponent(id)}`);
@@ -14,4 +14,3 @@ export const ApplicationService = {
         return ApiClient.post(`/applications/${encodeURIComponent(id)}/events`, data);
     },
 };
-

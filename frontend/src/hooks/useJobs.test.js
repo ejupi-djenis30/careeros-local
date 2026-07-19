@@ -262,35 +262,47 @@ describe('useJobs', () => {
   });
 
   it('aborts stale in-flight request when filters change', async () => {
-    // Arrange: first call hangs indefinitely (stale), second resolves immediately
-    let rejectStale;
-    const staleAbortError = Object.assign(new Error('Aborted'), { name: 'AbortError' });
+    let resolveStale;
     JobService.getAll
-      .mockImplementationOnce(() => new Promise((_, reject) => { rejectStale = () => reject(staleAbortError); }))
+      .mockImplementationOnce(() => new Promise((resolve) => { resolveStale = resolve; }))
       .mockResolvedValue({ items: [{ id: 99, title: 'New result' }], total: 1, pages: 1, page: 1, total_applied: 0, avg_score: 0 });
 
     const { result } = renderHook(() => useJobs());
 
-    // Let the first (stale) request start
-    await act(async () => { await Promise.resolve(); });
+    await waitFor(() => expect(JobService.getAll).toHaveBeenCalledTimes(1));
+    const staleSignal = JobService.getAll.mock.calls[0][1];
 
-    // Change filters — this should abort the previous request
     await act(async () => {
       result.current.setFilters({ min_score: 75 });
     });
 
-    // Simulate the stale request completing with AbortError — jobs should NOT update to stale data
+    expect(staleSignal.aborted).toBe(true);
+    await waitFor(() => expect(result.current.jobs).toEqual([{ id: 99, title: 'New result' }]));
+
     await act(async () => {
-      rejectStale();
+      resolveStale({ items: [{ id: 1, title: 'Stale result' }], total: 1, pages: 1, page: 1 });
       await Promise.resolve();
     });
 
-    // The second (fresh) request should have resolved with the new data
+    expect(result.current.jobs).toEqual([{ id: 99, title: 'New result' }]);
+    expect(JobService.getAll.mock.calls.some(([requestFilters]) => requestFilters.min_score === 75)).toBe(true);
+  });
+
+  it('aborts job and profile requests on unmount', async () => {
+    JobService.getAll.mockImplementationOnce(() => new Promise(() => {}));
+    SearchService.getProfiles.mockImplementationOnce(() => new Promise(() => {}));
+    const { unmount } = renderHook(() => useJobs());
+
     await waitFor(() => {
-      const newRequestCalled = JobService.getAll.mock.calls.some(
-        ([filters]) => filters.min_score === 75
-      );
-      expect(newRequestCalled).toBe(true);
+      expect(JobService.getAll).toHaveBeenCalledTimes(1);
+      expect(SearchService.getProfiles).toHaveBeenCalledTimes(1);
     });
+    const jobsSignal = JobService.getAll.mock.calls[0][1];
+    const [{ signal: profilesSignal }] = SearchService.getProfiles.mock.calls[0];
+
+    unmount();
+
+    expect(jobsSignal.aborted).toBe(true);
+    expect(profilesSignal.aborted).toBe(true);
   });
 });

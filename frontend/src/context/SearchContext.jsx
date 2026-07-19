@@ -1,7 +1,6 @@
 /* eslint-disable react-refresh/only-export-components */
 import React, { createContext, useContext, useState, useEffect, useRef, useCallback } from 'react';
 import { SearchService } from '../services/search';
-import { useAuth } from './AuthContext';
 import { CAREEROS_API_ERROR_EVENT } from '../lib/events';
 
 const SearchContext = createContext(null);
@@ -66,7 +65,6 @@ function haveStatusesChanged(previousStatuses, nextStatuses) {
 }
 
 export function SearchProvider({ children }) {
-    const { isLoggedIn } = useAuth();
     const [searchStatuses, setSearchStatuses] = useState({});
     const [activeProfileIds, setActiveProfileIds] = useState([]);
     const [statusHeartbeat, setStatusHeartbeat] = useState(0);
@@ -81,13 +79,6 @@ export function SearchProvider({ children }) {
     }, [activeProfileIds]);
 
     useEffect(() => {
-        if (!isLoggedIn) {
-            setSearchStatuses({});
-            setActiveProfileIds([]);
-            setStatusHeartbeat(0);
-            pendingAddedAtRef.current = {};
-            return;
-        }
         let isDisposed = false;
         let timeoutId;
         let pollingInterval = 1500;
@@ -166,7 +157,7 @@ export function SearchProvider({ children }) {
             abortController.abort();
             lastStatusesRef.current = {};
         };
-    }, [isLoggedIn]);
+    }, []);
 
     const addProfileId = useCallback((pid) => {
         const pidStr = String(pid);

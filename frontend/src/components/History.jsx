@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { SearchService } from "../services/search";
 import { useToast } from "../context/ToastContext";
 import { HistoryCard } from "./HistoryCard";
@@ -8,27 +8,51 @@ export function History({ onStartSearch, onStartSearchWithOptions, onUseAsTempla
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
     const { showToast } = useToast();
+    const requestIdRef = useRef(0);
+    const requestControllerRef = useRef(null);
 
-    useEffect(() => {
-        loadProfiles();
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, []);
+    const loadProfiles = useCallback(() => {
+        const requestId = requestIdRef.current + 1;
+        requestIdRef.current = requestId;
+        requestControllerRef.current?.abort();
+        const controller = new AbortController();
+        requestControllerRef.current = controller;
 
-    const loadProfiles = async () => {
+        return SearchService.getProfiles({ signal: controller.signal })
+            .then((data) => {
+                if (controller.signal.aborted || requestId !== requestIdRef.current) return;
+                const nextProfiles = Array.isArray(data) ? [...data] : [];
+                setProfiles(nextProfiles.sort((a, b) => b.id - a.id));
+                setError(null);
+            })
+            .catch((loadError) => {
+                if (controller.signal.aborted || loadError?.name === "AbortError" || requestId !== requestIdRef.current) return;
+                console.error("Failed to load profiles:", loadError);
+                setError("Failed to load search history.");
+                showToast("Failed to load search history.");
+            })
+            .finally(() => {
+                if (!controller.signal.aborted && requestId === requestIdRef.current) {
+                    requestControllerRef.current = null;
+                    setLoading(false);
+                }
+            });
+    }, [showToast]);
+
+    const refreshProfiles = useCallback(() => {
         setError(null);
         setLoading(true);
-        try {
-            const data = await SearchService.getProfiles();
-            // Sort by ID descending (newest first)
-            setProfiles(data.sort((a, b) => b.id - a.id));
-        } catch (e) {
-            console.error("Failed to load profiles:", e);
-            setError("Failed to load search history.");
-            showToast("Failed to load search history.");
-        } finally {
-            setLoading(false);
-        }
-    };
+        void loadProfiles();
+    }, [loadProfiles]);
+
+    useEffect(() => {
+        void loadProfiles();
+        return () => {
+            requestIdRef.current += 1;
+            requestControllerRef.current?.abort();
+            requestControllerRef.current = null;
+        };
+    }, [loadProfiles]);
 
     if (loading) {
         return (
@@ -43,7 +67,7 @@ export function History({ onStartSearch, onStartSearchWithOptions, onUseAsTempla
             <div className="glass-panel text-center py-5 animate-fade-in align-items-center d-flex flex-column justify-content-center h-100">
                 <i className="bi bi-exclamation-triangle-fill fs-1 text-danger mb-3"></i>
                 <p className="text-secondary opacity-75 mb-3">{error}</p>
-                <button onClick={loadProfiles} className="btn btn-outline-primary">
+                <button onClick={refreshProfiles} className="btn btn-outline-primary">
                     <i className="bi bi-arrow-clockwise me-2"></i>Try again
                 </button>
             </div>
@@ -68,7 +92,7 @@ export function History({ onStartSearch, onStartSearchWithOptions, onUseAsTempla
         <div className="animate-fade-in h-100 d-flex flex-column">
             <div className="d-flex justify-content-end align-items-center mb-4">
                 <button
-                    onClick={loadProfiles}
+                    onClick={refreshProfiles}
                     className="btn btn-icon btn-secondary rounded-circle shadow-sm"
                     title="Refresh List"
                 >

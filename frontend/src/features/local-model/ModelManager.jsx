@@ -17,7 +17,7 @@ export function ModelManager() {
     const { t } = useI18n();
     const { status, refresh } = useLocalModelStatus({ refreshMs: 2_000 });
     const [catalog, setCatalog] = useState(null);
-    const [selected, setSelected] = useState("");
+    const [selectionOverride, setSelectionOverride] = useState("");
     const [accepted, setAccepted] = useState(false);
     const [busy, setBusy] = useState(false);
     const [error, setError] = useState("");
@@ -25,28 +25,22 @@ export function ModelManager() {
     useEffect(() => {
         const controller = new AbortController();
         LocalModelService.catalog({ signal: controller.signal })
-            .then((result) => {
-                setCatalog(result);
-                setSelected((current) => current || result.models?.[0]?.key || "");
-            })
+            .then(setCatalog)
             .catch((reason) => {
                 if (!controller.signal.aborted) setError(reason.message || t("model.catalogUnavailable"));
             });
         return () => controller.abort();
     }, [t]);
 
-    const model = useMemo(() => catalog?.models?.find((item) => item.key === selected), [catalog, selected]);
     const managed = status.managed || {};
+    const selected = selectionOverride || managed.model_key || catalog?.models?.[0]?.key || "";
+    const model = useMemo(() => catalog?.models?.find((item) => item.key === selected), [catalog, selected]);
     const active = ACTIVE_PHASES.has(managed.phase);
     const paused = managed.phase === "paused";
     const canRemove = managed.model_installed || managed.runtime_installed || paused;
     const progress = managed.bytes_total > 0
         ? Math.min(100, Math.round((managed.bytes_downloaded / managed.bytes_total) * 100))
         : 0;
-
-    useEffect(() => {
-        if (managed.model_key) setSelected((current) => current || managed.model_key);
-    }, [managed.model_key]);
 
     async function perform(action) {
         setBusy(true);
@@ -68,7 +62,7 @@ export function ModelManager() {
             {!active && catalog?.models?.length > 1 && (
                 <label>
                     {t("model.local")}
-                    <select value={selected} onChange={(event) => { setSelected(event.target.value); setAccepted(false); }}>
+                    <select value={selected} onChange={(event) => { setSelectionOverride(event.target.value); setAccepted(false); }}>
                         {catalog.models.map((item) => (
                             <option key={item.key} value={item.key}>{item.displayName}</option>
                         ))}

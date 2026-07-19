@@ -1,14 +1,14 @@
 import { ApiClient } from "../lib/client";
 
 export const ResumeService = {
-    list() {
-        return ApiClient.get("/resumes");
+    list(options = {}) {
+        return ApiClient.get("/resumes", undefined, options);
     },
-    listVersions() {
-        return ApiClient.get("/resumes/versions");
+    listVersions(options = {}) {
+        return ApiClient.get("/resumes/versions", undefined, options);
     },
-    get(id) {
-        return ApiClient.get(`/resumes/${encodeURIComponent(id)}`);
+    get(id, options = {}) {
+        return ApiClient.get(`/resumes/${encodeURIComponent(id)}`, undefined, options);
     },
     create(data) {
         return ApiClient.post("/resumes", data, { timeoutMs: 60_000 });
