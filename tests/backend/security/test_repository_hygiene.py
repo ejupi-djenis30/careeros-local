@@ -132,6 +132,7 @@ def test_security_exception_manifest_is_scoped_and_expiry_is_enforced():
                 "advisory": "RUSTSEC-2024-0429",
                 "dependency": "glib",
                 "version": "0.18.5",
+                "cargo_lock": "frontend/src-tauri/Cargo.lock",
                 "scope": "linux-desktop-transitive",
                 "expires": "2026-10-19",
             }

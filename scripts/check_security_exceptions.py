@@ -4,12 +4,21 @@ from __future__ import annotations
 
 import argparse
 import json
+import tomllib
 from datetime import UTC, date, datetime
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_MANIFEST = ROOT / "security-exceptions.json"
-REQUIRED_FIELDS = {"id", "advisory", "dependency", "version", "scope", "expires"}
+REQUIRED_FIELDS = {
+    "id",
+    "advisory",
+    "dependency",
+    "version",
+    "cargo_lock",
+    "scope",
+    "expires",
+}
 
 
 def parse_args() -> argparse.Namespace:
@@ -51,6 +60,27 @@ def validate_exceptions(manifest: Path, today: date) -> list[str]:
             continue
         if today >= expiry:
             failures.append(f"{identifier} expired on {expiry.isoformat()}")
+
+        lockfile = (ROOT / str(exception["cargo_lock"])).resolve()
+        if not lockfile.is_relative_to(ROOT):
+            failures.append(f"{identifier} references a lockfile outside the repository")
+            continue
+        try:
+            cargo_lock = tomllib.loads(lockfile.read_text(encoding="utf-8"))
+        except (OSError, tomllib.TOMLDecodeError) as error:
+            failures.append(f"{identifier} cannot read {lockfile.relative_to(ROOT)}: {error}")
+            continue
+        dependency = str(exception["dependency"])
+        version = str(exception["version"])
+        matches = any(
+            package.get("name") == dependency and package.get("version") == version
+            for package in cargo_lock.get("package", [])
+        )
+        if not matches:
+            failures.append(
+                f"{identifier} no longer matches {dependency} {version} in "
+                f"{lockfile.relative_to(ROOT).as_posix()}"
+            )
     return failures
 
 
