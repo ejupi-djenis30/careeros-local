@@ -112,32 +112,26 @@ jobs:
             runner: windows-latest
             target: x86_64-pc-windows-msvc
             bundles: nsis,msi
-            artifact_pattern: "**/*.{exe,msi}"
           - label: Windows ARM64
             runner: windows-11-arm
             target: aarch64-pc-windows-msvc
             bundles: nsis,msi
-            artifact_pattern: "**/*.{exe,msi}"
           - label: macOS Intel
             runner: macos-15-intel
             target: x86_64-apple-darwin
             bundles: app,dmg
-            artifact_pattern: "**/*.dmg"
           - label: macOS Apple Silicon
             runner: macos-15
             target: aarch64-apple-darwin
             bundles: app,dmg
-            artifact_pattern: "**/*.dmg"
           - label: Linux x64
             runner: ubuntu-22.04
             target: x86_64-unknown-linux-gnu
             bundles: appimage,deb
-            artifact_pattern: "**/*.{AppImage,deb}"
           - label: Linux ARM64
             runner: ubuntu-22.04-arm
             target: aarch64-unknown-linux-gnu
             bundles: appimage,deb
-            artifact_pattern: "**/*.{AppImage,deb}"
 
     steps:
       - name: Check out source
@@ -233,18 +227,19 @@ jobs:
         with:
           name: native-${{ matrix.target }}
           path: |
-            frontend/src-tauri/target/${{ matrix.target }}/release/bundle/${{ matrix.artifact_pattern }}
+            frontend/src-tauri/target/${{ matrix.target }}/release/bundle/**/*.exe
+            frontend/src-tauri/target/${{ matrix.target }}/release/bundle/**/*.msi
+            frontend/src-tauri/target/${{ matrix.target }}/release/bundle/**/*.dmg
+            frontend/src-tauri/target/${{ matrix.target }}/release/bundle/**/*.AppImage
+            frontend/src-tauri/target/${{ matrix.target }}/release/bundle/**/*.deb
             release-metadata/checksums-${{ matrix.target }}.sha256
           if-no-files-found: error
 
-  publish-release:
-    name: Publish verified desktop release
-    if: startsWith(github.ref, 'refs/tags/v')
+  assemble-release:
+    name: Assemble verified release assets
     needs: [supply-chain, native]
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    permissions:
-      contents: write
     steps:
       - name: Download smoke-tested native packages
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
@@ -275,6 +270,7 @@ jobs:
           \) -print0)
           tar -C release-staging/supply-chain -czf \
             release-assets/supply-chain-evidence.tar.gz .
+          find release-assets -maxdepth 1 -type f -printf '%f\n' | sort
           test "$(find release-assets -maxdepth 1 -type f -iname '*.exe' | wc -l)" -eq 2
           test "$(find release-assets -maxdepth 1 -type f -iname '*.msi' | wc -l)" -eq 2
           test "$(find release-assets -maxdepth 1 -type f -iname '*.dmg' | wc -l)" -eq 2
@@ -282,6 +278,28 @@ jobs:
           test "$(find release-assets -maxdepth 1 -type f -iname '*.deb' | wc -l)" -eq 2
           test "$(find release-assets -maxdepth 1 -type f -name 'checksums-*.sha256' | wc -l)" -eq 6
           test "$(find release-assets -maxdepth 1 -type f | wc -l)" -eq 17
+      - name: Upload verified release inventory
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: verified-release-assets
+          path: release-assets/*
+          if-no-files-found: error
+          retention-days: 14
+
+  publish-release:
+    name: Publish verified desktop release
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: assemble-release
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    steps:
+      - name: Download verified release inventory
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: verified-release-assets
+          path: release-assets
       - name: Create, populate and publish release
         shell: bash
         env:

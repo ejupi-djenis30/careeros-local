@@ -108,6 +108,17 @@ def test_portfolio_demo_assets_are_present_and_github_sized():
     assert (assets / "careeros-demo.gif").is_file()
 
 
+def test_release_workflow_uploads_each_native_extension_explicitly():
+    workflow = (ROOT / ".github/workflows/desktop-release.yml").read_text(encoding="utf-8")
+
+    assert "artifact_pattern" not in workflow
+    assert "**/*.{" not in workflow
+    for extension in ("exe", "msi", "dmg", "AppImage", "deb"):
+        assert f"release/bundle/**/*.{extension}" in workflow
+    assert "name: verified-release-assets" in workflow
+    assert "needs: assemble-release" in workflow
+
+
 def test_legacy_service_facades_stay_thin():
     facades = (
         ROOT / "backend/services/llm_service.py",

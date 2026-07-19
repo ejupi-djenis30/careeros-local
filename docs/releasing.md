@@ -28,15 +28,15 @@ Run the installer smoke test on a clean or disposable user profile. Verify first
 ## CI release
 
 Run `Desktop packages` manually from `main` before creating a version tag. A manual run builds
-the full native matrix and retains smoke-tested packages as workflow artifacts without changing
-any GitHub release.
+the full native matrix, assembles and verifies the exact 17-file release inventory, and retains
+the smoke-tested packages as workflow artifacts without changing any GitHub release.
 
 After that rehearsal passes, push a matching version tag. The tag workflow freezes the backend,
 verifies every sidecar architecture, exercises packaged lifecycle and installer behavior, writes
 SHA-256 inventories, creates GitHub build-provenance attestations, and uploads the packages only
-after those gates pass. A final least-privilege job creates a draft, attaches the verified assets
-and supply-chain evidence, then publishes the release. A failed native job cannot publish or
-modify a release.
+after those gates pass. A final least-privilege job consumes only the pre-validated inventory,
+creates a draft, attaches the verified assets and supply-chain evidence, then publishes the
+release. A failed native or assembly job cannot publish or modify a release.
 
 ## Signing and evidence
 

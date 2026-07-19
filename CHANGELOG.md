@@ -7,6 +7,14 @@ All notable changes to CareerOS Local are documented here. The format follows
 
 No unreleased changes.
 
+## [1.0.2] - 2026-07-19
+
+### Fixed
+
+- Replaced unsupported multi-extension artifact globs with explicit native package patterns.
+- Added a pre-publication assembly job that verifies the complete 17-file release inventory
+  during manual rehearsals as well as version-tag releases.
+
 ## [1.0.1] - 2026-07-19
 
 ### Added
@@ -62,6 +70,7 @@ No unreleased changes.
   autosave/revision loop.
 - Removed the rate-limit error and incomplete pipeline from public screenshots.
 
-[Unreleased]: https://github.com/ejupi-djenis30/careeros-local/compare/v1.0.1...HEAD
+[Unreleased]: https://github.com/ejupi-djenis30/careeros-local/compare/v1.0.2...HEAD
+[1.0.2]: https://github.com/ejupi-djenis30/careeros-local/compare/v1.0.1...v1.0.2
 [1.0.1]: https://github.com/ejupi-djenis30/careeros-local/compare/v1.0.0...v1.0.1
 [1.0.0]: https://github.com/ejupi-djenis30/careeros-local/releases/tag/v1.0.0
