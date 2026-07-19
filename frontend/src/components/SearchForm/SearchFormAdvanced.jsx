@@ -1,8 +1,10 @@
 import React from "react";
+import { useI18n } from "../../i18n/useI18n";
 
 const SCHEDULE_PRESETS = [6, 12, 24];
 
 export function SearchFormAdvanced({ profile, handleChange, setProfile, existingNames = [] }) {
+    const { t } = useI18n();
     // A profile is considered "existing" (re-run) when it has a non-null id
     const isRerun = profile.id != null;
     const nameIsDuplicate = profile.name.trim() && existingNames.includes(profile.name.trim().toLowerCase());
@@ -12,8 +14,8 @@ export function SearchFormAdvanced({ profile, handleChange, setProfile, existing
             <div className="p-3 bg-white-5 rounded-3 border border-white-5">
                 <div className="form-check form-switch d-flex align-items-center justify-content-between ps-0 mb-3">
                     <div>
-                        <label className="form-check-label fw-bold text-white small mb-0" htmlFor="scheduleSwitch">Automatic Search</label>
-                        <div className="x-small text-secondary opacity-75">Run this search periodically</div>
+                        <label className="form-check-label fw-bold text-white small mb-0" htmlFor="scheduleSwitch">{t("searchForm.automatic")}</label>
+                        <div className="x-small text-secondary opacity-75">{t("searchForm.automaticCopy")}</div>
                     </div>
                     <input
                         className="form-check-input ms-2"
@@ -28,7 +30,7 @@ export function SearchFormAdvanced({ profile, handleChange, setProfile, existing
                 {profile.schedule_enabled && (
                     <div className="border-top border-white-10 pt-3 opacity-animation">
                         <div className="d-flex align-items-center justify-content-between gap-3 mb-2">
-                            <span className="x-small text-secondary fw-bold text-uppercase">Interval (Hours)</span>
+                            <span className="x-small text-secondary fw-bold text-uppercase">{t("searchForm.intervalHours")}</span>
                             <input
                                 type="number"
                                 name="schedule_interval_hours"
@@ -53,42 +55,42 @@ export function SearchFormAdvanced({ profile, handleChange, setProfile, existing
                             ))}
                         </div>
                         <div className="x-small text-secondary mt-2 opacity-60">
-                            Enter any interval &gt;= 1 hour. Presets are shortcuts only.
+                            {t("searchForm.intervalHelp")}
                         </div>
                     </div>
                 )}
             </div>
 
             <div>
-                <label className="form-label text-white small fw-bold text-uppercase x-small mb-2">Search Title</label>
+                <label className="form-label text-white small fw-bold text-uppercase x-small mb-2">{t("searchForm.searchTitle")}</label>
                 <input
                     type="text"
                     name="name"
                     value={profile.name}
                     onChange={handleChange}
-                    placeholder="E.g. Senior Python Remote"
+                    placeholder={t("searchForm.searchTitlePlaceholder")}
                     className={"form-control form-control-sm bg-black-20 border-white-10 text-white " + (nameIsDuplicate ? 'border-danger' : '')}
                 />
                 {nameIsDuplicate ? (
-                    <div className="x-small text-danger mt-1">A search with this name already exists</div>
+                    <div className="x-small text-danger mt-1">{t("searchForm.nameExists")}</div>
                 ) : (
-                    <div className="x-small text-secondary mt-1 opacity-75">Leave empty to auto-name from the role brief</div>
+                    <div className="x-small text-secondary mt-1 opacity-75">{t("searchForm.autoName")}</div>
                 )}
             </div>
 
             {/* Query Controls */}
             <div className="p-3 bg-white-5 rounded-3 border border-white-5">
-                <div className="x-small text-secondary fw-bold text-uppercase mb-3">Query Generation</div>
+                <div className="x-small text-secondary fw-bold text-uppercase mb-3">{t("searchForm.queryGeneration")}</div>
 
                 <div className="row g-2 mb-2">
                     <div className="col-12">
-                        <label className="form-label text-white x-small fw-semibold mb-1">Max Queries (Total)</label>
+                        <label className="form-label text-white x-small fw-semibold mb-1">{t("searchForm.maxQueries")}</label>
                         <input
                             type="number"
                             name="max_queries"
                             value={profile.max_queries}
                             onChange={handleChange}
-                            placeholder="No Limit"
+                            placeholder={t("searchForm.noLimit")}
                             min="1"
                             className="form-control form-control-sm bg-black-20 border-white-10 text-white"
                         />
@@ -98,35 +100,35 @@ export function SearchFormAdvanced({ profile, handleChange, setProfile, existing
                 <div className="row g-2">
                     <div className="col-6">
                         <label className="form-label text-secondary x-small mb-1">
-                            <i className="bi bi-briefcase-fill me-1 opacity-50"></i>Occupations
+                            <i className="bi bi-briefcase-fill me-1 opacity-50"></i>{t("searchForm.occupations")}
                         </label>
                         <input
                             type="number"
                             name="max_occupation_queries"
                             value={profile.max_occupation_queries}
                             onChange={handleChange}
-                            placeholder="AI decides"
+                            placeholder={t("searchForm.aiDecides")}
                             min="0"
                             className="form-control form-control-sm bg-black-20 border-white-10 text-white"
                         />
                     </div>
                     <div className="col-6">
                         <label className="form-label text-secondary x-small mb-1">
-                            <i className="bi bi-key-fill me-1 opacity-50"></i>Keywords
+                            <i className="bi bi-key-fill me-1 opacity-50"></i>{t("searchForm.keywords")}
                         </label>
                         <input
                             type="number"
                             name="max_keyword_queries"
                             value={profile.max_keyword_queries}
                             onChange={handleChange}
-                            placeholder="AI decides"
+                            placeholder={t("searchForm.aiDecides")}
                             min="0"
                             className="form-control form-control-sm bg-black-20 border-white-10 text-white"
                         />
                     </div>
                 </div>
                 <div className="x-small text-secondary mt-2 opacity-60">
-                    Leave split fields empty unless you need strict control over query generation.
+                    {t("searchForm.queryHelp")}
                 </div>
             </div>
 
@@ -134,7 +136,7 @@ export function SearchFormAdvanced({ profile, handleChange, setProfile, existing
             {isRerun && (
                 <div className="p-3 bg-warning bg-opacity-10 rounded-3 border border-warning border-opacity-20">
                     <div className="x-small text-warning fw-bold text-uppercase mb-2">
-                        <i className="bi bi-lightning-charge-fill me-1"></i>Re-run Options
+                        <i className="bi bi-lightning-charge-fill me-1"></i>{t("searchForm.rerunOptions")}
                     </div>
                     <div className="row g-2">
                         <div className="col-12 col-sm-6 col-lg-12 col-xl-6">
@@ -144,7 +146,7 @@ export function SearchFormAdvanced({ profile, handleChange, setProfile, existing
                             className={"btn btn-sm w-100 d-flex align-items-center justify-content-center gap-2 " + (profile.force_regenerate_cv_summary ? 'btn-warning text-dark fw-bold' : 'btn-outline-secondary')}
                         >
                             <i className={"bi " + (profile.force_regenerate_cv_summary ? 'bi-check-circle-fill' : 'bi-arrow-clockwise')}></i>
-                            Refresh CV Summary
+                            {t("searchForm.refreshSummary")}
                         </button>
                         </div>
                         <div className="col-12 col-sm-6 col-lg-12 col-xl-6">
@@ -154,12 +156,12 @@ export function SearchFormAdvanced({ profile, handleChange, setProfile, existing
                             className={"btn btn-sm w-100 d-flex align-items-center justify-content-center gap-2 " + (profile.force_regenerate_queries ? 'btn-warning text-dark fw-bold' : 'btn-outline-secondary')}
                         >
                             <i className={"bi " + (profile.force_regenerate_queries ? 'bi-check-circle-fill' : 'bi-arrow-clockwise')}></i>
-                            Refresh Queries
+                            {t("searchForm.refreshQueries")}
                         </button>
                         </div>
                     </div>
                     <div className="x-small text-warning opacity-75 mt-2">
-                        By default, cached results from the last run are reused.
+                        {t("searchForm.cacheHelp")}
                     </div>
                 </div>
             )}

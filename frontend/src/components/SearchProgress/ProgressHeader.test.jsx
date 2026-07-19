@@ -1,7 +1,8 @@
 import React from 'react';
-import { render, screen } from '@testing-library/react';
+import { screen } from '@testing-library/react';
 import { describe, it, expect, vi } from 'vitest';
 import { ProgressHeader } from './ProgressHeader';
+import { renderWithI18n as render } from '../../test/renderWithI18n';
 
 describe('ProgressHeader', () => {
   it('describes concurrent search progress using active and completed counts', () => {
@@ -19,6 +20,6 @@ describe('ProgressHeader', () => {
       />
     );
 
-    expect(screen.getByText('Executing 2 vectors; 2 / 5 completed...')).toBeInTheDocument();
+    expect(screen.getByText('Running 2 queries; 2 of 5 completed…')).toBeInTheDocument();
   });
 });

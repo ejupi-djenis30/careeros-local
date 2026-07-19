@@ -1,7 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { screen, fireEvent } from '@testing-library/react';
 import React from 'react';
 import { DesktopJobRow } from './DesktopJobRow';
+import { renderWithI18n as render } from '../../test/renderWithI18n';
 
 // Mock clipboard
 const mockWriteText = vi.fn();
@@ -57,7 +58,7 @@ describe('DesktopJobRow', () => {
                 </tbody>
             </table>
         );
-        const emailLink = screen.getByTitle(/Email:/);
+        const emailLink = screen.getByTitle(/Email jobs@/);
         expect(emailLink).toBeInTheDocument();
         expect(emailLink.querySelector('.bi-envelope')).toBeInTheDocument();
     });
@@ -71,7 +72,7 @@ describe('DesktopJobRow', () => {
                 </tbody>
             </table>
         );
-        expect(screen.queryByTitle(/Email:/)).not.toBeInTheDocument();
+        expect(screen.queryByTitle(/Email jobs@/)).not.toBeInTheDocument();
     });
 
     it('copies details to clipboard when copy button is clicked', () => {
@@ -82,7 +83,7 @@ describe('DesktopJobRow', () => {
                 </tbody>
             </table>
         );
-        const copyBtn = screen.getByTitle('Copy Details');
+        const copyBtn = screen.getByTitle('Copy job details');
         fireEvent.click(copyBtn);
         expect(defaultProps.onCopy).toHaveBeenCalledWith(mockJob);
     });
@@ -97,7 +98,7 @@ describe('DesktopJobRow', () => {
             </table>
         );
 
-        const toggleBtn = screen.getByTitle('View Analysis');
+        const toggleBtn = screen.getByTitle('View match analysis');
         fireEvent.click(toggleBtn);
 
         expect(onViewAnalysis).toHaveBeenCalledWith(mockJob);
@@ -137,7 +138,7 @@ describe('DesktopJobRow', () => {
                 </tbody>
             </table>
         );
-        expect(screen.getByTitle('Top Pick')).toBeInTheDocument();
+        expect(screen.getByTitle('Top pick')).toBeInTheDocument();
         expect(screen.getByText('80%')).toBeInTheDocument();
     });
 });

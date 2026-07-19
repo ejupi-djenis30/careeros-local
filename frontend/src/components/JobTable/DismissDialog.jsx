@@ -1,17 +1,19 @@
 import React, { useEffect } from "react";
 import { createPortal } from "react-dom";
+import { useI18n } from "../../i18n/useI18n";
 
 const DISMISS_OPTIONS = [
-    { value: "not_interested", label: "Not interested", icon: "bi-hand-thumbs-down" },
-    { value: "wrong_domain", label: "Wrong domain", icon: "bi-signpost-split" },
-    { value: "too_senior", label: "Too senior", icon: "bi-arrow-up-circle" },
-    { value: "too_junior", label: "Too junior", icon: "bi-arrow-down-circle" },
-    { value: "bad_salary", label: "Bad salary", icon: "bi-currency-exchange" },
-    { value: "bad_location", label: "Bad location", icon: "bi-geo" },
-    { value: "already_applied", label: "Already applied", icon: "bi-check2-square" },
+    { value: "not_interested", labelKey: "jobs.dismiss.notInterested", icon: "bi-hand-thumbs-down" },
+    { value: "wrong_domain", labelKey: "jobs.dismiss.wrongDomain", icon: "bi-signpost-split" },
+    { value: "too_senior", labelKey: "jobs.dismiss.tooSenior", icon: "bi-arrow-up-circle" },
+    { value: "too_junior", labelKey: "jobs.dismiss.tooJunior", icon: "bi-arrow-down-circle" },
+    { value: "bad_salary", labelKey: "jobs.dismiss.badSalary", icon: "bi-currency-exchange" },
+    { value: "bad_location", labelKey: "jobs.dismiss.badLocation", icon: "bi-geo" },
+    { value: "already_applied", labelKey: "jobs.dismiss.alreadyApplied", icon: "bi-check2-square" },
 ];
 
 export function DismissDialog({ open, jobTitle, onDismiss, onClose }) {
+    const { t } = useI18n();
     useEffect(() => {
         if (!open) return;
         const handleEscape = (e) => {
@@ -35,18 +37,19 @@ export function DismissDialog({ open, jobTitle, onDismiss, onClose }) {
             >
                 <div className="d-flex justify-content-between align-items-start mb-3">
                     <div className="min-w-0 flex-grow-1 pe-2">
-                        <h6 className="text-white fw-bold mb-1">Not interested?</h6>
+                        <h6 className="text-white fw-bold mb-1">{t("jobs.dismiss.title")}</h6>
                         {jobTitle && <div className="text-secondary x-small text-truncate w-100">{jobTitle}</div>}
                     </div>
                     <button
                         onClick={onClose}
                         className="btn btn-sm btn-icon btn-secondary rounded-circle flex-shrink-0"
+                        aria-label={t("common.close")}
                     >
                         <i className="bi bi-x-lg"></i>
                     </button>
                 </div>
 
-                <div className="text-secondary small mb-3">Select a reason:</div>
+                <div className="text-secondary small mb-3">{t("jobs.dismiss.prompt")}</div>
 
                 <div className="d-flex flex-column gap-1">
                     {DISMISS_OPTIONS.map(opt => (
@@ -56,7 +59,7 @@ export function DismissDialog({ open, jobTitle, onDismiss, onClose }) {
                             onClick={() => onDismiss(opt.value)}
                         >
                             <i className={`bi ${opt.icon} opacity-50`}></i>
-                            {opt.label}
+                            {t(opt.labelKey)}
                         </button>
                     ))}
                 </div>
@@ -66,7 +69,7 @@ export function DismissDialog({ open, jobTitle, onDismiss, onClose }) {
                         className="btn btn-sm btn-secondary w-100 rounded-pill"
                         onClick={onClose}
                     >
-                        Cancel
+                        {t("common.cancel")}
                     </button>
                 </div>
             </div>

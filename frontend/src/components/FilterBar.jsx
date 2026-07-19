@@ -1,4 +1,5 @@
 import React from "react";
+import { useI18n } from "../i18n/useI18n";
 
 const DEFAULT_FILTERS = {
     search_profile_id: "",
@@ -11,6 +12,8 @@ const DEFAULT_FILTERS = {
 };
 
 export function FilterBar({ filters = DEFAULT_FILTERS, onChange, searchProfiles = [], onClear, onRefresh, isRefreshing = false }) {
+    const { language, t } = useI18n();
+    const locale = language === "it" ? "it-IT" : "en-GB";
     const safeFilters = { ...DEFAULT_FILTERS, ...filters };
     const availableProfiles = Array.isArray(searchProfiles) ? searchProfiles : [];
 
@@ -30,10 +33,10 @@ export function FilterBar({ filters = DEFAULT_FILTERS, onChange, searchProfiles 
                     value={safeFilters.search_profile_id || ""}
                     onChange={(e) => handleChange("search_profile_id", e.target.value ? Number(e.target.value) : "")}
                 >
-                    <option value="" className="bg-dark text-white">Global Dashboard</option>
+                    <option value="" className="bg-dark text-white">{t("filter.globalDashboard")}</option>
                     {availableProfiles.map(p => (
                         <option key={p.id} value={p.id} className="bg-dark text-white">
-                            Search: {p.name || p.role_description || 'Unknown'}
+                            {t("filter.searchProfile", { name: p.name || p.role_description || t("filter.unknown") })}
                         </option>
                     ))}
                 </select>
@@ -42,14 +45,14 @@ export function FilterBar({ filters = DEFAULT_FILTERS, onChange, searchProfiles 
             {/* AI Filters (Only when scoped) */}
             {!isGlobal && (
                 <>
-                    <div className="d-flex align-items-center bg-white-5 rounded-pill px-2 border border-white-5" title="Minimum Score">
+                    <div className="d-flex align-items-center bg-white-5 rounded-pill px-2 border border-white-5" title={t("filter.minimumScore")}>
                         <i className="bi bi-bar-chart-line text-secondary px-2"></i>
                         <select
                             className="form-select form-select-sm border-0 bg-transparent text-white py-0 shadow-none min-w-85"
                             value={safeFilters.min_score || ""}
                             onChange={(e) => handleChange("min_score", e.target.value ? Number(e.target.value) : "")}
                         >
-                            <option value="" className="bg-dark text-white">Any</option>
+                            <option value="" className="bg-dark text-white">{t("filter.any")}</option>
                             <option value="50" className="bg-dark text-white">50%+</option>
                             <option value="70" className="bg-dark text-white">70%+</option>
                             <option value="85" className="bg-dark text-white">85%+</option>
@@ -57,14 +60,14 @@ export function FilterBar({ filters = DEFAULT_FILTERS, onChange, searchProfiles 
                         </select>
                     </div>
 
-                    <div className="d-flex align-items-center bg-white-5 rounded-pill px-2 border border-white-5" title="Maximum Distance">
+                    <div className="d-flex align-items-center bg-white-5 rounded-pill px-2 border border-white-5" title={t("filter.maximumDistance")}>
                         <i className="bi bi-geo-alt text-secondary px-2"></i>
                         <select
                             className="form-select form-select-sm border-0 bg-transparent text-white py-0 shadow-none min-w-85"
                             value={safeFilters.max_distance || ""}
                             onChange={(e) => handleChange("max_distance", e.target.value ? Number(e.target.value) : "")}
                         >
-                            <option value="" className="bg-dark text-white">Any</option>
+                            <option value="" className="bg-dark text-white">{t("filter.any")}</option>
                             <option value="10" className="bg-dark text-white">10 km</option>
                             <option value="25" className="bg-dark text-white">25 km</option>
                             <option value="50" className="bg-dark text-white">50 km</option>
@@ -79,7 +82,7 @@ export function FilterBar({ filters = DEFAULT_FILTERS, onChange, searchProfiles 
                         onClick={() => handleChange("worth_applying", !safeFilters.worth_applying)}
                     >
                         <i className={`bi ${safeFilters.worth_applying ? 'bi-star-fill' : 'bi-star'}`}></i>
-                        <span className="fw-medium">Top Picks</span>
+                        <span className="fw-medium">{t("filter.topPicks")}</span>
                     </button>
 
                     {/* Show Dismissed toggle */}
@@ -87,10 +90,10 @@ export function FilterBar({ filters = DEFAULT_FILTERS, onChange, searchProfiles 
                         type="button"
                         className={`btn btn-sm rounded-pill px-3 d-flex align-items-center gap-2 border transition-all ${safeFilters.include_dismissed ? 'bg-danger-10 border-danger text-danger fw-semibold' : 'bg-white-5 border-white-10 text-white-50 hover-bg-white-10'}`}
                         onClick={() => handleChange("include_dismissed", !safeFilters.include_dismissed)}
-                        title={safeFilters.include_dismissed ? "Hide dismissed jobs" : "Show jobs you marked as not interested"}
+                        title={safeFilters.include_dismissed ? t("filter.hideDismissed") : t("filter.showDismissed")}
                     >
                         <i className={`bi ${safeFilters.include_dismissed ? 'bi-eye-slash-fill' : 'bi-eye-slash'}`}></i>
-                        <span className="fw-medium">Dismissed</span>
+                        <span className="fw-medium">{t("filter.dismissed")}</span>
                     </button>
 
                     {/* Active Precision Filters badges */}
@@ -102,13 +105,13 @@ export function FilterBar({ filters = DEFAULT_FILTERS, onChange, searchProfiles 
                         const salaryMin = activeProfile.salary_min_chf;
                         if (!langs.length && !remoteOnly && !salaryMin) return null;
                         return (
-                            <div className="d-flex align-items-center gap-1 flex-wrap" title="Active precision filters for this search">
+                            <div className="d-flex align-items-center gap-1 flex-wrap" title={t("filter.precisionTitle")}>
                                 <i className="bi bi-funnel-fill text-secondary opacity-50 x-small"></i>
                                 {langs.map(l => (
                                     <span key={l} className="badge bg-info text-dark text-xs">{l.toUpperCase()}</span>
                                 ))}
-                                {remoteOnly && <span className="badge bg-success text-xs">Remote</span>}
-                                {salaryMin && <span className="badge bg-warning text-dark text-xs">CHF {Number(salaryMin).toLocaleString()}+</span>}
+                                {remoteOnly && <span className="badge bg-success text-xs">{t("filter.remote")}</span>}
+                                {salaryMin && <span className="badge bg-warning text-dark text-xs">CHF {Number(salaryMin).toLocaleString(locale)}+</span>}
                             </div>
                         );
                     })()}
@@ -126,10 +129,10 @@ export function FilterBar({ filters = DEFAULT_FILTERS, onChange, searchProfiles 
                         onChange({ ...safeFilters, sort_by: by, sort_order: order });
                     }}
                 >
-                    <option value="created_at:desc" className="bg-dark">Newest</option>
-                    <option value="created_at:asc" className="bg-dark">Oldest</option>
-                    {!isGlobal && <option value="affinity_score:desc" className="bg-dark">Best Match</option>}
-                    <option value="distance_km:asc" className="bg-dark">Closest</option>
+                    <option value="created_at:desc" className="bg-dark">{t("filter.newest")}</option>
+                    <option value="created_at:asc" className="bg-dark">{t("filter.oldest")}</option>
+                    {!isGlobal && <option value="affinity_score:desc" className="bg-dark">{t("filter.bestMatch")}</option>}
+                    <option value="distance_km:asc" className="bg-dark">{t("filter.closest")}</option>
                 </select>
 
                 {/* Refresh Data */}
@@ -138,7 +141,7 @@ export function FilterBar({ filters = DEFAULT_FILTERS, onChange, searchProfiles 
                         type="button"
                         className="btn btn-icon btn-secondary rounded-circle ms-2"
                         onClick={onRefresh}
-                        title="Refresh Data"
+                        title={t("filter.refresh")}
                         disabled={isRefreshing}
                     >
                         {isRefreshing
@@ -153,7 +156,7 @@ export function FilterBar({ filters = DEFAULT_FILTERS, onChange, searchProfiles 
                     type="button"
                     className="btn btn-icon btn-secondary rounded-circle ms-2"
                     onClick={onClear}
-                    title="Clear filters"
+                    title={t("filter.clear")}
                 >
                     <i className="bi bi-x-lg"></i>
                 </button>

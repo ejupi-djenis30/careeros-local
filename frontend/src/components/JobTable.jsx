@@ -5,11 +5,14 @@ import { JobAnalysisModal } from "./JobTable/JobAnalysisModal";
 import { DismissDialog } from "./JobTable/DismissDialog";
 import { JobService } from "../services/jobs";
 import { useToast } from "../context/ToastContext";
+import { useI18n } from "../i18n/useI18n";
 
 export function JobTable({ jobs, isGlobalView, onToggleApplied, isAppliedPending = () => false, onDismiss, onReactivate, pagination, onPageChange, isLoading = false }) {
     const [selectedJobForAnalysis, setSelectedJobForAnalysis] = useState(null);
     const [selectedJobForDismiss, setSelectedJobForDismiss] = useState(null);
     const { showToast } = useToast();
+    const { language, t } = useI18n();
+    const locale = language === "it" ? "it-IT" : "en-GB";
 
     const handleViewAnalysis = (job) => {
         setSelectedJobForAnalysis(job);
@@ -85,8 +88,8 @@ export function JobTable({ jobs, isGlobalView, onToggleApplied, isAppliedPending
         // Remove null/undefined keys for cleaner output
         const cleaned = Object.fromEntries(Object.entries(data).filter(([, v]) => v != null));
         navigator.clipboard.writeText(JSON.stringify(cleaned, null, 2)).then(
-            () => showToast("Copied to clipboard", "success"),
-            () => showToast("Failed to copy to clipboard")
+            () => showToast(t("jobs.copySuccess"), "success"),
+            () => showToast(t("jobs.copyFailed"))
         );
     };
     if (!jobs || jobs.length === 0) {
@@ -94,9 +97,9 @@ export function JobTable({ jobs, isGlobalView, onToggleApplied, isAppliedPending
             return (
                 <div className="text-center py-5 d-flex flex-column align-items-center justify-content-center min-h-240">
                     <div className="spinner-border text-primary mb-3" style={{ width: '2.5rem', height: '2.5rem' }} role="status">
-                        <span className="visually-hidden">Loading jobs...</span>
+                        <span className="visually-hidden">{t("jobs.loading")}</span>
                     </div>
-                    <p className="text-secondary mb-0">Loading jobs...</p>
+                    <p className="text-secondary mb-0">{t("jobs.loading")}</p>
                 </div>
             );
         }
@@ -107,8 +110,8 @@ export function JobTable({ jobs, isGlobalView, onToggleApplied, isAppliedPending
                         <i className="bi bi-search fs-1 text-secondary opacity-50"></i>
                     </div>
                 </div>
-                <h4 className="text-white fw-bold">No jobs found</h4>
-                <p className="text-secondary">Try adjusting your filters or starting a new search to find opportunities.</p>
+                <h4 className="text-white fw-bold">{t("jobs.emptyTitle")}</h4>
+                <p className="text-secondary">{t("jobs.emptyCopy")}</p>
             </div>
         );
     }
@@ -137,15 +140,15 @@ export function JobTable({ jobs, isGlobalView, onToggleApplied, isAppliedPending
                 <table className="table table-hover align-middle mb-0 table-separate">
                     <thead className="sticky-top bg-dark z-10">
                         <tr>
-                            <th className="ps-4 py-3 bg-black-50 text-secondary text-uppercase x-small tracking-wider border-bottom border-white-10 col-w-30">Job Title</th>
-                            <th className="py-3 bg-black-50 text-secondary text-uppercase x-small tracking-wider border-bottom border-white-10 col-w-25">Company & Location</th>
+                            <th className="ps-4 py-3 bg-black-50 text-secondary text-uppercase x-small tracking-wider border-bottom border-white-10 col-w-30">{t("jobs.titleColumn")}</th>
+                            <th className="py-3 bg-black-50 text-secondary text-uppercase x-small tracking-wider border-bottom border-white-10 col-w-25">{t("jobs.companyLocationColumn")}</th>
                             {!isGlobalView && (
                                 <>
-                                    <th className="py-3 bg-black-50 text-secondary text-uppercase x-small tracking-wider border-bottom border-white-10 col-w-20">Match & Details</th>
+                                    <th className="py-3 bg-black-50 text-secondary text-uppercase x-small tracking-wider border-bottom border-white-10 col-w-20">{t("jobs.matchDetailsColumn")}</th>
                                 </>
                             )}
-                            <th className="py-3 bg-black-50 text-secondary text-uppercase x-small tracking-wider border-bottom border-white-10 col-w-8">Applied</th>
-                            <th className={`pe-4 py-3 bg-black-50 text-end text-secondary text-uppercase x-small tracking-wider border-bottom border-white-10 ${isGlobalView ? 'col-w-42' : 'col-w-12'}`}>Actions</th>
+                            <th className="py-3 bg-black-50 text-secondary text-uppercase x-small tracking-wider border-bottom border-white-10 col-w-8">{t("jobs.appliedColumn")}</th>
+                            <th className={`pe-4 py-3 bg-black-50 text-end text-secondary text-uppercase x-small tracking-wider border-bottom border-white-10 ${isGlobalView ? 'col-w-42' : 'col-w-12'}`}>{t("jobs.actionsColumn")}</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -181,7 +184,7 @@ export function JobTable({ jobs, isGlobalView, onToggleApplied, isAppliedPending
             <div className="p-3 border-top border-white-10 bg-black-20 rounded-bottom">
                 <div className="d-flex justify-content-between align-items-center">
                     <div className="text-secondary x-small fw-medium">
-                        Showing <span className="text-white">{(pagination.page - 1) * 20 + 1}-{Math.min(pagination.page * 20, pagination.total)}</span> of <span className="text-white">{pagination.total}</span>
+                        {t("jobs.showing")} <span className="text-white">{((pagination.page - 1) * 20 + 1).toLocaleString(locale)}-{Math.min(pagination.page * 20, pagination.total).toLocaleString(locale)}</span> {t("jobs.of")} <span className="text-white">{Number(pagination.total).toLocaleString(locale)}</span>
                     </div>
 
                     {pagination.pages > 1 && (
@@ -190,18 +193,20 @@ export function JobTable({ jobs, isGlobalView, onToggleApplied, isAppliedPending
                                 className="btn btn-sm btn-secondary btn-icon sz-32"
                                 disabled={pagination.page === 1}
                                 onClick={() => onPageChange(pagination.page - 1)}
+                                aria-label={t("jobs.previousPage")}
                             >
                                 <i className="bi bi-chevron-left"></i>
                             </button>
 
                             <span className="text-white small fw-bold px-2">
-                                {pagination.page} <span className="text-secondary fw-normal">/ {pagination.pages}</span>
+                                {Number(pagination.page).toLocaleString(locale)} <span className="text-secondary fw-normal">/ {Number(pagination.pages).toLocaleString(locale)}</span>
                             </span>
 
                             <button
                                 className="btn btn-sm btn-secondary btn-icon sz-32"
                                 disabled={pagination.page === pagination.pages}
                                 onClick={() => onPageChange(pagination.page + 1)}
+                                aria-label={t("jobs.nextPage")}
                             >
                                 <i className="bi bi-chevron-right"></i>
                             </button>

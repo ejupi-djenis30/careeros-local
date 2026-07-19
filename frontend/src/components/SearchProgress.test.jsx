@@ -1,8 +1,9 @@
 import React from 'react';
-import { render, screen, waitFor } from '@testing-library/react';
+import { screen, waitFor } from '@testing-library/react';
 import { describe, it, expect, vi } from 'vitest';
 import { SearchProgress } from './SearchProgress';
 import { ToastProvider } from '../context/ToastContext';
+import { renderWithI18n as render } from '../test/renderWithI18n';
 
 vi.mock('../services/search', () => ({
   SearchService: {
@@ -77,7 +78,7 @@ describe('SearchProgress', () => {
     render(<ToastProvider><SearchProgress profileId="1" status={status} onStateChange={vi.fn()} onClear={vi.fn()} /></ToastProvider>);
 
     expect(
-      screen.getByText('Search completed with notice: no jobs were found for the generated queries.')
+      screen.getByText('The generated queries did not return any jobs.')
     ).toBeInTheDocument();
     expect(screen.getByTestId('llm-debug-label')).toHaveTextContent(
       'LLM_DEBUG state=done terminal_reason=no_results profile_id=1'
@@ -102,7 +103,7 @@ describe('SearchProgress', () => {
     render(<ToastProvider><SearchProgress profileId="1" status={status} onStateChange={vi.fn()} onClear={vi.fn()} /></ToastProvider>);
 
     expect(
-      screen.getByText('Search completed with notice: all fetched jobs were filtered out by structured constraints.')
+      screen.getByText('Every fetched job was excluded by the structured filters.')
     ).toBeInTheDocument();
     expect(screen.getByTestId('llm-debug-label')).toHaveTextContent(
       'LLM_DEBUG state=done terminal_reason=no_jobs_after_structured_filters profile_id=1'
@@ -127,7 +128,7 @@ describe('SearchProgress', () => {
     render(<ToastProvider><SearchProgress profileId="1" status={status} onStateChange={vi.fn()} onClear={vi.fn()} /></ToastProvider>);
 
     expect(
-      screen.getByText('Search completed with notice: fetched jobs collapsed during runtime deduplication.')
+      screen.getByText('No jobs remained after removing duplicates from this run.')
     ).toBeInTheDocument();
     expect(screen.getByTestId('llm-debug-label')).toHaveTextContent(
       'LLM_DEBUG state=done terminal_reason=no_jobs_after_dedup profile_id=1'
@@ -175,7 +176,7 @@ describe('SearchProgress', () => {
     render(<ToastProvider><SearchProgress profileId="1" status={status} onStateChange={vi.fn()} onClear={vi.fn()} /></ToastProvider>);
 
     expect(
-      screen.getByText('Search failed while processing fetched jobs before analysis could complete.')
+      screen.getByText('The search failed while processing jobs, before analysis finished.')
     ).toBeInTheDocument();
     expect(screen.getByTestId('llm-debug-label')).toHaveTextContent(
       'LLM_DEBUG state=error terminal_reason=pipeline_processing_failed profile_id=1'

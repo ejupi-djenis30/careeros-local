@@ -5,11 +5,13 @@ import { ProgressHeader } from "./SearchProgress/ProgressHeader";
 import { ProgressBar } from "./SearchProgress/ProgressBar";
 import { TargetQueue } from "./SearchProgress/TargetQueue";
 import { LiveLogs } from "./SearchProgress/LiveLogs";
+import { useI18n } from "../i18n/useI18n";
 
 export function SearchProgress({ profileId, status, onStateChange, onClear }) {
     const logEndRef = useRef(null);
     const reportedState = useRef(null);
     const { showToast } = useToast();
+    const { t } = useI18n();
     const displayStatus = status;
 
     useEffect(() => {
@@ -40,7 +42,7 @@ export function SearchProgress({ profileId, status, onStateChange, onClear }) {
     const _analysisRunning = _jobsAnalyzed > 0 && _jobsAnalyzeTotal > _jobsAnalyzed;
 
     let _rawProgressPct = 0;
-    let analyzingText = "ANALYZING TARGETS...";
+    let analyzingText = t("searchProgress.analyzingTargets");
     if (_state === "running") {
         _rawProgressPct = 2;
     } else if (_state === "generating") {
@@ -52,13 +54,13 @@ export function SearchProgress({ profileId, status, onStateChange, onClear }) {
             : 0;
         _rawProgressPct = Math.max(searchPct, analysisPct);
         if (_analysisRunning) {
-            analyzingText = `ANALYZING TARGETS (${_jobsAnalyzed}/${_jobsAnalyzeTotal})...`;
+            analyzingText = t("searchProgress.analyzingTargetsCount", { current: _jobsAnalyzed, total: _jobsAnalyzeTotal });
         }
     } else if (_state === "analyzing") {
         _rawProgressPct = 90;
         if (_analysisRunning) {
             _rawProgressPct = 90 + Math.round((_jobsAnalyzed / _jobsAnalyzeTotal) * 10);
-            analyzingText = `ANALYZING TARGETS (${_jobsAnalyzed}/${_jobsAnalyzeTotal})...`;
+            analyzingText = t("searchProgress.analyzingTargetsCount", { current: _jobsAnalyzed, total: _jobsAnalyzeTotal });
         }
     } else if (_isDone) {
         _rawProgressPct = 100;
@@ -69,15 +71,15 @@ export function SearchProgress({ profileId, status, onStateChange, onClear }) {
             await SearchService.stopSearch(profileId);
         } catch (e) {
             console.error("Stop error:", e);
-            showToast("Failed to stop search. Please try again.");
+            showToast(t("searchProgress.stopFailed"));
         }
     };
 
     if (!displayStatus) return (
         <div className="glass-panel p-5 text-center mt-4 d-flex flex-column align-items-center justify-content-center" style={{ minHeight: '400px' }}>
             <div className="spinner-border text-primary mb-4" role="status" style={{ width: '3rem', height: '3rem' }}></div>
-            <h5 className="text-white fw-bold">Initializing Uplink</h5>
-            <p className="text-secondary mb-0 font-monospace small">Establishing connection to agent...</p>
+            <h5 className="text-white fw-bold">{t("searchProgress.initializing")}</h5>
+            <p className="text-secondary mb-0 font-monospace small">{t("searchProgress.connecting")}</p>
         </div>
     );
 
@@ -110,24 +112,24 @@ export function SearchProgress({ profileId, status, onStateChange, onClear }) {
     const isDone = state === "done";
     const isError = state === "error" || state === "stopped";
     const doneNoticeByReason = {
-        no_queries: "Search completed with notice: no valid queries were generated.",
-        no_valid_queries_after_filter: "Search completed with notice: generated queries did not pass local validation.",
-        no_queries_matching_preferences: "Search completed with notice: no query matched your explicit preferences.",
-        no_results: "Search completed with notice: no jobs were found for the generated queries.",
-        all_duplicates: "Search completed with notice: all found jobs were already present in history.",
-        no_jobs_after_dedup: "Search completed with notice: fetched jobs collapsed during runtime deduplication.",
-        no_relevant_jobs: "Search completed with notice: no jobs passed relevance filtering.",
-        no_jobs_after_structured_filters: "Search completed with notice: all fetched jobs were filtered out by structured constraints.",
-        degraded_plan_fallback: "The local model was unavailable, so the deterministic search plan was used.",
+        no_queries: t("searchProgress.notice.noQueries"),
+        no_valid_queries_after_filter: t("searchProgress.notice.noValidQueries"),
+        no_queries_matching_preferences: t("searchProgress.notice.noMatchingQueries"),
+        no_results: t("searchProgress.notice.noResults"),
+        all_duplicates: t("searchProgress.notice.allDuplicates"),
+        no_jobs_after_dedup: t("searchProgress.notice.afterDedup"),
+        no_relevant_jobs: t("searchProgress.notice.noRelevantJobs"),
+        no_jobs_after_structured_filters: t("searchProgress.notice.structuredFilters"),
+        degraded_plan_fallback: t("searchProgress.notice.fallback"),
     };
     const errorNoticeByReason = {
-        search_execution_failed: "Search failed before any provider returned usable results.",
-        pipeline_processing_failed: "Search failed while processing fetched jobs before analysis could complete.",
-        job_persistence_failed: "Jobs were analyzed, but saving them failed.",
-        pipeline_timeout: "Search exceeded the maximum allowed processing time.",
-        server_shutdown: "Search was interrupted because the server shut down.",
-        llm_plan_error: "The local model could not generate a search plan.",
-        llm_plan_rate_limited: "The local inference runtime is busy. Retry when capacity is available.",
+        search_execution_failed: t("searchProgress.error.execution"),
+        pipeline_processing_failed: t("searchProgress.error.processing"),
+        job_persistence_failed: t("searchProgress.error.persistence"),
+        pipeline_timeout: t("searchProgress.error.timeout"),
+        server_shutdown: t("searchProgress.error.shutdown"),
+        llm_plan_error: t("searchProgress.error.plan"),
+        llm_plan_rate_limited: t("searchProgress.error.busy"),
     };
     const statusNotice = isDone
         ? doneNoticeByReason[terminal_reason]
@@ -153,7 +155,7 @@ export function SearchProgress({ profileId, status, onStateChange, onClear }) {
                 const itemIndex = index + 1;
                 const title = typeof entry === 'string'
                     ? entry
-                    : entry?.title || `Target ${itemIndex}`;
+                    : entry?.title || t("searchProgress.target", { index: itemIndex });
                 const isDone = itemIndex <= completedCount;
                 const isCurrent = !isDone && itemIndex === currentIndex;
                 return {
@@ -205,7 +207,7 @@ export function SearchProgress({ profileId, status, onStateChange, onClear }) {
                     <div className="mb-3 d-flex justify-content-end">
                         <span
                             className="badge bg-dark border border-warning text-warning small font-monospace"
-                            title="Technical debug label for automated diagnosis"
+                            title={t("searchProgress.debugLabel")}
                             data-testid="llm-debug-label"
                         >
                             {debugLabel}
@@ -219,17 +221,17 @@ export function SearchProgress({ profileId, status, onStateChange, onClear }) {
                         // jobs_new is updated live as jobs are saved during searching —
                         // show it with a contextual label ("Saved" while running, "New Intel" when done).
                         isRunning
-                            ? { label: 'Saved', value: jobs_new, color: 'text-primary' }
-                            : { label: 'New Intel', value: jobs_new, color: 'text-white' },
-                        { label: 'In Queue', value: Math.max(0, (jobs_unique || 0) - (jobs_new || 0) - (jobs_skipped || 0)), color: 'text-info' },
+                            ? { label: t("searchProgress.saved"), value: jobs_new, color: 'text-primary' }
+                            : { label: t("searchProgress.newJobs"), value: jobs_new, color: 'text-white' },
+                        { label: t("searchProgress.inQueue"), value: Math.max(0, (jobs_unique || 0) - (jobs_new || 0) - (jobs_skipped || 0)), color: 'text-info' },
                         {
-                            label: 'Duplicates',
+                            label: t("searchProgress.duplicates"),
                             value: duplicateTotal,
                             color: 'text-warning',
                             detail: `R ${duplicateRuntime} H ${duplicateHistory} C ${duplicateCatalogConflicts}`,
                         },
-                        { label: 'Skipped', value: jobs_skipped, color: 'text-secondary' },
-                        { label: 'Errors', value: errors, color: 'text-danger' }
+                        { label: t("searchProgress.skipped"), value: jobs_skipped, color: 'text-secondary' },
+                        { label: t("searchProgress.errors"), value: errors, color: 'text-danger' }
                     ].map((stat, i) => (
                         <div key={i} className="col-4 col-md">
                             <div className="p-3 rounded-4 bg-black-20 border border-white-5 text-center h-100 d-flex flex-column justify-content-center">

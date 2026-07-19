@@ -5,7 +5,8 @@ import { InternalLink } from "../InternalLink";
 import { useI18n } from "../../i18n/useI18n";
 
 export const DesktopJobRow = memo(function DesktopJobRow({ job, isGlobalView, onToggleApplied, isAppliedPending = false, onCopy, onViewAnalysis, onOpenDismissDialog, onReactivate }) {
-    const { t } = useI18n();
+    const { language, t } = useI18n();
+    const locale = language === "it" ? "it-IT" : "en-GB";
     const applyUrl = safeExternalUrl(job.application_url) || safeExternalUrl(job.external_url);
     const externalUrl = safeExternalUrl(job.external_url);
     const sourceUrl = externalUrl && externalUrl !== applyUrl ? externalUrl : null;
@@ -19,14 +20,14 @@ export const DesktopJobRow = memo(function DesktopJobRow({ job, isGlobalView, on
                     {job.title}
                 </div>
                 <div className="x-small text-secondary mt-1 d-flex gap-2">
-                    <span title="Scraped on">
+                    <span title={t("jobs.collectedOn")}>
                         <i className="bi bi-clock x-small me-1"></i>
-                        {new Date(job.created_at).toLocaleDateString()}
+                        {new Date(job.created_at).toLocaleDateString(locale)}
                     </span>
                     {job.publication_date && (
-                        <span className="text-info opacity-75" title="Published on">
+                        <span className="text-info opacity-75" title={t("jobs.publishedOn")}>
                             <i className="bi bi-megaphone x-small me-1"></i>
-                            {new Date(job.publication_date).toLocaleDateString()}
+                            {new Date(job.publication_date).toLocaleDateString(locale)}
                         </span>
                     )}
                 </div>
@@ -37,8 +38,8 @@ export const DesktopJobRow = memo(function DesktopJobRow({ job, isGlobalView, on
                 </div>
                 <div className="text-secondary small d-flex align-items-center gap-2">
                     <i className="bi bi-geo-alt opacity-50"></i>
-                    {job.location || "Remote"}
-                    {fmtDistance != null && <span className="text-white-50 opacity-75">({fmtDistance}km)</span>}
+                    {job.location || t("jobs.remote")}
+                    {fmtDistance != null && <span className="text-white-50 opacity-75">({fmtDistance.toLocaleString(locale)} km)</span>}
                 </div>
             </td>
             {!isGlobalView && (
@@ -50,7 +51,7 @@ export const DesktopJobRow = memo(function DesktopJobRow({ job, isGlobalView, on
 
                         <div className="d-flex flex-wrap gap-1 align-items-center">
                             {job.worth_applying && (
-                                <span className="bg-success rounded-circle d-inline-flex align-items-center justify-content-center sz-18" title="Top Pick">
+                                <span className="bg-success rounded-circle d-inline-flex align-items-center justify-content-center sz-18" title={t("jobs.topPick")}>
                                     <i className="bi bi-check-lg text-white text-07"></i>
                                 </span>
                             )}
@@ -63,7 +64,7 @@ export const DesktopJobRow = memo(function DesktopJobRow({ job, isGlobalView, on
                                 <button
                                     className="btn btn-sm btn-icon btn-secondary rounded-circle d-flex align-items-center justify-content-center border-0 bg-white-5 hover-bg-white-10 ms-1 sz-28"
                                         onClick={() => onViewAnalysis(job)}
-                                    title="View Analysis"
+                                    title={t("jobs.viewAnalysis")}
                                 >
                                     <i className="bi bi-robot"></i>
                                 </button>
@@ -82,16 +83,16 @@ export const DesktopJobRow = memo(function DesktopJobRow({ job, isGlobalView, on
                             checked={job.applied}
                             disabled={isAppliedPending}
                             onChange={() => onToggleApplied(job)}
-                            title={isAppliedPending ? "Updating Applied Status" : "Toggle Applied Status"}
+                            title={isAppliedPending ? t("jobs.updatingApplied") : t("jobs.toggleApplied")}
                         />
                     </div>
                     {job.applied_elsewhere && !job.applied && (
                         <span
                             className="badge d-flex align-items-center gap-1 badge-applied-other"
-                            title="You applied to this job in another search"
+                            title={t("jobs.appliedElsewhereTitle")}
                         >
                             <i className="bi bi-check2-circle"></i>
-                            Elsewhere
+                            {t("jobs.elsewhere")}
                         </span>
                     )}
                 </div>
@@ -99,25 +100,25 @@ export const DesktopJobRow = memo(function DesktopJobRow({ job, isGlobalView, on
             <td className="pe-4 text-end border-0">
                 <div className="d-flex justify-content-end gap-2 text-nowrap align-items-center">
                     {mailtoUrl && (
-                        <a href={mailtoUrl} className="btn btn-sm btn-icon btn-outline-info border-white-10" title={`Email: ${job.application_email}`}>
+                        <a href={mailtoUrl} className="btn btn-sm btn-icon btn-outline-info border-white-10" title={t("jobs.emailTo", { email: job.application_email })}>
                             <i className="bi bi-envelope"></i>
                         </a>
                     )}
                     {applyUrl && (
                         <a href={applyUrl} target="_blank" rel="noopener noreferrer" className="btn btn-sm btn-primary px-3 rounded-2 shadow-sm">
-                            Apply
+                            {t("jobs.apply")}
                         </a>
                     )}
                     <InternalLink to={`/applications?jobId=${encodeURIComponent(job.id)}`} className="btn btn-sm btn-secondary btn-icon" title={t("jobs.addApplication")}>
                         <i className="bi bi-kanban"></i>
                     </InternalLink>
-                    <button onClick={() => onCopy(job)} className="btn btn-sm btn-secondary btn-icon" title="Copy Details">
+                    <button onClick={() => onCopy(job)} className="btn btn-sm btn-secondary btn-icon" title={t("jobs.copyDetails")}>
                         <i className="bi bi-clipboard"></i>
                     </button>
                     {sourceUrl && (
                         <a href={sourceUrl} target="_blank" rel="noopener noreferrer"
                             className="btn btn-sm btn-icon btn-secondary"
-                            title={`View on ${job.platform || 'Source'}`}>
+                            title={t("jobs.viewOnSource", { source: job.platform || t("jobs.source") })}>
                             <i className="bi bi-link-45deg fs-5"></i>
                         </a>
                     )}
@@ -125,7 +126,7 @@ export const DesktopJobRow = memo(function DesktopJobRow({ job, isGlobalView, on
                     {job.dismissed && onReactivate ? (
                         <button
                             className="btn btn-sm btn-icon btn-secondary rounded-circle"
-                            title="Reactivate Job"
+                            title={t("jobs.reactivate")}
                             onClick={() => onReactivate(job)}
                         >
                             <i className="bi bi-arrow-counterclockwise"></i>
@@ -133,7 +134,7 @@ export const DesktopJobRow = memo(function DesktopJobRow({ job, isGlobalView, on
                     ) : onOpenDismissDialog && !job.dismissed && (
                         <button
                             className="btn btn-sm btn-icon btn-secondary rounded-circle"
-                            title="Not Interested"
+                            title={t("jobs.notInterested")}
                             onClick={() => onOpenDismissDialog(job)}
                         >
                             <i className="bi bi-x-circle"></i>

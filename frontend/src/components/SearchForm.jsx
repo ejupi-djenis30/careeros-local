@@ -5,9 +5,12 @@ import { SearchFormCoreInputs } from "./SearchForm/SearchFormCoreInputs";
 import { SearchFormParameters } from "./SearchForm/SearchFormParameters";
 import { SearchFormAdvanced } from "./SearchForm/SearchFormAdvanced";
 import { normalizePrefillProfile } from "./SearchForm/searchFormUtils";
+import { useI18n } from "../i18n/useI18n";
 
 export function SearchForm({ onStartSearch, isLoading, prefill }) {
     const { showToast } = useToast();
+    const { language, t } = useI18n();
+    const locale = language === "it" ? "it-IT" : "en-GB";
     const [existingNames, setExistingNames] = useState([]);
     const [profile, setProfile] = useState({
         name: "",
@@ -52,9 +55,9 @@ export function SearchForm({ onStartSearch, isLoading, prefill }) {
                 setExistingNames(names);
             })
             .catch((error) => {
-                showToast("Failed to load existing profile names: " + (error?.message || "Unknown error"));
+                showToast(t("searchForm.loadNamesFailed", { error: error?.message || t("common.unknownError") }));
             });
-    }, [showToast]);
+    }, [showToast, t]);
 
     const handleChange = (e) => {
         const { name, value } = e.target;
@@ -75,7 +78,9 @@ export function SearchForm({ onStartSearch, isLoading, prefill }) {
         if (!file) return;
         const MAX_CV_SIZE = 10 * 1024 * 1024; // 10 MB — must match backend MAX_UPLOAD_FILE_SIZE
         if (file.size > MAX_CV_SIZE) {
-            showToast(`CV file is too large (${(file.size / (1024 * 1024)).toFixed(1)} MB). Maximum allowed size is 10 MB.`);
+            showToast(t("searchForm.cvTooLarge", {
+                size: (file.size / (1024 * 1024)).toLocaleString(locale, { maximumFractionDigits: 1 }),
+            }));
             e.target.value = "";
             return;
         }
@@ -83,7 +88,7 @@ export function SearchForm({ onStartSearch, isLoading, prefill }) {
             const { text } = await SearchService.uploadCV(file);
             setProfile(prev => ({ ...prev, cv_content: text }));
         } catch (err) {
-            showToast("Failed to upload CV: " + (err?.message || String(err) || "Unknown error"));
+            showToast(t("searchForm.cvUploadFailed", { error: err?.message || String(err) || t("common.unknownError") }));
         }
     };
 
@@ -104,39 +109,39 @@ export function SearchForm({ onStartSearch, isLoading, prefill }) {
         const maxKeywordQueries = profile.max_keyword_queries === "" ? -1 : coerceNumericValue(profile.max_keyword_queries, -1);
 
         if (!profile.cv_content) {
-            showToast("Please upload your CV first. It is required for AI-powered search.");
+            showToast(t("searchForm.validation.cvRequired"));
             return;
         }
         if (!profile.role_description.trim()) {
-            showToast("Please describe what you are looking for (Role Description).");
+            showToast(t("searchForm.validation.roleRequired"));
             return;
         }
         if (!profile.location_filter.trim()) {
-            showToast("Please enter a location.");
+            showToast(t("searchForm.validation.locationRequired"));
             return;
         }
         if (postedWithinDays < 1) {
-            showToast("Posted within days must be at least 1.");
+            showToast(t("searchForm.validation.postedDays"));
             return;
         }
         if (maxDistance < 0) {
-            showToast("Max distance must be zero or greater.");
+            showToast(t("searchForm.validation.distance"));
             return;
         }
         if (profile.schedule_enabled && scheduleIntervalHours < 1) {
-            showToast("Schedule interval must be at least 1 hour.");
+            showToast(t("searchForm.validation.schedule"));
             return;
         }
         if (profile.remote_only && maxDistance > 0) {
-            showToast("Distance filtering cannot be combined with Remote-only mode.");
+            showToast(t("searchForm.validation.remoteDistance"));
             return;
         }
         if (profile.latitude == null || profile.longitude == null) {
-            showToast("Invalid location: please select a valid location from the suggestions.");
+            showToast(t("searchForm.validation.invalidLocation"));
             return;
         }
         if (profile.name.trim() && existingNames.includes(profile.name.trim().toLowerCase())) {
-            showToast("A search with this name already exists. Please choose a unique name.");
+            showToast(t("searchForm.validation.duplicateName"));
             return;
         }
 
@@ -168,8 +173,8 @@ export function SearchForm({ onStartSearch, isLoading, prefill }) {
                                 <i className="bi bi-rocket-takeoff-fill text-primary fs-5"></i>
                             </div>
                             <div>
-                                <h4 className="fw-bold mb-0 text-white leading-tight">Define Search Brief</h4>
-                                <div className="text-secondary x-small">Describe the role once, then tune only the essential constraints</div>
+                                <h4 className="fw-bold mb-0 text-white leading-tight">{t("searchForm.title")}</h4>
+                                <div className="text-secondary x-small">{t("searchForm.subtitle")}</div>
                             </div>
                         </div>
 
@@ -184,7 +189,7 @@ export function SearchForm({ onStartSearch, isLoading, prefill }) {
                                 ) : (
                                     <i className="bi bi-play-fill fs-5"></i>
                                 )}
-                                Start Search
+                                {t("searchForm.start")}
                             </button>
                         </div>
                     </div>

@@ -1,7 +1,8 @@
 import React from 'react';
-import { render, screen } from '@testing-library/react';
+import { screen } from '@testing-library/react';
 import { describe, it, expect } from 'vitest';
 import { ScoreBadge, DistanceBadge } from './Badges';
+import { renderWithI18n as render } from '../../test/renderWithI18n';
 
 describe('ScoreBadge', () => {
     it('renders successfully for high scores', () => {
@@ -32,7 +33,7 @@ describe('ScoreBadge', () => {
 describe('DistanceBadge', () => {
     it('renders with valid distance', () => {
         render(<DistanceBadge km={15} />);
-        expect(screen.getByText('15km')).toBeInTheDocument();
+        expect(screen.getByText('15 km')).toBeInTheDocument();
         const icon = document.querySelector('.bi-geo-alt');
         expect(icon).toBeInTheDocument();
     });
@@ -44,19 +45,19 @@ describe('DistanceBadge', () => {
 
     it('renders text-success for distance <= 15', () => {
         render(<DistanceBadge km={10} />);
-        const badge = screen.getByText('10km').closest('span');
+        const badge = screen.getByText('10 km').closest('span');
         expect(badge).toHaveClass('text-success');
     });
 
     it('renders text-info for distance between 15 and 40', () => {
         render(<DistanceBadge km={25} />);
-        const badge = screen.getByText('25km').closest('span');
+        const badge = screen.getByText('25 km').closest('span');
         expect(badge).toHaveClass('text-info');
     });
 
     it('renders text-secondary for distance > 40', () => {
         render(<DistanceBadge km={50} />);
-        const badge = screen.getByText('50km').closest('span');
+        const badge = screen.getByText('50 km').closest('span');
         expect(badge).toHaveClass('text-secondary');
     });
 });

@@ -84,7 +84,7 @@ export function DataRecoveryPanel({ hasProfile, onErased }) {
 
     return (
         <section className="surface-section home-data">
-            <div className="section-heading"><div><span className="section-kicker">Privacy</span><h2>{t("data.title")}</h2></div><i className="bi bi-shield-lock" /></div>
+            <div className="section-heading"><div><span className="section-kicker">{t("data.privacy")}</span><h2>{t("data.title")}</h2></div><i className="bi bi-shield-lock" /></div>
             <p>{t("data.copy")}</p>
             <div className="data-actions">
                 <button className="button button--secondary" type="button" onClick={backup} disabled={!hasProfile || Boolean(busy)}><i className="bi bi-download" />{busy === "backup" ? t("data.backupBusy") : t("data.backup")}</button>
