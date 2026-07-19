@@ -55,7 +55,7 @@
     "@vitest/coverage-v8": "^4.0.18",
     "axe-core": "4.12.1",
     "eslint": "^9.39.1",
-    "eslint-plugin-react-hooks": "^7.0.1",
+    "eslint-plugin-react-hooks": "^7.1.1",
     "eslint-plugin-react-refresh": "^0.4.24",
     "globals": "^16.5.0",
     "jsdom": "^28.1.0",
