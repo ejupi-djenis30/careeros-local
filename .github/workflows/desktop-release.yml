@@ -14,6 +14,8 @@ on:
       - ".github/workflows/desktop-release.yml"
   push:
     tags: ["v*"]
+  schedule:
+    - cron: "17 4 * * 1"
 
 concurrency:
   group: desktop-${{ github.workflow }}-${{ github.ref }}
@@ -97,6 +99,7 @@ jobs:
 
   native:
     name: ${{ matrix.label }}
+    if: github.event_name != 'pull_request'
     needs: supply-chain
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 90
@@ -237,6 +240,7 @@ jobs:
 
   assemble-release:
     name: Assemble verified release assets
+    if: github.event_name != 'pull_request'
     needs: [supply-chain, native]
     runs-on: ubuntu-latest
     timeout-minutes: 15
