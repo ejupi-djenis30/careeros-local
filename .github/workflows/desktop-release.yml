@@ -213,21 +213,28 @@ jobs:
         run: >-
           python scripts/write_artifact_checksums.py
           --target ${{ matrix.target }}
-          --output .artifacts/checksums-${{ matrix.target }}.sha256
+          --output release-metadata/checksums-${{ matrix.target }}.sha256
 
       - name: Attest verified native packages
         if: github.event_name != 'pull_request'
         uses: actions/attest@f7c74d28b9d84cb8768d0b8ca14a4bac6ef463e6 # v4
         with:
-          subject-path: frontend/src-tauri/target/${{ matrix.target }}/release/bundle/${{ matrix.artifact_pattern }}
+          # actions/attest parses this input as CSV before globbing, so brace globs
+          # containing commas are unsafe here. Unmatched per-OS patterns are ignored.
+          subject-path: |
+            frontend/src-tauri/target/${{ matrix.target }}/release/bundle/**/*.exe
+            frontend/src-tauri/target/${{ matrix.target }}/release/bundle/**/*.msi
+            frontend/src-tauri/target/${{ matrix.target }}/release/bundle/**/*.dmg
+            frontend/src-tauri/target/${{ matrix.target }}/release/bundle/**/*.AppImage
+            frontend/src-tauri/target/${{ matrix.target }}/release/bundle/**/*.deb
 
       - name: Upload smoke-tested release assets
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
-          name: release-${{ matrix.target }}
+          name: native-${{ matrix.target }}
           path: |
             frontend/src-tauri/target/${{ matrix.target }}/release/bundle/${{ matrix.artifact_pattern }}
-            .artifacts/checksums-${{ matrix.target }}.sha256
+            release-metadata/checksums-${{ matrix.target }}.sha256
           if-no-files-found: error
 
   publish-release:
@@ -242,7 +249,7 @@ jobs:
       - name: Download smoke-tested native packages
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
-          pattern: release-*
+          pattern: native-*
           path: release-staging/native
           merge-multiple: true
       - name: Download supply-chain evidence
@@ -268,15 +275,23 @@ jobs:
           \) -print0)
           tar -C release-staging/supply-chain -czf \
             release-assets/supply-chain-evidence.tar.gz .
-          test "$(find release-assets -maxdepth 1 -type f | wc -l)" -ge 13
+          test "$(find release-assets -maxdepth 1 -type f -iname '*.exe' | wc -l)" -eq 2
+          test "$(find release-assets -maxdepth 1 -type f -iname '*.msi' | wc -l)" -eq 2
+          test "$(find release-assets -maxdepth 1 -type f -iname '*.dmg' | wc -l)" -eq 2
+          test "$(find release-assets -maxdepth 1 -type f -iname '*.AppImage' | wc -l)" -eq 2
+          test "$(find release-assets -maxdepth 1 -type f -iname '*.deb' | wc -l)" -eq 2
+          test "$(find release-assets -maxdepth 1 -type f -name 'checksums-*.sha256' | wc -l)" -eq 6
+          test "$(find release-assets -maxdepth 1 -type f | wc -l)" -eq 17
       - name: Create, populate and publish release
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
           RELEASE_NOTES: |
             Native CareerOS Local desktop packages, built from this tag and gated by
-            architecture checks, packaged lifecycle tests, install/reopen/uninstall
-            smoke tests, SHA-256 inventories and GitHub build-provenance attestations.
+            architecture checks, packaged lifecycle tests, native bundle extraction,
+            application reopen checks, NSIS install/uninstall smoke tests, SHA-256
+            inventories and GitHub build-provenance attestations.
 
             Model installation remains optional and explicit. These community builds
             are currently unsigned; Windows SmartScreen and macOS Gatekeeper may warn.

@@ -1,11 +1,26 @@
 import os
+from pathlib import Path
 
 from sqlalchemy import create_engine, event
+from sqlalchemy.engine import make_url
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from backend.core.config import settings
 from backend.models.base_model import Base as Base
+
+
+def ensure_sqlite_parent(database_url: str) -> None:
+    """Create the parent for a file-backed SQLite vault before opening it."""
+    url = make_url(database_url)
+    database = url.database
+    if url.get_backend_name() != "sqlite" or not database or database == ":memory:":
+        return
+    # SQLite URI filenames have their own parsing rules and should be prepared by
+    # the caller that opted into them. The normal local-vault URL is a filesystem path.
+    if database.startswith("file:"):
+        return
+    Path(database).expanduser().resolve().parent.mkdir(parents=True, exist_ok=True)
 
 
 def configure_sqlite_connection(dbapi_connection, _connection_record) -> None:
@@ -30,6 +45,7 @@ if os.environ.get("TESTING") == "1":
         poolclass=StaticPool,
     )
 elif "sqlite" in settings.DATABASE_URL:
+    ensure_sqlite_parent(settings.DATABASE_URL)
     engine = create_engine(settings.DATABASE_URL, connect_args={"check_same_thread": False})
 else:
     engine = create_engine(

@@ -5,7 +5,31 @@ All notable changes to CareerOS Local are documented here. The format follows
 
 ## [Unreleased]
 
-No unreleased changes.
+### Added
+
+- Public, responsive GitHub Pages portfolio with real product captures and the reproducible
+  34-second tour.
+- Code of Conduct, support guide, release-version consistency checks and coverage evidence.
+- Transactional demo-media publishing with rollback tests, plus keyboard focus management for
+  confirmation and mobile-navigation overlays.
+
+### Changed
+
+- Desktop packaging now uses a cross-platform hash-locked toolchain, native architecture and
+  lifecycle checks, per-target SHA-256 inventories, build attestations and an all-or-nothing
+  release publisher.
+- CI enforces backend branch coverage, frontend coverage thresholds, complete script lint/type
+  checks and atomic demo-recorder tests.
+- Python is pinned to 3.12.10 across native release platforms, and zero-config SQLite startup
+  creates its missing local vault directory.
+
+### Fixed
+
+- Prevented mobile menu controls from appearing in desktop captures and kept all Resume Studio
+  actions visible at portfolio viewport sizes.
+- Prevented partial demo recordings from replacing known-good public media.
+- Corrected macOS PyInstaller resolution, hidden checksum uploads, release repository context,
+  attestation glob parsing and checksum paths for downloadable installers.
 
 ## [1.0.0] - 2026-07-18
 

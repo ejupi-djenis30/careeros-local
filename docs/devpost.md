@@ -10,8 +10,9 @@ reproducible source.
 
 - Hackathon: OpenAI Build Week
 - Draft project: [CareerOS Local](https://devpost.com/software/careeros-local)
-- Current observed state: `submission_pre_draft`; treat the entry as **not submitted** until
-  Devpost explicitly shows `Submitted` and a submission timestamp.
+- Current observed project state: `published`; the public page is reachable without
+  authentication, but the OpenAI Build Week entry is still **not submitted** because Devpost
+  reports no submission timestamp.
 - Live draft synced on July 19, 2026: title, tagline, structured write-up, technology stack,
   repository/portfolio/release links, and project thumbnail are populated. These fields remain
   editable and still require the owner's final voice and factual review before submission.
@@ -223,8 +224,8 @@ Hackathon requirements:
 At the time this kit was written, the repository work alone did **not** complete these external
 actions:
 
-- the Devpost project remains a pre-draft, although its title, content, links, stack, and
-  thumbnail are now populated;
+- the Devpost project is publicly visible with its content and assets populated, but the
+  OpenAI Build Week entry still has no submission timestamp;
 - no final public YouTube demo URL had been supplied;
 - the required `/feedback` Codex Session ID had not been obtained;
 - eligibility, country, submitter type, and final category still required owner confirmation;

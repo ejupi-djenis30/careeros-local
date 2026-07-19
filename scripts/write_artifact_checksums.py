@@ -6,6 +6,8 @@ import argparse
 import hashlib
 from pathlib import Path
 
+RELEASE_SUFFIXES = {".appimage", ".deb", ".dmg", ".exe", ".msi"}
+
 
 def digest(path: Path) -> str:
     value = hashlib.sha256()
@@ -15,6 +17,22 @@ def digest(path: Path) -> str:
     return value.hexdigest()
 
 
+def release_artifacts(bundle_root: Path) -> list[Path]:
+    """Return only the distributable files flattened into the GitHub release."""
+    artifacts = sorted(
+        (
+            path
+            for path in bundle_root.rglob("*")
+            if path.is_file() and path.suffix.lower() in RELEASE_SUFFIXES
+        ),
+        key=lambda path: path.name.lower(),
+    )
+    names = [path.name.lower() for path in artifacts]
+    if len(names) != len(set(names)):
+        raise RuntimeError("Desktop bundles contain duplicate release filenames")
+    return artifacts
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--target", required=True)
@@ -22,11 +40,11 @@ def main() -> int:
     arguments = parser.parse_args()
     root = Path(__file__).resolve().parents[1]
     bundle_root = root / "frontend" / "src-tauri" / "target" / arguments.target / "release" / "bundle"
-    artifacts = sorted(path for path in bundle_root.rglob("*") if path.is_file())
+    artifacts = release_artifacts(bundle_root)
     if not artifacts:
         raise RuntimeError(f"No desktop bundles were created under {bundle_root}")
     arguments.output.parent.mkdir(parents=True, exist_ok=True)
-    lines = [f"{digest(path)}  {path.relative_to(bundle_root).as_posix()}" for path in artifacts]
+    lines = [f"{digest(path)}  {path.name}" for path in artifacts]
     arguments.output.write_text("\n".join(lines) + "\n", encoding="utf-8")
     return 0
 

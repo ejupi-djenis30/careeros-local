@@ -28,6 +28,7 @@ locks only from their reviewed input files:
 Native development:
 
 ```powershell
+.venv\Scripts\python.exe -m pip install --require-hashes -r requirements-tooling.lock
 npm --prefix frontend run tauri:dev
 ```
 
@@ -59,8 +60,8 @@ Never replace a migration with a runtime `create_all` workaround.
 ## Tests and quality
 
 ```powershell
-.venv\Scripts\python.exe -m ruff check backend tests/backend alembic/versions scripts/check_release_versions.py scripts/seed_demo.py scripts/render_demo_assets.py
-.venv\Scripts\python.exe -m mypy backend scripts/check_release_versions.py scripts/seed_demo.py scripts/render_demo_assets.py --ignore-missing-imports --no-error-summary
+.venv\Scripts\python.exe -m ruff check backend tests/backend alembic/versions scripts
+.venv\Scripts\python.exe -m mypy backend scripts --ignore-missing-imports --no-error-summary
 .venv\Scripts\python.exe -m pytest tests/backend -q --cov=backend --cov-branch --cov-fail-under=80
 npm --prefix frontend run test:coverage
 npm --prefix frontend run lint

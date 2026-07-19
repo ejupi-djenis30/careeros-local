@@ -17,6 +17,7 @@ tracking and optional on-device AI in one private workspace.
 
 **[Watch the 34-second product tour](docs/assets/careeros-demo.webm)** ·
 [Open the portfolio site](https://ejupi-djenis30.github.io/careeros-local/) ·
+[View the Devpost project](https://devpost.com/software/careeros-local) ·
 [View releases](https://github.com/ejupi-djenis30/careeros-local/releases) ·
 [Architecture](docs/architecture.md) · [Privacy model](docs/privacy.md)
 
@@ -119,6 +120,7 @@ only, follows no redirects and does not overwrite unrelated profile data.
 For the native shell:
 
 ```powershell
+.venv\Scripts\python.exe -m pip install --require-hashes -r requirements-tooling.lock
 npm --prefix frontend run tauri:dev
 ```
 
@@ -138,8 +140,8 @@ screenshots under `docs/assets/`. Full details are in the [demo recording guide]
 ## Verify
 
 ```powershell
-.venv\Scripts\python.exe -m ruff check backend tests/backend alembic/versions scripts/check_release_versions.py scripts/seed_demo.py scripts/render_demo_assets.py
-.venv\Scripts\python.exe -m mypy backend scripts/check_release_versions.py scripts/seed_demo.py scripts/render_demo_assets.py --ignore-missing-imports --no-error-summary
+.venv\Scripts\python.exe -m ruff check backend tests/backend alembic/versions scripts
+.venv\Scripts\python.exe -m mypy backend scripts --ignore-missing-imports --no-error-summary
 .venv\Scripts\python.exe -m pytest tests/backend -q --cov=backend --cov-branch --cov-fail-under=80
 npm --prefix frontend run test:coverage
 npm --prefix frontend run lint

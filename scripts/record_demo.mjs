@@ -9,6 +9,12 @@ import { tmpdir } from "node:os";
 import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import {
+    maxDemoVideoBytes,
+    publishDemoAssets,
+    validateStagedDemoAssets,
+} from "./demo_asset_publish.mjs";
+
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const frontendDir = join(repoRoot, "frontend");
 const assetsDir = join(repoRoot, "docs", "assets");
@@ -19,7 +25,6 @@ const demoUsername = "ada_demo";
 const demoPassword = "AdaDemo2026!";
 const viewport = { width: 1600, height: 900 };
 const videoSize = { width: 1280, height: 720 };
-const maxVideoBytes = 10 * 1024 * 1024;
 const services = [];
 
 function assertOwnedPath(target, parent) {
@@ -188,13 +193,13 @@ async function showScene(page, runtimeErrors, { navigation, heading, chapter, de
     await page.waitForTimeout(450);
 }
 
-async function recordTour(frontendUrl, python) {
-    const rawVideo = join(assetsDir, "careeros-demo.webm");
+async function recordTour(frontendUrl, python, stagingDir) {
+    const rawVideo = join(stagingDir, "careeros-demo.webm");
     const screenshots = {
-        workspace: join(assetsDir, "careeros-workspace.png"),
-        vault: join(assetsDir, "careeros-vault.png"),
-        resume: join(assetsDir, "careeros-resume-studio.png"),
-        applications: join(assetsDir, "careeros-applications.png"),
+        workspace: join(stagingDir, "careeros-workspace.png"),
+        vault: join(stagingDir, "careeros-vault.png"),
+        resume: join(stagingDir, "careeros-resume-studio.png"),
+        applications: join(stagingDir, "careeros-applications.png"),
     };
     const runtimeErrors = [];
     let authenticated = false;
@@ -280,39 +285,43 @@ async function recordTour(frontendUrl, python) {
     }
 
     const videoStats = await stat(rawVideo);
-    if (videoStats.size > maxVideoBytes) {
+    if (videoStats.size > maxDemoVideoBytes) {
         throw new Error(`Demo video is ${(videoStats.size / 1024 / 1024).toFixed(1)} MiB; keep it below 10 MiB for GitHub.`);
     }
     await runCommand("demo previews", python, [
         join(repoRoot, "scripts", "render_demo_assets.py"),
         "--frames", screenshots.workspace, screenshots.vault, screenshots.resume, screenshots.applications,
-        "--gif", join(assetsDir, "careeros-demo.gif"),
-        "--poster", join(assetsDir, "careeros-demo-poster.jpg"),
+        "--gif", join(stagingDir, "careeros-demo.gif"),
+        "--poster", join(stagingDir, "careeros-demo-poster.jpg"),
     ]);
+    await validateStagedDemoAssets(stagingDir);
     return { rawVideo, screenshots };
 }
 
 async function main() {
     await mkdir(assetsDir, { recursive: true });
-
-    const tempRoot = await mkdtemp(join(tmpdir(), "careeros-demo-"));
-    const python = pythonExecutable();
-    const backendPort = await freePort();
-    const frontendPort = await freePort();
-    const backendOrigin = `http://127.0.0.1:${backendPort}`;
-    const frontendOrigin = `http://127.0.0.1:${frontendPort}`;
-    const databasePath = join(tempRoot, "demo.db").replaceAll("\\", "/");
-    const commonEnv = {
-        DATABASE_URL: `sqlite:///${databasePath}`,
-        DATA_DIR: join(tempRoot, "data"),
-        SECRET_KEY: "career-os-portfolio-demo-local-secret-2026",
-        OFFLINE_MODE: "true",
-        LOCAL_INFERENCE_URL: "http://127.0.0.1:9",
-        LOG_LEVEL: "WARNING",
-        PYTHONUTF8: "1",
-    };
+    let tempRoot;
+    let stagingDir;
 
     try {
+        tempRoot = await mkdtemp(join(tmpdir(), "careeros-demo-"));
+        stagingDir = await mkdtemp(join(dirname(assetsDir), ".careeros-demo-staging-"));
+        const python = pythonExecutable();
+        const backendPort = await freePort();
+        const frontendPort = await freePort();
+        const backendOrigin = `http://127.0.0.1:${backendPort}`;
+        const frontendOrigin = `http://127.0.0.1:${frontendPort}`;
+        const databasePath = join(tempRoot, "demo.db").replaceAll("\\", "/");
+        const commonEnv = {
+            DATABASE_URL: `sqlite:///${databasePath}`,
+            DATA_DIR: join(tempRoot, "data"),
+            SECRET_KEY: "career-os-portfolio-demo-local-secret-2026",
+            OFFLINE_MODE: "true",
+            LOCAL_INFERENCE_URL: "http://127.0.0.1:9",
+            LOG_LEVEL: "WARNING",
+            PYTHONUTF8: "1",
+        };
+
         await runCommand("database migration", python, ["-m", "alembic", "upgrade", "head"], { env: commonEnv });
         const backend = startService("backend", python, [
             "-m", "uvicorn", "backend.main:app", "--host", "127.0.0.1", "--port", String(backendPort), "--log-level", "warning",
@@ -331,13 +340,37 @@ async function main() {
             npmCli, "--prefix", frontendDir, "run", "dev", "--", "--host", "127.0.0.1", "--port", String(frontendPort), "--strictPort",
         ], { env: { ...commonEnv, VITE_API_URL: `${backendOrigin}/api/v1` } });
         await waitFor(frontendOrigin, frontend, "Frontend");
-        const result = await recordTour(frontendOrigin, python);
+        const result = await recordTour(frontendOrigin, python, stagingDir);
         const stats = await stat(result.rawVideo);
-        console.log(`Demo recorded: ${relative(repoRoot, result.rawVideo)} (${(stats.size / 1024 / 1024).toFixed(1)} MiB)`);
+        await publishDemoAssets(stagingDir, assetsDir);
+        const publishedVideo = join(assetsDir, "careeros-demo.webm");
+        console.log(`Demo recorded: ${relative(repoRoot, publishedVideo)} (${(stats.size / 1024 / 1024).toFixed(1)} MiB)`);
     } finally {
-        for (const child of services.reverse()) await terminate(child);
-        assertOwnedPath(tempRoot, tmpdir());
-        await rm(tempRoot, { recursive: true, force: true });
+        const cleanupErrors = [];
+        for (const child of services.splice(0).reverse()) {
+            try {
+                await terminate(child);
+            } catch (error) {
+                cleanupErrors.push(error);
+            }
+        }
+        if (stagingDir) {
+            try {
+                assertOwnedPath(stagingDir, dirname(assetsDir));
+                await rm(stagingDir, { recursive: true, force: true });
+            } catch (error) {
+                cleanupErrors.push(error);
+            }
+        }
+        if (tempRoot) {
+            try {
+                assertOwnedPath(tempRoot, tmpdir());
+                await rm(tempRoot, { recursive: true, force: true });
+            } catch (error) {
+                cleanupErrors.push(error);
+            }
+        }
+        if (cleanupErrors.length) throw new AggregateError(cleanupErrors, "Demo recorder cleanup failed");
     }
 }
 

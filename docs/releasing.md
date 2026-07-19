@@ -20,7 +20,7 @@ Run the same metadata gate used by CI before creating a tag:
 npm --prefix frontend run tauri:build -- --target x86_64-pc-windows-msvc
 $env:CAREEROS_SIDECAR_BINARY = (Resolve-Path "frontend\src-tauri\binaries\careeros-backend-runtime\careeros-backend.exe").Path
 .venv\Scripts\python.exe -m pytest tests/desktop/test_packaged_lifecycle.py -q -m acceptance
-.venv\Scripts\python.exe scripts/write_artifact_checksums.py --target x86_64-pc-windows-msvc --output .artifacts/checksums-x86_64-pc-windows-msvc.sha256
+.venv\Scripts\python.exe scripts/write_artifact_checksums.py --target x86_64-pc-windows-msvc --output release-metadata/checksums-x86_64-pc-windows-msvc.sha256
 ```
 
 Run the installer smoke test on a clean or disposable user profile. Verify first launch, no visible terminal, random backend port/token, model consent, offline reopen, backup/restore, clean exit, uninstall, and data retention/erasure behavior.

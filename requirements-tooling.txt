@@ -3,4 +3,7 @@
 # pip-compile --generate-hashes --allow-unsafe --output-file requirements-tooling.lock requirements-tooling.txt
 pip-tools==7.5.3
 pyinstaller==6.21.0
+# PyInstaller declares macholib only when resolving on macOS. Keep it explicit so this
+# single hash-locked file remains installable on every release runner.
+macholib==1.16.4
 pytest==9.0.3
