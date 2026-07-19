@@ -39,3 +39,11 @@ CI runs hash-locked Python installs, npm lockfile installs, Rust lockfile builds
 - **Audit behavior:** `cargo audit` reports this advisory as `unsound` but exits successfully by default. CI therefore uses `--deny unsound`, ignores only `RUSTSEC-2024-0429`, and fails for any other unsound advisory. The exception expiry is checked separately and fails CI on or after 2026-10-19.
 - **Compensating controls:** Cargo dependencies remain lockfile-pinned; CI and release workflows run the scoped audit command, locked Rust builds, tests, license checks, SBOM generation, and an all-target dependency-tree snapshot; Dependabot continues to surface the advisory; and the application does not directly expose or invoke the affected iterator API.
 - **Exit criteria:** Upgrade as soon as a supported Tauri/wry Linux backend removes the GTK3 dependency or accepts a patched `glib`, then remove this exception after Linux build, test, package, and audit gates pass.
+
+## Monitored Rust maintenance warnings
+
+- **Status:** Monitored upstream maintenance debt, not vulnerability exceptions.
+- **Owner and next review:** Djenis Ejupi; review by 2026-10-19 with the active dependency exception.
+- **Current inventory:** RUSTSEC-2024-0370, RUSTSEC-2024-0411 through RUSTSEC-2024-0420, RUSTSEC-2025-0075, RUSTSEC-2025-0080, RUSTSEC-2025-0081, RUSTSEC-2025-0098, and RUSTSEC-2025-0100.
+- **Scope:** The GTK3 and `proc-macro-error` warnings enter through the Linux Tauri/wry stack. The `unic-*` warnings enter through Tauri's `urlpattern` dependency.
+- **Evidence and exit:** Every CI and release audit stores the complete Cargo audit JSON alongside the exception manifest and all-target dependency tree. Remove warnings through supported Tauri/wry updates and review any changed inventory before release.

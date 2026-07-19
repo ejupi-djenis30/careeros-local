@@ -39,7 +39,9 @@ jobs:
         with:
           python-version-file: .python-version
           cache: pip
-          cache-dependency-path: requirements-dev.lock
+          cache-dependency-path: |
+            requirements-dev.lock
+            requirements-tooling.lock
       - name: Validate release version metadata
         run: python scripts/check_release_versions.py
       - name: Install Node.js
@@ -52,14 +54,20 @@ jobs:
         uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4
         with:
           toolchain: stable
-      - name: Install locked application and audit dependencies
+      - name: Install locked application, tooling and audit dependencies
         run: |
           mkdir -p "$RUNNER_TEMP/careeros"
           python -m pip install --require-hashes --requirement requirements-dev.lock
+          python -m pip install --require-hashes --requirement requirements-tooling.lock
           npm ci --prefix frontend --ignore-scripts
           cargo install cargo-audit --version 0.22.2 --locked
           cargo install cargo-cyclonedx --version 0.5.9 --locked
           cargo install cargo-deny --version 0.20.2 --locked
+      - name: Smoke-test locked packaging tools
+        run: |
+          python -m PyInstaller --version
+          pip-compile --version
+          python -m pip check
       - name: Audit Python and create evidence
         run: |
           python -m pip_audit --disable-pip --require-hashes --requirement requirements.lock
@@ -83,8 +91,14 @@ jobs:
       - name: Audit Cargo and create evidence
         working-directory: frontend/src-tauri
         run: |
+          cp ../../security-exceptions.json \
+            "$RUNNER_TEMP/careeros/security-exceptions.json"
           python3 ../../scripts/check_security_exceptions.py
           cargo audit --deny unsound --ignore RUSTSEC-2024-0429
+          cargo audit --no-fetch --json \
+            > "$RUNNER_TEMP/careeros/rust-audit.json"
+          python3 -m json.tool "$RUNNER_TEMP/careeros/rust-audit.json" \
+            > /dev/null
           cargo deny --all-features check licenses
           cargo cyclonedx --all-features --target all --format json \
             --spec-version 1.5 --override-filename rust-sbom
@@ -94,6 +108,7 @@ jobs:
           cargo tree --locked --target all -i glib@0.18.5 \
             > "$RUNNER_TEMP/careeros/cargo-exception-tree.txt"
       - name: Upload release supply-chain evidence
+        if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: release-supply-chain

@@ -192,8 +192,15 @@ jobs:
       - name: Audit advisories and licenses
         working-directory: frontend/src-tauri
         run: |
+          mkdir -p "$RUNNER_TEMP/careeros"
+          cp ../../security-exceptions.json \
+            "$RUNNER_TEMP/careeros/security-exceptions.json"
           python3 ../../scripts/check_security_exceptions.py
           cargo audit --deny unsound --ignore RUSTSEC-2024-0429
+          cargo audit --no-fetch --json \
+            > "$RUNNER_TEMP/careeros/rust-audit.json"
+          python3 -m json.tool "$RUNNER_TEMP/careeros/rust-audit.json" \
+            > /dev/null
           cargo deny --all-features check licenses
       - name: Create Cargo CycloneDX SBOM and license inventory
         working-directory: frontend/src-tauri
@@ -214,7 +221,9 @@ jobs:
           path: |
             ${{ runner.temp }}/careeros/rust-sbom.cdx.json
             ${{ runner.temp }}/careeros/rust-licenses.json
+            ${{ runner.temp }}/careeros/rust-audit.json
             ${{ runner.temp }}/careeros/cargo-exception-tree.txt
+            ${{ runner.temp }}/careeros/security-exceptions.json
           if-no-files-found: ignore
 
   containers:
@@ -232,6 +241,47 @@ jobs:
         run: docker compose config --quiet
       - name: Build application images
         run: docker compose build backend frontend
+      - name: Smoke-test hardened frontend runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          image="careeros-local-frontend:latest"
+          runtime_flags=(
+            --read-only
+            --tmpfs /tmp:size=64m,mode=1777
+            --cap-drop ALL
+            --security-opt no-new-privileges:true
+            --add-host backend:127.0.0.1
+          )
+
+          test "$(docker image inspect --format '{{.Config.User}}' "$image")" = \
+            "nginx:nginx"
+          docker run --rm "${runtime_flags[@]}" "$image" nginx -t
+
+          container_id="$(docker run --detach "${runtime_flags[@]}" \
+            --publish 127.0.0.1::8080 "$image")"
+          cleanup() {
+            status=$?
+            trap - EXIT
+            if (( status != 0 )); then
+              docker logs "$container_id" >&2 || true
+            fi
+            docker rm --force "$container_id" > /dev/null 2>&1 || true
+            exit "$status"
+          }
+          trap cleanup EXIT
+
+          published_port="$(docker port "$container_id" 8080/tcp | \
+            awk -F: 'NR == 1 { print $NF }')"
+          test -n "$published_port"
+          curl --fail --silent --show-error \
+            --retry 20 --retry-all-errors --retry-delay 1 \
+            --output "$RUNNER_TEMP/careeros-frontend-index.html" \
+            "http://127.0.0.1:${published_port}/"
+          test -s "$RUNNER_TEMP/careeros-frontend-index.html"
+          grep --quiet 'id="root"' "$RUNNER_TEMP/careeros-frontend-index.html"
+          test "$(docker inspect --format '{{.State.Running}}' "$container_id")" = \
+            "true"
       - name: Scan repository configuration and secrets
         run: |
           docker run --rm -v trivy-cache:/root/.cache/ -v "$PWD:/workspace:ro" "$TRIVY_IMAGE" \
