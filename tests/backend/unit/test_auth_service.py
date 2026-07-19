@@ -83,6 +83,7 @@ def test_login_success():
 
     with (
         patch("backend.api.routes.auth.verify_password", return_value=True),
+        patch("backend.api.routes.auth.get_password_hash") as mock_hash,
         patch("backend.api.routes.auth.create_access_token", return_value="acc"),
         patch("backend.api.routes.auth.create_refresh_token", return_value="ref"),
     ):
@@ -92,6 +93,7 @@ def test_login_success():
         assert f"{REFRESH_COOKIE_NAME}=ref" in response.headers.get("set-cookie", "")
         assert LEGACY_REFRESH_COOKIE_NAME not in client.cookies
         assert _cookie_was_deleted(response, LEGACY_REFRESH_COOKIE_NAME)
+        mock_hash.assert_not_called()
 
     app.dependency_overrides.clear()
 
@@ -101,8 +103,17 @@ def test_login_failure():
     mock_db.query.return_value.filter.return_value.first.return_value = None
     app.dependency_overrides[get_db] = lambda: mock_db
 
-    response = client.post("/api/v1/auth/login", data={"username": "user", "password": "pwd"})
-    assert response.status_code == 401
+    with (
+        patch("backend.api.routes.auth.get_password_hash") as mock_hash,
+        patch("backend.api.routes.auth.verify_password", return_value=False) as mock_verify,
+    ):
+        response = client.post(
+            "/api/v1/auth/login", data={"username": "user", "password": "pwd"}
+        )
+        assert response.status_code == 401
+        mock_hash.assert_not_called()
+        mock_verify.assert_called_once()
+        assert mock_verify.call_args.args[1].startswith("$2b$")
 
     app.dependency_overrides.clear()
 

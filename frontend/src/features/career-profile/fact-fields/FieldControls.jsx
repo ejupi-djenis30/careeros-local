@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useI18n } from "../../../i18n/useI18n";
 
 export function Input({ label, ...props }) {
     return <label className="field-stack"><span>{label}</span><input className="form-control" {...props} /></label>;
@@ -23,11 +24,12 @@ export function Lines({ label, value, onChange }) {
 }
 
 export function Dates({ payload, update, allowCurrent = false }) {
+    const { t } = useI18n();
     return (
         <div className="form-grid form-grid--3">
-            <Input label="Inizio" type="date" value={payload.start_date || ""} onChange={(event) => update("start_date", event.target.value)} />
-            <Input label="Fine" type="date" value={payload.end_date || ""} disabled={allowCurrent && payload.current} onChange={(event) => update("end_date", event.target.value)} />
-            {allowCurrent && <label className="check-line check-line--field"><input type="checkbox" checked={Boolean(payload.current)} onChange={(event) => update("current", event.target.checked)} /> In corso</label>}
+            <Input label={t("field.start")} type="date" value={payload.start_date || ""} onChange={(event) => update("start_date", event.target.value)} />
+            <Input label={t("field.end")} type="date" value={payload.end_date || ""} disabled={allowCurrent && payload.current} onChange={(event) => update("end_date", event.target.value)} />
+            {allowCurrent && <label className="check-line check-line--field"><input type="checkbox" checked={Boolean(payload.current)} onChange={(event) => update("current", event.target.checked)} /> {t("field.current")}</label>}
         </div>
     );
 }

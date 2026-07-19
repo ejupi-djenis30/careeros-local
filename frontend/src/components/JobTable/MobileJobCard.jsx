@@ -2,8 +2,10 @@ import React, { memo } from "react";
 import { ScoreBadge } from "./Badges";
 import { safeExternalUrl, safeMailto } from "../../lib/safeUrl";
 import { InternalLink } from "../InternalLink";
+import { useI18n } from "../../i18n/useI18n";
 
 export const MobileJobCard = memo(function MobileJobCard({ job, isGlobalView, onToggleApplied, isAppliedPending = false, onCopy, onViewAnalysis, onOpenDismissDialog, onReactivate }) {
+    const { t } = useI18n();
     const applyUrl = safeExternalUrl(job.application_url) || safeExternalUrl(job.external_url);
     const externalUrl = safeExternalUrl(job.external_url);
     const sourceUrl = externalUrl && externalUrl !== applyUrl ? externalUrl : null;
@@ -57,7 +59,7 @@ export const MobileJobCard = memo(function MobileJobCard({ job, isGlobalView, on
                             Apply
                         </a>
                     )}
-                    <InternalLink to={`/applications?jobId=${encodeURIComponent(job.id)}`} className="btn btn-sm btn-secondary rounded-circle btn-icon" title="Aggiungi alle candidature">
+                    <InternalLink to={`/applications?jobId=${encodeURIComponent(job.id)}`} className="btn btn-sm btn-secondary rounded-circle btn-icon" title={t("jobs.addApplication")}>
                         <i className="bi bi-kanban text-08"></i>
                     </InternalLink>
                     <button onClick={() => onCopy(job)} className="btn btn-sm btn-secondary rounded-circle btn-icon" title="Copy Info">

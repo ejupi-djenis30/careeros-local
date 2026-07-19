@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useToast } from "../context/ToastContext";
+import { useI18n } from "../i18n/useI18n";
 
 /**
  * Local-only location input. It never resolves names through a remote map service.
@@ -7,6 +8,7 @@ import { useToast } from "../context/ToastContext";
  */
 export function useLocationInput(location, onLocationChange) {
     const { showToast } = useToast();
+    const { t } = useI18n();
     const locationProp = location || "";
     const [input, setInput] = useState({ source: locationProp, value: locationProp });
     const [isLoading, setIsLoading] = useState(false);
@@ -23,7 +25,7 @@ export function useLocationInput(location, onLocationChange) {
 
     const handleCurrentLocation = () => {
         if (!navigator.geolocation) {
-            showToast("La geolocalizzazione non è supportata dal browser.");
+            showToast(t("location.unsupported"));
             return;
         }
         setIsLoading(true);
@@ -35,7 +37,7 @@ export function useLocationInput(location, onLocationChange) {
                 setIsLoading(false);
             },
             () => {
-                showToast("Non è stato possibile ottenere la posizione. Puoi inserirla manualmente.");
+                showToast(t("location.failed"));
                 setIsLoading(false);
             },
             { enableHighAccuracy: false, timeout: 8000, maximumAge: 300000 },

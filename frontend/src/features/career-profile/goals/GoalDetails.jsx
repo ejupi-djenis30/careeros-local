@@ -1,3 +1,5 @@
+import { useI18n } from "../../../i18n/useI18n";
+
 const splitList = (value) => value.split(",").map((item) => item.trim()).filter(Boolean);
 
 function ListField({ label, value, onChange, placeholder }) {
@@ -9,29 +11,30 @@ function NumberField({ label, value, onChange, ...props }) {
 }
 
 export function GoalDetails({ payload, onChange }) {
+    const { t } = useI18n();
     const update = (field, value) => onChange({ ...payload, [field]: value });
     const compensation = payload.compensation || { currency: "CHF", minimum: null, maximum: null, period: "year" };
     const updateCompensation = (field, value) => update("compensation", { ...compensation, [field]: value });
     return (
         <div className="goal-details">
             <div className="form-grid form-grid--3">
-                <label className="field-stack"><span>Stato obiettivo</span><select className="form-select" value={payload.status || "active"} onChange={(event) => onChange({ ...payload, status: event.target.value, progress_percent: event.target.value === "achieved" ? 100 : payload.progress_percent })}><option value="draft">Bozza</option><option value="active">Attivo</option><option value="paused">In pausa</option><option value="achieved">Raggiunto</option><option value="abandoned">Abbandonato</option></select></label>
-                <NumberField label="Priorità" min="1" max="5" value={payload.priority ?? 3} onChange={(value) => update("priority", value)} />
-                <NumberField label="Avanzamento obiettivo %" min="0" max="100" value={payload.progress_percent ?? 0} onChange={(value) => update("progress_percent", value)} />
-                <label className="field-stack"><span>Data inizio obiettivo</span><input className="form-control" type="date" value={payload.start_date || ""} onChange={(event) => update("start_date", event.target.value)} /></label>
-                <label className="field-stack"><span>Data obiettivo</span><input className="form-control" type="date" value={payload.target_date || ""} onChange={(event) => update("target_date", event.target.value)} /></label>
+                <label className="field-stack"><span>{t("goal.status")}</span><select className="form-select" value={payload.status || "active"} onChange={(event) => onChange({ ...payload, status: event.target.value, progress_percent: event.target.value === "achieved" ? 100 : payload.progress_percent })}>{["draft", "active", "paused", "achieved", "abandoned"].map((status) => <option key={status} value={status}>{t(`goal.status.${status}`)}</option>)}</select></label>
+                <NumberField label={t("goal.priority")} min="1" max="5" value={payload.priority ?? 3} onChange={(value) => update("priority", value)} />
+                <NumberField label={t("goal.progress")} min="0" max="100" value={payload.progress_percent ?? 0} onChange={(value) => update("progress_percent", value)} />
+                <label className="field-stack"><span>{t("goal.startDate")}</span><input className="form-control" type="date" value={payload.start_date || ""} onChange={(event) => update("start_date", event.target.value)} /></label>
+                <label className="field-stack"><span>{t("goal.targetDate")}</span><input className="form-control" type="date" value={payload.target_date || ""} onChange={(event) => update("target_date", event.target.value)} /></label>
             </div>
-            <label className="field-stack"><span>Perché questo obiettivo</span><textarea className="form-control" rows="3" maxLength="5000" value={payload.rationale || ""} onChange={(event) => update("rationale", event.target.value)} placeholder="Motivazione, impatto desiderato e compromessi accettabili." /></label>
+            <label className="field-stack"><span>{t("goal.rationale")}</span><textarea className="form-control" rows="3" maxLength="5000" value={payload.rationale || ""} onChange={(event) => update("rationale", event.target.value)} placeholder={t("goal.rationalePlaceholder")} /></label>
             <div className="form-grid form-grid--3">
-                <ListField label="Ruoli target" value={payload.target_roles} onChange={(value) => update("target_roles", value)} placeholder="Staff Engineer, Engineering Manager" />
-                <ListField label="Settori target" value={payload.target_industries} onChange={(value) => update("target_industries", value)} placeholder="Software, Fintech" />
-                <ListField label="Località target" value={payload.target_locations} onChange={(value) => update("target_locations", value)} placeholder="Zurigo, remoto" />
-                <ListField label="Seniorità target" value={payload.target_seniority} onChange={(value) => update("target_seniority", value)} placeholder="senior, staff, lead" />
-                <ListField label="Modalità" value={payload.work_modes} onChange={(value) => update("work_modes", value)} placeholder="onsite, hybrid, remote" />
-                <ListField label="Tipi di contratto" value={payload.contract_types} onChange={(value) => update("contract_types", value)} placeholder="permanent, contract" />
+                <ListField label={t("goal.targetRoles")} value={payload.target_roles} onChange={(value) => update("target_roles", value)} placeholder="Staff Engineer, Engineering Manager" />
+                <ListField label={t("goal.targetIndustries")} value={payload.target_industries} onChange={(value) => update("target_industries", value)} placeholder="Software, Fintech" />
+                <ListField label={t("goal.targetLocations")} value={payload.target_locations} onChange={(value) => update("target_locations", value)} placeholder="Zurich, remote" />
+                <ListField label={t("goal.targetSeniority")} value={payload.target_seniority} onChange={(value) => update("target_seniority", value)} placeholder="senior, staff, lead" />
+                <ListField label={t("goal.workModes")} value={payload.work_modes} onChange={(value) => update("work_modes", value)} placeholder="onsite, hybrid, remote" />
+                <ListField label={t("goal.contractTypes")} value={payload.contract_types} onChange={(value) => update("contract_types", value)} placeholder="permanent, contract" />
             </div>
-            <fieldset className="goal-subsection"><legend>Compenso desiderato</legend><div className="form-grid form-grid--4"><label className="field-stack"><span>Valuta</span><input className="form-control" maxLength="3" value={compensation.currency || "CHF"} onChange={(event) => updateCompensation("currency", event.target.value.toUpperCase())} /></label><NumberField label="Compenso minimo" min="0" value={compensation.minimum} onChange={(value) => updateCompensation("minimum", value)} /><NumberField label="Compenso massimo" min="0" value={compensation.maximum} onChange={(value) => updateCompensation("maximum", value)} /><label className="field-stack"><span>Periodo</span><select className="form-select" value={compensation.period || "year"} onChange={(event) => updateCompensation("period", event.target.value)}><option value="hour">Ora</option><option value="day">Giorno</option><option value="month">Mese</option><option value="year">Anno</option></select></label></div></fieldset>
-            <div className="form-grid form-grid--3"><ListField label="Criteri di successo" value={payload.success_criteria} onChange={(value) => update("success_criteria", value)} placeholder="Offerta firmata, ruolo coerente" /><ListField label="Requisiti irrinunciabili" value={payload.must_haves} onChange={(value) => update("must_haves", value)} /><ListField label="Deal breaker" value={payload.deal_breakers} onChange={(value) => update("deal_breakers", value)} /></div>
+            <fieldset className="goal-subsection"><legend>{t("goal.compensation")}</legend><div className="form-grid form-grid--4"><label className="field-stack"><span>{t("goal.currency")}</span><input className="form-control" maxLength="3" value={compensation.currency || "CHF"} onChange={(event) => updateCompensation("currency", event.target.value.toUpperCase())} /></label><NumberField label={t("goal.compensationMin")} min="0" value={compensation.minimum} onChange={(value) => updateCompensation("minimum", value)} /><NumberField label={t("goal.compensationMax")} min="0" value={compensation.maximum} onChange={(value) => updateCompensation("maximum", value)} /><label className="field-stack"><span>{t("goal.period")}</span><select className="form-select" value={compensation.period || "year"} onChange={(event) => updateCompensation("period", event.target.value)}>{["hour", "day", "month", "year"].map((period) => <option key={period} value={period}>{t(`preferences.period.${period}`)}</option>)}</select></label></div></fieldset>
+            <div className="form-grid form-grid--3"><ListField label={t("goal.successCriteria")} value={payload.success_criteria} onChange={(value) => update("success_criteria", value)} placeholder="Signed offer, aligned role" /><ListField label={t("goal.mustHaves")} value={payload.must_haves} onChange={(value) => update("must_haves", value)} /><ListField label={t("goal.dealBreakers")} value={payload.deal_breakers} onChange={(value) => update("deal_breakers", value)} /></div>
         </div>
     );
 }

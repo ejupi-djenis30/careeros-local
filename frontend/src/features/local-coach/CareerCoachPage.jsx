@@ -5,22 +5,25 @@ import { CareerService } from "../../services/career";
 import { CoachService } from "../../services/coach";
 import { useLocalModelStatus } from "../local-model/useLocalModelStatus";
 import { FACT_LABELS, factTitle } from "../career-profile/profileModel";
+import { useI18n } from "../../i18n/useI18n";
 
-function ConversationList({ conversations, activeId, onSelect, onNew, onDelete }) {
-    return <aside className="coach-conversations"><button type="button" className="button button--primary" onClick={onNew}><i className="bi bi-plus-lg" /> Nuova conversazione</button><div>{conversations.map((conversation) => <div key={conversation.id} className={`conversation-row ${activeId === conversation.id ? "is-active" : ""}`}><button type="button" onClick={() => onSelect(conversation.id)}><strong>{conversation.title}</strong><span>{conversation.message_count} messaggi · {new Date(conversation.updated_at).toLocaleDateString("it-IT")}</span></button><button type="button" className="icon-button" onClick={() => onDelete(conversation)} aria-label={`Elimina ${conversation.title}`}><i className="bi bi-trash3" /></button></div>)}</div>{conversations.length === 0 && <p className="coach-conversations__empty">Le conversazioni vengono salvate solo nel database locale.</p>}</aside>;
+function ConversationList({ conversations, activeId, onSelect, onNew, onDelete, locale, t }) {
+    return <aside className="coach-conversations"><button type="button" className="button button--primary" onClick={onNew}><i className="bi bi-plus-lg" /> {t("coach.newConversation")}</button><div>{conversations.map((conversation) => <div key={conversation.id} className={`conversation-row ${activeId === conversation.id ? "is-active" : ""}`}><button type="button" onClick={() => onSelect(conversation.id)}><strong>{conversation.title}</strong><span>{t("coach.messages", { count: conversation.message_count })} · {new Date(conversation.updated_at).toLocaleDateString(locale)}</span></button><button type="button" className="icon-button" onClick={() => onDelete(conversation)} aria-label={t("coach.deleteConversation", { title: conversation.title })}><i className="bi bi-trash3" /></button></div>)}</div>{conversations.length === 0 && <p className="coach-conversations__empty">{t("coach.savedLocally")}</p>}</aside>;
 }
 
-function ContextPicker({ facts, selectedIds, onChange, jobIds, onJobIds }) {
+function ContextPicker({ facts, selectedIds, onChange, jobIds, onJobIds, t }) {
     const selected = new Set(selectedIds);
     const toggle = (id) => onChange(selected.has(id) ? selectedIds.filter((item) => item !== id) : [...selectedIds, id]);
-    return <details className="coach-context"><summary><span><i className="bi bi-paperclip" /> Contesto esplicito</span><strong>{selectedIds.length} fatti</strong></summary><div><p>Solo gli elementi selezionati entrano nel prompt locale. Email e telefono non vengono inclusi.</p><div className="coach-context__facts">{facts.map((fact) => <label key={fact.id} className={selected.has(fact.id) ? "is-selected" : ""}><input type="checkbox" checked={selected.has(fact.id)} onChange={() => toggle(fact.id)} /><span><small>{FACT_LABELS[fact.fact_type]}</small><strong>{factTitle(fact)}</strong></span></label>)}</div><label className="field-stack"><span>ID annunci · separati da virgola</span><input className="form-control" value={jobIds} onChange={(e) => onJobIds(e.target.value)} placeholder="12, 18" /></label></div></details>;
+    return <details className="coach-context"><summary><span><i className="bi bi-paperclip" /> {t("coach.explicitContext")}</span><strong>{t("coach.factCount", { count: selectedIds.length })}</strong></summary><div><p>{t("coach.contextCopy")}</p><div className="coach-context__facts">{facts.map((fact) => <label key={fact.id} className={selected.has(fact.id) ? "is-selected" : ""}><input type="checkbox" checked={selected.has(fact.id)} onChange={() => toggle(fact.id)} /><span><small>{t(`fact.type.${fact.fact_type}`) || FACT_LABELS[fact.fact_type]}</small><strong>{factTitle(fact)}</strong></span></label>)}</div><label className="field-stack"><span>{t("coach.jobIds")}</span><input className="form-control" value={jobIds} onChange={(e) => onJobIds(e.target.value)} placeholder="12, 18" /></label></div></details>;
 }
 
-function Message({ message }) {
-    return <article className={`coach-message coach-message--${message.role}`}><div className="coach-message__avatar"><i className={`bi ${message.role === "assistant" ? "bi-cpu" : "bi-person"}`} /></div><div><header><strong>{message.role === "assistant" ? "Coach locale" : "Tu"}</strong><time dateTime={message.created_at}>{new Date(message.created_at).toLocaleTimeString("it-IT", { hour: "2-digit", minute: "2-digit" })}</time></header><p>{message.content}</p>{(message.cited_fact_ids?.length > 0 || message.cited_job_ids?.length > 0) && <footer><span>Fonti usate</span>{message.cited_fact_ids?.map((id) => <code key={id}>fatto {id.slice(0, 8)}</code>)}{message.cited_job_ids?.map((id) => <code key={id}>annuncio #{id}</code>)}</footer>}</div></article>;
+function Message({ message, locale, t }) {
+    return <article className={`coach-message coach-message--${message.role}`}><div className="coach-message__avatar"><i className={`bi ${message.role === "assistant" ? "bi-cpu" : "bi-person"}`} /></div><div><header><strong>{message.role === "assistant" ? t("coach.local") : t("coach.you")}</strong><time dateTime={message.created_at}>{new Date(message.created_at).toLocaleTimeString(locale, { hour: "2-digit", minute: "2-digit" })}</time></header><p>{message.content}</p>{(message.cited_fact_ids?.length > 0 || message.cited_job_ids?.length > 0) && <footer><span>{t("coach.sources")}</span>{message.cited_fact_ids?.map((id) => <code key={id}>{t("coach.factSource", { id: id.slice(0, 8) })}</code>)}{message.cited_job_ids?.map((id) => <code key={id}>{t("coach.jobSource", { id })}</code>)}</footer>}</div></article>;
 }
 
 export function CareerCoachPage() {
+    const { language, t } = useI18n();
+    const locale = language === "it" ? "it-IT" : "en-GB";
     const { status: modelStatus, refresh: refreshModel } = useLocalModelStatus();
     const [profile, setProfile] = useState(null);
     const [conversations, setConversations] = useState([]);
@@ -60,7 +63,7 @@ export function CareerCoachPage() {
             setConversation(loaded);
             await refreshConversations();
         } catch (sendError) {
-            setError(sendError.status === 503 ? "Il modello locale non è disponibile. Controlla o riavvia il runtime dalla schermata Oggi." : sendError.message);
+            setError(sendError.status === 503 ? t("coach.modelUnavailable") : sendError.message);
             refreshModel();
         } finally {
             setSending(false);
@@ -68,7 +71,7 @@ export function CareerCoachPage() {
     };
 
     const removeConversation = async (item) => {
-        if (!window.confirm(`Eliminare definitivamente “${item.title}” dal database locale?`)) return;
+        if (!window.confirm(t("coach.deleteConfirm", { title: item.title }))) return;
         try {
             await CoachService.deleteConversation(item.id);
             if (conversation?.id === item.id) setConversation(null);
@@ -76,19 +79,19 @@ export function CareerCoachPage() {
         } catch (deleteError) { setError(deleteError.message); }
     };
 
-    if (loading) return <div className="page-loader" role="status"><span className="spinner-border" /><span>Carico il coach locale…</span></div>;
-    if (profileMissing) return <div className="state-panel"><i className="bi bi-person-vcard" /><h2>Il coach ha bisogno del Career Vault</h2><p>Le risposte vengono fondate solo sui fatti che scegli.</p><Link className="button button--primary" to="/profile">Crea il profilo</Link></div>;
+    if (loading) return <div className="page-loader" role="status"><span className="spinner-border" /><span>{t("coach.loading")}</span></div>;
+    if (profileMissing) return <div className="state-panel"><i className="bi bi-person-vcard" /><h2>{t("coach.needsVault")}</h2><p>{t("coach.needsVaultCopy")}</p><Link className="button button--primary" to="/profile">{t("coach.createProfile")}</Link></div>;
 
     return (
         <div className="coach-workspace">
-            <ConversationList conversations={conversations} activeId={conversation?.id} onSelect={openConversation} onNew={() => { setConversation(null); setMessage(""); }} onDelete={removeConversation} />
+            <ConversationList conversations={conversations} activeId={conversation?.id} onSelect={openConversation} onNew={() => { setConversation(null); setMessage(""); }} onDelete={removeConversation} locale={locale} t={t} />
             <section className="coach-panel">
-                <header className="coach-panel__header"><div><span className={`model-dot ${modelStatus.ready ? "is-ready" : ""}`} /><div><strong>{conversation?.title || "Nuova conversazione"}</strong><span>{modelStatus.ready ? `${modelStatus.configured_model} · inferenza locale` : "Modello non pronto"}</span></div></div><span className="privacy-chip"><i className="bi bi-incognito" /> contesto selettivo</span></header>
-                {!modelStatus.loading && !modelStatus.ready && <div className="model-setup" role="status"><i className="bi bi-cpu" /><div><strong>Completa il runtime locale</strong><p>Installa il modello verificato direttamente dall’app. Non servono terminale, account o chiavi API.</p></div><Link className="button button--secondary" to="/">Configura modello</Link><button type="button" className="button button--ghost" onClick={refreshModel}>Ricontrolla</button></div>}
+                <header className="coach-panel__header"><div><span className={`model-dot ${modelStatus.ready ? "is-ready" : ""}`} /><div><strong>{conversation?.title || t("coach.newConversation")}</strong><span>{modelStatus.ready ? `${modelStatus.configured_model} · ${t("coach.inferenceLocal")}` : t("coach.modelNotReady")}</span></div></div><span className="privacy-chip"><i className="bi bi-incognito" /> {t("coach.selectiveContext")}</span></header>
+                {!modelStatus.loading && !modelStatus.ready && <div className="model-setup" role="status"><i className="bi bi-cpu" /><div><strong>{t("coach.completeRuntime")}</strong><p>{t("coach.completeRuntimeCopy")}</p></div><Link className="button button--secondary" to="/">{t("coach.configureModel")}</Link><button type="button" className="button button--ghost" onClick={refreshModel}>{t("coach.recheck")}</button></div>}
                 {error && <div className="inline-alert inline-alert--danger" role="alert">{error}</div>}
-                <ContextPicker facts={profile?.facts || []} selectedIds={selectedFactIds} onChange={setSelectedFactIds} jobIds={jobIds} onJobIds={setJobIds} />
-                <div className="coach-messages" aria-live="polite">{conversation?.messages?.length ? conversation.messages.map((entry) => <Message key={entry.id} message={entry} />) : <div className="coach-empty"><span className="coach-empty__mark">C</span><h2>Un coach che conosce solo ciò che autorizzi</h2><p>Chiedi una revisione del posizionamento, una strategia per un colloquio o un confronto tra il tuo profilo e uno degli annunci locali.</p><div><button type="button" onClick={() => setMessage("Quali sono i punti più forti del mio profilo e come posso dimostrarli?")}>Identifica i miei punti forti</button><button type="button" onClick={() => setMessage("Aiutami a preparare una risposta concreta alla domanda: parlami di te.")}>Prepara “parlami di te”</button></div></div>}</div>
-                <form className="coach-composer" onSubmit={send}><label htmlFor="coach-message" className="visually-hidden">Messaggio al coach locale</label><textarea id="coach-message" rows="3" value={message} onChange={(e) => setMessage(e.target.value)} placeholder="Scrivi una domanda sulla tua carriera…" maxLength={20000} /><div><span><i className="bi bi-shield-lock" /> Nessun servizio cloud</span><button className="button button--primary" disabled={sending || !message.trim() || !modelStatus.ready}>{sending ? "Ragiono localmente…" : "Invia"} <i className="bi bi-arrow-up" /></button></div></form>
+                <ContextPicker facts={profile?.facts || []} selectedIds={selectedFactIds} onChange={setSelectedFactIds} jobIds={jobIds} onJobIds={setJobIds} t={t} />
+                <div className="coach-messages" aria-live="polite">{conversation?.messages?.length ? conversation.messages.map((entry) => <Message key={entry.id} message={entry} locale={locale} t={t} />) : <div className="coach-empty"><span className="coach-empty__mark">C</span><h2>{t("coach.emptyTitle")}</h2><p>{t("coach.emptyCopy")}</p><div><button type="button" onClick={() => setMessage(t("coach.suggestionStrengths"))}>{t("coach.suggestionStrengthsLabel")}</button><button type="button" onClick={() => setMessage(t("coach.suggestionIntro"))}>{t("coach.suggestionIntroLabel")}</button></div></div>}</div>
+                <form className="coach-composer" onSubmit={send}><label htmlFor="coach-message" className="visually-hidden">{t("coach.messageLabel")}</label><textarea id="coach-message" rows="3" value={message} onChange={(e) => setMessage(e.target.value)} placeholder={t("coach.messagePlaceholder")} maxLength={20000} /><div><span><i className="bi bi-shield-lock" /> {t("coach.noCloud")}</span><button className="button button--primary" disabled={sending || !message.trim() || !modelStatus.ready}>{sending ? t("coach.thinking") : t("coach.send")} <i className="bi bi-arrow-up" /></button></div></form>
             </section>
         </div>
     );

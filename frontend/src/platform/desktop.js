@@ -65,14 +65,14 @@ export async function bootstrapDesktop({ timeoutMs = 90_000, initialDelayMs = 10
 
 const BACKUP_FILTER = [{ name: "CareerOS Local backup", extensions: ["zip"] }];
 
-export async function saveBackupWithNativeDialog({ blob, filename }) {
+export async function saveBackupWithNativeDialog({ blob, filename }, { title = "Save CareerOS Local backup" } = {}) {
     if (!isDesktopShell()) return false;
     const [{ save }, { writeFile }] = await Promise.all([
         import("@tauri-apps/plugin-dialog"),
         import("@tauri-apps/plugin-fs"),
     ]);
     const selected = await save({
-        title: "Salva backup CareerOS Local",
+        title,
         defaultPath: filename,
         filters: BACKUP_FILTER,
     });
@@ -81,14 +81,14 @@ export async function saveBackupWithNativeDialog({ blob, filename }) {
     return true;
 }
 
-export async function openBackupWithNativeDialog() {
+export async function openBackupWithNativeDialog({ title = "Open CareerOS Local backup" } = {}) {
     if (!isDesktopShell()) return null;
     const [{ open }, { readFile }] = await Promise.all([
         import("@tauri-apps/plugin-dialog"),
         import("@tauri-apps/plugin-fs"),
     ]);
     const selected = await open({
-        title: "Apri backup CareerOS Local",
+        title,
         multiple: false,
         directory: false,
         filters: BACKUP_FILTER,

@@ -29,7 +29,7 @@ jobs:
     timeout-minutes: 45
     steps:
       - name: Check out source
-        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           persist-credentials: false
       - name: Install Python 3.12
@@ -41,7 +41,7 @@ jobs:
       - name: Validate release version metadata
         run: python scripts/check_release_versions.py
       - name: Install Node.js
-        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version-file: .nvmrc
           cache: npm
@@ -89,7 +89,7 @@ jobs:
           cargo deny --all-features list --format json \
             > "$RUNNER_TEMP/careeros/rust-licenses.json"
       - name: Upload release supply-chain evidence
-        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: release-supply-chain
           path: ${{ runner.temp }}/careeros
@@ -135,7 +135,7 @@ jobs:
 
     steps:
       - name: Check out source
-        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           persist-credentials: false
 
@@ -151,7 +151,7 @@ jobs:
             requirements-tooling.lock
 
       - name: Install Node.js
-        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version-file: .nvmrc
           cache: npm
@@ -223,7 +223,7 @@ jobs:
             frontend/src-tauri/target/${{ matrix.target }}/release/bundle/**/*.deb
 
       - name: Upload smoke-tested release assets
-        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: native-${{ matrix.target }}
           path: |
@@ -279,7 +279,7 @@ jobs:
           test "$(find release-assets -maxdepth 1 -type f -name 'checksums-*.sha256' | wc -l)" -eq 6
           test "$(find release-assets -maxdepth 1 -type f | wc -l)" -eq 17
       - name: Upload verified release inventory
-        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: verified-release-assets
           path: release-assets/*
