@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { LocalModelService } from "../../services/localModel";
 import { LocalModelStatus } from "./LocalModelStatus";
 import { useLocalModelStatus } from "./useLocalModelStatus";
+import { useI18n } from "../../i18n/useI18n";
 
 const ACTIVE_PHASES = new Set(["downloading_runtime", "installing_runtime", "downloading_model", "starting"]);
 const DOWNLOAD_PHASES = new Set(["downloading_runtime", "downloading_model"]);
@@ -13,6 +14,7 @@ function formatBytes(value) {
 }
 
 export function ModelManager() {
+    const { t } = useI18n();
     const { status, refresh } = useLocalModelStatus({ refreshMs: 2_000 });
     const [catalog, setCatalog] = useState(null);
     const [selected, setSelected] = useState("");
@@ -28,10 +30,10 @@ export function ModelManager() {
                 setSelected((current) => current || result.models?.[0]?.key || "");
             })
             .catch((reason) => {
-                if (!controller.signal.aborted) setError(reason.message || "Catalogo modelli non disponibile");
+                if (!controller.signal.aborted) setError(reason.message || t("model.catalogUnavailable"));
             });
         return () => controller.abort();
-    }, []);
+    }, [t]);
 
     const model = useMemo(() => catalog?.models?.find((item) => item.key === selected), [catalog, selected]);
     const managed = status.managed || {};
@@ -53,7 +55,7 @@ export function ModelManager() {
             await action();
             await refresh();
         } catch (reason) {
-            setError(reason.message || "Operazione sul modello non riuscita");
+            setError(reason.message || t("model.operationFailed"));
         } finally {
             setBusy(false);
         }
@@ -65,7 +67,7 @@ export function ModelManager() {
 
             {!active && catalog?.models?.length > 1 && (
                 <label>
-                    Modello locale
+                    {t("model.local")}
                     <select value={selected} onChange={(event) => { setSelected(event.target.value); setAccepted(false); }}>
                         {catalog.models.map((item) => (
                             <option key={item.key} value={item.key}>{item.displayName}</option>
@@ -83,10 +85,10 @@ export function ModelManager() {
                         </div>
                         <span className="model-manager__license">{model.license}</span>
                     </div>
-                    <p>Scaricato dai riferimenti firmati del catalogo e verificato localmente con SHA-256. Nessun dato del Career Vault viene inviato fuori dal dispositivo.</p>
+                    <p>{t("model.verifiedDownload")}</p>
                     <label className="model-manager__consent">
                         <input type="checkbox" checked={accepted} onChange={(event) => setAccepted(event.target.checked)} />
-                        Accetto la licenza {model.license} e il download di {formatBytes(model.sizeBytes)}.
+                        {t("model.acceptLicense", { license: model.license, size: formatBytes(model.sizeBytes) })}
                     </label>
                     <button
                         type="button"
@@ -99,47 +101,47 @@ export function ModelManager() {
                         ))}
                     >
                         {managed.model_installed && managed.model_key !== selected
-                            ? "Sostituisci modello"
-                            : managed.error_code ? "Riprova installazione" : "Installa modello locale"}
+                            ? t("model.replace")
+                            : managed.error_code ? t("model.retryInstall") : t("model.install")}
                     </button>
-                    {canRemove && <button type="button" className="button button--ghost" disabled={busy} onClick={() => perform(() => LocalModelService.remove())}>Rimuovi installazione locale</button>}
+                    {canRemove && <button type="button" className="button button--ghost" disabled={busy} onClick={() => perform(() => LocalModelService.remove())}>{t("model.removeInstallation")}</button>}
                 </div>
             )}
 
             {active && (
                 <div className="model-manager__progress" aria-live="polite">
-                    <div><strong>{managed.phase === "starting" ? "Avvio del modello" : "Installazione in corso"}</strong><span>{progress}% · {formatBytes(managed.bytes_downloaded)} / {formatBytes(managed.bytes_total)}</span></div>
+                    <div><strong>{managed.phase === "starting" ? t("model.starting") : t("model.installing")}</strong><span>{progress}% · {formatBytes(managed.bytes_downloaded)} / {formatBytes(managed.bytes_total)}</span></div>
                     <progress max="100" value={progress}>{progress}%</progress>
-                    {DOWNLOAD_PHASES.has(managed.phase) && <button type="button" className="button button--ghost" disabled={busy} onClick={() => perform(() => LocalModelService.pause())}>Metti in pausa</button>}
-                    {managed.phase !== "starting" && <button type="button" className="button button--ghost" disabled={busy} onClick={() => perform(() => LocalModelService.cancel())}>Annulla e rimuovi download</button>}
+                    {DOWNLOAD_PHASES.has(managed.phase) && <button type="button" className="button button--ghost" disabled={busy} onClick={() => perform(() => LocalModelService.pause())}>{t("model.pause")}</button>}
+                    {managed.phase !== "starting" && <button type="button" className="button button--ghost" disabled={busy} onClick={() => perform(() => LocalModelService.cancel())}>{t("model.cancel")}</button>}
                 </div>
             )}
 
             {paused && (
                 <div className="model-manager__progress" aria-live="polite">
-                    <div><strong>Download in pausa</strong><span>{progress}% · {formatBytes(managed.bytes_downloaded)} / {formatBytes(managed.bytes_total)}</span></div>
+                    <div><strong>{t("model.paused")}</strong><span>{progress}% · {formatBytes(managed.bytes_downloaded)} / {formatBytes(managed.bytes_total)}</span></div>
                     <progress max="100" value={progress}>{progress}%</progress>
-                    <button type="button" className="button button--primary" disabled={busy} onClick={() => perform(() => LocalModelService.resume())}>Riprendi download</button>
-                    <button type="button" className="button button--ghost" disabled={busy} onClick={() => perform(() => LocalModelService.cancel())}>Annulla e rimuovi download</button>
+                    <button type="button" className="button button--primary" disabled={busy} onClick={() => perform(() => LocalModelService.resume())}>{t("model.resume")}</button>
+                    <button type="button" className="button button--ghost" disabled={busy} onClick={() => perform(() => LocalModelService.cancel())}>{t("model.cancel")}</button>
                 </div>
             )}
 
             {status.ready && (
                 <div className="model-manager__ready">
-                    <span>llama.cpp gira su loopback con una chiave diversa a ogni avvio.</span>
-                    <button type="button" className="button button--ghost" disabled={busy} onClick={() => perform(() => LocalModelService.restart())}>Riavvia runtime</button>
-                    <button type="button" className="button button--ghost" disabled={busy} onClick={() => perform(() => LocalModelService.remove())}>Rimuovi modello</button>
+                    <span>{t("model.loopback")}</span>
+                    <button type="button" className="button button--ghost" disabled={busy} onClick={() => perform(() => LocalModelService.restart())}>{t("model.restart")}</button>
+                    <button type="button" className="button button--ghost" disabled={busy} onClick={() => perform(() => LocalModelService.remove())}>{t("model.remove")}</button>
                 </div>
             )}
 
             {status.ready && managed.model_key !== selected && model && (
                 <div className="model-manager__setup">
-                    <p>Il modello corrente resterà disponibile finché il sostituto non sarà stato scaricato, verificato e avviato.</p>
+                    <p>{t("model.replaceCopy")}</p>
                     <label className="model-manager__consent">
                         <input type="checkbox" checked={accepted} onChange={(event) => setAccepted(event.target.checked)} />
-                        Accetto la licenza {model.license} e la sostituzione con {model.displayName}.
+                        {t("model.acceptReplacement", { license: model.license, model: model.displayName })}
                     </label>
-                    <button type="button" className="button button--primary" disabled={!accepted || busy} onClick={() => perform(() => LocalModelService.replace(selected))}>Sostituisci modello</button>
+                    <button type="button" className="button button--primary" disabled={!accepted || busy} onClick={() => perform(() => LocalModelService.replace(selected))}>{t("model.replace")}</button>
                 </div>
             )}
 

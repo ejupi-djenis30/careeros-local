@@ -9,6 +9,7 @@ from backend.db.base import get_db
 from backend.repositories.user_repository import UserRepository
 from backend.schemas import Token, UserCreate
 from backend.services.auth import (
+    DUMMY_PASSWORD_HASH,
     create_access_token,
     create_refresh_token,
     decode_refresh_token,
@@ -87,9 +88,9 @@ def login(
     user_repo = UserRepository(db)
     user = user_repo.get_by_username(form_data.username)
     # Always call verify_password even when user is None to prevent username
-    # enumeration via response-time side-channel (constant-time comparison).
-    dummy_hash = get_password_hash("_dummy_constant_time_placeholder_")
-    candidate_hash = user.hashed_password if user else dummy_hash
+    # enumeration via response-time side-channel. Reusing a valid hash avoids
+    # performing an unnecessary bcrypt generation on every login request.
+    candidate_hash = user.hashed_password if user else DUMMY_PASSWORD_HASH
     password_ok = verify_password(form_data.password, candidate_hash)
     if not user or not password_ok:
         raise HTTPException(

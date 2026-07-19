@@ -6,8 +6,7 @@ import {
     saveBackupWithNativeDialog,
 } from "../../platform/desktop";
 import { PortabilityService } from "../../services/portability";
-
-const ERASE_PHRASE = "CANCELLA I MIEI DATI";
+import { useI18n } from "../../i18n/useI18n";
 
 function browserDownload({ blob, filename }) {
     const url = URL.createObjectURL(blob);
@@ -19,6 +18,8 @@ function browserDownload({ blob, filename }) {
 }
 
 export function DataRecoveryPanel({ hasProfile, onErased }) {
+    const { t } = useI18n();
+    const erasePhraseRequired = t("data.erasePhrase");
     const fileInput = useRef(null);
     const [busy, setBusy] = useState("");
     const [message, setMessage] = useState("");
@@ -29,11 +30,11 @@ export function DataRecoveryPanel({ hasProfile, onErased }) {
         setMessage("");
         try {
             const archive = await PortabilityService.exportArchive();
-            const saved = await saveBackupWithNativeDialog(archive);
+            const saved = await saveBackupWithNativeDialog(archive, { title: t("desktop.saveBackup") });
             if (!isDesktopShell()) browserDownload(archive);
-            setMessage(saved || !isDesktopShell() ? "Backup verificato e salvato." : "Salvataggio annullato.");
+            setMessage(saved || !isDesktopShell() ? t("data.backupSaved") : t("data.saveCancelled"));
         } catch (error) {
-            setMessage(error.message || "Impossibile creare il backup.");
+            setMessage(error.message || t("data.backupFailed"));
         } finally {
             setBusy("");
         }
@@ -45,10 +46,13 @@ export function DataRecoveryPanel({ hasProfile, onErased }) {
         setMessage("");
         try {
             const result = await PortabilityService.restoreArchive(file);
-            setMessage(`Ripristino completato: ${result.restored_files} file e ${Object.values(result.restored_records).reduce((sum, count) => sum + count, 0)} record.`);
+            setMessage(t("data.restoreDone", {
+                files: result.restored_files,
+                records: Object.values(result.restored_records).reduce((sum, count) => sum + count, 0),
+            }));
             window.location.reload();
         } catch (error) {
-            setMessage(error.message || "Impossibile ripristinare il backup.");
+            setMessage(error.message || t("data.restoreFailed"));
         } finally {
             setBusy("");
             if (fileInput.current) fileInput.current.value = "";
@@ -57,7 +61,7 @@ export function DataRecoveryPanel({ hasProfile, onErased }) {
 
     const chooseRestore = async () => {
         if (isDesktopShell()) {
-            await restore(await openBackupWithNativeDialog());
+            await restore(await openBackupWithNativeDialog({ title: t("desktop.openBackup") }));
         } else {
             fileInput.current?.click();
         }
@@ -69,10 +73,10 @@ export function DataRecoveryPanel({ hasProfile, onErased }) {
         try {
             const result = await PortabilityService.eraseLocalData();
             setErasePhrase("");
-            setMessage(`Dati locali cancellati. Rimossi ${result.files + result.model_files} file gestiti.`);
+            setMessage(t("data.eraseDone", { files: result.files + result.model_files }));
             onErased?.();
         } catch (error) {
-            setMessage(error.message || "Impossibile cancellare i dati locali.");
+            setMessage(error.message || t("data.eraseFailed"));
         } finally {
             setBusy("");
         }
@@ -80,17 +84,17 @@ export function DataRecoveryPanel({ hasProfile, onErased }) {
 
     return (
         <section className="surface-section home-data">
-            <div className="section-heading"><div><span className="section-kicker">Privacy</span><h2>Backup e dati locali</h2></div><i className="bi bi-shield-lock" /></div>
-            <p>Il backup ZIP contiene profilo, obiettivi, CV, allegati, candidature e audit AI. Modello e runtime si reinstallano dal catalogo verificato.</p>
+            <div className="section-heading"><div><span className="section-kicker">Privacy</span><h2>{t("data.title")}</h2></div><i className="bi bi-shield-lock" /></div>
+            <p>{t("data.copy")}</p>
             <div className="data-actions">
-                <button className="button button--secondary" type="button" onClick={backup} disabled={!hasProfile || Boolean(busy)}><i className="bi bi-download" />{busy === "backup" ? "Creazione…" : "Crea backup"}</button>
-                <button className="button button--secondary" type="button" onClick={chooseRestore} disabled={hasProfile || Boolean(busy)}><i className="bi bi-upload" />{busy === "restore" ? "Ripristino…" : "Ripristina backup"}</button>
-                <input ref={fileInput} className="visually-hidden" type="file" accept=".zip,application/zip" aria-label="File backup CareerOS Local" onChange={(event) => restore(event.target.files?.[0])} />
+                <button className="button button--secondary" type="button" onClick={backup} disabled={!hasProfile || Boolean(busy)}><i className="bi bi-download" />{busy === "backup" ? t("data.backupBusy") : t("data.backup")}</button>
+                <button className="button button--secondary" type="button" onClick={chooseRestore} disabled={hasProfile || Boolean(busy)}><i className="bi bi-upload" />{busy === "restore" ? t("data.restoreBusy") : t("data.restore")}</button>
+                <input ref={fileInput} className="visually-hidden" type="file" accept=".zip,application/zip" aria-label={t("data.backupFile")} onChange={(event) => restore(event.target.files?.[0])} />
             </div>
-            {hasProfile && <small>Per evitare fusioni ambigue, il ripristino è disponibile solo dopo aver svuotato il Career Vault.</small>}
+            {hasProfile && <small>{t("data.restoreRequiresEmpty")}</small>}
             <div className="danger-zone">
-                <label htmlFor="erase-career-data">Per cancellare vault, audit e modello locale, scrivi <strong>{ERASE_PHRASE}</strong></label>
-                <div><input id="erase-career-data" className="form-control" value={erasePhrase} onChange={(event) => setErasePhrase(event.target.value)} autoComplete="off" /><button className="button button--danger" type="button" onClick={erase} disabled={erasePhrase !== ERASE_PHRASE || Boolean(busy)}>{busy === "erase" ? "Cancellazione…" : "Cancella dati"}</button></div>
+                <label htmlFor="erase-career-data">{t("data.eraseInstruction")} <strong>{erasePhraseRequired}</strong></label>
+                <div><input id="erase-career-data" className="form-control" value={erasePhrase} onChange={(event) => setErasePhrase(event.target.value)} autoComplete="off" /><button className="button button--danger" type="button" onClick={erase} disabled={erasePhrase !== erasePhraseRequired || Boolean(busy)}>{busy === "erase" ? t("data.eraseBusy") : t("data.erase")}</button></div>
             </div>
             {message && <div className="data-message" role="status">{message}</div>}
         </section>

@@ -1,16 +1,16 @@
 export const STAGES = ["saved", "preparing", "applied", "screening", "interview", "offer", "accepted", "rejected", "withdrawn", "archived"];
 
 export const STAGE_LABELS = {
-    saved: "Salvata",
-    preparing: "Preparazione",
-    applied: "Inviata",
+    saved: "Saved",
+    preparing: "Preparing",
+    applied: "Applied",
     screening: "Screening",
-    interview: "Colloquio",
-    offer: "Offerta",
-    accepted: "Accettata",
-    rejected: "Rifiutata",
-    withdrawn: "Ritirata",
-    archived: "Archiviata",
+    interview: "Interview",
+    offer: "Offer",
+    accepted: "Accepted",
+    rejected: "Rejected",
+    withdrawn: "Withdrawn",
+    archived: "Archived",
 };
 
 export function getStageLabels(t) {

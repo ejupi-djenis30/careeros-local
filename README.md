@@ -62,6 +62,9 @@ the assets.
 - CI verifies Python, React and Rust code, migrations, dependency licenses, SBOMs, containers
   and fixed high/critical vulnerabilities.
 
+Current accepted dependency risks, their owners, controls, and expiry dates are recorded in the
+[security policy](SECURITY.md#active-dependency-exceptions).
+
 ## Architecture
 
 ```mermaid

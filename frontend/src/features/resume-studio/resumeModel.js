@@ -1,18 +1,18 @@
 export const SECTION_ORDER = ["experience", "education", "project", "skill", "language", "certification", "achievement", "award", "membership", "portfolio", "volunteering", "publication", "link"];
 
 export const SECTION_LABELS = {
-    experience: "Esperienza",
-    education: "Formazione",
-    project: "Progetti",
-    skill: "Competenze",
-    language: "Lingue",
-    certification: "Certificazioni",
-    achievement: "Risultati",
-    volunteering: "Volontariato",
-    publication: "Pubblicazioni",
+    experience: "Experience",
+    education: "Education",
+    project: "Projects",
+    skill: "Skills",
+    language: "Languages",
+    certification: "Certifications",
+    achievement: "Achievements",
+    volunteering: "Volunteering",
+    publication: "Publications",
     link: "Link",
-    award: "Premi",
-    membership: "Associazioni",
+    award: "Awards",
+    membership: "Memberships",
     portfolio: "Portfolio",
 };
 
@@ -20,7 +20,7 @@ export function newResumeDraft(facts = []) {
     return {
         id: null,
         revision: null,
-        title: "CV principale",
+        title: "Main resume",
         template_kind: "ats",
         section_config: {
             order: SECTION_ORDER,
@@ -55,7 +55,7 @@ export function resumeWritePayload(draft) {
 
 export function factHeading(fact) {
     const payload = fact.payload || {};
-    return payload.role || payload.name || payload.title || payload.qualification || payload.language || payload.label || "Elemento";
+    return payload.role || payload.name || payload.title || payload.qualification || payload.language || payload.label || "Item";
 }
 
 export function factSubtitle(fact) {

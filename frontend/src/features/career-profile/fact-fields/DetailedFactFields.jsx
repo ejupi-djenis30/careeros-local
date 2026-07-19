@@ -1,58 +1,116 @@
+import { useI18n } from "../../../i18n/useI18n";
 import { Dates, Input, Lines, Select, Textarea } from "./FieldControls";
 import { SkillEvidence } from "./SkillEvidence";
 
-const EMPLOYMENT_TYPES = [["permanent", "Tempo indeterminato"], ["temporary", "Tempo determinato"], ["contract", "Contratto"], ["freelance", "Freelance"], ["internship", "Stage"], ["apprenticeship", "Apprendistato"]];
+const EMPLOYMENT_TYPES = ["permanent", "temporary", "contract", "freelance", "internship", "apprenticeship"];
+const WORK_MODES = ["onsite", "hybrid", "remote"];
+const SKILL_LEVELS = ["learning", "working", "advanced", "expert"];
 
-function Experience({ payload, update }) {
+function Experience({ payload, update, t }) {
     return <>
-        <div className="form-grid form-grid--2"><Input label="Ruolo" value={payload.role || ""} onChange={(e) => update("role", e.target.value)} required /><Input label="Organizzazione" value={payload.organization || ""} onChange={(e) => update("organization", e.target.value)} required /></div>
-        <div className="form-grid form-grid--3"><Select label="Tipo impiego" value={payload.employment_type || "permanent"} onChange={(e) => update("employment_type", e.target.value)}>{EMPLOYMENT_TYPES.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</Select><Input label="Settore" value={payload.industry || ""} onChange={(e) => update("industry", e.target.value)} /><Select label="Modalità di lavoro" value={payload.work_mode || "hybrid"} onChange={(e) => update("work_mode", e.target.value)}><option value="onsite">In sede</option><option value="hybrid">Ibrido</option><option value="remote">Remoto</option></Select></div>
-        <div className="form-grid form-grid--2"><Input label="Località" value={payload.location || ""} onChange={(e) => update("location", e.target.value)} /><Input label="Dimensione team" type="number" min="1" value={payload.team_size ?? ""} onChange={(e) => update("team_size", e.target.value ? Number(e.target.value) : null)} /></div>
+        <div className="form-grid form-grid--2">
+            <Input label={t("factField.role")} value={payload.role || ""} onChange={(event) => update("role", event.target.value)} required />
+            <Input label={t("factField.organization")} value={payload.organization || ""} onChange={(event) => update("organization", event.target.value)} required />
+        </div>
+        <div className="form-grid form-grid--3">
+            <Select label={t("factField.employmentType")} value={payload.employment_type || "permanent"} onChange={(event) => update("employment_type", event.target.value)}>
+                {EMPLOYMENT_TYPES.map((value) => <option key={value} value={value}>{t(`factField.employment.${value}`)}</option>)}
+            </Select>
+            <Input label={t("factField.industry")} value={payload.industry || ""} onChange={(event) => update("industry", event.target.value)} />
+            <Select label={t("factField.workMode")} value={payload.work_mode || "hybrid"} onChange={(event) => update("work_mode", event.target.value)}>
+                {WORK_MODES.map((value) => <option key={value} value={value}>{t(`factField.${value}`)}</option>)}
+            </Select>
+        </div>
+        <div className="form-grid form-grid--2">
+            <Input label={t("factField.location")} value={payload.location || ""} onChange={(event) => update("location", event.target.value)} />
+            <Input label={t("factField.teamSize")} type="number" min="1" value={payload.team_size ?? ""} onChange={(event) => update("team_size", event.target.value ? Number(event.target.value) : null)} />
+        </div>
         <Dates payload={payload} update={update} allowCurrent />
-        <Textarea label="Descrizione" value={payload.description || ""} onChange={(e) => update("description", e.target.value)} />
-        <div className="form-grid form-grid--2"><Lines label="Responsabilità · una per riga" value={payload.responsibilities} onChange={(value) => update("responsibilities", value)} /><Lines label="Risultati · uno per riga" value={payload.achievements} onChange={(value) => update("achievements", value)} /><Lines label="Metriche · una per riga" value={payload.metrics} onChange={(value) => update("metrics", value)} /><Lines label="Tecnologie · una per riga" value={payload.technologies} onChange={(value) => update("technologies", value)} /><Lines label="Competenze · una per riga" value={payload.skills} onChange={(value) => update("skills", value)} /></div>
+        <Textarea label={t("factField.description")} value={payload.description || ""} onChange={(event) => update("description", event.target.value)} />
+        <div className="form-grid form-grid--2">
+            <Lines label={t("factField.responsibilities")} value={payload.responsibilities} onChange={(value) => update("responsibilities", value)} />
+            <Lines label={t("factField.achievements")} value={payload.achievements} onChange={(value) => update("achievements", value)} />
+            <Lines label={t("factField.metrics")} value={payload.metrics} onChange={(value) => update("metrics", value)} />
+            <Lines label={t("factField.technologies")} value={payload.technologies} onChange={(value) => update("technologies", value)} />
+            <Lines label={t("factField.skills")} value={payload.skills} onChange={(value) => update("skills", value)} />
+        </div>
     </>;
 }
 
-function Education({ payload, update }) {
+function Education({ payload, update, t }) {
     return <>
-        <div className="form-grid form-grid--2"><Input label="Istituto" value={payload.institution || ""} onChange={(e) => update("institution", e.target.value)} required /><Input label="Titolo" value={payload.qualification || ""} onChange={(e) => update("qualification", e.target.value)} required /></div>
-        <div className="form-grid form-grid--2"><Input label="Ambito" value={payload.field || ""} onChange={(e) => update("field", e.target.value)} /><Input label="Voto" value={payload.grade || ""} onChange={(e) => update("grade", e.target.value)} /></div>
-        <Dates payload={payload} update={update} /><Textarea label="Dettagli" value={payload.description || ""} onChange={(e) => update("description", e.target.value)} /><Input label="Tesi" value={payload.thesis || ""} onChange={(e) => update("thesis", e.target.value)} />
-        <div className="form-grid form-grid--2"><Lines label="Attività · una per riga" value={payload.activities} onChange={(value) => update("activities", value)} /><Lines label="Corsi rilevanti · uno per riga" value={payload.coursework} onChange={(value) => update("coursework", value)} /></div>
+        <div className="form-grid form-grid--2">
+            <Input label={t("factField.institution")} value={payload.institution || ""} onChange={(event) => update("institution", event.target.value)} required />
+            <Input label={t("factField.qualification")} value={payload.qualification || ""} onChange={(event) => update("qualification", event.target.value)} required />
+        </div>
+        <div className="form-grid form-grid--2">
+            <Input label={t("factField.field")} value={payload.field || ""} onChange={(event) => update("field", event.target.value)} />
+            <Input label={t("factField.grade")} value={payload.grade || ""} onChange={(event) => update("grade", event.target.value)} />
+        </div>
+        <Dates payload={payload} update={update} />
+        <Textarea label={t("factField.details")} value={payload.description || ""} onChange={(event) => update("description", event.target.value)} />
+        <Input label={t("factField.thesis")} value={payload.thesis || ""} onChange={(event) => update("thesis", event.target.value)} />
+        <div className="form-grid form-grid--2">
+            <Lines label={t("factField.activities")} value={payload.activities} onChange={(value) => update("activities", value)} />
+            <Lines label={t("factField.coursework")} value={payload.coursework} onChange={(value) => update("coursework", value)} />
+        </div>
     </>;
 }
 
-function Project({ payload, update }) {
+function Project({ payload, update, t }) {
     return <>
-        <div className="form-grid form-grid--2"><Input label="Nome" value={payload.name || ""} onChange={(e) => update("name", e.target.value)} required /><Input label="Ruolo" value={payload.role || ""} onChange={(e) => update("role", e.target.value)} /></div>
-        <div className="form-grid form-grid--2"><Input label="Organizzazione progetto" value={payload.organization || ""} onChange={(e) => update("organization", e.target.value)} /><Input label="Cliente" value={payload.client || ""} onChange={(e) => update("client", e.target.value)} /></div>
-        <Input label="URL" type="url" value={payload.url || ""} onChange={(e) => update("url", e.target.value)} placeholder="https://" /><Dates payload={payload} update={update} /><Textarea label="Descrizione" value={payload.description || ""} onChange={(e) => update("description", e.target.value)} />
-        <div className="form-grid form-grid--3"><Lines label="Risultati" value={payload.achievements} onChange={(value) => update("achievements", value)} /><Lines label="Tecnologie" value={payload.technologies} onChange={(value) => update("technologies", value)} /><Lines label="Competenze" value={payload.skills} onChange={(value) => update("skills", value)} /></div>
+        <div className="form-grid form-grid--2">
+            <Input label={t("factField.name")} value={payload.name || ""} onChange={(event) => update("name", event.target.value)} required />
+            <Input label={t("factField.role")} value={payload.role || ""} onChange={(event) => update("role", event.target.value)} />
+        </div>
+        <div className="form-grid form-grid--2">
+            <Input label={t("factField.projectOrganization")} value={payload.organization || ""} onChange={(event) => update("organization", event.target.value)} />
+            <Input label={t("factField.client")} value={payload.client || ""} onChange={(event) => update("client", event.target.value)} />
+        </div>
+        <Input label={t("factField.url")} type="url" value={payload.url || ""} onChange={(event) => update("url", event.target.value)} placeholder="https://" />
+        <Dates payload={payload} update={update} />
+        <Textarea label={t("factField.description")} value={payload.description || ""} onChange={(event) => update("description", event.target.value)} />
+        <div className="form-grid form-grid--3">
+            <Lines label={t("factField.achievements")} value={payload.achievements} onChange={(value) => update("achievements", value)} />
+            <Lines label={t("factField.technologies")} value={payload.technologies} onChange={(value) => update("technologies", value)} />
+            <Lines label={t("factField.skills")} value={payload.skills} onChange={(value) => update("skills", value)} />
+        </div>
     </>;
 }
 
-function Skill({ payload, update, evidenceOptions }) {
-    return <><div className="form-grid form-grid--3"><Input label="Competenza" value={payload.name || ""} onChange={(e) => update("name", e.target.value)} required /><Input label="Categoria competenza" value={payload.category || ""} onChange={(e) => update("category", e.target.value)} /><Select label="Livello" value={payload.level || "working"} onChange={(e) => update("level", e.target.value)}><option value="learning">In apprendimento</option><option value="working">Operativo</option><option value="advanced">Avanzato</option><option value="expert">Esperto</option></Select><Input label="Anni" type="number" min="0" max="80" step="0.5" value={payload.years ?? ""} onChange={(e) => update("years", e.target.value === "" ? null : Number(e.target.value))} /><Input label="Ultimo utilizzo" type="date" value={payload.last_used_date || ""} onChange={(e) => update("last_used_date", e.target.value)} /></div><SkillEvidence selectedIds={payload.evidence_fact_ids || []} options={evidenceOptions} onChange={(value) => update("evidence_fact_ids", value)} /></>;
+function Skill({ payload, update, evidenceOptions, t }) {
+    return <>
+        <div className="form-grid form-grid--3">
+            <Input label={t("factField.skill")} value={payload.name || ""} onChange={(event) => update("name", event.target.value)} required />
+            <Input label={t("factField.skillCategory")} value={payload.category || ""} onChange={(event) => update("category", event.target.value)} />
+            <Select label={t("factField.level")} value={payload.level || "working"} onChange={(event) => update("level", event.target.value)}>
+                {SKILL_LEVELS.map((value) => <option key={value} value={value}>{t(`factField.level.${value}`)}</option>)}
+            </Select>
+            <Input label={t("factField.years")} type="number" min="0" max="80" step="0.5" value={payload.years ?? ""} onChange={(event) => update("years", event.target.value === "" ? null : Number(event.target.value))} />
+            <Input label={t("factField.lastUsed")} type="date" value={payload.last_used_date || ""} onChange={(event) => update("last_used_date", event.target.value)} />
+        </div>
+        <SkillEvidence selectedIds={payload.evidence_fact_ids || []} options={evidenceOptions} onChange={(value) => update("evidence_fact_ids", value)} />
+    </>;
 }
 
-function Simple({ type, payload, update, evidenceOptions }) {
-    if (type === "skill") return <Skill payload={payload} update={update} evidenceOptions={evidenceOptions} />;
-    if (type === "language") return <div className="form-grid form-grid--2"><Input label="Lingua" value={payload.language || ""} onChange={(e) => update("language", e.target.value)} required /><Select label="Livello" value={payload.level || "B2"} onChange={(e) => update("level", e.target.value)}>{["A1", "A2", "B1", "B2", "C1", "C2", "native"].map((level) => <option key={level} value={level}>{level}</option>)}</Select></div>;
-    if (type === "certification") return <><div className="form-grid form-grid--2"><Input label="Certificazione" value={payload.name || ""} onChange={(e) => update("name", e.target.value)} required /><Input label="Ente" value={payload.issuer || ""} onChange={(e) => update("issuer", e.target.value)} /></div><div className="form-grid form-grid--2"><Input label="Rilasciata" type="date" value={payload.issued_on || ""} onChange={(e) => update("issued_on", e.target.value)} /><Input label="Scadenza" type="date" value={payload.expires_on || ""} onChange={(e) => update("expires_on", e.target.value)} /></div><div className="form-grid form-grid--2"><Input label="Credential ID" value={payload.credential_id || ""} onChange={(e) => update("credential_id", e.target.value)} /><Input label="URL" type="url" value={payload.url || ""} onChange={(e) => update("url", e.target.value)} /></div></>;
-    if (type === "achievement") return <><div className="form-grid form-grid--2"><Input label="Risultato" value={payload.title || ""} onChange={(e) => update("title", e.target.value)} required /><Input label="Data risultato" type="date" value={payload.achieved_on || ""} onChange={(e) => update("achieved_on", e.target.value)} /></div><Textarea label="Descrizione" value={payload.description || ""} onChange={(e) => update("description", e.target.value)} /><Lines label="Dettagli risultato · uno per riga" value={payload.details} onChange={(value) => update("details", value)} /><div className="form-grid form-grid--3"><Input label="Valore" type="number" value={payload.metric_value ?? ""} onChange={(e) => update("metric_value", e.target.value === "" ? null : Number(e.target.value))} /><Input label="Unità" value={payload.metric_unit || ""} onChange={(e) => update("metric_unit", e.target.value)} /><Input label="Contesto" value={payload.context || ""} onChange={(e) => update("context", e.target.value)} /></div></>;
-    if (type === "link") return <div className="form-grid form-grid--2"><Input label="Etichetta" value={payload.label || ""} onChange={(e) => update("label", e.target.value)} required /><Input label="URL" type="url" value={payload.url || ""} onChange={(e) => update("url", e.target.value)} required /></div>;
-    if (type === "publication") return <><Input label="Titolo" value={payload.title || ""} onChange={(e) => update("title", e.target.value)} required /><div className="form-grid form-grid--2"><Input label="Editore" value={payload.publisher || ""} onChange={(e) => update("publisher", e.target.value)} /><Input label="Data pubblicazione" type="date" value={payload.published_on || ""} onChange={(e) => update("published_on", e.target.value)} /></div><Input label="URL" type="url" value={payload.url || ""} onChange={(e) => update("url", e.target.value)} /><Textarea label="Descrizione" value={payload.description || ""} onChange={(e) => update("description", e.target.value)} /></>;
-    if (type === "award") return <><div className="form-grid form-grid--2"><Input label="Premio" value={payload.title || ""} onChange={(e) => update("title", e.target.value)} required /><Input label="Ente premiante" value={payload.issuer || ""} onChange={(e) => update("issuer", e.target.value)} /></div><div className="form-grid form-grid--2"><Input label="Data premio" type="date" value={payload.awarded_on || ""} onChange={(e) => update("awarded_on", e.target.value)} /><Input label="URL premio" type="url" value={payload.url || ""} onChange={(e) => update("url", e.target.value)} /></div><Textarea label="Descrizione premio" value={payload.description || ""} onChange={(e) => update("description", e.target.value)} /></>;
-    if (type === "membership") return <><div className="form-grid form-grid--2"><Input label="Associazione" value={payload.organization || ""} onChange={(e) => update("organization", e.target.value)} required /><Input label="Ruolo nell’associazione" value={payload.role || ""} onChange={(e) => update("role", e.target.value)} required /></div><Dates payload={payload} update={update} allowCurrent /><Input label="URL associazione" type="url" value={payload.url || ""} onChange={(e) => update("url", e.target.value)} /><Textarea label="Descrizione associazione" value={payload.description || ""} onChange={(e) => update("description", e.target.value)} /></>;
-    if (type === "reference") return <><div className="inline-alert inline-alert--warning"><div><strong>Dato sensibile locale</strong><span>La referenza non viene inserita automaticamente nei CV e resta nel Career Vault.</span></div></div><div className="form-grid form-grid--3"><Input label="Nome referente" value={payload.name || ""} onChange={(e) => update("name", e.target.value)} required /><Input label="Relazione professionale" value={payload.relationship || ""} onChange={(e) => update("relationship", e.target.value)} required /><Input label="Organizzazione referente" value={payload.organization || ""} onChange={(e) => update("organization", e.target.value)} /></div><div className="form-grid form-grid--2"><Input label="Email referente" type="email" value={payload.email || ""} onChange={(e) => update("email", e.target.value)} /><Input label="Telefono referente" value={payload.phone || ""} onChange={(e) => update("phone", e.target.value)} /></div><label className="check-line check-line--field"><input type="checkbox" checked={Boolean(payload.permission_to_contact)} onChange={(e) => update("permission_to_contact", e.target.checked)} /> Ho il permesso di contattare questa persona</label><Textarea label="Note sulla referenza" value={payload.notes || ""} onChange={(e) => update("notes", e.target.value)} /></>;
-    if (type === "portfolio") return <><div className="form-grid form-grid--2"><Input label="Nome portfolio" value={payload.name || ""} onChange={(e) => update("name", e.target.value)} required /><Input label="URL portfolio" type="url" value={payload.url || ""} onChange={(e) => update("url", e.target.value)} required /></div><Textarea label="Descrizione portfolio" value={payload.description || ""} onChange={(e) => update("description", e.target.value)} /><Lines label="Competenze portfolio · una per riga" value={payload.skills} onChange={(value) => update("skills", value)} /></>;
-    return <><Input label="Titolo" value={payload.title || ""} onChange={(e) => update("title", e.target.value)} required /><Input label="Organizzazione volontariato" value={payload.organization || ""} onChange={(e) => update("organization", e.target.value)} /><Dates payload={payload} update={update} /><Textarea label="Descrizione" value={payload.description || ""} onChange={(e) => update("description", e.target.value)} /><Lines label="Risultati" value={payload.achievements} onChange={(value) => update("achievements", value)} /></>;
+function Simple({ type, payload, update, evidenceOptions, t }) {
+    if (type === "skill") return <Skill payload={payload} update={update} evidenceOptions={evidenceOptions} t={t} />;
+    if (type === "language") return <div className="form-grid form-grid--2"><Input label={t("factField.language")} value={payload.language || ""} onChange={(event) => update("language", event.target.value)} required /><Select label={t("factField.level")} value={payload.level || "B2"} onChange={(event) => update("level", event.target.value)}>{["A1", "A2", "B1", "B2", "C1", "C2", "native"].map((level) => <option key={level} value={level}>{level}</option>)}</Select></div>;
+    if (type === "certification") return <><div className="form-grid form-grid--2"><Input label={t("factField.certification")} value={payload.name || ""} onChange={(event) => update("name", event.target.value)} required /><Input label={t("factField.issuer")} value={payload.issuer || ""} onChange={(event) => update("issuer", event.target.value)} /></div><div className="form-grid form-grid--2"><Input label={t("factField.issued")} type="date" value={payload.issued_on || ""} onChange={(event) => update("issued_on", event.target.value)} /><Input label={t("factField.expires")} type="date" value={payload.expires_on || ""} onChange={(event) => update("expires_on", event.target.value)} /></div><div className="form-grid form-grid--2"><Input label={t("factField.credentialId")} value={payload.credential_id || ""} onChange={(event) => update("credential_id", event.target.value)} /><Input label={t("factField.url")} type="url" value={payload.url || ""} onChange={(event) => update("url", event.target.value)} /></div></>;
+    if (type === "achievement") return <><div className="form-grid form-grid--2"><Input label={t("factField.achievement")} value={payload.title || ""} onChange={(event) => update("title", event.target.value)} required /><Input label={t("factField.achievementDate")} type="date" value={payload.achieved_on || ""} onChange={(event) => update("achieved_on", event.target.value)} /></div><Textarea label={t("factField.description")} value={payload.description || ""} onChange={(event) => update("description", event.target.value)} /><Lines label={t("factField.achievementDetails")} value={payload.details} onChange={(value) => update("details", value)} /><div className="form-grid form-grid--3"><Input label={t("factField.value")} type="number" value={payload.metric_value ?? ""} onChange={(event) => update("metric_value", event.target.value === "" ? null : Number(event.target.value))} /><Input label={t("factField.unit")} value={payload.metric_unit || ""} onChange={(event) => update("metric_unit", event.target.value)} /><Input label={t("factField.context")} value={payload.context || ""} onChange={(event) => update("context", event.target.value)} /></div></>;
+    if (type === "link") return <div className="form-grid form-grid--2"><Input label={t("factField.label")} value={payload.label || ""} onChange={(event) => update("label", event.target.value)} required /><Input label={t("factField.url")} type="url" value={payload.url || ""} onChange={(event) => update("url", event.target.value)} required /></div>;
+    if (type === "publication") return <><Input label={t("factField.title")} value={payload.title || ""} onChange={(event) => update("title", event.target.value)} required /><div className="form-grid form-grid--2"><Input label={t("factField.publisher")} value={payload.publisher || ""} onChange={(event) => update("publisher", event.target.value)} /><Input label={t("factField.publicationDate")} type="date" value={payload.published_on || ""} onChange={(event) => update("published_on", event.target.value)} /></div><Input label={t("factField.url")} type="url" value={payload.url || ""} onChange={(event) => update("url", event.target.value)} /><Textarea label={t("factField.description")} value={payload.description || ""} onChange={(event) => update("description", event.target.value)} /></>;
+    if (type === "award") return <><div className="form-grid form-grid--2"><Input label={t("factField.award")} value={payload.title || ""} onChange={(event) => update("title", event.target.value)} required /><Input label={t("factField.awardingBody")} value={payload.issuer || ""} onChange={(event) => update("issuer", event.target.value)} /></div><div className="form-grid form-grid--2"><Input label={t("factField.awardDate")} type="date" value={payload.awarded_on || ""} onChange={(event) => update("awarded_on", event.target.value)} /><Input label={t("factField.awardUrl")} type="url" value={payload.url || ""} onChange={(event) => update("url", event.target.value)} /></div><Textarea label={t("factField.awardDescription")} value={payload.description || ""} onChange={(event) => update("description", event.target.value)} /></>;
+    if (type === "membership") return <><div className="form-grid form-grid--2"><Input label={t("factField.membership")} value={payload.organization || ""} onChange={(event) => update("organization", event.target.value)} required /><Input label={t("factField.membershipRole")} value={payload.role || ""} onChange={(event) => update("role", event.target.value)} required /></div><Dates payload={payload} update={update} allowCurrent /><Input label={t("factField.membershipUrl")} type="url" value={payload.url || ""} onChange={(event) => update("url", event.target.value)} /><Textarea label={t("factField.membershipDescription")} value={payload.description || ""} onChange={(event) => update("description", event.target.value)} /></>;
+    if (type === "reference") return <><div className="inline-alert inline-alert--warning"><div><strong>{t("factField.sensitive")}</strong><span>{t("factField.referenceCopy")}</span></div></div><div className="form-grid form-grid--3"><Input label={t("factField.referenceName")} value={payload.name || ""} onChange={(event) => update("name", event.target.value)} required /><Input label={t("factField.relationship")} value={payload.relationship || ""} onChange={(event) => update("relationship", event.target.value)} required /><Input label={t("factField.referenceOrganization")} value={payload.organization || ""} onChange={(event) => update("organization", event.target.value)} /></div><div className="form-grid form-grid--2"><Input label={t("factField.referenceEmail")} type="email" value={payload.email || ""} onChange={(event) => update("email", event.target.value)} /><Input label={t("factField.referencePhone")} value={payload.phone || ""} onChange={(event) => update("phone", event.target.value)} /></div><label className="check-line check-line--field"><input type="checkbox" checked={Boolean(payload.permission_to_contact)} onChange={(event) => update("permission_to_contact", event.target.checked)} /> {t("factField.referencePermission")}</label><Textarea label={t("factField.referenceNotes")} value={payload.notes || ""} onChange={(event) => update("notes", event.target.value)} /></>;
+    if (type === "portfolio") return <><div className="form-grid form-grid--2"><Input label={t("factField.portfolioName")} value={payload.name || ""} onChange={(event) => update("name", event.target.value)} required /><Input label={t("factField.portfolioUrl")} type="url" value={payload.url || ""} onChange={(event) => update("url", event.target.value)} required /></div><Textarea label={t("factField.portfolioDescription")} value={payload.description || ""} onChange={(event) => update("description", event.target.value)} /><Lines label={t("factField.portfolioSkills")} value={payload.skills} onChange={(value) => update("skills", value)} /></>;
+    return <><Input label={t("factField.title")} value={payload.title || ""} onChange={(event) => update("title", event.target.value)} required /><Input label={t("factField.volunteeringOrganization")} value={payload.organization || ""} onChange={(event) => update("organization", event.target.value)} /><Dates payload={payload} update={update} /><Textarea label={t("factField.description")} value={payload.description || ""} onChange={(event) => update("description", event.target.value)} /><Lines label={t("factField.achievements")} value={payload.achievements} onChange={(value) => update("achievements", value)} /></>;
 }
 
 export function DetailedFactFields({ type, payload, update, evidenceOptions = [] }) {
-    if (type === "experience") return <Experience payload={payload} update={update} />;
-    if (type === "education") return <Education payload={payload} update={update} />;
-    if (type === "project") return <Project payload={payload} update={update} />;
-    return <Simple type={type} payload={payload} update={update} evidenceOptions={evidenceOptions} />;
+    const { t } = useI18n();
+    if (type === "experience") return <Experience payload={payload} update={update} t={t} />;
+    if (type === "education") return <Education payload={payload} update={update} t={t} />;
+    if (type === "project") return <Project payload={payload} update={update} t={t} />;
+    return <Simple type={type} payload={payload} update={update} evidenceOptions={evidenceOptions} t={t} />;
 }

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import base64
+import hashlib
 from html.parser import HTMLParser
 from pathlib import Path
 from urllib.parse import unquote, urlparse
@@ -25,6 +27,11 @@ class PortfolioParser(HTMLParser):
         self.nav_labels: list[str | None] = []
         self.videos_without_controls: list[int] = []
         self.external_executables: list[tuple[str, int]] = []
+        self.referrer_policies: list[str] = []
+        self.csp_policies: list[str] = []
+        self.inline_scripts: list[tuple[str, int]] = []
+        self._inline_script: list[str] | None = None
+        self._inline_script_line = 0
 
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
         attributes = dict(attrs)
@@ -44,6 +51,14 @@ class PortfolioParser(HTMLParser):
             self.images_missing_alt.append(line)
         elif tag == "video" and "controls" not in attributes:
             self.videos_without_controls.append(line)
+        elif tag == "meta" and (attributes.get("name") or "").lower() == "referrer":
+            self.referrer_policies.append(attributes.get("content") or "")
+        elif tag == "meta" and (attributes.get("http-equiv") or "").lower() == "content-security-policy":
+            self.csp_policies.append(attributes.get("content") or "")
+
+        if tag == "script" and not attributes.get("src"):
+            self._inline_script = []
+            self._inline_script_line = line
 
         for attribute in ("href", "src", "poster"):
             value = attributes.get(attribute)
@@ -57,6 +72,30 @@ class PortfolioParser(HTMLParser):
             executable = attributes.get("href")
         if executable and urlparse(executable).scheme in {"http", "https"}:
             self.external_executables.append((executable, line))
+
+    def handle_data(self, data: str) -> None:
+        if self._inline_script is not None:
+            self._inline_script.append(data)
+
+    def handle_endtag(self, tag: str) -> None:
+        if tag == "script" and self._inline_script is not None:
+            self.inline_scripts.append(("".join(self._inline_script), self._inline_script_line))
+            self._inline_script = None
+
+
+def _parse_csp(policy: str) -> tuple[dict[str, set[str]], list[str]]:
+    directives: dict[str, set[str]] = {}
+    errors: list[str] = []
+    for raw_directive in policy.split(";"):
+        parts = raw_directive.strip().split()
+        if not parts:
+            continue
+        name, *values = parts
+        if name in directives:
+            errors.append(f"CSP directive is duplicated: {name}")
+            continue
+        directives[name] = set(values)
+    return directives, errors
 
 
 def validate() -> list[str]:
@@ -80,6 +119,44 @@ def validate() -> list[str]:
         errors.append(f"line {line}: video must expose browser controls")
     for url, line in parser.external_executables:
         errors.append(f"line {line}: external script or stylesheet is not allowed: {url}")
+
+    if parser.referrer_policies != ["no-referrer"]:
+        errors.append("portfolio must declare exactly one no-referrer policy")
+
+    if len(parser.csp_policies) != 1:
+        errors.append("portfolio must declare exactly one Content Security Policy")
+    else:
+        csp, csp_errors = _parse_csp(parser.csp_policies[0])
+        errors.extend(csp_errors)
+        required_directives = {
+            "default-src": {"'none'"},
+            "base-uri": {"'none'"},
+            "connect-src": {"'none'"},
+            "font-src": {"'self'"},
+            "form-action": {"'none'"},
+            "frame-src": {"'none'"},
+            "img-src": {"'self'", "data:"},
+            "media-src": {"'self'"},
+            "object-src": {"'none'"},
+            "style-src": {"'self'"},
+            "worker-src": {"'none'"},
+        }
+        for directive, expected_sources in required_directives.items():
+            if csp.get(directive) != expected_sources:
+                errors.append(
+                    f"CSP {directive} must be {' '.join(sorted(expected_sources))}"
+                )
+
+        expected_script_hashes = {
+            "'sha256-"
+            + base64.b64encode(hashlib.sha256(script.encode("utf-8")).digest()).decode("ascii")
+            + "'"
+            for script, _ in parser.inline_scripts
+        }
+        if csp.get("script-src") != expected_script_hashes:
+            errors.append("CSP script-src must contain only the current inline-script hashes")
+        if "'unsafe-inline'" in parser.csp_policies[0] or "'unsafe-eval'" in parser.csp_policies[0]:
+            errors.append("CSP must not allow unsafe-inline or unsafe-eval")
 
     for attribute, reference, line in parser.references:
         parsed = urlparse(reference)

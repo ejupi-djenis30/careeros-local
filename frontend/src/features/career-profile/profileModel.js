@@ -1,17 +1,17 @@
 export const FACT_TYPES = [
-    ["experience", "Esperienza"],
-    ["education", "Formazione"],
-    ["project", "Progetto"],
-    ["skill", "Competenza"],
-    ["language", "Lingua"],
-    ["certification", "Certificazione"],
-    ["achievement", "Risultato"],
-    ["volunteering", "Volontariato"],
-    ["publication", "Pubblicazione"],
+    ["experience", "Experience"],
+    ["education", "Education"],
+    ["project", "Project"],
+    ["skill", "Skill"],
+    ["language", "Language"],
+    ["certification", "Certification"],
+    ["achievement", "Achievement"],
+    ["volunteering", "Volunteering"],
+    ["publication", "Publication"],
     ["link", "Link"],
-    ["award", "Premio"],
-    ["membership", "Associazione"],
-    ["reference", "Referenza"],
+    ["award", "Award"],
+    ["membership", "Membership"],
+    ["reference", "Reference"],
     ["portfolio", "Portfolio"],
 ];
 
@@ -29,12 +29,12 @@ export const FACT_DEFAULTS = {
     publication: { title: "", publisher: "", published_on: "", description: "", url: "" },
     link: { label: "", url: "" },
     award: { title: "", issuer: "", awarded_on: "", description: "", url: "" },
-    membership: { organization: "", role: "Membro", description: "", start_date: "", end_date: "", current: false, url: "" },
+    membership: { organization: "", role: "Member", description: "", start_date: "", end_date: "", current: false, url: "" },
     reference: { name: "", relationship: "", organization: "", email: "", phone: "", notes: "", permission_to_contact: false },
     portfolio: { name: "", url: "", description: "", skills: [] },
 };
 
-export function emptyProfile(displayName = "Profilo locale") {
+export function emptyProfile(displayName = "Local profile") {
     return {
         expected_revision: 0,
         display_name: displayName,
@@ -137,10 +137,10 @@ export function factTitle(fact) {
     return payload.role || payload.name || payload.title || payload.qualification || payload.language || payload.label || payload.organization || FACT_LABELS[fact.fact_type];
 }
 
-export function newGoal() {
+export function newGoal(name = "New goal") {
     return {
         clientKey: crypto.randomUUID(),
-        name: "Nuovo obiettivo",
+        name,
         is_primary: false,
         payload: {
             status: "active",

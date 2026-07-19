@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useState } from "react";
 
 import { bootstrapDesktop } from "../platform/desktop";
+import { useI18n } from "../i18n/useI18n";
 
 export function DesktopBoot({ children }) {
+    const { t } = useI18n();
     const [attempt, setAttempt] = useState(0);
     const [status, setStatus] = useState({ state: "starting", error: null });
 
@@ -31,13 +33,13 @@ export function DesktopBoot({ children }) {
             {status.state === "starting" ? (
                 <>
                     <span className="desktop-boot__spinner" aria-hidden="true" />
-                    <p>Preparazione del tuo spazio carriera privato…</p>
+                    <p>{t("desktop.starting")}</p>
                 </>
             ) : (
                 <div className="desktop-boot__error" role="alert">
-                    <h2>Il servizio locale non si è avviato</h2>
+                    <h2>{t("desktop.failed")}</h2>
                     <p>{status.error}</p>
-                    <button type="button" className="button button--primary" onClick={retry}>Riprova</button>
+                    <button type="button" className="button button--primary" onClick={retry}>{t("desktop.retry")}</button>
                 </div>
             )}
         </main>

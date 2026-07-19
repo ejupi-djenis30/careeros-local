@@ -30,3 +30,16 @@ def test_portfolio_media_preserves_its_intrinsic_ratio():
         declarations = css.split(f"{selector} {{", maxsplit=1)[1].split("}", maxsplit=1)[0]
         assert "height: auto;" in declarations
         assert "object-fit: contain;" in declarations
+
+
+def test_portfolio_declares_strict_browser_policies():
+    parser = _parse((ROOT / "docs" / "index.html").read_text(encoding="utf-8"))
+
+    assert parser.referrer_policies == ["no-referrer"]
+    assert len(parser.csp_policies) == 1
+    policy = parser.csp_policies[0]
+    assert "default-src 'none'" in policy
+    assert "object-src 'none'" in policy
+    assert "base-uri 'none'" in policy
+    assert "'unsafe-inline'" not in policy
+    assert "'unsafe-eval'" not in policy

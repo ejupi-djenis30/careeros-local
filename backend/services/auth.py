@@ -7,6 +7,11 @@ from jwt.exceptions import PyJWTError
 
 from backend.core.config import settings
 
+# A fixed, valid bcrypt hash keeps unknown-user login checks on the same expensive
+# verification path as known users without generating a second hash for every request.
+# The plaintext is intentionally not a credential and the value can be public.
+DUMMY_PASSWORD_HASH = "$2b$12$wwDasuPkoAs8hmlsQ61aB.Jm6dSQnQMeBPEp5zYhmdg0Nv54rzwza"
+
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
     try:
