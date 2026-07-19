@@ -1,4 +1,5 @@
 version: 2
+# SemVer-major filters below do not suppress digest-only image or action refreshes.
 updates:
   - package-ecosystem: pip
     directory: /
@@ -6,6 +7,14 @@ updates:
       interval: weekly
       day: monday
     open-pull-requests-limit: 5
+    groups:
+      compatible-python-dependencies:
+        patterns: ["*"]
+        update-types: [minor, patch]
+    ignore:
+      # Major upgrades require an explicit compatibility plan and lockfile review.
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
 
   - package-ecosystem: npm
     directory: /frontend
@@ -13,6 +22,14 @@ updates:
       interval: weekly
       day: tuesday
     open-pull-requests-limit: 5
+    groups:
+      compatible-frontend-dependencies:
+        patterns: ["*"]
+        update-types: [minor, patch]
+    ignore:
+      # Major upgrades require an explicit compatibility plan and migration PR.
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
 
   - package-ecosystem: docker
     directory: /
@@ -20,6 +37,16 @@ updates:
       interval: weekly
       day: wednesday
     open-pull-requests-limit: 5
+    groups:
+      compatible-backend-images:
+        patterns: ["*"]
+        update-types: [minor, patch]
+    ignore:
+      # The backend runtime and release tooling support Python 3.12.
+      - dependency-name: python
+        versions: [">= 3.13"]
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
 
   - package-ecosystem: docker
     directory: /frontend
@@ -27,6 +54,16 @@ updates:
       interval: weekly
       day: wednesday
     open-pull-requests-limit: 5
+    groups:
+      compatible-frontend-images:
+        patterns: ["*"]
+        update-types: [minor, patch]
+    ignore:
+      # Frontend builds are intentionally aligned with the Node 24 toolchain.
+      - dependency-name: node
+        versions: [">= 25"]
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
 
   - package-ecosystem: github-actions
     directory: /
@@ -34,3 +71,10 @@ updates:
       interval: weekly
       day: thursday
     open-pull-requests-limit: 5
+    groups:
+      compatible-actions:
+        patterns: ["*"]
+        update-types: [minor, patch]
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
