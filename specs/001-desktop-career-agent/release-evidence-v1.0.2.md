@@ -1,7 +1,9 @@
 # CareerOS Local v1.0.2 release evidence
 
-Date: 2026-07-19  
-Tag: [`v1.0.2`](https://github.com/ejupi-djenis30/careeros-local/releases/tag/v1.0.2)  
+Date: 2026-07-19
+
+Tag: [`v1.0.2`](https://github.com/ejupi-djenis30/careeros-local/releases/tag/v1.0.2)
+
 Commit: `865a7e16a8c52605f20a5586e25539f3a754e7f3`
 
 The public release is neither a draft nor a prerelease and is marked as the latest release.
