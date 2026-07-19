@@ -48,7 +48,10 @@ def compute_and_save_preferences(user_id: int, db: Session) -> Dict[str, Any]:
         _persist(user_id, signals, db)
         return signals
     except Exception:
-        logger.exception("preference_service: failed to compute signals for user_id=%s", user_id)
+        # User identifiers and database exception text are deliberately excluded:
+        # both can contain private data or control characters when this boundary is
+        # called outside the typed API layer.
+        logger.error("preference_service: failed to compute signals")
         return {}
 
 
@@ -148,9 +151,7 @@ def _compute(user_id: int, db: Session) -> Dict[str, Any]:
     for j in dismissed_jobs:
         feedback_signal = str(j.feedback_signal or "")
         if feedback_signal:
-            dealbreaker_patterns[feedback_signal] = (
-                dealbreaker_patterns.get(feedback_signal, 0) + 1
-            )
+            dealbreaker_patterns[feedback_signal] = dealbreaker_patterns.get(feedback_signal, 0) + 1
 
     return {
         "preferred_domains": preferred_domains,
@@ -170,7 +171,7 @@ def _persist(user_id: int, signals: Dict[str, Any], db: Session) -> None:
     user_repo = UserRepository(db)
     user = user_repo.get(user_id)
     if not user:
-        logger.warning("preference_service: user_id=%s not found, skipping persist", user_id)
+        logger.warning("preference_service: user not found; skipping persist")
         return
     user_repo.update(
         user,
@@ -212,9 +213,8 @@ def compute_salary_benchmark(
         p75 = values[int(n * 0.75)]
         return {"p25": p25, "median": median, "p75": p75, "n": n}
     except Exception:
-        logger.exception(
-            "compute_salary_benchmark: failed for domain=%s seniority=%s", domain, seniority
-        )
+        # Domain, seniority and exception details may originate in imported job data.
+        logger.error("compute_salary_benchmark: failed")
         return None
 
 

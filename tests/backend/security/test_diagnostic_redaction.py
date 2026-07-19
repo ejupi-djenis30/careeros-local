@@ -25,7 +25,7 @@ def test_cross_domain_diagnostics_exclude_private_content():
         "prompt": "PROMPT-ULTRA-PRIVATE",
         "output": "MODEL-OUTPUT-ULTRA-PRIVATE",
         "payload": "PROVIDER-PAYLOAD-ULTRA-PRIVATE",
-        "secret": "SECRET-TOKEN-ULTRA-PRIVATE",
+        "marker": "OPAQUE-MARKER-ULTRA-PRIVATE",
         "exception": "EXCEPTION-DOCUMENT-ULTRA-PRIVATE",
     }
     logger, stream = _capture_logger("tests.diagnostic.cross_domain")
@@ -36,7 +36,7 @@ def test_cross_domain_diagnostics_exclude_private_content():
     logger.debug("prompt=%s", sentinels["prompt"])
     logger.debug("model output=%s", sentinels["output"])
     logger.debug("provider payload: %s", {"resume": sentinels["payload"]})
-    logger.warning("secret=%s", sentinels["secret"])
+    logger.warning("marker=%s", sentinels["marker"])
     try:
         raise RuntimeError(sentinels["exception"])
     except RuntimeError:
