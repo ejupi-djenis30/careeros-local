@@ -83,13 +83,16 @@ jobs:
       - name: Audit Cargo and create evidence
         working-directory: frontend/src-tauri
         run: |
-          cargo audit
+          python3 ../../scripts/check_security_exceptions.py
+          cargo audit --deny unsound --ignore RUSTSEC-2024-0429
           cargo deny --all-features check licenses
           cargo cyclonedx --all-features --target all --format json \
             --spec-version 1.5 --override-filename rust-sbom
           mv rust-sbom.json "$RUNNER_TEMP/careeros/rust-sbom.cdx.json"
           cargo deny --all-features list --format json \
             > "$RUNNER_TEMP/careeros/rust-licenses.json"
+          cargo tree --locked --target all -i glib@0.18.5 \
+            > "$RUNNER_TEMP/careeros/cargo-exception-tree.txt"
       - name: Upload release supply-chain evidence
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:

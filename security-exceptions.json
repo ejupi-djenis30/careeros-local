@@ -1,0 +1,12 @@
+{
+  "exceptions": [
+    {
+      "id": "CE-2026-001",
+      "advisory": "RUSTSEC-2024-0429",
+      "dependency": "glib",
+      "version": "0.18.5",
+      "scope": "linux-desktop-transitive",
+      "expires": "2026-10-19"
+    }
+  ]
+}

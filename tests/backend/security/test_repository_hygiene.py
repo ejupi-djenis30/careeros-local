@@ -1,4 +1,7 @@
+import json
 import os
+import subprocess
+import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[3]
@@ -118,6 +121,50 @@ def test_release_workflow_uploads_each_native_extension_explicitly():
         assert f"release/bundle/**/*.{extension}" in workflow
     assert "name: verified-release-assets" in workflow
     assert "needs: assemble-release" in workflow
+
+
+def test_security_exception_manifest_is_scoped_and_expiry_is_enforced():
+    manifest = json.loads((ROOT / "security-exceptions.json").read_text(encoding="utf-8"))
+    assert manifest == {
+        "exceptions": [
+            {
+                "id": "CE-2026-001",
+                "advisory": "RUSTSEC-2024-0429",
+                "dependency": "glib",
+                "version": "0.18.5",
+                "scope": "linux-desktop-transitive",
+                "expires": "2026-10-19",
+            }
+        ]
+    }
+
+    checker = ROOT / "scripts/check_security_exceptions.py"
+    before_expiry = subprocess.run(
+        [sys.executable, str(checker), "--today", "2026-10-18"],
+        capture_output=True,
+        check=False,
+        text=True,
+    )
+    at_expiry = subprocess.run(
+        [sys.executable, str(checker), "--today", "2026-10-19"],
+        capture_output=True,
+        check=False,
+        text=True,
+    )
+    assert before_expiry.returncode == 0
+    assert at_expiry.returncode == 1
+    assert "CE-2026-001 expired on 2026-10-19" in at_expiry.stdout
+
+
+def test_cargo_audit_exception_is_narrow_and_evidence_is_uploaded():
+    workflows = "\n".join(
+        (ROOT / path).read_text(encoding="utf-8")
+        for path in (".github/workflows/ci.yml", ".github/workflows/desktop-release.yml")
+    )
+    scoped_command = "cargo audit --deny unsound --ignore RUSTSEC-2024-0429"
+    assert workflows.count(scoped_command) == 2
+    assert workflows.count("scripts/check_security_exceptions.py") == 2
+    assert workflows.count("cargo-exception-tree.txt") >= 3
 
 
 def test_legacy_service_facades_stay_thin():
