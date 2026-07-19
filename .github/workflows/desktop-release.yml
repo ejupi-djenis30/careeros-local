@@ -54,20 +54,23 @@ jobs:
         uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4
         with:
           toolchain: stable
-      - name: Install locked application, tooling and audit dependencies
+      - name: Install locked application and audit dependencies
         run: |
           mkdir -p "$RUNNER_TEMP/careeros"
           python -m pip install --require-hashes --requirement requirements-dev.lock
-          python -m pip install --require-hashes --requirement requirements-tooling.lock
           npm ci --prefix frontend --ignore-scripts
           cargo install cargo-audit --version 0.22.2 --locked
           cargo install cargo-cyclonedx --version 0.5.9 --locked
           cargo install cargo-deny --version 0.20.2 --locked
-      - name: Smoke-test locked packaging tools
+      - name: Install and smoke-test locked packaging tools in isolation
         run: |
-          python -m PyInstaller --version
-          pip-compile --version
-          python -m pip check
+          tooling_venv="$RUNNER_TEMP/careeros-tooling"
+          python -m venv "$tooling_venv"
+          "$tooling_venv/bin/python" -m pip install \
+            --require-hashes --requirement requirements-tooling.lock
+          "$tooling_venv/bin/python" -m PyInstaller --version
+          "$tooling_venv/bin/pip-compile" --version
+          "$tooling_venv/bin/python" -m pip check
       - name: Audit Python and create evidence
         run: |
           python -m pip_audit --disable-pip --require-hashes --requirement requirements.lock

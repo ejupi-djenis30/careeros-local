@@ -225,10 +225,11 @@ def test_pull_request_gates_smoke_test_tooling_and_frontend_runtime():
     release = (ROOT / ".github/workflows/desktop-release.yml").read_text(encoding="utf-8")
     ci = (ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
 
-    assert "pip install --require-hashes --requirement requirements-tooling.lock" in release
-    assert "python -m PyInstaller --version" in release
-    assert "pip-compile --version" in release
-    assert "python -m pip check" in release
+    assert 'python -m venv "$tooling_venv"' in release
+    assert "--require-hashes --requirement requirements-tooling.lock" in release
+    assert '"$tooling_venv/bin/python" -m PyInstaller --version' in release
+    assert '"$tooling_venv/bin/pip-compile" --version' in release
+    assert '"$tooling_venv/bin/python" -m pip check' in release
 
     for command in (
         "--read-only",
