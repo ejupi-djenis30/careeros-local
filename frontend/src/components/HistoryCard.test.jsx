@@ -30,6 +30,24 @@ describe('HistoryCard', () => {
         expect(screen.getByText('Any location')).toBeInTheDocument();
     });
 
+    it('formats distances and counters with the selected interface locale', () => {
+        render(
+            <HistoryCard
+                profile={{
+                    ...mockProfile,
+                    posted_within_days: 12345,
+                    max_distance: 12345,
+                    schedule_interval_hours: 12345,
+                }}
+            />,
+            { language: 'it' },
+        );
+
+        expect(screen.getByText('Ultimi 12.345 giorni')).toBeInTheDocument();
+        expect(screen.getByText('12.345 km')).toBeInTheDocument();
+        expect(screen.getByText('Esecuzione automatica ogni 12.345 ore')).toBeInTheDocument();
+    });
+
     it('does not display schedule info if schedule is disabled', () => {
         const profileUnscheduled = { ...mockProfile, schedule_enabled: false };
         render(<HistoryCard profile={profileUnscheduled} />);

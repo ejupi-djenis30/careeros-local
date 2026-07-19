@@ -2,7 +2,9 @@ import React from "react";
 import { useI18n } from "../../i18n/useI18n";
 
 export function TargetQueue({ state, analyzedJobs, searches_generated, active_search_indices, completed_search_indices, activeItemRef, jobs_analyzed, jobs_analyze_total }) {
-    const { t } = useI18n();
+    const { language, t } = useI18n();
+    const locale = language === "it" ? "it-IT" : "en-GB";
+    const formatCount = (value) => Number(value || 0).toLocaleString(locale);
     // During searching, show analysis count badge if analysis is already running concurrently.
     const showAnalysisBadge = state === "searching" && (jobs_analyzed || 0) > 0;
     const activeIndices = new Set(active_search_indices || []);
@@ -20,7 +22,7 @@ export function TargetQueue({ state, analyzedJobs, searches_generated, active_se
                     </h6>
                     {showAnalysisBadge && (
                         <span className="badge bg-primary-10 text-primary border border-primary-20 rounded-pill font-monospace x-small">
-                            {t("searchProgress.analyzedCount", { current: jobs_analyzed, total: jobs_analyze_total || "?" })}
+                            {t("searchProgress.analyzedCount", { current: formatCount(jobs_analyzed), total: jobs_analyze_total ? formatCount(jobs_analyze_total) : "?" })}
                         </span>
                     )}
                 </div>
@@ -42,7 +44,7 @@ export function TargetQueue({ state, analyzedJobs, searches_generated, active_se
                                             )}
                                         </div>
                                         <div>
-                                            <div className="x-small text-uppercase tracking-wider opacity-50 mb-1 text-secondary">{t("searchProgress.targetOf", { current: j.idx, total: j.total })}</div>
+                                            <div className="x-small text-uppercase tracking-wider opacity-50 mb-1 text-secondary">{t("searchProgress.targetOf", { current: formatCount(j.idx), total: formatCount(j.total) })}</div>
                                             <div className={`small fw-medium font-monospace ${isCurrent ? 'text-primary' : 'text-secondary'}`}>{j.title}</div>
                                         </div>
                                     </li>

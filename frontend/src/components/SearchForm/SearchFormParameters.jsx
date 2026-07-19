@@ -11,7 +11,11 @@ const POSTED_PRESETS = [1, 3, 7, 14, 30];
 const DISTANCE_PRESETS = [25, 50, 100, 250];
 
 export function SearchFormParameters({ profile, handleChange, setProfile }) {
-    const { t } = useI18n();
+    const { language, t } = useI18n();
+    const locale = language === "it" ? "it-IT" : "en-GB";
+    const formatNumber = (value) => value === "" || value == null
+        ? ""
+        : Number(value).toLocaleString(locale);
     const toggleLanguage = (code) => {
         setProfile(prev => {
             const current = prev.preferred_languages || [];
@@ -74,7 +78,7 @@ export function SearchFormParameters({ profile, handleChange, setProfile }) {
                                 onClick={() => setProfile(prev => ({ ...prev, posted_within_days: days }))}
                                 className={`btn btn-sm px-2 py-0 rounded-pill ${profile.posted_within_days == days ? "btn-info text-dark fw-bold" : "btn-outline-secondary opacity-75"}`}
                             >
-                                {days}{t("searchForm.dayShort")}
+                                {formatNumber(days)}{t("searchForm.dayShort")}
                             </button>
                         ))}
                     </div>
@@ -84,7 +88,7 @@ export function SearchFormParameters({ profile, handleChange, setProfile }) {
             <div className="p-3 bg-white-5 rounded-3 border border-white-5">
                 <div className="d-flex justify-content-between mb-2">
                     <label className="form-label text-white small fw-bold text-uppercase x-small mb-0">{t("searchForm.maxDistance")}</label>
-                    <span className="x-small text-info fw-bold">{profile.max_distance} km</span>
+                    <span className="x-small text-info fw-bold">{formatNumber(profile.max_distance)} km</span>
                 </div>
                 <input
                     type="number"
@@ -103,7 +107,7 @@ export function SearchFormParameters({ profile, handleChange, setProfile }) {
                             onClick={() => setProfile(prev => ({ ...prev, max_distance: distance }))}
                             className={`btn btn-sm px-2 py-0 rounded-pill ${profile.max_distance == distance ? "btn-info text-dark fw-bold" : "btn-outline-secondary opacity-75"}`}
                         >
-                            {distance} km
+                            {formatNumber(distance)} km
                         </button>
                     ))}
                 </div>

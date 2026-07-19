@@ -12,12 +12,14 @@ export function ProgressHeader({
     handleStop,
     onClear
 }) {
-    const { t } = useI18n();
+    const { language, t } = useI18n();
+    const locale = language === "it" ? "it-IT" : "en-GB";
+    const formatCount = (value) => Number(value || 0).toLocaleString(locale);
     const completedCount = searches_completed || 0;
     const activeCount = (active_search_indices || []).length;
     const searchSubtitle = activeCount > 0
-        ? t(activeCount === 1 ? "searchProgress.executingOne" : "searchProgress.executingMany", { active: activeCount, completed: completedCount, total: total_searches })
-        : t("searchProgress.processed", { completed: completedCount, total: total_searches });
+        ? t(activeCount === 1 ? "searchProgress.executingOne" : "searchProgress.executingMany", { active: formatCount(activeCount), completed: formatCount(completedCount), total: formatCount(total_searches) })
+        : t("searchProgress.processed", { completed: formatCount(completedCount), total: formatCount(total_searches) });
 
     return (
         <div className="d-flex flex-wrap justify-content-between align-items-center gap-4 mb-4">

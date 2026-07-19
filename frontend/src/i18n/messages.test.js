@@ -21,6 +21,8 @@ describe("message catalogue contract", () => {
         const en = createTranslator("en");
         const it = createTranslator("it");
 
+        expect(en("progressPage.state.reserved")).toBe("preparing");
+        expect(it("progressPage.state.reserved")).toBe("in preparazione");
         expect(en("historyCard.lastDays", { count: 7 })).toBe("Last 7 days");
         expect(it("historyCard.lastDays", { count: 7 })).toBe("Ultimi 7 giorni");
         expect(en("searchProgress.analyzingTargetsCount", { current: 2, total: 5 })).toBe("Analyzing jobs (2/5)…");

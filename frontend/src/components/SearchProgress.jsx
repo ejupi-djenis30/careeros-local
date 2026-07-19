@@ -11,7 +11,9 @@ export function SearchProgress({ profileId, status, onStateChange, onClear }) {
     const logEndRef = useRef(null);
     const reportedState = useRef(null);
     const { showToast } = useToast();
-    const { t } = useI18n();
+    const { language, t } = useI18n();
+    const locale = language === "it" ? "it-IT" : "en-GB";
+    const formatCount = (value) => Number(value || 0).toLocaleString(locale);
     const displayStatus = status;
 
     useEffect(() => {
@@ -54,13 +56,13 @@ export function SearchProgress({ profileId, status, onStateChange, onClear }) {
             : 0;
         _rawProgressPct = Math.max(searchPct, analysisPct);
         if (_analysisRunning) {
-            analyzingText = t("searchProgress.analyzingTargetsCount", { current: _jobsAnalyzed, total: _jobsAnalyzeTotal });
+            analyzingText = t("searchProgress.analyzingTargetsCount", { current: formatCount(_jobsAnalyzed), total: formatCount(_jobsAnalyzeTotal) });
         }
     } else if (_state === "analyzing") {
         _rawProgressPct = 90;
         if (_analysisRunning) {
             _rawProgressPct = 90 + Math.round((_jobsAnalyzed / _jobsAnalyzeTotal) * 10);
-            analyzingText = t("searchProgress.analyzingTargetsCount", { current: _jobsAnalyzed, total: _jobsAnalyzeTotal });
+            analyzingText = t("searchProgress.analyzingTargetsCount", { current: formatCount(_jobsAnalyzed), total: formatCount(_jobsAnalyzeTotal) });
         }
     } else if (_isDone) {
         _rawProgressPct = 100;
@@ -155,7 +157,7 @@ export function SearchProgress({ profileId, status, onStateChange, onClear }) {
                 const itemIndex = index + 1;
                 const title = typeof entry === 'string'
                     ? entry
-                    : entry?.title || t("searchProgress.target", { index: itemIndex });
+                    : entry?.title || t("searchProgress.target", { index: formatCount(itemIndex) });
                 const isDone = itemIndex <= completedCount;
                 const isCurrent = !isDone && itemIndex === currentIndex;
                 return {
@@ -228,14 +230,14 @@ export function SearchProgress({ profileId, status, onStateChange, onClear }) {
                             label: t("searchProgress.duplicates"),
                             value: duplicateTotal,
                             color: 'text-warning',
-                            detail: `R ${duplicateRuntime} H ${duplicateHistory} C ${duplicateCatalogConflicts}`,
+                            detail: `R ${formatCount(duplicateRuntime)} H ${formatCount(duplicateHistory)} C ${formatCount(duplicateCatalogConflicts)}`,
                         },
                         { label: t("searchProgress.skipped"), value: jobs_skipped, color: 'text-secondary' },
                         { label: t("searchProgress.errors"), value: errors, color: 'text-danger' }
                     ].map((stat, i) => (
                         <div key={i} className="col-4 col-md">
                             <div className="p-3 rounded-4 bg-black-20 border border-white-5 text-center h-100 d-flex flex-column justify-content-center">
-                                <div className={`display-6 fw-bold mb-0 ${stat.color}`} style={{ fontSize: '1.75rem' }}>{stat.value || 0}</div>
+                                <div className={`display-6 fw-bold mb-0 ${stat.color}`} style={{ fontSize: '1.75rem' }}>{formatCount(stat.value)}</div>
                                 <div className="text-secondary x-small text-uppercase tracking-wide opacity-75 mt-1">{stat.label}</div>
                                 {stat.detail ? (
                                     <div className="text-secondary x-small opacity-60 mt-1">{stat.detail}</div>

@@ -2,7 +2,8 @@ import React from "react";
 import { useI18n } from "../../i18n/useI18n";
 
 export function ProgressBar({ state, isDone, isError, isRunning, progressPct, analyzingText, current_query }) {
-    const { t } = useI18n();
+    const { language, t } = useI18n();
+    const locale = language === "it" ? "it-IT" : "en-GB";
     if (state === "pending") return null;
 
     return (
@@ -17,7 +18,7 @@ export function ProgressBar({ state, isDone, isError, isRunning, progressPct, an
             )}
             <div className="d-flex justify-content-between text-secondary x-small fw-bold text-uppercase tracking-wider mb-2">
                 <span>{t("searchProgress.progress")}</span>
-                <span className="text-white">{isDone ? '100%' : `${progressPct}%`}</span>
+                <span className="text-white">{`${Number(isDone ? 100 : progressPct).toLocaleString(locale)}%`}</span>
             </div>
             <div className="progress bg-black-50 border border-white-5" style={{ height: "8px", borderRadius: "8px" }}>
                 <div

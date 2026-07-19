@@ -4,6 +4,7 @@ import { useI18n } from '../i18n/useI18n';
 export const HistoryCard = memo(function HistoryCard({ profile, onStartSearch, onStartSearchWithOptions, onUseAsTemplate, onSaveAsSchedule, isLoading, isDisabled }) {
     const { language, t } = useI18n();
     const locale = language === "it" ? "it-IT" : "en-GB";
+    const formatNumber = (value) => Number(value).toLocaleString(locale);
     const displayName = (profile.name && profile.name.trim()) || t("historyCard.untitled");
     const advPrefs = profile.advanced_preferences || {};
     const languages = advPrefs.preferred_languages || profile.preferred_languages || [];
@@ -112,7 +113,7 @@ export const HistoryCard = memo(function HistoryCard({ profile, onStartSearch, o
                 </span>
                 <span className="d-flex align-items-center" title={t("historyCard.timeRange")}>
                     <i className="bi bi-calendar me-1 text-primary"></i>
-                    {t(postedDays === 1 ? "historyCard.lastDay" : "historyCard.lastDays", { count: postedDays })}
+                    {t(Number(postedDays) === 1 ? "historyCard.lastDay" : "historyCard.lastDays", { count: formatNumber(postedDays) })}
                 </span>
                 {profile.workload_filter && (
                     <span className="d-flex align-items-center" title={t("historyCard.workload")}>
@@ -123,7 +124,7 @@ export const HistoryCard = memo(function HistoryCard({ profile, onStartSearch, o
                 {profile.max_distance && (
                     <span className="d-flex align-items-center" title={t("historyCard.maxDistance")}>
                         <i className="bi bi-signpost-2 me-1 text-primary"></i>
-                        {profile.max_distance}km
+                        {formatNumber(profile.max_distance)} km
                     </span>
                 )}
                 {profile.contract_type && profile.contract_type !== "any" && (
@@ -147,13 +148,13 @@ export const HistoryCard = memo(function HistoryCard({ profile, onStartSearch, o
                 {salaryMin && (
                     <span className="d-flex align-items-center" title={t("historyCard.minimumSalary")}>
                         <i className="bi bi-cash me-1 text-primary"></i>
-                        CHF {Number(salaryMin).toLocaleString(locale)}+
+                        CHF {formatNumber(salaryMin)}+
                     </span>
                 )}
                 {profile.schedule_enabled && (
                     <span className="text-success fw-medium d-flex align-items-center">
                         <i className="bi bi-check-circle-fill me-1"></i>
-                        {t(scheduleHours === 1 ? "historyCard.autoEveryHour" : "historyCard.autoEvery", { hours: scheduleHours })}
+                        {t(Number(scheduleHours) === 1 ? "historyCard.autoEveryHour" : "historyCard.autoEvery", { hours: formatNumber(scheduleHours) })}
                     </span>
                 )}
             </div>

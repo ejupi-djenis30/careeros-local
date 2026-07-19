@@ -4,7 +4,8 @@ import { useI18n } from "../../i18n/useI18n";
 const SCHEDULE_PRESETS = [6, 12, 24];
 
 export function SearchFormAdvanced({ profile, handleChange, setProfile, existingNames = [] }) {
-    const { t } = useI18n();
+    const { language, t } = useI18n();
+    const locale = language === "it" ? "it-IT" : "en-GB";
     // A profile is considered "existing" (re-run) when it has a non-null id
     const isRerun = profile.id != null;
     const nameIsDuplicate = profile.name.trim() && existingNames.includes(profile.name.trim().toLowerCase());
@@ -50,7 +51,7 @@ export function SearchFormAdvanced({ profile, handleChange, setProfile, existing
                                     onClick={() => setProfile(prev => ({ ...prev, schedule_interval_hours: h }))}
                                     className={"btn " + (profile.schedule_interval_hours == h ? 'btn-light text-dark fw-bold' : 'btn-outline-secondary')}
                                 >
-                                    {h}h
+                                    {h.toLocaleString(locale)} h
                                 </button>
                             ))}
                         </div>
