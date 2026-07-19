@@ -198,11 +198,14 @@ Project and evidence:
 - [x] Publish the source release and demo media at
   [`v1.0.0`](https://github.com/ejupi-djenis30/careeros-local/releases/tag/v1.0.0), with exact
   locked setup and verification instructions. No signed installer is claimed.
+- [x] Publish the unsigned six-platform community packages at
+  [`v1.0.2`](https://github.com/ejupi-djenis30/careeros-local/releases/tag/v1.0.2), with checksums,
+  supply-chain evidence and GitHub build-provenance attestations.
 - [x] Update the public repository description to the CareerOS Local positioning.
 - [ ] Link public commits or a comparison that demonstrates the significant Build Week
   extension of the pre-existing project.
-- [ ] Verify the exact demo build against backend, frontend, Rust, migration, and packaged-app
-  checks; report any skips honestly.
+- [x] Verify the exact release build against backend, frontend, Rust, migration and packaged-app
+  checks in the [`v1.0.2` release evidence](../specs/001-desktop-career-agent/release-evidence-v1.0.2.md).
 
 Hackathon requirements:
 
@@ -214,8 +217,8 @@ Hackathon requirements:
   under three minutes.
 - [ ] Review the populated description in the owner's voice and remove every unverified claim.
 - [ ] Fill all required Devpost fields and preview every external link in a signed-out browser.
-- [ ] Change the Devpost project from its current pre-draft state to `Submitted` before the
-  deadline.
+- [ ] Change the Devpost project from its current published-but-unsubmitted state to `Submitted`
+  before the deadline.
 - [ ] Re-open the project after submission and verify Devpost displays `Submitted` and a
   submission timestamp; save a confirmation screenshot.
 

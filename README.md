@@ -171,7 +171,8 @@ hackathon material remains in the [Devpost submission kit](docs/devpost.md).
 - [Release process](docs/releasing.md)
 - [Devpost submission kit](docs/devpost.md)
 - [Product specification](specs/001-desktop-career-agent/spec.md)
-- [Release evidence](specs/001-desktop-career-agent/release-evidence.md)
+- [v1.0.2 release evidence](specs/001-desktop-career-agent/release-evidence-v1.0.2.md)
+- [Historical v1.0.0 Windows evidence](specs/001-desktop-career-agent/release-evidence.md)
 - [Contributing guide](CONTRIBUTING.md)
 - [Changelog](CHANGELOG.md)
 

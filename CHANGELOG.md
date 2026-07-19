@@ -5,7 +5,15 @@ All notable changes to CareerOS Local are documented here. The format follows
 
 ## [Unreleased]
 
-No unreleased changes.
+### Added
+
+- Public v1.0.2 release evidence with the six-platform verification runs, package sizes,
+  digests and provenance-verification command.
+
+### Changed
+
+- Devpost and README links now point to the verified native release while retaining the
+  historical v1.0.0 evidence.
 
 ## [1.0.2] - 2026-07-19
 
