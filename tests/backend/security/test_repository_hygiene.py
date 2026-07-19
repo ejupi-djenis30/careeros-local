@@ -1,4 +1,8 @@
+import json
 import os
+import subprocess
+import sys
+import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[3]
@@ -118,6 +122,125 @@ def test_release_workflow_uploads_each_native_extension_explicitly():
         assert f"release/bundle/**/*.{extension}" in workflow
     assert "name: verified-release-assets" in workflow
     assert "needs: assemble-release" in workflow
+
+
+def test_security_exception_manifest_is_scoped_and_expiry_is_enforced():
+    manifest = json.loads((ROOT / "security-exceptions.json").read_text(encoding="utf-8"))
+    assert manifest == {
+        "exceptions": [
+            {
+                "id": "CE-2026-001",
+                "advisory": "RUSTSEC-2024-0429",
+                "dependency": "glib",
+                "version": "0.18.5",
+                "cargo_lock": "frontend/src-tauri/Cargo.lock",
+                "scope": "linux-desktop-transitive",
+                "expires": "2026-10-19",
+            }
+        ]
+    }
+
+    checker = ROOT / "scripts/check_security_exceptions.py"
+    before_expiry = subprocess.run(
+        [sys.executable, str(checker), "--today", "2026-10-18"],
+        capture_output=True,
+        check=False,
+        text=True,
+    )
+    at_expiry = subprocess.run(
+        [sys.executable, str(checker), "--today", "2026-10-19"],
+        capture_output=True,
+        check=False,
+        text=True,
+    )
+    assert before_expiry.returncode == 0
+    assert at_expiry.returncode == 1
+    assert "CE-2026-001 expired on 2026-10-19" in at_expiry.stdout
+
+
+def test_security_exception_checker_rejects_stale_lock_and_version():
+    manifest = json.loads((ROOT / "security-exceptions.json").read_text(encoding="utf-8"))
+    checker = ROOT / "scripts/check_security_exceptions.py"
+
+    with tempfile.TemporaryDirectory(prefix="careeros-security-") as temporary_directory:
+        temporary_path = Path(temporary_directory)
+        stale_version = json.loads(json.dumps(manifest))
+        stale_version["exceptions"][0]["version"] = "0.18.4"
+        stale_version_path = temporary_path / "stale-version.json"
+        stale_version_path.write_text(json.dumps(stale_version), encoding="utf-8")
+        version_result = subprocess.run(
+            [
+                sys.executable,
+                str(checker),
+                "--manifest",
+                str(stale_version_path),
+                "--today",
+                "2026-10-18",
+            ],
+            capture_output=True,
+            check=False,
+            text=True,
+        )
+        assert version_result.returncode == 1
+        assert "no longer matches glib 0.18.4" in version_result.stdout
+
+        stale_lock = json.loads(json.dumps(manifest))
+        stale_lock["exceptions"][0]["cargo_lock"] = "frontend/src-tauri/Cargo.lock.missing"
+        stale_lock_path = temporary_path / "stale-lock.json"
+        stale_lock_path.write_text(json.dumps(stale_lock), encoding="utf-8")
+        lock_result = subprocess.run(
+            [
+                sys.executable,
+                str(checker),
+                "--manifest",
+                str(stale_lock_path),
+                "--today",
+                "2026-10-18",
+            ],
+            capture_output=True,
+            check=False,
+            text=True,
+        )
+        assert lock_result.returncode == 1
+        assert "cannot read" in lock_result.stdout
+        assert "Cargo.lock.missing" in lock_result.stdout
+
+
+def test_cargo_audit_exception_is_narrow_and_evidence_is_uploaded():
+    workflows = {
+        path: (ROOT / path).read_text(encoding="utf-8")
+        for path in (".github/workflows/ci.yml", ".github/workflows/desktop-release.yml")
+    }
+    scoped_command = "cargo audit --deny unsound --ignore RUSTSEC-2024-0429"
+    for workflow in workflows.values():
+        assert workflow.count(scoped_command) == 1
+        assert workflow.count("scripts/check_security_exceptions.py") == 1
+        assert "cargo audit --no-fetch --json" in workflow
+        assert "rust-audit.json" in workflow
+        assert "security-exceptions.json" in workflow
+        assert "cargo-exception-tree.txt" in workflow
+
+
+def test_pull_request_gates_smoke_test_tooling_and_frontend_runtime():
+    release = (ROOT / ".github/workflows/desktop-release.yml").read_text(encoding="utf-8")
+    ci = (ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
+
+    assert 'python -m venv "$tooling_venv"' in release
+    assert "--require-hashes --requirement requirements-tooling.lock" in release
+    assert '"$tooling_venv/bin/python" -m PyInstaller --version' in release
+    assert '"$tooling_venv/bin/pip-compile" --version' in release
+    assert '"$tooling_venv/bin/python" -m pip check' in release
+
+    for command in (
+        "--read-only",
+        "--cap-drop ALL",
+        "no-new-privileges:true",
+        '"nginx:nginx"',
+        "nginx -t",
+        "curl --fail",
+        "grep --quiet",
+    ):
+        assert command in ci
 
 
 def test_legacy_service_facades_stay_thin():
