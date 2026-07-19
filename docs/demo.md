@@ -41,13 +41,21 @@ The final `careeros-demo.webm` must remain below 10 MiB. The committed tour is a
 understandable while muted. A hackathon submission should still use the separate narrated
 under-three-minute plan in `docs/devpost.md`.
 
+## Watch online
+
+Use the [portfolio player](https://ejupi-djenis30.github.io/careeros-local/#demo) for browser
+playback or the [direct WebM URL](https://ejupi-djenis30.github.io/careeros-local/assets/careeros-demo.webm)
+to download the original. GitHub's repository file viewer does not preview WebM reliably and may
+show a generic file-size message even when the committed video is small; the GitHub Pages player
+serves this asset with the correct `video/webm` media type and byte-range support.
+
 ## Outputs
 
 | File | Purpose |
 | --- | --- |
-| `careeros-demo.webm` | Full GitHub product tour |
-| `careeros-demo-poster.jpg` | Clickable README preview |
-| `careeros-demo.gif` | Lightweight animated preview |
+| `careeros-demo.webm` | Full product tour streamed by the portfolio player |
+| `careeros-demo-poster.jpg` | Poster used by the portfolio video player |
+| `careeros-demo.gif` | Lightweight animated README preview |
 | `careeros-workspace.png` | Daily workspace capture |
 | `careeros-vault.png` | Career Vault capture |
 | `careeros-resume-studio.png` | Resume Studio capture |

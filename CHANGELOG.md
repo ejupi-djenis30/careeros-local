@@ -14,6 +14,8 @@ All notable changes to CareerOS Local are documented here. The format follows
 
 - Devpost and README links now point to the verified native release while retaining the
   historical v1.0.0 evidence.
+- The README now embeds the lightweight animated tour and routes full-video playback through
+  GitHub Pages instead of GitHub's unsupported WebM file preview.
 
 ## [1.0.2] - 2026-07-19
 

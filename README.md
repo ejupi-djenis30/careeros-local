@@ -13,9 +13,10 @@ data should remain useful, inspectable and owned by the person it describes. It 
 structured Career Vault, evidence-backed resume production, opportunity matching, application
 tracking and optional on-device AI in one private workspace.
 
-[![Watch the 34-second CareerOS Local product tour](docs/assets/careeros-demo-poster.jpg)](docs/assets/careeros-demo.webm)
+[![Watch the 34-second CareerOS Local product tour](docs/assets/careeros-demo.gif)](https://ejupi-djenis30.github.io/careeros-local/#demo)
 
-**[Watch the 34-second product tour](docs/assets/careeros-demo.webm)** ·
+**[Watch the 34-second product tour](https://ejupi-djenis30.github.io/careeros-local/#demo)** ·
+[Direct WebM download](https://ejupi-djenis30.github.io/careeros-local/assets/careeros-demo.webm) ·
 [Open the portfolio site](https://ejupi-djenis30.github.io/careeros-local/) ·
 [View the Devpost project](https://devpost.com/software/careeros-local) ·
 [View releases](https://github.com/ejupi-djenis30/careeros-local/releases) ·
