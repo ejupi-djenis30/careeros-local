@@ -7,6 +7,7 @@ Covers:
 - _persist: missing user is a no-op
 """
 
+import logging
 from unittest.mock import MagicMock
 
 from backend.services.preference_service import (
@@ -166,11 +167,37 @@ class TestComputeAndSavePreferences:
         assert db.add.called
         assert db.commit.called
 
-    def test_returns_empty_dict_on_exception(self):
+    def test_returns_empty_dict_without_logging_untrusted_failure_details(self, caplog):
+        caplog.set_level(logging.ERROR, logger="backend.services.preference_service")
         db = MagicMock()
-        db.query.side_effect = RuntimeError("DB exploded")
-        result = compute_and_save_preferences(1, db)
+        db.query.side_effect = RuntimeError("private database detail\r\nFORGED-PREFERENCE-LOG")
+        forged_user_id = "7\r\nFORGED-PREFERENCE-IDENTIFIER"
+
+        result = compute_and_save_preferences(forged_user_id, db)  # type: ignore[arg-type]
+
         assert result == {}
+        assert "private database detail" not in caplog.text
+        assert "FORGED-PREFERENCE" not in caplog.text
+        assert [
+            record.getMessage()
+            for record in caplog.records
+            if record.name == "backend.services.preference_service"
+        ] == ["preference_service: failed to compute signals"]
+
+    def test_missing_user_log_excludes_untrusted_identifier(self, caplog):
+        caplog.set_level(logging.WARNING, logger="backend.services.preference_service")
+        db = _make_db(jobs=[], user=None)
+        forged_user_id = "7\r\nFORGED-MISSING-USER-LOG"
+
+        result = compute_and_save_preferences(forged_user_id, db)  # type: ignore[arg-type]
+
+        assert result["signal_count"] == 0
+        assert "FORGED-MISSING-USER-LOG" not in caplog.text
+        assert [
+            record.getMessage()
+            for record in caplog.records
+            if record.name == "backend.services.preference_service"
+        ] == ["preference_service: user not found; skipping persist"]
 
 
 # ─── get_preference_signals ────────────────────────────────────────────────────
@@ -244,8 +271,17 @@ class TestComputeSalaryBenchmark:
         assert "p75" in result
         assert result["n"] == 7
 
-    def test_returns_none_on_db_exception(self):
+    def test_returns_none_on_db_exception_without_logging_private_context(self, caplog):
+        caplog.set_level(logging.ERROR, logger="backend.services.preference_service")
         db = MagicMock()
-        db.query.side_effect = RuntimeError("boom")
-        result = compute_salary_benchmark("it", None, db)
+        db.query.side_effect = RuntimeError("private benchmark detail\r\nFORGED-BENCHMARK-LOG")
+        result = compute_salary_benchmark("it\r\nFORGED-DOMAIN-LOG", None, db)
+
         assert result is None
+        assert "private benchmark detail" not in caplog.text
+        assert "FORGED-" not in caplog.text
+        assert [
+            record.getMessage()
+            for record in caplog.records
+            if record.name == "backend.services.preference_service"
+        ] == ["compute_salary_benchmark: failed"]

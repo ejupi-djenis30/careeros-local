@@ -1,3 +1,4 @@
+import logging
 from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -39,6 +40,20 @@ def test_add_schedule():
         args, kwargs = mock_scheduler.add_job.call_args
         assert kwargs["id"] == "search_profile_1"
         assert kwargs["args"] == [1]
+
+
+def test_add_schedule_rejects_forged_profile_id_before_scheduler_access(caplog):
+    caplog.set_level(logging.INFO, logger="backend.services.scheduler")
+    forged_profile_id = "1\r\nFORGED-SCHEDULE-LOG"
+
+    with (
+        patch("backend.services.scheduler.get_scheduler") as mock_get_scheduler,
+        pytest.raises(ValueError, match="positive integer"),
+    ):
+        add_schedule(forged_profile_id, 24)  # type: ignore[arg-type]
+
+    mock_get_scheduler.assert_not_called()
+    assert "FORGED-SCHEDULE-LOG" not in caplog.text
 
 
 def test_remove_schedule():
@@ -85,13 +100,17 @@ async def test_run_scheduled_search_success():
     with (
         patch("backend.services.scheduler.SessionLocal", return_value=mock_db),
         patch("backend.services.scheduler.get_search_service", return_value=mock_search_service),
-        patch("backend.services.scheduler.reserve_task", return_value="token-1") as mock_reserve,
+        patch(
+            "backend.services.scheduler.reserve_task", return_value="reservation-1"
+        ) as mock_reserve,
         patch("backend.services.scheduler.release_task") as mock_release,
     ):
         await _run_scheduled_search(1)
 
         mock_reserve.assert_called_once_with(1, return_token=True)
-        mock_search_service.run_search.assert_awaited_once_with(1, reservation_token="token-1")
+        mock_search_service.run_search.assert_awaited_once_with(
+            1, reservation_token="reservation-1"
+        )
         mock_db.commit.assert_called_once()
         assert mock_profile.last_scheduled_run is not None
         # release_task should NOT be called on a successful run (run_search handles task lifecycle)
@@ -110,6 +129,30 @@ async def test_run_scheduled_search_skipped_when_already_running():
         await _run_scheduled_search(1)
 
     mock_search_service.run_search.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_run_scheduled_search_rejects_forged_profile_id_without_logging_it(caplog):
+    caplog.set_level(logging.WARNING, logger="backend.services.scheduler")
+    forged_profile_id = "1\r\nFORGED-SCHEDULER-ENTRY"
+
+    with (
+        patch("backend.services.scheduler.settings.OFFLINE_MODE", False),
+        patch("backend.services.scheduler.reserve_task") as mock_reserve,
+        patch("backend.services.scheduler.SessionLocal") as mock_session,
+    ):
+        await _run_scheduled_search(forged_profile_id)  # type: ignore[arg-type]
+
+    mock_reserve.assert_not_called()
+    mock_session.assert_not_called()
+    messages = [
+        record.getMessage()
+        for record in caplog.records
+        if record.name == "backend.services.scheduler"
+    ]
+    assert messages == ["[Scheduler] Rejected scheduled search with invalid profile id"]
+    assert "FORGED-SCHEDULER-ENTRY" not in caplog.text
+    assert all("\r" not in message and "\n" not in message for message in messages)
 
 
 @pytest.mark.asyncio
@@ -132,13 +175,13 @@ async def test_run_scheduled_search_profile_not_found():
 
     with (
         patch("backend.services.scheduler.SessionLocal", return_value=mock_db),
-        patch("backend.services.scheduler.reserve_task", return_value="token-2"),
+        patch("backend.services.scheduler.reserve_task", return_value="reservation-2"),
         patch("backend.services.scheduler.release_task") as mock_release,
         patch("backend.services.scheduler.remove_schedule") as mock_remove,
     ):
         await _run_scheduled_search(1)
         mock_remove.assert_called_once_with(1)
-        mock_release.assert_called_once_with(1, "token-2")
+        mock_release.assert_called_once_with(1, "reservation-2")
 
 
 @pytest.mark.asyncio
@@ -152,13 +195,13 @@ async def test_run_scheduled_search_disabled():
 
     with (
         patch("backend.services.scheduler.SessionLocal", return_value=mock_db),
-        patch("backend.services.scheduler.reserve_task", return_value="token-3"),
+        patch("backend.services.scheduler.reserve_task", return_value="reservation-3"),
         patch("backend.services.scheduler.release_task") as mock_release,
         patch("backend.services.scheduler.get_search_service", return_value=mock_search_service),
     ):
         await _run_scheduled_search(1)
         mock_search_service.run_search.assert_not_awaited()
-        mock_release.assert_called_once_with(1, "token-3")
+        mock_release.assert_called_once_with(1, "reservation-3")
 
 
 def test_start_scheduler():
@@ -190,7 +233,8 @@ def test_stop_scheduler():
 
 
 @pytest.mark.asyncio
-async def test_run_scheduled_search_exception():
+async def test_run_scheduled_search_exception_does_not_log_exception_details(caplog):
+    caplog.set_level(logging.INFO, logger="backend.services.scheduler")
     mock_db = MagicMock()
     mock_profile = MagicMock()
     mock_profile.id = 1
@@ -199,26 +243,39 @@ async def test_run_scheduled_search_exception():
 
     with (
         patch("backend.services.scheduler.SessionLocal", return_value=mock_db),
-        patch("backend.services.scheduler.reserve_task", return_value="token-4"),
+        patch("backend.services.scheduler.reserve_task", return_value="reservation-4"),
         patch("backend.services.scheduler.release_task") as mock_release,
-        patch("backend.services.scheduler.get_search_service", side_effect=Exception("DB Failure")),
+        patch(
+            "backend.services.scheduler.get_search_service",
+            side_effect=Exception("private provider detail\r\nFORGED-SCHEDULER-FAILURE"),
+        ),
     ):
         await _run_scheduled_search(1)
         mock_db.close.assert_called_once()
         # Safety net: release_task must be called when run_search never registered the task
-        mock_release.assert_called_once_with(1, "token-4")
+        mock_release.assert_called_once_with(1, "reservation-4")
+
+    messages = [
+        record.getMessage()
+        for record in caplog.records
+        if record.name == "backend.services.scheduler"
+    ]
+    assert "private provider detail" not in caplog.text
+    assert "FORGED-SCHEDULER-FAILURE" not in caplog.text
+    assert all("\r" not in message and "\n" not in message for message in messages)
+    assert "[Scheduler] Scheduled search failed" in messages
 
 
 @pytest.mark.asyncio
 async def test_run_scheduled_search_releases_reservation_when_session_creation_fails():
     with (
         patch("backend.services.scheduler.SessionLocal", side_effect=RuntimeError("db offline")),
-        patch("backend.services.scheduler.reserve_task", return_value="token-5"),
+        patch("backend.services.scheduler.reserve_task", return_value="reservation-5"),
         patch("backend.services.scheduler.release_task") as mock_release,
     ):
         await _run_scheduled_search(1)
 
-    mock_release.assert_called_once_with(1, "token-5")
+    mock_release.assert_called_once_with(1, "reservation-5")
 
 
 def test_get_all_schedules_no_db_and_specific_user():
@@ -273,17 +330,28 @@ def test_start_scheduler_already_running():
         mock_scheduler.start.assert_not_called()
 
 
-def test_start_scheduler_exception():
+def test_start_scheduler_exception_does_not_log_exception_details(caplog):
+    caplog.set_level(logging.ERROR, logger="backend.services.scheduler")
     mock_scheduler = MagicMock()
     mock_scheduler.running = False
     mock_db = MagicMock()
-    mock_db.query.side_effect = Exception("DB Query Error")
+    mock_db.query.side_effect = Exception("private database detail\r\nFORGED-RESTORE-LOG")
 
     with (
         patch("backend.services.scheduler.get_scheduler", return_value=mock_scheduler),
         patch("backend.services.scheduler.SessionLocal", return_value=mock_db),
     ):
         start_scheduler()
+
+    messages = [
+        record.getMessage()
+        for record in caplog.records
+        if record.name == "backend.services.scheduler"
+    ]
+    assert messages == ["[Scheduler] Failed to load schedules"]
+    assert "private database detail" not in caplog.text
+    assert "FORGED-RESTORE-LOG" not in caplog.text
+    assert all("\r" not in message and "\n" not in message for message in messages)
 
 
 def test_get_all_schedules_pid_not_in_valid():

@@ -107,14 +107,24 @@ def _exclusive_storage_paths(db: Session, profile_id: str) -> set[str]:
     return paths
 
 
-def _stage_files(relative_paths: set[str], operation_id: Path) -> list[tuple[Path, Path]]:
+def _validated_user_id(user_id: int) -> int:
+    if isinstance(user_id, bool) or not isinstance(user_id, int) or user_id <= 0:
+        raise VaultDeletionError("Invalid user identifier for vault deletion")
+    return int(user_id)
+
+
+def _user_trash_namespace(user_id: int) -> str:
+    return f"user-{_validated_user_id(user_id):d}"
+
+
+def _stage_files(relative_paths: set[str], operation_id: str) -> list[tuple[Path, Path]]:
     staged: list[tuple[Path, Path]] = []
     try:
         for relative_path in sorted(relative_paths):
             source = resolve_data_path(relative_path)
             if not source.exists():
                 continue
-            destination = resolve_data_path(Path(".trash") / operation_id / relative_path)
+            destination = resolve_data_path(f".trash/{operation_id}/{relative_path}")
             destination.parent.mkdir(parents=True, exist_ok=True)
             if destination.exists():
                 raise VaultDeletionError("Deletion staging path already exists")
@@ -142,8 +152,9 @@ def _remove_staged_files_for_user(user_id: int) -> None:
     function runs; a failure therefore leaves the private files in the same
     discoverable namespace for the next complete-vault deletion attempt.
     """
+    namespace = _user_trash_namespace(user_id)
     try:
-        trash = resolve_data_path(Path(".trash") / f"user-{user_id}")
+        trash = resolve_data_path(f".trash/{namespace}")
         shutil.rmtree(trash, ignore_errors=False)
     except FileNotFoundError:
         return
@@ -177,9 +188,7 @@ def _finish_committed_deletion(db: Session, user_id: int) -> None:
         _remove_staged_files_for_user(user_id)
     except Exception as exc:
         file_cleanup_error = exc
-        logger.critical(
-            "Vault file cleanup failed for user_id=%s", user_id, exc_info=True
-        )
+        logger.critical("Vault file cleanup failed", exc_info=True)
 
     if sanitization_error is not None and file_cleanup_error is not None:
         raise VaultDeletionError(
@@ -201,22 +210,23 @@ def _finish_committed_deletion(db: Session, user_id: int) -> None:
 def delete_complete_vault(
     db: Session, user_id: int, *, erase_managed_runtime: bool = False
 ) -> dict[str, int]:
+    validated_user_id = _validated_user_id(user_id)
     with desktop_vault_lock():
-        operation_id = Path(f"user-{user_id}") / str(uuid.uuid4())
+        operation_id = f"{_user_trash_namespace(validated_user_id)}/{uuid.uuid4().hex}"
         staged: list[tuple[Path, Path]] = []
         try:
             _enable_sqlite_secure_delete(db)
             profile = (
                 db.query(CandidateProfile)
-                .filter(CandidateProfile.user_id == user_id)
+                .filter(CandidateProfile.user_id == validated_user_id)
                 .first()
             )
-            user = db.get(User, user_id)
+            user = db.get(User, validated_user_id)
             paths = _exclusive_storage_paths(db, profile.id) if profile else set()
             scraped_job_ids = {
                 scraped_job_id
                 for (scraped_job_id,) in db.query(Job.scraped_job_id)
-                .filter(Job.user_id == user_id)
+                .filter(Job.user_id == validated_user_id)
                 .distinct()
                 .all()
             }
@@ -228,7 +238,7 @@ def delete_complete_vault(
                         ScrapedJob.id.in_(scraped_job_ids),
                         ~exists().where(
                             Job.scraped_job_id == ScrapedJob.id,
-                            Job.user_id != user_id,
+                            Job.user_id != validated_user_id,
                         ),
                     )
                     .all()
@@ -239,9 +249,9 @@ def delete_complete_vault(
             counts = {
                 "profiles": 1 if profile else 0,
                 "search_profiles": db.query(SearchProfile)
-                .filter(SearchProfile.user_id == user_id)
+                .filter(SearchProfile.user_id == validated_user_id)
                 .count(),
-                "jobs": db.query(Job).filter(Job.user_id == user_id).count(),
+                "jobs": db.query(Job).filter(Job.user_id == validated_user_id).count(),
                 "scraped_jobs": len(exclusive_scraped_job_ids),
                 "preference_signals": int(
                     user is not None
@@ -251,13 +261,13 @@ def delete_complete_vault(
                     )
                 ),
                 "applications": db.query(Application)
-                .filter(Application.user_id == user_id)
+                .filter(Application.user_id == validated_user_id)
                 .count(),
                 "workflows": db.query(WorkflowRun)
-                .filter(WorkflowRun.user_id == user_id)
+                .filter(WorkflowRun.user_id == validated_user_id)
                 .count(),
                 "ai_executions": db.query(AIExecution)
-                .filter(AIExecution.user_id == user_id)
+                .filter(AIExecution.user_id == validated_user_id)
                 .count(),
                 "files": 0,
                 "model_files": 0,
@@ -266,23 +276,23 @@ def delete_complete_vault(
             staged = _stage_files(paths, operation_id)
             counts["files"] = len(staged)
 
-            db.query(AIExecution).filter(AIExecution.user_id == user_id).delete(
+            db.query(AIExecution).filter(AIExecution.user_id == validated_user_id).delete(
                 synchronize_session=False
             )
-            db.query(Application).filter(Application.user_id == user_id).delete(
+            db.query(Application).filter(Application.user_id == validated_user_id).delete(
                 synchronize_session=False
             )
-            db.query(WorkflowRun).filter(WorkflowRun.user_id == user_id).delete(
+            db.query(WorkflowRun).filter(WorkflowRun.user_id == validated_user_id).delete(
                 synchronize_session=False
             )
-            db.query(Job).filter(Job.user_id == user_id).delete(synchronize_session=False)
-            db.query(SearchProfile).filter(SearchProfile.user_id == user_id).delete(
+            db.query(Job).filter(Job.user_id == validated_user_id).delete(synchronize_session=False)
+            db.query(SearchProfile).filter(SearchProfile.user_id == validated_user_id).delete(
                 synchronize_session=False
             )
             if exclusive_scraped_job_ids:
-                db.query(ScrapedJob).filter(
-                    ScrapedJob.id.in_(exclusive_scraped_job_ids)
-                ).delete(synchronize_session=False)
+                db.query(ScrapedJob).filter(ScrapedJob.id.in_(exclusive_scraped_job_ids)).delete(
+                    synchronize_session=False
+                )
             if user is not None:
                 user.preference_signals = None
                 user.preference_updated_at = None
@@ -294,7 +304,7 @@ def delete_complete_vault(
             _restore_files(staged)
             raise
 
-        _finish_committed_deletion(db, user_id)
+        _finish_committed_deletion(db, validated_user_id)
 
         if erase_managed_runtime:
             counts.update(erase_managed_runtime_installation())

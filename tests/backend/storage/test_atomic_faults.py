@@ -55,3 +55,69 @@ def test_existing_durable_content_is_never_overwritten(monkeypatch):
 
         assert destination.read_bytes() == b"published version"
         assert list(data_dir.rglob(".write-*")) == []
+
+
+@pytest.mark.parametrize(
+    "unsafe_path",
+    [
+        "../outside.bin",
+        "assets/../../outside.bin",
+        "/absolute/path.bin",
+        "C:/Windows/system.ini",
+        r"C:\Windows\system.ini",
+        r"\\server\share\private.bin",
+        r"assets\..\outside.bin",
+        "assets//outside.bin",
+        "assets/./outside.bin",
+    ],
+)
+def test_resolve_data_path_rejects_non_portable_or_escaping_paths(monkeypatch, unsafe_path):
+    with TemporaryDirectory() as directory:
+        monkeypatch.setattr(settings, "DATA_DIR", directory)
+
+        with pytest.raises(ValueError):
+            resolve_data_path(unsafe_path)
+
+
+def test_resolve_data_path_accepts_canonical_string_and_path_inputs(monkeypatch):
+    with TemporaryDirectory() as directory:
+        root = Path(directory)
+        monkeypatch.setattr(settings, "DATA_DIR", directory)
+
+        assert resolve_data_path("assets/ab/file.bin") == root / "assets" / "ab" / "file.bin"
+        assert resolve_data_path(Path("assets") / "ab" / "file.bin") == (
+            root / "assets" / "ab" / "file.bin"
+        )
+
+
+def test_resolve_data_path_rejects_symlink_escape(monkeypatch):
+    with TemporaryDirectory() as data_directory, TemporaryDirectory() as outside_directory:
+        root = Path(data_directory)
+        outside = Path(outside_directory)
+        monkeypatch.setattr(settings, "DATA_DIR", data_directory)
+        link = root / "linked"
+        try:
+            link.symlink_to(outside, target_is_directory=True)
+        except OSError as exc:
+            pytest.skip(f"Directory symlinks are unavailable: {exc}")
+
+        with pytest.raises(ValueError, match="escapes"):
+            resolve_data_path("linked/private.bin")
+
+
+def test_resolve_data_path_rejects_sibling_prefix_symlink_escape(monkeypatch):
+    with TemporaryDirectory() as directory:
+        parent = Path(directory)
+        root = parent / "vault"
+        sibling = parent / "vault-copy"
+        root.mkdir()
+        sibling.mkdir()
+        monkeypatch.setattr(settings, "DATA_DIR", str(root))
+        link = root / "linked"
+        try:
+            link.symlink_to(sibling, target_is_directory=True)
+        except OSError as exc:
+            pytest.skip(f"Directory symlinks are unavailable: {exc}")
+
+        with pytest.raises(ValueError, match="escapes"):
+            resolve_data_path("linked/private.bin")

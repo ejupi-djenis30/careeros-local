@@ -1,6 +1,7 @@
 from datetime import datetime, timezone
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from typing import Any, cast
 
 import pytest
 from sqlalchemy import create_engine
@@ -38,9 +39,7 @@ def deletion_root(monkeypatch):
 def test_device_erasure_removes_owned_data_but_preserves_unrelated_files(
     client, auth_headers, db_session, test_user, deletion_root
 ):
-    profile = client.put(
-        "/api/v1/career-profile", json=PROFILE, headers=auth_headers
-    )
+    profile = client.put("/api/v1/career-profile", json=PROFILE, headers=auth_headers)
     assert profile.status_code == 200, profile.text
     source = client.post(
         "/api/v1/career-profile/sources",
@@ -200,7 +199,9 @@ def test_device_erasure_removes_legacy_search_data_and_preserves_shared_jobs(
     assert refreshed_user is not None
     assert refreshed_user.preference_signals is None
     assert refreshed_user.preference_updated_at is None
-    assert db_session.query(SearchProfile).filter(SearchProfile.user_id == test_user.id).count() == 0
+    assert (
+        db_session.query(SearchProfile).filter(SearchProfile.user_id == test_user.id).count() == 0
+    )
     assert db_session.query(Job).filter(Job.user_id == test_user.id).count() == 0
     assert db_session.get(ScrapedJob, exclusive_scraped_job_id) is None
     assert db_session.get(ScrapedJob, shared_scraped_job_id) is not None
@@ -212,9 +213,7 @@ def test_device_erasure_removes_legacy_search_data_and_preserves_shared_jobs(
 def test_device_erasure_sanitizes_sqlite_and_retries_staged_file_cleanup(
     client, auth_headers, db_session, test_user, deletion_root, monkeypatch
 ):
-    profile = client.put(
-        "/api/v1/career-profile", json=PROFILE, headers=auth_headers
-    )
+    profile = client.put("/api/v1/career-profile", json=PROFILE, headers=auth_headers)
     assert profile.status_code == 200, profile.text
     source = client.post(
         "/api/v1/career-profile/sources",
@@ -276,6 +275,25 @@ def test_device_erasure_sanitizes_sqlite_and_retries_staged_file_cleanup(
     assert other_user_file.read_bytes() == b"other-account"
 
 
+@pytest.mark.parametrize("unsafe_user_id", [0, -1, True, "../other-user"])
+def test_vault_deletion_rejects_invalid_user_id_before_resolving_storage(
+    db_session, monkeypatch, unsafe_user_id
+):
+    path_resolution_attempted = False
+
+    def fail_if_resolved(_relative_path):
+        nonlocal path_resolution_attempted
+        path_resolution_attempted = True
+        raise AssertionError("Invalid user IDs must not reach path resolution")
+
+    monkeypatch.setattr(deletion, "resolve_data_path", fail_if_resolved)
+
+    with pytest.raises(deletion.VaultDeletionError, match="Invalid user identifier"):
+        deletion.delete_complete_vault(db_session, cast(Any, unsafe_user_id))
+
+    assert path_resolution_attempted is False
+
+
 def test_sqlite_vault_sanitization_truncates_wal_without_session_transaction():
     with TemporaryDirectory() as directory:
         database_path = Path(directory) / "vault.db"
@@ -314,7 +332,10 @@ def test_sqlite_vault_sanitization_truncates_wal_without_session_transaction():
 
             assert not wal_path.exists() or wal_path.stat().st_size == 0
             with engine.connect() as connection:
-                assert connection.exec_driver_sql("SELECT COUNT(*) FROM private_rows").scalar_one() == 0
+                assert (
+                    connection.exec_driver_sql("SELECT COUNT(*) FROM private_rows").scalar_one()
+                    == 0
+                )
             files_with_sentinel = [
                 path.name
                 for path in (database_path, wal_path, shm_path)

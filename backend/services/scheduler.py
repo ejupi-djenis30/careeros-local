@@ -23,6 +23,24 @@ logger = logging.getLogger(__name__)
 _scheduler: AsyncIOScheduler | None = None
 
 
+def _validated_profile_id(value: object) -> int:
+    """Return a positive integer profile identifier or reject the input.
+
+    Scheduler entry points are also called from background jobs, so their runtime
+    inputs cannot rely solely on API type validation.
+    """
+    if isinstance(value, bool) or not isinstance(value, int) or value < 1:
+        raise ValueError("profile_id must be a positive integer")
+    return value
+
+
+def _normalized_interval_hours(value: object) -> int:
+    """Preserve the 24-hour fallback for invalid scheduler intervals."""
+    if isinstance(value, bool) or not isinstance(value, int) or value < 1:
+        return 24
+    return value
+
+
 def get_scheduler() -> AsyncIOScheduler:
     """Get or create the global scheduler."""
     global _scheduler
@@ -33,19 +51,22 @@ def get_scheduler() -> AsyncIOScheduler:
 
 async def _run_scheduled_search(profile_id: int):
     """Execute a scheduled search for the given profile."""
+    try:
+        profile_id = _validated_profile_id(profile_id)
+    except ValueError:
+        logger.warning("[Scheduler] Rejected scheduled search with invalid profile id")
+        return
+
     if settings.OFFLINE_MODE is True:
         logger.info("[Scheduler] Skipping scheduled search because offline mode is active")
         return
-    logger.info(f"[Scheduler] Running scheduled search for profile {profile_id}")
+    logger.info("[Scheduler] Running scheduled search")
 
     # Respect the same reservation lifecycle as manual searches so that a
     # scheduled run cannot overlap with a manually-triggered run on any worker.
     reservation_token = reserve_task(profile_id, return_token=True)
     if not reservation_token:
-        logger.info(
-            "[Scheduler] Skipping scheduled search for profile %d — a search is already running",
-            profile_id,
-        )
+        logger.info("[Scheduler] Skipping scheduled search because one is already running")
         return
 
     db: Session | None = None
@@ -54,13 +75,13 @@ async def _run_scheduled_search(profile_id: int):
         profile_repo = ProfileRepository(db)
         profile = profile_repo.get(profile_id)
         if not profile:
-            logger.warning(f"[Scheduler] Profile {profile_id} not found, removing job")
+            logger.warning("[Scheduler] Profile not found; removing schedule")
             release_task(profile_id, reservation_token)
             remove_schedule(profile_id)
             return
 
         if not profile.schedule_enabled:
-            logger.info(f"[Scheduler] Profile {profile_id} schedule disabled, skipping")
+            logger.info("[Scheduler] Schedule disabled; skipping scheduled search")
             release_task(profile_id, reservation_token)
             return
 
@@ -72,11 +93,13 @@ async def _run_scheduled_search(profile_id: int):
         search_service = get_search_service(db)
         await search_service.run_search(profile_id, reservation_token=reservation_token)
 
-        logger.info(f"[Scheduler] Completed scheduled search for profile {profile_id}")
-    except Exception as e:
+        logger.info("[Scheduler] Completed scheduled search")
+    except Exception:
         # Safety net: release the reservation if run_search never registered the task.
         release_task(profile_id, reservation_token)
-        logger.error(f"[Scheduler] Error running scheduled search for profile {profile_id}: {e}")
+        # Exception messages may contain imported profile or provider data. The
+        # event is sufficient for diagnostics without exposing exception details.
+        logger.error("[Scheduler] Scheduled search failed")
     finally:
         if db is not None:
             db.close()
@@ -84,8 +107,8 @@ async def _run_scheduled_search(profile_id: int):
 
 def add_schedule(profile_id: int, interval_hours: int):
     """Add or update a scheduled search job."""
-    if not interval_hours or interval_hours < 1:
-        interval_hours = 24
+    profile_id = _validated_profile_id(profile_id)
+    interval_hours = _normalized_interval_hours(interval_hours)
     scheduler = get_scheduler()
     job_id = f"search_profile_{profile_id}"
 
@@ -103,17 +126,18 @@ def add_schedule(profile_id: int, interval_hours: int):
         name=f"Scheduled search: Profile {profile_id}",
         replace_existing=True,
     )
-    logger.info(f"[Scheduler] Added schedule for profile {profile_id}: every {interval_hours}h")
+    logger.info("[Scheduler] Added schedule")
 
 
 def remove_schedule(profile_id: int):
     """Remove a scheduled search job."""
+    profile_id = _validated_profile_id(profile_id)
     scheduler = get_scheduler()
     job_id = f"search_profile_{profile_id}"
     existing = scheduler.get_job(job_id)
     if existing:
         scheduler.remove_job(job_id)
-        logger.info(f"[Scheduler] Removed schedule for profile {profile_id}")
+        logger.info("[Scheduler] Removed schedule")
 
 
 def get_all_schedules(user_id: int = None, db: Session = None) -> list[dict]:
@@ -166,13 +190,12 @@ def start_scheduler():
         profiles = profile_repo.get_scheduled_profiles()
 
         for profile in profiles:
-            interval = profile.schedule_interval_hours or 24
-            add_schedule(profile.id, interval)
-            logger.info(
-                f"[Scheduler] Restored schedule for profile {profile.id} (every {interval}h)"
-            )
-    except Exception as e:
-        logger.error(f"[Scheduler] Error loading schedules: {e}")
+            profile_id = _validated_profile_id(profile.id)
+            interval = _normalized_interval_hours(profile.schedule_interval_hours)
+            add_schedule(profile_id, interval)
+            logger.info("[Scheduler] Restored schedule")
+    except Exception:
+        logger.error("[Scheduler] Failed to load schedules")
     finally:
         db.close()
 
