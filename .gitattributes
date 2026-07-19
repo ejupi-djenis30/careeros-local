@@ -1,0 +1,4 @@
+# The model catalog is verified byte-for-byte at application startup. Keep its
+# checkout representation identical on Windows, macOS, and Linux.
+backend/inference/model_catalog.json text eol=lf
+backend/inference/model_catalog.sha256 text eol=lf

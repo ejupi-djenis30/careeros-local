@@ -50,9 +50,9 @@ npm --prefix frontend run dev
 Import all mapped models through `backend/model_registry.py`. Create an Alembic revision, review it manually, and validate:
 
 ```powershell
-.venv\Scripts\alembic.exe upgrade head
-.venv\Scripts\alembic.exe downgrade -1
-.venv\Scripts\alembic.exe upgrade head
+.venv\Scripts\python.exe -m alembic upgrade head
+.venv\Scripts\python.exe -m alembic downgrade -1
+.venv\Scripts\python.exe -m alembic upgrade head
 ```
 
 Never replace a migration with a runtime `create_all` workaround.

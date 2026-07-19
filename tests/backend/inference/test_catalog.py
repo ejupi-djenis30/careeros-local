@@ -26,6 +26,12 @@ def test_bundled_catalog_has_a_valid_signature_and_all_platforms() -> None:
     }
 
 
+def test_bundled_catalog_has_checkout_stable_line_endings() -> None:
+    catalog = Path("backend/inference/model_catalog.json").read_bytes()
+
+    assert b"\r\n" not in catalog
+
+
 @pytest.mark.parametrize(
     ("system_name", "machine_name", "expected"),
     [

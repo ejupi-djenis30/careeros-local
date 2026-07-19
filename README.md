@@ -94,7 +94,7 @@ requires Rust stable and the [Tauri prerequisites](https://v2.tauri.app/start/pr
 python -m venv .venv
 .venv\Scripts\python.exe -m pip install --require-hashes -r requirements-dev.lock
 npm ci --prefix frontend
-.venv\Scripts\alembic.exe upgrade head
+.venv\Scripts\python.exe -m alembic upgrade head
 ```
 
 Start the local API and interface in separate terminals:
