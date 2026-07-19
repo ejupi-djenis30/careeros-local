@@ -293,6 +293,11 @@ jobs:
             application reopen checks, NSIS install/uninstall smoke tests, SHA-256
             inventories and GitHub build-provenance attestations.
 
+            Highlights include the public portfolio site and reproducible product tour,
+            stronger Python/React/Rust verification, atomic demo-media publishing,
+            accessibility hardening, reliable zero-config SQLite startup, and a native
+            release matrix covering Windows, macOS and Linux on x64 and ARM64.
+
             Model installation remains optional and explicit. These community builds
             are currently unsigned; Windows SmartScreen and macOS Gatekeeper may warn.
 

@@ -15,6 +15,7 @@ from typing import Any, Literal
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 from sqlalchemy.orm import Session
 
+from backend import __version__
 from backend.ai.grounding import validate_grounding, validate_semantics
 from backend.ai.models import AIEvaluationRun
 from backend.ai.orchestrator import LocalAIOrchestrator, OrchestrationRequest
@@ -457,7 +458,7 @@ def _application_version() -> str:
     try:
         return importlib.metadata.version("careeros-local")
     except importlib.metadata.PackageNotFoundError:
-        return "1.0.0"
+        return __version__
 
 
 def persist_report(db: Session, report: EvaluationReport) -> EvaluationRunSummary:

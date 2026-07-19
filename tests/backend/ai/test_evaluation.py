@@ -1,6 +1,9 @@
 import os
+from importlib.metadata import PackageNotFoundError
 
+from backend import __version__
 from backend.ai.evaluation import (
+    _application_version,
     evaluate_case,
     list_reports,
     load_dataset,
@@ -29,6 +32,15 @@ class _GoldenProvider:
             usage=InferenceUsage(prompt_tokens=10, completion_tokens=10),
             duration_ms=1,
         )
+
+
+def test_application_version_falls_back_to_packaged_backend_version(monkeypatch) -> None:
+    def missing_distribution(_distribution_name: str) -> str:
+        raise PackageNotFoundError
+
+    monkeypatch.setattr("backend.ai.evaluation.importlib.metadata.version", missing_distribution)
+
+    assert _application_version() == __version__
 
 
 def test_offline_evaluator_reports_all_metrics_without_model_or_network() -> None:

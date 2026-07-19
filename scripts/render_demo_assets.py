@@ -62,7 +62,7 @@ def render_poster(source: Path, output: Path, *, width: int = 1280) -> None:
         (center_x + radius // 2, center_y),
     ]
     draw.polygon(triangle, fill=(185, 242, 124, 255))
-    label = "WATCH THE 30-SECOND PRODUCT TOUR"
+    label = "WATCH THE PRODUCT TOUR"
     font = _font(max(18, poster.width // 52), bold=True)
     box = draw.textbbox((0, 0), label, font=font)
     text_width = box[2] - box[0]

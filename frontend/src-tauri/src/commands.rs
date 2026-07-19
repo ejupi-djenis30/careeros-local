@@ -30,7 +30,7 @@ mod tests {
             desktop: true,
             api_base_url: "http://127.0.0.1:43127/api/v1".into(),
             session_token: "x".repeat(64),
-            app_version: "1.0.0".into(),
+            app_version: env!("CARGO_PKG_VERSION").into(),
             data_directory: "C:/CareerOS".into(),
             backend_state: "waiting_ready".into(),
         };

@@ -5,6 +5,10 @@ All notable changes to CareerOS Local are documented here. The format follows
 
 ## [Unreleased]
 
+No unreleased changes.
+
+## [1.0.1] - 2026-07-19
+
 ### Added
 
 - Public, responsive GitHub Pages portfolio with real product captures and the reproducible
@@ -30,6 +34,9 @@ All notable changes to CareerOS Local are documented here. The format follows
 - Prevented partial demo recordings from replacing known-good public media.
 - Corrected macOS PyInstaller resolution, hidden checksum uploads, release repository context,
   attestation glob parsing and checksum paths for downloadable installers.
+- Kept the signed model catalog byte-identical on Windows checkouts, installed the missing
+  Linux ARM desktop opener dependency, and made release-version fallbacks drift-proof.
+- Removed a stale duration claim from the shared product-tour poster.
 
 ## [1.0.0] - 2026-07-18
 
@@ -55,5 +62,6 @@ All notable changes to CareerOS Local are documented here. The format follows
   autosave/revision loop.
 - Removed the rate-limit error and incomplete pipeline from public screenshots.
 
-[Unreleased]: https://github.com/ejupi-djenis30/careeros-local/compare/v1.0.0...HEAD
+[Unreleased]: https://github.com/ejupi-djenis30/careeros-local/compare/v1.0.1...HEAD
+[1.0.1]: https://github.com/ejupi-djenis30/careeros-local/compare/v1.0.0...v1.0.1
 [1.0.0]: https://github.com/ejupi-djenis30/careeros-local/releases/tag/v1.0.0

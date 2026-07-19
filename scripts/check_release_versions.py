@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import ast
 import json
 import os
 import re
@@ -23,6 +24,22 @@ def _json(path: Path) -> dict[str, Any]:
 def _toml(path: Path) -> dict[str, Any]:
     with path.open("rb") as source:
         return tomllib.load(source)
+
+
+def _python_string_constant(path: Path, name: str) -> str:
+    module = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+    for statement in module.body:
+        if not isinstance(statement, ast.Assign) or len(statement.targets) != 1:
+            continue
+        target = statement.targets[0]
+        if (
+            isinstance(target, ast.Name)
+            and target.id == name
+            and isinstance(statement.value, ast.Constant)
+            and isinstance(statement.value.value, str)
+        ):
+            return statement.value.value
+    raise RuntimeError(f"{path} has no string constant named {name}")
 
 
 def release_versions(root: Path = ROOT) -> dict[str, str]:
@@ -49,6 +66,9 @@ def release_versions(root: Path = ROOT) -> dict[str, str]:
         raise RuntimeError("frontend/src-tauri/Cargo.lock has no careeros-local package")
 
     values = {
+        "backend/__init__.py": _python_string_constant(
+            root / "backend" / "__init__.py", "__version__"
+        ),
         "pyproject.toml": pyproject["project"]["version"],  # type: ignore[index]
         "frontend/package.json": package["version"],
         "frontend/package-lock.json": locked_package[""]["version"],
