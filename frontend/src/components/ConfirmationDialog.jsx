@@ -1,4 +1,13 @@
-import React, { useEffect, useId } from "react";
+import React, { useEffect, useId, useRef } from "react";
+
+const FOCUSABLE = [
+  "button:not([disabled])",
+  "[href]",
+  "input:not([disabled])",
+  "select:not([disabled])",
+  "textarea:not([disabled])",
+  "[tabindex]:not([tabindex='-1'])",
+].join(",");
 
 export function ConfirmationDialog({
   isOpen,
@@ -11,23 +20,58 @@ export function ConfirmationDialog({
 }) {
   const titleId = useId();
   const bodyId = useId();
+  const dialogRef = useRef(null);
+  const cancelRef = useRef(null);
+  const cancelHandlerRef = useRef(onCancel);
+
+  useEffect(() => {
+    cancelHandlerRef.current = onCancel;
+  }, [onCancel]);
 
   useEffect(() => {
     if (!isOpen) return;
+    const previouslyFocused = document.activeElement;
+    const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
-    const handleEscape = (e) => { if (e.key === "Escape") onCancel(); };
-    document.addEventListener("keydown", handleEscape);
-    return () => {
-      document.body.style.overflow = "";
-      document.removeEventListener("keydown", handleEscape);
+    cancelRef.current?.focus();
+
+    const handleKeyDown = (event) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        cancelHandlerRef.current();
+        return;
+      }
+      if (event.key !== "Tab") return;
+      const focusable = [...(dialogRef.current?.querySelectorAll(FOCUSABLE) || [])];
+      if (focusable.length === 0) {
+        event.preventDefault();
+        dialogRef.current?.focus();
+        return;
+      }
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
     };
-  }, [isOpen, onCancel]);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      document.removeEventListener("keydown", handleKeyDown);
+      if (previouslyFocused instanceof HTMLElement) previouslyFocused.focus();
+    };
+  }, [isOpen]);
 
   if (!isOpen) return null;
 
   return (
     <div
       className="modal d-block confirm-dialog-backdrop"
+      ref={dialogRef}
       tabIndex="-1"
       role="dialog"
       aria-labelledby={titleId}
@@ -55,6 +99,7 @@ export function ConfirmationDialog({
           </div>
           <div className="modal-footer border-top border-white-10">
             <button
+              ref={cancelRef}
               type="button"
               className="btn btn-secondary glass-btn"
               onClick={onCancel}

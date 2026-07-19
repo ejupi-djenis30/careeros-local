@@ -2,9 +2,14 @@ import { NavLink } from "react-router-dom";
 import { LocalModelStatus } from "../../features/local-model/LocalModelStatus";
 import { NAVIGATION } from "../../app/navigation";
 
-export function Sidebar({ username, onLogout, isOpen, onClose }) {
+export function Sidebar({ username, onLogout, isOpen, onClose, containerRef }) {
     return (
-        <aside className={`workspace-sidebar ${isOpen ? "is-open" : ""}`} aria-label="Navigazione principale">
+        <aside
+            id="workspace-sidebar"
+            ref={containerRef}
+            className={`workspace-sidebar ${isOpen ? "is-open" : ""}`}
+            aria-label="Navigazione principale"
+        >
             <div className="workspace-brand">
                 <div className="workspace-brand__mark" aria-hidden="true">C</div>
                 <div>

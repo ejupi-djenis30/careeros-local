@@ -42,6 +42,8 @@ jobs:
         run: |
           mkdir -p "$RUNNER_TEMP/careeros"
           python -m pip install --require-hashes --requirement requirements-dev.lock
+      - name: Validate release version metadata
+        run: python scripts/check_release_versions.py
       - name: Verify local-only inference boundary
         run: python -m pytest tests/backend/security -q
       - name: Audit dependencies and create Python supply-chain evidence
@@ -55,16 +57,22 @@ jobs:
             --fail-on "GNU General Public License;GNU Affero General Public License;AGPL-1.0;AGPL-3.0;Server Side Public License;SSPL-1.0;Business Source License;BUSL-1.1" \
             --partial-match
       - name: Lint
-        run: ruff check backend tests/backend alembic/versions scripts/seed_demo.py scripts/render_demo_assets.py
+        run: >-
+          ruff check backend tests/backend alembic/versions
+          scripts/check_release_versions.py scripts/seed_demo.py scripts/render_demo_assets.py
       - name: Type-check
-        run: mypy backend scripts/seed_demo.py scripts/render_demo_assets.py --ignore-missing-imports --no-error-summary
+        run: >-
+          mypy backend scripts/check_release_versions.py scripts/seed_demo.py
+          scripts/render_demo_assets.py --ignore-missing-imports --no-error-summary
       - name: Validate migration round-trip
         run: |
           alembic upgrade head
           alembic downgrade -1
           alembic upgrade head
       - name: Test
-        run: python -m pytest tests/backend -q --tb=short --cov=backend --cov-report=xml
+        run: >-
+          python -m pytest tests/backend -q --tb=short --cov=backend --cov-branch
+          --cov-fail-under=80 --cov-report=term:skip-covered --cov-report=xml
       - name: Run 10k-record performance acceptance
         env:
           RUN_PERFORMANCE_TESTS: "1"
@@ -100,7 +108,7 @@ jobs:
         run: npm ci --ignore-scripts
       - name: Test
         working-directory: frontend
-        run: npm test
+        run: npm run test:coverage
       - name: Audit dependencies
         working-directory: frontend
         run: npm audit --audit-level=high
@@ -125,12 +133,13 @@ jobs:
       - name: Validate demo recorder
         working-directory: frontend
         run: node --check ../scripts/record_demo.mjs
-      - name: Upload frontend SBOM
+      - name: Upload frontend evidence
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: frontend-sbom
+          name: frontend-evidence
           path: |
+            frontend/coverage
             ${{ runner.temp }}/careeros/frontend-sbom.cdx.json
             ${{ runner.temp }}/careeros/frontend-licenses.json
           if-no-files-found: ignore

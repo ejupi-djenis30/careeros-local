@@ -8,6 +8,12 @@
 4. Model catalog hashes and artifact sizes were verified against authoritative upstream releases.
 5. Version values agree in `pyproject.toml`, `frontend/package.json`, `frontend/src-tauri/Cargo.toml`, and `frontend/src-tauri/tauri.conf.json`.
 
+Run the same metadata gate used by CI before creating a tag:
+
+```powershell
+.venv\Scripts\python.exe scripts\check_release_versions.py
+```
+
 ## Local Windows package
 
 ```powershell
@@ -21,8 +27,26 @@ Run the installer smoke test on a clean or disposable user profile. Verify first
 
 ## CI release
 
-Push a version tag only after approval. The desktop workflow builds the platform matrix, verifies sidecar architecture, runs packaged lifecycle tests, uploads installers, and emits SHA-256 inventories. GitHub releases remain drafts for manual review.
+Run `Desktop packages` manually from `main` before creating a version tag. A manual run builds
+the full native matrix and retains smoke-tested packages as workflow artifacts without changing
+any GitHub release.
+
+After that rehearsal passes, push a matching version tag. The tag workflow freezes the backend,
+verifies every sidecar architecture, exercises packaged lifecycle and installer behavior, writes
+SHA-256 inventories, creates GitHub build-provenance attestations, and uploads the packages only
+after those gates pass. A final least-privilege job creates a draft, attaches the verified assets
+and supply-chain evidence, then publishes the release. A failed native job cannot publish or
+modify a release.
 
 ## Signing and evidence
 
-Do not call an artifact signed unless platform signature verification was executed successfully. Record reproducible commands and results in the active spec’s release evidence; do not commit raw logs, local paths, secrets, SBOM output, or large build artifacts.
+Do not call an artifact signed unless platform signature verification was executed successfully.
+Until signing is configured, release notes must label community packages as unsigned. Verify
+GitHub provenance after downloading a package:
+
+```powershell
+gh attestation verify .\CareerOS-Local-installer.exe -R ejupi-djenis30/careeros-local
+```
+
+Record reproducible commands and results in the active spec’s release evidence; do not commit raw
+logs, local paths, secrets, SBOM output, or large build artifacts.

@@ -15,6 +15,14 @@ python -m venv .venv
 npm ci --prefix frontend
 ```
 
+Desktop sidecar packaging uses the separate, hash-locked `requirements-tooling.lock`. Regenerate
+locks only from their reviewed input files:
+
+```powershell
+.venv\Scripts\python.exe -m piptools compile --generate-hashes --output-file requirements.lock requirements.txt
+.venv\Scripts\python.exe -m piptools compile --generate-hashes --allow-unsafe --output-file requirements-tooling.lock requirements-tooling.txt
+```
+
 ## Run
 
 Native development:
@@ -51,10 +59,10 @@ Never replace a migration with a runtime `create_all` workaround.
 ## Tests and quality
 
 ```powershell
-.venv\Scripts\python.exe -m ruff check backend tests/backend alembic/versions scripts/seed_demo.py scripts/render_demo_assets.py
-.venv\Scripts\python.exe -m mypy backend scripts/seed_demo.py scripts/render_demo_assets.py --ignore-missing-imports --no-error-summary
-.venv\Scripts\python.exe -m pytest tests/backend -q
-npm --prefix frontend test
+.venv\Scripts\python.exe -m ruff check backend tests/backend alembic/versions scripts/check_release_versions.py scripts/seed_demo.py scripts/render_demo_assets.py
+.venv\Scripts\python.exe -m mypy backend scripts/check_release_versions.py scripts/seed_demo.py scripts/render_demo_assets.py --ignore-missing-imports --no-error-summary
+.venv\Scripts\python.exe -m pytest tests/backend -q --cov=backend --cov-branch --cov-fail-under=80
+npm --prefix frontend run test:coverage
 npm --prefix frontend run lint
 npm --prefix frontend run build
 cargo fmt --manifest-path frontend/src-tauri/Cargo.toml --check

@@ -1,3 +1,6 @@
-# Dependency-lock generation tool, deliberately kept out of application environments.
+# Desktop packaging/test tools, deliberately kept out of application environments.
+# Regenerate requirements-tooling.lock with:
+# pip-compile --generate-hashes --allow-unsafe --output-file requirements-tooling.lock requirements-tooling.txt
 pip-tools==7.5.3
 pyinstaller==6.21.0
+pytest==9.0.3

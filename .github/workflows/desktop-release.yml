@@ -38,6 +38,8 @@ jobs:
           python-version-file: .python-version
           cache: pip
           cache-dependency-path: requirements-dev.lock
+      - name: Validate release version metadata
+        run: python scripts/check_release_versions.py
       - name: Install Node.js
         uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
         with:
@@ -60,6 +62,7 @@ jobs:
         run: |
           python -m pip_audit --disable-pip --require-hashes --requirement requirements.lock
           python -m pip_audit --disable-pip --require-hashes --requirement requirements-dev.lock
+          python -m pip_audit --disable-pip --require-hashes --requirement requirements-tooling.lock
           python -m pip_audit --disable-pip --require-hashes --requirement requirements.lock \
             --format cyclonedx-json --output "$RUNNER_TEMP/careeros/backend-sbom.cdx.json"
           pip-licenses --from=mixed --format=json \
@@ -98,7 +101,9 @@ jobs:
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 90
     permissions:
-      contents: write
+      attestations: write
+      contents: read
+      id-token: write
     strategy:
       fail-fast: false
       matrix:
@@ -107,36 +112,49 @@ jobs:
             runner: windows-latest
             target: x86_64-pc-windows-msvc
             bundles: nsis,msi
+            artifact_pattern: "**/*.{exe,msi}"
           - label: Windows ARM64
             runner: windows-11-arm
             target: aarch64-pc-windows-msvc
             bundles: nsis,msi
+            artifact_pattern: "**/*.{exe,msi}"
           - label: macOS Intel
             runner: macos-15-intel
             target: x86_64-apple-darwin
             bundles: app,dmg
+            artifact_pattern: "**/*.dmg"
           - label: macOS Apple Silicon
             runner: macos-15
             target: aarch64-apple-darwin
             bundles: app,dmg
+            artifact_pattern: "**/*.dmg"
           - label: Linux x64
             runner: ubuntu-22.04
             target: x86_64-unknown-linux-gnu
             bundles: appimage,deb
+            artifact_pattern: "**/*.{AppImage,deb}"
           - label: Linux ARM64
             runner: ubuntu-22.04-arm
             target: aarch64-unknown-linux-gnu
             bundles: appimage,deb
+            artifact_pattern: "**/*.{AppImage,deb}"
 
     steps:
       - name: Check out source
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          persist-credentials: false
 
       - name: Install Python 3.12
         uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
-          python-version: "3.12.13"
+          # 3.12.10 is the newest 3.12 build published by actions/python-versions
+          # for Windows, macOS and Linux on both x64 and ARM64.
+          python-version: "3.12.10"
           cache: pip
+          cache-dependency-path: |
+            requirements.lock
+            requirements-tooling.lock
 
       - name: Install Node.js
         uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
@@ -160,7 +178,7 @@ jobs:
       - name: Install locked dependencies
         run: |
           python -m pip install --require-hashes -r requirements.lock
-          python -m pip install -r requirements-tooling.txt
+          python -m pip install --require-hashes -r requirements-tooling.lock
           npm ci --prefix frontend
 
       - name: Freeze and smoke-test local backend
@@ -177,21 +195,10 @@ jobs:
       - name: Build native installers
         id: tauri
         uses: tauri-apps/tauri-action@944946e3e4cac6603d1fe8f514171e9ecd3c78aa # v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           projectPath: frontend
           tauriScript: npm run tauri
           args: --target ${{ matrix.target }} --bundles ${{ matrix.bundles }}
-          uploadWorkflowArtifacts: true
-          workflowArtifactNamePattern: CareerOS-Local-[platform]-[arch]-[bundle]
-          tagName: ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || '' }}
-          releaseName: ${{ startsWith(github.ref, 'refs/tags/v') && format('CareerOS Local {0}', github.ref_name) || '' }}
-          releaseBody: |
-            Native CareerOS Local packages. Model installation is optional and explicit.
-            Artifacts are unsigned unless the release notes explicitly state otherwise.
-          releaseDraft: true
-          prerelease: false
 
       - name: Exercise Windows MSI and NSIS lifecycle
         if: runner.os == 'Windows'
@@ -208,9 +215,86 @@ jobs:
           --target ${{ matrix.target }}
           --output .artifacts/checksums-${{ matrix.target }}.sha256
 
-      - name: Upload checksum inventory
+      - name: Attest verified native packages
+        if: github.event_name != 'pull_request'
+        uses: actions/attest@f7c74d28b9d84cb8768d0b8ca14a4bac6ef463e6 # v4
+        with:
+          subject-path: frontend/src-tauri/target/${{ matrix.target }}/release/bundle/${{ matrix.artifact_pattern }}
+
+      - name: Upload smoke-tested release assets
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
-          name: checksums-${{ matrix.target }}
-          path: .artifacts/checksums-${{ matrix.target }}.sha256
+          name: release-${{ matrix.target }}
+          path: |
+            frontend/src-tauri/target/${{ matrix.target }}/release/bundle/${{ matrix.artifact_pattern }}
+            .artifacts/checksums-${{ matrix.target }}.sha256
           if-no-files-found: error
+
+  publish-release:
+    name: Publish verified desktop release
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [supply-chain, native]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    steps:
+      - name: Download smoke-tested native packages
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          pattern: release-*
+          path: release-staging/native
+          merge-multiple: true
+      - name: Download supply-chain evidence
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: release-supply-chain
+          path: release-staging/supply-chain
+      - name: Prepare collision-safe release assets
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p release-assets
+          while IFS= read -r -d '' source; do
+            destination="release-assets/$(basename "$source")"
+            if [[ -e "$destination" ]]; then
+              echo "Release asset collision: $destination" >&2
+              exit 1
+            fi
+            cp "$source" "$destination"
+          done < <(find release-staging/native -type f \( \
+            -iname '*.AppImage' -o -iname '*.deb' -o -iname '*.dmg' -o \
+            -iname '*.exe' -o -iname '*.msi' -o -name 'checksums-*.sha256' \
+          \) -print0)
+          tar -C release-staging/supply-chain -czf \
+            release-assets/supply-chain-evidence.tar.gz .
+          test "$(find release-assets -maxdepth 1 -type f | wc -l)" -ge 13
+      - name: Create, populate and publish release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_NOTES: |
+            Native CareerOS Local desktop packages, built from this tag and gated by
+            architecture checks, packaged lifecycle tests, install/reopen/uninstall
+            smoke tests, SHA-256 inventories and GitHub build-provenance attestations.
+
+            Model installation remains optional and explicit. These community builds
+            are currently unsigned; Windows SmartScreen and macOS Gatekeeper may warn.
+
+            Verify a downloaded package with:
+            `gh attestation verify <package> -R ${{ github.repository }}`
+        run: |
+          set -euo pipefail
+          tag="$GITHUB_REF_NAME"
+          if release_is_draft="$(gh release view "$tag" --json isDraft --jq .isDraft 2>/dev/null)"; then
+            if [[ "$release_is_draft" != "true" ]]; then
+              echo "Refusing to overwrite the already-published release $tag" >&2
+              exit 1
+            fi
+          else
+            gh release create "$tag" --draft --verify-tag \
+              --title "CareerOS Local $tag" --notes "$RELEASE_NOTES"
+          fi
+          mapfile -d '' assets < <(find release-assets -maxdepth 1 -type f -print0)
+          gh release upload "$tag" "${assets[@]}" --clobber
+          gh release edit "$tag" --draft=false --latest
