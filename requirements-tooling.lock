@@ -46,9 +46,9 @@ pefile==2024.8.26 \
     --hash=sha256:3ff6c5d8b43e8c37bb6e6dd5085658d658a7a0bdcd20b6a07b1fcfc1c4e9d632 \
     --hash=sha256:76f8b485dcd3b1bb8166f1128d395fa3d87af26360c2358fb75b80019b957c6f
     # via pyinstaller
-pip-tools==7.5.3 \
-    --hash=sha256:3aac0c473240ae90db7213c033401f345b05197293ccbdd2704e52e7a783785e \
-    --hash=sha256:8fa364779ebc010cbfe17cb9de404457ac733e100840423f28f6955de7742d41
+pip-tools==7.6.0 \
+    --hash=sha256:4bd99155b6d8de358a214b0865e1a2855a453570c1a83d40f7b564870b8657be \
+    --hash=sha256:c1c59f7844df4866fa9542d3f50d1f44be537ac0027cb50b2563d6a992853981
     # via -r requirements-tooling.txt
 pluggy==1.6.0 \
     --hash=sha256:7dcc130b76258d33b90f61b658791dede3486c3e6bfb003ee5c9bfb396dd22f3 \
@@ -82,9 +82,9 @@ pyproject-hooks==1.2.0 \
     # via
     #   build
     #   pip-tools
-pytest==9.0.3 \
-    --hash=sha256:2c5efc453d45394fdd706ade797c0a81091eccd1d6e4bccfcd476e2b8e0ab5d9 \
-    --hash=sha256:b86ada508af81d19edeb213c681b1d48246c1a91d304c6c81a427674c17eb91c
+pytest==9.1.1 \
+    --hash=sha256:1088fbde8f2b49d95a549a195707afa7a76a3ce9bcadc26b6d71f0ffda5fe313 \
+    --hash=sha256:37a86b45efb9a47a61a36449063e8e18d0cab3161329fc099eb21783169c4f0c
     # via
     #   -r requirements-tooling.txt
     #   pytest-asyncio
