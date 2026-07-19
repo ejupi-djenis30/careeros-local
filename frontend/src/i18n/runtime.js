@@ -13,7 +13,7 @@ export function createTranslator(language) {
 }
 
 export const I18nContext = createContext({
-    language: "it",
+    language: "en",
     setLanguage: () => {},
-    t: createTranslator("it"),
+    t: createTranslator("en"),
 });

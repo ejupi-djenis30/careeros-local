@@ -1,7 +1,8 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { assertAccessible } from "../../test/accessibility";
+import { renderWithItalian as render } from "../../test/renderWithI18n";
 import { LocalModelService } from "../../services/localModel";
 import { ModelManager } from "./ModelManager";
 

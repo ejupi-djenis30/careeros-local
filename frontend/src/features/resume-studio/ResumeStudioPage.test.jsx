@@ -1,7 +1,8 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { careerProfile, EXPERIENCE_ID, FACT_ID, GOAL_ID, resumeDraft, RESUME_ID } from "../../test/fixtures";
+import { renderWithItalian as render } from "../../test/renderWithI18n";
 import { assertAccessible } from "../../test/accessibility";
 import { ResumeStudioPage } from "./ResumeStudioPage";
 

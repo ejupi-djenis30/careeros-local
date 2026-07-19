@@ -29,4 +29,10 @@ describe("I18nProvider", () => {
         expect(document.documentElement).toHaveAttribute("lang", "it");
         expect(window.localStorage.getItem("careeros.interface-language")).toBe("it");
     });
+
+    it("uses English when a component renders outside the provider", () => {
+        render(<Probe />);
+
+        expect(screen.getByText("Welcome back")).toBeInTheDocument();
+    });
 });

@@ -1,9 +1,10 @@
 import { StrictMode } from "react";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, screen } from "@testing-library/react";
 import { readFileSync } from "node:fs";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { assertAccessible } from "../../../test/accessibility";
+import { renderWithItalian as render } from "../../../test/renderWithI18n";
 import { resumeDraft } from "../../../test/fixtures";
 import { ResumeCanvas } from "./ResumeCanvas";
 

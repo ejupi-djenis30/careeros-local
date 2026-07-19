@@ -15,3 +15,7 @@ export function renderWithI18n(ui, options = {}) {
 
     return render(ui, { ...renderOptions, wrapper: I18nWrapper });
 }
+
+export function renderWithItalian(ui, options = {}) {
+    return renderWithI18n(ui, { ...options, language: "it" });
+}
