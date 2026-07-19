@@ -23,9 +23,11 @@ FORBIDDEN_OUTPUT_DIRECTORIES = {
 APPROVED_MARKDOWN = {
     Path("AGENTS.md"),
     Path("CHANGELOG.md"),
+    Path("CODE_OF_CONDUCT.md"),
     Path("CONTRIBUTING.md"),
     Path("README.md"),
     Path("SECURITY.md"),
+    Path("SUPPORT.md"),
     Path(".github/pull_request_template.md"),
     Path("backend/README.md"),
     Path("frontend/README.md"),

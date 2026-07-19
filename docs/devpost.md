@@ -9,9 +9,12 @@ reproducible source.
 ## Submission snapshot
 
 - Hackathon: OpenAI Build Week
-- Draft project: [Untitled project 1345433](https://devpost.com/software/1345433)
+- Draft project: [CareerOS Local](https://devpost.com/software/careeros-local)
 - Current observed state: `submission_pre_draft`; treat the entry as **not submitted** until
   Devpost explicitly shows `Submitted` and a submission timestamp.
+- Live draft synced on July 19, 2026: title, tagline, structured write-up, technology stack,
+  repository/portfolio/release links, and project thumbnail are populated. These fields remain
+  editable and still require the owner's final voice and factual review before submission.
 - Deadline observed during preparation: July 21, 2026 at 5:00 PM PT (July 22 at 02:00 CEST).
   Re-check the event page before the final upload.
 - Recommended category: **Apps for Your Life**. Select one category only after the owner
@@ -141,8 +144,9 @@ data only.
 
 ## Video plan: under three minutes
 
-Target 2:45–2:55, with a public YouTube URL and a human voice-over. Show the working product;
-do not spend the opening minute on slides.
+Target 2:45–2:55, with a public YouTube URL and a clear voice-over. The current rules allow a
+human or AI-assisted voice, but the narration must explain the project and how Codex and
+GPT-5.6 were used. Show the working product; do not spend the opening minute on slides.
 
 | Time | Picture | Voice-over focus |
 | --- | --- | --- |
@@ -161,8 +165,7 @@ Recording checks:
 - Use a clean demo vault with fictional data and no personal credentials or documents.
 - Make UI text legible at normal playback speed.
 - Mention Codex, GPT-5.6 only after verification, and the pre-existing project honestly.
-- Confirm the video is public or unlisted-but-accessible without authentication, as permitted
-  by the event rules.
+- Confirm the video is public on YouTube and accessible without authentication.
 
 ## Devpost field worksheet
 
@@ -171,9 +174,9 @@ form mistakes; Devpost labels remain authoritative.
 
 | Field | Candidate value or action |
 | --- | --- |
-| Project title | `CareerOS Local` |
-| Tagline | Edit one of the proposed taglines above. |
-| Description | Personalize the demo-first draft; add the final public video and repository links. |
+| Project title | `CareerOS Local` — synced to the live draft. |
+| Tagline | Synced to the live draft; owner performs the final voice review. |
+| Description | Structured live draft populated; owner personalizes it and removes any claim not visible in the final build. |
 | Category (`27947`) | Select **Apps for Your Life** after human confirmation; choose exactly one. |
 | Submitter type (`27945`) | Owner must select the truthful option. |
 | Country (`27946`) | Owner must confirm the truthful country; current planning assumes Switzerland. |
@@ -206,8 +209,9 @@ Hackathon requirements:
 - [ ] Owner confirms the final category and selects exactly one category.
 - [ ] Run `/feedback` in the Codex task where the majority of the Build Week work happened;
   verify GPT-5.6 and record the real Session ID.
-- [ ] Record and upload the public YouTube demo with human voice-over, under three minutes.
-- [ ] Rewrite the description in the owner's voice and remove every unverified claim.
+- [ ] Record and upload the public YouTube demo with a clear human or AI-assisted voice-over,
+  under three minutes.
+- [ ] Review the populated description in the owner's voice and remove every unverified claim.
 - [ ] Fill all required Devpost fields and preview every external link in a signed-out browser.
 - [ ] Change the Devpost project from its current pre-draft state to `Submitted` before the
   deadline.
@@ -219,7 +223,8 @@ Hackathon requirements:
 At the time this kit was written, the repository work alone did **not** complete these external
 actions:
 
-- the Devpost project was still a pre-draft titled `Untitled`;
+- the Devpost project remains a pre-draft, although its title, content, links, stack, and
+  thumbnail are now populated;
 - no final public YouTube demo URL had been supplied;
 - the required `/feedback` Codex Session ID had not been obtained;
 - eligibility, country, submitter type, and final category still required owner confirmation;
