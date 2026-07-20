@@ -109,10 +109,8 @@ jobs:
             > "$RUNNER_TEMP/careeros-evidence/frontend-audit.json"
           npm sbom --sbom-format cyclonedx \
             > "$RUNNER_TEMP/careeros-evidence/frontend-sbom.cdx.json"
-          npx --no-install license-checker-rseidelsohn --production \
-            --excludePrivatePackages \
-            --onlyAllow "MIT;MIT OR Apache-2.0;Apache-2.0 OR MIT" \
-            --json --out "$RUNNER_TEMP/careeros-evidence/frontend-licenses.json"
+          node ../scripts/audit_frontend_licenses.mjs \
+            --output "$RUNNER_TEMP/careeros-evidence/frontend-licenses.json"
       - name: Audit Cargo and create exact evidence
         working-directory: frontend/src-tauri
         run: |

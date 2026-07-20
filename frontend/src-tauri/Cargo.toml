@@ -1,6 +1,6 @@
 [package]
 name = "careeros-local"
-version = "1.1.1"
+version = "1.1.2"
 description = "Private, local-first career workspace"
 authors = ["Djenis Ejupi", "CareerOS Local contributors"]
 edition = "2021"

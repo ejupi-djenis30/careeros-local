@@ -5,6 +5,13 @@ All notable changes to CareerOS Local are documented here. The format follows
 
 ## [Unreleased]
 
+## [1.1.2] - 2026-07-20
+
+### Fixed
+
+- Replaced the third-party frontend license scanner with a deterministic lockfile audit after a newly disclosed transitive dependency advisory stopped the release gate.
+- Kept production license evidence reproducible without publishing package-maintainer names, email addresses or local filesystem paths.
+
 ## [1.1.1] - 2026-07-20
 
 ### Changed
@@ -111,7 +118,8 @@ All notable changes to CareerOS Local are documented here. The format follows
   autosave/revision loop.
 - Removed the rate-limit error and incomplete pipeline from public screenshots.
 
-[Unreleased]: https://github.com/ejupi-djenis30/careeros-local/compare/v1.1.1...HEAD
+[Unreleased]: https://github.com/ejupi-djenis30/careeros-local/compare/v1.1.2...HEAD
+[1.1.2]: https://github.com/ejupi-djenis30/careeros-local/compare/v1.1.1...v1.1.2
 [1.1.1]: https://github.com/ejupi-djenis30/careeros-local/compare/v1.1.0...v1.1.1
 [1.1.0]: https://github.com/ejupi-djenis30/careeros-local/compare/v1.0.2...v1.1.0
 [1.0.2]: https://github.com/ejupi-djenis30/careeros-local/compare/v1.0.1...v1.0.2
