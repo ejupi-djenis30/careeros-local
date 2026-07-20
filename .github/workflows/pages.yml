@@ -6,6 +6,7 @@ on:
     branches: [main]
     paths:
       - "docs/**"
+      - "scripts/render_brand_assets.mjs"
       - "scripts/validate_portfolio_site.py"
       - "tests/backend/unit/test_validate_portfolio_site.py"
       - ".github/workflows/pages.yml"
@@ -13,6 +14,7 @@ on:
     branches: [main]
     paths:
       - "docs/**"
+      - "scripts/render_brand_assets.mjs"
       - "scripts/validate_portfolio_site.py"
       - "tests/backend/unit/test_validate_portfolio_site.py"
       - ".github/workflows/pages.yml"

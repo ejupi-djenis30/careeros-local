@@ -1,4 +1,20 @@
-from scripts.validate_portfolio_site import ROOT, PortfolioParser, validate
+import struct
+import zlib
+from dataclasses import replace
+from pathlib import Path
+from tempfile import TemporaryDirectory
+
+import pytest
+
+from scripts.validate_portfolio_site import (
+    EDITORIAL_ASSET_SPECS,
+    ROOT,
+    PortfolioParser,
+    _validate_png_asset,
+    _validate_svg_asset,
+    validate,
+    validate_editorial_assets,
+)
 
 
 def _parse(fragment: str) -> PortfolioParser:
@@ -53,3 +69,157 @@ def test_portfolio_declares_strict_browser_policies():
     assert "base-uri 'none'" in policy
     assert "'unsafe-inline'" not in policy
     assert "'unsafe-eval'" not in policy
+
+
+def _write_changed_svg(tmp_path: Path, changed_source: str) -> Path:
+    path = tmp_path / "asset.svg"
+    path.write_text(changed_source, encoding="utf-8")
+    return path
+
+
+def _insert_png_chunk(payload: bytes, chunk_type: bytes, chunk_data: bytes) -> bytes:
+    assert len(chunk_type) == 4
+    offset = len(b"\x89PNG\r\n\x1a\n")
+    while offset < len(payload):
+        length = struct.unpack(">I", payload[offset : offset + 4])[0]
+        if payload[offset + 4 : offset + 8] == b"IEND":
+            crc = zlib.crc32(chunk_type)
+            crc = zlib.crc32(chunk_data, crc) & 0xFFFFFFFF
+            chunk = (
+                struct.pack(">I", len(chunk_data))
+                + chunk_type
+                + chunk_data
+                + struct.pack(">I", crc)
+            )
+            return payload[:offset] + chunk + payload[offset:]
+        offset += 12 + length
+    raise AssertionError("fixture PNG does not contain IEND")
+
+
+def _corrupt_first_idat_crc(payload: bytes) -> bytes:
+    changed = bytearray(payload)
+    offset = len(b"\x89PNG\r\n\x1a\n")
+    while offset < len(changed):
+        length = struct.unpack(">I", changed[offset : offset + 4])[0]
+        if changed[offset + 4 : offset + 8] == b"IDAT":
+            changed[offset + 8 + length] ^= 0x01
+            return bytes(changed)
+        offset += 12 + length
+    raise AssertionError("fixture PNG does not contain IDAT")
+
+
+def test_editorial_assets_pass_native_source_and_png_validation():
+    assert validate_editorial_assets() == []
+
+
+def test_editorial_svg_rejects_invalid_xml():
+    spec = EDITORIAL_ASSET_SPECS[0]
+    source = (ROOT / "docs" / "assets" / spec.svg_name).read_text(encoding="utf-8")
+    with TemporaryDirectory() as directory:
+        path = _write_changed_svg(
+            Path(directory), source.replace("</svg>", "", 1)
+        )
+        errors = _validate_svg_asset(path, spec)
+
+    assert any("invalid XML" in error for error in errors)
+
+
+def test_editorial_svg_requires_dimensions_viewbox_frame_and_center():
+    spec = EDITORIAL_ASSET_SPECS[0]
+    source = (ROOT / "docs" / "assets" / spec.svg_name).read_text(encoding="utf-8")
+    changed = source.replace(f'width="{spec.width}"', 'width="1"', 1)
+    changed = changed.replace(
+        f'viewBox="0 0 {spec.width} {spec.height}"', 'viewBox="0 0 1 1"', 1
+    )
+    changed = changed.replace('data-frame="true"', 'data-frame-disabled="true"', 1)
+    changed = changed.replace('data-center="true"', 'data-center-disabled="true"', 1)
+    with TemporaryDirectory() as directory:
+        path = _write_changed_svg(Path(directory), changed)
+        errors = _validate_svg_asset(path, spec)
+
+    assert any("dimensions must be" in error for error in errors)
+    assert any("viewBox must be" in error for error in errors)
+    assert any("exactly one data-frame" in error for error in errors)
+    assert any("exactly one data-center" in error for error in errors)
+
+
+def test_editorial_svg_requires_exactly_four_named_quadrants():
+    spec = EDITORIAL_ASSET_SPECS[0]
+    source = (ROOT / "docs" / "assets" / spec.svg_name).read_text(encoding="utf-8")
+    changed = source.replace(
+        'data-quadrant="bottom-right"', 'data-slot="bottom-right"', 1
+    )
+    with TemporaryDirectory() as directory:
+        path = _write_changed_svg(Path(directory), changed)
+        errors = _validate_svg_asset(path, spec)
+
+    assert any("exactly four named data-quadrant" in error for error in errors)
+
+
+@pytest.mark.parametrize("tag", ["image", "script", "foreignObject", "text"])
+def test_editorial_svg_rejects_embedded_and_executable_elements(
+    tag: str,
+):
+    spec = EDITORIAL_ASSET_SPECS[0]
+    source = (ROOT / "docs" / "assets" / spec.svg_name).read_text(encoding="utf-8")
+    with TemporaryDirectory() as directory:
+        path = _write_changed_svg(
+            Path(directory), source.replace("</svg>", f"<{tag}/></svg>")
+        )
+        errors = _validate_svg_asset(path, spec)
+
+    assert any(f"<{tag.casefold()}> is not allowed" in error for error in errors)
+
+
+@pytest.mark.parametrize(
+    "target",
+    [
+        "https://example.test/asset.svg",
+        "http://example.test/asset.svg",
+        "data:image/svg+xml,asset",
+        "file:///tmp/asset.svg",
+    ],
+)
+def test_editorial_svg_rejects_nonlocal_href(target: str):
+    spec = EDITORIAL_ASSET_SPECS[0]
+    source = (ROOT / "docs" / "assets" / spec.svg_name).read_text(encoding="utf-8")
+    changed = source.replace(f'href="#{spec.quadrant_id}"', f'href="{target}"', 1)
+    with TemporaryDirectory() as directory:
+        path = _write_changed_svg(Path(directory), changed)
+        errors = _validate_svg_asset(path, spec)
+
+    assert any("href must reference a local SVG fragment" in error for error in errors)
+
+
+@pytest.mark.parametrize("chunk_type", [b"tEXt", b"iTXt", b"zTXt", b"eXIf"])
+def test_editorial_png_rejects_text_and_exif_chunks(
+    chunk_type: bytes,
+):
+    spec = EDITORIAL_ASSET_SPECS[0]
+    source = (ROOT / "docs" / "assets" / spec.png_name).read_bytes()
+    with TemporaryDirectory() as directory:
+        path = Path(directory) / "asset.png"
+        path.write_bytes(_insert_png_chunk(source, chunk_type, b"private metadata"))
+        errors = _validate_png_asset(path, spec)
+
+    assert any("unsafe or metadata PNG chunks" in error for error in errors)
+
+
+def test_editorial_png_rejects_wrong_dimensions():
+    spec = EDITORIAL_ASSET_SPECS[0]
+    source = ROOT / "docs" / "assets" / spec.png_name
+
+    errors = _validate_png_asset(source, replace(spec, width=spec.width + 1))
+
+    assert any("dimensions must be" in error for error in errors)
+
+
+def test_editorial_png_rejects_corrupt_chunk_crc():
+    spec = EDITORIAL_ASSET_SPECS[0]
+    source = (ROOT / "docs" / "assets" / spec.png_name).read_bytes()
+    with TemporaryDirectory() as directory:
+        path = Path(directory) / "asset.png"
+        path.write_bytes(_corrupt_first_idat_crc(source))
+        errors = _validate_png_asset(path, spec)
+
+    assert any("CRC mismatch in IDAT" in error for error in errors)
