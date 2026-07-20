@@ -71,6 +71,22 @@ def test_candidate_manifest_and_download_checksum_bind_exact_bytes(tmp_path: Pat
         )
 
 
+def test_staging_rejects_empty_release_packages(tmp_path: Path) -> None:
+    bundle = tmp_path / "bundle"
+    bundle.mkdir()
+    (bundle / "installer.exe").write_bytes(b"")
+    (bundle / "installer.msi").write_bytes(b"msi")
+
+    with pytest.raises(RuntimeError, match="must not be empty"):
+        stage_target_candidate(
+            bundle_root=bundle,
+            output=tmp_path / "candidate",
+            target="x86_64-pc-windows-msvc",
+            version=VERSION,
+            source_commit=COMMIT,
+        )
+
+
 @pytest.mark.parametrize("name", ["CareerOS Local.exe", "../escape.exe", "installer?.exe"])
 def test_nonportable_names_fail_closed(name: str) -> None:
     with pytest.raises(RuntimeError, match="not portable"):

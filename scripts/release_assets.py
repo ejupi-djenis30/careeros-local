@@ -109,9 +109,12 @@ def file_record(path: Path, *, artifact_type: str | None = None) -> dict[str, An
     if path.is_symlink() or not path.is_file():
         raise RuntimeError(f"Release asset must be a regular file: {path}")
     validate_portable_name(path.name)
+    size = path.stat().st_size
+    if size == 0:
+        raise RuntimeError(f"Release asset must not be empty: {path}")
     record: dict[str, Any] = {
         "name": path.name,
-        "size": path.stat().st_size,
+        "size": size,
         "sha256": sha256_file(path),
     }
     if artifact_type is not None:

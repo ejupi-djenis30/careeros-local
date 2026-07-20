@@ -8,6 +8,8 @@ import shutil
 import subprocess
 import sys
 import tempfile
+from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -86,20 +88,54 @@ def _run_export_smoke(binary: Path, data_directory: Path) -> None:
     )
 
 
+@contextmanager
+def _mounted_read_only_dmg(dmg: Path, mount_point: Path) -> Iterator[Path]:
+    subprocess.run(
+        ["hdiutil", "verify", str(dmg)],
+        check=True,
+        timeout=120,
+    )
+    mount_point.mkdir()
+    subprocess.run(
+        [
+            "hdiutil",
+            "attach",
+            "-readonly",
+            "-nobrowse",
+            "-noautoopen",
+            "-mountpoint",
+            str(mount_point),
+            str(dmg),
+        ],
+        check=True,
+        timeout=120,
+    )
+    try:
+        yield mount_point
+    finally:
+        subprocess.run(
+            ["hdiutil", "detach", str(mount_point)],
+            check=True,
+            timeout=120,
+        )
+
+
 def _macos(bundle_root: Path, smoke_root: Path) -> int:
-    app = _single(list((bundle_root / "macos").glob("*.app")), "macOS app bundle")
-    _single(list((bundle_root / "dmg").glob("*.dmg")), "macOS DMG")
-    executable = _single(
-        [path for path in (app / "Contents" / "MacOS").iterdir() if path.is_file()],
-        "macOS application executable",
-    )
-    data_directory = smoke_root / "macos-data"
-    sidecar = _single(
-        list((app / "Contents" / "Resources").rglob("careeros-backend")),
-        "macOS packaged backend",
-    )
-    _run_export_smoke(sidecar, data_directory)
-    _run_reopen([str(executable)], data_directory)
+    _single(list((bundle_root / "macos").glob("*.app")), "macOS app bundle")
+    dmg = _single(list((bundle_root / "dmg").glob("*.dmg")), "macOS DMG")
+    with _mounted_read_only_dmg(dmg, smoke_root / "dmg-mount") as mounted:
+        app = _single(list(mounted.glob("*.app")), "mounted macOS app bundle")
+        executable = _single(
+            [path for path in (app / "Contents" / "MacOS").iterdir() if path.is_file()],
+            "mounted macOS application executable",
+        )
+        data_directory = smoke_root / "macos-data"
+        sidecar = _single(
+            list((app / "Contents" / "Resources").rglob("careeros-backend")),
+            "mounted macOS packaged backend",
+        )
+        _run_export_smoke(sidecar, data_directory)
+        _run_reopen([str(executable)], data_directory)
     return 1
 
 

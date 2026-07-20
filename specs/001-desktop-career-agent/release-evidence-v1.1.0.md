@@ -23,6 +23,10 @@ collisions. Assembly accepts exactly six target manifests and creates exactly 22
 10 packages, six exact target checksums, three CycloneDX SBOMs, the deterministic evidence archive,
 the global manifest, and `SHA256SUMS`.
 
+Every recorded release asset must be non-empty. Each macOS job verifies the exact DMG with
+`hdiutil`, mounts it read-only, exercises the backend and application from the mounted `.app`, and
+detaches the image before the DMG can enter the canonical candidate.
+
 The manifest records the exact target, package type, name, byte size, SHA-256 digest, source commit,
 release date, SBOMs, evidence members, evidence archive, and MIT `LICENSE` digest. Package names do
 not contain spaces, so every downloadable checksum line can be passed directly to
@@ -41,8 +45,8 @@ name, notes, draft/prerelease/immutable state, latest status, and all 22 asset d
 
 ## Local verification recorded for this change
 
-- Release/version/policy tests: 39 passed after canonical-date, exact three-SBOM verification,
-  and API-token exfiltration cases were added.
+- Release/version/policy tests: 42 passed after canonical-date, exact three-SBOM verification,
+  API-token exfiltration, non-empty package, and mounted-DMG lifecycle cases were added.
 - Full backend suite: 973 passed, 3 skipped, 80.17% branch-aware coverage.
 - 10,000-record performance acceptance: 15.459 ms application-page p95 and 5.195 ms
   profile-read p95 against a 200 ms budget.

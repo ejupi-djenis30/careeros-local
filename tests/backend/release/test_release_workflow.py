@@ -61,6 +61,9 @@ def test_release_contract_is_collision_safe_and_never_clobbers() -> None:
     assert "scripts.release_candidate stage" in text
     assert "scripts.release_candidate assemble" in text
     assert "scripts.release_candidate verify" in text
+    assert text.index("scripts/smoke_native_bundle.py") < text.index(
+        "scripts.release_candidate stage"
+    )
     assert "merge-multiple: true" not in text
     assert "--clobber" not in text
     assert "gh release create" not in text
