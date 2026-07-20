@@ -1,6 +1,10 @@
 import React from "react";
+import { useI18n } from "../../i18n/useI18n";
 
 export function TargetQueue({ state, analyzedJobs, searches_generated, active_search_indices, completed_search_indices, activeItemRef, jobs_analyzed, jobs_analyze_total }) {
+    const { language, t } = useI18n();
+    const locale = language === "it" ? "it-IT" : "en-GB";
+    const formatCount = (value) => Number(value || 0).toLocaleString(locale);
     // During searching, show analysis count badge if analysis is already running concurrently.
     const showAnalysisBadge = state === "searching" && (jobs_analyzed || 0) > 0;
     const activeIndices = new Set(active_search_indices || []);
@@ -14,11 +18,11 @@ export function TargetQueue({ state, analyzedJobs, searches_generated, active_se
                 <div className="p-3 border-bottom border-white-10 bg-white-5 d-flex align-items-center justify-content-between">
                     <h6 className="mb-0 fw-bold text-white small text-uppercase tracking-wide">
                         <i className={`bi ${state === "analyzing" ? "bi-search" : "bi-diagram-3"} me-2 text-primary`}></i>
-                        {state === "analyzing" ? "Analysis Queue" : "Tactical Plan"}
+                        {state === "analyzing" ? t("searchProgress.analysisQueue") : t("searchProgress.plan")}
                     </h6>
                     {showAnalysisBadge && (
                         <span className="badge bg-primary-10 text-primary border border-primary-20 rounded-pill font-monospace x-small">
-                            {jobs_analyzed}/{jobs_analyze_total || '?'} analyzed
+                            {t("searchProgress.analyzedCount", { current: formatCount(jobs_analyzed), total: jobs_analyze_total ? formatCount(jobs_analyze_total) : "?" })}
                         </span>
                     )}
                 </div>
@@ -40,7 +44,7 @@ export function TargetQueue({ state, analyzedJobs, searches_generated, active_se
                                             )}
                                         </div>
                                         <div>
-                                            <div className="x-small text-uppercase tracking-wider opacity-50 mb-1 text-secondary">Target {j.idx}/{j.total}</div>
+                                            <div className="x-small text-uppercase tracking-wider opacity-50 mb-1 text-secondary">{t("searchProgress.targetOf", { current: formatCount(j.idx), total: formatCount(j.total) })}</div>
                                             <div className={`small fw-medium font-monospace ${isCurrent ? 'text-primary' : 'text-secondary'}`}>{j.title}</div>
                                         </div>
                                     </li>
@@ -74,7 +78,7 @@ export function TargetQueue({ state, analyzedJobs, searches_generated, active_se
                         {(!searches_generated || searches_generated.length === 0) && state === "generating" && (
                             <div className="p-5 text-center text-secondary opacity-50 d-flex flex-column align-items-center">
                                 <div className="spinner-grow spinner-grow-sm mb-3"></div>
-                                <span className="small">Formulating strategy...</span>
+                                <span className="small">{t("searchProgress.formulating")}</span>
                             </div>
                         )}
                     </ul>

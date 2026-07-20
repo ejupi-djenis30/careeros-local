@@ -1,4 +1,5 @@
 import React from "react";
+import { useI18n } from "../../i18n/useI18n";
 
 function parseLlmDebugMessage(message) {
     if (typeof message !== "string" || !message.startsWith("[LLM_DEBUG]")) {
@@ -19,13 +20,15 @@ function parseLlmDebugMessage(message) {
 }
 
 export function LiveLogs({ log, logEndRef }) {
+    const { language, t } = useI18n();
+    const locale = language === "it" ? "it-IT" : "en-GB";
     return (
         <div className="col-lg-7 d-flex flex-column h-100">
             <div className="glass-panel p-0 h-100 overflow-hidden d-flex flex-column border-0 shadow-lg">
                 <div className="p-2 border-bottom border-white-10 bg-black d-flex justify-content-between align-items-center">
                     <div className="d-flex align-items-center px-2">
                         <i className="bi bi-terminal-fill text-secondary me-2"></i>
-                        <span className="text-secondary x-small fw-bold font-monospace">AGENT_LOG_OUTPUT</span>
+                        <span className="text-secondary x-small fw-bold font-monospace">{t("searchProgress.logOutput")}</span>
                     </div>
                 </div>
                 <div className="flex-grow-1 overflow-auto bg-black p-3 custom-scrollbar" style={{ fontFamily: '"JetBrains Mono", monospace', fontSize: '0.8rem' }}>
@@ -37,7 +40,7 @@ export function LiveLogs({ log, logEndRef }) {
                             return (
                                 <div key={i} className="mb-1 d-flex align-items-start">
                                     <span className="text-secondary opacity-50 me-2 select-none" style={{ minWidth: '70px' }}>
-                                        [{new Date(entry.time).toLocaleTimeString([], { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' })}]
+                                        [{new Date(entry.time).toLocaleTimeString(locale, { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' })}]
                                     </span>
 
                                     {isDebug ? (
@@ -65,7 +68,7 @@ export function LiveLogs({ log, logEndRef }) {
                         })
                     ) : (
                         <div className="h-100 d-flex align-items-center justify-content-center text-secondary opacity-25">
-                            <span>_waiting_for_stream</span>
+                            <span>{t("searchProgress.waitingStream")}</span>
                         </div>
                     )}
                     <div ref={logEndRef} />

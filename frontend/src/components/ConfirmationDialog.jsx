@@ -1,4 +1,5 @@
 import React, { useEffect, useId, useRef } from "react";
+import { useI18n } from "../i18n/useI18n";
 
 const FOCUSABLE = [
   "button:not([disabled])",
@@ -15,9 +16,12 @@ export function ConfirmationDialog({
   message,
   onConfirm,
   onCancel,
-  confirmText = "Confirm",
-  cancelText = "Cancel"
+  confirmText,
+  cancelText
 }) {
+  const { t } = useI18n();
+  const resolvedConfirmText = confirmText ?? t("common.confirm");
+  const resolvedCancelText = cancelText ?? t("common.cancel");
   const titleId = useId();
   const bodyId = useId();
   const dialogRef = useRef(null);
@@ -90,7 +94,7 @@ export function ConfirmationDialog({
             <button
               type="button"
               className="btn-close btn-close-white"
-              aria-label="Close"
+              aria-label={t("common.close")}
               onClick={onCancel}
             ></button>
           </div>
@@ -104,14 +108,14 @@ export function ConfirmationDialog({
               className="btn btn-secondary glass-btn"
               onClick={onCancel}
             >
-              {cancelText}
+              {resolvedCancelText}
             </button>
             <button
               type="button"
               className="btn btn-danger"
               onClick={onConfirm}
             >
-              {confirmText}
+              {resolvedConfirmText}
             </button>
           </div>
         </div>

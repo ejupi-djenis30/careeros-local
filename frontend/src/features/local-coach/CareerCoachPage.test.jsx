@@ -1,7 +1,8 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { careerProfile, FACT_ID, PROFILE_ID } from "../../test/fixtures";
+import { renderWithItalian as render } from "../../test/renderWithI18n";
 import { CareerCoachPage } from "./CareerCoachPage";
 
 const sendMessage = vi.fn();

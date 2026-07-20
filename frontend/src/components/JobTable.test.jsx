@@ -1,7 +1,8 @@
 import React from 'react';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { screen, fireEvent, waitFor } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { JobTable } from './JobTable';
+import { renderWithI18n as render } from '../test/renderWithI18n';
 
 const mockRecordView = vi.fn();
 
@@ -41,7 +42,7 @@ describe('JobTable', () => {
         render(<JobTable jobs={[]} isGlobalView={false} onToggleApplied={vi.fn()} pagination={{}} onPageChange={vi.fn()} />);
 
         expect(screen.getByText("No jobs found")).toBeInTheDocument();
-        expect(screen.getByText("Try adjusting your filters or starting a new search to find opportunities.")).toBeInTheDocument();
+        expect(screen.getByText("Adjust the filters or start a new search.")).toBeInTheDocument();
     });
 
     it('renders desktop table headers when rendered with jobs', () => {
@@ -58,9 +59,9 @@ describe('JobTable', () => {
 
         render(<JobTable jobs={mockJobs} isGlobalView={false} onToggleApplied={vi.fn()} pagination={mockPagination} onPageChange={vi.fn()} />);
 
-        expect(screen.getByText('Job Title')).toBeInTheDocument();
-        expect(screen.getByText('Company & Location')).toBeInTheDocument();
-        expect(screen.getByText('Match & Details')).toBeInTheDocument();
+        expect(screen.getByText('Job title')).toBeInTheDocument();
+        expect(screen.getByText('Company and location')).toBeInTheDocument();
+        expect(screen.getByText('Match details')).toBeInTheDocument();
         expect(screen.getByText('Applied')).toBeInTheDocument();
         expect(screen.getByText('Actions')).toBeInTheDocument();
     });
@@ -122,7 +123,7 @@ describe('JobTable', () => {
         render(<JobTable jobs={mockJobs} pagination={mockPagination} onPageChange={vi.fn()} isGlobalView={false} />);
 
         // Desktop button title is "Copy Details"
-        const copyBtn = screen.getByTitle('Copy Details');
+        const copyBtn = screen.getByTitle('Copy job details');
         fireEvent.click(copyBtn);
 
         expect(writeTextMock).toHaveBeenCalled();
@@ -139,18 +140,18 @@ describe('JobTable', () => {
         render(<JobTable jobs={mockJobs} pagination={mockPagination} onPageChange={vi.fn()} isGlobalView={false} />);
 
         // Desktop button title is "View Analysis", but it's also in MobileCard
-        const viewBtns = screen.getAllByTitle('View Analysis');
+        const viewBtns = screen.getAllByTitle('View match analysis');
         // Mobile is rendered first in DOM, Desktop second
         fireEvent.click(viewBtns[1] || viewBtns[0]);
 
         expect(mockRecordView).toHaveBeenCalledWith('1');
-        expect(screen.getByText('Analisi locale del match')).toBeInTheDocument();
+        expect(screen.getByText('Local match analysis')).toBeInTheDocument();
         expect(screen.getByText('Great fit because...')).toBeInTheDocument();
 
         const closeBtn = screen.getByText('Close');
         fireEvent.click(closeBtn);
 
-        expect(screen.queryByText('Analisi locale del match')).not.toBeInTheDocument();
+        expect(screen.queryByText('Local match analysis')).not.toBeInTheDocument();
     });
 
     it('opens modal from mobile view and closes with X icon', () => {
@@ -163,15 +164,15 @@ describe('JobTable', () => {
         render(<JobTable jobs={mockJobs} pagination={mockPagination} onPageChange={vi.fn()} isGlobalView={false} />);
 
         // Trigger the mobile View Analysis button
-        const viewBtns = screen.getAllByTitle('View Analysis');
+        const viewBtns = screen.getAllByTitle('View match analysis');
         fireEvent.click(viewBtns[0]); // Mobile variant is rendered first
 
-        expect(screen.getByText('Analisi locale del match')).toBeInTheDocument();
+        expect(screen.getByText('Local match analysis')).toBeInTheDocument();
 
         const xIcon = document.querySelector('.bi-x-lg');
         fireEvent.click(xIcon.closest('button'));
 
-        expect(screen.queryByText('Analisi locale del match')).not.toBeInTheDocument();
+        expect(screen.queryByText('Local match analysis')).not.toBeInTheDocument();
     });
 
     it('logs recordView failures instead of swallowing them silently', async () => {
@@ -187,7 +188,7 @@ describe('JobTable', () => {
             />
         );
 
-        const viewBtns = screen.getAllByTitle('View Analysis');
+        const viewBtns = screen.getAllByTitle('View match analysis');
         fireEvent.click(viewBtns[0]);
 
         await waitFor(() => {

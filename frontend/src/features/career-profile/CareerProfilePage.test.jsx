@@ -1,7 +1,8 @@
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { careerProfile, EXPERIENCE_ID } from "../../test/fixtures";
+import { renderWithItalian as render } from "../../test/renderWithI18n";
 import { assertAccessible } from "../../test/accessibility";
 import { CareerProfilePage } from "./CareerProfilePage";
 
@@ -65,8 +66,8 @@ describe("CareerProfilePage", () => {
         fireEvent.change(minimum, { target: { value: "160000" } });
         fireEvent.click(screen.getByRole("button", { name: "Aggiungi gap" }));
         fireEvent.change(screen.getByLabelText("Competenza gap 1"), { target: { value: "Budgeting" } });
-        fireEvent.click(screen.getByRole("button", { name: "Aggiungi milestone" }));
-        fireEvent.change(screen.getByLabelText("Milestone 1"), { target: { value: "Guidare pianificazione annuale" } });
+        fireEvent.click(screen.getByRole("button", { name: "Aggiungi traguardo" }));
+        fireEvent.change(screen.getByLabelText("Traguardo 1"), { target: { value: "Guidare pianificazione annuale" } });
         fireEvent.click(screen.getByRole("button", { name: "Salva Career Vault" }));
 
         await waitFor(() => expect(saveProfile).toHaveBeenCalledTimes(1));

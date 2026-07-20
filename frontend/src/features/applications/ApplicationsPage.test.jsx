@@ -1,8 +1,9 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { application } from "../../test/fixtures";
+import { renderWithItalian as render } from "../../test/renderWithI18n";
 import { ApplicationsPage } from "./ApplicationsPage";
 
 const list = vi.fn();
@@ -29,7 +30,7 @@ describe("ApplicationsPage", () => {
 
         await waitFor(() => expect(create).toHaveBeenCalledWith({ job_id: 42, initial_stage: "saved", resume_version_id: null, note: "Contattata tramite referral" }));
         expect(await screen.findByText("Snapshot locale")).toBeInTheDocument();
-        expect(showToast).toHaveBeenCalledWith(expect.stringContaining("pipeline"), "success");
+        expect(showToast).toHaveBeenCalledWith(expect.stringContaining("percorso"), "success");
     });
 
     it("creates a manual snapshot when no discovered job id exists", async () => {

@@ -1,7 +1,8 @@
 import React from 'react';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { screen, fireEvent } from '@testing-library/react';
 import { describe, it, expect, vi } from 'vitest';
 import { MobileJobCard } from './MobileJobCard';
+import { renderWithI18n as render } from '../../test/renderWithI18n';
 
 describe('MobileJobCard', () => {
     const mockJob = {
@@ -31,14 +32,14 @@ describe('MobileJobCard', () => {
         expect(screen.getByText('Software Engineer')).toBeInTheDocument();
         expect(screen.getByText('Tech Corp')).toBeInTheDocument();
         expect(screen.getByText('Zürich')).toBeInTheDocument();
-        expect(screen.getByText('10km')).toBeInTheDocument();
+        expect(screen.getByText('10 km')).toBeInTheDocument();
         expect(screen.getByText('100%')).toBeInTheDocument();
     });
 
     it('renders publication date if present in job payload', () => {
         const publishedJob = { ...mockJob, publication_date: '2024-03-01T12:00:00Z' };
         render(<MobileJobCard job={publishedJob} {...mockHandlers} />);
-        expect(screen.getByText(new Date('2024-03-01T12:00:00Z').toLocaleDateString())).toBeInTheDocument();
+        expect(screen.getByText(new Date('2024-03-01T12:00:00Z').toLocaleDateString('en-GB'))).toBeInTheDocument();
     });
 
     it('renders ScoreBadge when not in global view', () => {
@@ -53,7 +54,7 @@ describe('MobileJobCard', () => {
 
     it('renders Top Pick badge when worth applying', () => {
         render(<MobileJobCard job={mockJob} isGlobalView={false} {...mockHandlers} />);
-        expect(screen.getByTitle('Top Pick')).toBeInTheDocument();
+        expect(screen.getByTitle('Top pick')).toBeInTheDocument();
     });
 
     it('calls onToggleApplied when checkbox clicked', () => {
@@ -70,7 +71,7 @@ describe('MobileJobCard', () => {
 
     it('calls onCopy when copy button clicked', () => {
         render(<MobileJobCard job={mockJob} {...mockHandlers} />);
-        const copyBtn = screen.getByTitle('Copy Info');
+        const copyBtn = screen.getByTitle('Copy job information');
         fireEvent.click(copyBtn);
         expect(mockHandlers.onCopy).toHaveBeenCalledWith(mockJob);
     });
@@ -97,7 +98,7 @@ describe('MobileJobCard', () => {
     it('calls onViewAnalysis when analysis button clicked', () => {
         const onViewAnalysis = vi.fn();
         render(<MobileJobCard job={mockJob} onViewAnalysis={onViewAnalysis} {...mockHandlers} />);
-        const analysisBtn = screen.getByTitle('View Analysis');
+        const analysisBtn = screen.getByTitle('View match analysis');
         fireEvent.click(analysisBtn);
         expect(onViewAnalysis).toHaveBeenCalledWith(mockJob);
     });

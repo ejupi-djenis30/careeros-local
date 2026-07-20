@@ -1,27 +1,29 @@
 import React from "react";
 import { LocationInput } from "../LocationInput";
+import { useI18n } from "../../i18n/useI18n";
 
 export function SearchFormCoreInputs({ profile, handleChange, handleLocationChange, handleCVUpload }) {
+    const { t } = useI18n();
     return (
         <div className="col-xl-5 col-lg-6 d-flex flex-column gap-4 border-end border-white-5">
             <div>
-                <label className="form-label text-white small fw-bold text-uppercase x-small mb-2">Role Description <span className="text-danger">*</span></label>
+                <label className="form-label text-white small fw-bold text-uppercase x-small mb-2">{t("searchForm.roleDescription")} <span className="text-danger">*</span></label>
                 <textarea
                     name="role_description"
                     value={profile.role_description}
                     onChange={handleChange}
-                    placeholder="Describe the target role, seniority, preferred companies, exclusions, schedule constraints, remote expectations, salary intent, languages, and any non-negotiables..."
+                    placeholder={t("searchForm.rolePlaceholder")}
                     className="form-control bg-black-20 border-white-10 text-white"
                     style={{ height: '220px', resize: 'vertical' }}
                     required
                 />
                 <div className="x-small text-secondary mt-2 opacity-75">
-                    Put every important instruction here. There is no separate AI instructions field anymore.
+                    {t("searchForm.roleHelp")}
                 </div>
             </div>
 
             <div>
-                <label className="form-label text-white small fw-bold text-uppercase x-small mb-2">Target Location <span className="text-danger">*</span></label>
+                <label className="form-label text-white small fw-bold text-uppercase x-small mb-2">{t("searchForm.targetLocation")} <span className="text-danger">*</span></label>
                 <LocationInput
                     location={profile.location_filter}
                     latitude={profile.latitude}
@@ -37,8 +39,8 @@ export function SearchFormCoreInputs({ profile, handleChange, handleLocationChan
                             <i className={`bi ${profile.cv_content ? 'bi-check-lg' : 'bi-upload'}`}></i>
                         </div>
                         <div>
-                            <div className="fw-bold text-white small">{profile.cv_content ? 'CV Uploaded' : 'Upload CV'}</div>
-                            <div className="x-small text-secondary">{profile.cv_content ? 'Ready for analysis' : 'Required for AI'}</div>
+                            <div className="fw-bold text-white small">{profile.cv_content ? t("searchForm.cvUploaded") : t("searchForm.uploadCv")}</div>
+                            <div className="x-small text-secondary">{profile.cv_content ? t("searchForm.readyAnalysis") : t("searchForm.requiredForAi")}</div>
                         </div>
                     </div>
                     <input
@@ -48,7 +50,7 @@ export function SearchFormCoreInputs({ profile, handleChange, handleLocationChan
                         onChange={handleCVUpload}
                     />
                     <span className="btn btn-sm btn-outline-secondary rounded-pill px-3 py-1 x-small text-uppercase">
-                        {profile.cv_content ? 'Change' : 'Select'}
+                        {profile.cv_content ? t("searchForm.change") : t("searchForm.select")}
                     </span>
                 </label>
             </div>

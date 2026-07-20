@@ -2,6 +2,7 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { AuthService } from '../services/auth';
 import { CAREEROS_UNAUTHORIZED_EVENT } from '../lib/events';
+import { useI18n } from '../i18n/useI18n';
 
 const AuthContext = createContext(null);
 
@@ -15,6 +16,7 @@ function requireAccessToken(response, fallbackMessage) {
 }
 
 export function AuthProvider({ children }) {
+    const { t } = useI18n();
     const [user, setUser] = useState(null);
     const [loading, setLoading] = useState(true);
 
@@ -51,7 +53,7 @@ export function AuthProvider({ children }) {
     const login = async (username, password) => {
         const res = requireAccessToken(
             await AuthService.login(username, password),
-            'Login failed. Please try again.'
+            t("auth.loginFailed")
         );
         setUser(username);
         return res;
@@ -60,7 +62,7 @@ export function AuthProvider({ children }) {
     const register = async (username, password) => {
         const res = requireAccessToken(
             await AuthService.register(username, password),
-            'Registration failed. Please try again.'
+            t("auth.registrationFailed")
         );
         setUser(username);
         return res;
@@ -71,9 +73,9 @@ export function AuthProvider({ children }) {
             <div className="min-vh-100 d-flex align-items-center justify-content-center" style={{ background: 'var(--bg-body)' }}>
                 <div className="text-center">
                     <div className="spinner-border text-primary mb-3" style={{ width: '3rem', height: '3rem' }} role="status">
-                        <span className="visually-hidden">Loading...</span>
+                        <span className="visually-hidden">{t("auth.loading")}</span>
                     </div>
-                    <p className="text-secondary fw-medium mb-0">Loading session...</p>
+                    <p className="text-secondary fw-medium mb-0">{t("auth.loadingSession")}</p>
                 </div>
             </div>
         );

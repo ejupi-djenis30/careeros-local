@@ -3,6 +3,7 @@ import { useAuth } from '../context/AuthContext';
 import { JobTable } from '../components/JobTable';
 import { FilterBar } from '../components/FilterBar';
 import { useJobs } from '../hooks/useJobs';
+import { useI18n } from '../i18n/useI18n';
 
 const StatCard = ({ label, value, color, icon, isLoading }) => (
   <div className="glass-panel p-4 d-flex align-items-center hover-card h-100">
@@ -25,6 +26,8 @@ const StatCard = ({ label, value, color, icon, isLoading }) => (
 
 export function JobsPage() {
   const { logout } = useAuth();
+  const { language, t } = useI18n();
+  const locale = language === 'it' ? 'it-IT' : 'en-GB';
 
   const {
     jobs,
@@ -59,13 +62,13 @@ export function JobsPage() {
       )}
       <div className="row g-3 g-md-4 mb-4 mb-md-5">
         <div className="col-12 col-md-4">
-          <StatCard label="Jobs Found" value={totalJobs} color="primary" icon="bi-briefcase-fill" isLoading={isLoading} />
+          <StatCard label={t("jobsPage.found")} value={Number(totalJobs || 0).toLocaleString(locale)} color="primary" icon="bi-briefcase-fill" isLoading={isLoading} />
         </div>
         <div className="col-6 col-md-4">
-          <StatCard label="Avg Match" value={`${avgScore}%`} color="warning" icon="bi-pie-chart-fill" isLoading={isLoading} />
+          <StatCard label={t("jobsPage.averageMatch")} value={`${avgScore.toLocaleString(locale)}%`} color="warning" icon="bi-pie-chart-fill" isLoading={isLoading} />
         </div>
         <div className="col-6 col-md-4">
-          <StatCard label="Applied" value={appliedCount} color="success" icon="bi-send-check-fill" isLoading={isLoading} />
+          <StatCard label={t("jobsPage.applied")} value={Number(appliedCount || 0).toLocaleString(locale)} color="success" icon="bi-send-check-fill" isLoading={isLoading} />
         </div>
       </div>
 

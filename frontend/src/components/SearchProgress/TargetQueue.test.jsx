@@ -1,6 +1,7 @@
 import React, { createRef } from 'react';
-import { render, screen } from '@testing-library/react';
+import { screen } from '@testing-library/react';
 import { describe, it, expect } from 'vitest';
+import { renderWithI18n as render } from '../../test/renderWithI18n';
 import { TargetQueue } from './TargetQueue';
 
 describe('TargetQueue', () => {
@@ -53,5 +54,23 @@ describe('TargetQueue', () => {
     expect(items[0].querySelector('.bi-check-circle-fill')).not.toBeNull();
     expect(items[1].querySelector('.spinner-border')).not.toBeNull();
     expect(items[2].querySelector('.spinner-border')).toBeNull();
+  });
+
+  it('formats analysis counters with the selected interface locale', () => {
+    render(
+      <TargetQueue
+        state="searching"
+        analyzedJobs={[]}
+        searches_generated={[]}
+        active_search_indices={[]}
+        completed_search_indices={[]}
+        activeItemRef={createRef()}
+        jobs_analyzed={12345}
+        jobs_analyze_total={56789}
+      />,
+      { language: 'it' },
+    );
+
+    expect(screen.getByText('12.345/56.789 analizzati')).toBeInTheDocument();
   });
 });

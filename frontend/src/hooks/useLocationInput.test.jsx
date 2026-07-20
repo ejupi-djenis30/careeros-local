@@ -1,7 +1,8 @@
-import { act, render, screen } from "@testing-library/react";
+import { act, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useLocationInput } from "./useLocationInput";
+import { renderWithItalian as render } from "../test/renderWithI18n";
 
 const showToast = vi.fn();
 vi.mock("../context/ToastContext", () => ({ useToast: () => ({ showToast }) }));

@@ -1,10 +1,12 @@
 /* eslint-disable react-refresh/only-export-components */
 import React, { createContext, useContext, useState, useCallback, useEffect, useRef } from 'react';
 import { CAREEROS_API_ERROR_EVENT } from '../lib/events';
+import { useI18n } from '../i18n/useI18n';
 
 const ToastContext = createContext(null);
 
 export function ToastProvider({ children }) {
+    const { t } = useI18n();
     const [toast, setToast] = useState(null);
     const hideTimeoutRef = useRef(null);
 
@@ -63,7 +65,7 @@ export function ToastProvider({ children }) {
                                 type="button"
                                 className="btn-close btn-close-white me-2 m-auto"
                                 onClick={clearToast}
-                                aria-label="Close"
+                                aria-label={t("common.close")}
                             ></button>
                         </div>
                     </div>

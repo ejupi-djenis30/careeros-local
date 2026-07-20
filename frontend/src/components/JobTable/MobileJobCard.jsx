@@ -5,7 +5,8 @@ import { InternalLink } from "../InternalLink";
 import { useI18n } from "../../i18n/useI18n";
 
 export const MobileJobCard = memo(function MobileJobCard({ job, isGlobalView, onToggleApplied, isAppliedPending = false, onCopy, onViewAnalysis, onOpenDismissDialog, onReactivate }) {
-    const { t } = useI18n();
+    const { language, t } = useI18n();
+    const locale = language === "it" ? "it-IT" : "en-GB";
     const applyUrl = safeExternalUrl(job.application_url) || safeExternalUrl(job.external_url);
     const externalUrl = safeExternalUrl(job.external_url);
     const sourceUrl = externalUrl && externalUrl !== applyUrl ? externalUrl : null;
@@ -20,7 +21,7 @@ export const MobileJobCard = memo(function MobileJobCard({ job, isGlobalView, on
                     <div className="d-flex align-items-center gap-2 text-secondary small">
                         <span className="text-truncate fw-medium max-w-120">{job.company}</span>
                         <span className="opacity-25">|</span>
-                        <span>{job.location || "Remote"}</span>
+                        <span>{job.location || t("jobs.remote")}</span>
                     </div>
                 </div>
                 <div className="d-flex flex-column align-items-end gap-2">
@@ -28,7 +29,7 @@ export const MobileJobCard = memo(function MobileJobCard({ job, isGlobalView, on
                         <ScoreBadge score={Math.round(job.affinity_score)} />
                     )}
                     {!isGlobalView && job.worth_applying && (
-                        <span className="bg-success rounded-circle d-inline-flex align-items-center justify-content-center sz-18" title="Top Pick">
+                        <span className="bg-success rounded-circle d-inline-flex align-items-center justify-content-center sz-18" title={t("jobs.topPick")}>
                             <i className="bi bi-check-lg text-white text-07"></i>
                         </span>
                     )}
@@ -37,7 +38,7 @@ export const MobileJobCard = memo(function MobileJobCard({ job, isGlobalView, on
                         <button
                             className="btn btn-sm btn-icon btn-secondary rounded-circle d-flex align-items-center justify-content-center border-0 bg-white-5 sz-24"
                             onClick={() => onViewAnalysis(job)}
-                            title="View Analysis"
+                            title={t("jobs.viewAnalysis")}
                         >
                             <i className="bi bi-robot text-08"></i>
                         </button>
@@ -46,9 +47,9 @@ export const MobileJobCard = memo(function MobileJobCard({ job, isGlobalView, on
             </div>
 
             <div className="x-small text-secondary mb-3 d-flex flex-wrap column-gap-3 row-gap-1 opacity-75">
-                <div><i className="bi bi-clock me-1"></i> {new Date(job.created_at).toLocaleDateString()}</div>
-                {job.publication_date && <div><i className="bi bi-megaphone me-1"></i> {new Date(job.publication_date).toLocaleDateString()}</div>}
-                {fmtDistance != null && <div><i className="bi bi-geo-alt me-1"></i> {fmtDistance}km</div>}
+                <div><i className="bi bi-clock me-1"></i> {new Date(job.created_at).toLocaleDateString(locale)}</div>
+                {job.publication_date && <div><i className="bi bi-megaphone me-1"></i> {new Date(job.publication_date).toLocaleDateString(locale)}</div>}
+                {fmtDistance != null && <div><i className="bi bi-geo-alt me-1"></i> {fmtDistance.toLocaleString(locale)} km</div>}
                 {job.workload != null && <div className="text-info fw-bold">{job.workload}%</div>}
             </div>
 
@@ -56,22 +57,22 @@ export const MobileJobCard = memo(function MobileJobCard({ job, isGlobalView, on
                 <div className="d-flex gap-2">
                     {applyUrl && (
                         <a href={applyUrl} target="_blank" rel="noopener noreferrer" className="btn btn-sm btn-primary px-3 rounded-2 fw-bold">
-                            Apply
+                            {t("jobs.apply")}
                         </a>
                     )}
                     <InternalLink to={`/applications?jobId=${encodeURIComponent(job.id)}`} className="btn btn-sm btn-secondary rounded-circle btn-icon" title={t("jobs.addApplication")}>
                         <i className="bi bi-kanban text-08"></i>
                     </InternalLink>
-                    <button onClick={() => onCopy(job)} className="btn btn-sm btn-secondary rounded-circle btn-icon" title="Copy Info">
+                    <button onClick={() => onCopy(job)} className="btn btn-sm btn-secondary rounded-circle btn-icon" title={t("jobs.copyInfo")}>
                         <i className="bi bi-clipboard text-08"></i>
                     </button>
                     {mailtoUrl && (
-                        <a href={mailtoUrl} className="btn btn-sm btn-secondary rounded-circle btn-icon" title="Email">
+                        <a href={mailtoUrl} className="btn btn-sm btn-secondary rounded-circle btn-icon" title={t("jobs.email")}>
                             <i className="bi bi-envelope text-08"></i>
                         </a>
                     )}
                     {sourceUrl && (
-                        <a href={sourceUrl} target="_blank" rel="noopener noreferrer" className="btn btn-sm btn-secondary rounded-circle btn-icon" title="Source">
+                        <a href={sourceUrl} target="_blank" rel="noopener noreferrer" className="btn btn-sm btn-secondary rounded-circle btn-icon" title={t("jobs.source")}>
                             <i className="bi bi-link-45deg text-1"></i>
                         </a>
                     )}
@@ -79,7 +80,7 @@ export const MobileJobCard = memo(function MobileJobCard({ job, isGlobalView, on
                     {job.dismissed && onReactivate ? (
                         <button
                             className="btn btn-sm btn-secondary rounded-circle btn-icon"
-                            title="Reactivate Job"
+                            title={t("jobs.reactivate")}
                             onClick={() => onReactivate(job)}
                         >
                             <i className="bi bi-arrow-counterclockwise text-08"></i>
@@ -87,7 +88,7 @@ export const MobileJobCard = memo(function MobileJobCard({ job, isGlobalView, on
                     ) : onOpenDismissDialog && !job.dismissed && (
                         <button
                             className="btn btn-sm btn-secondary rounded-circle btn-icon"
-                            title="Not Interested"
+                            title={t("jobs.notInterested")}
                             onClick={() => onOpenDismissDialog(job)}
                         >
                             <i className="bi bi-x-circle text-08"></i>
@@ -103,16 +104,16 @@ export const MobileJobCard = memo(function MobileJobCard({ job, isGlobalView, on
                             checked={job.applied}
                             disabled={isAppliedPending}
                             onChange={() => onToggleApplied(job)}
-                            title={isAppliedPending ? "Updating Applied Status" : "Toggle Applied Status"}
+                            title={isAppliedPending ? t("jobs.updatingApplied") : t("jobs.toggleApplied")}
                         />
                     </div>
                     {job.applied_elsewhere && !job.applied && (
                         <span
                             className="d-flex align-items-center gap-1 text-06 text-warn-custom"
-                            title="Applied in another search"
+                            title={t("jobs.appliedElsewhereTitle")}
                         >
                             <i className="bi bi-check2-circle"></i>
-                            elsewhere
+                            {t("jobs.elsewhereLower")}
                         </span>
                     )}
                 </div>

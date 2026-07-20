@@ -4,6 +4,7 @@ import { SearchProgress } from '../components/SearchProgress';
 import { useSearchContext } from '../context/SearchContext';
 import { useToast } from '../context/ToastContext';
 import { SearchService } from '../services/search';
+import { useI18n } from '../i18n/useI18n';
 
 export function ProgressPage() {
   const [searchParams] = useSearchParams();
@@ -12,6 +13,7 @@ export function ProgressPage() {
 
   const { searchStatuses, activeProfileIds, addProfileId, removeProfileId } = useSearchContext();
   const { showToast } = useToast();
+  const { t } = useI18n();
   const [selectedProfileId, setSelectedProfileId] = React.useState(singlePid);
   const [profiles, setProfiles] = React.useState({});
   const [profilesError, setProfilesError] = React.useState('');
@@ -21,17 +23,17 @@ export function ProgressPage() {
       .then(res => {
         const mapping = {};
         (res || []).forEach(p => {
-            mapping[p.id] = p.name || p.role_description || `Search #${p.id}`;
+            mapping[p.id] = p.name || p.role_description || t("progressPage.searchNumber", { id: p.id });
         });
         setProfiles(mapping);
         setProfilesError('');
       })
       .catch((error) => {
         console.error('Failed to load profiles for progress labels:', error);
-        showToast('Failed to load profile names for active searches.');
-        setProfilesError('Profile names are temporarily unavailable.');
+        showToast(t("progressPage.loadNamesFailed"));
+        setProfilesError(t("progressPage.namesUnavailable"));
       });
-  }, [showToast]);
+  }, [showToast, t]);
 
   useEffect(() => {
     // If we land here from an external route with a specific PID, ensure it's tracked.
@@ -70,10 +72,10 @@ export function ProgressPage() {
           <div className="rounded-circle bg-secondary bg-opacity-10 d-inline-flex align-items-center justify-content-center mb-4 sz-80">
             <i className="bi bi-cpu fs-1 text-secondary opacity-50"></i>
           </div>
-          <h4 className="text-white fw-bold mb-2">No Active Searches</h4>
-          <p className="text-secondary mb-4">No searches are currently running. Start a new search to find your next opportunity.</p>
+          <h4 className="text-white fw-bold mb-2">{t("progressPage.emptyTitle")}</h4>
+          <p className="text-secondary mb-4">{t("progressPage.emptyCopy")}</p>
           <button className="btn btn-primary px-4" onClick={() => navigate('/new')}>
-            <i className="bi bi-search me-2"></i>Start a New Search
+            <i className="bi bi-search me-2"></i>{t("progressPage.startSearch")}
           </button>
         </div>
       </div>
@@ -96,14 +98,14 @@ export function ProgressPage() {
                 : isErrorTab
                   ? 'bi-exclamation-triangle-fill text-warning'
                   : 'bi-clock text-secondary';
-            const baseName = profiles[pid] || `Search #${pid}`;
+            const baseName = profiles[pid] || t("progressPage.searchNumber", { id: pid });
             const isActive = String(visibleProfileId) === String(pid);
             return (
               <button
                 key={pid}
                 className={`btn rounded-pill px-4 d-flex align-items-center gap-2 text-nowrap ${isActive ? 'btn-primary' : 'btn-outline-secondary bg-black-20 text-white'}`}
                 onClick={() => setSelectedProfileId(pid)}
-                title={`State: ${s?.state || 'pending'}`}
+                title={t("progressPage.state", { state: t(`progressPage.state.${s?.state || "pending"}`) })}
               >
                 <i className={`bi ${tabIcon}`}></i>
                 {baseName}

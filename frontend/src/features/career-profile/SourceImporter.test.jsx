@@ -1,7 +1,8 @@
-import { render, screen } from "@testing-library/react";
+import { screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { CareerService } from "../../services/career";
+import { renderWithItalian as render } from "../../test/renderWithI18n";
 import { SourceImporter } from "./SourceImporter";
 
 vi.mock("../../services/career", () => ({
