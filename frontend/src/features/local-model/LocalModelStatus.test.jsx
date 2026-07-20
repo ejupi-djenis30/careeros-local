@@ -17,7 +17,7 @@ describe("LocalModelStatus", () => {
     it("identifies the configured local model and can refresh it", async () => {
         const user = userEvent.setup();
         render(<LocalModelStatus />);
-        expect(screen.getByText("runtime locale · qwen3:1.7b")).toBeInTheDocument();
+        expect(screen.getByText("motore locale · qwen3:1.7b")).toBeInTheDocument();
         expect(screen.getByText(/solo su questo dispositivo/)).toBeInTheDocument();
         await user.click(screen.getByRole("button", { name: "Ricontrolla modello locale" }));
         expect(refresh).toHaveBeenCalledTimes(1);

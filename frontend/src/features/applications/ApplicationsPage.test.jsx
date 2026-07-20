@@ -30,7 +30,7 @@ describe("ApplicationsPage", () => {
 
         await waitFor(() => expect(create).toHaveBeenCalledWith({ job_id: 42, initial_stage: "saved", resume_version_id: null, note: "Contattata tramite referral" }));
         expect(await screen.findByText("Snapshot locale")).toBeInTheDocument();
-        expect(showToast).toHaveBeenCalledWith(expect.stringContaining("pipeline"), "success");
+        expect(showToast).toHaveBeenCalledWith(expect.stringContaining("percorso"), "success");
     });
 
     it("creates a manual snapshot when no discovered job id exists", async () => {

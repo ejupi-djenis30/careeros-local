@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { assertAccessible } from "../../test/accessibility";
 import { renderWithI18n } from "../../test/renderWithI18n";
@@ -23,8 +23,13 @@ function Fixture() {
 }
 
 describe("DismissDialog", () => {
+    afterEach(() => {
+        document.body.style.overflow = "";
+    });
+
     it("traps focus, closes with Escape, and restores the previous focus", async () => {
         const user = userEvent.setup();
+        document.body.style.overflow = "clip";
         renderWithI18n(<Fixture />);
 
         const trigger = screen.getByRole("button", { name: "Open dismiss dialog" });
@@ -38,6 +43,7 @@ describe("DismissDialog", () => {
         const cancel = within(dialog).getByRole("button", { name: "Cancel" });
         const close = within(dialog).getByRole("button", { name: "Close" });
         expect(cancel).toHaveFocus();
+        expect(document.body).toHaveStyle({ overflow: "hidden" });
 
         await user.tab();
         expect(close).toHaveFocus();
@@ -46,6 +52,7 @@ describe("DismissDialog", () => {
 
         await user.keyboard("{Escape}");
         await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+        expect(document.body).toHaveStyle({ overflow: "clip" });
         expect(trigger).toHaveFocus();
     });
 
