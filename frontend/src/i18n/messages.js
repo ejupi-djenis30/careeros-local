@@ -1048,13 +1048,6 @@ export const MESSAGES = {
     },
 };
 
-// Italian falls back to the existing product copy while the catalogue grows.
-Object.assign(MESSAGES.it, Object.fromEntries(
-    Object.keys(MESSAGES.en)
-        .filter((key) => !(key in MESSAGES.it))
-        .map((key) => [key, MESSAGES.en[key]]),
-));
-
 Object.assign(MESSAGES.it, {
     "login.privateWorkspace": "spazio di lavoro privato",
     "shell.errorTitle": "Questa vista si è interrotta",
