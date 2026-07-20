@@ -161,12 +161,22 @@ async function assertCleanPage(page, runtimeErrors) {
     if (runtimeErrors.length) throw new Error(`Browser error: ${runtimeErrors.join(" | ")}`);
 }
 
-async function showScene(page, runtimeErrors, { navigation, heading, chapter, description, screenshot, waitForSavedDraft = false }) {
+async function showScene(page, runtimeErrors, {
+    navigation,
+    heading,
+    chapter,
+    description,
+    screenshot,
+    readySelector = null,
+    waitForSavedDraft = false,
+}) {
     if (navigation) await page.getByRole("link", { name: navigation, exact: true }).click();
     await page.getByRole("heading", { name: heading, level: 1 }).waitFor({ state: "visible" });
+    if (readySelector) await page.locator(readySelector).waitFor({ state: "visible" });
     await page.evaluate(() => {
         window.scrollTo({ top: 0, left: 0, behavior: "instant" });
         document.querySelector(".workspace-nav")?.scrollTo({ top: 0, left: 0, behavior: "instant" });
+        document.activeElement?.blur();
     });
     if (waitForSavedDraft) {
         // The editable canvas normalizes its initial document after mount, then
@@ -179,18 +189,18 @@ async function showScene(page, runtimeErrors, { navigation, heading, chapter, de
                 && !text.includes("Unsaved changes");
         }, null, { timeout: 15_000 });
     }
-    await page.waitForTimeout(500);
-    await page.screencast.showChapter(chapter, { description, duration: 1_400 });
-    await page.waitForTimeout(1_650);
-    await page.evaluate(() => {
-        window.scrollTo({ top: 0, left: 0, behavior: "instant" });
-        document.querySelector(".workspace-nav")?.scrollTo({ top: 0, left: 0, behavior: "instant" });
-        document.activeElement?.blur();
+    const brandMark = page.locator(".workspace-brand__mark");
+    await brandMark.waitFor({ state: "visible" });
+    await page.waitForFunction(() => {
+        const mark = document.querySelector(".workspace-brand__mark");
+        return mark instanceof HTMLImageElement && mark.complete && mark.naturalWidth > 0;
     });
-    await page.waitForTimeout(150);
     await assertCleanPage(page, runtimeErrors);
     await page.screenshot({ path: screenshot, animations: "disabled" });
-    await page.waitForTimeout(450);
+    await page.screencast.showChapter(chapter, { description, duration: 1_400 });
+    // Leave enough time for both the chapter duration and its exit transition.
+    // Otherwise the next route capture can inherit the recorder's left-side veil.
+    await page.waitForTimeout(2_600);
 }
 
 async function recordTour(frontendUrl, python, stagingDir) {
@@ -234,11 +244,12 @@ async function recordTour(frontendUrl, python, stagingDir) {
             description: "A private, local-first workspace for the complete career journey",
             duration: 1_700,
         });
-        await page.waitForTimeout(1_900);
+        await page.waitForTimeout(2_900);
         await page.getByLabel("Username").fill(demoUsername);
         await page.getByLabel("Password").fill(demoPassword);
         await page.getByRole("button", { name: /Open workspace/ }).click();
         await page.getByRole("heading", { name: "Your career workspace", level: 1 }).waitFor({ state: "visible" });
+        await page.locator(".model-status:not(.model-status--checking)").waitFor({ state: "visible" });
         authenticated = true;
 
         await showScene(page, runtimeErrors, {
@@ -246,6 +257,7 @@ async function recordTour(frontendUrl, python, stagingDir) {
             chapter: "One private workspace",
             description: "Verified facts, resumes and applications stay on this device",
             screenshot: screenshots.workspace,
+            readySelector: '.home-hero a[href="/coach"]',
         });
         await showScene(page, runtimeErrors, {
             navigation: "Career Vault",
@@ -268,6 +280,7 @@ async function recordTour(frontendUrl, python, stagingDir) {
             chapter: "Immutable application pipeline",
             description: "Each opportunity keeps a local snapshot and append-only timeline",
             screenshot: screenshots.applications,
+            readySelector: ".application-board",
         });
         await page.screencast.showChapter("CareerOS Local", {
             description: "Private by design. Useful even without an AI model.",
