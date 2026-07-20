@@ -168,6 +168,13 @@ temporary document content remains in application-managed storage.
 - Security software quarantines one packaged child executable.
 - An update is interrupted after backup but before migration completes.
 - The user selects a model that cannot satisfy the required structured-output contract.
+- GitHub accepts a release upload but the client loses the response before recording success.
+- A stale or foreign draft already uses the intended version tag, or duplicate drafts are visible
+  only on a later release-inventory page.
+- A platform packager emits whitespace, control characters or case-colliding filenames that a
+  release host would normalize differently from the local checksum inventory.
+- The default branch advances while a signed version tag and its release candidate are being
+  verified.
 
 ## Requirements *(mandatory)*
 
@@ -247,6 +254,18 @@ temporary document content remains in application-managed storage.
 - **FR-036**: The product MUST present English on first launch and allow the user to switch
   the core shell, login and portfolio-demo workflows to Italian without a network request;
   the explicit choice MUST remain on the same device and update the document language.
+- **FR-037**: A stable release MUST originate from a GitHub-verified annotated version tag whose
+  recursively resolved commit matches the workflow source and remains contained in the current
+  default branch before any release state is created or changed.
+- **FR-038**: Every release asset MUST use a deterministic portable filename, appear in an exact
+  target/type/name/size/SHA-256 manifest, retain that same name in downloadable checksum files,
+  and carry verified GitHub-hosted build provenance for the exact tag, commit and workflow.
+- **FR-039**: Release publication MUST be contract-bound, paginated, least-privilege and
+  idempotent. It MUST reject duplicate, foreign or stale state; recover safely from ambiguous
+  create/upload/publish responses; and finish only after the exact release ID, target commit,
+  immutable/latest state and complete remote asset inventory are verified. Manual rehearsals
+  MUST NOT receive OIDC/attestation/publication permissions or mutate tags, attestations or
+  Releases.
 
 ### Key Entities
 
@@ -305,6 +324,10 @@ temporary document content remains in application-managed storage.
   controls expose a visible focus state and accessible name.
 - **SC-012**: Automated UI tests confirm English on a clean first launch, an immediate
   English/Italian switch, local persistence of that choice and English demo-recording selectors.
+- **SC-013**: Adversarial release tests reject unsafe names, case-insensitive collisions, missing
+  or extra targets, altered checksums, unsigned/off-branch tags, paginated duplicate drafts,
+  foreign contracts and mismatched remote assets; deterministic retry tests prove no duplicate
+  mutation after every create, upload and publish ambiguity.
 
 ## Assumptions
 

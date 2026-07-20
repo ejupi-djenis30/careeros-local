@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import argparse
 import ast
 import json
 import os
@@ -11,7 +12,9 @@ from pathlib import Path
 from typing import Any, cast
 
 ROOT = Path(__file__).resolve().parents[1]
-SEMANTIC_VERSION = re.compile(r"^[0-9]+\.[0-9]+\.[0-9]+(?:[-+][0-9A-Za-z.-]+)?$")
+STABLE_SEMANTIC_VERSION = re.compile(
+    r"^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$"
+)
 
 
 def _json(path: Path) -> dict[str, Any]:
@@ -87,16 +90,23 @@ def validate_versions(versions: dict[str, str], tag: str | None = None) -> str:
         details = ", ".join(f"{name}={value}" for name, value in versions.items())
         raise RuntimeError(f"Release versions disagree: {details}")
     version = unique.pop()
-    if not SEMANTIC_VERSION.fullmatch(version):
-        raise RuntimeError(f"Release version is not semantic: {version}")
+    if not STABLE_SEMANTIC_VERSION.fullmatch(version):
+        raise RuntimeError(
+            f"Release version must be stable SemVer without prerelease or build metadata: {version}"
+        )
     if tag and tag != f"v{version}":
         raise RuntimeError(f"Tag {tag} does not match release version v{version}")
     return version
 
 
 def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--expected-tag")
+    arguments = parser.parse_args()
     ref_type = os.environ.get("GITHUB_REF_TYPE")
-    tag = os.environ.get("GITHUB_REF_NAME") if ref_type == "tag" else None
+    tag = arguments.expected_tag or (
+        os.environ.get("GITHUB_REF_NAME") if ref_type == "tag" else None
+    )
     versions = release_versions()
     version = validate_versions(versions, tag)
     print(f"RELEASE_VERSION={version} SOURCES={len(versions)}")

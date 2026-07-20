@@ -272,7 +272,7 @@ T047 model-manager UI tests
 
 ## Task validation
 
-- Total tasks: 94.
+- Total tasks: 104.
 - User Story 1: 14 tasks (T015–T028).
 - User Story 2: 6 tasks (T029–T034).
 - User Story 3: 7 tasks (T035–T041).
@@ -281,6 +281,7 @@ T047 model-manager UI tests
 - Setup/Foundation/Polish/Convergence: 37 tasks.
 - Convergence: 11 tasks (T077–T087).
 - Post-audit release hardening: 7 tasks (T088–T094).
+- Immutable v1.1 release contract: 10 tasks (T095–T104).
 - Every task uses the required checkbox, sequential ID, appropriate story label and exact path.
 - Suggested MVP scope: Setup + Foundation + User Story 1.
 
@@ -307,3 +308,16 @@ T047 model-manager UI tests
 - [x] T092 Complete the CareerOS identity migration for frontend events and refresh cookies while rotating and clearing the legacy cookie without breaking existing local sessions
 - [x] T093 Harden the dependency-free Pages presentation with intrinsic-ratio product media, correct decorative-image accessibility validation, pull-request validation, an accurate demo password and reproducible icon generation from the SVG master
 - [x] T094 Add an on-device English-default/Italian interface catalogue for login, shell, navigation and portfolio-demo surfaces, update the deterministic recorder to English and cover locale switching with frontend tests per FR-036 and SC-012
+
+## Phase 11: Immutable v1.1 release contract
+
+- [x] T095 Add strict stable-SemVer and coordinated seven-source v1.1.0 validation with invalid/prerelease regression cases in `scripts/check_release_versions.py` and `tests/backend/unit/test_release_versions.py`
+- [x] T096 Canonicalize each smoke-tested native target into portable release names and emit exact per-target manifests/checksums in `scripts/release_contract.py` and `scripts/release_candidate.py`
+- [x] T097 Assemble and independently validate the closed six-target candidate, deterministic evidence archive, public CycloneDX SBOMs, global manifest and SHA-256 inventory in `scripts/release_contract.py`
+- [x] T098 Enforce GitHub-verified annotated-tag resolution, exact workflow source and stable default-branch containment in `scripts/release_github.py`
+- [x] T099 Implement authenticated paginated release discovery and a contract-bound, idempotent publisher with safe partial-upload and ambiguous-transition recovery in `scripts/publish_github_release.py`
+- [x] T100 Refactor `.github/workflows/desktop-release.yml` so manual/scheduled rehearsals are read-only, tag publication is push-only, toolchains/runners/CLI are pinned, and every release/SBOM attestation is independently verified
+- [x] T101 Add adversarial candidate, tag-policy, publisher pagination, foreign-state, collision, tamper, crash/retry, immutability and latest-state tests in `tests/backend/release/`
+- [x] T102 Bump all seven release metadata sources to v1.1.0 and curate `CHANGELOG.md`, `docs/releasing.md` and v1.1 release evidence without creating a tag or Release
+- [x] T103 Run Python release tests, workflow-policy validation, actionlint, frontend/Rust release checks and repository diff validation; record only commands actually executed
+- [x] T104 Perform final cross-artifact convergence against FR-037–FR-039 and SC-013 before the immutable version tag is authorized

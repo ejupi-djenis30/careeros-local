@@ -1,52 +1,79 @@
 # Releasing
 
-## Preconditions
+CareerOS releases fail closed. A manual workflow run is a read-only rehearsal: it may build and
+retain workflow artifacts, but it cannot request an OIDC token, create attestations, touch a
+GitHub Release, or publish anything. Only a stable-version tag push can enter the publisher.
 
-1. The specification, plan, and tasks agree; Spec Kit analysis and convergence report no unresolved critical work.
-2. Python, React, Rust, migration, security, performance, and packaged lifecycle gates pass.
-3. Python, npm, Cargo, and container audits have no unaccepted high/critical findings.
-4. Model catalog hashes and artifact sizes were verified against authoritative upstream releases.
-5. Version values agree in `pyproject.toml`, `frontend/package.json`, `frontend/src-tauri/Cargo.toml`, and `frontend/src-tauri/tauri.conf.json`.
+## Candidate requirements
 
-Run the same metadata gate used by CI before creating a tag:
+Before creating a tag:
 
-```powershell
-.venv\Scripts\python.exe scripts\check_release_versions.py
-```
+1. Complete Spec Kit analysis and convergence with no unresolved critical work.
+2. Pass the Python, React, Rust, migration, security, performance, and packaged lifecycle gates.
+3. Keep all seven version sources on the same stable `MAJOR.MINOR.PATCH` value. Prerelease and
+   build metadata are rejected.
+4. Update `CHANGELOG.md` with a dated, human-written section for that exact version.
+5. Confirm that `LICENSE` is the approved MIT license and that security exceptions remain valid.
 
-## Local Windows package
-
-```powershell
-npm --prefix frontend run tauri:build -- --target x86_64-pc-windows-msvc
-$env:CAREEROS_SIDECAR_BINARY = (Resolve-Path "frontend\src-tauri\binaries\careeros-backend-runtime\careeros-backend.exe").Path
-.venv\Scripts\python.exe -m pytest tests/desktop/test_packaged_lifecycle.py -q -m acceptance
-.venv\Scripts\python.exe scripts/write_artifact_checksums.py --target x86_64-pc-windows-msvc --output release-metadata/checksums-x86_64-pc-windows-msvc.sha256
-```
-
-Run the installer smoke test on a clean or disposable user profile. Verify first launch, no visible terminal, random backend port/token, model consent, offline reopen, backup/restore, clean exit, uninstall, and data retention/erasure behavior.
-
-## CI release
-
-Run `Desktop packages` manually from `main` before creating a version tag. A manual run builds
-the full native matrix, assembles and verifies the exact 17-file release inventory, and retains
-the smoke-tested packages as workflow artifacts without changing any GitHub release.
-
-After that rehearsal passes, push a matching version tag. The tag workflow freezes the backend,
-verifies every sidecar architecture, exercises packaged lifecycle and installer behavior, writes
-SHA-256 inventories, creates GitHub build-provenance attestations, and uploads the packages only
-after those gates pass. A final least-privilege job consumes only the pre-validated inventory,
-creates a draft, attaches the verified assets and supply-chain evidence, then publishes the
-release. A failed native or assembly job cannot publish or modify a release.
-
-## Signing and evidence
-
-Do not call an artifact signed unless platform signature verification was executed successfully.
-Until signing is configured, release notes must label community packages as unsigned. Verify
-GitHub provenance after downloading a package:
+Run the metadata and release-contract tests locally:
 
 ```powershell
-gh attestation verify .\CareerOS-Local-installer.exe -R ejupi-djenis30/careeros-local
+.venv\Scripts\python.exe -m scripts.check_release_versions
+.venv\Scripts\python.exe -m pytest tests\backend\release tests\backend\unit\test_release_versions.py -q
 ```
 
-Record reproducible commands and results in the active spec’s release evidence; do not commit raw
-logs, local paths, secrets, SBOM output, or large build artifacts.
+## Read-only rehearsal
+
+Run **Desktop packages** from `main`. You may supply the planned tag, such as `v1.1.0`, in
+`expected_tag`. The workflow builds six native targets on versioned GitHub-hosted runners,
+smoke-tests each package, normalizes installer names, and assembles one exact candidate.
+
+The candidate contains 22 public assets:
+
+- 10 native installers with portable, no-space names;
+- six target-specific SHA-256 files whose filenames exactly match their downloads;
+- three CycloneDX SBOMs;
+- one deterministic supply-chain evidence archive;
+- `release-manifest.json`, which binds target, package type, name, size, SHA-256, source commit,
+  release date, evidence, SBOMs, and the MIT license digest;
+- `SHA256SUMS`, which binds every other public asset.
+
+No artifact from a rehearsal is a release. Review the retained `verified-release-assets` and
+`native-subject-checksums` workflow artifacts before proceeding.
+
+## Tag and publication
+
+Create and push an annotated, cryptographically signed `vMAJOR.MINOR.PATCH` tag only after the
+rehearsal succeeds. GitHub must report every annotated tag object as verified. The tagged commit
+must equal the candidate source and remain contained in the repository's current default branch.
+
+The tag workflow re-runs every build and check. Its final job then:
+
+1. verifies the tag and default-branch policy before requesting attestations;
+2. re-hashes the exact 22-file candidate;
+3. creates SLSA provenance for all 22 assets;
+4. binds each of the three CycloneDX SBOMs to all 10 native installers;
+5. verifies every attestation against the tag commit, tag ref, workflow identity, GitHub OIDC
+   issuer, and GitHub-hosted runner policy;
+6. creates or resumes one contract-bound draft without deleting or overwriting remote assets;
+7. publishes only when release identity and all remote name/size/digest records match;
+8. confirms the published release is immutable and is the repository's latest release.
+
+Lost API responses are reconciled by reading GitHub again. A matching completed operation is
+accepted, an unapplied operation can be retried on the next run, and any duplicate, stale,
+foreign, or mismatched state stops publication. An already exact immutable latest release is a
+write-free no-op.
+
+## Download verification
+
+Verify `SHA256SUMS` first, then verify provenance with the exact repository and tag source:
+
+```powershell
+sha256sum --check SHA256SUMS
+gh attestation verify .\CareerOS-Local_1.1.0_windows-x64-setup.exe `
+  --repo ejupi-djenis30/careeros-local `
+  --source-ref refs/tags/v1.1.0
+```
+
+The packages remain unsigned community builds until platform signature checks are configured and
+recorded. Do not describe them as signed merely because GitHub provenance verifies successfully.

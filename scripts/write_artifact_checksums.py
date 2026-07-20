@@ -4,7 +4,13 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import sys
 from pathlib import Path
+
+if __package__ is None:  # Support direct `python scripts/...` invocation.
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+from scripts.release_assets import reject_casefold_collisions, validate_portable_name  # noqa: E402
 
 RELEASE_SUFFIXES = {".appimage", ".deb", ".dmg", ".exe", ".msi"}
 
@@ -27,9 +33,11 @@ def release_artifacts(bundle_root: Path) -> list[Path]:
         ),
         key=lambda path: path.name.lower(),
     )
-    names = [path.name.lower() for path in artifacts]
-    if len(names) != len(set(names)):
-        raise RuntimeError("Desktop bundles contain duplicate release filenames")
+    names = [validate_portable_name(path.name) for path in artifacts]
+    try:
+        reject_casefold_collisions(names)
+    except RuntimeError as error:
+        raise RuntimeError("Desktop bundles contain duplicate release filenames") from error
     return artifacts
 
 

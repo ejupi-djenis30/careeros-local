@@ -5,12 +5,18 @@ All notable changes to CareerOS Local are documented here. The format follows
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-07-20
+
 ### Added
 
 - Public v1.0.2 release evidence with the six-platform verification runs, package sizes,
   digests and provenance-verification command.
 - Complete English and Italian interface catalogues for sign-in, profile, search, schedules,
   application tracking, local AI, recovery and resume workflows.
+- Deterministic release manifests, portable installer names, exact per-target and global
+  SHA-256 inventories, three component SBOMs, and a reproducible evidence archive.
+- Adversarial release tests for filename collisions, tampered bytes, incomplete evidence,
+  stale drafts, duplicate releases, API ambiguity, and publication retries.
 
 ### Changed
 
@@ -20,6 +26,15 @@ All notable changes to CareerOS Local are documented here. The format follows
   GitHub Pages instead of GitHub's unsupported WebM file preview.
 - Language changes now update validation, authentication, navigation and background-task
   feedback immediately, including messages that were already visible.
+- Release publication now requires a verified annotated tag on the current default branch,
+  verifies provenance before upload, and resumes safely after ambiguous GitHub API responses.
+- Manual release runs are strictly read-only; only matching stable-version tag pushes can
+  request OIDC credentials, create attestations, or publish a release.
+
+### Fixed
+
+- Downloadable checksum files now reference the exact canonical installer filenames.
+- Release retries no longer overwrite, delete, or silently accept mismatched remote assets.
 
 ## [1.0.2] - 2026-07-19
 
@@ -84,7 +99,8 @@ All notable changes to CareerOS Local are documented here. The format follows
   autosave/revision loop.
 - Removed the rate-limit error and incomplete pipeline from public screenshots.
 
-[Unreleased]: https://github.com/ejupi-djenis30/careeros-local/compare/v1.0.2...HEAD
+[Unreleased]: https://github.com/ejupi-djenis30/careeros-local/compare/v1.1.0...HEAD
+[1.1.0]: https://github.com/ejupi-djenis30/careeros-local/compare/v1.0.2...v1.1.0
 [1.0.2]: https://github.com/ejupi-djenis30/careeros-local/compare/v1.0.1...v1.0.2
 [1.0.1]: https://github.com/ejupi-djenis30/careeros-local/compare/v1.0.0...v1.0.1
 [1.0.0]: https://github.com/ejupi-djenis30/careeros-local/releases/tag/v1.0.0
