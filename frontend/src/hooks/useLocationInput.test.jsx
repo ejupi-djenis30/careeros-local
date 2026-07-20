@@ -45,6 +45,6 @@ describe("useLocationInput", () => {
         Object.defineProperty(navigator, "geolocation", { configurable: true, value: undefined });
         render(<Consumer />);
         await act(async () => screen.getByRole("button").click());
-        expect(showToast).toHaveBeenCalledWith(expect.stringContaining("non è supportata"));
+        expect(showToast).toHaveBeenCalledWith({ messageKey: "location.unsupported" });
     });
 });

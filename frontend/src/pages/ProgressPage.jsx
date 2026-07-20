@@ -5,6 +5,7 @@ import { useSearchContext } from '../context/SearchContext';
 import { useToast } from '../context/ToastContext';
 import { SearchService } from '../services/search';
 import { useI18n } from '../i18n/useI18n';
+import { translateMessage } from '../i18n/runtime';
 
 export function ProgressPage() {
   const [searchParams] = useSearchParams();
@@ -16,24 +17,24 @@ export function ProgressPage() {
   const { t } = useI18n();
   const [selectedProfileId, setSelectedProfileId] = React.useState(singlePid);
   const [profiles, setProfiles] = React.useState({});
-  const [profilesError, setProfilesError] = React.useState('');
+  const [profilesError, setProfilesError] = React.useState(null);
 
   useEffect(() => {
     SearchService.getProfiles()
       .then(res => {
         const mapping = {};
         (res || []).forEach(p => {
-            mapping[p.id] = p.name || p.role_description || t("progressPage.searchNumber", { id: p.id });
+            mapping[p.id] = p.name || p.role_description || null;
         });
         setProfiles(mapping);
-        setProfilesError('');
+        setProfilesError(null);
       })
       .catch((error) => {
         console.error('Failed to load profiles for progress labels:', error);
-        showToast(t("progressPage.loadNamesFailed"));
-        setProfilesError(t("progressPage.namesUnavailable"));
+        showToast({ messageKey: "progressPage.loadNamesFailed" });
+        setProfilesError({ messageKey: "progressPage.namesUnavailable" });
       });
-  }, [showToast, t]);
+  }, [showToast]);
 
   useEffect(() => {
     // If we land here from an external route with a specific PID, ensure it's tracked.
@@ -117,7 +118,7 @@ export function ProgressPage() {
 
       {profilesError && (
         <div className="alert alert-warning py-2 px-3 mb-3" role="alert">
-          {profilesError}
+          {translateMessage(profilesError, t)}
         </div>
       )}
 

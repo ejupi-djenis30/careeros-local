@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from "react";
 import { useToast } from "../context/ToastContext";
-import { useI18n } from "../i18n/useI18n";
 
 /**
  * Local-only location input. It never resolves names through a remote map service.
@@ -8,7 +7,6 @@ import { useI18n } from "../i18n/useI18n";
  */
 export function useLocationInput(location, onLocationChange) {
     const { showToast } = useToast();
-    const { t } = useI18n();
     const locationProp = location || "";
     const [input, setInput] = useState({ source: locationProp, value: locationProp });
     const [isLoading, setIsLoading] = useState(false);
@@ -25,7 +23,7 @@ export function useLocationInput(location, onLocationChange) {
 
     const handleCurrentLocation = () => {
         if (!navigator.geolocation) {
-            showToast(t("location.unsupported"));
+            showToast({ messageKey: "location.unsupported" });
             return;
         }
         setIsLoading(true);
@@ -37,7 +35,7 @@ export function useLocationInput(location, onLocationChange) {
                 setIsLoading(false);
             },
             () => {
-                showToast(t("location.failed"));
+                showToast({ messageKey: "location.failed" });
                 setIsLoading(false);
             },
             { enableHighAccuracy: false, timeout: 8000, maximumAge: 300000 },

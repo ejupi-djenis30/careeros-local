@@ -6,6 +6,18 @@ import { useToast } from "../../context/ToastContext";
 import { useI18n } from "../../i18n/useI18n";
 import { newResumeDraft, resumeWritePayload } from "./resumeModel";
 
+function localizedError(messageKey) {
+    const error = new Error(messageKey);
+    error.messageKey = messageKey;
+    return error;
+}
+
+function errorMessage(error) {
+    return error?.messageKey
+        ? { messageKey: error.messageKey, variables: error.variables }
+        : { message: error?.message || String(error) };
+}
+
 export function useResumeStudio() {
     const { showToast } = useToast();
     const { t } = useI18n();
@@ -15,7 +27,7 @@ export function useResumeStudio() {
     const [dirty, setDirty] = useState(false);
     const [loading, setLoading] = useState(true);
     const [busy, setBusy] = useState("");
-    const [error, setError] = useState("");
+    const [error, setError] = useState(null);
     const [profileMissing, setProfileMissing] = useState(false);
     const [generationGoalId, setGenerationGoalId] = useState("");
     const [syncPreview, setSyncPreview] = useState(null);
@@ -35,14 +47,14 @@ export function useResumeStudio() {
 
     const loadDraft = useCallback(async (id) => {
         setBusy("load");
-        setError("");
+        setError(null);
         try {
             setDraft(await ResumeService.get(id));
             setDirty(false);
             setSyncPreview(null);
             setVersionComparison(null);
         } catch (loadError) {
-            setError(loadError.message);
+            setError(errorMessage(loadError));
         } finally {
             setBusy("");
         }
@@ -75,7 +87,7 @@ export function useResumeStudio() {
                     if (result.profileError instanceof ApiError && result.profileError.status === 404) {
                         setProfileMissing(true);
                     } else {
-                        setError(result.profileError.message);
+                        setError(errorMessage(result.profileError));
                     }
                 } else {
                     setProfile(result.loadedProfile);
@@ -83,14 +95,14 @@ export function useResumeStudio() {
                     setGenerationGoalId(result.loadedProfile.goals?.find((goal) => goal.is_primary)?.id || result.loadedProfile.goals?.[0]?.id || "");
                     setProfileMissing(false);
                     setDraft(result.loadedDraft);
-                    setError("");
+                    setError(null);
                 }
                 setLoading(false);
                 initializationRequest.current.controller = null;
             })
             .catch((loadError) => {
                 if (controller.signal.aborted || initializationRequest.current.id !== requestId) return;
-                setError(loadError.message);
+                setError(errorMessage(loadError));
                 setLoading(false);
                 initializationRequest.current.controller = null;
             });
@@ -98,7 +110,7 @@ export function useResumeStudio() {
 
     const initialize = useCallback(() => {
         setLoading(true);
-        setError("");
+        setError(null);
         setProfileMissing(false);
         return requestInitialization();
     }, [requestInitialization]);
@@ -130,9 +142,9 @@ export function useResumeStudio() {
     };
 
     const persist = async () => {
-        if (!draft.title.trim()) throw new Error(t("resume.errorTitle"));
-        if (!draft.selected_fact_ids.length) throw new Error(t("resume.errorFacts"));
-        if (draft.template_kind === "photo" && !draft.photo_asset_id) throw new Error(t("resume.errorPhoto"));
+        if (!draft.title.trim()) throw localizedError("resume.errorTitle");
+        if (!draft.selected_fact_ids.length) throw localizedError("resume.errorFacts");
+        if (draft.template_kind === "photo" && !draft.photo_asset_id) throw localizedError("resume.errorPhoto");
         if (draft.id && !dirty) return draft;
         const sequence = changeSequence.current;
         const snapshot = draft;
@@ -146,16 +158,16 @@ export function useResumeStudio() {
 
     const save = async () => run("save", async () => {
         await persist();
-        showToast(t("resume.savedToast"), "success");
+        showToast({ messageKey: "resume.savedToast" }, "success");
     });
     const publish = async () => run("publish", async () => {
         const saved = await persist();
-        if (!versionName.trim()) throw new Error(t("resume.errorVersion"));
+        if (!versionName.trim()) throw localizedError("resume.errorVersion");
         await ResumeService.publish(saved.id, versionName.trim());
         setDraft(await ResumeService.get(saved.id));
         setVersionName(t("resume.nextNamedVersion", { title: saved.title }));
         await refreshList();
-        showToast(t("resume.publishedToast"), "success");
+        showToast({ messageKey: "resume.publishedToast" }, "success");
     });
     const generateFromProfile = async () => run("generate", async () => {
         const response = await ResumeService.generate({
@@ -168,7 +180,7 @@ export function useResumeStudio() {
         setDirty(false);
         setVersionComparison(null);
         await refreshList();
-        showToast(t("resume.generatedToast"), "success");
+        showToast({ messageKey: "resume.generatedToast" }, "success");
     });
     const duplicate = async () => run("duplicate", async () => {
         if (!draft.id) return;
@@ -177,7 +189,7 @@ export function useResumeStudio() {
         setDirty(false);
         setSyncPreview(null);
         await refreshList();
-        showToast(t("resume.duplicatedToast"), "success");
+        showToast({ messageKey: "resume.duplicatedToast" }, "success");
     });
     const promoteClaim = async (blockId) => run("promote-claim", async () => {
         const saved = await persist();
@@ -191,7 +203,7 @@ export function useResumeStudio() {
         setDraft(response);
         setDirty(false);
         await refreshList();
-        showToast(t("resume.promotedToast"), "success");
+        showToast({ messageKey: "resume.promotedToast" }, "success");
     });
     const reviewSync = async () => run("sync-preview", async () => {
         const response = await ResumeService.sync(draft.id, { expected_revision: draft.revision, mode: "preview", sections: [] });
@@ -206,7 +218,7 @@ export function useResumeStudio() {
             setDirty(false);
             setSyncPreview(null);
             await refreshList();
-            showToast(mode === "reset" ? t("resume.resetToast") : t("resume.syncToast"), "success");
+            showToast({ messageKey: mode === "reset" ? "resume.resetToast" : "resume.syncToast" }, "success");
         });
     };
     const uploadPhoto = async (file) => {
@@ -214,7 +226,7 @@ export function useResumeStudio() {
         await run("photo", async () => {
             const asset = await CareerService.uploadPhoto(file);
             changeDraft({ photo_asset_id: asset.id });
-            showToast(t("resume.photoToast"), "success");
+            showToast({ messageKey: "resume.photoToast" }, "success");
         });
     };
     const remove = async () => {
@@ -240,14 +252,14 @@ export function useResumeStudio() {
             setDirty(false);
             setVersionComparison(null);
             await refreshList();
-            showToast(t("resume.restoredToast"), "success");
+            showToast({ messageKey: "resume.restoredToast" }, "success");
         });
     };
 
     async function run(name, operation) {
         setBusy(name);
-        setError("");
-        try { await operation(); } catch (operationError) { setError(operationError.message); } finally { setBusy(""); }
+        setError(null);
+        try { await operation(); } catch (operationError) { setError(errorMessage(operationError)); } finally { setBusy(""); }
     }
 
     useEffect(() => {
@@ -269,14 +281,19 @@ export function useResumeStudio() {
                 setAutosaveState(changeSequence.current === sequence ? "saved" : "pending");
             } catch (autosaveError) {
                 setAutosaveState("error");
-                setError(t("resume.autosaveFailed", { message: autosaveError.message }));
+                setError({
+                    messageKey: "resume.autosaveFailed",
+                    variables: {
+                        message: autosaveError.message || { messageKey: "common.unknownError" },
+                    },
+                });
             } finally {
                 autosaveInFlight.current = false;
                 setBusy("");
             }
         }, 1_000);
         return () => window.clearTimeout(timer);
-    }, [busy, dirty, draft, t]);
+    }, [busy, dirty, draft]);
 
     return { profile, resumes, draft, dirty, loading, busy, error, profileMissing, generationGoalId, syncPreview, syncSelection, versionName, versionComparison, autosaveState, initialize, loadDraft, changeDraft, startNew, save, publish, generateFromProfile, duplicate, promoteClaim, reviewSync, applySync, uploadPhoto, remove, compareVersions, restoreVersion, setGenerationGoalId, setSyncSelection, setVersionName, closeSync: () => setSyncPreview(null), setError };
 }

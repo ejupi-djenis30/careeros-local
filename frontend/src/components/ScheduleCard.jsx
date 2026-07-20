@@ -79,6 +79,7 @@ export function ScheduleCard({ profile, onToggle, onChangeInterval, onDelete }) 
                                 className="form-control form-control-sm bg-black-20 border-white-10 text-white shadow-none"
                                 value={profile.schedule_interval_hours || 24}
                                 onChange={(e) => onChangeInterval(profile.id, e.target.value)}
+                                aria-label={t("schedule.intervalHours")}
                             />
 
                             <button

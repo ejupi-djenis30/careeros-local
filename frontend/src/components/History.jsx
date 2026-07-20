@@ -3,6 +3,7 @@ import { SearchService } from "../services/search";
 import { useToast } from "../context/ToastContext";
 import { HistoryCard } from "./HistoryCard";
 import { useI18n } from "../i18n/useI18n";
+import { translateMessage } from "../i18n/runtime";
 
 export function History({ onStartSearch, onStartSearchWithOptions, onUseAsTemplate, onSaveAsSchedule, loadingProfileId }) {
     const [profiles, setProfiles] = useState([]);
@@ -30,8 +31,8 @@ export function History({ onStartSearch, onStartSearchWithOptions, onUseAsTempla
             .catch((loadError) => {
                 if (controller.signal.aborted || loadError?.name === "AbortError" || requestId !== requestIdRef.current) return;
                 console.error("Failed to load profiles:", loadError);
-                setError(t("historyList.loadFailed"));
-                showToast(t("historyList.loadFailed"));
+                setError({ messageKey: "historyList.loadFailed" });
+                showToast({ messageKey: "historyList.loadFailed" });
             })
             .finally(() => {
                 if (!controller.signal.aborted && requestId === requestIdRef.current) {
@@ -39,7 +40,7 @@ export function History({ onStartSearch, onStartSearchWithOptions, onUseAsTempla
                     setLoading(false);
                 }
             });
-    }, [showToast, t]);
+    }, [showToast]);
 
     const refreshProfiles = useCallback(() => {
         setError(null);
@@ -68,7 +69,7 @@ export function History({ onStartSearch, onStartSearchWithOptions, onUseAsTempla
         return (
             <div className="glass-panel text-center py-5 animate-fade-in align-items-center d-flex flex-column justify-content-center h-100">
                 <i className="bi bi-exclamation-triangle-fill fs-1 text-danger mb-3"></i>
-                <p className="text-secondary opacity-75 mb-3">{error}</p>
+                <p className="text-secondary opacity-75 mb-3">{translateMessage(error, t)}</p>
                 <button onClick={refreshProfiles} className="btn btn-outline-primary">
                     <i className="bi bi-arrow-clockwise me-2"></i>{t("historyList.retry")}
                 </button>

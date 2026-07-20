@@ -4,6 +4,7 @@ import { useToast } from "../context/ToastContext";
 import { ScheduleCard } from "./ScheduleCard";
 import { ConfirmationDialog } from "./ConfirmationDialog";
 import { useI18n } from "../i18n/useI18n";
+import { translateMessage } from "../i18n/runtime";
 
 export function Schedules() {
     const { showToast } = useToast();
@@ -31,8 +32,8 @@ export function Schedules() {
             .catch((loadError) => {
                 if (controller.signal.aborted || loadError?.name === "AbortError" || requestId !== requestIdRef.current) return;
                 console.error("Failed to load profiles:", loadError);
-                setError(t("schedules.loadFailed"));
-                showToast(t("schedules.loadFailedRefresh"));
+                setError({ messageKey: "schedules.loadFailed" });
+                showToast({ messageKey: "schedules.loadFailedRefresh" });
             })
             .finally(() => {
                 if (!controller.signal.aborted && requestId === requestIdRef.current) {
@@ -40,7 +41,7 @@ export function Schedules() {
                     setLoading(false);
                 }
             });
-    }, [showToast, t]);
+    }, [showToast]);
 
     const refreshProfiles = useCallback(() => {
         setError(null);
@@ -62,7 +63,10 @@ export function Schedules() {
             await SearchService.toggleSchedule(profileId, !currentEnabled, intervalHours);
             await loadProfiles();
         } catch (e) {
-            showToast(t("schedules.toggleFailed", { error: e.message || t("common.unknownError") }));
+            showToast({
+                messageKey: "schedules.toggleFailed",
+                variables: { error: e.message || { messageKey: "common.unknownError" } },
+            });
         }
     };
 
@@ -76,7 +80,10 @@ export function Schedules() {
             await SearchService.toggleSchedule(profileToDelete, false);
             await loadProfiles();
         } catch (e) {
-            showToast(t("schedules.removeFailed", { error: e.message || t("common.unknownError") }));
+            showToast({
+                messageKey: "schedules.removeFailed",
+                variables: { error: e.message || { messageKey: "common.unknownError" } },
+            });
         } finally {
             setProfileToDelete(null);
         }
@@ -91,7 +98,10 @@ export function Schedules() {
             await SearchService.toggleSchedule(profileId, true, parseInt(newInterval));
             await loadProfiles();
         } catch (e) {
-            showToast(t("schedules.intervalFailed", { error: e.message || t("common.unknownError") }));
+            showToast({
+                messageKey: "schedules.intervalFailed",
+                variables: { error: e.message || { messageKey: "common.unknownError" } },
+            });
         }
     };
 
@@ -107,7 +117,7 @@ export function Schedules() {
         return (
             <div className="glass-panel text-center py-5 animate-fade-in align-items-center d-flex flex-column justify-content-center h-100">
                 <i className="bi bi-exclamation-triangle-fill fs-1 text-danger mb-3"></i>
-                <p className="text-secondary opacity-75 mb-3">{error}</p>
+                <p className="text-secondary opacity-75 mb-3">{translateMessage(error, t)}</p>
                 <button onClick={refreshProfiles} className="btn btn-outline-primary">
                     <i className="bi bi-arrow-clockwise me-2"></i>{t("schedules.retry")}
                 </button>

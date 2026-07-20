@@ -81,7 +81,7 @@ describe("profile list request lifecycle", () => {
         await user.click(await screen.findByRole("button", { name: "Try again" }));
 
         expect(await screen.findByText("No search history yet")).toBeInTheDocument();
-        expect(showToast).toHaveBeenCalledWith("Failed to load search history.");
+        expect(showToast).toHaveBeenCalledWith({ messageKey: "historyList.loadFailed" });
         consoleSpy.mockRestore();
     });
 });

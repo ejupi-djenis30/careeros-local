@@ -4,6 +4,7 @@ import { JobTable } from '../components/JobTable';
 import { FilterBar } from '../components/FilterBar';
 import { useJobs } from '../hooks/useJobs';
 import { useI18n } from '../i18n/useI18n';
+import { translateMessage } from '../i18n/runtime';
 
 const StatCard = ({ label, value, color, icon, isLoading }) => (
   <div className="glass-panel p-4 d-flex align-items-center hover-card h-100">
@@ -57,7 +58,7 @@ export function JobsPage() {
       {fetchError && (
         <div className="alert alert-danger d-flex align-items-center gap-2 mb-4" role="alert">
           <i className="bi bi-exclamation-triangle-fill"></i>
-          {fetchError}
+          {translateMessage(fetchError, t)}
         </div>
       )}
       <div className="row g-3 g-md-4 mb-4 mb-md-5">

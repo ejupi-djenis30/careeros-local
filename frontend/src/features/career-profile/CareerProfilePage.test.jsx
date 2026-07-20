@@ -42,7 +42,7 @@ describe("CareerProfilePage", () => {
         await waitFor(() => expect(saveProfile).toHaveBeenCalledTimes(1));
         expect(saveProfile.mock.calls[0][0]).toMatchObject({ expected_revision: 3, headline: "Principal engineer" });
         expect(saveProfile.mock.calls[0][0].facts[0]).not.toHaveProperty("created_at");
-        expect(showToast).toHaveBeenCalledWith(expect.stringContaining("salvato"), "success");
+        expect(showToast).toHaveBeenCalledWith({ messageKey: "profile.savedToast" }, "success");
     });
 
     it("shows server-derived completeness, missing sections, conflicts and evidence state", async () => {

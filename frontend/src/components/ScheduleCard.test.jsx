@@ -2,6 +2,7 @@ import React from 'react';
 import { render, screen, fireEvent, act } from '@testing-library/react';
 import { describe, it, expect, vi } from 'vitest';
 import { ScheduleCard } from './ScheduleCard';
+import { assertAccessible } from '../test/accessibility';
 
 const mockProfile = {
     id: 10,
@@ -20,6 +21,13 @@ describe('ScheduleCard', () => {
         expect(screen.getByText('Frontend Developer')).toBeInTheDocument();
         expect(screen.getByText('Berlin')).toBeInTheDocument();
         expect(screen.getByText('ID: 10')).toBeInTheDocument();
+    });
+
+    it('gives the interval input an accessible localized name', async () => {
+        const { container } = render(<ScheduleCard profile={mockProfile} onToggle={vi.fn()} onChangeInterval={vi.fn()} onDelete={vi.fn()} />);
+
+        expect(screen.getByRole('spinbutton', { name: 'Interval in hours' })).toHaveValue(12);
+        await assertAccessible(container);
     });
 
     it('renders default name and falsy fallbacks when profile is missing info', () => {

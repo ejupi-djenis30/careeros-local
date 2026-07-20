@@ -117,7 +117,7 @@ export function ApplicationsPage() {
             setShowCreate(false);
             setSearchParams({});
             setForm(emptyForm());
-            showToast(t("applications.added"), "success");
+            showToast({ messageKey: "applications.added" }, "success");
         } catch (createError) {
             setError(createError.message);
         } finally {

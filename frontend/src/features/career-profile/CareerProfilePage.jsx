@@ -132,7 +132,7 @@ export function CareerProfilePage() {
         }));
         if (additions.length > 0) {
             update({ ...profile, facts: [...profile.facts, ...additions] });
-            showToast(t("profile.importReady", { count: additions.length }), "success");
+            showToast({ messageKey: "profile.importReady", variables: { count: additions.length } }, "success");
         }
         return additions.length;
     };
@@ -147,7 +147,7 @@ export function CareerProfilePage() {
             setProfile(profileResponseToDraft(response));
             setDirty(false);
             window.dispatchEvent(new Event("careeros:profile-updated"));
-            showToast(t("profile.savedToast"), "success");
+            showToast({ messageKey: "profile.savedToast" }, "success");
         } catch (saveError) {
             if (saveError instanceof ApiError && saveError.status === 409) setConflict(true);
             setError(saveError.message);

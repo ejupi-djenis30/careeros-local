@@ -88,8 +88,8 @@ export function JobTable({ jobs, isGlobalView, onToggleApplied, isAppliedPending
         // Remove null/undefined keys for cleaner output
         const cleaned = Object.fromEntries(Object.entries(data).filter(([, v]) => v != null));
         navigator.clipboard.writeText(JSON.stringify(cleaned, null, 2)).then(
-            () => showToast(t("jobs.copySuccess"), "success"),
-            () => showToast(t("jobs.copyFailed"))
+            () => showToast({ messageKey: "jobs.copySuccess" }, "success"),
+            () => showToast({ messageKey: "jobs.copyFailed" })
         );
     };
     if (!jobs || jobs.length === 0) {

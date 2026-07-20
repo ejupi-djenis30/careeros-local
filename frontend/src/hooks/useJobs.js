@@ -3,7 +3,6 @@ import { JobService } from '../services/jobs';
 import { SearchService } from '../services/search';
 import { useSearchContext } from '../context/SearchContext';
 import { useToast } from '../context/ToastContext';
-import { useI18n } from '../i18n/useI18n';
 
 const DEFAULT_FILTERS = {
   search_profile_id: '',
@@ -28,7 +27,6 @@ const PAGE_SIZE = 20;
 export function useJobs(logout) {
   const { activeProfileIds, statusHeartbeat } = useSearchContext();
   const { showToast } = useToast();
-  const { t } = useI18n();
   const [jobs, setJobs] = useState([]);
   const [filtersState, setFiltersState] = useState(DEFAULT_FILTERS);
   const [pagination, setPaginationState] = useState(DEFAULT_PAGINATION);
@@ -95,14 +93,14 @@ export function useJobs(logout) {
           logout();
         } else {
           console.error('Fetch jobs error:', error);
-          setFetchError(error.message || t('jobs.error.load'));
+          setFetchError(error.message ? { message: error.message } : { messageKey: 'jobs.error.load' });
         }
         isFirstFetch.current = false;
         setIsLoading(false);
         setIsRefreshing(false);
         jobsRequestRef.current.controller = null;
       });
-  }, [filters, pagination.page, logout, t]);
+  }, [filters, pagination.page, logout]);
 
   const fetchJobs = useCallback((isBackground = false) => {
     if (!isBackground) {
@@ -132,11 +130,11 @@ export function useJobs(logout) {
           logout();
         } else {
           console.error('Failed to load search profiles', error);
-          showToast(error.message || t('jobs.error.profiles'));
+          showToast(error.message ? { message: error.message } : { messageKey: 'jobs.error.profiles' });
         }
         profilesRequestRef.current.controller = null;
       });
-  }, [logout, showToast, t]);
+  }, [logout, showToast]);
 
   useEffect(() => {
     void requestProfiles();
@@ -201,7 +199,7 @@ export function useJobs(logout) {
     } catch (error) {
       if (error.message === "UNAUTHORIZED" && logout) { logout(); return; }
       console.error("Failed to update job", error);
-      showToast(error.message || t('jobs.error.update'));
+      showToast(error.message ? { message: error.message } : { messageKey: 'jobs.error.update' });
     } finally {
       setPendingAppliedJobIds(prev => prev.filter(id => id !== jobId));
     }
@@ -225,8 +223,8 @@ export function useJobs(logout) {
       // Refresh pagination count
       setPaginationState(prev => ({ ...prev, total: Math.max(0, prev.total - 1) }));
       // Undo toast — re-inserts job at original position
-      showToast(t('jobs.dismissed'), 'secondary', {
-        label: t('jobs.undo'),
+      showToast({ messageKey: 'jobs.dismissed' }, 'secondary', {
+        labelKey: 'jobs.undo',
         onAction: async () => {
           try {
             const reactivated = await JobService.reactivate(job.id);
@@ -240,7 +238,7 @@ export function useJobs(logout) {
           } catch (undoError) {
             if (undoError.message === 'UNAUTHORIZED' && logout) { logout(); return; }
             console.error('Failed to undo dismiss', undoError);
-            showToast(undoError.message || t('jobs.error.undoDismiss'));
+            showToast(undoError.message ? { message: undoError.message } : { messageKey: 'jobs.error.undoDismiss' });
           }
         }
       }, 5000);
@@ -248,7 +246,7 @@ export function useJobs(logout) {
     } catch (error) {
       if (error.message === "UNAUTHORIZED" && logout) { logout(); return; }
       console.error("Failed to dismiss job", error);
-      showToast(error.message || t('jobs.error.dismiss'));
+      showToast(error.message ? { message: error.message } : { messageKey: 'jobs.error.dismiss' });
     }
   };
 
@@ -260,7 +258,7 @@ export function useJobs(logout) {
     } catch (error) {
       if (error.message === "UNAUTHORIZED" && logout) { logout(); return; }
       console.error("Failed to reactivate job", error);
-      showToast(error.message || t('jobs.error.reactivate'));
+      showToast(error.message ? { message: error.message } : { messageKey: 'jobs.error.reactivate' });
     }
   };
 

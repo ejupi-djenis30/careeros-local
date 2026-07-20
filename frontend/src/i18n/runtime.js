@@ -12,6 +12,20 @@ export function createTranslator(language) {
     );
 }
 
+export function translateMessage(message, t) {
+    if (!message) return "";
+    if (typeof message === "string") return message;
+    const variables = Object.fromEntries(
+        Object.entries(message.variables || {}).map(([key, value]) => [
+            key,
+            value && typeof value === "object" && (value.messageKey || value.message)
+                ? translateMessage(value, t)
+                : value,
+        ]),
+    );
+    return message.messageKey ? t(message.messageKey, variables) : message.message || "";
+}
+
 export const I18nContext = createContext({
     language: "en",
     setLanguage: () => {},
