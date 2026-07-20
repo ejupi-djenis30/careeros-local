@@ -13,6 +13,8 @@ export function ResumeCanvas({ document, templateKind, onChange, onPromoteClaim,
     const [pageCount, setPageCount] = useState(1);
     const onChangeRef = useRef(onChange);
     const lastEmittedDocument = useRef(state.present);
+    const lastReceivedDocument = useRef(document);
+    const suppressNextEmission = useRef(false);
     const paperRef = useRef(null);
 
     useEffect(() => { onChangeRef.current = onChange; }, [onChange]);
@@ -23,8 +25,20 @@ export function ResumeCanvas({ document, templateKind, onChange, onPromoteClaim,
         // autosave/remount loop; reducer edits always produce a new document object.
         if (lastEmittedDocument.current === state.present) return;
         lastEmittedDocument.current = state.present;
+        if (suppressNextEmission.current) {
+            suppressNextEmission.current = false;
+            return;
+        }
         onChangeRef.current(state.present);
     }, [state.present]);
+
+    useEffect(() => {
+        if (lastReceivedDocument.current === document) return;
+        lastReceivedDocument.current = document;
+        if (lastEmittedDocument.current === document) return;
+        suppressNextEmission.current = true;
+        dispatch({ type: "LOAD", document });
+    }, [document]);
 
     useEffect(() => {
         const paper = paperRef.current;
