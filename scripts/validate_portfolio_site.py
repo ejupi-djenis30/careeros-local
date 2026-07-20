@@ -25,6 +25,7 @@ class PortfolioParser(HTMLParser):
         self.h1_count = 0
         self.main_count = 0
         self.nav_labels: list[str | None] = []
+        self.video_count = 0
         self.videos_without_controls: list[int] = []
         self.external_executables: list[tuple[str, int]] = []
         self.referrer_policies: list[str] = []
@@ -49,8 +50,10 @@ class PortfolioParser(HTMLParser):
             self.nav_labels.append(attributes.get("aria-label"))
         elif tag == "img" and "alt" not in attributes:
             self.images_missing_alt.append(line)
-        elif tag == "video" and "controls" not in attributes:
-            self.videos_without_controls.append(line)
+        elif tag == "video":
+            self.video_count += 1
+            if "controls" not in attributes:
+                self.videos_without_controls.append(line)
         elif tag == "meta" and (attributes.get("name") or "").lower() == "referrer":
             self.referrer_policies.append(attributes.get("content") or "")
         elif tag == "meta" and (attributes.get("http-equiv") or "").lower() == "content-security-policy":
@@ -117,6 +120,13 @@ def validate() -> list[str]:
         errors.append(f"line {line}: image is missing an alt attribute")
     for line in parser.videos_without_controls:
         errors.append(f"line {line}: video must expose browser controls")
+    if parser.video_count != 1:
+        errors.append(f"expected exactly one real-product demo video, found {parser.video_count}")
+    if not any(
+        attribute == "src" and reference == "assets/careeros-demo.webm"
+        for attribute, reference, _line in parser.references
+    ):
+        errors.append("portfolio must preserve the CareerOS Local WebM product demo")
     for url, line in parser.external_executables:
         errors.append(f"line {line}: external script or stylesheet is not allowed: {url}")
 

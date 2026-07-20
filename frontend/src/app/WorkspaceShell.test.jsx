@@ -24,6 +24,7 @@ describe("WorkspaceShell mobile navigation", () => {
         render(<WorkspaceShell><p>Workspace content</p></WorkspaceShell>);
         const trigger = screen.getByRole("button", { name: "Apri menu" });
 
+        expect(screen.getByRole("img", { name: "CareerOS Local" })).toBeInTheDocument();
         expect(trigger).toHaveAttribute("aria-controls", "workspace-sidebar");
         expect(trigger).toHaveAttribute("aria-expanded", "false");
         await user.click(trigger);

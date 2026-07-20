@@ -169,6 +169,9 @@ studio, application workflow, managed local model lifecycle, secure portability 
 Tauri sidecar integration and expanded Python/React/Rust verification. The detailed, claim-aware
 hackathon material remains in the [Devpost submission kit](docs/devpost.md).
 
+Product direction and maintenance are by Djenis Ejupi. Additional work is credited collectively to
+**CareerOS Local contributors**.
+
 ## Documentation
 
 - [Development guide](docs/development.md)

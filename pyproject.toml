@@ -1,8 +1,12 @@
 [project]
 name = "careeros-local"
-version = "1.1.0"
+version = "1.1.1"
 description = "Private, local-first AI career workspace for resumes, job matching, and application tracking"
 readme = "README.md"
+authors = [
+    { name = "Djenis Ejupi" },
+    { name = "CareerOS Local contributors" },
+]
 license = "MIT"
 requires-python = ">=3.12,<3.14"
 keywords = ["career", "local-first", "privacy", "tauri", "fastapi", "react"]
