@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ApiError } from "../../lib/client";
 import { CareerService } from "../../services/career";
 import { ResumeService } from "../../services/resumes";
@@ -24,6 +24,7 @@ export function CareerProfilePage() {
     const [conflict, setConflict] = useState(false);
     const [jobSources, setJobSources] = useState([]);
     const [resumeVersions, setResumeVersions] = useState([]);
+    const profileRequestRef = useRef({ controller: null, id: 0 });
     const sectionLabels = {
         identity: t("profile.section.identity"),
         experience: t("profile.section.experience"),
@@ -42,32 +43,61 @@ export function CareerProfilePage() {
         missing_evidence: t("profile.issue.evidence"),
     };
 
-    const load = useCallback(async () => {
+    const requestProfile = useCallback(() => {
+        const requestId = profileRequestRef.current.id + 1;
+        profileRequestRef.current.controller?.abort();
+        const controller = new AbortController();
+        profileRequestRef.current = { controller, id: requestId };
+        const requestOptions = { signal: controller.signal, suppressGlobalError: true };
+        const sourceRequest = Promise.resolve()
+            .then(() => CareerService.getJobSources(requestOptions))
+            .catch(() => []);
+        const versionRequest = Promise.resolve()
+            .then(() => ResumeService.listVersions(requestOptions))
+            .catch(() => []);
+        const profileRequest = Promise.resolve()
+            .then(() => CareerService.getProfile(requestOptions))
+            .then((response) => ({ profile: profileResponseToDraft(response) }))
+            .catch((loadError) => {
+                if (loadError instanceof ApiError && loadError.status === 404) {
+                    return { profile: emptyProfile(user) };
+                }
+                return { error: loadError };
+            });
+
+        return Promise.all([profileRequest, sourceRequest, versionRequest])
+            .then(([profileResult, nextJobSources, nextResumeVersions]) => {
+                if (controller.signal.aborted || profileRequestRef.current.id !== requestId) return;
+                if (profileResult.error) {
+                    setError(profileResult.error.message);
+                } else {
+                    setProfile(profileResult.profile);
+                    setError("");
+                    setConflict(false);
+                    setDirty(false);
+                }
+                setJobSources(nextJobSources);
+                setResumeVersions(nextResumeVersions);
+                setLoading(false);
+                profileRequestRef.current.controller = null;
+            });
+    }, [user]);
+
+    const load = useCallback(() => {
         setLoading(true);
         setError("");
         setConflict(false);
-        const sourceRequest = CareerService.getJobSources({ suppressGlobalError: true })
-            .catch(() => []);
-        const versionRequest = ResumeService.listVersions().catch(() => []);
-        try {
-            const response = await CareerService.getProfile({ suppressGlobalError: true });
-            setProfile(profileResponseToDraft(response));
-            setDirty(false);
-        } catch (loadError) {
-            if (loadError instanceof ApiError && loadError.status === 404) {
-                setProfile(emptyProfile(user));
-                setDirty(false);
-            } else {
-                setError(loadError.message);
-            }
-        } finally {
-            setJobSources(await sourceRequest);
-            setResumeVersions(await versionRequest);
-            setLoading(false);
-        }
-    }, [user]);
+        return requestProfile();
+    }, [requestProfile]);
 
-    useEffect(() => { load(); }, [load]);
+    useEffect(() => {
+        void requestProfile();
+        return () => {
+            profileRequestRef.current.id += 1;
+            profileRequestRef.current.controller?.abort();
+            profileRequestRef.current.controller = null;
+        };
+    }, [requestProfile]);
     useEffect(() => {
         const guard = (event) => { if (dirty) event.preventDefault(); };
         window.addEventListener("beforeunload", guard);

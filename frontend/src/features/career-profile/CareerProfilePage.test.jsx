@@ -181,4 +181,15 @@ describe("CareerProfilePage", () => {
         await user.keyboard("{Enter}");
         expect(screen.getByLabelText("Nome obiettivo 2")).toBeInTheDocument();
     });
+
+    it("aborts the profile request on unmount", async () => {
+        getProfile.mockImplementationOnce(() => new Promise(() => {}));
+        const { unmount } = render(<CareerProfilePage />);
+        await waitFor(() => expect(getProfile).toHaveBeenCalledTimes(1));
+        const [{ signal }] = getProfile.mock.calls[0];
+
+        unmount();
+
+        expect(signal.aborted).toBe(true);
+    });
 });

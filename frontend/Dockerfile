@@ -11,7 +11,7 @@ RUN npm ci --include=dev --ignore-scripts
 COPY . ./
 RUN npm run build
 
-FROM nginx:1.30.3-alpine3.23-slim@sha256:d5b51cfc7d55fc7a7bcf4d1d577b9c3738331df56d68f0b1d8ac9795b9470a5a
+FROM nginx:1.30.4-alpine3.24-slim@sha256:ddde39c6e51f02fde7410c2e9c234cf2d0a4c7bdbbe176aeb37d8ad7ab4eb58c
 
 LABEL org.opencontainers.image.title="CareerOS Local web" \
       org.opencontainers.image.description="Local-first CareerOS browser interface"

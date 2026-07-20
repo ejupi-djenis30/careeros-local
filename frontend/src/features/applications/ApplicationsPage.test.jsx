@@ -50,4 +50,15 @@ describe("ApplicationsPage", () => {
             initial_stage: "saved", resume_version_id: null, note: null,
         }));
     });
+
+    it("aborts the application list request on unmount", async () => {
+        list.mockImplementationOnce(() => new Promise(() => {}));
+        const { unmount } = render(<MemoryRouter initialEntries={["/applications"]}><ApplicationsPage /></MemoryRouter>);
+        await waitFor(() => expect(list).toHaveBeenCalledTimes(1));
+        const [{ signal }] = list.mock.calls[0];
+
+        unmount();
+
+        expect(signal.aborted).toBe(true);
+    });
 });

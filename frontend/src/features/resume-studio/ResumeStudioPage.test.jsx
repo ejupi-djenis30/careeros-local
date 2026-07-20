@@ -176,4 +176,19 @@ describe("ResumeStudioPage", () => {
         await user.keyboard("{Enter}");
         await waitFor(() => expect(publish).toHaveBeenCalledWith(RESUME_ID, "Versione CV"));
     });
+
+    it("aborts initialization requests when the studio unmounts", async () => {
+        getProfile.mockImplementationOnce((options) => new Promise((_resolve, reject) => {
+            options.signal.addEventListener("abort", () => reject(new DOMException("Aborted", "AbortError")));
+        }));
+        const { unmount } = render(<ResumeStudioPage />);
+
+        await waitFor(() => expect(getProfile).toHaveBeenCalledTimes(1));
+        const [{ signal }] = getProfile.mock.calls[0];
+        expect(signal.aborted).toBe(false);
+
+        unmount();
+
+        expect(signal.aborted).toBe(true);
+    });
 });

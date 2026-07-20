@@ -18,6 +18,19 @@ describe("ResumeCanvas", () => {
         expect(onChange).toHaveBeenCalledTimes(1);
     });
 
+    it("loads a server document update without echoing it as a local edit", () => {
+        const onChange = vi.fn();
+        const initial = resumeDraft().canvas_document;
+        const updated = structuredClone(initial);
+        updated.sections[0].blocks[0].content.title = "Grace Hopper";
+        const { rerender } = render(<ResumeCanvas document={initial} templateKind="ats" onChange={onChange} />);
+
+        rerender(<ResumeCanvas document={updated} templateKind="ats" onChange={onChange} />);
+
+        expect(screen.getByDisplayValue("Grace Hopper")).toBeInTheDocument();
+        expect(onChange).not.toHaveBeenCalled();
+    });
+
     it("supports inline edits, undo and keyboard-accessible ordering", async () => {
         const user = userEvent.setup();
         const onChange = vi.fn();
