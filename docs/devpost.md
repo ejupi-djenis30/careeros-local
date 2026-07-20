@@ -126,10 +126,11 @@ Build and verification:
 
 ## Submission asset pack
 
-- `docs/assets/careeros-local-hero.png` — generated editorial hero for the repository and
-  Devpost gallery; it is conceptual artwork, not a product screenshot.
-- `docs/assets/devpost-thumbnail.png` — generated square project thumbnail, designed to remain
-  legible at Devpost card size.
+- `docs/assets/careeros-local-hero.png` — deterministic editorial hero rendered from the native
+  `careeros-local-hero.svg` source. Its mirrored modules describe the product architecture; it
+  is an illustration, not a product screenshot.
+- `docs/assets/devpost-thumbnail.png` — deterministic square thumbnail rendered from the native
+  `devpost-thumbnail.svg` source and designed to remain clear at Devpost card size.
 - `docs/assets/careeros-workspace.png` — real browser-mode capture of the daily workspace using
   a fictional local profile.
 - `docs/assets/careeros-vault.png` — real capture of the verified Career Vault.
@@ -139,9 +140,9 @@ Build and verification:
   portfolio tour and clickable poster. This silent repository tour does **not** replace the
   narrated YouTube deliverable required for submission.
 
-Before upload, preview each asset at Devpost's rendered size and retain the distinction between
-concept art and working-product captures in captions. The screenshots contain fictional demo
-data only.
+Rebuild both geometric assets with `node scripts/render_brand_assets.mjs`, then preview them at
+Devpost's rendered size. Keep the distinction between native illustrations and working-product
+captures in captions. The screenshots contain fictional demo data only.
 
 ## Video plan: under three minutes
 

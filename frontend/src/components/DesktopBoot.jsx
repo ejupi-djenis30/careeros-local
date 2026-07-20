@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 
 import { bootstrapDesktop } from "../platform/desktop";
 import { useI18n } from "../i18n/useI18n";
+import { CAREEROS_MARK_URL } from "../app/brand";
 
 export function DesktopBoot({ children }) {
     const { t } = useI18n();
@@ -28,7 +29,7 @@ export function DesktopBoot({ children }) {
     if (status.state === "ready") return children;
     return (
         <main className="desktop-boot" aria-live="polite">
-            <img src="/careeros.svg" alt="" className="desktop-boot__mark" />
+            <img src={CAREEROS_MARK_URL} alt="" className="desktop-boot__mark" />
             <h1>CareerOS Local</h1>
             {status.state === "starting" ? (
                 <>

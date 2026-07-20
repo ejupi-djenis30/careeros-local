@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useAuth } from "../context/AuthContext";
 import { LanguageSwitcher } from "../i18n/LanguageSwitcher";
 import { useI18n } from "../i18n/useI18n";
+import { CAREEROS_MARK_URL } from "../app/brand";
 
 export function Login() {
     const [mode, setMode] = useState("login");
@@ -34,7 +35,7 @@ export function Login() {
         <main className="login-shell">
             <section className="login-story">
                 <div className="workspace-brand workspace-brand--login">
-                    <img className="workspace-brand__mark" src="/careeros.svg" alt="" width="40" height="40" />
+                    <img className="workspace-brand__mark" src={CAREEROS_MARK_URL} alt="" width="40" height="40" />
                     <div><strong>CareerOS</strong><span>{t("login.privateWorkspace")}</span></div>
                 </div>
                 <div>

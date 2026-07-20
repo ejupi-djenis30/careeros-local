@@ -138,7 +138,7 @@ export function SearchProvider({ children }) {
 
                 pollingInterval = runningIds.length > 0 ? 1500 : 15000;
             } catch (e) {
-                if (e.name === 'AbortError') return;
+                if (isDisposed || e.name === 'AbortError') return;
                 console.error("Failed to poll statuses:", e);
                 window.dispatchEvent(new CustomEvent(CAREEROS_API_ERROR_EVENT, {
                     detail: {

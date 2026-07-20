@@ -1,0 +1,66 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1774" height="887" viewBox="0 0 1774 887" role="img" aria-labelledby="title description">
+  <title id="title">CareerOS Local system map</title>
+  <desc id="description">A precise geometric composition showing four private career workflows connected to one local vault.</desc>
+  <defs>
+    <radialGradient id="hero-field" cx="50%" cy="50%" r="66%">
+      <stop offset="0" stop-color="#18221c"/>
+      <stop offset="0.58" stop-color="#0f1511"/>
+      <stop offset="1" stop-color="#0a0d0b"/>
+    </radialGradient>
+    <linearGradient id="hero-panel" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#151c17"/>
+      <stop offset="1" stop-color="#101411"/>
+    </linearGradient>
+    <linearGradient id="hero-signal" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#b9f27c" stop-opacity="0"/>
+      <stop offset="0.5" stop-color="#b9f27c"/>
+      <stop offset="1" stop-color="#b9f27c" stop-opacity="0"/>
+    </linearGradient>
+    <g id="hero-quadrant">
+      <path d="M448 248h86c48 0 76 16 105 49l60 68" fill="none" stroke="#2b362f" stroke-width="2"/>
+      <path d="M448 248h86c48 0 76 16 105 49l60 68" fill="none" stroke="url(#hero-signal)" stroke-width="2" stroke-dasharray="74 260"/>
+      <circle cx="548" cy="252" r="5" fill="#0a0d0b" stroke="#82b9ff" stroke-width="2"/>
+      <circle cx="630" cy="288" r="4" fill="#b9f27c"/>
+      <rect x="112" y="160" width="336" height="176" rx="28" fill="url(#hero-panel)" stroke="#2b362f" stroke-width="2"/>
+      <rect x="136" y="184" width="288" height="128" rx="18" fill="#0c100d" stroke="#202a23"/>
+      <circle cx="190" cy="248" r="28" fill="#101411" stroke="#3b4940" stroke-width="2"/>
+      <path d="M178 248h24M190 236v24" fill="none" stroke="#b9f27c" stroke-width="3" stroke-linecap="round"/>
+      <rect x="246" y="216" width="128" height="8" rx="4" fill="#f4f7f2" fill-opacity="0.9"/>
+      <rect x="246" y="244" width="154" height="8" rx="4" fill="#9eaaa2" fill-opacity="0.5"/>
+      <rect x="246" y="272" width="96" height="8" rx="4" fill="#82b9ff" fill-opacity="0.85"/>
+      <circle cx="388" cy="276" r="12" fill="#b9f27c"/>
+      <circle cx="388" cy="276" r="4" fill="#101411"/>
+      <path d="M136 296h288" stroke="#2b362f"/>
+      <circle cx="158" cy="304" r="3" fill="#9eaaa2"/>
+      <circle cx="170" cy="304" r="3" fill="#b9f27c"/>
+      <circle cx="182" cy="304" r="3" fill="#82b9ff"/>
+    </g>
+    <g id="career-mark">
+      <rect x="-32" y="-32" width="64" height="64" rx="16" fill="#101411" stroke="#2b362f" stroke-width="2"/>
+      <path d="M13-13.5A18 18 0 1 0 13 13.5" fill="none" stroke="#b9f27c" stroke-width="7" stroke-linecap="round"/>
+      <path d="M6 0h7" fill="none" stroke="#f4f7f2" stroke-width="3.5" stroke-linecap="round"/>
+      <circle cx="15" cy="0" r="5" fill="#b9f27c"/>
+      <circle cx="15" cy="0" r="1.8" fill="#101411"/>
+    </g>
+  </defs>
+
+  <rect width="1774" height="887" fill="url(#hero-field)"/>
+  <rect data-frame="true" x="48" y="48" width="1678" height="791" rx="44" fill="none" stroke="#2b362f" stroke-width="2"/>
+  <path d="M80 443.5h1614M887 80v727" fill="none" stroke="#202a23"/>
+  <circle cx="887" cy="443.5" r="292" fill="none" stroke="#202a23" stroke-width="2"/>
+  <circle cx="887" cy="443.5" r="232" fill="none" stroke="#2b362f" stroke-width="2"/>
+  <circle cx="887" cy="443.5" r="190" fill="#0d120f" stroke="#3b4940" stroke-width="2"/>
+
+  <use data-quadrant="top-left" href="#hero-quadrant"/>
+  <use data-quadrant="top-right" href="#hero-quadrant" transform="translate(1774 0) scale(-1 1)"/>
+  <use data-quadrant="bottom-left" href="#hero-quadrant" transform="translate(0 887) scale(1 -1)"/>
+  <use data-quadrant="bottom-right" href="#hero-quadrant" transform="translate(1774 887) scale(-1 -1)"/>
+
+  <rect data-center="true" x="707" y="263.5" width="360" height="360" rx="72" fill="#101411" stroke="#3b4940" stroke-width="2"/>
+  <rect x="731" y="287.5" width="312" height="312" rx="56" fill="#0a0d0b" stroke="#2b362f"/>
+  <circle cx="887" cy="443.5" r="124" fill="none" stroke="#2b362f" stroke-width="2"/>
+  <path d="M887 307.5v24M887 555.5v24M751 443.5h24M999 443.5h24" stroke="#b9f27c" stroke-width="4" stroke-linecap="round"/>
+  <g transform="translate(887 443.5) scale(2.5)">
+    <use href="#career-mark"/>
+  </g>
+</svg>

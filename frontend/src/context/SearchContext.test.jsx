@@ -2,6 +2,7 @@ import React from 'react';
 import { render, screen, waitFor, act } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { SearchProvider, useSearchContext } from './SearchContext';
+import { CAREEROS_API_ERROR_EVENT } from '../lib/events';
 
 const mockGetAllStatuses = vi.fn();
 
@@ -114,6 +115,31 @@ describe('SearchContext', () => {
     unmount();
 
     expect(requestSignal.aborted).toBe(true);
+  });
+
+  it('does not report a poll that settles after the provider unmounts', async () => {
+    let rejectPoll;
+    const apiErrorListener = vi.fn();
+    window.addEventListener(CAREEROS_API_ERROR_EVENT, apiErrorListener);
+    mockGetAllStatuses.mockImplementation(() => new Promise((resolve, reject) => {
+      rejectPoll = reject;
+    }));
+
+    const { unmount } = render(
+      <SearchProvider>
+        <Consumer />
+      </SearchProvider>
+    );
+
+    await waitFor(() => {
+      expect(rejectPoll).toBeTypeOf('function');
+    });
+    unmount();
+    rejectPoll(new Error('Request finished after cleanup'));
+    await flushAsyncWork();
+
+    expect(apiErrorListener).not.toHaveBeenCalled();
+    window.removeEventListener(CAREEROS_API_ERROR_EVENT, apiErrorListener);
   });
 
   it('does not increment heartbeat when a poll returns unchanged statuses', async () => {
