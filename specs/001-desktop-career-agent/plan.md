@@ -17,7 +17,10 @@ semantic validation, limited repair and offline evaluation for compact local mod
 
 The migration also removes legacy naming and scratch-output conventions, decomposes the
 largest AI/search orchestrators behind stable facades, adds non-sensitive AI audit records,
-and introduces per-platform installer CI with checksums, SBOMs and smoke tests.
+and introduces per-platform installer CI with checksums, SBOMs and smoke tests. The v1.1
+release path canonicalizes every native filename before hashing, assembles one exact manifest,
+attests all public assets and binds publication to a verified annotated tag through an
+idempotent GitHub Release state machine.
 
 ## Technical Context
 
@@ -80,6 +83,21 @@ families in the first evaluation suite
 - **PASS**: portable vault formats do not depend on the desktop shell.
 - **PASS WITH TRACKED DECOMPOSITION**: legacy files above the constitution guideline are
   wrapped by new bounded packages and split as part of this feature; see Complexity Tracking.
+
+### v1.1 release-hardening gate
+
+- **PASS — Deterministic identity**: platform jobs copy smoke-tested bundles to canonical,
+  whitespace-free names before checksum or attestation generation.
+- **PASS — Exact evidence**: per-target manifests converge into one global release manifest;
+  the supply-chain archive has a closed regular-file inventory and published SBOMs are bound to
+  the native package subjects.
+- **PASS — Trusted provenance**: only a GitHub-verified annotated tag resolving to the checked-out
+  commit and contained in the current default branch can reach the publication state machine.
+- **PASS — Durable publication**: the publisher uses authenticated pagination, an exact body
+  contract and remote name/size/digest verification to recover without clobbering trusted data.
+- **PASS — Read-only rehearsal**: pull-request, scheduled and manual builds retain read-only
+  repository permissions; only a tag-push-only job receives OIDC, attestation and publication
+  permissions.
 
 ## Project Structure
 
@@ -210,6 +228,22 @@ evidence count and validation result without prompts or outputs.
 Build native artifacts on each target OS, smoke-test the frozen sidecar and installer, create
 checksums/SBOMs, audit Python/npm/Rust dependencies, scan source and artifacts, and publish a
 draft GitHub Release only from an explicit version tag.
+
+### Phase G — Immutable v1.1 release contract
+
+Stage every platform bundle under a deterministic public name and emit a checksummed, validated
+target manifest.
+On a separate pinned runner, reject missing, duplicate, unsafe or unexpected files; validate the
+closed supply-chain evidence set; create a deterministic evidence archive, canonical SBOM assets,
+the canonical public `LICENSE`, `release-manifest.json` and `SHA256SUMS`; then independently
+re-verify the assembled candidate. Embed the same license bytes as a Tauri resource and require
+every platform smoke gate to find them in the mounted, extracted or installed native payload.
+For a trusted tag push, attest every checksum-listed asset plus the checksum file, add CycloneDX
+SBOM attestations for the native subjects, and verify repository, workflow, source ref, source
+digest, predicate and hosted-runner identity before publication. The publisher discovers drafts
+through bounded authenticated pagination, accepts only its exact durable contract, resumes exact
+partial uploads, reconciles ambiguous API transitions and treats an already exact immutable
+latest release as a no-write success.
 
 ## Complexity Tracking
 

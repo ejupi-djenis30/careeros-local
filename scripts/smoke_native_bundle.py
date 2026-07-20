@@ -8,7 +8,11 @@ import shutil
 import subprocess
 import sys
 import tempfile
+from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
+
+from scripts.license_contract import find_packaged_license
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -86,20 +90,63 @@ def _run_export_smoke(binary: Path, data_directory: Path) -> None:
     )
 
 
+def _require_project_license(package_root: Path, label: str) -> Path:
+    try:
+        path, _record = find_packaged_license(package_root)
+    except RuntimeError as error:
+        raise RuntimeError(f"{label} license verification failed: {error}") from error
+    return path
+
+
+@contextmanager
+def _mounted_read_only_dmg(dmg: Path, mount_point: Path) -> Iterator[Path]:
+    subprocess.run(
+        ["hdiutil", "verify", str(dmg)],
+        check=True,
+        timeout=120,
+    )
+    mount_point.mkdir()
+    subprocess.run(
+        [
+            "hdiutil",
+            "attach",
+            "-readonly",
+            "-nobrowse",
+            "-noautoopen",
+            "-mountpoint",
+            str(mount_point),
+            str(dmg),
+        ],
+        check=True,
+        timeout=120,
+    )
+    try:
+        yield mount_point
+    finally:
+        subprocess.run(
+            ["hdiutil", "detach", str(mount_point)],
+            check=True,
+            timeout=120,
+        )
+
+
 def _macos(bundle_root: Path, smoke_root: Path) -> int:
-    app = _single(list((bundle_root / "macos").glob("*.app")), "macOS app bundle")
-    _single(list((bundle_root / "dmg").glob("*.dmg")), "macOS DMG")
-    executable = _single(
-        [path for path in (app / "Contents" / "MacOS").iterdir() if path.is_file()],
-        "macOS application executable",
-    )
-    data_directory = smoke_root / "macos-data"
-    sidecar = _single(
-        list((app / "Contents" / "Resources").rglob("careeros-backend")),
-        "macOS packaged backend",
-    )
-    _run_export_smoke(sidecar, data_directory)
-    _run_reopen([str(executable)], data_directory)
+    _single(list((bundle_root / "macos").glob("*.app")), "macOS app bundle")
+    dmg = _single(list((bundle_root / "dmg").glob("*.dmg")), "macOS DMG")
+    with _mounted_read_only_dmg(dmg, smoke_root / "dmg-mount") as mounted:
+        app = _single(list(mounted.glob("*.app")), "mounted macOS app bundle")
+        _require_project_license(app / "Contents" / "Resources", "mounted macOS DMG")
+        executable = _single(
+            [path for path in (app / "Contents" / "MacOS").iterdir() if path.is_file()],
+            "mounted macOS application executable",
+        )
+        data_directory = smoke_root / "macos-data"
+        sidecar = _single(
+            list((app / "Contents" / "Resources").rglob("careeros-backend")),
+            "mounted macOS packaged backend",
+        )
+        _run_export_smoke(sidecar, data_directory)
+        _run_reopen([str(executable)], data_directory)
     return 1
 
 
@@ -118,6 +165,9 @@ def _linux(bundle_root: Path, smoke_root: Path) -> int:
     )
     appimage_sidecar = _single(
         list(extracted.rglob("careeros-backend")), "AppImage packaged backend"
+    )
+    _require_project_license(
+        appimage_sidecar.parent.parent, "extracted AppImage resource directory"
     )
     appimage_data = smoke_root / "appimage-data"
     _run_export_smoke(appimage_sidecar, appimage_data)
@@ -141,6 +191,9 @@ def _linux(bundle_root: Path, smoke_root: Path) -> int:
     subprocess.run(["dpkg-deb", "-x", str(deb), str(deb_root)], check=True, timeout=60)
     executable = _single(list((deb_root / "usr" / "bin").glob("careeros-local*")), "DEB app")
     deb_sidecar = _single(list(deb_root.rglob("careeros-backend")), "DEB packaged backend")
+    _require_project_license(
+        deb_sidecar.parent.parent, "extracted Debian resource directory"
+    )
     deb_command = [str(executable)]
     if not os.environ.get("DISPLAY"):
         deb_command = [shutil.which("xvfb-run") or "xvfb-run", "-a", *deb_command]

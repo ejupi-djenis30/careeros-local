@@ -27,7 +27,7 @@ concurrency:
 jobs:
   build:
     name: Validate and package site
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
       - name: Check out source
@@ -53,7 +53,7 @@ jobs:
     name: Deploy portfolio
     if: github.event_name != 'pull_request'
     needs: build
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:
       pages: write

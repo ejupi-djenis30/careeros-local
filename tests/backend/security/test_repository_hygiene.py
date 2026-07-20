@@ -113,13 +113,15 @@ def test_portfolio_demo_assets_are_present_and_github_sized():
     assert (assets / "careeros-demo.gif").is_file()
 
 
-def test_release_workflow_uploads_each_native_extension_explicitly():
+def test_release_workflow_stages_each_native_extension_through_exact_contract():
     workflow = (ROOT / ".github/workflows/desktop-release.yml").read_text(encoding="utf-8")
 
     assert "artifact_pattern" not in workflow
     assert "**/*.{" not in workflow
-    for extension in ("exe", "msi", "dmg", "AppImage", "deb"):
-        assert f"release/bundle/**/*.{extension}" in workflow
+    assert "scripts.release_candidate stage" in workflow
+    assert "scripts.release_candidate assemble" in workflow
+    assert "scripts.release_candidate verify" in workflow
+    assert "merge-multiple: true" not in workflow
     assert "name: verified-release-assets" in workflow
     assert "needs: assemble-release" in workflow
 
@@ -215,7 +217,10 @@ def test_cargo_audit_exception_is_narrow_and_evidence_is_uploaded():
     for workflow in workflows.values():
         assert workflow.count(scoped_command) == 1
         assert workflow.count("scripts/check_security_exceptions.py") == 1
-        assert "cargo audit --no-fetch --json" in workflow
+        audit_commands = [line.strip() for line in workflow.splitlines() if "cargo audit" in line]
+        assert audit_commands
+        assert all("--ignore RUSTSEC-2024-0429" in command for command in audit_commands)
+        assert any("--json" in command for command in audit_commands)
         assert "rust-audit.json" in workflow
         assert "security-exceptions.json" in workflow
         assert "cargo-exception-tree.txt" in workflow

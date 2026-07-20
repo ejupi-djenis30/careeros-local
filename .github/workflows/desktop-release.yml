@@ -2,67 +2,82 @@ name: Desktop packages
 
 on:
   workflow_dispatch:
+    inputs:
+      expected_tag:
+        description: Optional stable tag to validate during the read-only rehearsal
+        required: false
+        type: string
   pull_request:
-    paths:
-      - "backend/**"
-      - "desktop/**"
-      - "frontend/**"
-      - "scripts/**"
-      - "alembic/**"
-      - "requirements*.txt"
-      - "requirements*.lock"
-      - ".github/workflows/desktop-release.yml"
   push:
     tags: ["v*"]
   schedule:
     - cron: "17 4 * * 1"
 
 concurrency:
-  group: desktop-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') }}
+  group: desktop-${{ github.workflow }}-${{ github.ref_type == 'tag' && 'tag-publication' || github.ref }}
+  cancel-in-progress: ${{ github.ref_type != 'tag' }}
 
 permissions:
   contents: read
 
+env:
+  PYTHON_VERSION: "3.12.10"
+  NODE_VERSION: "24.18.0"
+  RUST_VERSION: "1.96.0"
+  RELEASE_DATE: "2026-07-20"
+
 jobs:
   supply-chain:
     name: Release supply-chain evidence
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 45
     steps:
-      - name: Check out source
+      - name: Check out source without credentials
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           persist-credentials: false
-      - name: Install Python 3.12
-        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+      - name: Install Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
         with:
-          python-version-file: .python-version
+          python-version: ${{ env.PYTHON_VERSION }}
           cache: pip
           cache-dependency-path: |
             requirements-dev.lock
             requirements-tooling.lock
-      - name: Validate release version metadata
-        run: python scripts/check_release_versions.py
+      - name: Enforce read-only dispatch and stable release metadata
+        shell: bash
+        env:
+          EXPECTED_TAG: ${{ inputs.expected_tag || '' }}
+        run: |
+          set -euo pipefail
+          if [[ "$GITHUB_EVENT_NAME" == "workflow_dispatch" && "$GITHUB_REF" != "refs/heads/main" ]]; then
+            echo "Manual release rehearsals must run from main" >&2
+            exit 1
+          fi
+          arguments=()
+          if [[ -n "$EXPECTED_TAG" ]]; then
+            arguments+=(--expected-tag "$EXPECTED_TAG")
+          fi
+          python -m scripts.check_release_versions "${arguments[@]}"
       - name: Install Node.js
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version-file: .nvmrc
+          node-version: ${{ env.NODE_VERSION }}
           cache: npm
           cache-dependency-path: frontend/package-lock.json
       - name: Install Rust
         uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4
         with:
-          toolchain: stable
-      - name: Install locked application and audit dependencies
+          toolchain: ${{ env.RUST_VERSION }}
+      - name: Install locked audit dependencies
         run: |
-          mkdir -p "$RUNNER_TEMP/careeros"
           python -m pip install --require-hashes --requirement requirements-dev.lock
           npm ci --prefix frontend --ignore-scripts
           cargo install cargo-audit --version 0.22.2 --locked
           cargo install cargo-cyclonedx --version 0.5.9 --locked
           cargo install cargo-deny --version 0.20.2 --locked
-      - name: Install and smoke-test locked packaging tools in isolation
+          cargo metadata --manifest-path frontend/src-tauri/Cargo.toml --locked --format-version 1 > /dev/null
+      - name: Smoke-test locked packaging tools in isolation
         run: |
           tooling_venv="$RUNNER_TEMP/careeros-tooling"
           python -m venv "$tooling_venv"
@@ -71,51 +86,57 @@ jobs:
           "$tooling_venv/bin/python" -m PyInstaller --version
           "$tooling_venv/bin/pip-compile" --version
           "$tooling_venv/bin/python" -m pip check
-      - name: Audit Python and create evidence
+      - name: Audit Python and create exact evidence
         run: |
-          python -m pip_audit --disable-pip --require-hashes --requirement requirements.lock
-          python -m pip_audit --disable-pip --require-hashes --requirement requirements-dev.lock
-          python -m pip_audit --disable-pip --require-hashes --requirement requirements-tooling.lock
+          mkdir -p "$RUNNER_TEMP/careeros-evidence"
           python -m pip_audit --disable-pip --require-hashes --requirement requirements.lock \
-            --format cyclonedx-json --output "$RUNNER_TEMP/careeros/backend-sbom.cdx.json"
+            --format json --output "$RUNNER_TEMP/careeros-evidence/python-production-audit.json"
+          python -m pip_audit --disable-pip --require-hashes --requirement requirements-dev.lock \
+            --format json --output "$RUNNER_TEMP/careeros-evidence/python-dev-audit.json"
+          python -m pip_audit --disable-pip --require-hashes --requirement requirements-tooling.lock \
+            --format json --output "$RUNNER_TEMP/careeros-evidence/python-tooling-audit.json"
+          python -m pip_audit --disable-pip --require-hashes --requirement requirements.lock \
+            --format cyclonedx-json --output "$RUNNER_TEMP/careeros-evidence/backend-sbom.cdx.json"
           pip-licenses --from=mixed --format=json \
-            --output-file "$RUNNER_TEMP/careeros/backend-licenses.json" \
+            --output-file "$RUNNER_TEMP/careeros-evidence/backend-licenses.json" \
             --fail-on "GNU General Public License;GNU Affero General Public License;AGPL-1.0;AGPL-3.0;Server Side Public License;SSPL-1.0;Business Source License;BUSL-1.1" \
             --partial-match
-      - name: Audit npm and create evidence
+      - name: Audit npm and create exact evidence
         working-directory: frontend
         run: |
-          npm audit --audit-level=high
-          npm sbom --sbom-format cyclonedx > "$RUNNER_TEMP/careeros/frontend-sbom.cdx.json"
+          npm audit --audit-level=high --json \
+            > "$RUNNER_TEMP/careeros-evidence/frontend-audit.json"
+          npm sbom --sbom-format cyclonedx \
+            > "$RUNNER_TEMP/careeros-evidence/frontend-sbom.cdx.json"
           npx --no-install license-checker-rseidelsohn --production \
             --excludePrivatePackages \
             --onlyAllow "MIT;MIT OR Apache-2.0;Apache-2.0 OR MIT" \
-            --json --out "$RUNNER_TEMP/careeros/frontend-licenses.json"
-      - name: Audit Cargo and create evidence
+            --json --out "$RUNNER_TEMP/careeros-evidence/frontend-licenses.json"
+      - name: Audit Cargo and create exact evidence
         working-directory: frontend/src-tauri
         run: |
           cp ../../security-exceptions.json \
-            "$RUNNER_TEMP/careeros/security-exceptions.json"
+            "$RUNNER_TEMP/careeros-evidence/security-exceptions.json"
           python3 ../../scripts/check_security_exceptions.py
-          cargo audit --deny unsound --ignore RUSTSEC-2024-0429
-          cargo audit --no-fetch --json \
-            > "$RUNNER_TEMP/careeros/rust-audit.json"
-          python3 -m json.tool "$RUNNER_TEMP/careeros/rust-audit.json" \
-            > /dev/null
+          cargo audit --deny unsound --ignore RUSTSEC-2024-0429 --json \
+            > "$RUNNER_TEMP/careeros-evidence/rust-audit.json"
+          python3 -m json.tool "$RUNNER_TEMP/careeros-evidence/rust-audit.json" > /dev/null
           cargo deny --all-features check licenses
           cargo cyclonedx --all-features --target all --format json \
             --spec-version 1.5 --override-filename rust-sbom
-          mv rust-sbom.json "$RUNNER_TEMP/careeros/rust-sbom.cdx.json"
+          mv rust-sbom.json "$RUNNER_TEMP/careeros-evidence/rust-sbom.cdx.json"
           cargo deny --all-features list --format json \
-            > "$RUNNER_TEMP/careeros/rust-licenses.json"
+            > "$RUNNER_TEMP/careeros-evidence/rust-licenses.json"
           cargo tree --locked --target all -i glib@0.18.5 \
-            > "$RUNNER_TEMP/careeros/cargo-exception-tree.txt"
-      - name: Upload release supply-chain evidence
+            > "$RUNNER_TEMP/careeros-evidence/cargo-exception-tree.txt"
+      - name: Validate exact evidence contract
+        run: python -c "from pathlib import Path; from scripts.release_contract import validate_evidence_directory; validate_evidence_directory(Path('$RUNNER_TEMP/careeros-evidence'))"
+      - name: Upload supply-chain evidence
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: release-supply-chain
-          path: ${{ runner.temp }}/careeros
+          path: ${{ runner.temp }}/careeros-evidence
           if-no-files-found: error
 
   native:
@@ -124,16 +145,12 @@ jobs:
     needs: supply-chain
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 90
-    permissions:
-      attestations: write
-      contents: read
-      id-token: write
     strategy:
       fail-fast: false
       matrix:
         include:
           - label: Windows x64
-            runner: windows-latest
+            runner: windows-2025
             target: x86_64-pc-windows-msvc
             bundles: nsis,msi
           - label: Windows ARM64
@@ -149,215 +166,261 @@ jobs:
             target: aarch64-apple-darwin
             bundles: app,dmg
           - label: Linux x64
-            runner: ubuntu-22.04
+            runner: ubuntu-24.04
             target: x86_64-unknown-linux-gnu
             bundles: appimage,deb
           - label: Linux ARM64
-            runner: ubuntu-22.04-arm
+            runner: ubuntu-24.04-arm
             target: aarch64-unknown-linux-gnu
             bundles: appimage,deb
-
     steps:
-      - name: Check out source
+      - name: Check out source without credentials
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           persist-credentials: false
-
-      - name: Install Python 3.12
-        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+      - name: Install Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
         with:
-          # 3.12.10 is the newest 3.12 build published by actions/python-versions
-          # for Windows, macOS and Linux on both x64 and ARM64.
-          python-version: "3.12.10"
+          python-version: ${{ env.PYTHON_VERSION }}
           cache: pip
           cache-dependency-path: |
             requirements.lock
             requirements-tooling.lock
-
       - name: Install Node.js
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version-file: .nvmrc
+          node-version: ${{ env.NODE_VERSION }}
           cache: npm
           cache-dependency-path: frontend/package-lock.json
-
-      - name: Install Rust target
+      - name: Install exact Rust target
         uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4
         with:
-          toolchain: stable
+          toolchain: ${{ env.RUST_VERSION }}
           targets: ${{ matrix.target }}
-
       - name: Install Linux desktop prerequisites
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
           sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf xdg-utils xvfb
-
       - name: Install locked dependencies
         run: |
           python -m pip install --require-hashes -r requirements.lock
           python -m pip install --require-hashes -r requirements-tooling.lock
           npm ci --prefix frontend
-
+          cargo metadata --manifest-path frontend/src-tauri/Cargo.toml --locked --format-version 1 > /dev/null
       - name: Freeze and smoke-test local backend
         run: python scripts/build_backend_sidecar.py
-
       - name: Verify native sidecar architecture
         env:
           EXPECTED_TARGET: ${{ matrix.target }}
         run: python scripts/verify_sidecar_build.py
-
       - name: Exercise packaged backend lifecycle
         run: python -m pytest tests/desktop/test_packaged_lifecycle.py -q
-
-      - name: Build native installers
-        id: tauri
-        uses: tauri-apps/tauri-action@944946e3e4cac6603d1fe8f514171e9ecd3c78aa # v1
+      - name: Build native installers from Cargo.lock
+        uses: tauri-apps/tauri-action@1deb371b0cd8bd54025b384f1cd735e725c4060f # v1.0.0
         with:
           projectPath: frontend
           tauriScript: npm run tauri
-          args: --target ${{ matrix.target }} --bundles ${{ matrix.bundles }}
-
+          args: --target ${{ matrix.target }} --bundles ${{ matrix.bundles }} --locked
       - name: Exercise Windows MSI and NSIS lifecycle
         if: runner.os == 'Windows'
         shell: pwsh
         run: ./scripts/smoke_windows_installer.ps1 -Target '${{ matrix.target }}' -IncludeNsisInstall
-
       - name: Exercise macOS and Linux native packages
         if: runner.os != 'Windows'
-        run: python scripts/smoke_native_bundle.py --target '${{ matrix.target }}'
-
-      - name: Write bundle checksums
+        run: python -m scripts.smoke_native_bundle --target '${{ matrix.target }}'
+      - name: Stage canonical target candidate
         run: >-
-          python scripts/write_artifact_checksums.py
+          python -m scripts.release_candidate stage
           --target ${{ matrix.target }}
-          --output release-metadata/checksums-${{ matrix.target }}.sha256
-
-      - name: Attest verified native packages
-        if: github.event_name != 'pull_request'
-        uses: actions/attest@f7c74d28b9d84cb8768d0b8ca14a4bac6ef463e6 # v4
-        with:
-          # actions/attest parses this input as CSV before globbing, so brace globs
-          # containing commas are unsafe here. Unmatched per-OS patterns are ignored.
-          subject-path: |
-            frontend/src-tauri/target/${{ matrix.target }}/release/bundle/**/*.exe
-            frontend/src-tauri/target/${{ matrix.target }}/release/bundle/**/*.msi
-            frontend/src-tauri/target/${{ matrix.target }}/release/bundle/**/*.dmg
-            frontend/src-tauri/target/${{ matrix.target }}/release/bundle/**/*.AppImage
-            frontend/src-tauri/target/${{ matrix.target }}/release/bundle/**/*.deb
-
-      - name: Upload smoke-tested release assets
+          --bundle-root frontend/src-tauri/target/${{ matrix.target }}/release/bundle
+          --output release-candidate/${{ matrix.target }}
+          --commit ${{ github.sha }}
+      - name: Upload smoke-tested target candidate
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: native-${{ matrix.target }}
-          path: |
-            frontend/src-tauri/target/${{ matrix.target }}/release/bundle/**/*.exe
-            frontend/src-tauri/target/${{ matrix.target }}/release/bundle/**/*.msi
-            frontend/src-tauri/target/${{ matrix.target }}/release/bundle/**/*.dmg
-            frontend/src-tauri/target/${{ matrix.target }}/release/bundle/**/*.AppImage
-            frontend/src-tauri/target/${{ matrix.target }}/release/bundle/**/*.deb
-            release-metadata/checksums-${{ matrix.target }}.sha256
+          path: release-candidate/${{ matrix.target }}/*
           if-no-files-found: error
 
   assemble-release:
     name: Assemble verified release assets
     if: github.event_name != 'pull_request'
     needs: [supply-chain, native]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
-      - name: Download smoke-tested native packages
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+      - name: Check out source without credentials
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+      - name: Install Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - name: Download isolated native candidates
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           pattern: native-*
           path: release-staging/native
-          merge-multiple: true
       - name: Download supply-chain evidence
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: release-supply-chain
-          path: release-staging/supply-chain
-      - name: Prepare collision-safe release assets
-        shell: bash
-        run: |
-          set -euo pipefail
-          mkdir -p release-assets
-          while IFS= read -r -d '' source; do
-            destination="release-assets/$(basename "$source")"
-            if [[ -e "$destination" ]]; then
-              echo "Release asset collision: $destination" >&2
-              exit 1
-            fi
-            cp "$source" "$destination"
-          done < <(find release-staging/native -type f \( \
-            -iname '*.AppImage' -o -iname '*.deb' -o -iname '*.dmg' -o \
-            -iname '*.exe' -o -iname '*.msi' -o -name 'checksums-*.sha256' \
-          \) -print0)
-          tar -C release-staging/supply-chain -czf \
-            release-assets/supply-chain-evidence.tar.gz .
-          find release-assets -maxdepth 1 -type f -printf '%f\n' | sort
-          test "$(find release-assets -maxdepth 1 -type f -iname '*.exe' | wc -l)" -eq 2
-          test "$(find release-assets -maxdepth 1 -type f -iname '*.msi' | wc -l)" -eq 2
-          test "$(find release-assets -maxdepth 1 -type f -iname '*.dmg' | wc -l)" -eq 2
-          test "$(find release-assets -maxdepth 1 -type f -iname '*.AppImage' | wc -l)" -eq 2
-          test "$(find release-assets -maxdepth 1 -type f -iname '*.deb' | wc -l)" -eq 2
-          test "$(find release-assets -maxdepth 1 -type f -name 'checksums-*.sha256' | wc -l)" -eq 6
-          test "$(find release-assets -maxdepth 1 -type f | wc -l)" -eq 17
-      - name: Upload verified release inventory
+          path: release-staging/evidence
+      - name: Assemble and reverify exact release contract
+        run: >-
+          python -m scripts.release_candidate assemble
+          --native-root release-staging/native
+          --evidence-root release-staging/evidence
+          --output release-assets
+          --native-checksums release-attestation/native-subjects.sha256
+          --commit ${{ github.sha }}
+          --release-date ${{ env.RELEASE_DATE }}
+      - name: Upload exact release candidate
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: verified-release-assets
           path: release-assets/*
           if-no-files-found: error
           retention-days: 14
+      - name: Upload native SBOM subjects
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: native-subject-checksums
+          path: release-attestation/native-subjects.sha256
+          if-no-files-found: error
+          retention-days: 14
 
-  publish-release:
-    name: Publish verified desktop release
-    if: startsWith(github.ref, 'refs/tags/v')
+  attest-publish:
+    name: Attest and publish verified desktop release
+    if: >-
+      github.event_name == 'push' &&
+      github.ref_type == 'tag' &&
+      startsWith(github.ref_name, 'v')
     needs: assemble-release
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
     permissions:
+      artifact-metadata: write
+      attestations: write
       contents: write
+      id-token: write
     steps:
-      - name: Download verified release inventory
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+      - name: Check out tagged source without credentials
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+      - name: Install Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - name: Download exact release candidate
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: verified-release-assets
           path: release-assets
-      - name: Create, populate and publish release
+      - name: Download native SBOM subjects
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: native-subject-checksums
+          path: release-attestation
+      - name: Verify source policy before any mutation
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: >-
+          python -m scripts.verify_release_source
+          --repo ${{ github.repository }}
+          --tag ${{ github.ref_name }}
+          --commit ${{ github.sha }}
+      - name: Reverify exact candidate bytes
+        run: >-
+          python -m scripts.release_candidate verify
+          --directory release-assets
+          --commit ${{ github.sha }}
+          --release-date ${{ env.RELEASE_DATE }}
+          --expected-tag ${{ github.ref_name }}
+      - name: Read coordinated release version
+        id: release-version
+        shell: bash
+        run: |
+          version="$(python -c 'from scripts.check_release_versions import release_versions, validate_versions; print(validate_versions(release_versions()))')"
+          echo "value=$version" >> "$GITHUB_OUTPUT"
+      - name: Install checksummed GitHub CLI
+        shell: bash
+        env:
+          GH_CLI_VERSION: "2.94.0"
+          GH_CLI_SHA256: "a757f1ba6db18f4de8cbadb244843a5f89bc75b5e7c6fc127d2bd77fbd12ed62"
+        run: |
+          set -euo pipefail
+          archive="$RUNNER_TEMP/gh_${GH_CLI_VERSION}_linux_amd64.tar.gz"
+          curl --fail --silent --show-error --location \
+            "https://github.com/cli/cli/releases/download/v${GH_CLI_VERSION}/gh_${GH_CLI_VERSION}_linux_amd64.tar.gz" \
+            --output "$archive"
+          echo "$GH_CLI_SHA256  $archive" | sha256sum --check --strict
+          tar -C "$RUNNER_TEMP" -xzf "$archive"
+          sudo install "$RUNNER_TEMP/gh_${GH_CLI_VERSION}_linux_amd64/bin/gh" /usr/local/bin/gh
+          test "$(gh version | head -n 1)" = "gh version $GH_CLI_VERSION (2026-06-10)"
+      - name: Attest all public release assets
+        uses: actions/attest@f7c74d28b9d84cb8768d0b8ca14a4bac6ef463e6 # v4.2.0
+        with:
+          subject-checksums: release-assets/SHA256SUMS
+      - name: Attest the global checksum inventory
+        uses: actions/attest@f7c74d28b9d84cb8768d0b8ca14a4bac6ef463e6 # v4.2.0
+        with:
+          subject-path: release-assets/SHA256SUMS
+      - name: Bind backend SBOM to every native package
+        uses: actions/attest@f7c74d28b9d84cb8768d0b8ca14a4bac6ef463e6 # v4.2.0
+        with:
+          subject-checksums: release-attestation/native-subjects.sha256
+          sbom-path: release-assets/careeros-backend-${{ steps.release-version.outputs.value }}.cdx.json
+      - name: Bind frontend SBOM to every native package
+        uses: actions/attest@f7c74d28b9d84cb8768d0b8ca14a4bac6ef463e6 # v4.2.0
+        with:
+          subject-checksums: release-attestation/native-subjects.sha256
+          sbom-path: release-assets/careeros-frontend-${{ steps.release-version.outputs.value }}.cdx.json
+      - name: Bind Rust SBOM to every native package
+        uses: actions/attest@f7c74d28b9d84cb8768d0b8ca14a4bac6ef463e6 # v4.2.0
+        with:
+          subject-checksums: release-attestation/native-subjects.sha256
+          sbom-path: release-assets/careeros-rust-${{ steps.release-version.outputs.value }}.cdx.json
+      - name: Verify provenance and SBOM attestations before publication
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
-          RELEASE_NOTES: |
-            Native CareerOS Local desktop packages, built from this tag and gated by
-            architecture checks, packaged lifecycle tests, native bundle extraction,
-            application reopen checks, NSIS install/uninstall smoke tests, SHA-256
-            inventories and GitHub build-provenance attestations.
-
-            Highlights include the public portfolio site and reproducible product tour,
-            stronger Python/React/Rust verification, atomic demo-media publishing,
-            accessibility hardening, reliable zero-config SQLite startup, and a native
-            release matrix covering Windows, macOS and Linux on x64 and ARM64.
-
-            Model installation remains optional and explicit. These community builds
-            are currently unsigned; Windows SmartScreen and macOS Gatekeeper may warn.
-
-            Verify a downloaded package with:
-            `gh attestation verify <package> -R ${{ github.repository }}`
+          SIGNER_WORKFLOW: ${{ github.repository }}/.github/workflows/desktop-release.yml
         run: |
           set -euo pipefail
-          tag="$GITHUB_REF_NAME"
-          if release_is_draft="$(gh release view "$tag" --json isDraft --jq .isDraft 2>/dev/null)"; then
-            if [[ "$release_is_draft" != "true" ]]; then
-              echo "Refusing to overwrite the already-published release $tag" >&2
-              exit 1
-            fi
-          else
-            gh release create "$tag" --draft --verify-tag \
-              --title "CareerOS Local $tag" --notes "$RELEASE_NOTES"
-          fi
-          mapfile -d '' assets < <(find release-assets -maxdepth 1 -type f -print0)
-          gh release upload "$tag" "${assets[@]}" --clobber
-          gh release edit "$tag" --draft=false --latest
+          while IFS= read -r -d '' asset; do
+            gh attestation verify "$asset" --repo "$GH_REPO" \
+              --signer-workflow "$SIGNER_WORKFLOW" \
+              --source-digest "$GITHUB_SHA" --source-ref "$GITHUB_REF" \
+              --predicate-type "https://slsa.dev/provenance/v1" \
+              --cert-oidc-issuer "https://token.actions.githubusercontent.com" \
+              --deny-self-hosted-runners
+          done < <(find release-assets -maxdepth 1 -type f -print0 | sort -z)
+          mkdir -p "$RUNNER_TEMP/careeros-sbom-verification"
+          while read -r _digest name; do
+            gh attestation verify "release-assets/$name" --repo "$GH_REPO" \
+              --signer-workflow "$SIGNER_WORKFLOW" \
+              --source-digest "$GITHUB_SHA" --source-ref "$GITHUB_REF" \
+              --predicate-type "https://cyclonedx.org/bom" \
+              --cert-oidc-issuer "https://token.actions.githubusercontent.com" \
+              --deny-self-hosted-runners --format json \
+              > "$RUNNER_TEMP/careeros-sbom-verification/$name.json"
+            python -m scripts.verify_sbom_attestations \
+              --verification-json "$RUNNER_TEMP/careeros-sbom-verification/$name.json" \
+              --sbom "release-assets/careeros-backend-${{ steps.release-version.outputs.value }}.cdx.json" \
+              --sbom "release-assets/careeros-frontend-${{ steps.release-version.outputs.value }}.cdx.json" \
+              --sbom "release-assets/careeros-rust-${{ steps.release-version.outputs.value }}.cdx.json"
+          done < release-attestation/native-subjects.sha256
+      - name: Publish through the durable release contract
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: >-
+          python -m scripts.publish_github_release
+          --directory release-assets
+          --repo ${{ github.repository }}
+          --commit ${{ github.sha }}
+          --release-date ${{ env.RELEASE_DATE }}
