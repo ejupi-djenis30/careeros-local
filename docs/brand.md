@@ -16,6 +16,16 @@ core: the place where a person’s verified record remains under their control.
 | [`site/favicon.svg`](site/favicon.svg) | Browser favicon |
 | [`../frontend/public/careeros.svg`](../frontend/public/careeros.svg) | Desktop interface and boot state |
 
+The repository hero and Devpost thumbnail are native geometric compositions with tracked SVG
+sources. Render their PNG delivery files deterministically after changing either source:
+
+```text
+node scripts/render_brand_assets.mjs
+```
+
+The renderer rejects external resources, embedded raster images, scripts, font-dependent text,
+off-centre frames, asymmetric modules, and viewport overflow.
+
 The desktop icons are generated from the SVG master with the pinned Tauri CLI. Run this from
 the repository root whenever the master artwork changes:
 
