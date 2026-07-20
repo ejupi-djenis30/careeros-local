@@ -1,7 +1,7 @@
 {
   "name": "careeros-local-desktop",
   "private": true,
-  "version": "1.1.1",
+  "version": "1.1.2",
   "description": "Private, local-first career workspace for verified resumes and applications",
   "author": "Djenis Ejupi",
   "contributors": [
@@ -29,12 +29,13 @@
     "desktop:prepare": "python ../scripts/build_backend_sidecar.py",
     "tauri:dev": "python ../scripts/run_desktop.py dev",
     "tauri:build": "python ../scripts/run_desktop.py build",
-    "test": "vitest run",
+    "test": "vitest run && npm run test:licenses",
     "test:watch": "vitest",
-    "test:coverage": "vitest run --coverage",
+    "test:coverage": "vitest run --coverage && npm run test:licenses",
     "brand:icons": "tauri icon public/careeros.svg --output src-tauri/icons",
     "demo:install": "playwright install chromium",
-    "demo:record": "node ../scripts/record_demo.mjs"
+    "demo:record": "node ../scripts/record_demo.mjs",
+    "test:licenses": "node --test ../scripts/audit_frontend_licenses.test.mjs"
   },
   "dependencies": {
     "@tauri-apps/api": "2.11.1",
@@ -63,7 +64,6 @@
     "eslint-plugin-react-refresh": "^0.5.3",
     "globals": "^16.5.0",
     "jsdom": "^28.1.0",
-    "license-checker-rseidelsohn": "5.0.1",
     "playwright": "^1.61.1",
     "vite": "^7.3.1",
     "vitest": "^4.0.18"

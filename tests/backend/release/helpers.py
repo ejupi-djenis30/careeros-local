@@ -6,7 +6,7 @@ from pathlib import Path
 from scripts.release_assets import TARGETS, stage_target_candidate
 from scripts.release_contract import EVIDENCE_FILES, assemble_release_bundle
 
-VERSION = "1.1.1"
+VERSION = "1.1.2"
 COMMIT = "a" * 40
 RELEASE_DATE = "2026-07-20"
 

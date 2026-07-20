@@ -118,10 +118,8 @@ jobs:
       - name: Audit production licenses
         working-directory: frontend
         run: >-
-          npx --no-install license-checker-rseidelsohn --production
-          --excludePrivatePackages
-          --onlyAllow "MIT;MIT OR Apache-2.0;Apache-2.0 OR MIT"
-          --json --out "$RUNNER_TEMP/careeros/frontend-licenses.json"
+          node ../scripts/audit_frontend_licenses.mjs
+          --output "$RUNNER_TEMP/careeros/frontend-licenses.json"
       - name: Lint
         working-directory: frontend
         run: npm run lint
