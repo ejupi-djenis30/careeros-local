@@ -231,7 +231,8 @@ draft GitHub Release only from an explicit version tag.
 
 ### Phase G — Immutable v1.1 release contract
 
-Stage every platform bundle under a deterministic public name and emit a signed target manifest.
+Stage every platform bundle under a deterministic public name and emit a checksummed, validated
+target manifest.
 On a separate pinned runner, reject missing, duplicate, unsafe or unexpected files; validate the
 closed supply-chain evidence set; create a deterministic evidence archive, canonical SBOM assets,
 `release-manifest.json` and `SHA256SUMS`; then independently re-verify the assembled candidate.

@@ -259,13 +259,16 @@ temporary document content remains in application-managed storage.
   default branch before any release state is created or changed.
 - **FR-038**: Every release asset MUST use a deterministic portable filename, appear in an exact
   target/type/name/size/SHA-256 manifest, retain that same name in downloadable checksum files,
-  and carry verified GitHub-hosted build provenance for the exact tag, commit and workflow.
+  and carry verified GitHub-hosted build provenance for the exact tag, commit and workflow. Any
+  declared SPDX license MUST be bound to the approved canonical license content.
 - **FR-039**: Release publication MUST be contract-bound, paginated, least-privilege and
   idempotent. It MUST reject duplicate, foreign or stale state; recover safely from ambiguous
   create/upload/publish responses; and finish only after the exact release ID, target commit,
   immutable/latest state and complete remote asset inventory are verified. Manual rehearsals
   MUST NOT receive OIDC/attestation/publication permissions or mutate tags, attestations or
-  Releases.
+  Releases. Tag publication runs MUST share one concurrency group with cancellation disabled for
+  the running tag, and the publisher MUST rediscover the release sequence immediately before
+  promotion.
 
 ### Key Entities
 

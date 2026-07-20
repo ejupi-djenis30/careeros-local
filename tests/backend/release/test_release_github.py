@@ -16,11 +16,13 @@ class SourceApi:
         verified: bool = True,
         moving: bool = False,
         renamed: bool = False,
+        contained: bool = True,
     ):
         self.annotated = annotated
         self.verified = verified
         self.moving = moving
         self.renamed = renamed
+        self.contained = contained
         self.branch_reads = 0
         self.repo_reads = 0
 
@@ -40,6 +42,8 @@ class SourceApi:
                 "object": {"type": "commit", "sha": COMMIT},
             }
         if path == f"/repos/owner/repo/compare/{COMMIT}...{'a' * 40}":
+            if not self.contained:
+                return {"status": "diverged", "merge_base_commit": {"sha": "d" * 40}}
             return {"status": "ahead", "merge_base_commit": {"sha": COMMIT}}
         if path == f"/repos/owner/repo/compare/{COMMIT}...{'b' * 40}":
             return {"status": "ahead", "merge_base_commit": {"sha": COMMIT}}
@@ -68,6 +72,16 @@ def test_source_policy_requires_verified_annotated_tag_on_stable_default_branch(
     with pytest.raises(RuntimeError, match="identity changed"):
         verify_source_policy(
             SourceApi(renamed=True), repo="owner/repo", tag="v1.1.0", source_commit=COMMIT
+        )
+
+
+def test_verified_annotated_tag_outside_default_branch_fails_closed() -> None:
+    with pytest.raises(RuntimeError, match="not contained"):
+        verify_source_policy(
+            SourceApi(contained=False),
+            repo="owner/repo",
+            tag="v1.1.0",
+            source_commit=COMMIT,
         )
 
 

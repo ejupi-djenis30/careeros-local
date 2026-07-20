@@ -6,7 +6,9 @@ import pytest
 
 from scripts.check_release_versions import ROOT
 from scripts.release_contract import (
+    APPROVED_LICENSE_SHA256,
     EVIDENCE_ARCHIVE,
+    assemble_release_bundle,
     expected_public_names,
     validate_evidence_directory,
     validate_native_subject_checksums,
@@ -18,6 +20,7 @@ from tests.backend.release.helpers import (
     RELEASE_DATE,
     VERSION,
     write_evidence,
+    write_native_candidates,
     write_release_bundle,
 )
 
@@ -38,6 +41,72 @@ def test_bundle_has_exact_global_inventory_and_valid_native_subjects(tmp_path: P
     )
     native_records = [record for target in manifest["targets"] for record in target["artifacts"]]
     validate_native_subject_checksums(native_checksums, records=native_records)
+
+
+def test_non_mit_text_named_license_is_rejected(tmp_path: Path) -> None:
+    fake = tmp_path / "fake" / "LICENSE"
+    fake.parent.mkdir()
+    fake.write_text("This is not the approved license.\n", encoding="utf-8")
+
+    with pytest.raises(RuntimeError, match="approved MIT license"):
+        write_release_bundle(tmp_path / "case", fake)
+
+
+def test_approved_license_binding_is_stable_across_checkout_newlines(tmp_path: Path) -> None:
+    canonical = (ROOT / "LICENSE").read_bytes().replace(b"\r\n", b"\n")
+    checkout_license = tmp_path / "checkout" / "LICENSE"
+    checkout_license.parent.mkdir()
+    checkout_license.write_bytes(canonical.replace(b"\n", b"\r\n"))
+
+    bundle, _ = write_release_bundle(tmp_path / "case", checkout_license)
+    manifest = validate_release_bundle(
+        bundle,
+        version=VERSION,
+        source_commit=COMMIT,
+        release_date=RELEASE_DATE,
+        license_path=checkout_license,
+    )
+
+    assert manifest["license"] == {
+        "spdx": "MIT",
+        "name": "LICENSE",
+        "normalization": "utf-8-lf",
+        "size": len(canonical),
+        "sha256": APPROVED_LICENSE_SHA256,
+    }
+
+
+def _assemble_candidates(tmp_path: Path, native: Path) -> None:
+    assemble_release_bundle(
+        native_root=native,
+        evidence_root=write_evidence(tmp_path / "evidence"),
+        output=tmp_path / "release",
+        native_checksums=tmp_path / "attestation" / "native-subjects.sha256",
+        version=VERSION,
+        source_commit=COMMIT,
+        release_date=RELEASE_DATE,
+        license_path=ROOT / "LICENSE",
+    )
+
+
+def test_missing_native_target_fails_closed(tmp_path: Path) -> None:
+    native = write_native_candidates(tmp_path / "native")
+    next(native.rglob("candidate-aarch64-unknown-linux-gnu.json")).unlink()
+
+    with pytest.raises(RuntimeError, match="Expected 6 native target manifests, found 5"):
+        _assemble_candidates(tmp_path, native)
+
+
+def test_extra_native_target_fails_closed(tmp_path: Path) -> None:
+    native = write_native_candidates(tmp_path / "native")
+    foreign = native / "foreign"
+    foreign.mkdir()
+    (foreign / "candidate-foreign-target.json").write_text(
+        '{"target":"foreign-target"}\n', encoding="utf-8"
+    )
+
+    with pytest.raises(RuntimeError, match="Expected 6 native target manifests, found 7"):
+        _assemble_candidates(tmp_path, native)
 
 
 def test_bundle_rejects_tampering_and_unexpected_files(tmp_path: Path) -> None:

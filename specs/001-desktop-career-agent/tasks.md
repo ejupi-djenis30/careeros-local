@@ -315,9 +315,9 @@ T047 model-manager UI tests
 - [x] T096 Canonicalize each smoke-tested native target into portable release names and emit exact per-target manifests/checksums in `scripts/release_contract.py` and `scripts/release_candidate.py`
 - [x] T097 Assemble and independently validate the closed six-target candidate, deterministic evidence archive, public CycloneDX SBOMs, global manifest and SHA-256 inventory in `scripts/release_contract.py`
 - [x] T098 Enforce GitHub-verified annotated-tag resolution, exact workflow source and stable default-branch containment in `scripts/release_github.py`
-- [x] T099 Implement authenticated paginated release discovery and a contract-bound, idempotent publisher with safe partial-upload and ambiguous-transition recovery in `scripts/publish_github_release.py`
-- [x] T100 Refactor `.github/workflows/desktop-release.yml` so manual/scheduled rehearsals are read-only, tag publication is push-only, toolchains/runners/CLI are pinned, and every release/SBOM attestation is independently verified
-- [x] T101 Add adversarial candidate, tag-policy, publisher pagination, foreign-state, collision, tamper, crash/retry, immutability and latest-state tests in `tests/backend/release/`
+- [x] T099 Implement authenticated paginated release discovery and a contract-bound, idempotent publisher with safe partial-upload, ambiguous-transition recovery and a fresh sequence check immediately before promotion in `scripts/publish_github_release.py`
+- [x] T100 Refactor `.github/workflows/desktop-release.yml` so manual/scheduled rehearsals are read-only, tag publications share a cross-tag mutex with running-tag cancellation disabled, publication is push-only, action/toolchain/runner/CLI provenance is pinned, and every release/SBOM attestation is independently verified
+- [x] T101 Add adversarial candidate coverage, canonical-license, off-branch tag, publisher pagination/race, foreign-state, collision, tamper, crash/retry, immutability and latest-state tests in `tests/backend/release/`
 - [x] T102 Bump all seven release metadata sources to v1.1.0 and curate `CHANGELOG.md`, `docs/releasing.md` and v1.1 release evidence without creating a tag or Release
 - [x] T103 Run Python release tests, workflow-policy validation, actionlint, frontend/Rust release checks and repository diff validation; record only commands actually executed
 - [x] T104 Perform final cross-artifact convergence against FR-037–FR-039 and SC-013 before the immutable version tag is authorized

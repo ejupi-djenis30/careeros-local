@@ -35,7 +35,7 @@ The candidate contains 22 public assets:
 - three CycloneDX SBOMs;
 - one deterministic supply-chain evidence archive;
 - `release-manifest.json`, which binds target, package type, name, size, SHA-256, source commit,
-  release date, evidence, SBOMs, and the MIT license digest;
+  release date, evidence, SBOMs, and the newline-normalized digest of the approved MIT license;
 - `SHA256SUMS`, which binds every other public asset.
 
 No artifact from a rehearsal is a release. Review the retained `verified-release-assets` and
@@ -58,6 +58,13 @@ The tag workflow re-runs every build and check. Its final job then:
 6. creates or resumes one contract-bound draft without deleting or overwriting remote assets;
 7. publishes only when release identity and all remote name/size/digest records match;
 8. confirms the published release is immutable and is the repository's latest release.
+
+Every tag-triggered run shares one publication concurrency group, with cancellation disabled for
+the running tag. This prevents overlapping publication attempts. GitHub retains at most one
+pending run in a concurrency group, so confirm that every intended tag workflow completed and
+manually re-run any pending execution GitHub superseded. Immediately before changing a draft into
+a public release, the publisher reads every release page again and refuses to promote an older
+version if another tag has advanced the published sequence.
 
 Lost API responses are reconciled by reading GitHub again. A matching completed operation is
 accepted, an unapplied operation can be retried on the next run, and any duplicate, stale,

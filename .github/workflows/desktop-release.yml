@@ -14,7 +14,7 @@ on:
     - cron: "17 4 * * 1"
 
 concurrency:
-  group: desktop-${{ github.workflow }}-${{ github.ref }}
+  group: desktop-${{ github.workflow }}-${{ github.ref_type == 'tag' && 'tag-publication' || github.ref }}
   cancel-in-progress: ${{ github.ref_type != 'tag' }}
 
 permissions:
@@ -37,7 +37,7 @@ jobs:
         with:
           persist-credentials: false
       - name: Install Python
-        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.0.0
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
         with:
           python-version: ${{ env.PYTHON_VERSION }}
           cache: pip
@@ -179,7 +179,7 @@ jobs:
         with:
           persist-credentials: false
       - name: Install Python
-        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.0.0
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
         with:
           python-version: ${{ env.PYTHON_VERSION }}
           cache: pip
@@ -217,7 +217,7 @@ jobs:
       - name: Exercise packaged backend lifecycle
         run: python -m pytest tests/desktop/test_packaged_lifecycle.py -q
       - name: Build native installers from Cargo.lock
-        uses: tauri-apps/tauri-action@944946e3e4cac6603d1fe8f514171e9ecd3c78aa # v1.4.0
+        uses: tauri-apps/tauri-action@1deb371b0cd8bd54025b384f1cd735e725c4060f # v1.0.0
         with:
           projectPath: frontend
           tauriScript: npm run tauri
@@ -255,16 +255,16 @@ jobs:
         with:
           persist-credentials: false
       - name: Install Python
-        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.0.0
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
         with:
           python-version: ${{ env.PYTHON_VERSION }}
       - name: Download isolated native candidates
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.0
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           pattern: native-*
           path: release-staging/native
       - name: Download supply-chain evidence
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.0
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: release-supply-chain
           path: release-staging/evidence
@@ -312,16 +312,16 @@ jobs:
         with:
           persist-credentials: false
       - name: Install Python
-        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.0.0
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
         with:
           python-version: ${{ env.PYTHON_VERSION }}
       - name: Download exact release candidate
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.0
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: verified-release-assets
           path: release-assets
       - name: Download native SBOM subjects
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.0
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: native-subject-checksums
           path: release-attestation
@@ -362,25 +362,25 @@ jobs:
           sudo install "$RUNNER_TEMP/gh_${GH_CLI_VERSION}_linux_amd64/bin/gh" /usr/local/bin/gh
           test "$(gh version | head -n 1)" = "gh version $GH_CLI_VERSION (2026-06-10)"
       - name: Attest all public release assets
-        uses: actions/attest@f7c74d28b9d84cb8768d0b8ca14a4bac6ef463e6 # v4.1.0
+        uses: actions/attest@f7c74d28b9d84cb8768d0b8ca14a4bac6ef463e6 # v4.2.0
         with:
           subject-checksums: release-assets/SHA256SUMS
       - name: Attest the global checksum inventory
-        uses: actions/attest@f7c74d28b9d84cb8768d0b8ca14a4bac6ef463e6 # v4.1.0
+        uses: actions/attest@f7c74d28b9d84cb8768d0b8ca14a4bac6ef463e6 # v4.2.0
         with:
           subject-path: release-assets/SHA256SUMS
       - name: Bind backend SBOM to every native package
-        uses: actions/attest@f7c74d28b9d84cb8768d0b8ca14a4bac6ef463e6 # v4.1.0
+        uses: actions/attest@f7c74d28b9d84cb8768d0b8ca14a4bac6ef463e6 # v4.2.0
         with:
           subject-checksums: release-attestation/native-subjects.sha256
           sbom-path: release-assets/careeros-backend-${{ steps.release-version.outputs.value }}.cdx.json
       - name: Bind frontend SBOM to every native package
-        uses: actions/attest@f7c74d28b9d84cb8768d0b8ca14a4bac6ef463e6 # v4.1.0
+        uses: actions/attest@f7c74d28b9d84cb8768d0b8ca14a4bac6ef463e6 # v4.2.0
         with:
           subject-checksums: release-attestation/native-subjects.sha256
           sbom-path: release-assets/careeros-frontend-${{ steps.release-version.outputs.value }}.cdx.json
       - name: Bind Rust SBOM to every native package
-        uses: actions/attest@f7c74d28b9d84cb8768d0b8ca14a4bac6ef463e6 # v4.1.0
+        uses: actions/attest@f7c74d28b9d84cb8768d0b8ca14a4bac6ef463e6 # v4.2.0
         with:
           subject-checksums: release-attestation/native-subjects.sha256
           sbom-path: release-assets/careeros-rust-${{ steps.release-version.outputs.value }}.cdx.json

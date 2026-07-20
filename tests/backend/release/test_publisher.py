@@ -7,7 +7,7 @@ from typing import Any
 import pytest
 
 from scripts.publish_github_release import Publisher
-from scripts.release_github import ApiFailure
+from scripts.release_github import ApiFailure, GitHubApi, Response
 from tests.backend.release.helpers import COMMIT, RELEASE_DATE, VERSION
 
 
@@ -73,6 +73,26 @@ class FakeReleaseApi:
             self.ambiguous_publish = False
             raise ApiFailure("lost publish response", ambiguous=True)
         return dict(release)
+
+
+class SequenceRaceApi(FakeReleaseApi):
+    def __init__(self) -> None:
+        super().__init__()
+        self.release_reads = 0
+
+    def releases(self, repo: str) -> list[dict[str, Any]]:
+        self.release_reads += 1
+        if self.release_reads == 2:
+            self.release_values.append(
+                {
+                    "id": 202,
+                    "tag_name": "v1.2.0",
+                    "draft": False,
+                    "immutable": True,
+                }
+            )
+            self.latest_id = 202
+        return super().releases(repo)
 
 
 def _publisher(tmp_path: Path, api: FakeReleaseApi) -> Publisher:
@@ -240,4 +260,51 @@ def test_candidate_must_advance_every_published_version(tmp_path: Path) -> None:
     api.release_values.append({"id": 99, "draft": False, "tag_name": "v2.0.0"})
 
     with pytest.raises(RuntimeError, match="does not advance"):
+        publisher.publish()
+
+
+def test_sequence_is_rediscovered_immediately_before_promotion(tmp_path: Path) -> None:
+    api = SequenceRaceApi()
+    publisher = _publisher(tmp_path, api)
+
+    with pytest.raises(RuntimeError, match="does not advance"):
+        publisher.publish()
+
+    candidate = next(release for release in api.release_values if release["id"] == 101)
+    assert candidate["draft"] is True
+    assert candidate["immutable"] is False
+    assert api.latest_id == 202
+    assert api.update_calls == 0
+
+
+def test_duplicate_candidate_on_a_later_release_page_fails_closed(tmp_path: Path) -> None:
+    publisher = _publisher(tmp_path, FakeReleaseApi())
+    exact = {
+        "id": 101,
+        "tag_name": publisher.tag,
+        "name": publisher.name,
+        "body": publisher.body,
+        "draft": True,
+    }
+    responses = iter(
+        [
+            Response(
+                200,
+                {
+                    "link": (
+                        '<https://api.github.com/repos/owner/repo/releases?per_page=100&page=2>; '
+                        'rel="next"'
+                    )
+                },
+                [exact],
+            ),
+            Response(200, {}, [{**exact, "id": 102}]),
+        ]
+    )
+    api = GitHubApi.__new__(GitHubApi)
+    api.sleep = lambda _seconds: None
+    api._request = lambda *_args, **_kwargs: next(responses)  # type: ignore[method-assign]
+    publisher.api = api
+
+    with pytest.raises(RuntimeError, match="Duplicate"):
         publisher.publish()

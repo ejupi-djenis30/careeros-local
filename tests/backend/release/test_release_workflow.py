@@ -21,10 +21,25 @@ def test_required_check_name_and_versioned_toolchains_are_stable() -> None:
         "runner: ubuntu-24.04",
         "runner: ubuntu-24.04-arm",
         'GH_CLI_VERSION: "2.94.0"',
+        "actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0",
+        "actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1",
+        "actions/attest@f7c74d28b9d84cb8768d0b8ca14a4bac6ef463e6 # v4.2.0",
+        "tauri-apps/tauri-action@1deb371b0cd8bd54025b384f1cd735e725c4060f # v1.0.0",
     ):
         assert exact in text
     assert "-latest" not in text
     assert "toolchain: stable" not in text
+
+
+def test_tag_publications_share_one_group_without_cancelling_the_running_tag() -> None:
+    text = WORKFLOW.read_text(encoding="utf-8")
+
+    assert (
+        "group: desktop-${{ github.workflow }}-${{ "
+        "github.ref_type == 'tag' && 'tag-publication' || github.ref }}" in text
+    )
+    assert "cancel-in-progress: ${{ github.ref_type != 'tag' }}" in text
+    assert "desktop-${{ github.workflow }}-${{ github.ref }}" not in text
 
 
 def test_required_check_is_emitted_for_every_pull_request() -> None:

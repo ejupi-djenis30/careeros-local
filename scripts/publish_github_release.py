@@ -286,6 +286,14 @@ class Publisher:
             current = self.api.release(self.repo, release_id)
         raise RuntimeError("Published release did not become immutable")
 
+    def _rediscover_before_promotion(self, release: dict[str, Any]) -> dict[str, Any]:
+        current, releases = self._discover()
+        if current is None or _release_id(current) != _release_id(release):
+            raise RuntimeError("Candidate draft identity changed before promotion")
+        self._assert_identity(current, draft=True, immutable=False)
+        self._assert_sequence(releases)
+        return current
+
     def _require_latest(self, release: dict[str, Any]) -> None:
         release_id = _release_id(release)
         for attempt in range(12):
@@ -308,6 +316,7 @@ class Publisher:
         for name in sorted(self._assert_assets(release, allow_missing=True), key=str.casefold):
             self._upload_or_recover(release, name)
         self._assert_assets(release, allow_missing=False)
+        release = self._rediscover_before_promotion(release)
         published = self._publish_or_recover(release)
         self._assert_identity(published, draft=False, immutable=True)
         self._assert_assets(published, allow_missing=False)
