@@ -49,7 +49,7 @@ All notable changes to CareerOS Local are documented here. The format follows
 ### Added
 
 - Public, responsive GitHub Pages portfolio with real product captures and the reproducible
-  34-second tour.
+  40-second tour.
 - Code of Conduct, support guide, release-version consistency checks and coverage evidence.
 - Transactional demo-media publishing with rollback tests, plus keyboard focus management for
   confirmation and mobile-navigation overlays.

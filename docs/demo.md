@@ -38,7 +38,7 @@ The command performs the complete workflow:
 9. Stops only the processes it started and deletes the verified temporary directory.
 
 The final `careeros-demo.webm` must remain below 10 MiB. The committed tour is approximately
-34 seconds and intentionally has no synthetic voice-over: short English chapter overlays make it
+40 seconds and intentionally has no synthetic voice-over: short English chapter overlays make it
 understandable while muted. A hackathon submission should still use the separate narrated
 under-three-minute plan in `docs/devpost.md`.
 
