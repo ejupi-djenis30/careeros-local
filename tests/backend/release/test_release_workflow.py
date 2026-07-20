@@ -27,6 +27,17 @@ def test_required_check_name_and_versioned_toolchains_are_stable() -> None:
     assert "toolchain: stable" not in text
 
 
+def test_required_check_is_emitted_for_every_pull_request() -> None:
+    text = WORKFLOW.read_text(encoding="utf-8")
+    pull_request_trigger = text.index("  pull_request:")
+    push_trigger = text.index("  push:", pull_request_trigger)
+    trigger_config = text[pull_request_trigger:push_trigger]
+
+    assert trigger_config.strip() == "pull_request:"
+    assert "paths:" not in trigger_config
+    assert "paths-ignore:" not in trigger_config
+
+
 def test_only_tag_push_job_can_attest_or_publish() -> None:
     text = WORKFLOW.read_text(encoding="utf-8")
     publisher = text.index("  attest-publish:")

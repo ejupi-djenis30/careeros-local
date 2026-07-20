@@ -41,7 +41,7 @@ name, notes, draft/prerelease/immutable state, latest status, and all 22 asset d
 
 ## Local verification recorded for this change
 
-- Release/version/policy tests: 38 passed after canonical-date, exact three-SBOM verification,
+- Release/version/policy tests: 39 passed after canonical-date, exact three-SBOM verification,
   and API-token exfiltration cases were added.
 - Full backend suite: 973 passed, 3 skipped, 80.17% branch-aware coverage.
 - 10,000-record performance acceptance: 15.459 ms application-page p95 and 5.195 ms

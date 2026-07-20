@@ -8,16 +8,6 @@ on:
         required: false
         type: string
   pull_request:
-    paths:
-      - "backend/**"
-      - "desktop/**"
-      - "frontend/**"
-      - "scripts/**"
-      - "tests/backend/release/**"
-      - "alembic/**"
-      - "requirements*.txt"
-      - "requirements*.lock"
-      - ".github/workflows/desktop-release.yml"
   push:
     tags: ["v*"]
   schedule:
