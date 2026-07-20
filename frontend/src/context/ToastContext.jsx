@@ -28,7 +28,9 @@ export function ToastProvider({ children }) {
 
     useEffect(() => {
         const handleApiError = (event) => {
-            const message = event?.detail?.message;
+            const message = event?.detail?.messageKey
+                ? t(event.detail.messageKey, event.detail.variables)
+                : event?.detail?.message;
             if (message) {
                 showToast(message);
             }
@@ -41,7 +43,7 @@ export function ToastProvider({ children }) {
                 clearTimeout(hideTimeoutRef.current);
             }
         };
-    }, [showToast]);
+    }, [showToast, t]);
 
     return (
         <ToastContext.Provider value={{ toast, showToast, clearToast }}>

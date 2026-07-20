@@ -2,12 +2,14 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 import { SearchService } from "../services/search";
 import { useToast } from "../context/ToastContext";
 import { HistoryCard } from "./HistoryCard";
+import { useI18n } from "../i18n/useI18n";
 
 export function History({ onStartSearch, onStartSearchWithOptions, onUseAsTemplate, onSaveAsSchedule, loadingProfileId }) {
     const [profiles, setProfiles] = useState([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
     const { showToast } = useToast();
+    const { t } = useI18n();
     const requestIdRef = useRef(0);
     const requestControllerRef = useRef(null);
 
@@ -28,8 +30,8 @@ export function History({ onStartSearch, onStartSearchWithOptions, onUseAsTempla
             .catch((loadError) => {
                 if (controller.signal.aborted || loadError?.name === "AbortError" || requestId !== requestIdRef.current) return;
                 console.error("Failed to load profiles:", loadError);
-                setError("Failed to load search history.");
-                showToast("Failed to load search history.");
+                setError(t("historyList.loadFailed"));
+                showToast(t("historyList.loadFailed"));
             })
             .finally(() => {
                 if (!controller.signal.aborted && requestId === requestIdRef.current) {
@@ -37,7 +39,7 @@ export function History({ onStartSearch, onStartSearchWithOptions, onUseAsTempla
                     setLoading(false);
                 }
             });
-    }, [showToast]);
+    }, [showToast, t]);
 
     const refreshProfiles = useCallback(() => {
         setError(null);
@@ -68,7 +70,7 @@ export function History({ onStartSearch, onStartSearchWithOptions, onUseAsTempla
                 <i className="bi bi-exclamation-triangle-fill fs-1 text-danger mb-3"></i>
                 <p className="text-secondary opacity-75 mb-3">{error}</p>
                 <button onClick={refreshProfiles} className="btn btn-outline-primary">
-                    <i className="bi bi-arrow-clockwise me-2"></i>Try again
+                    <i className="bi bi-arrow-clockwise me-2"></i>{t("historyList.retry")}
                 </button>
             </div>
         );
@@ -82,8 +84,8 @@ export function History({ onStartSearch, onStartSearchWithOptions, onUseAsTempla
                         <i className="bi bi-journal-x fs-1 text-secondary opacity-50"></i>
                     </div>
                 </div>
-                <h4 className="text-white fw-bold">No History</h4>
-                <p className="text-secondary opacity-75">Your past searches will appear here.</p>
+                <h4 className="text-white fw-bold">{t("historyList.emptyTitle")}</h4>
+                <p className="text-secondary opacity-75">{t("historyList.emptyCopy")}</p>
             </div>
         );
     }
@@ -94,7 +96,8 @@ export function History({ onStartSearch, onStartSearchWithOptions, onUseAsTempla
                 <button
                     onClick={refreshProfiles}
                     className="btn btn-icon btn-secondary rounded-circle shadow-sm"
-                    title="Refresh List"
+                    title={t("historyList.refresh")}
+                    aria-label={t("historyList.refresh")}
                 >
                     <i className="bi bi-arrow-clockwise"></i>
                 </button>

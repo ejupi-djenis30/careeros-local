@@ -27,7 +27,7 @@ describe('ScheduleCard', () => {
         render(<ScheduleCard profile={profileMissingInfo} onToggle={vi.fn()} onChangeInterval={vi.fn()} onDelete={vi.fn()} />);
 
         expect(screen.getByText('Campaign #10')).toBeInTheDocument();
-        expect(screen.getByText('Any Location')).toBeInTheDocument();
+        expect(screen.getByText('Any location')).toBeInTheDocument();
         const intervalInput = screen.getByRole('spinbutton');
         expect(intervalInput.value).toBe("24"); // Checks the fallback
     });
@@ -73,7 +73,7 @@ describe('ScheduleCard', () => {
         const onDelete = vi.fn();
         render(<ScheduleCard profile={mockProfile} onToggle={vi.fn()} onChangeInterval={vi.fn()} onDelete={onDelete} />);
 
-        const deleteBtn = screen.getByTitle('Delete Campaign');
+        const deleteBtn = screen.getByRole('button', { name: 'Delete campaign' });
         fireEvent.click(deleteBtn);
 
         expect(onDelete).toHaveBeenCalledWith(mockProfile.id);

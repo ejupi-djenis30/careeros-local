@@ -123,7 +123,8 @@ export function SearchProvider({ children }) {
                                 delete pendingAddedAtRef.current[id];
                                 window.dispatchEvent(new CustomEvent(CAREEROS_API_ERROR_EVENT, {
                                     detail: {
-                                        message: `Search ${id} did not start successfully. Please try again.`
+                                        messageKey: 'searchStatus.startFailed',
+                                        variables: { id },
                                     }
                                 }));
                             }
@@ -141,7 +142,7 @@ export function SearchProvider({ children }) {
                 console.error("Failed to poll statuses:", e);
                 window.dispatchEvent(new CustomEvent(CAREEROS_API_ERROR_EVENT, {
                     detail: {
-                        message: 'Live search status updates are temporarily unavailable. Retrying...'
+                        messageKey: 'searchStatus.liveUnavailable',
                     }
                 }));
                 pollingInterval = 15000;

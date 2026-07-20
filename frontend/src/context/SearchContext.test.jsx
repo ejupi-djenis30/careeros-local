@@ -247,7 +247,8 @@ describe('SearchContext — ghost PID TTL', () => {
     expect(listener).toHaveBeenCalledWith(
       expect.objectContaining({
         detail: expect.objectContaining({
-          message: 'Search 42 did not start successfully. Please try again.'
+          messageKey: 'searchStatus.startFailed',
+          variables: { id: '42' },
         })
       })
     );

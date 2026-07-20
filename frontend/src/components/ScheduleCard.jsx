@@ -1,8 +1,10 @@
 import React, { useState } from 'react';
+import { useI18n } from '../i18n/useI18n';
 
 const SCHEDULE_PRESETS = [1, 3, 6, 12, 24];
 
 export function ScheduleCard({ profile, onToggle, onChangeInterval, onDelete }) {
+    const { t } = useI18n();
     const [isTogglePending, setIsTogglePending] = useState(false);
 
     const handleToggle = async () => {
@@ -24,10 +26,10 @@ export function ScheduleCard({ profile, onToggle, onChangeInterval, onDelete }) 
                             <i className="bi bi-robot fs-4"></i>
                         </div>
                         <div>
-                            <h6 className="text-white mb-0 fw-bold">{profile.name || `Campaign #${profile.id}`}</h6>
+                            <h6 className="text-white mb-0 fw-bold">{profile.name || t("schedule.campaign", { id: profile.id })}</h6>
                             <div className="d-flex align-items-center gap-2 mt-1">
-                                <span className="badge bg-success-10 text-success border border-success-20 rounded-pill px-2 py-1" style={{ fontSize: '0.65rem' }}>ACTIVE</span>
-                                <span className="text-secondary x-small font-monospace">ID: {profile.id}</span>
+                                <span className="badge bg-success-10 text-success border border-success-20 rounded-pill px-2 py-1" style={{ fontSize: '0.65rem' }}>{t("schedule.active")}</span>
+                                <span className="text-secondary x-small font-monospace">{t("schedule.identifier", { id: profile.id })}</span>
                             </div>
                         </div>
                     </div>
@@ -43,7 +45,7 @@ export function ScheduleCard({ profile, onToggle, onChangeInterval, onDelete }) 
                         </div>
                         <div className="d-flex align-items-center text-white-50 small">
                             <i className="bi bi-geo-alt me-2 text-primary"></i>
-                            <span>{profile.location_filter || "Any Location"}</span>
+                            <span>{profile.location_filter || t("schedule.anyLocation")}</span>
                         </div>
                     </div>
                 </div>
@@ -52,7 +54,7 @@ export function ScheduleCard({ profile, onToggle, onChangeInterval, onDelete }) 
                     <div className="d-flex align-items-center justify-content-between mb-3">
                         <div className="d-flex align-items-center gap-2">
                             <i className="bi bi-arrow-repeat text-white"></i>
-                            <span className="text-white small fw-bold">Interval</span>
+                            <span className="text-white small fw-bold">{t("schedule.interval")}</span>
                         </div>
                         <div className="form-check form-switch m-0">
                             <input
@@ -62,7 +64,8 @@ export function ScheduleCard({ profile, onToggle, onChangeInterval, onDelete }) 
                                 onChange={handleToggle}
                                 disabled={isTogglePending}
                                 style={{ cursor: isTogglePending ? 'wait' : 'pointer', transform: 'scale(1.1)' }}
-                                title={isTogglePending ? 'Updating…' : 'Toggle Schedule'}
+                                title={isTogglePending ? t("schedule.updating") : t("schedule.toggle")}
+                                aria-label={isTogglePending ? t("schedule.updating") : t("schedule.toggle")}
                             />
                         </div>
                     </div>
@@ -81,7 +84,8 @@ export function ScheduleCard({ profile, onToggle, onChangeInterval, onDelete }) 
                             <button
                                 className="btn btn-sm btn-outline-danger border-white-10 text-danger hover-bg-danger hover-text-white rounded-3 px-3 transition-colors"
                                 onClick={() => onDelete(profile.id)}
-                                title="Delete Campaign"
+                                title={t("schedule.delete")}
+                                aria-label={t("schedule.delete")}
                             >
                                 <i className="bi bi-trash"></i>
                             </button>

@@ -32,4 +32,21 @@ describe("desktop external navigation", () => {
         await vi.waitFor(() => expect(openUrl).toHaveBeenCalledWith("https://example.test/job"));
         uninstall();
     });
+
+    it("reports native opener failures through the localized API error channel", async () => {
+        window.__TAURI_INTERNALS__ = {};
+        openUrl.mockRejectedValueOnce(new Error("native opener failed"));
+        document.body.innerHTML = '<a href="https://example.test/job"><span>Open</span></a>';
+        const listener = vi.fn();
+        window.addEventListener("careeros:api-error", listener);
+        const uninstall = installExternalNavigation();
+
+        document.querySelector("span").click();
+
+        await vi.waitFor(() => expect(listener).toHaveBeenCalledWith(expect.objectContaining({
+            detail: { messageKey: "navigation.openFailed" },
+        })));
+        uninstall();
+        window.removeEventListener("careeros:api-error", listener);
+    });
 });
