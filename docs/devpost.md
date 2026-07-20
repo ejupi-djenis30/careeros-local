@@ -135,7 +135,7 @@ Build and verification:
 - `docs/assets/careeros-vault.png` — real capture of the verified Career Vault.
 - `docs/assets/careeros-resume-studio.png` — real capture of the grounded ATS resume workflow.
 - `docs/assets/careeros-applications.png` — real capture of the local application pipeline.
-- `docs/assets/careeros-demo.webm` and `careeros-demo-poster.jpg` — reproducible 34-second
+- `docs/assets/careeros-demo.webm` and `careeros-demo-poster.jpg` — reproducible 40-second
   portfolio tour and clickable poster. This silent repository tour does **not** replace the
   narrated YouTube deliverable required for submission.
 
