@@ -228,7 +228,7 @@ jobs:
         run: ./scripts/smoke_windows_installer.ps1 -Target '${{ matrix.target }}' -IncludeNsisInstall
       - name: Exercise macOS and Linux native packages
         if: runner.os != 'Windows'
-        run: python scripts/smoke_native_bundle.py --target '${{ matrix.target }}'
+        run: python -m scripts.smoke_native_bundle --target '${{ matrix.target }}'
       - name: Stage canonical target candidate
         run: >-
           python -m scripts.release_candidate stage

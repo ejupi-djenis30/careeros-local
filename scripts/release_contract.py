@@ -13,6 +13,12 @@ from datetime import date
 from pathlib import Path
 from typing import Any
 
+from scripts.license_contract import (
+    LICENSE_NAME,
+    approved_license_record,
+    verify_distributed_license,
+    write_public_license,
+)
 from scripts.release_assets import (
     PROJECT,
     TARGETS,
@@ -33,7 +39,6 @@ RELEASE_SCHEMA_VERSION = 2
 RELEASE_MANIFEST = "release-manifest.json"
 GLOBAL_CHECKSUMS = "SHA256SUMS"
 EVIDENCE_ARCHIVE = "supply-chain-evidence.tar.gz"
-APPROVED_LICENSE_SHA256 = "7e1d73415a3de7fa896ac8871ae0aea8fc736e9f0d274bf658c18399236976c6"
 MAX_EVIDENCE_FILE_SIZE = 64 * 1024 * 1024
 MAX_EVIDENCE_ARCHIVE_SIZE = 256 * 1024 * 1024
 RELEASE_DATE_PATTERN = re.compile(r"^[0-9]{4}-[0-9]{2}-[0-9]{2}$")
@@ -71,27 +76,6 @@ def validate_release_date(value: str) -> str:
     except ValueError as error:
         raise RuntimeError(f"Release date is not valid: {value}") from error
     return value
-
-
-def approved_license_record(path: Path) -> dict[str, Any]:
-    if path.name != "LICENSE" or path.is_symlink() or not path.is_file():
-        raise RuntimeError("The approved repository LICENSE file is required")
-    file_record(path)  # Enforce the shared regular, non-empty release-file contract.
-    try:
-        text = path.read_bytes().decode("utf-8")
-    except UnicodeDecodeError as error:
-        raise RuntimeError("The approved MIT LICENSE must be UTF-8 text") from error
-    canonical = text.replace("\r\n", "\n").replace("\r", "\n").encode("utf-8")
-    digest = hashlib.sha256(canonical).hexdigest()
-    if digest != APPROVED_LICENSE_SHA256:
-        raise RuntimeError("LICENSE content does not match the approved MIT license")
-    return {
-        "spdx": "MIT",
-        "name": "LICENSE",
-        "normalization": "utf-8-lf",
-        "size": len(canonical),
-        "sha256": digest,
-    }
 
 
 def _json_file(path: Path) -> object:
@@ -220,7 +204,7 @@ def expected_public_names(version: str) -> list[str]:
         names.extend(canonical_package_name(version, spec, package) for package in spec.packages)
         names.append(target_checksum_name(target))
     names.extend(sbom_asset_names(version).values())
-    names.extend((EVIDENCE_ARCHIVE, RELEASE_MANIFEST, GLOBAL_CHECKSUMS))
+    names.extend((LICENSE_NAME, EVIDENCE_ARCHIVE, RELEASE_MANIFEST, GLOBAL_CHECKSUMS))
     reject_casefold_collisions(names)
     return sorted(names, key=str.casefold)
 
@@ -272,7 +256,7 @@ def assemble_release_bundle(
     version = validate_stable_version(version)
     source_commit = validate_source_commit(source_commit)
     release_date = validate_release_date(release_date)
-    license_record = approved_license_record(license_path)
+    approved_license_record(license_path)
     _ensure_empty_directory(output)
     candidates = _native_candidates(native_root, version, source_commit)
     targets: list[dict[str, Any]] = []
@@ -298,6 +282,7 @@ def assemble_release_bundle(
                 "checksum": file_record(output / checksum_name),
             }
         )
+    license_record = write_public_license(license_path, output / LICENSE_NAME)
     evidence_records = create_deterministic_evidence_archive(evidence_root, output / EVIDENCE_ARCHIVE)
     sboms: dict[str, dict[str, Any]] = {}
     for component, public_name in sbom_asset_names(version).items():
@@ -347,10 +332,13 @@ def validate_release_bundle(
     version = validate_stable_version(version)
     source_commit = validate_source_commit(source_commit)
     release_date = validate_release_date(release_date)
-    license_record = approved_license_record(license_path)
+    source_license_record = approved_license_record(license_path)
     actual_names = [record["name"] for record in inventory_directory(directory)]
     if actual_names != expected_public_names(version):
         raise RuntimeError(f"Release bundle has missing or unexpected files: {actual_names}")
+    license_record = verify_distributed_license(directory / LICENSE_NAME, source=license_path)
+    if license_record != source_license_record:
+        raise RuntimeError("Public LICENSE does not match the approved source record")
     inventory = inventory_directory(directory, exclude={GLOBAL_CHECKSUMS})
     parsed = parse_checksum_text((directory / GLOBAL_CHECKSUMS).read_text(encoding="utf-8"))
     expected_checksums = [

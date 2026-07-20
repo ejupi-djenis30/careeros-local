@@ -129,6 +129,15 @@ function Invoke-ExportSmoke([string]$Backend, [string]$DataDirectory) {
     return $Output | ConvertFrom-Json
 }
 
+function Assert-PackagedLicense([string]$PackageRoot) {
+    $Output = & $Python (Join-Path $ProjectRoot "scripts\license_contract.py") `
+        --package-root $PackageRoot
+    if ($LASTEXITCODE -ne 0) {
+        throw "Packaged project license verification failed with code $LASTEXITCODE"
+    }
+    return $Output | ConvertFrom-Json
+}
+
 try {
     if (Test-Path -LiteralPath $SmokeRoot) { Remove-SmokeTree }
     New-Item -ItemType Directory -Path $ExtractRoot -Force | Out-Null
@@ -146,11 +155,13 @@ try {
     }
     $MsiApp = Get-OnlyFile $ExtractRoot "careeros-local.exe"
     $MsiBackend = Get-OnlyFile $ExtractRoot "careeros-backend.exe"
+    $MsiLicense = Assert-PackagedLicense ($MsiApp.Directory.FullName)
     $MsiData = Join-Path $SmokeRoot "data-msi"
     $MsiExport = Invoke-ExportSmoke $MsiBackend.FullName $MsiData
     $MsiResult = Invoke-ReopenSmoke $MsiApp.FullName $MsiData
 
     $NsisResult = $null
+    $NsisLicense = $null
     if ($IncludeNsisInstall) {
         $Nsis = Get-OnlyFile (Join-Path $BundleRoot "nsis") "*.exe"
         $InstallRoot = Join-Path $SmokeRoot "n"
@@ -165,6 +176,7 @@ try {
         }
         $NsisApp = Get-OnlyFile $InstallRoot "careeros-local.exe"
         $NsisBackend = Get-OnlyFile $InstallRoot "careeros-backend.exe"
+        $NsisLicense = Assert-PackagedLicense ($NsisApp.Directory.FullName)
         $NsisData = Join-Path $SmokeRoot "data-nsis"
         $NsisExport = Invoke-ExportSmoke $NsisBackend.FullName $NsisData
         $NsisResult = Invoke-ReopenSmoke $NsisApp.FullName $NsisData
@@ -195,9 +207,11 @@ try {
         target = $Target
         msiBytes = $Msi.Length
         msiExports = $MsiExport
+        msiLicense = $MsiLicense
         msi = $MsiResult
         nsisInstalledAndUninstalled = $IncludeNsisInstall.IsPresent
         nsisExports = $NsisExport
+        nsisLicense = $NsisLicense
         nsis = $NsisResult
     } | ConvertTo-Json -Compress -Depth 4
 }

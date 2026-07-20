@@ -5,8 +5,8 @@ from pathlib import Path
 import pytest
 
 from scripts.check_release_versions import ROOT
+from scripts.license_contract import APPROVED_LICENSE_SHA256
 from scripts.release_contract import (
-    APPROVED_LICENSE_SHA256,
     EVIDENCE_ARCHIVE,
     assemble_release_bundle,
     expected_public_names,
@@ -31,7 +31,7 @@ def test_bundle_has_exact_global_inventory_and_valid_native_subjects(tmp_path: P
     assert sorted((path.name for path in bundle.iterdir()), key=str.casefold) == expected_public_names(
         VERSION
     )
-    assert len(expected_public_names(VERSION)) == 22
+    assert len(expected_public_names(VERSION)) == 23
     manifest = validate_release_bundle(
         bundle,
         version=VERSION,
@@ -74,6 +74,32 @@ def test_approved_license_binding_is_stable_across_checkout_newlines(tmp_path: P
         "size": len(canonical),
         "sha256": APPROVED_LICENSE_SHA256,
     }
+    assert (bundle / "LICENSE").read_bytes() == canonical
+
+
+def test_public_license_is_required_and_tampering_fails_closed(tmp_path: Path) -> None:
+    bundle, _ = write_release_bundle(tmp_path, ROOT / "LICENSE")
+    public_license = bundle / "LICENSE"
+    public_license.unlink()
+
+    with pytest.raises(RuntimeError, match="missing or unexpected"):
+        validate_release_bundle(
+            bundle,
+            version=VERSION,
+            source_commit=COMMIT,
+            release_date=RELEASE_DATE,
+            license_path=ROOT / "LICENSE",
+        )
+
+    public_license.write_bytes(b"tampered license\n")
+    with pytest.raises(RuntimeError, match="differs from the approved text"):
+        validate_release_bundle(
+            bundle,
+            version=VERSION,
+            source_commit=COMMIT,
+            release_date=RELEASE_DATE,
+            license_path=ROOT / "LICENSE",
+        )
 
 
 def _assemble_candidates(tmp_path: Path, native: Path) -> None:

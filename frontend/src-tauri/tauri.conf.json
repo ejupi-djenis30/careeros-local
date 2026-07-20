@@ -40,6 +40,7 @@
   "bundle": {
     "active": true,
     "resources": {
+      "../../LICENSE": "LICENSE",
       "binaries/careeros-backend-runtime/": "careeros-backend-runtime/"
     },
     "targets": "all",

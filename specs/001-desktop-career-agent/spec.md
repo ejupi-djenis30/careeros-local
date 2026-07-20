@@ -260,7 +260,10 @@ temporary document content remains in application-managed storage.
 - **FR-038**: Every release asset MUST use a deterministic portable filename, appear in an exact
   target/type/name/size/SHA-256 manifest, retain that same name in downloadable checksum files,
   and carry verified GitHub-hosted build provenance for the exact tag, commit and workflow. Any
-  declared SPDX license MUST be bound to the approved canonical license content.
+  declared SPDX license MUST be a first-class checksummed release asset bound to the approved
+  canonical content. Every native installer or disk image MUST contain that exact project license,
+  and package smoke verification MUST inspect the installed, extracted or mounted bytes before the
+  package can be staged.
 - **FR-039**: Release publication MUST be contract-bound, paginated, least-privilege and
   idempotent. It MUST reject duplicate, foreign or stale state; recover safely from ambiguous
   create/upload/publish responses; and finish only after the exact release ID, target commit,

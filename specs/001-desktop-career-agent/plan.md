@@ -235,7 +235,9 @@ Stage every platform bundle under a deterministic public name and emit a checksu
 target manifest.
 On a separate pinned runner, reject missing, duplicate, unsafe or unexpected files; validate the
 closed supply-chain evidence set; create a deterministic evidence archive, canonical SBOM assets,
-`release-manifest.json` and `SHA256SUMS`; then independently re-verify the assembled candidate.
+the canonical public `LICENSE`, `release-manifest.json` and `SHA256SUMS`; then independently
+re-verify the assembled candidate. Embed the same license bytes as a Tauri resource and require
+every platform smoke gate to find them in the mounted, extracted or installed native payload.
 For a trusted tag push, attest every checksum-listed asset plus the checksum file, add CycloneDX
 SBOM attestations for the native subjects, and verify repository, workflow, source ref, source
 digest, predicate and hosted-runner identity before publication. The publisher discovers drafts

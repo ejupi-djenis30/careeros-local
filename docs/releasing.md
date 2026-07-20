@@ -28,15 +28,23 @@ Run **Desktop packages** from `main`. You may supply the planned tag, such as `v
 `expected_tag`. The workflow builds six native targets on versioned GitHub-hosted runners,
 smoke-tests each package, normalizes installer names, and assembles one exact candidate.
 
-The candidate contains 22 public assets:
+The candidate contains 23 public assets:
 
 - 10 native installers with portable, no-space names;
 - six target-specific SHA-256 files whose filenames exactly match their downloads;
 - three CycloneDX SBOMs;
 - one deterministic supply-chain evidence archive;
+- the canonical LF `LICENSE`, downloadable as a first-class asset and byte-identical to the
+  project notice embedded by Tauri in every native package;
 - `release-manifest.json`, which binds target, package type, name, size, SHA-256, source commit,
-  release date, evidence, SBOMs, and the newline-normalized digest of the approved MIT license;
+  release date, evidence, SBOMs, and the exact public MIT `LICENSE` asset;
 - `SHA256SUMS`, which binds every other public asset.
+
+The native smoke gates do not trust package metadata alone. They mount each DMG read-only,
+extract each AppImage and DEB, administratively extract each MSI, and install each NSIS package;
+every resulting payload must expose the approved project `LICENSE` bytes at the canonical Tauri
+resource root. Missing, changed, duplicate case-variant, symlink-alias, or dependency-only license
+files stop the run before staging.
 
 No artifact from a rehearsal is a release. Review the retained `verified-release-assets` and
 `native-subject-checksums` workflow artifacts before proceeding.
@@ -50,8 +58,8 @@ must equal the candidate source and remain contained in the repository's current
 The tag workflow re-runs every build and check. Its final job then:
 
 1. verifies the tag and default-branch policy before requesting attestations;
-2. re-hashes the exact 22-file candidate;
-3. creates SLSA provenance for all 22 assets;
+2. re-hashes the exact 23-file candidate;
+3. creates SLSA provenance for all 23 assets;
 4. binds each of the three CycloneDX SBOMs to all 10 native installers;
 5. verifies every attestation against the tag commit, tag ref, workflow identity, GitHub OIDC
    issuer, and GitHub-hosted runner policy;
@@ -74,7 +82,7 @@ write-free no-op.
 ## Download verification
 
 The global checksum command requires one directory containing the complete published set:
-`SHA256SUMS` plus all other 21 assets. On GNU/Linux or in Git Bash, run:
+`SHA256SUMS` plus all other 22 assets. On GNU/Linux or in Git Bash, run:
 
 ```bash
 sha256sum --check SHA256SUMS

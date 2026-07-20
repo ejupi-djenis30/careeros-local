@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[3]
 WORKFLOW = ROOT / ".github" / "workflows" / "desktop-release.yml"
+TAURI_CONFIG = ROOT / "frontend" / "src-tauri" / "tauri.conf.json"
+WINDOWS_SMOKE = ROOT / "scripts" / "smoke_windows_installer.ps1"
 
 
 def test_required_check_name_and_versioned_toolchains_are_stable() -> None:
@@ -76,7 +79,7 @@ def test_release_contract_is_collision_safe_and_never_clobbers() -> None:
     assert "scripts.release_candidate stage" in text
     assert "scripts.release_candidate assemble" in text
     assert "scripts.release_candidate verify" in text
-    assert text.index("scripts/smoke_native_bundle.py") < text.index(
+    assert text.index("python -m scripts.smoke_native_bundle") < text.index(
         "scripts.release_candidate stage"
     )
     assert "merge-multiple: true" not in text
@@ -88,3 +91,17 @@ def test_release_contract_is_collision_safe_and_never_clobbers() -> None:
     assert "https://cyclonedx.org/bom" in text
     assert "scripts.verify_sbom_attestations" in text
     assert "--deny-self-hosted-runners" in text
+
+
+def test_canonical_project_license_is_bundled_and_checked_in_every_native_path() -> None:
+    workflow = WORKFLOW.read_text(encoding="utf-8")
+    config = json.loads(TAURI_CONFIG.read_text(encoding="utf-8"))
+    windows_smoke = WINDOWS_SMOKE.read_text(encoding="utf-8")
+
+    assert config["bundle"]["resources"]["../../LICENSE"] == "LICENSE"
+    assert "LICENSE text eol=lf" in (ROOT / ".gitattributes").read_text(encoding="utf-8")
+    assert "-IncludeNsisInstall" in workflow
+    assert "python -m scripts.smoke_native_bundle --target" in workflow
+    assert "python scripts/smoke_native_bundle.py" not in workflow
+    assert "Assert-PackagedLicense ($MsiApp.Directory.FullName)" in windows_smoke
+    assert "Assert-PackagedLicense ($NsisApp.Directory.FullName)" in windows_smoke
