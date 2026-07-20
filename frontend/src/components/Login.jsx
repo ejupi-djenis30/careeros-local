@@ -7,16 +7,16 @@ export function Login() {
     const [mode, setMode] = useState("login");
     const [username, setUsername] = useState("");
     const [password, setPassword] = useState("");
-    const [error, setError] = useState("");
+    const [error, setError] = useState(null);
     const [loading, setLoading] = useState(false);
     const { login, register } = useAuth();
     const { t } = useI18n();
 
     const submit = async (event) => {
         event.preventDefault();
-        setError("");
+        setError(null);
         if (mode === "register" && (password.length < 8 || !/[A-Z]/.test(password) || !/\d/.test(password))) {
-            setError(t("login.passwordRule"));
+            setError({ messageKey: "login.passwordRule" });
             return;
         }
         setLoading(true);
@@ -24,7 +24,7 @@ export function Login() {
             if (mode === "register") await register(username.trim(), password);
             else await login(username.trim(), password);
         } catch (authError) {
-            setError(authError.message);
+            setError({ message: authError.message, messageKey: authError.messageKey });
         } finally {
             setLoading(false);
         }
@@ -52,14 +52,14 @@ export function Login() {
             <section className="login-panel" aria-labelledby="login-title">
                 <LanguageSwitcher />
                 <div className="login-panel__intro"><span className="login-lock"><i className="bi bi-lock" /></span><div><span className="section-kicker">{t("login.localSession")}</span><h2 id="login-title">{mode === "login" ? t("login.welcome") : t("login.createWorkspace")}</h2><p>{mode === "login" ? t("login.signInCopy") : t("login.registerCopy")}</p></div></div>
-                {error && <div className="inline-alert inline-alert--danger" role="alert">{error}</div>}
+                {error && <div className="inline-alert inline-alert--danger" role="alert">{error.messageKey ? t(error.messageKey) : error.message}</div>}
                 <form onSubmit={submit}>
                     <label className="field-stack"><span>{t("login.username")}</span><div className="input-with-icon"><i className="bi bi-person" /><input className="form-control" value={username} onChange={(e) => setUsername(e.target.value)} required autoFocus autoComplete="username" /></div></label>
                     <label className="field-stack"><span>{t("login.password")}</span><div className="input-with-icon"><i className="bi bi-key" /><input className="form-control" type="password" value={password} onChange={(e) => setPassword(e.target.value)} required autoComplete={mode === "register" ? "new-password" : "current-password"} /></div></label>
                     {mode === "register" && <p className="password-hint">{t("login.passwordRule")}</p>}
                     <button className="button button--primary button--wide" disabled={loading || !username.trim() || !password}>{loading ? t("login.checking") : mode === "login" ? t("login.signIn") : t("login.createAccount")}<i className="bi bi-arrow-right" /></button>
                 </form>
-                <button type="button" className="login-switch" onClick={() => { setMode(mode === "login" ? "register" : "login"); setError(""); }}>{mode === "login" ? t("login.firstTime") : t("login.hasAccount")}</button>
+                <button type="button" className="login-switch" onClick={() => { setMode(mode === "login" ? "register" : "login"); setError(null); }}>{mode === "login" ? t("login.firstTime") : t("login.hasAccount")}</button>
                 <div className="login-privacy"><i className="bi bi-shield-lock" /><span>{t("login.privacy")}</span></div>
             </section>
         </main>
