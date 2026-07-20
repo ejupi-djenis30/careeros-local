@@ -76,7 +76,8 @@ jobs:
           cargo install cargo-audit --version 0.22.2 --locked
           cargo install cargo-cyclonedx --version 0.5.9 --locked
           cargo install cargo-deny --version 0.20.2 --locked
-          cargo metadata --manifest-path frontend/src-tauri/Cargo.toml --locked --format-version 1 > /dev/null
+          cargo metadata --manifest-path frontend/src-tauri/Cargo.toml --locked --format-version 1 |
+            python -c "import json, sys; json.load(sys.stdin)"
       - name: Smoke-test locked packaging tools in isolation
         run: |
           tooling_venv="$RUNNER_TEMP/careeros-tooling"
@@ -207,7 +208,8 @@ jobs:
           python -m pip install --require-hashes -r requirements.lock
           python -m pip install --require-hashes -r requirements-tooling.lock
           npm ci --prefix frontend
-          cargo metadata --manifest-path frontend/src-tauri/Cargo.toml --locked --format-version 1 > /dev/null
+          cargo metadata --manifest-path frontend/src-tauri/Cargo.toml --locked --format-version 1 |
+            python -c "import json, sys; json.load(sys.stdin)"
       - name: Freeze and smoke-test local backend
         run: python scripts/build_backend_sidecar.py
       - name: Verify native sidecar architecture
@@ -221,7 +223,7 @@ jobs:
         with:
           projectPath: frontend
           tauriScript: npm run tauri
-          args: --target ${{ matrix.target }} --bundles ${{ matrix.bundles }} --locked
+          args: --target ${{ matrix.target }} --bundles ${{ matrix.bundles }} -- --locked
       - name: Exercise Windows MSI and NSIS lifecycle
         if: runner.os == 'Windows'
         shell: pwsh

@@ -34,6 +34,25 @@ def test_required_check_name_and_versioned_toolchains_are_stable() -> None:
     assert "toolchain: stable" not in text
 
 
+def test_native_build_forwards_locked_and_consumes_metadata_portably() -> None:
+    text = WORKFLOW.read_text(encoding="utf-8")
+
+    cargo_metadata = (
+        "cargo metadata --manifest-path frontend/src-tauri/Cargo.toml "
+        "--locked --format-version 1 |"
+    )
+    assert text.count(cargo_metadata) == 2
+    assert text.count('python -c "import json, sys; json.load(sys.stdin)"') == 2
+    assert (
+        "args: --target ${{ matrix.target }} --bundles ${{ matrix.bundles }} "
+        "-- --locked"
+    ) in text
+    assert (
+        "args: --target ${{ matrix.target }} --bundles ${{ matrix.bundles }} "
+        "--locked"
+    ) not in text
+
+
 def test_tag_publications_share_one_group_without_cancelling_the_running_tag() -> None:
     text = WORKFLOW.read_text(encoding="utf-8")
 
