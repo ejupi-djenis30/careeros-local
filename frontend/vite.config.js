@@ -20,6 +20,8 @@ export default defineConfig({
     globals: true,
     environment: 'jsdom',
     setupFiles: './src/setupTests.js',
+    // Cap parallel JSDOM workers so interaction-heavy suites stay deterministic on shared runners.
+    maxWorkers: 4,
     // V8 instrumentation makes interaction-heavy canvas/profile tests slower on CI.
     testTimeout: 15_000,
     coverage: {

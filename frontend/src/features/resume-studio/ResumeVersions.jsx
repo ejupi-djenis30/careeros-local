@@ -11,7 +11,7 @@ export function ResumeVersions({ versions, comparison, busy, onCompare, onRestor
         try {
             saveBlob(await ResumeService.downloadArtifact(artifact.id));
         } catch (error) {
-            onError(error.message);
+            onError({ message: error.message });
         }
     };
     const toggle = (versionId, enabled) => setSelected((current) => {

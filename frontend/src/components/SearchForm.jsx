@@ -55,9 +55,12 @@ export function SearchForm({ onStartSearch, isLoading, prefill }) {
                 setExistingNames(names);
             })
             .catch((error) => {
-                showToast(t("searchForm.loadNamesFailed", { error: error?.message || t("common.unknownError") }));
+                showToast({
+                    messageKey: "searchForm.loadNamesFailed",
+                    variables: { error: error?.message || { messageKey: "common.unknownError" } },
+                });
             });
-    }, [showToast, t]);
+    }, [showToast]);
 
     const handleChange = (e) => {
         const { name, value } = e.target;
@@ -78,9 +81,12 @@ export function SearchForm({ onStartSearch, isLoading, prefill }) {
         if (!file) return;
         const MAX_CV_SIZE = 10 * 1024 * 1024; // 10 MB — must match backend MAX_UPLOAD_FILE_SIZE
         if (file.size > MAX_CV_SIZE) {
-            showToast(t("searchForm.cvTooLarge", {
-                size: (file.size / (1024 * 1024)).toLocaleString(locale, { maximumFractionDigits: 1 }),
-            }));
+            showToast({
+                messageKey: "searchForm.cvTooLarge",
+                variables: {
+                    size: (file.size / (1024 * 1024)).toLocaleString(locale, { maximumFractionDigits: 1 }),
+                },
+            });
             e.target.value = "";
             return;
         }
@@ -88,7 +94,10 @@ export function SearchForm({ onStartSearch, isLoading, prefill }) {
             const { text } = await SearchService.uploadCV(file);
             setProfile(prev => ({ ...prev, cv_content: text }));
         } catch (err) {
-            showToast(t("searchForm.cvUploadFailed", { error: err?.message || String(err) || t("common.unknownError") }));
+            showToast({
+                messageKey: "searchForm.cvUploadFailed",
+                variables: { error: err?.message || String(err) || { messageKey: "common.unknownError" } },
+            });
         }
     };
 
@@ -109,39 +118,39 @@ export function SearchForm({ onStartSearch, isLoading, prefill }) {
         const maxKeywordQueries = profile.max_keyword_queries === "" ? -1 : coerceNumericValue(profile.max_keyword_queries, -1);
 
         if (!profile.cv_content) {
-            showToast(t("searchForm.validation.cvRequired"));
+            showToast({ messageKey: "searchForm.validation.cvRequired" });
             return;
         }
         if (!profile.role_description.trim()) {
-            showToast(t("searchForm.validation.roleRequired"));
+            showToast({ messageKey: "searchForm.validation.roleRequired" });
             return;
         }
         if (!profile.location_filter.trim()) {
-            showToast(t("searchForm.validation.locationRequired"));
+            showToast({ messageKey: "searchForm.validation.locationRequired" });
             return;
         }
         if (postedWithinDays < 1) {
-            showToast(t("searchForm.validation.postedDays"));
+            showToast({ messageKey: "searchForm.validation.postedDays" });
             return;
         }
         if (maxDistance < 0) {
-            showToast(t("searchForm.validation.distance"));
+            showToast({ messageKey: "searchForm.validation.distance" });
             return;
         }
         if (profile.schedule_enabled && scheduleIntervalHours < 1) {
-            showToast(t("searchForm.validation.schedule"));
+            showToast({ messageKey: "searchForm.validation.schedule" });
             return;
         }
         if (profile.remote_only && maxDistance > 0) {
-            showToast(t("searchForm.validation.remoteDistance"));
+            showToast({ messageKey: "searchForm.validation.remoteDistance" });
             return;
         }
         if (profile.latitude == null || profile.longitude == null) {
-            showToast(t("searchForm.validation.invalidLocation"));
+            showToast({ messageKey: "searchForm.validation.invalidLocation" });
             return;
         }
         if (profile.name.trim() && existingNames.includes(profile.name.trim().toLowerCase())) {
-            showToast(t("searchForm.validation.duplicateName"));
+            showToast({ messageKey: "searchForm.validation.duplicateName" });
             return;
         }
 

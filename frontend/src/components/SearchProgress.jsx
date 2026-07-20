@@ -73,7 +73,7 @@ export function SearchProgress({ profileId, status, onStateChange, onClear }) {
             await SearchService.stopSearch(profileId);
         } catch (e) {
             console.error("Stop error:", e);
-            showToast(t("searchProgress.stopFailed"));
+            showToast({ messageKey: "searchProgress.stopFailed" });
         }
     };
 

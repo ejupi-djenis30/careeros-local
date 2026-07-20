@@ -65,7 +65,7 @@ describe("ResumeStudioPage", () => {
             career_goal_id: GOAL_ID,
         }));
         expect(await screen.findByLabelText("Canvas modificabile del CV")).toBeInTheDocument();
-        expect(showToast).toHaveBeenCalledWith(expect.stringContaining("automaticamente"), "success");
+        expect(showToast).toHaveBeenCalledWith({ messageKey: "resume.generatedToast" }, "success");
     });
 
     it("duplicates a canvas and selectively synchronizes a newer profile", async () => {
@@ -121,7 +121,7 @@ describe("ResumeStudioPage", () => {
             RESUME_ID,
             expect.objectContaining({ expected_revision: 2, expected_profile_revision: 3 }),
         ));
-        expect(showToast).toHaveBeenCalledWith(expect.stringContaining("fatto verificato"), "success");
+        expect(showToast).toHaveBeenCalledWith({ messageKey: "resume.promotedToast" }, "success");
     });
 
     it("autosaves an edited existing draft after the debounce", async () => {
@@ -161,7 +161,7 @@ describe("ResumeStudioPage", () => {
 
         await user.click(screen.getAllByRole("button", { name: "Ripristina nella bozza" })[1]);
         expect(restoreVersion).toHaveBeenCalledWith(RESUME_ID, "v1", 1);
-        expect(showToast).toHaveBeenCalledWith(expect.stringContaining("nuova revisione"), "success");
+        expect(showToast).toHaveBeenCalledWith({ messageKey: "resume.restoredToast" }, "success");
         confirm.mockRestore();
     });
 

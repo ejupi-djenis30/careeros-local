@@ -3,9 +3,12 @@ import { SearchService } from "../services/search";
 import { useToast } from "../context/ToastContext";
 import { ScheduleCard } from "./ScheduleCard";
 import { ConfirmationDialog } from "./ConfirmationDialog";
+import { useI18n } from "../i18n/useI18n";
+import { translateMessage } from "../i18n/runtime";
 
 export function Schedules() {
     const { showToast } = useToast();
+    const { t } = useI18n();
     const [profiles, setProfiles] = useState([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
@@ -29,8 +32,8 @@ export function Schedules() {
             .catch((loadError) => {
                 if (controller.signal.aborted || loadError?.name === "AbortError" || requestId !== requestIdRef.current) return;
                 console.error("Failed to load profiles:", loadError);
-                setError("Failed to load schedules.");
-                showToast("Failed to load schedules. Please refresh.");
+                setError({ messageKey: "schedules.loadFailed" });
+                showToast({ messageKey: "schedules.loadFailedRefresh" });
             })
             .finally(() => {
                 if (!controller.signal.aborted && requestId === requestIdRef.current) {
@@ -60,7 +63,10 @@ export function Schedules() {
             await SearchService.toggleSchedule(profileId, !currentEnabled, intervalHours);
             await loadProfiles();
         } catch (e) {
-            showToast("Failed to toggle schedule: " + e.message);
+            showToast({
+                messageKey: "schedules.toggleFailed",
+                variables: { error: e.message || { messageKey: "common.unknownError" } },
+            });
         }
     };
 
@@ -74,7 +80,10 @@ export function Schedules() {
             await SearchService.toggleSchedule(profileToDelete, false);
             await loadProfiles();
         } catch (e) {
-            showToast("Failed to remove schedule: " + e.message);
+            showToast({
+                messageKey: "schedules.removeFailed",
+                variables: { error: e.message || { messageKey: "common.unknownError" } },
+            });
         } finally {
             setProfileToDelete(null);
         }
@@ -89,7 +98,10 @@ export function Schedules() {
             await SearchService.toggleSchedule(profileId, true, parseInt(newInterval));
             await loadProfiles();
         } catch (e) {
-            showToast("Failed to update interval: " + e.message);
+            showToast({
+                messageKey: "schedules.intervalFailed",
+                variables: { error: e.message || { messageKey: "common.unknownError" } },
+            });
         }
     };
 
@@ -105,9 +117,9 @@ export function Schedules() {
         return (
             <div className="glass-panel text-center py-5 animate-fade-in align-items-center d-flex flex-column justify-content-center h-100">
                 <i className="bi bi-exclamation-triangle-fill fs-1 text-danger mb-3"></i>
-                <p className="text-secondary opacity-75 mb-3">{error}</p>
+                <p className="text-secondary opacity-75 mb-3">{translateMessage(error, t)}</p>
                 <button onClick={refreshProfiles} className="btn btn-outline-primary">
-                    <i className="bi bi-arrow-clockwise me-2"></i>Try again
+                    <i className="bi bi-arrow-clockwise me-2"></i>{t("schedules.retry")}
                 </button>
             </div>
         );
@@ -123,8 +135,8 @@ export function Schedules() {
                         <i className="bi bi-clock-history fs-1 text-success"></i>
                     </div>
                 </div>
-                <h4 className="text-white fw-bold">No Active Schedules</h4>
-                <p className="text-secondary opacity-75 max-w-480">Enable "Automatic Search" when creating a new search to let the agent work for you.</p>
+                <h4 className="text-white fw-bold">{t("schedules.emptyTitle")}</h4>
+                <p className="text-secondary opacity-75 max-w-480">{t("schedules.emptyCopy")}</p>
             </div>
         );
     }
@@ -135,7 +147,8 @@ export function Schedules() {
                 <button
                     onClick={refreshProfiles}
                     className="btn btn-icon btn-secondary rounded-circle shadow-sm"
-                    title="Refresh List"
+                    title={t("schedules.refresh")}
+                    aria-label={t("schedules.refresh")}
                 >
                     <i className="bi bi-arrow-clockwise"></i>
                 </button>
@@ -155,9 +168,9 @@ export function Schedules() {
 
             <ConfirmationDialog
                 isOpen={!!profileToDelete}
-                title="Remove Schedule"
-                message="Remove this schedule? The history will be preserved."
-                confirmText="Remove"
+                title={t("schedules.removeTitle")}
+                message={t("schedules.removeCopy")}
+                confirmText={t("schedules.remove")}
                 onConfirm={handleConfirmDelete}
                 onCancel={handleCancelDelete}
             />

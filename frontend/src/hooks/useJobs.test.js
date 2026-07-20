@@ -6,6 +6,7 @@ import { SearchService } from '../services/search';
 
 let mockActiveProfileIds = [];
 let mockStatusHeartbeat = 0;
+const { mockShowToast } = vi.hoisted(() => ({ mockShowToast: vi.fn() }));
 
 vi.mock('../services/jobs', () => ({
   JobService: {
@@ -28,7 +29,7 @@ vi.mock('../services/search', () => ({
 }));
 
 vi.mock('../context/ToastContext', () => ({
-  useToast: () => ({ showToast: vi.fn(), clearToast: vi.fn() })
+  useToast: () => ({ showToast: mockShowToast, clearToast: vi.fn() })
 }));
 
 describe('useJobs', () => {
@@ -171,6 +172,18 @@ describe('useJobs', () => {
     consoleSpy.mockRestore();
   });
 
+  it('keeps fallback fetch errors as localization metadata', async () => {
+    const error = new Error();
+    error.name = 'NetworkError';
+    JobService.getAll.mockRejectedValue(error);
+
+    const { result } = renderHook(() => useJobs());
+
+    await waitFor(() => {
+      expect(result.current.fetchError).toEqual({ messageKey: 'jobs.error.load' });
+    });
+  });
+
   it('calls logout on UNAUTHORIZED error in toggleApplied', async () => {
     const logout = vi.fn();
     const { result } = renderHook(() => useJobs(logout));
@@ -222,6 +235,7 @@ describe('useJobs', () => {
     await waitFor(() => {
       expect(consoleSpy).toHaveBeenCalledWith('Failed to load search profiles', expect.any(Error));
     });
+    expect(mockShowToast).toHaveBeenCalledWith({ message: 'PROFILE ERROR' });
     consoleSpy.mockRestore();
   });
 

@@ -7,6 +7,7 @@ import {
 } from "../../platform/desktop";
 import { PortabilityService } from "../../services/portability";
 import { useI18n } from "../../i18n/useI18n";
+import { translateMessage } from "../../i18n/runtime";
 
 function browserDownload({ blob, filename }) {
     const url = URL.createObjectURL(blob);
@@ -22,19 +23,19 @@ export function DataRecoveryPanel({ hasProfile, onErased }) {
     const erasePhraseRequired = t("data.erasePhrase");
     const fileInput = useRef(null);
     const [busy, setBusy] = useState("");
-    const [message, setMessage] = useState("");
+    const [message, setMessage] = useState(null);
     const [erasePhrase, setErasePhrase] = useState("");
 
     const backup = async () => {
         setBusy("backup");
-        setMessage("");
+        setMessage(null);
         try {
             const archive = await PortabilityService.exportArchive();
             const saved = await saveBackupWithNativeDialog(archive, { title: t("desktop.saveBackup") });
             if (!isDesktopShell()) browserDownload(archive);
-            setMessage(saved || !isDesktopShell() ? t("data.backupSaved") : t("data.saveCancelled"));
+            setMessage({ messageKey: saved || !isDesktopShell() ? "data.backupSaved" : "data.saveCancelled" });
         } catch (error) {
-            setMessage(error.message || t("data.backupFailed"));
+            setMessage(error.message ? { message: error.message } : { messageKey: "data.backupFailed" });
         } finally {
             setBusy("");
         }
@@ -43,16 +44,19 @@ export function DataRecoveryPanel({ hasProfile, onErased }) {
     const restore = async (file) => {
         if (!file) return;
         setBusy("restore");
-        setMessage("");
+        setMessage(null);
         try {
             const result = await PortabilityService.restoreArchive(file);
-            setMessage(t("data.restoreDone", {
-                files: result.restored_files,
-                records: Object.values(result.restored_records).reduce((sum, count) => sum + count, 0),
-            }));
+            setMessage({
+                messageKey: "data.restoreDone",
+                variables: {
+                    files: result.restored_files,
+                    records: Object.values(result.restored_records).reduce((sum, count) => sum + count, 0),
+                },
+            });
             window.location.reload();
         } catch (error) {
-            setMessage(error.message || t("data.restoreFailed"));
+            setMessage(error.message ? { message: error.message } : { messageKey: "data.restoreFailed" });
         } finally {
             setBusy("");
             if (fileInput.current) fileInput.current.value = "";
@@ -69,14 +73,14 @@ export function DataRecoveryPanel({ hasProfile, onErased }) {
 
     const erase = async () => {
         setBusy("erase");
-        setMessage("");
+        setMessage(null);
         try {
             const result = await PortabilityService.eraseLocalData();
             setErasePhrase("");
-            setMessage(t("data.eraseDone", { files: result.files + result.model_files }));
+            setMessage({ messageKey: "data.eraseDone", variables: { files: result.files + result.model_files } });
             onErased?.();
         } catch (error) {
-            setMessage(error.message || t("data.eraseFailed"));
+            setMessage(error.message ? { message: error.message } : { messageKey: "data.eraseFailed" });
         } finally {
             setBusy("");
         }
@@ -96,7 +100,7 @@ export function DataRecoveryPanel({ hasProfile, onErased }) {
                 <label htmlFor="erase-career-data">{t("data.eraseInstruction")} <strong>{erasePhraseRequired}</strong></label>
                 <div><input id="erase-career-data" className="form-control" value={erasePhrase} onChange={(event) => setErasePhrase(event.target.value)} autoComplete="off" /><button className="button button--danger" type="button" onClick={erase} disabled={erasePhrase !== erasePhraseRequired || Boolean(busy)}>{busy === "erase" ? t("data.eraseBusy") : t("data.erase")}</button></div>
             </div>
-            {message && <div className="data-message" role="status">{message}</div>}
+            {message && <div className="data-message" role="status">{translateMessage(message, t)}</div>}
         </section>
     );
 }

@@ -93,7 +93,7 @@ export function useJobs(logout) {
           logout();
         } else {
           console.error('Fetch jobs error:', error);
-          setFetchError(error.message || 'Failed to load jobs.');
+          setFetchError(error.message ? { message: error.message } : { messageKey: 'jobs.error.load' });
         }
         isFirstFetch.current = false;
         setIsLoading(false);
@@ -130,7 +130,7 @@ export function useJobs(logout) {
           logout();
         } else {
           console.error('Failed to load search profiles', error);
-          showToast(error.message || 'Failed to load search profiles.');
+          showToast(error.message ? { message: error.message } : { messageKey: 'jobs.error.profiles' });
         }
         profilesRequestRef.current.controller = null;
       });
@@ -199,7 +199,7 @@ export function useJobs(logout) {
     } catch (error) {
       if (error.message === "UNAUTHORIZED" && logout) { logout(); return; }
       console.error("Failed to update job", error);
-      showToast(error.message || 'Failed to update job state.');
+      showToast(error.message ? { message: error.message } : { messageKey: 'jobs.error.update' });
     } finally {
       setPendingAppliedJobIds(prev => prev.filter(id => id !== jobId));
     }
@@ -223,8 +223,8 @@ export function useJobs(logout) {
       // Refresh pagination count
       setPaginationState(prev => ({ ...prev, total: Math.max(0, prev.total - 1) }));
       // Undo toast — re-inserts job at original position
-      showToast('Job dismissed', 'secondary', {
-        label: 'Undo',
+      showToast({ messageKey: 'jobs.dismissed' }, 'secondary', {
+        labelKey: 'jobs.undo',
         onAction: async () => {
           try {
             const reactivated = await JobService.reactivate(job.id);
@@ -238,7 +238,7 @@ export function useJobs(logout) {
           } catch (undoError) {
             if (undoError.message === 'UNAUTHORIZED' && logout) { logout(); return; }
             console.error('Failed to undo dismiss', undoError);
-            showToast(undoError.message || 'Failed to undo dismiss.');
+            showToast(undoError.message ? { message: undoError.message } : { messageKey: 'jobs.error.undoDismiss' });
           }
         }
       }, 5000);
@@ -246,7 +246,7 @@ export function useJobs(logout) {
     } catch (error) {
       if (error.message === "UNAUTHORIZED" && logout) { logout(); return; }
       console.error("Failed to dismiss job", error);
-      showToast(error.message || 'Failed to dismiss job.');
+      showToast(error.message ? { message: error.message } : { messageKey: 'jobs.error.dismiss' });
     }
   };
 
@@ -258,7 +258,7 @@ export function useJobs(logout) {
     } catch (error) {
       if (error.message === "UNAUTHORIZED" && logout) { logout(); return; }
       console.error("Failed to reactivate job", error);
-      showToast(error.message || 'Failed to reactivate job.');
+      showToast(error.message ? { message: error.message } : { messageKey: 'jobs.error.reactivate' });
     }
   };
 

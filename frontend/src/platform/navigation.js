@@ -1,5 +1,6 @@
 import { safeExternalUrl, safeMailto } from "../lib/safeUrl";
 import { isDesktopShell } from "./desktop";
+import { CAREEROS_API_ERROR_EVENT } from "../lib/events";
 
 function validatedExternalTarget(value) {
     if (typeof value !== "string") return null;
@@ -30,8 +31,8 @@ export function installExternalNavigation(root = document) {
         if (!target) return;
         event.preventDefault();
         openExternal(target).catch(() => {
-            window.dispatchEvent(new CustomEvent("careeros_navigation_error", {
-                detail: { message: "Impossibile aprire il collegamento esterno" },
+            window.dispatchEvent(new CustomEvent(CAREEROS_API_ERROR_EVENT, {
+                detail: { messageKey: "navigation.openFailed" },
             }));
         });
     };

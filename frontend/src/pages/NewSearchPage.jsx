@@ -3,13 +3,11 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { SearchForm } from '../components/SearchForm';
 import { useToast } from '../context/ToastContext';
 import { SearchService } from '../services/search';
-import { useI18n } from '../i18n/useI18n';
 
 export function NewSearchPage() {
   const navigate = useNavigate();
   const location = useLocation();
   const { showToast } = useToast();
-  const { t } = useI18n();
   const prefillProfile = location.state?.prefillProfile || null;
   const [isSearching, setIsSearching] = React.useState(false);
 
@@ -25,7 +23,10 @@ export function NewSearchPage() {
          // AuthContext intercepts globally via event
          return;
       }
-      showToast(t("historyPage.startFailed", { error: error.message || t("common.unknownError") }));
+      showToast({
+        messageKey: "historyPage.startFailed",
+        variables: { error: error.message || { messageKey: "common.unknownError" } },
+      });
     } finally {
       setIsSearching(false);
     }

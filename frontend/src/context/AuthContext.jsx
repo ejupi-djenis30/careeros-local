@@ -6,13 +6,16 @@ import { useI18n } from '../i18n/useI18n';
 
 const AuthContext = createContext(null);
 
-function requireAccessToken(response, fallbackMessage) {
+function requireAccessToken(response, fallbackMessageKey, t) {
     if (response?.access_token) {
         return response;
     }
 
-    const message = response?.detail || response?.error || response?.message || fallbackMessage;
-    throw new Error(message);
+    const message = response?.detail || response?.error || response?.message;
+    if (message) throw new Error(message);
+    const error = new Error(t(fallbackMessageKey));
+    error.messageKey = fallbackMessageKey;
+    throw error;
 }
 
 export function AuthProvider({ children }) {
@@ -53,7 +56,8 @@ export function AuthProvider({ children }) {
     const login = async (username, password) => {
         const res = requireAccessToken(
             await AuthService.login(username, password),
-            t("auth.loginFailed")
+            "auth.loginFailed",
+            t
         );
         setUser(username);
         return res;
@@ -62,7 +66,8 @@ export function AuthProvider({ children }) {
     const register = async (username, password) => {
         const res = requireAccessToken(
             await AuthService.register(username, password),
-            t("auth.registrationFailed")
+            "auth.registrationFailed",
+            t
         );
         setUser(username);
         return res;

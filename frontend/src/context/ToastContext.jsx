@@ -2,6 +2,7 @@
 import React, { createContext, useContext, useState, useCallback, useEffect, useRef } from 'react';
 import { CAREEROS_API_ERROR_EVENT } from '../lib/events';
 import { useI18n } from '../i18n/useI18n';
+import { translateMessage } from '../i18n/runtime';
 
 const ToastContext = createContext(null);
 
@@ -15,7 +16,10 @@ export function ToastProvider({ children }) {
         if (hideTimeoutRef.current) {
             clearTimeout(hideTimeoutRef.current);
         }
-        hideTimeoutRef.current = setTimeout(() => setToast(null), duration);
+        hideTimeoutRef.current = setTimeout(() => {
+            hideTimeoutRef.current = null;
+            setToast(null);
+        }, duration);
     }, []);
 
     const clearToast = useCallback(() => {
@@ -28,20 +32,25 @@ export function ToastProvider({ children }) {
 
     useEffect(() => {
         const handleApiError = (event) => {
-            const message = event?.detail?.message;
-            if (message) {
-                showToast(message);
+            const detail = event?.detail;
+            if (detail?.messageKey || detail?.message) {
+                showToast({
+                    messageKey: detail.messageKey,
+                    variables: detail.variables,
+                    message: detail.message,
+                });
             }
         };
 
         window.addEventListener(CAREEROS_API_ERROR_EVENT, handleApiError);
-        return () => {
-            window.removeEventListener(CAREEROS_API_ERROR_EVENT, handleApiError);
-            if (hideTimeoutRef.current) {
-                clearTimeout(hideTimeoutRef.current);
-            }
-        };
+        return () => window.removeEventListener(CAREEROS_API_ERROR_EVENT, handleApiError);
     }, [showToast]);
+
+    useEffect(() => () => {
+        if (hideTimeoutRef.current) {
+            clearTimeout(hideTimeoutRef.current);
+        }
+    }, []);
 
     return (
         <ToastContext.Provider value={{ toast, showToast, clearToast }}>
@@ -51,14 +60,19 @@ export function ToastProvider({ children }) {
                 <div className="position-fixed bottom-0 end-0 p-3" style={{ zIndex: 1055 }}>
                     <div className={`toast show align-items-center text-bg-${toast.type} border-0`} role="alert">
                         <div className="d-flex">
-                            <div className="toast-body">{toast.message}</div>
+                            <div className="toast-body">{translateMessage(toast.message, t)}</div>
                             {toast.action && (
                                 <button
                                     type="button"
                                     className="btn btn-sm btn-link text-white fw-bold text-decoration-none pe-2 flex-shrink-0"
                                     onClick={() => { toast.action.onAction(); clearToast(); }}
                                 >
-                                    {toast.action.label}
+                                    {translateMessage(
+                                        toast.action.labelKey
+                                            ? { messageKey: toast.action.labelKey, variables: toast.action.variables }
+                                            : toast.action.label,
+                                        t,
+                                    )}
                                 </button>
                             )}
                             <button

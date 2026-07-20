@@ -3,12 +3,10 @@ import { useNavigate } from 'react-router-dom';
 import { History } from '../components/History';
 import { useToast } from '../context/ToastContext';
 import { SearchService } from '../services/search';
-import { useI18n } from '../i18n/useI18n';
 
 export function HistoryPage() {
   const navigate = useNavigate();
   const { showToast } = useToast();
-  const { t } = useI18n();
   const [loadingProfileId, setLoadingProfileId] = React.useState(null);
 
   const handleStartSearch = async (profile, overrides = {}) => {
@@ -21,9 +19,12 @@ export function HistoryPage() {
     } catch (error) {
       if (error.message === 'UNAUTHORIZED') return; // intercepted globally by auth layer
       if (error.message?.includes('409') || error.status === 409) {
-        showToast(t("historyPage.alreadyRunning"), "warning");
+        showToast({ messageKey: "historyPage.alreadyRunning" }, "warning");
       } else {
-        showToast(t("historyPage.startFailed", { error: error.message || t("common.unknownError") }));
+        showToast({
+          messageKey: "historyPage.startFailed",
+          variables: { error: error.message || { messageKey: "common.unknownError" } },
+        });
       }
       console.error("Failed to start search:", error);
     } finally {
@@ -40,9 +41,12 @@ export function HistoryPage() {
   const handleSaveAsSchedule = async (profile) => {
     try {
       await SearchService.toggleSchedule(profile.id, true, profile.schedule_interval_hours || 24);
-      showToast(t("historyPage.scheduleAdded"), "success");
+      showToast({ messageKey: "historyPage.scheduleAdded" }, "success");
     } catch (error) {
-      showToast(t("historyPage.scheduleFailed", { error: error.message || t("common.unknownError") }));
+      showToast({
+        messageKey: "historyPage.scheduleFailed",
+        variables: { error: error.message || { messageKey: "common.unknownError" } },
+      });
     }
   };
 

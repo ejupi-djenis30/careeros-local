@@ -9,6 +9,8 @@ All notable changes to CareerOS Local are documented here. The format follows
 
 - Public v1.0.2 release evidence with the six-platform verification runs, package sizes,
   digests and provenance-verification command.
+- Complete English and Italian interface catalogues for sign-in, profile, search, schedules,
+  application tracking, local AI, recovery and resume workflows.
 
 ### Changed
 
@@ -16,6 +18,8 @@ All notable changes to CareerOS Local are documented here. The format follows
   historical v1.0.0 evidence.
 - The README now embeds the lightweight animated tour and routes full-video playback through
   GitHub Pages instead of GitHub's unsupported WebM file preview.
+- Language changes now update validation, authentication, navigation and background-task
+  feedback immediately, including messages that were already visible.
 
 ## [1.0.2] - 2026-07-19
 
