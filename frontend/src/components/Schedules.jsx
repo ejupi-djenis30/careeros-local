@@ -62,7 +62,7 @@ export function Schedules() {
             await SearchService.toggleSchedule(profileId, !currentEnabled, intervalHours);
             await loadProfiles();
         } catch (e) {
-            showToast(t("schedules.toggleFailed", { error: e.message }));
+            showToast(t("schedules.toggleFailed", { error: e.message || t("common.unknownError") }));
         }
     };
 
@@ -76,7 +76,7 @@ export function Schedules() {
             await SearchService.toggleSchedule(profileToDelete, false);
             await loadProfiles();
         } catch (e) {
-            showToast(t("schedules.removeFailed", { error: e.message }));
+            showToast(t("schedules.removeFailed", { error: e.message || t("common.unknownError") }));
         } finally {
             setProfileToDelete(null);
         }
@@ -91,7 +91,7 @@ export function Schedules() {
             await SearchService.toggleSchedule(profileId, true, parseInt(newInterval));
             await loadProfiles();
         } catch (e) {
-            showToast(t("schedules.intervalFailed", { error: e.message }));
+            showToast(t("schedules.intervalFailed", { error: e.message || t("common.unknownError") }));
         }
     };
 
