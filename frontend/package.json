@@ -1,8 +1,12 @@
 {
   "name": "careeros-local-desktop",
   "private": true,
-  "version": "1.1.0",
+  "version": "1.1.1",
   "description": "Private, local-first career workspace for verified resumes and applications",
+  "author": "Djenis Ejupi",
+  "contributors": [
+    "CareerOS Local contributors"
+  ],
   "license": "MIT",
   "repository": {
     "type": "git",

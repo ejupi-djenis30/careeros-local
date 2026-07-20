@@ -78,7 +78,11 @@ export function WorkspaceShell({ children }) {
                     >
                         <i className="bi bi-list" aria-hidden="true" />
                     </button>
-                    <div>
+                    <div className="workspace-header__brand">
+                        <img src="/careeros.svg" alt="CareerOS Local" width="36" height="36" />
+                        <span aria-hidden="true">{t("page.home.eyebrow")}</span>
+                    </div>
+                    <div className="workspace-header__context">
                         <span className="page-eyebrow">{context.eyebrow}</span>
                         <h1>{context.title}</h1>
                         <p>{context.description}</p>

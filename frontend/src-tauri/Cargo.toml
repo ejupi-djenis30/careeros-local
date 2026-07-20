@@ -1,8 +1,8 @@
 [package]
 name = "careeros-local"
-version = "1.1.0"
+version = "1.1.1"
 description = "Private, local-first career workspace"
-authors = ["CareerOS Local contributors"]
+authors = ["Djenis Ejupi", "CareerOS Local contributors"]
 edition = "2021"
 rust-version = "1.84"
 license = "MIT"

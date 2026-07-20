@@ -32,6 +32,16 @@ def test_portfolio_media_preserves_its_intrinsic_ratio():
         assert "object-fit: contain;" in declarations
 
 
+def test_portfolio_keeps_one_real_product_demo():
+    parser = _parse((ROOT / "docs" / "index.html").read_text(encoding="utf-8"))
+
+    assert parser.video_count == 1
+    assert any(
+        attribute == "src" and reference == "assets/careeros-demo.webm"
+        for attribute, reference, _line in parser.references
+    )
+
+
 def test_portfolio_declares_strict_browser_policies():
     parser = _parse((ROOT / "docs" / "index.html").read_text(encoding="utf-8"))
 
