@@ -53,26 +53,28 @@ function AuthenticatedApp() {
     if (!isLoggedIn) return <Login />;
 
     return (
-        <WorkspaceShell>
-            <ErrorBoundary title={t("shell.errorTitle")} description={t("shell.errorCopy")} reloadLabel={t("shell.reload")}>
-                <Suspense fallback={<div className="state-panel" role="status">{t("shell.loading")}</div>}>
-                    <Routes>
-                        <Route path="/" element={<WorkspaceHomePage />} />
-                        <Route path="/profile" element={<CareerProfilePage />} />
-                        <Route path="/resumes" element={<ResumeStudioPage />} />
-                        <Route path="/applications" element={<ApplicationsPage />} />
-                        <Route path="/coach" element={<CareerCoachPage />} />
-                        <Route path="/jobs" element={<JobsPage />} />
-                        <Route path="/search" element={<NewSearchPage />} />
-                        <Route path="/new" element={<Navigate to="/search" replace />} />
-                        <Route path="/schedules" element={<SchedulesPage />} />
-                        <Route path="/history" element={<HistoryPage />} />
-                        <Route path="/progress" element={<ProgressPage />} />
-                        <Route path="*" element={<Navigate to="/" replace />} />
-                    </Routes>
-                </Suspense>
-            </ErrorBoundary>
-        </WorkspaceShell>
+        <SearchProvider>
+            <WorkspaceShell>
+                <ErrorBoundary title={t("shell.errorTitle")} description={t("shell.errorCopy")} reloadLabel={t("shell.reload")}>
+                    <Suspense fallback={<div className="state-panel" role="status">{t("shell.loading")}</div>}>
+                        <Routes>
+                            <Route path="/" element={<WorkspaceHomePage />} />
+                            <Route path="/profile" element={<CareerProfilePage />} />
+                            <Route path="/resumes" element={<ResumeStudioPage />} />
+                            <Route path="/applications" element={<ApplicationsPage />} />
+                            <Route path="/coach" element={<CareerCoachPage />} />
+                            <Route path="/jobs" element={<JobsPage />} />
+                            <Route path="/search" element={<NewSearchPage />} />
+                            <Route path="/new" element={<Navigate to="/search" replace />} />
+                            <Route path="/schedules" element={<SchedulesPage />} />
+                            <Route path="/history" element={<HistoryPage />} />
+                            <Route path="/progress" element={<ProgressPage />} />
+                            <Route path="*" element={<Navigate to="/" replace />} />
+                        </Routes>
+                    </Suspense>
+                </ErrorBoundary>
+            </WorkspaceShell>
+        </SearchProvider>
     );
 }
 
@@ -81,11 +83,9 @@ export default function App() {
     return (
         <Router>
             <AuthProvider>
-                <SearchProvider>
-                    <ToastProvider>
-                        <AuthenticatedApp />
-                    </ToastProvider>
-                </SearchProvider>
+                <ToastProvider>
+                    <AuthenticatedApp />
+                </ToastProvider>
             </AuthProvider>
         </Router>
     );

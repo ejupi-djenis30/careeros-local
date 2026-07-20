@@ -42,10 +42,11 @@ describe('SearchService', () => {
 
   // ── getProfiles ────────────────────────────────────────────────────────────
 
-  it('getProfiles fetches profiles list', async () => {
+  it('getProfiles fetches profiles list with cancellable request options', async () => {
     const mockGet = vi.spyOn(ApiClient, 'get').mockResolvedValue([{ id: 1 }]);
-    const profiles = await SearchService.getProfiles();
-    expect(mockGet).toHaveBeenCalledWith('/profiles/');
+    const controller = new AbortController();
+    const profiles = await SearchService.getProfiles({ signal: controller.signal });
+    expect(mockGet).toHaveBeenCalledWith('/profiles/', undefined, { signal: controller.signal });
     expect(profiles[0].id).toBe(1);
   });
 

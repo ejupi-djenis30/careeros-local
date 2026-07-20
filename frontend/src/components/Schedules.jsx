@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { SearchService } from "../services/search";
 import { useToast } from "../context/ToastContext";
 import { ScheduleCard } from "./ScheduleCard";
@@ -10,31 +10,55 @@ export function Schedules() {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
     const [profileToDelete, setProfileToDelete] = useState(null);
+    const requestIdRef = useRef(0);
+    const requestControllerRef = useRef(null);
 
-    useEffect(() => {
-        loadProfiles();
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, []);
+    const loadProfiles = useCallback(() => {
+        const requestId = requestIdRef.current + 1;
+        requestIdRef.current = requestId;
+        requestControllerRef.current?.abort();
+        const controller = new AbortController();
+        requestControllerRef.current = controller;
 
-    const loadProfiles = async () => {
+        return SearchService.getProfiles({ signal: controller.signal })
+            .then((data) => {
+                if (controller.signal.aborted || requestId !== requestIdRef.current) return;
+                setProfiles(Array.isArray(data) ? data : []);
+                setError(null);
+            })
+            .catch((loadError) => {
+                if (controller.signal.aborted || loadError?.name === "AbortError" || requestId !== requestIdRef.current) return;
+                console.error("Failed to load profiles:", loadError);
+                setError("Failed to load schedules.");
+                showToast("Failed to load schedules. Please refresh.");
+            })
+            .finally(() => {
+                if (!controller.signal.aborted && requestId === requestIdRef.current) {
+                    requestControllerRef.current = null;
+                    setLoading(false);
+                }
+            });
+    }, [showToast]);
+
+    const refreshProfiles = useCallback(() => {
         setError(null);
         setLoading(true);
-        try {
-            const data = await SearchService.getProfiles();
-            setProfiles(data);
-        } catch (e) {
-            console.error("Failed to load profiles:", e);
-            setError("Failed to load schedules.");
-            showToast("Failed to load schedules. Please refresh.");
-        } finally {
-            setLoading(false);
-        }
-    };
+        void loadProfiles();
+    }, [loadProfiles]);
+
+    useEffect(() => {
+        void loadProfiles();
+        return () => {
+            requestIdRef.current += 1;
+            requestControllerRef.current?.abort();
+            requestControllerRef.current = null;
+        };
+    }, [loadProfiles]);
 
     const handleToggle = async (profileId, currentEnabled, intervalHours) => {
         try {
             await SearchService.toggleSchedule(profileId, !currentEnabled, intervalHours);
-            loadProfiles();
+            await loadProfiles();
         } catch (e) {
             showToast("Failed to toggle schedule: " + e.message);
         }
@@ -48,7 +72,7 @@ export function Schedules() {
         if (!profileToDelete) return;
         try {
             await SearchService.toggleSchedule(profileToDelete, false);
-            loadProfiles();
+            await loadProfiles();
         } catch (e) {
             showToast("Failed to remove schedule: " + e.message);
         } finally {
@@ -63,7 +87,7 @@ export function Schedules() {
     const handleChangeInterval = async (profileId, newInterval) => {
         try {
             await SearchService.toggleSchedule(profileId, true, parseInt(newInterval));
-            loadProfiles();
+            await loadProfiles();
         } catch (e) {
             showToast("Failed to update interval: " + e.message);
         }
@@ -82,7 +106,7 @@ export function Schedules() {
             <div className="glass-panel text-center py-5 animate-fade-in align-items-center d-flex flex-column justify-content-center h-100">
                 <i className="bi bi-exclamation-triangle-fill fs-1 text-danger mb-3"></i>
                 <p className="text-secondary opacity-75 mb-3">{error}</p>
-                <button onClick={loadProfiles} className="btn btn-outline-primary">
+                <button onClick={refreshProfiles} className="btn btn-outline-primary">
                     <i className="bi bi-arrow-clockwise me-2"></i>Try again
                 </button>
             </div>
@@ -109,7 +133,7 @@ export function Schedules() {
         <div className="animate-fade-in h-100 d-flex flex-column">
             <div className="d-flex justify-content-end align-items-center mb-4">
                 <button
-                    onClick={loadProfiles}
+                    onClick={refreshProfiles}
                     className="btn btn-icon btn-secondary rounded-circle shadow-sm"
                     title="Refresh List"
                 >

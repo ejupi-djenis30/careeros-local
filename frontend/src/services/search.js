@@ -13,8 +13,8 @@ export const SearchService = {
         return ApiClient.get("/search/status/all", signal);
     },
 
-    getProfiles() {
-        return ApiClient.get("/profiles/");
+    getProfiles(options = {}) {
+        return ApiClient.get("/profiles/", undefined, options);
     },
 
     uploadCV(file) {

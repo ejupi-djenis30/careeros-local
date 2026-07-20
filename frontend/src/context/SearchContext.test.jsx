@@ -4,16 +4,11 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { SearchProvider, useSearchContext } from './SearchContext';
 
 const mockGetAllStatuses = vi.fn();
-const mockAuthState = { isLoggedIn: true };
 
 vi.mock('../services/search', () => ({
   SearchService: {
     getAllStatuses: (...args) => mockGetAllStatuses(...args)
   }
-}));
-
-vi.mock('./AuthContext', () => ({
-  useAuth: () => mockAuthState
 }));
 
 function Consumer() {
@@ -37,7 +32,6 @@ async function flushAsyncWork() {
 describe('SearchContext', () => {
   beforeEach(() => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
-    mockAuthState.isLoggedIn = true;
     mockGetAllStatuses.mockReset();
   });
 
@@ -96,35 +90,30 @@ describe('SearchContext', () => {
     });
   });
 
-  it('clears local state when the user is logged out', async () => {
-    mockGetAllStatuses.mockResolvedValue({ 1: { state: 'searching' } });
+  it('aborts the active poll when the authenticated provider unmounts', async () => {
+    let requestSignal;
+    mockGetAllStatuses.mockImplementation((signal) => {
+      requestSignal = signal;
+      return new Promise((resolve, reject) => {
+        signal.addEventListener('abort', () => {
+          reject(Object.assign(new Error('Aborted'), { name: 'AbortError' }));
+        }, { once: true });
+      });
+    });
 
-    const { rerender } = render(
+    const { unmount } = render(
       <SearchProvider>
         <Consumer />
       </SearchProvider>
     );
 
     await waitFor(() => {
-      expect(screen.getByTestId('active-ids')).toHaveTextContent('1');
+      expect(requestSignal).toBeInstanceOf(AbortSignal);
     });
 
-    mockAuthState.isLoggedIn = false;
+    unmount();
 
-    rerender(
-      <SearchProvider>
-        <Consumer />
-      </SearchProvider>
-    );
-
-    await flushAsyncWork();
-
-    await flushAsyncWork();
-
-    await waitFor(() => {
-      expect(screen.getByTestId('active-ids')).toHaveTextContent('');
-      expect(screen.getByTestId('status-state')).toHaveTextContent('none');
-    });
+    expect(requestSignal.aborted).toBe(true);
   });
 
   it('does not increment heartbeat when a poll returns unchanged statuses', async () => {
@@ -185,7 +174,6 @@ function ConsumerWithAdd() {
 describe('SearchContext — ghost PID TTL', () => {
   beforeEach(() => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
-    mockAuthState.isLoggedIn = true;
     mockGetAllStatuses.mockReset();
   });
 

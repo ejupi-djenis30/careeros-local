@@ -22,14 +22,24 @@ vi.mock("../../services/localModel", () => ({
 }));
 
 const catalog = {
-    models: [{
-        key: "qwen3-1.7b-q8",
-        displayName: "Qwen3 1.7B · Accurate compact",
-        parameters: "1.7B",
-        quantization: "Q8_0",
-        sizeBytes: 1834426016,
-        license: "Apache-2.0",
-    }],
+    models: [
+        {
+            key: "qwen3-1.7b-q8",
+            displayName: "Qwen3 1.7B · Accurate compact",
+            parameters: "1.7B",
+            quantization: "Q8_0",
+            sizeBytes: 1834426016,
+            license: "Apache-2.0",
+        },
+        {
+            key: "qwen3-4b-q4",
+            displayName: "Qwen3 4B · Balanced",
+            parameters: "4B",
+            quantization: "Q4_K_M",
+            sizeBytes: 2500000000,
+            license: "Apache-2.0",
+        },
+    ],
 };
 
 describe("ModelManager", () => {
@@ -115,6 +125,53 @@ describe("ModelManager", () => {
         expect(LocalModelService.remove).toHaveBeenCalledTimes(1);
     });
 
+    it("selects the managed model when status arrives after the catalog", async () => {
+        const { rerender } = render(<ModelManager />);
+        expect(await screen.findByRole("combobox")).toHaveValue("qwen3-1.7b-q8");
+
+        hook.mockReturnValue({
+            status: {
+                loading: false,
+                ready: true,
+                available: true,
+                managed: { phase: "ready", model_key: "qwen3-4b-q4", model_installed: true },
+            },
+            refresh,
+        });
+        rerender(<ModelManager />);
+
+        expect(screen.getByRole("combobox")).toHaveValue("qwen3-4b-q4");
+    });
+
+    it("keeps an explicit model choice across status refreshes", async () => {
+        const user = userEvent.setup();
+        hook.mockReturnValue({
+            status: {
+                loading: false,
+                ready: true,
+                available: true,
+                managed: { phase: "ready", model_key: "qwen3-1.7b-q8", model_installed: true },
+            },
+            refresh,
+        });
+        const { rerender } = render(<ModelManager />);
+        const selector = await screen.findByRole("combobox");
+        await user.selectOptions(selector, "qwen3-4b-q4");
+
+        hook.mockReturnValue({
+            status: {
+                loading: false,
+                ready: true,
+                available: true,
+                managed: { phase: "ready", model_key: "qwen3-1.7b-q8", model_installed: true, runtime_installed: true },
+            },
+            refresh,
+        });
+        rerender(<ModelManager />);
+
+        expect(screen.getByRole("combobox")).toHaveValue("qwen3-4b-q4");
+    });
+
     it("passes the model setup accessibility and keyboard gate", async () => {
         const user = userEvent.setup();
         const { container } = render(<main><h1>Gestione modello locale</h1><ModelManager /></main>);
@@ -123,6 +180,8 @@ describe("ModelManager", () => {
         await assertAccessible(container);
         await user.tab();
         expect(screen.getByRole("button", { name: "Ricontrolla modello locale" })).toHaveFocus();
+        await user.tab();
+        expect(screen.getByRole("combobox")).toHaveFocus();
         await user.tab();
         expect(consent).toHaveFocus();
         await user.keyboard(" ");
