@@ -164,9 +164,12 @@ def _read_svg_bounds(
     values: list[float] = []
     for attribute in ("x", "y", "width", "height"):
         raw_value = element.get(attribute)
+        if raw_value is None:
+            errors.append(f"{label}: {role} is missing {attribute}")
+            return None
         try:
             values.append(float(raw_value))
-        except (TypeError, ValueError):
+        except ValueError:
             errors.append(f"{label}: {role} has an invalid {attribute} value")
             return None
     return values[0], values[1], values[2], values[3]
