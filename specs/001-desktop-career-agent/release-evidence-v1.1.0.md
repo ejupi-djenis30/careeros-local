@@ -47,7 +47,7 @@ name, notes, draft/prerelease/immutable state, latest status, and all 22 asset d
 
 - Release/version/policy tests: 42 passed after canonical-date, exact three-SBOM verification,
   API-token exfiltration, non-empty package, and mounted-DMG lifecycle cases were added.
-- Full backend suite: 973 passed, 3 skipped, 80.17% branch-aware coverage.
+- Full backend suite: 986 passed, 3 skipped, 80.17% branch-aware coverage.
 - 10,000-record performance acceptance: 15.459 ms application-page p95 and 5.195 ms
   profile-read p95 against a 200 ms budget.
 - Python static gates: Ruff passed; mypy passed for `backend` and `scripts`.
