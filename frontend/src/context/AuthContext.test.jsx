@@ -47,21 +47,22 @@ function RegisterButton() {
 
 function LoginWithErrorCapture() {
   const { login } = useAuth();
-  const [error, setError] = React.useState('');
+  const [error, setError] = React.useState(null);
 
   return (
     <>
       <button onClick={async () => {
         try {
           await login('alice', 'pw');
-          setError('');
+          setError(null);
         } catch (err) {
-          setError(err.message);
+          setError(err);
         }
       }}>
         Login With Capture
       </button>
-      <div data-testid="login-error">{error || 'none'}</div>
+      <div data-testid="login-error">{error?.message || 'none'}</div>
+      <div data-testid="login-error-key">{error?.messageKey || 'none'}</div>
     </>
   );
 }
@@ -151,6 +152,21 @@ describe('AuthContext', () => {
 
     expect(screen.getByTestId('user').textContent).toBe('null');
     expect(screen.getByTestId('login-error').textContent).toBe('invalid credentials');
+    expect(screen.getByTestId('login-error-key').textContent).toBe('none');
+  });
+
+  it('marks a fallback authentication error for live translation', async () => {
+    mockRefresh.mockResolvedValue(null);
+    mockLogin.mockResolvedValue({});
+
+    await renderAndWait(<LoginWithErrorCapture />);
+
+    await act(async () => {
+      screen.getByRole('button', { name: 'Login With Capture' }).click();
+    });
+
+    expect(screen.getByTestId('login-error').textContent).toBe('Login failed. Please try again.');
+    expect(screen.getByTestId('login-error-key').textContent).toBe('auth.loginFailed');
   });
 
   it('register sets user and returns response', async () => {
