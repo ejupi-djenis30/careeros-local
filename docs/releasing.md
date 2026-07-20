@@ -66,10 +66,24 @@ write-free no-op.
 
 ## Download verification
 
-Verify `SHA256SUMS` first, then verify provenance with the exact repository and tag source:
+The global checksum command requires one directory containing the complete published set:
+`SHA256SUMS` plus all other 21 assets. On GNU/Linux or in Git Bash, run:
+
+```bash
+sha256sum --check SHA256SUMS
+```
+
+If you downloaded only one Windows installer and `SHA256SUMS`, compare that exact entry with
+PowerShell's native `Get-FileHash` before verifying provenance:
 
 ```powershell
-sha256sum --check SHA256SUMS
+$asset = "CareerOS-Local_1.1.0_windows-x64-setup.exe"
+$entry = @(Get-Content .\SHA256SUMS | Where-Object { ($_ -split '\s+', 2)[1] -eq $asset })
+if ($entry.Count -ne 1) { throw "Expected exactly one checksum entry for $asset" }
+$expected = ($entry[0] -split '\s+', 2)[0]
+$actual = (Get-FileHash -Algorithm SHA256 -LiteralPath $asset).Hash
+if ($actual -ne $expected) { throw "SHA-256 mismatch for $asset" }
+
 gh attestation verify .\CareerOS-Local_1.1.0_windows-x64-setup.exe `
   --repo ejupi-djenis30/careeros-local `
   --source-ref refs/tags/v1.1.0
