@@ -3,6 +3,7 @@ import { LocalModelStatus } from "../../features/local-model/LocalModelStatus";
 import { LanguageSwitcher } from "../../i18n/LanguageSwitcher";
 import { useI18n } from "../../i18n/useI18n";
 import { getNavigation } from "../../app/navigation";
+import { CAREEROS_MARK_URL } from "../../app/brand";
 
 export function Sidebar({ username, onLogout, isOpen, onClose, containerRef }) {
     const { t } = useI18n();
@@ -17,7 +18,7 @@ export function Sidebar({ username, onLogout, isOpen, onClose, containerRef }) {
             <div className="workspace-brand">
                 <img
                     className="workspace-brand__mark"
-                    src="/careeros.svg"
+                    src={CAREEROS_MARK_URL}
                     alt=""
                     width="40"
                     height="40"

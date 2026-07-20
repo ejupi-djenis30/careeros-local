@@ -3,6 +3,7 @@ import { useLocation } from "react-router-dom";
 import { Sidebar } from "../components/Layout/Sidebar";
 import { useAuth } from "../context/AuthContext";
 import { useI18n } from "../i18n/useI18n";
+import { CAREEROS_MARK_URL } from "./brand";
 import { getPageContext } from "./navigation";
 
 export function WorkspaceShell({ children }) {
@@ -79,7 +80,7 @@ export function WorkspaceShell({ children }) {
                         <i className="bi bi-list" aria-hidden="true" />
                     </button>
                     <div className="workspace-header__brand">
-                        <img src="/careeros.svg" alt="CareerOS Local" width="36" height="36" />
+                        <img src={CAREEROS_MARK_URL} alt="CareerOS Local" width="36" height="36" />
                         <span aria-hidden="true">{t("page.home.eyebrow")}</span>
                     </div>
                     <div className="workspace-header__context">
