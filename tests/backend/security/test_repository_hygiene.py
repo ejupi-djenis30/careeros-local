@@ -102,6 +102,18 @@ def test_backend_container_has_one_canonical_build_definition():
     assert "context: .\n      dockerfile: Dockerfile" in compose
 
 
+def test_mypy_debt_ledger_does_not_hide_whole_stable_packages():
+    pyproject = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
+
+    for forbidden_pattern in (
+        '"backend.providers.*"',
+        '"backend.core.*"',
+        '"backend.models.*"',
+        '"backend.services.search.*"',
+    ):
+        assert forbidden_pattern not in pyproject
+
+
 def test_portfolio_demo_assets_are_present_and_github_sized():
     assets = ROOT / "docs/assets"
     screenshots = (
