@@ -94,6 +94,14 @@ def test_no_command_logs_or_temporary_dumps_are_source_files():
     assert offenders == []
 
 
+def test_backend_container_has_one_canonical_build_definition():
+    assert (ROOT / "Dockerfile").is_file()
+    assert not (ROOT / "backend/Dockerfile").exists()
+
+    compose = (ROOT / "docker-compose.yml").read_text(encoding="utf-8")
+    assert "context: .\n      dockerfile: Dockerfile" in compose
+
+
 def test_portfolio_demo_assets_are_present_and_github_sized():
     assets = ROOT / "docs/assets"
     screenshots = (
