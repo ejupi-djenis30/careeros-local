@@ -44,24 +44,22 @@ ignore = ["E501"]
 python_version = "3.12"
 warn_return_any = true
 warn_unused_configs = true
+check_untyped_defs = true
 disallow_untyped_defs = false
 
 # ── Per-module overrides ──────────────────────────────────────────────────────
-# The codebase uses SQLAlchemy 1.x Column-based ORM models whose attribute
-# assignments are typed as "Column[X]" rather than "X", causing widespread
-# false-positive assignment errors that do not reflect real bugs.
-# Provider integrations use dynamic HTTP client patterns that require
-# corresponding third-party stubs which are not installed.
-# These overrides suppress pre-existing noise so CI remains green.
+# The remaining overrides are an explicit debt ledger, not package-wide
+# exclusions. Files that type-check successfully stay covered by CI.
 
 [[tool.mypy.overrides]]
 module = [
-    # Provider integrations — external SDK patterns
-    "backend.providers.*",
-    # Core config uses validator patterns that return Any
-    "backend.core.*",
-    # Models define Column-typed attributes
-    "backend.models.*",
+    # Dynamic provider sessions and legacy SQLAlchemy projections
+    "backend.providers.jobs.session",
+    "backend.providers.jobs.adecco.client",
+    "backend.providers.jobs.localdb.client",
+    "backend.providers.jobs.swissdevjobs.transformer",
+    # Pydantic validator compatibility helpers
+    "backend.core.config",
 ]
 ignore_errors = true
 
@@ -77,15 +75,10 @@ ignore_errors = true
 [[tool.mypy.overrides]]
 module = [
     # Services with pre-existing SQLAlchemy Column / Session|None type debt
-    "backend.services.search_service",
     "backend.services.scheduler",
     "backend.services.profile_service",
-    "backend.services.preference_service",
-    "backend.services.llm_service",
-    "backend.services.utils",
-    "backend.services.search.*",
+    "backend.services.search.persistence",
     # Cross-capability mixins are validated through their concrete compositions.
-    "backend.ai.pipeline",
     "backend.ai.runtime_policy",
     "backend.ai.planning",
     "backend.ai.profile_normalization",
