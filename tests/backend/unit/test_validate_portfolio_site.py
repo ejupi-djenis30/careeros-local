@@ -1,3 +1,4 @@
+import re
 import struct
 import zlib
 from dataclasses import replace
@@ -46,6 +47,41 @@ def test_portfolio_media_preserves_its_intrinsic_ratio():
         declarations = css.split(f"{selector} {{", maxsplit=1)[1].split("}", maxsplit=1)[0]
         assert "height: auto;" in declarations
         assert "object-fit: contain;" in declarations
+
+
+def test_trust_label_meets_small_text_contrast():
+    css = (ROOT / "docs" / "site" / "styles.css").read_text(encoding="utf-8")
+    root_declarations = css.split(":root {", maxsplit=1)[1].split("}", maxsplit=1)[0]
+    trust_declarations = (
+        css.split(".trust-label {", maxsplit=1)[1].split("}", maxsplit=1)[0]
+    )
+
+    assert "color: var(--muted);" in trust_declarations
+
+    def read_hex_token(name: str) -> tuple[int, int, int]:
+        match = re.search(rf"--{name}:\s*#([0-9a-fA-F]{{6}})", root_declarations)
+        assert match is not None
+        value = match.group(1)
+        return tuple(int(value[index : index + 2], 16) for index in (0, 2, 4))
+
+    def relative_luminance(color: tuple[int, int, int]) -> float:
+        channels = []
+        for channel in color:
+            normalized = channel / 255
+            channels.append(
+                normalized / 12.92
+                if normalized <= 0.04045
+                else ((normalized + 0.055) / 1.055) ** 2.4
+            )
+        return 0.2126 * channels[0] + 0.7152 * channels[1] + 0.0722 * channels[2]
+
+    foreground = relative_luminance(read_hex_token("muted"))
+    background = relative_luminance(read_hex_token("dark"))
+    contrast = (max(foreground, background) + 0.05) / (
+        min(foreground, background) + 0.05
+    )
+
+    assert contrast >= 4.5
 
 
 def test_portfolio_keeps_one_real_product_demo():

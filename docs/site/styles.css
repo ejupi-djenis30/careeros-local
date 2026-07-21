@@ -815,7 +815,7 @@ h2 {
   position: relative;
   z-index: 1;
   margin-bottom: 30px;
-  color: #657068;
+  color: var(--muted);
   font-size: 0.65rem;
   font-weight: 800;
   letter-spacing: 0.15em;

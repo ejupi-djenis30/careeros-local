@@ -92,6 +92,27 @@ inference fallback. See the [architecture](docs/architecture.md),
 | Optional AI | Managed llama.cpp-compatible runtime, schema-validated pipelines |
 | Quality | pytest, Vitest, ESLint, Ruff, mypy, Clippy, Cargo test, Trivy, CycloneDX |
 
+## Install the desktop app
+
+Download the latest community build from [GitHub Releases](https://github.com/ejupi-djenis30/careeros-local/releases/latest).
+
+| Platform | Choose this asset |
+| --- | --- |
+| Windows x64 / ARM64 | `windows-*-setup.exe` for the guided installer, or `windows-*.msi` for managed deployment |
+| macOS Apple Silicon / Intel | `macos-arm64.dmg` or `macos-x64.dmg` |
+| Linux x64 / ARM64 | `linux-*.AppImage` for a portable app, or `linux-*.deb` on Debian-based systems |
+
+These are unsigned community builds. Before installing, compare the file with `SHA256SUMS` and
+verify its GitHub attestation:
+
+```shell
+gh attestation verify <downloaded-file> --repo ejupi-djenis30/careeros-local
+```
+
+The app keeps its vault in the operating system's private application-data directory. Removing
+the app does not silently erase that data. If you want a clean removal, export anything you need,
+use the in-app vault erasure flow, and then uninstall the package.
+
 ## Run locally
 
 Requirements: Python 3.12, Node.js 24 LTS, npm and Git. Native desktop development additionally
