@@ -11,7 +11,7 @@ from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
 LICENSE_NAME = "LICENSE"
-APPROVED_LICENSE_SHA256 = "7e1d73415a3de7fa896ac8871ae0aea8fc736e9f0d274bf658c18399236976c6"
+APPROVED_LICENSE_SHA256 = "0506cd12584bb6180ea9eb17c4f212d25d8aaf3070f0dcaadb12b4ac14b60ce0"
 
 
 def approved_license_bytes(path: Path = ROOT / LICENSE_NAME) -> bytes:

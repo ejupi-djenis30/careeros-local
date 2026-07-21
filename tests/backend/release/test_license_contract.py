@@ -20,7 +20,7 @@ def test_repository_license_is_the_exact_canonical_lf_payload() -> None:
 
     assert payload == approved_license_bytes()
     assert b"\r" not in payload
-    assert APPROVED_LICENSE_SHA256 == "7e1d73415a3de7fa896ac8871ae0aea8fc736e9f0d274bf658c18399236976c6"
+    assert APPROVED_LICENSE_SHA256 == "0506cd12584bb6180ea9eb17c4f212d25d8aaf3070f0dcaadb12b4ac14b60ce0"
 
 
 def test_extracted_package_requires_one_exact_project_license(tmp_path: Path) -> None:

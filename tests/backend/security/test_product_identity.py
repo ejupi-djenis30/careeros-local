@@ -28,6 +28,27 @@ def test_product_surfaces_use_only_careeros_identity() -> None:
     assert "careeros-local" in combined
 
 
+def test_public_metadata_credits_people_collectively() -> None:
+    public_metadata = (
+        "README.md",
+        "SECURITY.md",
+        "LICENSE",
+        "pyproject.toml",
+        "docs/index.html",
+        "frontend/package.json",
+        "frontend/src-tauri/Cargo.toml",
+        "frontend/src-tauri/tauri.conf.json",
+        "CODE_OF_CONDUCT.md",
+    )
+    contents = {path: _text(path) for path in public_metadata}
+    combined = "\n".join(contents.values())
+    assert "CareerOS Local contributors" in combined
+    for relative, content in contents.items():
+        assert "Djenis Ejupi" not in content, relative
+        assert "djenis.ejupi@" not in content.lower(), relative
+    assert 'href="https://github.com/ejupi-djenis30">' not in contents["docs/index.html"]
+
+
 def test_runtime_dependencies_have_no_remote_ai_client() -> None:
     dependency_files = ("requirements.txt", "frontend/package.json")
     forbidden = re.compile(r"\b(openai|anthropic|groq|google-generativeai|g4f)\b", re.I)

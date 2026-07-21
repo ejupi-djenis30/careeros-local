@@ -30,7 +30,7 @@ CI runs hash-locked Python installs, npm lockfile installs, Rust lockfile builds
 ### CE-2026-001: `glib` 0.18.5 / RUSTSEC-2024-0429
 
 - **Status:** Temporarily accepted. This is an active risk, not a clean Cargo audit.
-- **Owner:** Djenis Ejupi, project maintainer.
+- **Owner:** Project maintainers.
 - **Recorded:** 2026-07-19.
 - **Next review and hard expiry:** 2026-10-19. The exception must be renewed with fresh evidence or removed by upgrading before this date.
 - **Advisory:** [RUSTSEC-2024-0429](https://rustsec.org/advisories/RUSTSEC-2024-0429.html) / GHSA-wrw7-89jp-8q8g. The affected `glib::VariantStrIter` implementations can dereference a null pointer and crash.
@@ -43,7 +43,7 @@ CI runs hash-locked Python installs, npm lockfile installs, Rust lockfile builds
 ## Monitored Rust maintenance warnings
 
 - **Status:** Monitored upstream maintenance debt, not vulnerability exceptions.
-- **Owner and next review:** Djenis Ejupi; review by 2026-10-19 with the active dependency exception.
+- **Owner and next review:** Project maintainers; review by 2026-10-19 with the active dependency exception.
 - **Current inventory:** RUSTSEC-2024-0370, RUSTSEC-2024-0411 through RUSTSEC-2024-0420, RUSTSEC-2025-0075, RUSTSEC-2025-0080, RUSTSEC-2025-0081, RUSTSEC-2025-0098, and RUSTSEC-2025-0100.
 - **Scope:** The GTK3 and `proc-macro-error` warnings enter through the Linux Tauri/wry stack. The `unic-*` warnings enter through Tauri's `urlpattern` dependency.
 - **Evidence and exit:** Every CI and release audit stores the complete Cargo audit JSON alongside the exception manifest and all-target dependency tree. Remove warnings through supported Tauri/wry updates and review any changed inventory before release.
