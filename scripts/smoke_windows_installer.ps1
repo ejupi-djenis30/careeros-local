@@ -56,6 +56,8 @@ function Invoke-NativeSmoke(
     [switch]$Offline
 ) {
     New-Item -ItemType Directory -Path $DataDirectory -Force | Out-Null
+    $ReadinessEvidence = Join-Path $DataDirectory ".careeros-desktop-ready-v1"
+    Remove-Item -LiteralPath $ReadinessEvidence -Force -ErrorAction SilentlyContinue
     $env:CAREEROS_DESKTOP_SMOKE = "1"
     $env:CAREEROS_DESKTOP_SMOKE_DATA_DIR = $DataDirectory
     if ($Offline) { $env:OFFLINE_MODE = "true" }
@@ -80,6 +82,10 @@ function Invoke-NativeSmoke(
         if (-not $SawWindow) {
             throw "Packaged desktop smoke never created a native window"
         }
+        if (-not (Test-Path -LiteralPath $ReadinessEvidence -PathType Leaf) -or
+            (Get-Content -LiteralPath $ReadinessEvidence -Raw) -ne "backend-ready+frontend-committed`n") {
+            throw "Packaged desktop smoke did not complete the frontend/backend readiness handshake"
+        }
         $Database = Join-Path $DataDirectory "vault\careeros.db"
         if (-not (Test-Path -LiteralPath $Database) -or (Get-Item $Database).Length -eq 0) {
             throw "Packaged desktop smoke did not initialize the career vault"
@@ -92,6 +98,7 @@ function Invoke-NativeSmoke(
         return [pscustomobject]@{
             appExitCode = $Process.ExitCode
             databaseBytes = (Get-Item $Database).Length
+            readinessEvidence = (Split-Path -Leaf $ReadinessEvidence)
             sidecarOrphaned = $false
         }
     }

@@ -7,22 +7,19 @@ ROOT = Path(__file__).resolve().parents[3]
 WORKFLOW = ROOT / ".github" / "workflows" / "desktop-release.yml"
 TAURI_CONFIG = ROOT / "frontend" / "src-tauri" / "tauri.conf.json"
 WINDOWS_SMOKE = ROOT / "scripts" / "smoke_windows_installer.ps1"
+NATIVE_SMOKE = ROOT / "scripts" / "smoke_native_bundle.py"
+NATIVE_TARGETS = ROOT / ".github" / "native-targets.json"
 
 
 def test_required_check_name_and_versioned_toolchains_are_stable() -> None:
     text = WORKFLOW.read_text(encoding="utf-8")
+    targets = NATIVE_TARGETS.read_text(encoding="utf-8")
 
     assert "name: Release supply-chain evidence" in text
     for exact in (
         'PYTHON_VERSION: "3.12.10"',
         'NODE_VERSION: "24.18.0"',
         'RUST_VERSION: "1.96.0"',
-        "runner: windows-2025",
-        "runner: windows-11-arm",
-        "runner: macos-15-intel",
-        "runner: macos-15",
-        "runner: ubuntu-24.04",
-        "runner: ubuntu-24.04-arm",
         'GH_CLI_VERSION: "2.94.0"',
         "actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0",
         "actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1",
@@ -30,6 +27,15 @@ def test_required_check_name_and_versioned_toolchains_are_stable() -> None:
         "tauri-apps/tauri-action@1deb371b0cd8bd54025b384f1cd735e725c4060f # v1.0.0",
     ):
         assert exact in text
+    for runner in (
+        "windows-2025",
+        "windows-11-arm",
+        "macos-15-intel",
+        "macos-15",
+        "ubuntu-24.04",
+        "ubuntu-24.04-arm",
+    ):
+        assert f'"runner": "{runner}"' in targets
     assert "-latest" not in text
     assert "toolchain: stable" not in text
 
@@ -73,6 +79,26 @@ def test_required_check_is_emitted_for_every_pull_request() -> None:
     assert trigger_config.strip() == "pull_request:"
     assert "paths:" not in trigger_config
     assert "paths-ignore:" not in trigger_config
+
+
+def test_pull_requests_run_a_real_linux_x64_package_smoke() -> None:
+    workflow = WORKFLOW.read_text(encoding="utf-8")
+    targets = json.loads(NATIVE_TARGETS.read_text(encoding="utf-8"))["include"]
+
+    assert len(targets) == 6
+    assert [target for target in targets if target["pullRequest"]] == [
+        {
+            "label": "Linux x64",
+            "runner": "ubuntu-24.04",
+            "target": "x86_64-unknown-linux-gnu",
+            "bundles": "appimage,deb",
+            "pullRequest": True,
+        }
+    ]
+    assert "native-matrix: ${{ steps.native-matrix.outputs.matrix }}" in workflow
+    assert 'if os.environ["GITHUB_EVENT_NAME"] == "pull_request":' in workflow
+    assert "matrix: ${{ fromJSON(needs.supply-chain.outputs.native-matrix) }}" in workflow
+    assert "if: github.event_name != 'pull_request'\n    needs: supply-chain" not in workflow
 
 
 def test_only_tag_push_job_can_attest_or_publish() -> None:
@@ -124,3 +150,20 @@ def test_canonical_project_license_is_bundled_and_checked_in_every_native_path()
     assert "python scripts/smoke_native_bundle.py" not in workflow
     assert "Assert-PackagedLicense ($MsiApp.Directory.FullName)" in windows_smoke
     assert "Assert-PackagedLicense ($NsisApp.Directory.FullName)" in windows_smoke
+
+
+def test_package_smokes_require_fresh_frontend_backend_readiness_evidence() -> None:
+    windows_smoke = WINDOWS_SMOKE.read_text(encoding="utf-8")
+    native_smoke = NATIVE_SMOKE.read_text(encoding="utf-8")
+    lifecycle = (ROOT / "frontend" / "src-tauri" / "src" / "lifecycle.rs").read_text(
+        encoding="utf-8"
+    )
+
+    marker = ".careeros-desktop-ready-v1"
+    payload = "backend-ready+frontend-committed"
+    for source in (windows_smoke, native_smoke, lifecycle):
+        assert marker in source
+        assert payload in source
+    assert "Remove-Item -LiteralPath $ReadinessEvidence" in windows_smoke
+    assert "readiness_evidence.unlink(missing_ok=True)" in native_smoke
+    assert ".create_new(true)" in lifecycle

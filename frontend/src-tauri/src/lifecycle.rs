@@ -1,3 +1,4 @@
+use std::fs::OpenOptions;
 use std::io::{Read, Write};
 use std::net::{Ipv4Addr, SocketAddr, TcpListener, TcpStream};
 use std::path::{Path, PathBuf};
@@ -13,6 +14,8 @@ use tauri_plugin_shell::ShellExt;
 use crate::commands::DesktopBootstrap;
 
 const MAX_RESTARTS: u8 = 2;
+pub const SMOKE_READY_MARKER: &str = ".careeros-desktop-ready-v1";
+const SMOKE_READY_PAYLOAD: &str = "backend-ready+frontend-committed\n";
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum BackendPhase {
@@ -71,6 +74,8 @@ pub struct BackendLifecycle {
     child: Mutex<Option<CommandChild>>,
     restart_policy: Mutex<RestartPolicy>,
     shutting_down: AtomicBool,
+    smoke_mode: bool,
+    frontend_ready: AtomicBool,
 }
 
 impl BackendLifecycle {
@@ -80,6 +85,7 @@ impl BackendLifecycle {
         app_version: String,
         data_directory: PathBuf,
         executable_path: PathBuf,
+        smoke_mode: bool,
     ) -> Self {
         Self {
             port,
@@ -93,6 +99,8 @@ impl BackendLifecycle {
             child: Mutex::new(None),
             restart_policy: Mutex::new(RestartPolicy::bounded(MAX_RESTARTS)),
             shutting_down: AtomicBool::new(false),
+            smoke_mode,
+            frontend_ready: AtomicBool::new(false),
         }
     }
 
@@ -131,6 +139,44 @@ impl BackendLifecycle {
         if let Some(child) = self.child.lock().expect("child state poisoned").take() {
             let _ = child.kill();
         }
+    }
+
+    pub fn mark_frontend_ready(&self) -> bool {
+        if !self.smoke_mode {
+            return false;
+        }
+        self.frontend_ready.store(true, Ordering::Release);
+        true
+    }
+
+    fn is_frontend_ready(&self) -> bool {
+        self.frontend_ready.load(Ordering::Acquire)
+    }
+
+    pub fn is_smoke_mode(&self) -> bool {
+        self.smoke_mode
+    }
+
+    fn write_smoke_readiness_evidence(&self) -> std::io::Result<()> {
+        let phase = self
+            .snapshot
+            .lock()
+            .expect("lifecycle snapshot poisoned")
+            .phase;
+        if !self.smoke_mode || phase != BackendPhase::Ready || !self.is_frontend_ready() {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::PermissionDenied,
+                "desktop smoke readiness is incomplete",
+            ));
+        }
+
+        let marker = self.data_directory.join(SMOKE_READY_MARKER);
+        let mut evidence = OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(marker)?;
+        evidence.write_all(SMOKE_READY_PAYLOAD.as_bytes())?;
+        evidence.sync_all()
     }
 }
 
@@ -238,29 +284,33 @@ pub fn start_backend_supervisor(app: AppHandle, state: Arc<BackendLifecycle>) {
     });
 }
 
+fn smoke_exit_code(phase: BackendPhase, frontend_ready: bool) -> Option<i32> {
+    match (phase, frontend_ready) {
+        (BackendPhase::Ready, true) => Some(0),
+        (BackendPhase::Failed, _) => Some(1),
+        (BackendPhase::Spawning | BackendPhase::WaitingReady | BackendPhase::Ready, _) => None,
+    }
+}
+
 pub fn start_smoke_exit_monitor(app: AppHandle) {
     thread::spawn(move || {
         let deadline = Instant::now() + Duration::from_secs(90);
         while Instant::now() < deadline {
-            let phase = app
-                .state::<Arc<BackendLifecycle>>()
+            let state = app.state::<Arc<BackendLifecycle>>();
+            let phase = state
                 .snapshot
                 .lock()
                 .expect("lifecycle snapshot poisoned")
                 .phase;
-            match phase {
-                BackendPhase::Ready => {
-                    app.exit(0);
-                    return;
-                }
-                BackendPhase::Failed => {
+            if let Some(code) = smoke_exit_code(phase, state.is_frontend_ready()) {
+                if code == 0 && state.write_smoke_readiness_evidence().is_err() {
                     app.exit(1);
                     return;
                 }
-                BackendPhase::Spawning | BackendPhase::WaitingReady => {
-                    thread::sleep(Duration::from_millis(100));
-                }
+                app.exit(code);
+                return;
             }
+            thread::sleep(Duration::from_millis(100));
         }
         app.exit(1);
     });
@@ -268,8 +318,11 @@ pub fn start_smoke_exit_monitor(app: AppHandle) {
 
 #[cfg(test)]
 mod tests {
-    use super::{allocate_loopback_port, generate_session_token, sidecar_arguments, RestartPolicy};
-    use std::path::Path;
+    use super::{
+        allocate_loopback_port, generate_session_token, sidecar_arguments, smoke_exit_code,
+        BackendLifecycle, BackendPhase, RestartPolicy, SMOKE_READY_MARKER,
+    };
+    use std::path::{Path, PathBuf};
 
     #[test]
     fn allocates_an_ephemeral_ipv4_loopback_port() {
@@ -312,5 +365,65 @@ mod tests {
         assert!(policy.register_failure());
         assert!(!policy.register_failure());
         assert!(!policy.register_failure());
+    }
+
+    #[test]
+    fn frontend_readiness_is_smoke_only_and_idempotent() {
+        let lifecycle = |smoke_mode| {
+            BackendLifecycle::new(
+                43127,
+                "x".repeat(64),
+                "1.1.2".into(),
+                PathBuf::from("C:/CareerOS"),
+                PathBuf::from("C:/CareerOS/careeros-backend.exe"),
+                smoke_mode,
+            )
+        };
+
+        let production = lifecycle(false);
+        assert!(!production.mark_frontend_ready());
+        assert!(!production.is_frontend_ready());
+
+        let smoke = lifecycle(true);
+        assert!(smoke.mark_frontend_ready());
+        assert!(smoke.mark_frontend_ready());
+        assert!(smoke.is_frontend_ready());
+    }
+
+    #[test]
+    fn smoke_success_requires_both_backend_and_committed_frontend() {
+        assert_eq!(smoke_exit_code(BackendPhase::Spawning, false), None);
+        assert_eq!(smoke_exit_code(BackendPhase::WaitingReady, true), None);
+        assert_eq!(smoke_exit_code(BackendPhase::Ready, false), None);
+        assert_eq!(smoke_exit_code(BackendPhase::Ready, true), Some(0));
+        assert_eq!(smoke_exit_code(BackendPhase::Failed, true), Some(1));
+    }
+
+    #[test]
+    fn smoke_success_writes_fresh_external_evidence() {
+        let data_directory = std::env::temp_dir().join(format!(
+            "careeros-smoke-evidence-{}",
+            generate_session_token()
+        ));
+        std::fs::create_dir_all(&data_directory).unwrap();
+        let lifecycle = BackendLifecycle::new(
+            43127,
+            "x".repeat(64),
+            "1.1.2".into(),
+            data_directory.clone(),
+            data_directory.join("careeros-backend.exe"),
+            true,
+        );
+        lifecycle.set_phase(BackendPhase::Ready);
+        assert!(lifecycle.mark_frontend_ready());
+        lifecycle.write_smoke_readiness_evidence().unwrap();
+
+        let marker = data_directory.join(SMOKE_READY_MARKER);
+        assert_eq!(
+            std::fs::read_to_string(&marker).unwrap(),
+            "backend-ready+frontend-committed\n"
+        );
+        assert!(lifecycle.write_smoke_readiness_evidence().is_err());
+        std::fs::remove_dir_all(data_directory).unwrap();
     }
 }

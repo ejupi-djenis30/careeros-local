@@ -15,6 +15,8 @@ from pathlib import Path
 from scripts.license_contract import find_packaged_license
 
 ROOT = Path(__file__).resolve().parents[1]
+SMOKE_READY_MARKER = ".careeros-desktop-ready-v1"
+SMOKE_READY_PAYLOAD = "backend-ready+frontend-committed\n"
 
 
 def _single(paths: list[Path], label: str) -> Path:
@@ -39,6 +41,8 @@ def _assert_no_orphan(data_directory: Path) -> None:
 def _run_application(
     command: list[str], data_directory: Path, *, offline: bool = False
 ) -> None:
+    readiness_evidence = data_directory / SMOKE_READY_MARKER
+    readiness_evidence.unlink(missing_ok=True)
     environment = os.environ.copy()
     environment["CAREEROS_DESKTOP_SMOKE"] = "1"
     environment["CAREEROS_DESKTOP_SMOKE_DATA_DIR"] = str(data_directory)
@@ -57,6 +61,13 @@ def _run_application(
         safe_error = (completed.stderr or completed.stdout)[-3000:]
         raise RuntimeError(
             f"Native package smoke exited with {completed.returncode}: {safe_error}"
+        )
+    if (
+        not readiness_evidence.is_file()
+        or readiness_evidence.read_text(encoding="utf-8") != SMOKE_READY_PAYLOAD
+    ):
+        raise RuntimeError(
+            "Native package smoke did not complete the frontend/backend readiness handshake"
         )
     database = data_directory / "vault" / "careeros.db"
     if not database.is_file() or database.stat().st_size == 0:
