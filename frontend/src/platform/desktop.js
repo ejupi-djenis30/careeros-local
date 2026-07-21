@@ -63,6 +63,12 @@ export async function bootstrapDesktop({ timeoutMs = 90_000, initialDelayMs = 10
     };
 }
 
+export async function reportDesktopReady() {
+    if (!isDesktopShell()) return false;
+    const { invoke } = await import("@tauri-apps/api/core");
+    return Boolean(await invoke("desktop_frontend_ready"));
+}
+
 const BACKUP_FILTER = [{ name: "CareerOS Local backup", extensions: ["zip"] }];
 
 export async function saveBackupWithNativeDialog({ blob, filename }, { title = "Save CareerOS Local backup" } = {}) {

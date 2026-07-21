@@ -46,6 +46,12 @@ every resulting payload must expose the approved project `LICENSE` bytes at the 
 resource root. Missing, changed, duplicate case-variant, symlink-alias, or dependency-only license
 files stop the run before staging.
 
+Each packaged app must also complete an authenticated readiness handshake across the Python
+sidecar, Tauri command bridge and a committed React tree. The app writes fresh, run-scoped evidence
+only after that contract succeeds; the package harness removes stale evidence before every launch
+and verifies the exact payload afterwards. A blank, stalled or prematurely closed WebView therefore
+fails the package smoke instead of being mistaken for a working application.
+
 No artifact from a rehearsal is a release. Review the retained `verified-release-assets` and
 `native-subject-checksums` workflow artifacts before proceeding.
 

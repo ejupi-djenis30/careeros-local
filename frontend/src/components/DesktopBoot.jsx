@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 
-import { bootstrapDesktop } from "../platform/desktop";
+import { bootstrapDesktop, reportDesktopReady } from "../platform/desktop";
 import { useI18n } from "../i18n/useI18n";
 import { CAREEROS_MARK_URL } from "../app/brand";
 
@@ -26,7 +26,7 @@ export function DesktopBoot({ children }) {
         setStatus({ state: "starting", error: null });
         setAttempt((value) => value + 1);
     }, []);
-    if (status.state === "ready") return children;
+    if (status.state === "ready") return <DesktopReadySignal>{children}</DesktopReadySignal>;
     return (
         <main className="desktop-boot" aria-live="polite">
             <img src={CAREEROS_MARK_URL} alt="" className="desktop-boot__mark" />
@@ -45,4 +45,14 @@ export function DesktopBoot({ children }) {
             )}
         </main>
     );
+}
+
+function DesktopReadySignal({ children }) {
+    useEffect(() => {
+        reportDesktopReady().catch(() => {
+            // In production this signal is best-effort. Package smoke mode will time out if the
+            // Tauri bridge or committed React tree cannot complete the handshake.
+        });
+    }, []);
+    return children;
 }

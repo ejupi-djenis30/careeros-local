@@ -31,11 +31,30 @@ jobs:
     name: Release supply-chain evidence
     runs-on: ubuntu-24.04
     timeout-minutes: 45
+    outputs:
+      native-matrix: ${{ steps.native-matrix.outputs.matrix }}
     steps:
       - name: Check out source without credentials
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      - name: Select native package targets
+        id: native-matrix
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          matrix = json.loads(Path(".github/native-targets.json").read_text(encoding="utf-8"))
+          if os.environ["GITHUB_EVENT_NAME"] == "pull_request":
+              matrix["include"] = [target for target in matrix["include"] if target["pullRequest"]]
+          for target in matrix["include"]:
+              target.pop("pullRequest")
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
+              output.write(f"matrix={json.dumps(matrix, separators=(',', ':'))}\n")
+          PY
       - name: Install Python
         uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
         with:
@@ -140,41 +159,15 @@ jobs:
 
   native:
     name: ${{ matrix.label }}
-    if: github.event_name != 'pull_request'
     needs: supply-chain
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 90
     strategy:
       fail-fast: false
-      matrix:
-        include:
-          - label: Windows x64
-            runner: windows-2025
-            target: x86_64-pc-windows-msvc
-            bundles: nsis,msi
-          - label: Windows ARM64
-            runner: windows-11-arm
-            target: aarch64-pc-windows-msvc
-            bundles: nsis,msi
-          - label: macOS Intel
-            runner: macos-15-intel
-            target: x86_64-apple-darwin
-            bundles: app,dmg
-          - label: macOS Apple Silicon
-            runner: macos-15
-            target: aarch64-apple-darwin
-            bundles: app,dmg
-          - label: Linux x64
-            runner: ubuntu-24.04
-            target: x86_64-unknown-linux-gnu
-            bundles: appimage,deb
-          - label: Linux ARM64
-            runner: ubuntu-24.04-arm
-            target: aarch64-unknown-linux-gnu
-            bundles: appimage,deb
+      matrix: ${{ fromJSON(needs.supply-chain.outputs.native-matrix) }}
     steps:
       - name: Check out source without credentials
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       - name: Install Python
@@ -251,7 +244,7 @@ jobs:
     timeout-minutes: 15
     steps:
       - name: Check out source without credentials
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       - name: Install Python
@@ -308,7 +301,7 @@ jobs:
       id-token: write
     steps:
       - name: Check out tagged source without credentials
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       - name: Install Python

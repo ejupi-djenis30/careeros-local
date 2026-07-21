@@ -20,6 +20,11 @@ pub fn desktop_bootstrap(state: State<'_, Arc<BackendLifecycle>>) -> DesktopBoot
     state.bootstrap()
 }
 
+#[tauri::command]
+pub fn desktop_frontend_ready(state: State<'_, Arc<BackendLifecycle>>) -> bool {
+    state.mark_frontend_ready()
+}
+
 #[cfg(test)]
 mod tests {
     use super::DesktopBootstrap;

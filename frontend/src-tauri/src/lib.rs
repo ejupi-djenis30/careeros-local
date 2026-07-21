@@ -7,6 +7,10 @@ use std::sync::Arc;
 
 use tauri::{path::BaseDirectory, Manager, RunEvent};
 
+fn unexpected_smoke_exit_code(smoke_mode: bool, requested_code: Option<i32>) -> Option<i32> {
+    (smoke_mode && requested_code.is_none()).then_some(1)
+}
+
 fn resolve_data_directory(
     default: PathBuf,
     smoke_mode: bool,
@@ -44,7 +48,10 @@ pub fn run() {
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_opener::init())
-        .invoke_handler(tauri::generate_handler![commands::desktop_bootstrap])
+        .invoke_handler(tauri::generate_handler![
+            commands::desktop_bootstrap,
+            commands::desktop_frontend_ready
+        ])
         .setup(|app| {
             let smoke_mode =
                 std::env::var("CAREEROS_DESKTOP_SMOKE").is_ok_and(|value| value == "1");
@@ -70,6 +77,7 @@ pub fn run() {
                 app.package_info().version.to_string(),
                 data_directory,
                 executable_path,
+                smoke_mode,
             ));
             app.manage(state.clone());
             lifecycle::start_backend_supervisor(app.handle().clone(), state);
@@ -81,16 +89,23 @@ pub fn run() {
         .build(tauri::generate_context!())
         .expect("CareerOS Local desktop runtime failed to build");
 
-    application.run(|app, event| {
-        if matches!(event, RunEvent::ExitRequested { .. } | RunEvent::Exit) {
-            app.state::<Arc<lifecycle::BackendLifecycle>>().shutdown();
+    application.run(|app, event| match event {
+        RunEvent::ExitRequested { code, api, .. } => {
+            let state = app.state::<Arc<lifecycle::BackendLifecycle>>();
+            state.shutdown();
+            if let Some(failure_code) = unexpected_smoke_exit_code(state.is_smoke_mode(), code) {
+                api.prevent_exit();
+                app.exit(failure_code);
+            }
         }
+        RunEvent::Exit => app.state::<Arc<lifecycle::BackendLifecycle>>().shutdown(),
+        _ => {}
     });
 }
 
 #[cfg(test)]
 mod tests {
-    use super::resolve_data_directory;
+    use super::{resolve_data_directory, unexpected_smoke_exit_code};
     use std::ffi::OsString;
     use std::path::PathBuf;
 
@@ -113,5 +128,13 @@ mod tests {
             resolve_data_directory(default, true, Some(absolute.clone().into_os_string())).unwrap(),
             absolute
         );
+    }
+
+    #[test]
+    fn natural_exit_is_a_failure_only_during_packaged_smoke() {
+        assert_eq!(unexpected_smoke_exit_code(false, None), None);
+        assert_eq!(unexpected_smoke_exit_code(true, None), Some(1));
+        assert_eq!(unexpected_smoke_exit_code(true, Some(0)), None);
+        assert_eq!(unexpected_smoke_exit_code(true, Some(1)), None);
     }
 }

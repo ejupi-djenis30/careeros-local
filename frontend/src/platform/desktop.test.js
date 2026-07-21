@@ -14,6 +14,7 @@ import {
     bootstrapDesktop,
     isDesktopShell,
     openBackupWithNativeDialog,
+    reportDesktopReady,
     saveBackupWithNativeDialog,
 } from "./desktop";
 
@@ -33,6 +34,17 @@ describe("desktop bootstrap", () => {
         expect(isDesktopShell()).toBe(false);
         await expect(bootstrapDesktop()).resolves.toEqual({ desktop: false, state: "browser" });
         expect(invoke).not.toHaveBeenCalled();
+        await expect(reportDesktopReady()).resolves.toBe(false);
+        expect(invoke).not.toHaveBeenCalled();
+    });
+
+    it("reports a committed frontend tree through the native bridge", async () => {
+        window.__TAURI_INTERNALS__ = {};
+        invoke.mockResolvedValue(true);
+
+        await expect(reportDesktopReady()).resolves.toBe(true);
+
+        expect(invoke).toHaveBeenCalledWith("desktop_frontend_ready");
     });
 
     it("invokes the native bootstrap and waits for authenticated readiness", async () => {

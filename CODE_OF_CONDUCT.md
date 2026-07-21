@@ -34,9 +34,8 @@ This Code applies in project spaces and whenever someone officially represents t
 Maintainers are responsible for clarifying and enforcing these standards and may remove, edit, or
 reject contributions or comments that are inconsistent with them.
 
-Report conduct concerns privately to the maintainer using the contact method on their
-[GitHub profile](https://github.com/ejupi-djenis30). If no private contact method is available,
-open an issue containing only a request for private contact—do not publish sensitive details.
+Report conduct concerns privately to [info@ejupilabs.com](mailto:info@ejupilabs.com). Do not
+publish sensitive details in a public issue.
 Reports will be reviewed promptly, fairly, and with respect for the reporter's confidentiality.
 Retaliation against anyone who raises a good-faith concern is prohibited.
 
