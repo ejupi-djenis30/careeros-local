@@ -32,10 +32,7 @@ def test_ai_audit_persists_only_fingerprints_and_controlled_metadata(db_session,
     )
     persisted = db_session.get(AIExecution, execution.id)
     serialized = json.dumps(
-        {
-            column.name: getattr(persisted, column.name)
-            for column in AIExecution.__table__.columns
-        },
+        {column.name: getattr(persisted, column.name) for column in AIExecution.__table__.columns},
         default=str,
     )
     assert "private prompt" not in serialized
@@ -52,3 +49,20 @@ def test_reference_fingerprint_is_stable_and_order_independent() -> None:
     )
     assert first == second
     assert len(first) == 64
+
+
+def test_reference_fingerprint_distinguishes_reused_ids_with_different_content() -> None:
+    first = fingerprint_references(
+        task="job_match",
+        reference_ids=["candidate:profile", "job:0"],
+        contract_version="1.1.0",
+        evidence_digests={"candidate:profile": "a" * 64, "job:0": "b" * 64},
+    )
+    second = fingerprint_references(
+        task="job_match",
+        reference_ids=["candidate:profile", "job:0"],
+        contract_version="1.1.0",
+        evidence_digests={"candidate:profile": "a" * 64, "job:0": "c" * 64},
+    )
+
+    assert first != second

@@ -49,7 +49,7 @@ TASK_SPECS: dict[str, TaskSpec] = {
             + _UNTRUSTED_DATA
         ),
         max_context_chars=12_000,
-        max_output_tokens=1_200,
+        max_output_tokens=600,
         evidence_required=True,
     ),
     "resume_tailor": TaskSpec(
@@ -86,7 +86,7 @@ TASK_SPECS: dict[str, TaskSpec] = {
             "semantic duplicates. " + _UNTRUSTED_DATA
         ),
         max_context_chars=10_000,
-        max_output_tokens=900,
+        max_output_tokens=600,
     ),
     "job_normalize": TaskSpec(
         task_id="job_normalize",
@@ -101,15 +101,16 @@ TASK_SPECS: dict[str, TaskSpec] = {
     ),
     "job_match": TaskSpec(
         task_id="job_match",
-        version="1.0.0",
+        version="1.1.0",
         output_model=JobMatchResult,
         system_instruction=(
-            "Compare normalized job requirements with candidate facts and explicit intent. "
-            "Penalize hard blockers and calibrate every score to concrete evidence. "
+            "Propose only the seven integer fit scores for each candidate-job pair. "
+            "Do not emit evidence IDs, citations, prose, recommendations or duplicate fields; "
+            "the server parses requirements, enforces caps and materializes citations. "
             + _UNTRUSTED_DATA
         ),
         max_context_chars=12_000,
-        max_output_tokens=2_000,
+        max_output_tokens=900,
         evidence_required=True,
     ),
     "job_critique": TaskSpec(

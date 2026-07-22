@@ -19,7 +19,7 @@ class ArchiveEntry(BaseModel):
 
 class ArchiveManifest(BaseModel):
     format: Literal["careeros-portable-archive"]
-    format_version: Literal[1, 2, 3]
+    format_version: Literal[1, 2, 3, 4]
     created_at: datetime
     owner_scope: Literal["career-vault"]
     record_counts: dict[str, int]

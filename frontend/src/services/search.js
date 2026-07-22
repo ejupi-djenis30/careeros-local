@@ -2,7 +2,7 @@ import { ApiClient } from "../lib/client";
 
 export const SearchService = {
     start(profile) {
-        return ApiClient.post("/search/start", profile);
+        return ApiClient.post("/search/start", profile, { suppressGlobalError: true });
     },
 
     getStatus(profileId) {

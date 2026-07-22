@@ -30,15 +30,10 @@ def test_get_jobs_by_user(job_service, mock_repo):
     job1.scraped_job_id = 101
 
     job2 = MagicMock()
-    job2.applied = False
+    job2.applied = True
     job2.scraped_job_id = 102
 
-    mock_repo.get_by_user_filtered.return_value = [job1, job2]
-    mock_repo.get_count_and_stats_by_user_filtered.return_value = {
-        "total": 2,
-        "total_applied": 1,
-        "avg_score": 85.0,
-    }
+    mock_repo.get_trust_candidates_by_user.return_value = [job1, job2]
     mock_repo.get_applied_scraped_job_ids.return_value = {101}  # job1 applied elsewhere
 
     result = job_service.get_jobs_by_user(
@@ -50,7 +45,7 @@ def test_get_jobs_by_user(job_service, mock_repo):
     assert result["items"][0].applied_elsewhere is True
     assert result["items"][1].applied_elsewhere is False
     assert result["total_applied"] == 1
-    mock_repo.get_by_user_filtered.assert_called_once()
+    mock_repo.get_trust_candidates_by_user.assert_called_once()
     mock_repo.get_applied_scraped_job_ids.assert_called_once_with(1)
 
 

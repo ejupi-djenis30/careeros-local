@@ -17,6 +17,7 @@ from sqlalchemy.orm import Session
 
 from backend import __version__
 from backend.ai.grounding import validate_grounding, validate_semantics
+from backend.ai.match_evidence import candidate_evidence_document, job_evidence_document
 from backend.ai.models import AIEvaluationRun
 from backend.ai.orchestrator import LocalAIOrchestrator, OrchestrationRequest
 from backend.ai.repository import AIRepository
@@ -29,7 +30,7 @@ class EvaluationEvidence(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     id: str = Field(min_length=1, max_length=80)
-    kind: Literal["fact", "job", "profile", "document"]
+    kind: Literal["fact", "job", "profile", "candidate", "document"]
     text: str = Field(min_length=1, max_length=16_000)
     metadata: dict[str, str | int | float | bool | None] = Field(default_factory=dict)
 
@@ -143,7 +144,7 @@ class EvaluationRunSummary(BaseModel):
     created_at: Any
 
 
-def fixture_path(version: str = "1.0.0") -> Path:
+def fixture_path(version: str = "1.1.0") -> Path:
     return Path(__file__).with_name("fixtures") / f"golden-{version}.json"
 
 
@@ -178,6 +179,23 @@ def _assertion_passes(payload: dict[str, Any], assertion: FieldExpectation) -> b
     return bool(actual <= assertion.value)
 
 
+def _case_evidence(case: GoldenCase) -> tuple[EvidenceDocument, ...]:
+    if case.task_id != "job_match":
+        return tuple(EvidenceDocument(**item.model_dump()) for item in case.evidence)
+    candidate = next(item for item in case.evidence if item.id == "candidate:profile")
+    jobs = sorted(
+        (item for item in case.evidence if item.kind == "job"),
+        key=lambda item: int(item.id.split(":", 1)[1]),
+    )
+    return (
+        candidate_evidence_document(candidate.metadata),
+        *(
+            job_evidence_document(job.metadata, index, description_limit=1_800)
+            for index, job in enumerate(jobs)
+        ),
+    )
+
+
 def evaluate_case(
     case: GoldenCase,
     payload: dict[str, Any],
@@ -208,7 +226,7 @@ def evaluate_case(
         grounding_issues = (
             validate_grounding(
                 output,
-                [EvidenceDocument(**item.model_dump()) for item in case.evidence],
+                _case_evidence(case),
             )
             if spec.evidence_required
             else []
@@ -337,9 +355,7 @@ def _resident_memory_bytes(process_id: int) -> int | None:
             try:
                 counters = ProcessMemoryCounters()
                 counters.cb = ctypes.sizeof(counters)
-                if not psapi.GetProcessMemoryInfo(
-                    handle, ctypes.byref(counters), counters.cb
-                ):
+                if not psapi.GetProcessMemoryInfo(handle, ctypes.byref(counters), counters.cb):
                     return None
                 return int(counters.WorkingSetSize)
             finally:
@@ -359,9 +375,7 @@ def _resident_memory_bytes(process_id: int) -> int | None:
         return None
 
 
-async def _sample_peak_memory(
-    process_ids: tuple[int, ...], stop: asyncio.Event
-) -> int:
+async def _sample_peak_memory(process_ids: tuple[int, ...], stop: asyncio.Event) -> int:
     peak = 0
     while True:
         readings = [_resident_memory_bytes(process_id) for process_id in process_ids]
@@ -398,9 +412,7 @@ async def run_live_evaluation(
                     OrchestrationRequest(
                         task_id=case.task_id,
                         user_prompt=case.user_prompt,
-                        evidence=tuple(
-                            EvidenceDocument(**item.model_dump()) for item in case.evidence
-                        ),
+                        evidence=_case_evidence(case),
                         expected_rows=case.expected_rows,
                     )
                 )

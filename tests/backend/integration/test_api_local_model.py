@@ -1,6 +1,8 @@
 from unittest.mock import AsyncMock, patch
 
 from backend.inference.service import (
+    LocalModelReadiness,
+    LocalModelReadinessCheck,
     LocalModelStatus,
     ManagedModelStatus,
     ModelRemovalResult,
@@ -24,6 +26,43 @@ def test_local_model_status_endpoint_is_non_blocking(client):
 
     assert response.status_code == 200
     assert response.json()["available"] is False
+    assert response.json()["analysis_required"] is True
+    assert response.json()["privacy_boundary"] == "local-only"
+
+
+def test_authenticated_readiness_endpoint_returns_stable_diagnostics(client, auth_headers):
+    payload = LocalModelReadiness(
+        ready=True,
+        runtime="llama.cpp",
+        configured_model="compact",
+        model_id="llama.cpp/compact",
+        checks=[
+            LocalModelReadinessCheck(code="endpoint_allowed", status="passed"),
+            LocalModelReadinessCheck(code="runtime_reachable", status="passed"),
+            LocalModelReadinessCheck(code="model_available", status="passed"),
+            LocalModelReadinessCheck(code="structured_output", status="passed"),
+        ],
+    )
+    with patch(
+        "backend.api.routes.local_model.check_local_model_readiness",
+        new=AsyncMock(return_value=payload),
+    ):
+        response = client.post("/api/v1/local-model/readiness", headers=auth_headers, json={})
+
+    assert response.status_code == 200
+    assert response.json()["ready"] is True
+    assert response.json()["model_id"] == "llama.cpp/compact"
+    assert [item["code"] for item in response.json()["checks"]] == [
+        "endpoint_allowed",
+        "runtime_reachable",
+        "model_available",
+        "structured_output",
+    ]
+
+
+def test_readiness_endpoint_requires_authentication(client):
+    response = client.post("/api/v1/local-model/readiness", json={})
+    assert response.status_code == 401
 
 
 def test_local_model_pause_resume_and_remove_endpoints(client, auth_headers):

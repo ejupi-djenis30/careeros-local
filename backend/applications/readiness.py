@@ -74,15 +74,9 @@ class ApplicationReadinessService:
         self.db = db
 
     def _profile(self, user_id: int) -> CandidateProfile | None:
-        return (
-            self.db.query(CandidateProfile)
-            .filter(CandidateProfile.user_id == user_id)
-            .first()
-        )
+        return self.db.query(CandidateProfile).filter(CandidateProfile.user_id == user_id).first()
 
-    def _resume_version(
-        self, user_id: int, version_id: str | None
-    ) -> ResumeVersion | None:
+    def _resume_version(self, user_id: int, version_id: str | None) -> ResumeVersion | None:
         if version_id is None:
             return None
         return (
@@ -181,9 +175,7 @@ class ApplicationReadinessService:
             checks=checks,
             fingerprint="0" * 64,
         )
-        return report.model_copy(
-            update={"fingerprint": canonical_fingerprint(report)}
-        )
+        return report.model_copy(update={"fingerprint": canonical_fingerprint(report)})
 
     @staticmethod
     def _resume_checks(

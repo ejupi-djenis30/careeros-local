@@ -6,7 +6,7 @@ import asyncio
 import logging
 from typing import Any, Dict, List, Optional
 
-from tenacity import RetryError, retry, retry_if_exception, stop_after_attempt, wait_exponential
+from tenacity import RetryError
 
 from backend.ai.orchestrator import LocalAIOrchestrator, OrchestrationRequest
 from backend.core.config import settings
@@ -23,6 +23,7 @@ from backend.services.search.query_contracts import (
 )
 
 logger = logging.getLogger(__name__)
+
 
 def _is_retryable_plan_error(exc: Exception) -> bool:
     """Return True for transient PLAN-step failures worth retrying."""
@@ -151,7 +152,6 @@ class JobNormalizationMixin:
         """
         return compact_prompt_text(description, max_chars)
 
-    @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=5))
     async def normalize_job_batch(self, jobs: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """Normalize unstructured job payloads into deterministic filtering fields."""
         if not jobs:

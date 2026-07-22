@@ -22,6 +22,7 @@ class EvidenceDocument:
     kind: str
     text: str
     metadata: dict[str, Any] = field(default_factory=dict)
+    validation_metadata: dict[str, Any] = field(default_factory=dict, repr=False)
 
 
 @dataclass(frozen=True, slots=True)
@@ -102,11 +103,71 @@ def retrieve_evidence(
     *,
     max_context_chars: int,
     limit: int = 20,
+    require_all: bool = False,
 ) -> RetrievalBundle:
     if max_context_chars < 256:
         raise ValueError("evidence context budget must be at least 256 characters")
-    ranked = bm25_rank(query, documents, limit=limit)
+    source_documents = list(documents)
+    ranked = bm25_rank(
+        query,
+        source_documents,
+        limit=max(limit, len(source_documents)) if require_all else limit,
+    )
     prefix = "UNTRUSTED_EVIDENCE_JSONL\n"
+    if require_all:
+        empty_cost = (
+            len(prefix)
+            + max(0, len(ranked) - 1)
+            + sum(len(_serialized(item.document, "")) for item in ranked)
+        )
+        if empty_cost > max_context_chars:
+            raise ValueError("evidence identifiers exceed the deterministic context budget")
+        content_budget = max_context_chars - empty_cost
+        share = content_budget // max(1, len(ranked))
+        clipped_items = [
+            RankedEvidence(
+                document=EvidenceDocument(
+                    id=item.document.id,
+                    kind=item.document.kind,
+                    text=item.document.text[:share].rstrip(),
+                    metadata=item.document.metadata,
+                    validation_metadata=item.document.validation_metadata,
+                ),
+                score=item.score,
+            )
+            for item in ranked
+        ]
+        context = prefix + "\n".join(_serialized(item.document) for item in clipped_items)
+        while len(context) > max_context_chars:
+            longest_index = max(
+                range(len(clipped_items)),
+                key=lambda index: (len(clipped_items[index].document.text), -index),
+            )
+            item = clipped_items[longest_index]
+            shortened = item.document.text[:-16].rstrip()
+            if shortened == item.document.text:
+                raise ValueError("evidence cannot fit the deterministic context budget")
+            clipped_items[longest_index] = RankedEvidence(
+                document=EvidenceDocument(
+                    id=item.document.id,
+                    kind=item.document.kind,
+                    text=shortened,
+                    metadata=item.document.metadata,
+                    validation_metadata=item.document.validation_metadata,
+                ),
+                score=item.score,
+            )
+            context = prefix + "\n".join(
+                _serialized(selected.document) for selected in clipped_items
+            )
+        return RetrievalBundle(
+            ranked=tuple(clipped_items),
+            context=context,
+            truncated=any(
+                selected.document.text != original.document.text
+                for selected, original in zip(clipped_items, ranked, strict=True)
+            ),
+        )
     lines: list[str] = []
     selected: list[RankedEvidence] = []
     used = len(prefix)
@@ -129,7 +190,18 @@ def retrieve_evidence(
                 line = _serialized(item.document, clipped)
             if clipped and len(line) <= remaining:
                 lines.append(line)
-                selected.append(item)
+                selected.append(
+                    RankedEvidence(
+                        document=EvidenceDocument(
+                            id=item.document.id,
+                            kind=item.document.kind,
+                            text=clipped,
+                            metadata=item.document.metadata,
+                            validation_metadata=item.document.validation_metadata,
+                        ),
+                        score=item.score,
+                    )
+                )
         truncated = True
         break
     context = prefix + "\n".join(lines)

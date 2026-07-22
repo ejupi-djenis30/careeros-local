@@ -1,16 +1,18 @@
 import { useLocalModelStatus } from "./useLocalModelStatus";
 import { useI18n } from "../../i18n/useI18n";
 
-export function LocalModelStatus({ compact = false }) {
+export function LocalModelStatus({ compact = false, status: controlledStatus = null, onRefresh = null }) {
     const { t } = useI18n();
-    const { status, refresh } = useLocalModelStatus();
+    const localSource = useLocalModelStatus({ enabled: controlledStatus === null });
+    const status = controlledStatus || localSource.status;
+    const refresh = onRefresh || localSource.refresh;
     const state = status.loading ? "checking" : status.ready ? "ready" : status.available ? "missing" : "offline";
     const runtimeName = status.runtime === "llama.cpp" ? "llama.cpp" : t("model.runtime");
     const label = {
         checking: t("model.checking"),
         ready: `${runtimeName} · ${status.configured_model}`,
         missing: t("model.configuration"),
-        offline: t("model.optional"),
+        offline: t("model.required"),
     }[state];
 
     return (

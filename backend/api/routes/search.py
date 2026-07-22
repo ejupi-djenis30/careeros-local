@@ -5,7 +5,7 @@ from datetime import datetime
 from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, Request, UploadFile
 from sqlalchemy.orm import Session
 
-from backend.api.deps import get_current_user_id, limiter
+from backend.api.deps import get_current_user_id, limiter, require_local_analysis_ready
 from backend.core.config import settings
 from backend.db.base import SessionLocal, get_db
 from backend.repositories.profile_repository import ProfileRepository
@@ -84,6 +84,7 @@ async def start_search(
     background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     user_id: int = Depends(get_current_user_id),
+    _analysis_ready: None = Depends(require_local_analysis_ready),
 ):
     if settings.OFFLINE_MODE is True:
         raise HTTPException(

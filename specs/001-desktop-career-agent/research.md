@@ -75,7 +75,10 @@ strict CORS/hosts and a narrow Tauri capability reduce that exposure.
 model setup, not bundled in the installer. The app selects the exact platform asset from a
 signed-in-source catalog, verifies SHA-256, extracts safely into app data, downloads the
 official Apache-2.0 Qwen3 1.7B Q8 GGUF with SHA-256 verification, and then starts it on a
-random authenticated loopback port. Ollama remains an optional local development adapter.
+random authenticated loopback port. An official Ollama installation is also supported as a
+production local fallback when Windows application-control policy blocks the managed runtime. The
+fallback is loopback-only, must pass the same identity and structured readiness checks, and never
+enables Ollama cloud inference.
 
 **Rationale**: llama.cpp provides small native CPU binaries and schema-constrained chat
 completions. Explicit acquisition keeps the installer small, makes model size/license visible,

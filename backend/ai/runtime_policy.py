@@ -9,6 +9,8 @@ from typing import Any, Dict, List, Optional
 from tenacity import RetryError, retry, retry_if_exception, stop_after_attempt, wait_exponential
 
 from backend.ai.orchestrator import LocalAIOrchestrator, OrchestrationRequest
+from backend.ai.retrieval import EvidenceDocument
+from backend.ai.task_specs import TASK_SPECS
 from backend.core.config import settings
 from backend.providers.circuit_breaker import CircuitOpenError, CircuitState, circuit_registry
 from backend.providers.llm.factory import get_provider_for_step
@@ -23,6 +25,7 @@ from backend.services.search.query_contracts import (
 )
 
 logger = logging.getLogger(__name__)
+
 
 def _is_retryable_plan_error(exc: Exception) -> bool:
     """Return True for transient PLAN-step failures worth retrying."""
@@ -249,6 +252,9 @@ class RuntimePolicyMixin:
         user_prompt: str,
         max_tokens: Optional[int] = None,
         expected_rows: int | None = None,
+        evidence: tuple[EvidenceDocument, ...] = (),
+        audit_db: Any | None = None,
+        audit_user_id: int | None = None,
     ) -> Dict[str, Any]:
         """Invoke one versioned schema task with timeout, validation and one repair.
 
@@ -294,17 +300,34 @@ class RuntimePolicyMixin:
                 )
             )
             guidance = f"TASK_GUIDANCE:\n{system_prompt}\n\n{user_prompt}"
-            result = await asyncio.wait_for(
-                LocalAIOrchestrator(provider).execute(
-                    OrchestrationRequest(
-                        task_id=task_id,
-                        user_prompt=guidance,
-                        expected_rows=expected_rows,
-                    )
-                ),
-                timeout=timeout_seconds if timeout_seconds > 0 else None,
+            spec = TASK_SPECS[task_id]
+            attempt_timeout = (
+                timeout_seconds / (spec.repair_attempts + 1) if timeout_seconds > 0 else None
             )
-            return result.output.model_dump(mode="json")
+            result = await LocalAIOrchestrator(provider, db=audit_db).execute(
+                OrchestrationRequest(
+                    task_id=task_id,
+                    user_prompt=guidance,
+                    evidence=evidence,
+                    expected_rows=expected_rows,
+                    user_id=audit_user_id,
+                    attempt_timeout_seconds=(
+                        max(0.05, attempt_timeout) if attempt_timeout is not None else None
+                    ),
+                    total_timeout_seconds=(timeout_seconds if timeout_seconds > 0 else None),
+                    max_output_tokens=max_tokens,
+                )
+            )
+            output = result.output.model_dump(mode="json")
+            output["_local_ai_execution"] = {
+                "model_id": result.model_id,
+                "contract_version": TASK_SPECS[task_id].version,
+                "execution_id": result.execution_id,
+                "output_fingerprint": result.output_fingerprint,
+                "row_fingerprints": list(result.row_fingerprints),
+                "row_input_fingerprints": list(result.row_input_fingerprints),
+            }
+            return output
 
         return await cb.call(_do_call)
 

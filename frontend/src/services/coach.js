@@ -11,7 +11,6 @@ export const CoachService = {
         return ApiClient.delete(`/career-coach/conversations/${encodeURIComponent(id)}`);
     },
     sendMessage(data) {
-        return ApiClient.post("/career-coach/messages", data, { timeoutMs: 120_000 });
+        return ApiClient.post("/career-coach/messages", data, { timeoutMs: 120_000, suppressGlobalError: true });
     },
 };
-

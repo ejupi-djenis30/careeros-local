@@ -23,10 +23,10 @@ describe("LocalModelStatus", () => {
         expect(refresh).toHaveBeenCalledTimes(1);
     });
 
-    it("presents an unavailable optional runtime as a neutral setup state", () => {
+    it("presents an unavailable runtime as required analysis setup", () => {
         hook.mockReturnValue({ status: { loading: false, available: false, ready: false, configured_model: "qwen3:1.7b", installed_models: [], error_code: "local_runtime_unreachable" }, refresh });
         render(<LocalModelStatus />);
-        expect(screen.getByText("AI locale opzionale")).toBeInTheDocument();
-        expect(screen.getByText(/Archivio, CV e candidature funzionano/)).toBeInTheDocument();
+        expect(screen.getByText("Configurazione dell’analisi locale necessaria")).toBeInTheDocument();
+        expect(screen.getByText(/Archivio, CV, candidature ed esportazioni restano disponibili/)).toBeInTheDocument();
     });
 });

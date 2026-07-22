@@ -61,15 +61,14 @@ class Settings(BaseSettings):
     REFRESH_TOKEN_EXPIRE_DAYS: int = 14
 
     # The only supported inference runtime is a host explicitly considered local.
-    LOCAL_INFERENCE_ALLOWED_HOSTS: str = (
-        "localhost,127.0.0.1,::1,ollama,host.docker.internal"
-    )
+    LOCAL_INFERENCE_ALLOWED_HOSTS: str = "localhost,127.0.0.1,::1,ollama,host.docker.internal"
     LOCAL_INFERENCE_URL: str = "http://127.0.0.1:11434"
     LOCAL_MODEL: str = "qwen3:1.7b"
     LOCAL_INFERENCE_CONNECT_TIMEOUT_SECONDS: float = 2.0
     LOCAL_INFERENCE_REQUEST_TIMEOUT_SECONDS: float = 180.0
 
-    # Local model tuning. Per-step model fields are optional and fall back to LOCAL_MODEL.
+    # Local model identity. Per-step fields may be empty but cannot select a model other than
+    # LOCAL_MODEL, so one readiness attestation covers every analysis workflow.
     LLM_CONTEXT_WINDOW: int = 8192
     LLM_MAX_TOKENS: int = 4096
     LLM_TEMPERATURE: float = 0.2
@@ -113,6 +112,7 @@ class Settings(BaseSettings):
     LLM_CALL_TIMEOUT_PLAN: int = 60
     LLM_CALL_TIMEOUT_NORMALIZE: int = 90
     LLM_CALL_TIMEOUT_MATCH: int = 120
+    LLM_CALL_TIMEOUT_COACH: int = 60
     LLM_CALL_TIMEOUT_CRITIQUE: int = 90
     LLM_CALL_TIMEOUT_RERANK: int = 60
     LLM_PLAN_RETRY_ATTEMPTS: int = 2
@@ -234,6 +234,33 @@ class Settings(BaseSettings):
             self.LOCAL_INFERENCE_URL,
             allowed_hosts=self.local_inference_allowed_hosts,
         )
+        for field_name in (
+            "LOCAL_INFERENCE_CONNECT_TIMEOUT_SECONDS",
+            "LOCAL_INFERENCE_REQUEST_TIMEOUT_SECONDS",
+            "LLM_CALL_TIMEOUT_PLAN",
+            "LLM_CALL_TIMEOUT_NORMALIZE",
+            "LLM_CALL_TIMEOUT_MATCH",
+            "LLM_CALL_TIMEOUT_COACH",
+            "LLM_CALL_TIMEOUT_CRITIQUE",
+            "LLM_CALL_TIMEOUT_RERANK",
+        ):
+            if not float(getattr(self, field_name)) > 0:
+                raise ValueError(f"{field_name} must be greater than zero")
+        for field_name in (
+            "LLM_PLAN_MODEL",
+            "LLM_MATCH_MODEL",
+            "LLM_NORMALIZE_MODEL",
+            "LLM_NORMALIZE_PROFILE_MODEL",
+            "LLM_COMPRESS_MODEL",
+            "LLM_CRITIQUE_MODEL",
+            "LLM_RERANK_MODEL",
+        ):
+            override = str(getattr(self, field_name, "") or "").strip()
+            if override and override != self.LOCAL_MODEL:
+                raise ValueError(
+                    f"{field_name} must be empty or match LOCAL_MODEL so readiness attests "
+                    "the model used by every analysis step"
+                )
         if self.ENVIRONMENT.lower() == "production" and self.SECRET_KEY in {
             "",
             "changeme",

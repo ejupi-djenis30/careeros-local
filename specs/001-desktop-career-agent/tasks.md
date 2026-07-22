@@ -379,3 +379,25 @@ the absence of local paths or authentication material.
   no-historical-migration rationale for the still-unreleased manual importer
 - [x] T123 [US7] Run all Python, React, Rust and Alembic gates and record analysis/convergence in
   `daily-driver-analysis.md` and `daily-driver-convergence.md`
+
+## Phase 13: User Story 4 — Mandatory Local Analysis
+
+**Goal**: Make the local LLM a real, required analysis capability without blocking ownership,
+editing, portability, existing documents or deterministic application readiness.
+
+- [x] T124 [US4] Amend constitution, specification and plan for truthful fail-closed analysis,
+  required local readiness and preserved non-AI workflows
+- [x] T125 [US4] Add stable content-free local-model readiness diagnostics and strict structured
+  probe validation in `backend/inference/service.py` and `backend/api/routes/local_model.py`
+- [x] T126 [US4] Require a ready local model before opportunity search starts and remove heuristic
+  fallback results from `backend/search/matching.py` and `backend/search/finalization.py`
+- [x] T127 [US4] Add an authenticated, keyboard-accessible required-model setup/readiness gate and
+  explicit diagnostics in `frontend/src/features/local-model/`, services and bilingual catalogue
+- [x] T128 [US4] Replace optional-AI product copy with accurate required-analysis language while
+  retaining explicit model-free Vault, portability, document and readiness boundaries
+- [x] T129 [US4] Cover health diagnostics, endpoint/model failures, fail-closed matching, API
+  preconditions, UI setup/retry/unlock and accessibility in backend/frontend tests
+- [x] T130 [US4] Update English-first owner, architecture, privacy and daily-driver documentation
+  with local-model requirements, data boundaries and recovery steps
+- [x] T131 [US4] Run proportional gates and record cross-artifact analysis and convergence in
+  `mandatory-local-analysis-analysis.md` and `mandatory-local-analysis-convergence.md`

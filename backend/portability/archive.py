@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 
 from backend.ai.models import AIExecution
 from backend.applications.models import Application, ApplicationEvent
+from backend.applications.snapshots import sanitize_application_snapshot
 from backend.career.coach_models import CoachConversation, CoachMessage
 from backend.career.models import (
     CandidateProfile,
@@ -68,9 +69,9 @@ EXPORT_MODELS: list[tuple[str, type[Any]]] = [
 ]
 MODEL_BY_TABLE = dict(EXPORT_MODELS)
 
-# A scraped listing is shared by every user who saved the same provider record.
-# ``source_query`` describes how one user discovered that listing, so it must
-# never leave the originating vault as part of the shared record.
+# Version 3 archives could contain this user-specific field on a shared listing. The current
+# schema stores it on the owned Job row, but restore still strips the legacy field before model
+# decoding so old backups remain readable without reviving the privacy flaw.
 SCRAPED_JOB_PRIVATE_FIELDS = frozenset({"source_query"})
 
 # Locks and progress payloads describe an in-flight process, not durable search
@@ -86,6 +87,33 @@ SEARCH_PROFILE_RUNTIME_FIELDS = frozenset(
         "search_status_started_at",
         "search_status_updated_at",
         "search_status_finished_at",
+    }
+)
+
+JOB_ANALYSIS_EXPORT_FIELDS = frozenset(
+    {
+        "affinity_score",
+        "affinity_analysis",
+        "skill_match_score",
+        "experience_match_score",
+        "intent_match_score",
+        "language_match_score",
+        "location_match_score",
+        "transferability_score",
+        "qualification_gap_score",
+        "analysis_structured",
+        "red_flags",
+        "analysis_provenance",
+        "analysis_model_id",
+        "analysis_contract_version",
+        "analysis_validated_at",
+        "analysis_execution_id",
+        "analysis_output_fingerprint",
+        "analysis_execution_row_index",
+        "analysis_row_fingerprint",
+        "analysis_input_fingerprint",
+        "analysis_legacy_snapshot",
+        "worth_applying",
     }
 )
 
@@ -109,6 +137,19 @@ def _row(instance: Any, *, omit: set[str] | None = None) -> dict[str, Any]:
     }
 
 
+def _job_row_for_export(job: Job, *, omit: set[str]) -> dict[str, Any]:
+    row = _row(job, omit=omit)
+    # A legacy quarantine may itself contain raw prose. It is local audit state, not a
+    # portable claim, and must not leave the vault even when the current row is valid.
+    row["analysis_legacy_snapshot"] = None
+    if job.analysis_verified:
+        return row
+    for field in JOB_ANALYSIS_EXPORT_FIELDS:
+        if field in row:
+            row[field] = False if field == "worth_applying" else None
+    return row
+
+
 def _queries(db: Session, user_id: int) -> dict[str, list[Any]]:
     user = db.get(User, user_id)
     if user is None:
@@ -127,14 +168,10 @@ def _queries(db: Session, user_id: int) -> dict[str, list[Any]]:
         else []
     )
     facts = (
-        db.query(CareerFact).filter(CareerFact.profile_id == profile_id).all()
-        if profile_id
-        else []
+        db.query(CareerFact).filter(CareerFact.profile_id == profile_id).all() if profile_id else []
     )
     goals = (
-        db.query(CareerGoal).filter(CareerGoal.profile_id == profile_id).all()
-        if profile_id
-        else []
+        db.query(CareerGoal).filter(CareerGoal.profile_id == profile_id).all() if profile_id else []
     )
     drafts = (
         db.query(ResumeDraft).filter(ResumeDraft.profile_id == profile_id).all()
@@ -248,6 +285,13 @@ def export_archive(db: Session, user_id: int) -> bytes:
         if not rows["candidate_profiles"]:
             raise ArchiveError("There is no career vault data to export")
 
+        # Validate every receipt inside the same database snapshot used for serialization.
+        # Database provenance labels alone are never sufficient for an export decision.
+        from backend.services.job_service import JobService
+
+        JobService(db)._mark_analysis_receipts(rows["jobs"], user_id)
+        jobs_by_id = {job.id: job for job in rows["jobs"]}
+
         tables: dict[str, list[dict[str, Any]]] = {}
         user_scoped = {
             "candidate_profiles",
@@ -263,7 +307,22 @@ def export_archive(db: Session, user_id: int) -> bytes:
                 omit.update(SCRAPED_JOB_PRIVATE_FIELDS)
             elif table_name == "search_profiles":
                 omit.update(SEARCH_PROFILE_RUNTIME_FIELDS)
-            tables[table_name] = [_row(item, omit=omit) for item in rows[table_name]]
+            if table_name == "jobs":
+                tables[table_name] = [
+                    _job_row_for_export(item, omit=omit) for item in rows[table_name]
+                ]
+            elif table_name == "applications":
+                tables[table_name] = []
+                for item in rows[table_name]:
+                    row = _row(item, omit=omit)
+                    row["job_snapshot"] = sanitize_application_snapshot(
+                        item.job_snapshot,
+                        verified_job=jobs_by_id.get(item.job_id),
+                        quarantine_reason="analysis_not_receipt_verified_at_export",
+                    )
+                    tables[table_name].append(row)
+            else:
+                tables[table_name] = [_row(item, omit=omit) for item in rows[table_name]]
         owner = rows["preference_signals"][0]
         tables["preference_signals"] = [
             {
@@ -312,9 +371,7 @@ def export_archive(db: Session, user_id: int) -> bytes:
 
         output = BytesIO()
         try:
-            with zipfile.ZipFile(
-                output, mode="w", compression=zipfile.ZIP_DEFLATED
-            ) as archive:
+            with zipfile.ZipFile(output, mode="w", compression=zipfile.ZIP_DEFLATED) as archive:
                 archive.writestr(MANIFEST_MEMBER, manifest_data)
                 for path, data in sorted(members.items()):
                     archive.writestr(path, data)

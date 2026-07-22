@@ -10,6 +10,7 @@ from backend.inference.ports import (
     StructuredInferenceRequest,
     StructuredInferenceResult,
 )
+from backend.inference.runtime_schema import runtime_json_schema
 from backend.providers.llm.base import LLMProvider, extract_json_payload
 
 
@@ -49,6 +50,10 @@ class OllamaProvider(LLMProvider):
         self.async_transport = async_transport
 
     @property
+    def runtime_name(self) -> str:
+        return "ollama"
+
+    @property
     def model_id(self) -> str:
         return f"ollama-local/{self.model}"
 
@@ -58,7 +63,7 @@ class OllamaProvider(LLMProvider):
 
     def _structured_payload(self, request: StructuredInferenceRequest) -> dict[str, Any]:
         payload = self._payload(request.system_prompt, request.user_prompt, request.max_tokens)
-        payload["format"] = request.json_schema
+        payload["format"] = runtime_json_schema(request.json_schema)
         payload["options"].update(
             {
                 "temperature": request.temperature,

@@ -1,10 +1,45 @@
 from datetime import datetime
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 from fastapi.testclient import TestClient
 
 from backend.services.search_status import release_task, reserve_task
+
+
+def test_start_search_requires_ready_local_analysis(client, auth_headers: dict, test_profile):
+    from backend.api.deps import require_local_analysis_ready
+    from backend.inference.service import LocalModelReadiness
+    from backend.main import app
+
+    previous_override = app.dependency_overrides.pop(require_local_analysis_ready, None)
+    unavailable = LocalModelReadiness(
+        ready=False,
+        runtime="ollama",
+        configured_model="compact-local",
+        error_code="local_runtime_unreachable",
+        checks=[],
+    )
+    try:
+        with patch(
+            "backend.inference.service.check_local_model_readiness",
+            new=AsyncMock(return_value=unavailable),
+        ):
+            response = client.post(
+                "/api/v1/search/start",
+                json={"id": test_profile["id"], "name": "Blocked search"},
+                headers=auth_headers,
+            )
+    finally:
+        if previous_override is not None:
+            app.dependency_overrides[require_local_analysis_ready] = previous_override
+
+    assert response.status_code == 428
+    assert response.json()["detail"] == {
+        "code": "local_model_required",
+        "message": "A ready local model is required for analysis",
+        "model_error_code": "local_runtime_unreachable",
+    }
 
 
 class TestAdvancedSearchAPI:

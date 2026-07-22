@@ -1,4 +1,5 @@
 import asyncio
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -79,7 +80,14 @@ def mock_db():
 
 @pytest.fixture
 def search_service(mock_db, mock_job_repo, mock_profile_repo):
-    return SearchService(db=mock_db, job_repo=mock_job_repo, profile_repo=mock_profile_repo)
+    return SearchService(
+        db=mock_db,
+        job_repo=mock_job_repo,
+        profile_repo=mock_profile_repo,
+        analysis_readiness_check=AsyncMock(
+            return_value=SimpleNamespace(ready=True, error_code=None)
+        ),
+    )
 
 
 @pytest.mark.asyncio
@@ -160,6 +168,9 @@ async def test_run_search_success(search_service, mock_profile_repo, mock_job_re
     ):
         # Now create service so internal providers are mocked
         svc = SearchService(db=mock_db, job_repo=mock_job_repo, profile_repo=mock_profile_repo)
+        svc.analysis_readiness_check = AsyncMock(
+            return_value=SimpleNamespace(ready=True, error_code=None)
+        )
 
         # Inject provider mocks into the created service
         svc.providers = {
@@ -765,7 +776,7 @@ async def test_processing_consumer_updates_jobs_skipped_realtime(search_service)
 
 
 @pytest.mark.asyncio
-async def test_processing_consumer_skips_analysis_when_circuit_open(search_service):
+async def test_processing_consumer_fails_closed_when_analysis_circuit_is_open(search_service):
     job_a = MagicMock()
     job_b = MagicMock()
     job_queue = asyncio.Queue()
@@ -797,7 +808,7 @@ async def test_processing_consumer_skips_analysis_when_circuit_open(search_servi
 
     assert result == (0, 2, [], 0, 0, 2)
     mock_run_batches.assert_not_awaited()
-    mock_increment_errors.assert_not_called()
+    mock_increment_errors.assert_called_once_with(1)
     mock_update.assert_any_call(
         1,
         jobs_analyze_total=2,
@@ -806,12 +817,12 @@ async def test_processing_consumer_skips_analysis_when_circuit_open(search_servi
         jobs_skipped=2,
     )
     assert any(
-        "MATCH circuit breaker is open" in call.args[1] for call in mock_add_log.call_args_list
+        "no result will be saved" in call.args[1] for call in mock_add_log.call_args_list
     )
 
 
 @pytest.mark.asyncio
-async def test_run_analysis_batches_uses_deterministic_fallback_for_circuit_open(search_service):
+async def test_run_analysis_batches_persists_nothing_when_circuit_is_open(search_service):
     job = MagicMock()
     job.title = "Backend Engineer"
     job.descriptions = [MagicMock(description="Python role")]
@@ -839,10 +850,8 @@ async def test_run_analysis_batches_uses_deterministic_fallback_for_circuit_open
     ):
         result = await search_service._run_analysis_batches(1, {}, [job])
 
-    assert len(result) == 1
-    assert result[0][0] is job
-    assert result[0][1]["analysis_structured"]["mode"] == "deterministic_local"
-    mock_increment_errors.assert_not_called()
+    assert result == []
+    mock_increment_errors.assert_called_once_with(1)
 
 
 @pytest.mark.asyncio
@@ -862,10 +871,29 @@ async def test_run_analysis_batches_splits_batches_by_prompt_budget(search_servi
 
     captured_batches = []
 
-    async def capture(batch, profile):
+    async def capture(batch, profile, **_audit_context):
         captured_batches.append(batch)
         return [
-            {"affinity_score": 71, "affinity_analysis": "ok", "worth_applying": True} for _ in batch
+            {
+                "affinity_score": 71,
+                "affinity_analysis": "Local evidence review: consider.",
+                "worth_applying": True,
+                "analysis_structured": {
+                    "recommendation": "consider",
+                    "evidence_citations": [{
+                        "type": "skill",
+                        "assessment": "strength",
+                        "job_evidence_id": "job:0",
+                        "candidate_evidence_id": "candidate:profile",
+                        "job_evidence": "Required: Python",
+                        "candidate_evidence": "Python experience",
+                    }],
+                },
+                "analysis_provenance": "local_model_validated",
+                "analysis_model_id": "llama-cpp-local/test-model",
+                "analysis_contract_version": "1.1.0",
+            }
+            for _ in batch
         ]
 
     with (

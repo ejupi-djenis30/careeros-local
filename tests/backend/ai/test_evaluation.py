@@ -20,9 +20,7 @@ class _GoldenProvider:
     process_id = os.getpid()
 
     def __init__(self) -> None:
-        self.outputs = {
-            case.task_id: case.expected_output for case in load_dataset().cases
-        }
+        self.outputs = {case.task_id: case.expected_output for case in load_dataset().cases}
 
     async def generate_structured_async(self, request):
         return StructuredInferenceResult(

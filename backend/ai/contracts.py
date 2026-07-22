@@ -46,20 +46,54 @@ class GroundedClaim(StrictContract):
 
 class CoachResult(StrictContract):
     answer: str = Field(min_length=1, max_length=6000)
-    claims: list[GroundedClaim] = Field(default_factory=list, max_length=12)
+    claims: list[GroundedClaim] = Field(min_length=1, max_length=12)
     fact_citations: list[UuidString] = Field(default_factory=list, max_length=32)
     job_citations: list[int] = Field(default_factory=list, max_length=32)
     confidence: float = Field(ge=0, le=1)
     missing_evidence: list[str] = Field(default_factory=list, max_length=8)
 
+    @model_validator(mode="before")
+    @classmethod
+    def materialize_omitted_aggregate_citations(cls, value):
+        """Derive redundant citation indexes when a compact model omits them.
+
+        The grounded claims are authoritative.  Small local models commonly omit
+        fields that have schema defaults even when the prompt repeats them.  An
+        explicitly supplied aggregate remains subject to the exact-match validator
+        below, so a model cannot use this normalization to hide a mismatch.
+        """
+        if not isinstance(value, dict) or not isinstance(value.get("claims"), list):
+            return value
+
+        normalized = dict(value)
+        if "fact_citations" not in normalized:
+            normalized["fact_citations"] = list(
+                dict.fromkeys(
+                    fact_id
+                    for claim in normalized["claims"]
+                    if isinstance(claim, dict)
+                    for fact_id in claim.get("fact_ids", [])
+                )
+            )
+        if "job_citations" not in normalized:
+            normalized["job_citations"] = list(
+                dict.fromkeys(
+                    job_id
+                    for claim in normalized["claims"]
+                    if isinstance(claim, dict)
+                    for job_id in claim.get("job_ids", [])
+                )
+            )
+        return normalized
+
     @model_validator(mode="after")
     def citations_cover_claims(self) -> "CoachResult":
         claim_facts = {item for claim in self.claims for item in claim.fact_ids}
         claim_jobs = {item for claim in self.claims for item in claim.job_ids}
-        if not claim_facts <= set(self.fact_citations):
-            raise ValueError("aggregate fact citations do not cover every claim")
-        if not claim_jobs <= set(self.job_citations):
-            raise ValueError("aggregate job citations do not cover every claim")
+        if claim_facts != set(self.fact_citations):
+            raise ValueError("aggregate fact citations must exactly match grounded claims")
+        if claim_jobs != set(self.job_citations):
+            raise ValueError("aggregate job citations must exactly match grounded claims")
         if len(set(self.fact_citations)) != len(self.fact_citations):
             raise ValueError("fact citations must be unique")
         if len(set(self.job_citations)) != len(self.job_citations):
@@ -80,9 +114,7 @@ class ResumeRequirementGap(StrictContract):
 
     @model_validator(mode="after")
     def unique_positive_job_ids(self) -> "ResumeRequirementGap":
-        if len(set(self.job_ids)) != len(self.job_ids) or any(
-            item < 1 for item in self.job_ids
-        ):
+        if len(set(self.job_ids)) != len(self.job_ids) or any(item < 1 for item in self.job_ids):
             raise ValueError("resume gaps require unique positive job identifiers")
         return self
 
@@ -222,23 +254,34 @@ class JobNormalizationResult(StrictContract):
 
 
 class MatchEvidence(StrictContract):
-    type: str = Field(min_length=1, max_length=60)
-    job_evidence: str = Field(min_length=1, max_length=160)
-    candidate_evidence: str = Field(min_length=1, max_length=240)
+    type: Literal[
+        "skill",
+        "experience",
+        "intent",
+        "language",
+        "location",
+        "transferability",
+        "qualification",
+    ]
+    job_evidence_id: str = Field(pattern=r"^job:\d+$", max_length=32)
+    candidate_evidence_id: Literal["candidate:profile"]
+    job_quote_id: str = Field(pattern=r"^job:\d+:[a-z_]+:\d+$", max_length=64)
+    candidate_quote_id: str = Field(pattern=r"^candidate:profile:[a-z_]+:\d+$", max_length=80)
+
+    @model_validator(mode="after")
+    def quote_ids_match_dimension_and_document(self) -> "MatchEvidence":
+        if not self.job_quote_id.startswith(
+            f"{self.job_evidence_id}:{self.type}:"
+        ) or not self.candidate_quote_id.startswith(f"{self.candidate_evidence_id}:{self.type}:"):
+            raise ValueError("match quote IDs must belong to the declared evidence dimension")
+        return self
 
 
 class MatchAnalysis(StrictContract):
-    strengths: list[str] = Field(default_factory=list, max_length=5)
-    weaknesses: list[str] = Field(default_factory=list, max_length=5)
-    gaps: list[str] = Field(default_factory=list, max_length=8)
-    verdict: str = Field(min_length=1, max_length=240)
-    evidence_citations: list[MatchEvidence] = Field(default_factory=list, max_length=4)
+    evidence_citations: list[MatchEvidence] = Field(min_length=1, max_length=7)
 
 
 class JobMatch(StrictContract):
-    affinity_score: int = Field(ge=0, le=100)
-    affinity_analysis: str = Field(min_length=1, max_length=2000)
-    worth_applying: bool
     skill_match_score: int = Field(ge=0, le=100)
     experience_match_score: int = Field(ge=0, le=100)
     intent_match_score: int = Field(ge=0, le=100)
@@ -246,12 +289,33 @@ class JobMatch(StrictContract):
     location_match_score: int = Field(ge=0, le=100)
     transferability_score: int = Field(ge=0, le=100)
     qualification_gap_score: int = Field(ge=0, le=100)
-    analysis_structured: MatchAnalysis | None = None
-    red_flags: list[str] = Field(default_factory=list, max_length=10)
 
 
 class JobMatchResult(StrictContract):
     results: list[JobMatch] = Field(min_length=1, max_length=12)
+
+    @model_validator(mode="before")
+    @classmethod
+    def wrap_single_score_row(cls, value):
+        """Accept one compact score row from small local models.
+
+        The public contract remains a batch object. Some small constrained models
+        omit that single redundant wrapper when only one job is supplied, so the
+        server restores it before strict validation. No score field or extra model
+        claim is synthesized here.
+        """
+        score_fields = {
+            "skill_match_score",
+            "experience_match_score",
+            "intent_match_score",
+            "language_match_score",
+            "location_match_score",
+            "transferability_score",
+            "qualification_gap_score",
+        }
+        if isinstance(value, dict) and "results" not in value and score_fields <= value.keys():
+            return {"results": [dict(value)]}
+        return value
 
 
 class JobCritique(StrictContract):

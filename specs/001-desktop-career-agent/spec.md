@@ -113,9 +113,10 @@ accuracy thresholds; then repeat a user workflow with networking disabled.
 
 **Acceptance Scenarios**:
 
-1. **Given** no local model, **When** an AI-assisted action is requested, **Then** the
-   application explains what is missing and offers an explicit local model setup path while
-   preserving deterministic non-AI functionality.
+1. **Given** no ready local model, **When** an AI-assisted action or opportunity-analysis
+   workflow is requested, **Then** the application blocks that action, explains the failed
+   prerequisite and opens an explicit local-model setup and readiness path while preserving
+   deterministic non-AI functionality.
 2. **Given** an installed supported model and an offline computer, **When** an AI task runs,
    **Then** all inputs and outputs remain local and the result identifies supporting facts.
 3. **Given** malformed, contradictory or unsupported model output, **When** validation runs,
@@ -197,7 +198,8 @@ and verify that the report, score, fingerprint and exported bytes are stable for
 
 A person can discover a role from an explicit brief or capture it manually, then keep a dated next
 action and publish a verifiable application dossier with every requirement, answer and checklist
-item represented. The workflow remains complete without a model.
+item represented. Manual capture, application management and dossier publication remain complete
+without a model; opportunity discovery requires validated local-model analysis.
 
 **Why this priority**: A useful local career utility must preserve privacy and intent at ingestion,
 survive concurrent edits, and export the exact application material the user reviewed.
@@ -212,10 +214,11 @@ only board reads and lossless payloads.
 1. **Given** a manual listing with a client-supplied platform id, **When** it is saved repeatedly by
    one user and then by another, **Then** the client id is ignored, the same-user retry returns the
    same job, and each user has a distinct private listing row.
-2. **Given** explicit role and strategy input, **When** provider search runs with or without an
-   optional model installed, **Then** the planner uses only those inputs and explicit preferences,
-   never calls the model, rejects legacy/model-derived cache entries, keeps CV text and normalized
-   fields behind the provider boundary, treats zero as disabled and `NULL` as the local default.
+2. **Given** explicit role and strategy input and a ready local model, **When** provider search
+   runs, **Then** the planner uses only those inputs and explicit preferences, never calls the
+   model, rejects legacy/model-derived cache entries, keeps CV text and normalized fields behind
+   the provider boundary, treats zero as disabled and `NULL` as the local default, and persists a
+   match only after validated local-model analysis.
 3. **Given** two sessions at the same application revision, **When** both append a stage event,
    **Then** exactly one conditional update and event commit; the other receives a conflict.
 4. **Given** task events whose user-controlled occurrence timestamps are out of order, **When** the
@@ -310,7 +313,8 @@ only board reads and lossless payloads.
 - **FR-025**: Invalid AI output MUST be rejected or retried only within a visible bounded
   policy; repeated failure MUST return control without corrupting the active vault.
 - **FR-026**: The product MUST preserve useful deterministic behavior when no model is
-  installed or an AI task is unavailable.
+  installed or an AI task is unavailable, but MUST NOT label, persist or display that behavior
+  as completed AI analysis, matching, tailoring, coaching or recommendation output.
 - **FR-027**: The product MUST include a versioned offline evaluation set representative of
   profile extraction, job normalization, matching, resume tailoring and recommendation tasks.
 - **FR-028**: Evaluation results MUST identify the application version, model profile,
@@ -386,6 +390,19 @@ only board reads and lossless payloads.
   use accessible add/remove controls, and validate evidence references as UUIDs.
 - **FR-051**: Manual import and dossier schemas MUST reject unknown fields and enforce bounded text,
   collection and metadata sizes before domain services execute.
+- **FR-052**: AI analysis is a required capability of CareerOS. The authenticated workspace MUST
+  expose a blocking, keyboard-accessible local-model onboarding and structured-output readiness
+  check before analysis workflows become available, without blocking Vault editing, portability,
+  deterministic application readiness or existing document access.
+- **FR-053**: Opportunity matching MUST persist a result only after a local model returns output
+  that passes the declared structured contract. Runtime, timeout, circuit-breaker, schema or
+  evidence failure MUST fail the analysis batch with an actionable status and MUST NOT invoke a
+  deterministic scoring fallback.
+- **FR-054**: Model readiness diagnostics MUST verify the configured endpoint privacy boundary,
+  runtime reachability, configured-model availability and one content-free schema-constrained
+  inference. Diagnostics MUST expose stable codes without logging prompts, model output, user data
+  or secrets and MUST accept only the managed authenticated loopback runtime or the explicit local
+  development allowlist.
 
 ### Key Entities
 
@@ -421,7 +438,7 @@ only board reads and lossless payloads.
 ### Measurable Outcomes
 
 - **SC-001**: On a clean supported computer, at least 95% of first-time testers install and
-  open the application within five minutes, excluding optional model download time.
+  open the application within five minutes, excluding the separate local-model download time.
 - **SC-002**: Automated privacy tests observe zero remote-AI requests and zero hidden outbound
   requests across launch, editing, inference, rendering, export and offline test workflows.
 - **SC-003**: After a model is installed, 100% of core profile, goal, resume and AI workflows
@@ -459,6 +476,10 @@ only board reads and lossless payloads.
 - **SC-016**: Concurrency, cross-user, planner-boundary, replay-integrity, projection-read and
   repeatable-dossier tests pass with networking disabled and demonstrate exactly one CAS winner,
   zero manual cross-user collisions and no silently omitted UI rows.
+- **SC-017**: Contract tests prove that 100% of opportunity-analysis persistence paths require a
+  ready loopback model and validated structured output, model failures produce zero heuristic
+  analysis rows, and the authenticated onboarding gate unlocks only after the content-free
+  structured readiness probe succeeds.
 
 ## Assumptions
 

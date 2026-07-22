@@ -133,7 +133,7 @@ describe('JobTable', () => {
 
     it('opens and closes the AI analysis modal', () => {
         const mockJobs = [{
-            id: '1', title: 'Engineer', company: 'Google', affinity_analysis: 'Great fit because...', affinity_score: 95
+            id: '1', title: 'Engineer', company: 'Google', affinity_analysis: 'Great fit because...', affinity_score: 95, analysis_verified: true
         }];
         const mockPagination = { page: 1, pages: 1, total: 1 };
 
@@ -154,9 +154,50 @@ describe('JobTable', () => {
         expect(screen.queryByText('Local match analysis')).not.toBeInTheDocument();
     });
 
+    it('shows validated local-model provenance and inspectable citations', () => {
+        const mockJobs = [{
+            id: 'grounded-1',
+            title: 'Backend Engineer',
+            company: 'Local Co',
+            affinity_analysis: 'Local evidence review: strong fit.',
+            affinity_score: 91,
+            analysis_provenance: 'local_model_validated',
+            analysis_model_id: 'llama-cpp-local/qwen3-1.7b-q8',
+            analysis_contract_version: '1.1.0',
+            analysis_verified: true,
+            analysis_structured: {
+                recommendation: 'strong_fit',
+                evidence_citations: [{
+                    type: 'skill',
+                    assessment: 'strength',
+                    job_evidence_id: 'job:0',
+                    candidate_evidence_id: 'candidate:profile',
+                    job_evidence: 'Requires production Python',
+                    candidate_evidence: 'Built production Python services',
+                }],
+            },
+        }];
+
+        render(
+            <JobTable
+                jobs={mockJobs}
+                pagination={{ page: 1, pages: 1, total: 1 }}
+                onPageChange={vi.fn()}
+                isGlobalView={false}
+            />
+        );
+        fireEvent.click(screen.getAllByTitle('View match analysis')[0]);
+
+        expect(screen.getByTestId('validated-match-evidence')).toBeInTheDocument();
+        expect(screen.getByText('Validated local model')).toBeInTheDocument();
+        expect(screen.getByText('llama-cpp-local/qwen3-1.7b-q8')).toBeInTheDocument();
+        expect(screen.getByText('“Requires production Python”')).toBeInTheDocument();
+        expect(screen.getByText('“Built production Python services”')).toBeInTheDocument();
+    });
+
     it('opens modal from mobile view and closes with X icon', () => {
         const mockJobs = [{
-            id: '1', title: 'Engineer', company: 'Google', affinity_analysis: 'Great fit...', affinity_score: 95
+            id: '1', title: 'Engineer', company: 'Google', affinity_analysis: 'Great fit...', affinity_score: 95, analysis_verified: true
         }];
         const mockPagination = { page: 1, pages: 1, total: 1 };
 
@@ -181,7 +222,7 @@ describe('JobTable', () => {
 
         render(
             <JobTable
-                jobs={[{ id: '99', title: 'Engineer', company: 'Google', affinity_analysis: 'Great fit', affinity_score: 95 }]}
+                jobs={[{ id: '99', title: 'Engineer', company: 'Google', affinity_analysis: 'Great fit', affinity_score: 95, analysis_verified: true }]}
                 pagination={{ page: 1, pages: 1, total: 1 }}
                 onPageChange={vi.fn()}
                 isGlobalView={false}

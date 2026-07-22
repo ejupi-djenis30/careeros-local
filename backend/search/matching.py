@@ -12,7 +12,6 @@ from typing import Any, Dict, List, Optional
 from sqlalchemy.orm import Session
 
 from backend.core.config import settings
-from backend.jobs.matching import deterministic_job_match
 from backend.models import ScrapedJob, SearchProfile
 from backend.providers.circuit_breaker import CircuitOpenError
 from backend.providers.jobs.jobroom.client import JobRoomProvider
@@ -42,6 +41,7 @@ from backend.services.search.persistence import SearchPipelinePersistence
 from backend.services.search.prompt_compaction import (
     build_profile_match_snapshot,
     build_profile_normalization_fingerprint,
+    compact_prompt_text,
 )
 from backend.services.search.search_validator import build_search_request
 from backend.services.utils import (
@@ -204,18 +204,9 @@ class MatchingMixin:
             "soft_skills": raw_norm.get("soft_skills"),
         }
 
-        runtime_policy = llm_service.get_step_runtime_policy("match")
-        description_cap = max(1, int(runtime_policy.get("description_limit_chars") or 1800))
-        compact_description = getattr(job, "_compact_description", None)
-        if not isinstance(compact_description, str) or not compact_description.strip():
-            compact_description = await llm_service._compress_description_if_needed(
-                desc_text,
-                description_cap,
-            )
-
         return {
             "title": getattr(job, "title", "Unknown"),
-            "description": compact_description,
+            "description": desc_text,
             "location": job.location.city if getattr(job, "location", None) else "Unknown",
             "workload": (
                 f"{job.employment.workload_min}-{job.employment.workload_max}%"
@@ -264,7 +255,9 @@ class MatchingMixin:
         # Legacy helper path used mainly by older tests and compatibility shims.
         # The main runtime pipeline performs critique/rerank in _finalize_and_save.
         # Keep this helper deterministic and self-contained unless a caller opts in.
-        enable_refinement_passes = bool(profile_dict.get("_enable_final_refinement_passes", False))
+        # Persisted match rows carry one auditable job_match attestation. Legacy refinement
+        # passes remain disabled until they can store and validate a complete provenance chain.
+        enable_refinement_passes = False
 
         semaphore = asyncio.Semaphore(settings.ANALYSIS_CONCURRENCY)
         jobs_metadata = [await self._build_analysis_job_metadata(job) for job in unique_jobs]
@@ -281,22 +274,25 @@ class MatchingMixin:
                     return []
 
                 try:
-                    results = await llm_service.analyze_job_batch(batch_metadata, profile_dict)
+                    results = await llm_service.analyze_job_batch(
+                        batch_metadata,
+                        profile_dict,
+                        audit_db=self.db,
+                        audit_user_id=profile_dict.get("user_id"),
+                    )
                     return list(zip(batch_jobs, results))
                 except Exception as e:
+                    self._increment_status_errors(profile_id)
                     logger.warning(
-                        "Local model analysis unavailable; using deterministic match: %s", e
+                        "Required local-model analysis failed; no substitute result persisted: %s",
+                        type(e).__name__,
                     )
-                    normalized_profile = profile_dict.get("profile_normalization") or profile_dict
-                    return [
-                        (
-                            job,
-                            deterministic_job_match(
-                                metadata.get("normalized_data") or {}, normalized_profile
-                            ),
-                        )
-                        for job, metadata in zip(batch_jobs, batch_metadata)
-                    ]
+                    add_log(
+                        profile_id,
+                        "Required local-model analysis failed for this batch; no heuristic "
+                        "result was saved.",
+                    )
+                    return []
 
         tasks = [
             analyze_batch(batch_jobs, batch_metadata) for batch_jobs, batch_metadata in batches
@@ -482,37 +478,38 @@ class MatchingMixin:
                     return []
 
                 try:
-                    results = await llm_service.analyze_job_batch(batch_metadata, profile_dict)
+                    results = await llm_service.analyze_job_batch(
+                        batch_metadata,
+                        profile_dict,
+                        audit_db=self.db,
+                        audit_user_id=profile_dict.get("user_id"),
+                    )
                     return list(zip(batch_jobs, results))
                 except CircuitOpenError as exc:
+                    self._increment_status_errors(profile_id)
                     logger.warning(
-                        "Match circuit is open for profile %s; using deterministic local match: %s",
+                        "Required local-model analysis circuit is open for profile %s: %s",
                         profile_id,
-                        exc,
+                        type(exc).__name__,
                     )
-                    normalized_profile = profile_dict.get("profile_normalization") or profile_dict
-                    return [
-                        (
-                            job,
-                            deterministic_job_match(
-                                metadata.get("normalized_data") or {}, normalized_profile
-                            ),
-                        )
-                        for job, metadata in zip(batch_jobs, batch_metadata)
-                    ]
+                    add_log(
+                        profile_id,
+                        "Required local-model analysis is temporarily unavailable; no "
+                        "heuristic result was saved.",
+                    )
+                    return []
                 except Exception as e:
                     self._increment_status_errors(profile_id)
-                    logger.warning("Local model analysis failed; using deterministic match: %s", e)
-                    normalized_profile = profile_dict.get("profile_normalization") or profile_dict
-                    return [
-                        (
-                            job,
-                            deterministic_job_match(
-                                metadata.get("normalized_data") or {}, normalized_profile
-                            ),
-                        )
-                        for job, metadata in zip(batch_jobs, batch_metadata)
-                    ]
+                    logger.warning(
+                        "Required local-model analysis failed; no substitute result persisted: %s",
+                        type(e).__name__,
+                    )
+                    add_log(
+                        profile_id,
+                        "Required local-model analysis failed for this batch; no heuristic "
+                        "result was saved.",
+                    )
+                    return []
 
         tasks = [
             analyze_batch(batch_jobs, batch_metadata) for batch_jobs, batch_metadata in batches

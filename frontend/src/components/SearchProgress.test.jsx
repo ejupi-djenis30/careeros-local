@@ -80,9 +80,7 @@ describe('SearchProgress', () => {
     expect(
       screen.getByText('The generated queries did not return any jobs.')
     ).toBeInTheDocument();
-    expect(screen.getByTestId('llm-debug-label')).toHaveTextContent(
-      'LLM_DEBUG state=done terminal_reason=no_results profile_id=1'
-    );
+    expect(screen.queryByText(/LLM_DEBUG|profile_id/)).not.toBeInTheDocument();
   });
 
   it('explains the deterministic explicit-query requirement from the backend reason', () => {
@@ -123,9 +121,7 @@ describe('SearchProgress', () => {
     expect(
       screen.getByText('Every fetched job was excluded by the structured filters.')
     ).toBeInTheDocument();
-    expect(screen.getByTestId('llm-debug-label')).toHaveTextContent(
-      'LLM_DEBUG state=done terminal_reason=no_jobs_after_structured_filters profile_id=1'
-    );
+    expect(screen.queryByText(/LLM_DEBUG|profile_id/)).not.toBeInTheDocument();
   });
 
   it('shows completion notice for no_jobs_after_dedup terminal reason', () => {
@@ -148,9 +144,7 @@ describe('SearchProgress', () => {
     expect(
       screen.getByText('No jobs remained after removing duplicates from this run.')
     ).toBeInTheDocument();
-    expect(screen.getByTestId('llm-debug-label')).toHaveTextContent(
-      'LLM_DEBUG state=done terminal_reason=no_jobs_after_dedup profile_id=1'
-    );
+    expect(screen.queryByText(/LLM_DEBUG|profile_id/)).not.toBeInTheDocument();
   });
 
   it('does not show completion notice for fully completed runs', () => {
@@ -171,9 +165,7 @@ describe('SearchProgress', () => {
     render(<ToastProvider><SearchProgress profileId="1" status={status} onStateChange={vi.fn()} onClear={vi.fn()} /></ToastProvider>);
 
     expect(screen.queryByText(/Search completed with notice:/)).not.toBeInTheDocument();
-    expect(screen.getByTestId('llm-debug-label')).toHaveTextContent(
-      'LLM_DEBUG state=done terminal_reason=completed profile_id=1'
-    );
+    expect(screen.queryByText(/LLM_DEBUG|profile_id/)).not.toBeInTheDocument();
   });
 
   it('shows error notice for pipeline processing failures', () => {
@@ -196,9 +188,32 @@ describe('SearchProgress', () => {
     expect(
       screen.getByText('The search failed while processing jobs, before analysis finished.')
     ).toBeInTheDocument();
-    expect(screen.getByTestId('llm-debug-label')).toHaveTextContent(
-      'LLM_DEBUG state=error terminal_reason=pipeline_processing_failed profile_id=1'
-    );
+    expect(screen.queryByText(/LLM_DEBUG|profile_id/)).not.toBeInTheDocument();
+  });
+
+  it.each([
+    ['local_model_required', 'required local analysis is not ready'],
+    ['local_analysis_failed', 'could not finish every required analysis'],
+  ])('shows actionable copy for %s without internal identifiers', (terminalReason, expectedCopy) => {
+    const status = {
+      state: 'error',
+      terminal_reason: terminalReason,
+      total_searches: 0,
+      searches_generated: [],
+      active_search_indices: [],
+      completed_search_indices: [],
+      jobs_new: 0,
+      jobs_unique: 0,
+      jobs_duplicates: 0,
+      jobs_skipped: 0,
+      errors: 1,
+      log: [],
+    };
+
+    render(<ToastProvider><SearchProgress profileId="sensitive-id" status={status} onStateChange={vi.fn()} onClear={vi.fn()} /></ToastProvider>);
+
+    expect(screen.getByText(new RegExp(expectedCopy, 'i'))).toBeInTheDocument();
+    expect(screen.queryByText(/sensitive-id|profile_id|LLM_DEBUG/)).not.toBeInTheDocument();
   });
 
   it('renders duplicate breakdown when provided by backend status', () => {

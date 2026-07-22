@@ -34,8 +34,12 @@ from backend.applications.schemas import (
     ApplicationTaskResponse,
     ApplicationTaskUpdate,
 )
+from backend.applications.snapshots import (
+    sanitize_application_snapshot,
+    snapshot_from_job,
+)
 from backend.db.types import aware_utc
-from backend.models import Job, ScrapedJob
+from backend.models import Job
 from backend.resumes.models import ResumeDraft, ResumeVersion
 from backend.storage.atomic import read_verified
 
@@ -205,9 +209,24 @@ class ApplicationService:
                 continue
         return sorted(summaries, key=lambda item: item.version_number, reverse=True)
 
+    def _safe_snapshot(self, application: Application) -> dict[str, Any]:
+        verified_job = None
+        if application.job_id is not None:
+            job = self.db.get(Job, application.job_id)
+            if job is not None and job.user_id == application.user_id:
+                from backend.services.job_service import JobService
+
+                verified_job = JobService(self.db)._mark_analysis_receipt(job, application.user_id)
+        return sanitize_application_snapshot(
+            application.job_snapshot,
+            verified_job=verified_job,
+            quarantine_reason="analysis_not_receipt_verified",
+        )
+
     def _response(self, application: Application) -> ApplicationResponse:
         return ApplicationResponse.model_validate(application).model_copy(
             update={
+                "job_snapshot": self._safe_snapshot(application),
                 "tasks": self._task_snapshots(application),
                 "dossiers": self._dossier_summaries(application),
             }
@@ -282,40 +301,12 @@ class ApplicationService:
 
     @staticmethod
     def _snapshot(job: Job) -> dict:
-        scraped: ScrapedJob = job.scraped_job
-        return {
-            "schema_version": 1,
-            "job_id": job.id,
-            "scraped_job_id": scraped.id,
-            "title": scraped.title,
-            "company": scraped.company,
-            "description": scraped.description,
-            "location": scraped.location,
-            "external_url": scraped.external_url,
-            "application_url": scraped.application_url,
-            "application_email": scraped.application_email,
-            "workload": scraped.workload,
-            "publication_date": (
-                scraped.publication_date.isoformat() if scraped.publication_date else None
-            ),
-            "platform": scraped.platform,
-            "platform_job_id": scraped.platform_job_id,
-            "source_query": scraped.source_query,
-            "raw_metadata": scraped.raw_metadata,
-            "normalized": json.loads(json.dumps(scraped.normalized_job_data, default=str)),
-            "match": {
-                "score": job.affinity_score,
-                "analysis": job.affinity_analysis,
-                "worth_applying": job.worth_applying,
-            },
-        }
+        return snapshot_from_job(job)
 
     @staticmethod
     def _manual_snapshot(data) -> dict:
-        return {
-            "schema_version": 1,
-            "job_id": None,
-            "scraped_job_id": None,
+        snapshot = {
+            "schema_version": 2,
             "title": data.title,
             "company": data.company,
             "description": data.description,
@@ -327,15 +318,12 @@ class ApplicationService:
             "publication_date": None,
             "platform": "manual",
             "platform_job_id": None,
-            "source_query": None,
-            "raw_metadata": {"source": "manual"},
-            "normalized": {},
-            "match": {
-                "score": None,
-                "analysis": "Manually captured local job snapshot",
-                "worth_applying": None,
-            },
+            "match": {},
         }
+        return sanitize_application_snapshot(
+            snapshot,
+            quarantine_reason="manual_snapshot_has_no_model_analysis",
+        )
 
     def create(self, user_id: int, data: ApplicationCreate) -> ApplicationResponse:
         job = None
@@ -353,6 +341,9 @@ class ApplicationService:
             )
             if existing is not None:
                 raise ApplicationConflictError("An application already exists for this job")
+            from backend.services.job_service import JobService
+
+            JobService(self.db)._mark_analysis_receipt(job, user_id)
             snapshot = self._snapshot(job)
         else:
             if data.manual_job is None:  # Schema validation guarantees this; keep the service safe.
@@ -369,9 +360,7 @@ class ApplicationService:
             job_title=str(snapshot.get("title") or "Untitled role")[:240],
             job_company=str(snapshot.get("company") or "Unknown company")[:240],
             job_location=(
-                str(snapshot["location"])[:500]
-                if snapshot.get("location") is not None
-                else None
+                str(snapshot["location"])[:500] if snapshot.get("location") is not None else None
             ),
             latest_event_at=now,
         )
@@ -450,9 +439,7 @@ class ApplicationService:
         application_id: str,
         export_format: Literal["json", "markdown"],
     ) -> ReadinessExport:
-        return export_readiness(
-            self.readiness(user_id, application_id), export_format
-        )
+        return export_readiness(self.readiness(user_id, application_id), export_format)
 
     def update_preparation(
         self, user_id: int, application_id: str, data: ApplicationPreparationUpdate
@@ -465,7 +452,7 @@ class ApplicationService:
             )
 
         changed_fields: list[str] = []
-        snapshot = dict(application.job_snapshot or {})
+        snapshot = self._safe_snapshot(application)
         for field in (
             "title",
             "company",
@@ -505,12 +492,10 @@ class ApplicationService:
             .update(
                 {
                     Application.job_snapshot: snapshot,
-                    Application.job_title: str(
-                        snapshot.get("title") or "Untitled role"
-                    )[:240],
-                    Application.job_company: str(
-                        snapshot.get("company") or "Unknown company"
-                    )[:240],
+                    Application.job_title: str(snapshot.get("title") or "Untitled role")[:240],
+                    Application.job_company: str(snapshot.get("company") or "Unknown company")[
+                        :240
+                    ],
                     Application.job_location: (
                         str(snapshot["location"])[:500]
                         if snapshot.get("location") is not None
@@ -767,9 +752,7 @@ class ApplicationService:
         }
         requirement_matrix: list[dict] = []
         all_evidence_ids = [
-            str(fact_id)
-            for row in data.requirement_matrix
-            for fact_id in row.evidence_fact_ids
+            str(fact_id) for row in data.requirement_matrix for fact_id in row.evidence_fact_ids
         ]
         missing = [fact_id for fact_id in set(all_evidence_ids) if fact_id not in facts_by_id]
         if missing:
@@ -791,9 +774,7 @@ class ApplicationService:
                     "fact_type": facts_by_id[fact_id].get("fact_type"),
                     "verification_status": "confirmed",
                     "snapshot": facts_by_id[fact_id],
-                    "sha256": hashlib.sha256(
-                        canonical_json(facts_by_id[fact_id])
-                    ).hexdigest(),
+                    "sha256": hashlib.sha256(canonical_json(facts_by_id[fact_id])).hexdigest(),
                 }
                 for fact_id in sorted(set(all_evidence_ids))
             }
@@ -877,9 +858,7 @@ class ApplicationService:
         self.db.expire_all()
         return self._response(self._application(user_id, application_id))
 
-    def dossier_bundle(
-        self, user_id: int, application_id: str, dossier_id: str
-    ) -> DossierBundle:
+    def dossier_bundle(self, user_id: int, application_id: str, dossier_id: str) -> DossierBundle:
         application = self._application(user_id, application_id)
         event = next(
             (
@@ -896,9 +875,7 @@ class ApplicationService:
             raise ApplicationValidationError("Application dossier is invalid")
         return self._bundle_from_dossier(user_id, application, dossier_id, dossier)
 
-    def list(
-        self, user_id: int, *, offset: int = 0, limit: int = 200
-    ) -> list[ApplicationSummary]:
+    def list(self, user_id: int, *, offset: int = 0, limit: int = 200) -> list[ApplicationSummary]:
         rows = (
             self.db.query(
                 Application.id,

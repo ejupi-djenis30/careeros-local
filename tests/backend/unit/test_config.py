@@ -33,6 +33,46 @@ def test_remote_inference_endpoint_is_rejected():
         )
 
 
+def test_environment_allowlist_cannot_expand_local_inference_boundary():
+    with pytest.raises(ValueError, match="built-in local boundary"):
+        Settings(
+            SECRET_KEY=VALID_TEST_SIGNING_VALUE,
+            LOCAL_INFERENCE_ALLOWED_HOSTS="localhost,remote.example",
+            LOCAL_INFERENCE_URL="http://remote.example:11434",
+        )
+
+
+def test_per_step_model_cannot_diverge_from_attested_local_model():
+    with pytest.raises(ValueError, match="readiness attests"):
+        Settings(
+            SECRET_KEY=VALID_TEST_SIGNING_VALUE,
+            LOCAL_MODEL="qwen3:1.7b",
+            LLM_MATCH_MODEL="another-model",
+        )
+
+
+@pytest.mark.parametrize(
+    "field_name",
+    [
+        "LOCAL_INFERENCE_CONNECT_TIMEOUT_SECONDS",
+        "LOCAL_INFERENCE_REQUEST_TIMEOUT_SECONDS",
+        "LLM_CALL_TIMEOUT_PLAN",
+        "LLM_CALL_TIMEOUT_NORMALIZE",
+        "LLM_CALL_TIMEOUT_MATCH",
+        "LLM_CALL_TIMEOUT_COACH",
+        "LLM_CALL_TIMEOUT_CRITIQUE",
+        "LLM_CALL_TIMEOUT_RERANK",
+    ],
+)
+@pytest.mark.parametrize("invalid_value", [0, -1])
+def test_inference_timeouts_must_be_strictly_positive(field_name, invalid_value):
+    with pytest.raises(ValueError, match=rf"{field_name} must be greater than zero"):
+        Settings(
+            SECRET_KEY=VALID_TEST_SIGNING_VALUE,
+            **{field_name: invalid_value},
+        )
+
+
 def test_production_rejects_development_signing_value():
     with pytest.raises(ValueError, match="SECRET_KEY"):
         Settings(ENVIRONMENT="production", SECRET_KEY="local-development-only")

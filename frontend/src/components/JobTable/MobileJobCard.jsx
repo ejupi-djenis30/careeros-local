@@ -12,6 +12,7 @@ export const MobileJobCard = memo(function MobileJobCard({ job, isGlobalView, on
     const sourceUrl = externalUrl && externalUrl !== applyUrl ? externalUrl : null;
     const mailtoUrl = safeMailto(job.application_email);
     const fmtDistance = job.distance_km != null ? parseFloat(Number(job.distance_km).toFixed(2)) : null;
+    const hasVerifiedAnalysis = job.analysis_verified === true;
 
     return (
         <div className="glass-panel p-3 mb-3 border border-white-5 hover-elevation hover-transform">
@@ -25,20 +26,22 @@ export const MobileJobCard = memo(function MobileJobCard({ job, isGlobalView, on
                     </div>
                 </div>
                 <div className="d-flex flex-column align-items-end gap-2">
-                    {!isGlobalView && job.affinity_score != null && (
+                    {!isGlobalView && hasVerifiedAnalysis && job.affinity_score != null && (
                         <ScoreBadge score={Math.round(job.affinity_score)} />
                     )}
-                    {!isGlobalView && job.worth_applying && (
+                    {!isGlobalView && hasVerifiedAnalysis && job.worth_applying && (
                         <span className="bg-success rounded-circle d-inline-flex align-items-center justify-content-center sz-18" title={t("jobs.topPick")}>
                             <i className="bi bi-check-lg text-white text-07"></i>
                         </span>
                     )}
 
-                    {!isGlobalView && job.affinity_analysis && (
+                    {!isGlobalView && hasVerifiedAnalysis && job.affinity_analysis && (
                         <button
+                            type="button"
                             className="btn btn-sm btn-icon btn-secondary rounded-circle d-flex align-items-center justify-content-center border-0 bg-white-5 sz-24"
                             onClick={() => onViewAnalysis(job)}
                             title={t("jobs.viewAnalysis")}
+                            aria-label={t("jobs.viewAnalysis")}
                         >
                             <i className="bi bi-robot text-08"></i>
                         </button>

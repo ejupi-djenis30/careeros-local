@@ -3,10 +3,13 @@ import { useNavigate } from 'react-router-dom';
 import { History } from '../components/History';
 import { useToast } from '../context/ToastContext';
 import { SearchService } from '../services/search';
+import { useI18n } from '../i18n/useI18n';
+import { describeLocalAnalysisError } from '../features/local-model/localAnalysisError';
 
 export function HistoryPage() {
   const navigate = useNavigate();
   const { showToast } = useToast();
+  const { t } = useI18n();
   const [loadingProfileId, setLoadingProfileId] = React.useState(null);
 
   const handleStartSearch = async (profile, overrides = {}) => {
@@ -18,7 +21,10 @@ export function HistoryPage() {
       navigate(`/progress?pid=${result.profile_id}`);
     } catch (error) {
       if (error.message === 'UNAUTHORIZED') return; // intercepted globally by auth layer
-      if (error.message?.includes('409') || error.status === 409) {
+      const analysisError = describeLocalAnalysisError(error, t);
+      if (analysisError) {
+        showToast({ message: analysisError }, "warning");
+      } else if (error.message?.includes('409') || error.status === 409) {
         showToast({ messageKey: "historyPage.alreadyRunning" }, "warning");
       } else {
         showToast({
@@ -26,7 +32,6 @@ export function HistoryPage() {
           variables: { error: error.message || { messageKey: "common.unknownError" } },
         });
       }
-      console.error("Failed to start search:", error);
     } finally {
       setLoadingProfileId(null);
     }

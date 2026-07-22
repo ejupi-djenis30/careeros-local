@@ -93,8 +93,6 @@ class ScrapedJob(BaseModel, TimestampMixin):
     # Job posting quality score (0.0–1.0), computed from description richness (Phase 4)
     posting_quality = Column(Float, nullable=True)
 
-    # Keep track of where it originally came from (optional but useful)
-    source_query = Column(String, nullable=True)
     content_fingerprint = Column(String, nullable=True)
     compact_description = Column(Text, nullable=True)
 
@@ -158,6 +156,11 @@ class Job(BaseModel, TimestampMixin):
         Integer, ForeignKey("scraped_jobs.id", ondelete="CASCADE"), nullable=False, index=True
     )
 
+    # The discovery query is user-specific. It must live on the owned Job relationship rather
+    # than the shared ScrapedJob catalog row, otherwise another local account saving the same
+    # provider listing can read or overwrite it.
+    source_query = Column(String, nullable=True)
+
     # AI Analysis (User-specific match)
     affinity_score = Column(Float)
     affinity_analysis = Column(Text)
@@ -177,9 +180,24 @@ class Job(BaseModel, TimestampMixin):
     )  # 0-100: qualification relevance for this specific job
 
     # Structured per-dimension analysis and gap analysis (Phase 5)
-    analysis_structured = Column(
+    analysis_structured = Column(JSON, nullable=True)  # {recommendation, evidence_citations[]}
+    analysis_provenance = Column(String(40), nullable=True)
+    analysis_model_id = Column(String(240), nullable=True)
+    analysis_contract_version = Column(String(20), nullable=True)
+    analysis_validated_at = Column(DateTime(timezone=True), nullable=True)
+    analysis_execution_id = Column(String(36), nullable=True, index=True)
+    analysis_output_fingerprint = Column(String(64), nullable=True)
+    analysis_execution_row_index = Column(Integer, nullable=True)
+    analysis_row_fingerprint = Column(String(64), nullable=True)
+    analysis_input_fingerprint = Column(String(64), nullable=True)
+    analysis_legacy_snapshot = Column(
         JSON, nullable=True
-    )  # {strengths, weaknesses, gaps, verdict, evidence_citations}
+    )  # Preserved, non-rendered pre-v1.4 or restored analysis payload.
+
+    @property
+    def analysis_verified(self) -> bool:
+        """Transient API trust bit set only after the linked receipt is checked."""
+        return bool(getattr(self, "_analysis_receipt_verified", False))
 
     # Red flags detected in job description (Phase 4)
     red_flags = Column(JSON, nullable=True)  # list of flag strings / {type, description} dicts
@@ -272,10 +290,6 @@ class Job(BaseModel, TimestampMixin):
     @property
     def raw_metadata(self):
         return self.scraped_job.raw_metadata if self.scraped_job else None
-
-    @property
-    def source_query(self):
-        return self.scraped_job.source_query if self.scraped_job else None
 
     @property
     def normalized_job(self):

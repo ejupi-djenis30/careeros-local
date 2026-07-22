@@ -51,20 +51,22 @@ def test_task_replay_selects_highest_revision_not_latest_event_timestamp():
     task_id = "10000000-0000-4000-8000-000000000001"
     first_time = datetime(2026, 7, 22, 8, 0, tzinfo=timezone.utc)
     second_time = first_time + timedelta(hours=1)
-    application = SimpleNamespace(events=[
-        # Relationship ordering is based on occurred_at.  A user-supplied historical
-        # timestamp can therefore place revision 2 before revision 1 in this collection.
-        SimpleNamespace(
-            event_type="task_updated",
-            payload=_task_payload(
-                task_id=task_id, revision=2, updated_at=second_time, title="Tailor resume"
+    application = SimpleNamespace(
+        events=[
+            # Relationship ordering is based on occurred_at.  A user-supplied historical
+            # timestamp can therefore place revision 2 before revision 1 in this collection.
+            SimpleNamespace(
+                event_type="task_updated",
+                payload=_task_payload(
+                    task_id=task_id, revision=2, updated_at=second_time, title="Tailor resume"
+                ),
             ),
-        ),
-        SimpleNamespace(
-            event_type="task_created",
-            payload=_task_payload(task_id=task_id, revision=1, updated_at=first_time),
-        ),
-    ])
+            SimpleNamespace(
+                event_type="task_created",
+                payload=_task_payload(task_id=task_id, revision=1, updated_at=first_time),
+            ),
+        ]
+    )
 
     replayed = ApplicationService._task_snapshots(application)
 
@@ -74,35 +76,39 @@ def test_task_replay_selects_highest_revision_not_latest_event_timestamp():
 def test_task_replay_rejects_regression_and_conflicting_duplicate_revision():
     task_id = "10000000-0000-4000-8000-000000000002"
     first_time = datetime(2026, 7, 22, 8, 0, tzinfo=timezone.utc)
-    regressed = SimpleNamespace(events=[
-        SimpleNamespace(
-            event_type="task_created",
-            payload=_task_payload(task_id=task_id, revision=1, updated_at=first_time),
-        ),
-        SimpleNamespace(
-            event_type="task_updated",
-            payload=_task_payload(
-                task_id=task_id,
-                revision=2,
-                updated_at=first_time - timedelta(minutes=1),
+    regressed = SimpleNamespace(
+        events=[
+            SimpleNamespace(
+                event_type="task_created",
+                payload=_task_payload(task_id=task_id, revision=1, updated_at=first_time),
             ),
-        ),
-    ])
+            SimpleNamespace(
+                event_type="task_updated",
+                payload=_task_payload(
+                    task_id=task_id,
+                    revision=2,
+                    updated_at=first_time - timedelta(minutes=1),
+                ),
+            ),
+        ]
+    )
     with pytest.raises(ApplicationValidationError, match="regressed"):
         ApplicationService._task_snapshots(regressed)
 
-    duplicate = SimpleNamespace(events=[
-        SimpleNamespace(
-            event_type="task_created",
-            payload=_task_payload(task_id=task_id, revision=1, updated_at=first_time),
-        ),
-        SimpleNamespace(
-            event_type="task_created",
-            payload=_task_payload(
-                task_id=task_id, revision=1, updated_at=first_time, title="Changed payload"
+    duplicate = SimpleNamespace(
+        events=[
+            SimpleNamespace(
+                event_type="task_created",
+                payload=_task_payload(task_id=task_id, revision=1, updated_at=first_time),
             ),
-        ),
-    ])
+            SimpleNamespace(
+                event_type="task_created",
+                payload=_task_payload(
+                    task_id=task_id, revision=1, updated_at=first_time, title="Changed payload"
+                ),
+            ),
+        ]
+    )
     with pytest.raises(ApplicationValidationError, match="Conflicting duplicate"):
         ApplicationService._task_snapshots(duplicate)
 
@@ -123,14 +129,16 @@ def test_application_board_reads_next_action_projection_without_replaying_events
     )
     db_session.add(application)
     db_session.flush()
-    db_session.add(ApplicationEvent(
-        application_id=application.id,
-        event_type="stage",
-        stage="preparing",
-        occurred_at=now,
-        payload={"initial": True},
-        created_at=now,
-    ))
+    db_session.add(
+        ApplicationEvent(
+            application_id=application.id,
+            event_type="stage",
+            stage="preparing",
+            occurred_at=now,
+            payload={"initial": True},
+            created_at=now,
+        )
+    )
     db_session.commit()
 
     def forbidden_replay(_application):
@@ -181,14 +189,16 @@ def test_stage_event_cas_has_one_winner(file_database_path):
         )
         bootstrap.add(application)
         bootstrap.flush()
-        bootstrap.add(ApplicationEvent(
-            application_id=application.id,
-            event_type="stage",
-            stage="saved",
-            occurred_at=now,
-            payload={"initial": True},
-            created_at=now,
-        ))
+        bootstrap.add(
+            ApplicationEvent(
+                application_id=application.id,
+                event_type="stage",
+                stage="saved",
+                occurred_at=now,
+                payload={"initial": True},
+                created_at=now,
+            )
+        )
         bootstrap.commit()
         user_id = user.id
         application_id = application.id
@@ -241,9 +251,13 @@ def test_stage_event_cas_has_one_winner(file_database_path):
         assert application is not None
         assert application.revision == 2
         assert application.current_stage == "preparing"
-        stage_events = verification.query(ApplicationEvent).filter(
-            ApplicationEvent.application_id == application_id,
-            ApplicationEvent.stage == "preparing",
-        ).all()
+        stage_events = (
+            verification.query(ApplicationEvent)
+            .filter(
+                ApplicationEvent.application_id == application_id,
+                ApplicationEvent.stage == "preparing",
+            )
+            .all()
+        )
         assert len(stage_events) == 1
     engine.dispose()

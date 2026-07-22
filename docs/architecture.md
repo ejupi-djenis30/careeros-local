@@ -1,6 +1,7 @@
 # Architecture
 
-CareerOS Local is a Tauri 2 desktop application with a React UI, a bundled FastAPI sidecar, SQLite, content-addressed local assets, and an optional managed llama.cpp runtime.
+CareerOS Local is a Tauri 2 desktop application with a React UI, a bundled FastAPI sidecar, SQLite,
+content-addressed local assets, and a managed llama.cpp runtime required for analysis workflows.
 
 ```mermaid
 flowchart LR
@@ -83,11 +84,37 @@ Inference follows a narrow pipeline:
 6. perform at most one repair attempt;
 7. persist redacted execution metadata and fingerprints.
 
-The public desktop path uses a checksum-pinned model catalog and managed llama.cpp. Ollama remains an optional local development adapter with the same structured contract.
+The SHA-256 fingerprints and execution receipts bind canonical inputs, model output rows, and
+server-derived presentation fields for internal consistency. They are not signatures and do not
+authenticate data against an actor who can write directly to the CareerOS database or forge an
+unsigned portable archive together with its receipts. The supported trust boundary is the local
+desktop process, its loopback-only API, filesystem permissions, and a database not writable by
+untrusted users. Imported generated claims are therefore quarantined or omitted and must be
+revalidated locally; deployments that admit another database writer require an external signing
+or HMAC key outside that writer's control.
+
+The public desktop path uses a checksum-pinned model catalog and managed llama.cpp. Before an
+analysis workflow opens, an authenticated, content-free probe verifies the local endpoint,
+runtime, selected model, and strict structured-output contract. Failure keeps analysis locked and
+returns stable diagnostics without prompts, generated content, or Vault data. If Windows
+application-control policy rejects the bundled llama.cpp runtime, an official Ollama installation
+may serve as the production local fallback on an allowlisted loopback endpoint. It must pass the
+same identity, readiness, schema, grounding, and timeout checks. CareerOS never falls back to an
+Ollama cloud endpoint.
 
 ## Search
 
-`backend/search` separates acquisition, provider-neutral normalization, structured filters, matching, deduplication/persistence, and finalization. Normalization is the sole gate before expensive matching. The provider planner builds bounded occupation and keyword queries only from the user-entered role description, search strategy and explicit preferences; it never calls a model. Its v3 cache requires `deterministic-explicit` provenance and an exact explicit-input fingerprint, so legacy or model-derived cache entries are ignored and replaced. CV prose and model-normalized fields remain local matching inputs and cannot become provider queries. A limit of zero is an explicit disable signal; only `NULL` selects a default. Legacy service imports are module aliases only and contain no orchestration logic.
+`backend/search` separates acquisition, provider-neutral normalization, structured filters,
+matching, deduplication/persistence, and finalization. The provider planner builds bounded
+occupation and keyword queries only from the user-entered role description, search strategy and
+explicit preferences; it never calls a model. Search itself requires a ready local model because
+every retained result must complete validated analysis. If the model fails or its circuit opens,
+the run fails closed and stores no heuristic substitute. Its v3 cache requires
+`deterministic-explicit` provenance and an exact explicit-input fingerprint, so legacy or
+model-derived cache entries are ignored and replaced. CV prose and model-normalized fields remain
+local matching inputs and cannot become provider queries. A limit of zero is an explicit disable
+signal; only `NULL` selects a default. Legacy service imports are module aliases only and contain
+no orchestration logic.
 
 Manual imports are private captures, not provider catalog records. Their platform identifier is a
 stable server-side fingerprint of the authenticated user namespace and listing identity; supplied
@@ -97,6 +124,14 @@ no historical data migration is required.
 
 ## Backup and erasure
 
-Archive format v3 adds search profiles, user-scoped job matches, referenced public listings, learned preference signals, and application-to-job relationships to the profile, goal, resume, application, workflow, coaching, and AI-audit data already covered by earlier versions. Versions 1 and 2 remain readable. Historical v1, v2 and projection-free v3 application rows rebuild title, company, location, latest-event and next-action projections from their immutable snapshots and event streams after restore. Current v3 rows must provide the complete projection extension and match that canonical replay; partial or inconsistent projections are rejected transactionally. Keeping the optional row extension in v3 preserves archive compatibility without changing the manifest or table contract. Export runs against one database snapshot and excludes in-flight search state and user-specific query data from shared listing records.
+Archive format v4 adds accepted local-analysis receipts, per-row output fingerprints, and exact
+candidate/job input bindings to the search, application, coaching, and AI-audit data covered by
+earlier versions. Versions 1–3 remain readable. Because portable ZIP checksums prove integrity but
+not the identity of the system that produced an analysis, restored analysis from every unsigned
+archive version is quarantined losslessly and hidden until CareerOS re-runs it with the current
+local contract. Historical application rows still rebuild their projections from immutable
+snapshots and event streams; partial or inconsistent projections are rejected transactionally.
+Export runs against one database snapshot and excludes in-flight search state and user-specific
+query data from shared listing records.
 
 Restore requires an empty vault, rejects ambiguous shared-listing or preference collisions, neutralizes runtime search state, and runs preflight, file writes, and database insertion under an exclusive desktop vault lock with rollback. Explicit erasure deletes every user-scoped vault domain, checkpoints and vacuums SQLite, and removes user-namespaced staging paths. Post-commit cleanup failures remain discoverable and retryable without traversing unrelated directories.

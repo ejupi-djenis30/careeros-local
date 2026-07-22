@@ -40,11 +40,40 @@ def test_local_inference_endpoint_rejects_remote_or_credentialed_urls(url):
 
 def test_local_inference_endpoint_allows_an_explicit_container_alias():
     assert (
-        validate_local_inference_url(
-            "http://career-model:11434", allowed_hosts={"career-model"}
-        )
+        validate_local_inference_url("http://career-model:11434", allowed_hosts={"career-model"})
         == "http://career-model:11434"
     )
+
+
+def test_container_alias_must_be_explicitly_allowlisted():
+    with pytest.raises(LocalInferenceEndpointError, match="outside the built-in local boundary"):
+        validate_local_inference_url("http://career-model:11434")
+
+
+@pytest.mark.parametrize(
+    ("url", "allowed_host"),
+    [
+        ("http://career-model.example:11434", "career-model.example"),
+        ("http://192.168.1.50:11434", "192.168.1.50"),
+        ("http://169.254.169.254:80", "169.254.169.254"),
+        ("http://career_model:11434", "career_model"),
+        ("http://-career-model:11434", "-career-model"),
+    ],
+)
+def test_explicit_allowlist_rejects_hosts_that_are_not_container_aliases(
+    url: str,
+    allowed_host: str,
+):
+    with pytest.raises(LocalInferenceEndpointError, match="built-in local boundary"):
+        validate_local_inference_url(url, allowed_hosts={allowed_host})
+
+
+def test_container_alias_allowlist_requires_an_exact_host_match():
+    with pytest.raises(LocalInferenceEndpointError):
+        validate_local_inference_url(
+            "http://career-model-attacker:11434",
+            allowed_hosts={"career-model"},
+        )
 
 
 def test_runtime_and_ci_have_no_remote_ai_escape_hatches():
@@ -79,12 +108,8 @@ def test_runtime_and_ci_have_no_remote_ai_escape_hatches():
     for path in files:
         if "__pycache__" in path.parts:
             continue
-        for line_number, line in enumerate(
-            path.read_text(encoding="utf-8").splitlines(), start=1
-        ):
-            providers = {
-                match.group(0).lower() for match in remote_provider.finditer(line)
-            }
+        for line_number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
+            providers = {match.group(0).lower() for match in remote_provider.finditer(line)}
             approved_build_time_reference = (
                 path in build_time_docs
                 and providers == {"openai"}
@@ -97,9 +122,7 @@ def test_runtime_and_ci_have_no_remote_ai_escape_hatches():
 
 def test_compose_hard_disables_ollama_cloud_and_host_exposure():
     compose = (PROJECT_ROOT / "docker-compose.yml").read_text(encoding="utf-8")
-    ollama_service = compose.split("  ollama:", maxsplit=1)[1].split(
-        "\n  backend:", maxsplit=1
-    )[0]
+    ollama_service = compose.split("  ollama:", maxsplit=1)[1].split("\n  backend:", maxsplit=1)[0]
 
     assert 'OLLAMA_NO_CLOUD: "true"' in ollama_service
     assert "\n    ports:" not in ollama_service

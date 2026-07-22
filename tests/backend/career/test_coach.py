@@ -1,4 +1,4 @@
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from backend.inference.ports import InferenceUsage, StructuredInferenceResult
 
@@ -40,6 +40,38 @@ def _profile_payload():
     }
 
 
+def test_coach_message_requires_ready_local_analysis(client, auth_headers):
+    from backend.api.deps import require_local_analysis_ready
+    from backend.inference.service import LocalModelReadiness
+    from backend.main import app
+
+    previous_override = app.dependency_overrides.pop(require_local_analysis_ready, None)
+    unavailable = LocalModelReadiness(
+        ready=False,
+        runtime="llama.cpp",
+        configured_model="compact-local",
+        error_code="structured_probe_failed",
+        checks=[],
+    )
+    try:
+        with patch(
+            "backend.inference.service.check_local_model_readiness",
+            new=AsyncMock(return_value=unavailable),
+        ):
+            response = client.post(
+                "/api/v1/career-coach/messages",
+                json={"message": "Help me plan my next step"},
+                headers=auth_headers,
+            )
+    finally:
+        if previous_override is not None:
+            app.dependency_overrides[require_local_analysis_ready] = previous_override
+
+    assert response.status_code == 428
+    assert response.json()["detail"]["code"] == "local_model_required"
+    assert response.json()["detail"]["model_error_code"] == "structured_probe_failed"
+
+
 def test_grounded_coach_persists_valid_local_citations_and_can_be_deleted(
     client, auth_headers, monkeypatch
 ):
@@ -51,20 +83,22 @@ def test_grounded_coach_persists_valid_local_citations_and_can_be_deleted(
     provider.model_id = "ollama-local/test-model"
     provider.endpoint = "http://127.0.0.1:11434"
     provider.generate_structured_async = AsyncMock(
-        return_value=_structured({
-            "answer": "Lead with the verified 40 percent build-time reduction.",
-            "claims": [
-                {
-                    "text": "Verified 40 percent build time reduction.",
-                    "fact_ids": [fact_id],
-                    "job_ids": [],
-                }
-            ],
-            "fact_citations": [fact_id],
-            "job_citations": [],
-            "confidence": 0.95,
-            "missing_evidence": [],
-        })
+        return_value=_structured(
+            {
+                "answer": "Lead with: reduced local build time by 40 percent.",
+                "claims": [
+                    {
+                        "text": "Reduced local build time by 40 percent.",
+                        "fact_ids": [fact_id],
+                        "job_ids": [],
+                    }
+                ],
+                "fact_citations": [fact_id],
+                "job_citations": [],
+                "confidence": 0.95,
+                "missing_evidence": [],
+            }
+        )
     )
     factory = MagicMock(return_value=provider)
     monkeypatch.setattr("backend.api.routes.career_coach.get_provider_for_step", factory)
@@ -121,20 +155,22 @@ def test_coach_rejects_unsupported_citation(client, auth_headers, monkeypatch):
     provider = MagicMock()
     provider.model_id = "ollama-local/test-model"
     provider.generate_structured_async = AsyncMock(
-        return_value=_structured({
-            "answer": "Unsupported claim",
-            "claims": [
-                {
-                    "text": "Unsupported claim",
-                    "fact_ids": ["00000000-0000-0000-0000-000000000000"],
-                    "job_ids": [],
-                }
-            ],
-            "fact_citations": ["00000000-0000-0000-0000-000000000000"],
-            "job_citations": [],
-            "confidence": 0.1,
-            "missing_evidence": [],
-        })
+        return_value=_structured(
+            {
+                "answer": "Unsupported claim",
+                "claims": [
+                    {
+                        "text": "Unsupported claim",
+                        "fact_ids": ["00000000-0000-0000-0000-000000000000"],
+                        "job_ids": [],
+                    }
+                ],
+                "fact_citations": ["00000000-0000-0000-0000-000000000000"],
+                "job_citations": [],
+                "confidence": 0.1,
+                "missing_evidence": [],
+            }
+        )
     )
     monkeypatch.setattr(
         "backend.api.routes.career_coach.get_provider_for_step", lambda _step: provider
@@ -172,6 +208,4 @@ def test_coach_reports_local_model_unavailable_without_blocking_vault(
     assert response.status_code == 503
     assert "local model is unavailable" in response.text
     assert client.get("/api/v1/career-profile", headers=auth_headers).status_code == 200
-    assert client.get(
-        "/api/v1/career-coach/conversations", headers=auth_headers
-    ).json() == []
+    assert client.get("/api/v1/career-coach/conversations", headers=auth_headers).json() == []

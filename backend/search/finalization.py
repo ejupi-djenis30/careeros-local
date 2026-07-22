@@ -12,7 +12,6 @@ from typing import Any, Dict, List, Optional
 from sqlalchemy.orm import Session
 
 from backend.core.config import settings
-from backend.jobs.matching import deterministic_job_match
 from backend.models import ScrapedJob, SearchProfile
 from backend.providers.circuit_breaker import CircuitOpenError
 from backend.providers.jobs.jobroom.client import JobRoomProvider
@@ -126,18 +125,37 @@ class FinalizationMixin:
 
         configured_providers = self.providers
         try:
-            # Ensure fresh LLM providers (reload config).
-            llm_service.clear_provider_cache()
             profile = self.profile_repo.get(profile_id)
             if profile is None:
                 return
+            try:
+                readiness = await self.analysis_readiness_check()
+            except Exception:
+                readiness = None
+            if readiness is None or not readiness.ready:
+                init_status(profile_id, user_id=profile.user_id)
+                error_code = getattr(readiness, "error_code", None) or "readiness_check_failed"
+                add_log(
+                    profile_id,
+                    "Required local-model readiness failed before search; no provider was contacted.",
+                )
+                update_status(
+                    profile_id,
+                    state="error",
+                    terminal_reason="local_model_required",
+                    error=(
+                        "Local analysis is not ready. Complete the model readiness checks and "
+                        f"retry ({error_code})."
+                    ),
+                )
+                return
+            # Ensure fresh LLM providers (reload config).
+            llm_service.clear_provider_cache()
             original_provider_names = set(configured_providers)
             consents = load_job_source_consents(self.db, profile.user_id)
             self.providers = consented_job_providers(configured_providers, consents)
             enabled_provider_names = set(self.providers)
-            consent_audit = consent_audit_record(
-                original_provider_names, enabled_provider_names
-            )
+            consent_audit = consent_audit_record(original_provider_names, enabled_provider_names)
             logger.info(
                 "Job source consent gate enabled=%s disabled=%s",
                 consent_audit["enabled"],
@@ -365,10 +383,6 @@ class FinalizationMixin:
                 add_log(
                     profile_id, "All provider searches failed before any jobs could be processed."
                 )
-                add_log(
-                    profile_id,
-                    f"[LLM_DEBUG] state=error terminal_reason=search_execution_failed profile_id={profile_id}",
-                )
                 update_status(
                     profile_id,
                     state="error",
@@ -377,10 +391,6 @@ class FinalizationMixin:
                 )
                 return
             add_log(profile_id, "No jobs found across all queries.")
-            add_log(
-                profile_id,
-                f"[LLM_DEBUG] state=done terminal_reason=no_results profile_id={profile_id}",
-            )
             update_status(profile_id, state="done", terminal_reason="no_results")
             return
 
@@ -388,10 +398,6 @@ class FinalizationMixin:
         if unique_total == 0:
             if history_duplicates == total_duplicates and total_duplicates > 0:
                 add_log(profile_id, "All found jobs are already in profile history.")
-                add_log(
-                    profile_id,
-                    f"[LLM_DEBUG] state=done terminal_reason=all_duplicates profile_id={profile_id}",
-                )
                 update_status(
                     profile_id,
                     state="done",
@@ -405,10 +411,6 @@ class FinalizationMixin:
                     profile_id,
                     "All fetched jobs collapsed during runtime deduplication (no prior profile history).",
                 )
-                add_log(
-                    profile_id,
-                    f"[LLM_DEBUG] state=done terminal_reason=no_jobs_after_dedup profile_id={profile_id}",
-                )
                 update_status(
                     profile_id,
                     state="done",
@@ -420,6 +422,25 @@ class FinalizationMixin:
             return
 
         if not analyzed_pairs:
+            if analysis_failed > 0:
+                add_log(
+                    profile_id,
+                    "Required local-model analysis did not complete; no heuristic results were saved.",
+                )
+                update_status(
+                    profile_id,
+                    state="error",
+                    terminal_reason="local_analysis_failed",
+                    jobs_found=total_found,
+                    jobs_duplicates=total_duplicates,
+                    jobs_unique=total_found - total_duplicates,
+                    jobs_skipped=total_filtered + analysis_failed,
+                    error=(
+                        "The required local-model analysis failed. Check model readiness and "
+                        "retry; no heuristic analysis was saved."
+                    ),
+                )
+                return
             # Jobs are "explained" if they were filtered by structured rules OR if they
             # passed filters but were lost due to LLM analysis errors (already counted in
             # errors counter by _run_analysis_batches).  Only truly unexplained missing jobs
@@ -430,10 +451,6 @@ class FinalizationMixin:
                 add_log(
                     profile_id,
                     "Jobs were fetched but pipeline processing failed before analysis completed.",
-                )
-                add_log(
-                    profile_id,
-                    f"[LLM_DEBUG] state=error terminal_reason=pipeline_processing_failed profile_id={profile_id}",
                 )
                 update_status(
                     profile_id,
@@ -447,10 +464,6 @@ class FinalizationMixin:
                 )
             else:
                 add_log(profile_id, "No jobs passed structured filtering and analysis.")
-                add_log(
-                    profile_id,
-                    f"[LLM_DEBUG] state=done terminal_reason=no_jobs_after_structured_filters profile_id={profile_id}",
-                )
                 update_status(
                     profile_id,
                     state="done",
@@ -462,15 +475,34 @@ class FinalizationMixin:
                 )
             return
 
+        if analysis_failed > 0:
+            add_log(
+                profile_id,
+                "Required local-model analysis failed for part of this run. Validated rows "
+                "already saved remain available, but the run is incomplete.",
+            )
+            update_status(
+                profile_id,
+                state="error",
+                terminal_reason="local_analysis_failed",
+                finished_at=datetime.now(timezone.utc).isoformat(),
+                jobs_found=total_found,
+                jobs_new=consumer_saved,
+                jobs_duplicates=total_duplicates,
+                jobs_unique=total_found - total_duplicates,
+                jobs_skipped=total_filtered + consumer_skipped + analysis_failed,
+                error=(
+                    "Required local-model analysis failed for part of the run. Restore model "
+                    "readiness and retry; no heuristic analysis was saved."
+                ),
+            )
+            return
+
         # Jobs have already been saved progressively by the consumer.
         # Check whether any job made it through analysis but failed to persist.
         pre_finalize_errors = self._status_metrics(profile_id)["errors"]
         if consumer_saved == 0 and analyzed_pairs and pre_finalize_errors > 0:
             add_log(profile_id, "Jobs were analyzed but none could be persisted.")
-            add_log(
-                profile_id,
-                f"[LLM_DEBUG] state=error terminal_reason=job_persistence_failed profile_id={profile_id}",
-            )
             update_status(
                 profile_id,
                 state="error",
@@ -487,11 +519,9 @@ class FinalizationMixin:
         # ── Step 6b: Optional final passes (critique/rerank/salary) ──
         # These passes refine analysis on already-saved rows; they are LLM-heavy and run
         # only once across all batches after the search stream completes.
-        needs_final_pass = (
-            getattr(settings, "MATCH_CRITIQUE_ENABLED", False)
-            or getattr(settings, "MATCH_RERANK_ENABLED", False)
-            or getattr(settings, "SALARY_BENCHMARK_ENABLED", False)
-        )
+        # A saved row must remain byte-for-byte attributable to its validated job_match
+        # contract. Refinement passes stay off until a provenance chain is persisted.
+        needs_final_pass = False
         if needs_final_pass and analyzed_pairs:
             add_log(
                 profile_id,
@@ -504,10 +534,6 @@ class FinalizationMixin:
         total_skipped = total_filtered + consumer_skipped + analysis_skipped
         add_log(
             profile_id, f"✓ Search complete – {saved_count} jobs saved, {consumer_skipped} skipped"
-        )
-        add_log(
-            profile_id,
-            f"[LLM_DEBUG] state=done terminal_reason=completed profile_id={profile_id} jobs_saved={saved_count} jobs_skipped={consumer_skipped}",
         )
         update_status(
             profile_id,
@@ -610,38 +636,32 @@ class FinalizationMixin:
             # in a single update_status call to keep the ratio coherent.
             analysis_input_count = len(filtered_batch)
             if llm_service.is_analysis_circuit_open():
-                # Wait for recovery window instead of permanent skip
-                recovery_wait = float(settings.CIRCUIT_BREAKER_RECOVERY_SECONDS) + 2.0
+                self._increment_status_errors(profile_id)
+                analysis_failed += analysis_input_count
+                total_analysis_skipped += analysis_input_count
+                cumulative_to_analyze += analysis_input_count
+                cumulative_skipped += analysis_input_count
                 add_log(
                     profile_id,
-                    f"⚠ MATCH circuit breaker is open — waiting {recovery_wait}s for recovery...",
+                    "Required local-model analysis is unavailable; no result will be saved "
+                    f"for {analysis_input_count} job(s). Retry after model readiness is restored.",
                 )
-                await asyncio.sleep(recovery_wait)
-
-                # Check again after waiting
-                if llm_service.is_analysis_circuit_open():
-                    analysis_failed += analysis_input_count
-                    total_analysis_skipped += analysis_input_count
-                    cumulative_to_analyze += analysis_input_count
-                    cumulative_skipped += analysis_input_count
-                    add_log(
-                        profile_id,
-                        "⚠ MATCH circuit breaker is still open — skipping analysis for "
-                        f"{analysis_input_count} job(s).",
-                    )
-                    update_status(
-                        profile_id,
-                        jobs_analyze_total=cumulative_to_analyze,
-                        jobs_analyzed=len(analyzed_pairs),
-                        jobs_new=total_saved,
-                        jobs_skipped=cumulative_skipped,
-                    )
-                    continue
+                update_status(
+                    profile_id,
+                    jobs_analyze_total=cumulative_to_analyze,
+                    jobs_analyzed=len(analyzed_pairs),
+                    jobs_new=total_saved,
+                    jobs_skipped=cumulative_skipped,
+                )
+                continue
 
             batch_pairs = await self._run_analysis_batches(profile_id, profile_dict, filtered_batch)
             # Track jobs that passed filters but were lost due to analysis errors.
-            analysis_failed += analysis_input_count - len(batch_pairs)
+            batch_analysis_failed = analysis_input_count - len(batch_pairs)
+            analysis_failed += batch_analysis_failed
+            total_analysis_skipped += batch_analysis_failed
             cumulative_to_analyze += analysis_input_count
+            cumulative_skipped += batch_analysis_failed
             analyzed_pairs.extend(batch_pairs)
 
             # ── Save immediately (progressive persistence) ──
@@ -693,193 +713,13 @@ class FinalizationMixin:
         profile_dict: dict,
         analyzed_pairs: list,
     ) -> None:
-        """Apply optional critique, reranking, and salary benchmark to already-persisted jobs.
+        """Keep persisted analysis identical to the validated ``job_match`` output.
 
-        Jobs have already been saved to the 'jobs' table progressively by _processing_consumer.
-        This phase only refines analysis fields on existing rows when global passes
-        (critique / rerank / salary benchmark) are enabled.  It is a no-op when all
-        those settings are disabled.
-
-        Receives (job, analysis) pairs carrying the initial analysis values together with
-        ._scraped_job_id attributes stamped by _upsert_scraped_job.
+        Refinement passes previously changed scores after contract validation without
+        recording a second model invocation or evidence chain. They remain disabled
+        until the persistence model can represent that complete provenance.
         """
-        post_status = get_status(profile_id)
-        if post_status.get("state") in STOP_STATES:
-            add_log(profile_id, "Search was stopped — skipping final refinement passes.")
-            return
-
-        needs_final_pass = (
-            getattr(settings, "MATCH_CRITIQUE_ENABLED", False)
-            or getattr(settings, "MATCH_RERANK_ENABLED", False)
-            or getattr(settings, "SALARY_BENCHMARK_ENABLED", False)
-        )
-        if not needs_final_pass or not analyzed_pairs:
-            return
-
-        jobs_to_refine = list(analyzed_pairs)
-        analysis_targets = [
-            {"title": getattr(job, "title", "Unknown")} for job, _ in jobs_to_refine
-        ]
-        if analysis_targets:
-            update_status(
-                profile_id,
-                analysis_targets=analysis_targets,
-                analysis_current_index=1,
-                jobs_analyze_total=len(analysis_targets),
-                jobs_analyzed=0,
-            )
-
-        # ── Phase: Two-pass critique for borderline scores ────────────────
-        critique_enabled = getattr(settings, "MATCH_CRITIQUE_ENABLED", False)
-        critique_min = int(getattr(settings, "MATCH_CRITIQUE_SCORE_RANGE_MIN", 40))
-        critique_max = int(getattr(settings, "MATCH_CRITIQUE_SCORE_RANGE_MAX", 80))
-        if critique_enabled and jobs_to_refine:
-            borderline = [
-                (i, job, analysis)
-                for i, (job, analysis) in enumerate(jobs_to_refine)
-                if critique_min <= analysis.get("affinity_score", 0) <= critique_max
-            ]
-            if borderline:
-                try:
-                    borderline_indices = [idx for idx, _, _ in borderline]
-                    borderline_jobs_meta = []
-                    for _, job, _ in borderline:
-                        desc_text = ""
-                        descs = getattr(job, "descriptions", [])
-                        if descs:
-                            desc_text = (
-                                descs[0].description
-                                if hasattr(descs[0], "description")
-                                else (
-                                    descs[0].get("description", "")
-                                    if isinstance(descs[0], dict)
-                                    else ""
-                                )
-                            )
-                        raw_norm = getattr(job, "_normalized_job_data", None) or {}
-                        borderline_jobs_meta.append(
-                            {
-                                "title": getattr(job, "title", "Unknown"),
-                                "company": extract_company_name(job),
-                                "description": desc_text,
-                                "normalized_data": raw_norm,
-                            }
-                        )
-                    borderline_analyses = [analysis for _, _, analysis in borderline]
-                    critiqued = await llm_service.critique_job_batch(
-                        borderline_jobs_meta, borderline_analyses, profile_dict
-                    )
-                    for orig_idx, critiqued_analysis in zip(borderline_indices, critiqued):
-                        jobs_to_refine[orig_idx] = (jobs_to_refine[orig_idx][0], critiqued_analysis)
-                    add_log(profile_id, f"Critique pass refined {len(borderline)} borderline jobs.")
-                except Exception as exc:
-                    logger.warning("[CRITIQUE] Critique pass failed: %s", exc)
-
-        # ── Phase: Comparative re-ranking of top-N jobs ──────────────────
-        rerank_enabled = getattr(settings, "MATCH_RERANK_ENABLED", False)
-        rerank_top_n = int(getattr(settings, "MATCH_RERANK_TOP_N", 20))
-        if rerank_enabled and len(jobs_to_refine) >= 3:
-            try:
-                scored_with_index = sorted(
-                    enumerate(jobs_to_refine),
-                    key=lambda x: x[1][1].get("affinity_score", 0),
-                    reverse=True,
-                )[:rerank_top_n]
-                top_entries = []
-                for orig_idx, (job, analysis) in scored_with_index:
-                    desc_text = ""
-                    descs = getattr(job, "descriptions", [])
-                    if descs:
-                        desc_text = (
-                            descs[0].description
-                            if hasattr(descs[0], "description")
-                            else (
-                                descs[0].get("description", "")
-                                if isinstance(descs[0], dict)
-                                else ""
-                            )
-                        )
-                    raw_norm = getattr(job, "_normalized_job_data", None) or {}
-                    top_entries.append(
-                        {
-                            "job_index": orig_idx,
-                            "current_score": analysis.get("affinity_score", 0),
-                            "job_metadata": {
-                                "title": getattr(job, "title", "Unknown"),
-                                "company": extract_company_name(job),
-                                "description": desc_text,
-                                "normalized_data": raw_norm,
-                            },
-                        }
-                    )
-                reranked = await llm_service.rerank_top_jobs(top_entries, profile_dict)
-                for rerank_result in reranked:
-                    orig_idx = rerank_result.get("job_index", -1)
-                    final_score = rerank_result.get("final_score")
-                    if (
-                        orig_idx >= 0
-                        and final_score is not None
-                        and 0 <= orig_idx < len(jobs_to_refine)
-                    ):
-                        job, analysis = jobs_to_refine[orig_idx]
-                        updated = dict(analysis)
-                        updated["affinity_score"] = final_score
-                        updated["worth_applying"] = (
-                            bool(analysis.get("worth_applying", False)) and final_score >= 65
-                        )
-                        jobs_to_refine[orig_idx] = (job, updated)
-                add_log(profile_id, f"Re-ranked top {len(reranked)} jobs for calibration.")
-            except Exception as exc:
-                logger.warning("[RERANK] Re-rank pass failed: %s", exc)
-
-        # ── Phase: Deterministic salary_below_market red flag injection ──
-        if getattr(settings, "SALARY_BENCHMARK_ENABLED", False):
-            try:
-                from backend.services.preference_service import compute_salary_benchmark
-
-                for idx, (job, analysis) in enumerate(jobs_to_refine):
-                    job_norm_data = getattr(job, "_normalized_job_data", None) or {}
-                    job_salary_max = job_norm_data.get("salary_max_chf")
-                    if not job_salary_max:
-                        continue
-                    benchmark = compute_salary_benchmark(
-                        domain=job_norm_data.get("domain"),
-                        seniority=job_norm_data.get("seniority"),
-                        db=self.db,
-                    )
-                    if benchmark and benchmark["p25"] and job_salary_max < benchmark["p25"]:
-                        updated = dict(analysis)
-                        flags = list(updated.get("red_flags") or [])
-                        if "salary_below_market" not in flags:
-                            flags.append("salary_below_market")
-                            updated["red_flags"] = flags
-                            jobs_to_refine[idx] = (job, updated)
-            except Exception:
-                logger.debug("salary_below_market check skipped (non-critical)")
-
-        def report_refinement_progress(current_index: int, title: str) -> None:
-            update_status(
-                profile_id,
-                analysis_current_index=current_index,
-                jobs_analyzed=max(0, current_index - 1),
-            )
-
-        updated_count = self.search_persistence.apply_refined_analysis_updates(
+        add_log(
             profile_id,
-            profile_dict,
-            jobs_to_refine,
-            increment_status_errors=self._increment_status_errors,
-            report_progress=report_refinement_progress,
+            "Validated local-model analysis saved without post-analysis score mutation.",
         )
-
-        if analysis_targets:
-            update_status(
-                profile_id,
-                analysis_targets=analysis_targets,
-                analysis_current_index=len(analysis_targets),
-                jobs_analyze_total=len(analysis_targets),
-                jobs_analyzed=len(analysis_targets),
-            )
-
-        if updated_count > 0:
-            add_log(profile_id, f"Final passes applied: {updated_count} jobs refined in-place.")

@@ -20,7 +20,6 @@ _KNOWN_STEPS = {
 def _resolve_step_config(step: str) -> dict[str, Any]:
     normalized = step.lower()
     prefix = f"LLM_{normalized.upper()}_" if normalized in _KNOWN_STEPS else ""
-    model = getattr(settings, f"{prefix}MODEL", "") if prefix else ""
     temperature = getattr(settings, f"{prefix}TEMPERATURE", None) if prefix else None
     top_p = getattr(settings, f"{prefix}TOP_P", None) if prefix else None
     max_tokens = getattr(settings, f"{prefix}MAX_TOKENS", None) if prefix else None
@@ -28,7 +27,9 @@ def _resolve_step_config(step: str) -> dict[str, Any]:
     return {
         "endpoint": settings.LOCAL_INFERENCE_URL,
         "allowed_hosts": settings.local_inference_allowed_hosts,
-        "model": model or settings.LOCAL_MODEL,
+        # One configured model is attested by the mandatory readiness probe and used by every
+        # analysis step. Per-step sampling budgets may differ, but model identity may not.
+        "model": settings.LOCAL_MODEL,
         "temperature": settings.LLM_TEMPERATURE if temperature is None else temperature,
         "top_p": settings.LLM_TOP_P if top_p is None else top_p,
         "max_tokens": settings.LLM_MAX_TOKENS if max_tokens is None else max_tokens,

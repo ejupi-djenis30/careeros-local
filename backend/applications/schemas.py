@@ -143,9 +143,7 @@ class ManualJobSnapshot(BaseModel):
     def safe_url(cls, value: str | None) -> str | None:
         return normalize_job_url(value, required=False)
 
-    _safe_application_email = field_validator("application_email")(
-        normalize_application_email
-    )
+    _safe_application_email = field_validator("application_email")(normalize_application_email)
 
 
 class ApplicationCreate(BaseModel):
@@ -278,9 +276,7 @@ class ApplicationTaskResponse(BaseModel):
     created_at: datetime
     updated_at: datetime
 
-    @field_validator(
-        "due_at", "reminder_at", "completed_at", "created_at", "updated_at"
-    )
+    @field_validator("due_at", "reminder_at", "completed_at", "created_at", "updated_at")
     @classmethod
     def normalize_datetimes(cls, value: datetime | None, info):
         return _require_timezone(value, info.field_name)
@@ -345,9 +341,7 @@ class ApplicationDossierCreate(BaseModel):
     cover_letter: str | None = Field(default=None, max_length=30_000)
     answers: list[DossierAnswer] = Field(default_factory=list, max_length=25)
     checklist: list[DossierChecklistItem] = Field(default_factory=list, max_length=50)
-    requirement_matrix: list[DossierRequirementEvidence] = Field(
-        min_length=1, max_length=25
-    )
+    requirement_matrix: list[DossierRequirementEvidence] = Field(min_length=1, max_length=25)
 
     @field_validator("cover_letter")
     @classmethod
@@ -358,9 +352,7 @@ class ApplicationDossierCreate(BaseModel):
     @model_validator(mode="after")
     def bound_aggregate_size(self):
         evidence_ids = [
-            fact_id
-            for row in self.requirement_matrix
-            for fact_id in row.evidence_fact_ids
+            fact_id for row in self.requirement_matrix for fact_id in row.evidence_fact_ids
         ]
         if len(evidence_ids) > MAX_DOSSIER_EVIDENCE_LINKS:
             raise ValueError(

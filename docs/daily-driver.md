@@ -1,18 +1,35 @@
 # Daily-driver guide
 
-CareerOS Local works as a complete local workspace without installing a model. The optional local
-runtime can enrich matching and document analysis, but it never plans provider queries and is not
-required for the workflows below. The
-interface is available in English and Italian.
+CareerOS Local keeps ownership separate from analysis. You can maintain the Career Vault, edit and
+publish documents, capture applications manually, run readiness checks, and export or restore data
+without a model. Opportunity matching and coaching require a ready
+local model. The app checks the runtime, selected model, and structured-output contract before it
+opens those workflows. The interface is available in English and Italian.
+
+## Prepare local analysis
+
+The desktop app manages its default llama.cpp-compatible runtime and verifies the selected model
+before analysis begins. Open an analysis workflow, review the model license, install the listed
+model, and wait for all four readiness checks to pass: local endpoint, reachable runtime, available
+model, and valid structured output. The probe contains no Career Vault data.
+
+If readiness fails, use **Check again** after the runtime or model is restored. CareerOS shows a
+stable diagnostic code and keeps analysis locked; it does not invent a heuristic result. When
+Windows application-control policy blocks the bundled runtime, CareerOS can use an official Ollama
+installation as a production local fallback through the same readiness and schema checks. Install
+it from the [official Windows download](https://ollama.com/download/windows), start the local
+service, and install the model selected in CareerOS. CareerOS does not install Ollama for you.
+Keep Ollama cloud features disabled and never point `LOCAL_INFERENCE_URL` at a remote host.
 
 ## Find or capture an opportunity
 
 For provider search, create a search brief with at least one concrete target role. CareerOS first
 uses only the target role and strategy you entered, plus your explicit search preferences, to build
 a deterministic plan. It never turns CV text, normalized profile fields or unconfirmed model output
-into provider queries. If the optional runtime is unavailable, the same search continues with this
-plan rather than ending in an AI error. Set any query limit to `0` to disable that query class; an
-unset limit uses the documented local default.
+into provider queries. A ready local model is still required because every retained opportunity
+must pass validated matching analysis. If the runtime is unavailable, search stops before provider
+work begins and no heuristic match is stored. Set any query limit to `0` to disable that query
+class; an unset limit uses the documented local default.
 
 If you find a role in an email, referral or another website, open **Jobs**, choose **Import
 listing**, and enter the role, company and source URL. The listing is stored locally and appears in
@@ -56,7 +73,7 @@ predicts whether an employer will respond, interview or hire.
 ## Private by default
 
 - Search-provider calls disclose only the parameters required for that explicit search.
-- Manual imports, tasks, dossier creation, exports and matching fallbacks run on the device.
+- Manual imports, tasks, dossier creation, exports and local-model analysis run on the device.
 - No telemetry or cloud-model fallback is built into the product.
 - Dossier ZIPs and portable backups contain private career data. Store them in an encrypted
   location and remove copies you no longer need.

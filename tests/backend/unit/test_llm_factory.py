@@ -45,13 +45,13 @@ def test_unknown_step_uses_local_defaults():
     assert config["model"] == "qwen3:1.7b"
 
 
-def test_step_can_select_another_installed_local_model():
+def test_step_uses_attested_model_but_keeps_step_sampling_policy():
     with patch(
         "backend.providers.llm.factory.settings",
         _settings(LLM_MATCH_MODEL="gemma3:4b", LLM_MATCH_TEMPERATURE=0.1),
     ):
         config = _resolve_step_config("match")
-    assert config["model"] == "gemma3:4b"
+    assert config["model"] == "qwen3:1.7b"
     assert config["temperature"] == 0.1
 
 

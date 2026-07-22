@@ -50,3 +50,20 @@ def profile_service_dep(db: Session = Depends(get_db)):
     from backend.services.profile_service import get_profile_service
 
     return get_profile_service(db)
+
+
+async def require_local_analysis_ready() -> None:
+    """Fail closed before a route starts work that promises local-model analysis."""
+    from backend.inference.service import check_local_model_readiness
+
+    readiness = await check_local_model_readiness()
+    if readiness.ready:
+        return
+    raise HTTPException(
+        status_code=428,
+        detail={
+            "code": "local_model_required",
+            "message": "A ready local model is required for analysis",
+            "model_error_code": readiness.error_code,
+        },
+    )

@@ -13,7 +13,7 @@ describe('SearchService', () => {
     const mockPost = vi.spyOn(ApiClient, 'post').mockResolvedValue({ task_id: 'abc' });
     const profile = { id: 1, name: 'Dev search' };
     await SearchService.start(profile);
-    expect(mockPost).toHaveBeenCalledWith('/search/start', profile);
+    expect(mockPost).toHaveBeenCalledWith('/search/start', profile, { suppressGlobalError: true });
   });
 
   // ── getStatus ──────────────────────────────────────────────────────────────

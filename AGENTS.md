@@ -5,7 +5,7 @@ This repository is CareerOS Local, a privacy-sensitive desktop application. Thes
 ## Non-negotiable product boundaries
 
 1. Keep career data, generated documents, model weights, prompts, and inference local. Do not add cloud AI, telemetry, remote error reporting, or silent downloads.
-2. Core workflows must remain usable without a model. AI output is advisory, evidence-bound, schema-validated, and never written as a confirmed fact without explicit user confirmation.
+2. Vault editing, manual records, portability, existing documents and deterministic application readiness must remain usable without a model. Any workflow presented as AI analysis, matching, tailoring, coaching or recommendation must require a ready local model and fail closed; heuristic output must never masquerade as completed AI analysis. AI output is advisory, evidence-bound, schema-validated, and never written as a confirmed fact without explicit user confirmation.
 3. Accept inference endpoints only on loopback or the explicit local-container allowlist. Never weaken this validation for convenience.
 4. Preserve manifest verification, path containment, archive limits, atomic writes, and the desktop vault lock.
 5. Never log access tokens, desktop session tokens, prompts, resume content, source documents, model output, or personal profile fields.
@@ -23,7 +23,7 @@ Do not delete `.agents/skills`, `.specify`, or active `specs` artifacts as repos
 - `backend/api`: transport only; no domain decisions.
 - `backend/career`, `resumes`, `applications`, `workflows`: domain models and services.
 - `backend/ai`: strict contracts, retrieval, grounding, evaluation, and local-AI capabilities.
-- `backend/inference`: managed llama.cpp lifecycle and optional local development adapters.
+- `backend/inference`: required-analysis readiness, managed llama.cpp lifecycle and allowlisted local development adapters.
 - `backend/search`: acquisition, normalization, matching, persistence, and finalization.
 - `backend/portability`: versioned backup manifest, archive, and transactional restore.
 
