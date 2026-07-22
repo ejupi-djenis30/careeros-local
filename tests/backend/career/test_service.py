@@ -15,10 +15,10 @@ SKILL = "10000000-0000-4000-8000-000000000003"
 def _profile() -> dict:
     return {
         "expected_revision": 0,
-        "display_name": "Ada Lovelace",
+        "display_name": "Mira Vale",
         "headline": "Principal engineer",
         "summary": "Builds private, dependable systems with measurable outcomes.",
-        "email": "ada@example.test",
+        "email": "mira@example.test",
         "location": {"city": "Zurich", "country": "CH"},
         "preferences": {
             "target_roles": ["Staff Engineer"],

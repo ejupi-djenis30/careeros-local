@@ -85,6 +85,24 @@ describe('SearchProgress', () => {
     );
   });
 
+  it('explains the deterministic explicit-query requirement from the backend reason', () => {
+    const status = {
+      state: 'done',
+      terminal_reason: 'no_explicit_queries',
+      total_searches: 0,
+      searches_generated: [],
+      jobs_new: 0,
+      jobs_duplicates: 0,
+      jobs_skipped: 0,
+      errors: 0,
+      log: [],
+    };
+
+    render(<ToastProvider><SearchProgress profileId="1" status={status} onStateChange={vi.fn()} onClear={vi.fn()} /></ToastProvider>);
+
+    expect(screen.getByText('Add at least one role or keyword to start a provider search.')).toBeInTheDocument();
+  });
+
   it('shows completion notice for structured filtering terminal reason', () => {
     const status = {
       state: 'done',

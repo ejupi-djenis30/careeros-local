@@ -45,7 +45,7 @@ def test_profile_goal_links_only_owned_resume_versions(
     profile_service = CareerProfileService(db_session)
     profile = profile_service.save(
         test_user.id,
-        CareerProfileWrite(display_name="Ada", facts=[], goals=[]),
+        CareerProfileWrite(display_name="Mira", facts=[], goals=[]),
     )
     draft = ResumeDraft(
         profile_id=profile.id,
@@ -81,7 +81,7 @@ def test_profile_goal_links_only_owned_resume_versions(
         test_user.id,
         CareerProfileWrite(
             expected_revision=profile.revision,
-            display_name="Ada",
+            display_name="Mira",
             facts=[],
             goals=[
                 {
@@ -104,7 +104,7 @@ def test_profile_goal_links_only_owned_resume_versions(
             test_user.id,
             CareerProfileWrite(
                 expected_revision=saved.revision,
-                display_name="Ada",
+                display_name="Mira",
                 facts=[],
                 goals=[
                     {

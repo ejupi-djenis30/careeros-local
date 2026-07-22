@@ -2,6 +2,17 @@ import ipaddress
 import os
 import socket
 
+# Pytest's best-effort ``*-current`` links are not part of the test contract.  On some Windows
+# hosts they can be created but not followed (WinError 1463), turning a green suite into a teardown
+# crash.  Disable only those private convenience links; real product symlink tests remain intact.
+if os.name == "nt":
+    import _pytest.pathlib as _pytest_pathlib
+
+    def _skip_pytest_current_link(_root, _target, _link_to) -> None:
+        return None
+
+    _pytest_pathlib._force_symlink = _skip_pytest_current_link
+
 os.environ["TESTING"] = "1"
 os.environ.setdefault("SECRET_KEY", "test-only-local-secret-key-at-least-32-bytes")
 import pytest

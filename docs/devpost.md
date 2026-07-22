@@ -28,12 +28,12 @@ reproducible source.
 
 ### Proposed tagline
 
-> A private, local-first career workspace that turns verified experience into resumes, job
+> An open-source, local-first career utility that turns verified experience into resumes, job
 > matches, and an application pipeline—without sending personal data to cloud AI.
 
 Short fallback for a constrained field:
 
-> Private, local-first career intelligence—from verified experience to applications.
+> A local-first career utility, from verified experience to applications.
 
 Before publishing, confirm that “without sending personal data to cloud AI” still matches the
 demo configuration. CareerOS Local keeps AI inference on-device; explicitly enabled job-source

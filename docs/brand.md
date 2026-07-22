@@ -42,7 +42,7 @@ contrast.
 ## Name and voice
 
 Use **CareerOS Local** on first reference and **CareerOS** when the context is already clear.
-The preferred descriptor is **Private career intelligence, on your device.**
+The preferred descriptor is **Local-first career utility, on your device.**
 
 Product copy should be direct, calm, and evidence-led:
 

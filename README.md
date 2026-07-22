@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/assets/careeros-lockup.svg" width="680" alt="CareerOS Local — private career intelligence, on your device" />
+  <img src="docs/assets/careeros-lockup.svg" width="680" alt="CareerOS Local — local-first career utility, on your device" />
 </p>
 
 # CareerOS Local
@@ -11,7 +11,7 @@
 
 > Your career history should become more useful over time, not more exposed.
 
-CareerOS Local is a private desktop system for turning verified experience into tailored
+CareerOS Local is an open-source, local-first career utility for turning verified experience into tailored
 resumes, relevant opportunities, and an application pipeline you can actually operate. Before
 anything is sent, a deterministic readiness pack shows exactly what is present, what is missing
 and where to fix it. The Career Vault preserves source facts and revision history; core workflows
@@ -24,7 +24,8 @@ remain inspectable and usable without AI, while enabled inference uses the appro
 [Open the portfolio site](https://ejupi-djenis30.github.io/careeros-local/) ·
 [View the Devpost project](https://devpost.com/software/careeros-local) ·
 [View releases](https://github.com/ejupi-djenis30/careeros-local/releases) ·
-[Architecture](docs/architecture.md) · [Privacy model](docs/privacy.md)
+[Daily-driver guide](docs/daily-driver.md) · [Architecture](docs/architecture.md) ·
+[Privacy model](docs/privacy.md)
 
 ## Why CareerOS
 
@@ -35,8 +36,8 @@ remain inspectable and usable without AI, while enabled inference uses the appro
 - **Keep the private parts private:** the API, database, artifacts, and optional model runtime
   remain on the device, with no telemetry and no cloud-model fallback.
 - **Move from intent to follow-through:** immutable PDF/DOCX resume versions, local job
-  snapshots, an append-only application timeline and a nine-check preflight keep the workflow
-  coherent.
+  snapshots, dated next actions, verifiable application dossiers and a nine-check preflight keep
+  the workflow coherent.
 
 ## Product tour
 
@@ -48,7 +49,7 @@ remain inspectable and usable without AI, while enabled inference uses the appro
 | --- | --- |
 | ![CareerOS Local Resume Studio](docs/assets/careeros-resume-studio.png) | ![CareerOS Local application pipeline](docs/assets/careeros-applications.png) |
 
-All captures are generated from a disposable database with a fictional Ada Lovelace profile.
+All captures are generated from a disposable database with the fictional Mira Vale profile.
 The recorder rejects visible alerts, browser errors and failed API responses before publishing
 the assets.
 
@@ -60,6 +61,12 @@ the assets.
 - Versioned archives restore atomically and exclude private cross-user or runtime state.
 - Application readiness is calculated without a model from owned local records, exposes weighted
   evidence and actions, and exports reproducible JSON or Markdown reports.
+- Search planning has a deterministic path based only on the role, strategy and preferences the
+  user entered. It never converts CV text or unconfirmed model-normalized fields into provider
+  queries. Listings found elsewhere can be imported into a private per-user namespace.
+- Application tasks are append-only events with a narrow next-action projection and portable
+  calendar reminders. Dossier ZIPs include versioned answers, ID-only requirement mappings, one
+  deduplicated evidence catalog, verified resume files and a canonical SHA-256 manifest.
 - Vault erasure sanitizes SQLite even when artifact cleanup needs a retry.
 - Local AI calls use explicit context, strict schemas, bounded repair and content-free audit
   metadata through a managed llama.cpp-compatible runtime.
@@ -143,10 +150,10 @@ Open `http://127.0.0.1:5173`. To create the same disposable fictional workspace 
 tour, run this only against a development database:
 
 ```powershell
-.venv\Scripts\python.exe scripts\seed_demo.py --password "AdaDemo2026!"
+.venv\Scripts\python.exe scripts\seed_demo.py --password "MiraDemo2026!"
 ```
 
-Then sign in as `ada_demo` with the supplied password. The seeder accepts loopback destinations
+Then sign in as `mira_demo` with the supplied password. The seeder accepts loopback destinations
 only, follows no redirects, does not overwrite unrelated profile data, publishes locally verified
 PDF/DOCX files and confirms that the fictional application reaches 100/100 preflight completeness.
 
@@ -208,6 +215,7 @@ collectively to **CareerOS Local contributors**.
 - [Release process](docs/releasing.md)
 - [Devpost submission kit](docs/devpost.md)
 - [Product specification](specs/001-desktop-career-agent/spec.md)
+- [v1.3.0 release preparation](specs/001-desktop-career-agent/release-evidence-v1.3.0.md)
 - [v1.2.0 release preparation](specs/001-desktop-career-agent/release-evidence-v1.2.0.md)
 - [v1.1.0 release preparation](specs/001-desktop-career-agent/release-evidence-v1.1.0.md)
 - [v1.0.2 release evidence](specs/001-desktop-career-agent/release-evidence-v1.0.2.md)

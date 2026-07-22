@@ -30,9 +30,9 @@ def _snapshot(entry_count: int = 2) -> dict:
     ]
     return {
         "profile": {
-            "display_name": "Ada Lovelace",
+            "display_name": "Mira Vale",
             "headline": "Principal Engineer",
-            "email": "ada@example.test",
+            "email": "mira@example.test",
         },
         "resume": {
             "title": "Private systems CV",
@@ -64,10 +64,10 @@ def _snapshot(entry_count: int = 2) -> dict:
                                 "fact_ids": [],
                                 "visible": True,
                                 "content": {
-                                    "title": "Ada Lovelace",
+                                    "title": "Mira Vale",
                                     "subtitle": "Principal Engineer",
                                     "date_range": "",
-                                    "description": "ada@example.test",
+                                    "description": "mira@example.test",
                                     "bullets": [],
                                 },
                                 "manual_fields": [],
@@ -98,7 +98,7 @@ def test_ats_renderers_preserve_text_order_and_local_metadata():
         pdf=pdf,
         docx=docx,
         required_headings=["EXPERIENCE"],
-        required_text=["Ada Lovelace", "Role 0", "Role 1"],
+        required_text=["Mira Vale", "Role 0", "Role 1"],
         template_kind="ats",
         expect_photo=False,
     )
@@ -107,7 +107,7 @@ def test_ats_renderers_preserve_text_order_and_local_metadata():
     text = "\n".join(page.extract_text() or "" for page in pdf_document.pages)
     assert pdf_document.metadata is not None
     assert pdf_document.metadata.author == "CareerOS Local"
-    assert pdf_document.metadata.title == "Ada Lovelace"
+    assert pdf_document.metadata.title == "Mira Vale"
     word = Document(BytesIO(docx))
     word_text = "\n".join(paragraph.text for paragraph in word.paragraphs)
     assert word.core_properties.author == "CareerOS Local"
@@ -128,7 +128,7 @@ def test_quality_gate_rejects_page_overflow(monkeypatch):
             pdf=pdf,
             docx=docx,
             required_headings=["EXPERIENCE"],
-            required_text=["Ada Lovelace"],
+            required_text=["Mira Vale"],
             template_kind="ats",
             expect_photo=False,
         )

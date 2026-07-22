@@ -363,3 +363,19 @@ the absence of local paths or authentication material.
 - [x] T115 [US6] Convert Application Detail into a portal-backed labelled modal with dynamic focus
   containment, Escape, opener restoration, inert/scroll-locked background and mobile-safe
   overscroll; prove semantics and keyboard traversal in `frontend/src/features/applications/`
+- [x] T116 [US7] Amend the constitution, specification and plan for explicit-query privacy,
+  user-namespaced manual captures, CAS application writes and lossless repeatable dossiers
+- [x] T117 [US7] Make manual imports bounded, extra-forbidden, server-namespaced per user and
+  idempotent; cover spoofed ids, retries, cross-user isolation and response visibility
+- [x] T118 [US7] Remove CV and model-normalized planner fallbacks, preserve zero versus `NULL`
+  limits through acquisition and cover unit plus provider-boundary behavior
+- [x] T119 [US7] Route event append through revision CAS with the resulting stage in the update and
+  prove exactly one winner with two file-backed SQLite/WAL sessions and a barrier
+- [x] T120 [US7] Replay the maximum coherent task revision, reject regressions and conflicting
+  duplicates, and load board next actions directly from projection columns
+- [x] T121 [US7] Bound dossier evidence as UUIDs and add accessible repeatable requirement,
+  question/answer and checklist rows with explicit partial-pair validation in English and Italian
+- [x] T122 [US7] Update daily-driver, privacy, architecture and README guidance, including the
+  no-historical-migration rationale for the still-unreleased manual importer
+- [x] T123 [US7] Run all Python, React, Rust and Alembic gates and record analysis/convergence in
+  `daily-driver-analysis.md` and `daily-driver-convergence.md`

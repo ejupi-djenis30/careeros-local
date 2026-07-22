@@ -22,12 +22,12 @@ describe("ResumeCanvas", () => {
         const onChange = vi.fn();
         const initial = resumeDraft().canvas_document;
         const updated = structuredClone(initial);
-        updated.sections[0].blocks[0].content.title = "Grace Hopper";
+        updated.sections[0].blocks[0].content.title = "Noa Rowan";
         const { rerender } = render(<ResumeCanvas document={initial} templateKind="ats" onChange={onChange} />);
 
         rerender(<ResumeCanvas document={updated} templateKind="ats" onChange={onChange} />);
 
-        expect(screen.getByDisplayValue("Grace Hopper")).toBeInTheDocument();
+        expect(screen.getByDisplayValue("Noa Rowan")).toBeInTheDocument();
         expect(onChange).not.toHaveBeenCalled();
     });
 

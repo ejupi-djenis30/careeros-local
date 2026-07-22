@@ -41,7 +41,7 @@ def test_jobs_routes_full():
             "title": "test",
             "company": "test",
             "external_url": "http://test",
-            "provider_id": "1",
+            "platform_job_id": "1",
             "description": "d",
         },
     )

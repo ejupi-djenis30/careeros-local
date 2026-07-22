@@ -26,7 +26,7 @@ def _canvas(*, title: str = "Evidence-backed outcome", visible: bool = True):
                     CanvasBlock(
                         id="identity-main",
                         kind="identity",
-                        content=CanvasContent(title="Ada Lovelace"),
+                        content=CanvasContent(title="Mira Vale"),
                     )
                 ],
             ),

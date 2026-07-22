@@ -11,24 +11,26 @@ from backend.jobs.urls import normalize_job_url
 
 
 class JobBase(BaseModel):
-    title: str
-    company: str
-    description: Optional[str] = None
-    location: Optional[str] = None
-    external_url: str
-    application_url: Optional[str] = None
-    application_email: Optional[str] = None
-    workload: Optional[str] = None
+    model_config = ConfigDict(extra="forbid")
+
+    title: str = Field(min_length=1, max_length=240)
+    company: str = Field(min_length=1, max_length=240)
+    description: Optional[str] = Field(default=None, max_length=100_000)
+    location: Optional[str] = Field(default=None, max_length=500)
+    external_url: str = Field(min_length=1, max_length=2048)
+    application_url: Optional[str] = Field(default=None, max_length=2048)
+    application_email: Optional[str] = Field(default=None, max_length=320)
+    workload: Optional[str] = Field(default=None, max_length=120)
     publication_date: Optional[datetime] = None
-    platform: Optional[str] = None
-    platform_job_id: Optional[str] = None
+    platform: Optional[str] = Field(default=None, max_length=80)
+    platform_job_id: Optional[str] = Field(default=None, max_length=500)
 
     @field_validator("title", "company", "external_url")
     @classmethod
     def reject_empty_strings(cls, v: str) -> str:
         if not v or not v.strip():
             raise ValueError("Field must not be empty")
-        return v
+        return v.strip()
 
     @field_validator("external_url")
     @classmethod
@@ -50,14 +52,14 @@ class JobBase(BaseModel):
 
 
 class JobCreate(JobBase):
-    source_query: Optional[str] = None
-    search_profile_id: Optional[int] = None
-    scraped_job_id: Optional[int] = None
-    affinity_score: Optional[float] = None
-    affinity_analysis: Optional[str] = None
+    source_query: Optional[str] = Field(default=None, max_length=1000)
+    search_profile_id: Optional[int] = Field(default=None, gt=0)
+    scraped_job_id: Optional[int] = Field(default=None, gt=0)
+    affinity_score: Optional[float] = Field(default=None, ge=0, le=100)
+    affinity_analysis: Optional[str] = Field(default=None, max_length=20_000)
     worth_applying: Optional[bool] = False
-    distance_km: Optional[float] = None
-    raw_metadata: Optional[Dict[str, Any]] = None
+    distance_km: Optional[float] = Field(default=None, ge=0)
+    raw_metadata: Optional[Dict[str, Any]] = Field(default=None, max_length=100)
 
 
 FEEDBACK_SIGNAL_VALUES = {

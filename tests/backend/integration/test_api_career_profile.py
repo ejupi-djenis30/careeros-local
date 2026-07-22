@@ -5,10 +5,10 @@ from tempfile import TemporaryDirectory
 def _profile_payload(expected_revision=0):
     return {
         "expected_revision": expected_revision,
-        "display_name": "Ada Lovelace",
+        "display_name": "Mira Vale",
         "headline": "Computing pioneer",
         "summary": "Builds rigorous analytical systems.",
-        "email": "ada@example.test",
+        "email": "mira@example.test",
         "phone": "+41 79 000 00 00",
         "location": {"city": "Zurich", "country": "CH"},
         "preferences": {"remote": True, "workload_min": 80, "workload_max": 100},
@@ -52,7 +52,7 @@ def test_career_profile_round_trip_and_optimistic_revision(client, auth_headers)
 
     loaded = client.get("/api/v1/career-profile", headers=auth_headers)
     assert loaded.status_code == 200
-    assert loaded.json()["email"] == "ada@example.test"
+    assert loaded.json()["email"] == "mira@example.test"
 
     stale = client.put("/api/v1/career-profile", json=_profile_payload(0), headers=auth_headers)
     assert stale.status_code == 409
@@ -74,7 +74,7 @@ def test_career_profile_summary_omits_private_fields_and_fact_bodies(client, aut
     summary = client.get("/api/v1/career-profile/summary", headers=auth_headers)
     assert summary.status_code == 200
     payload = summary.json()
-    assert payload["display_name"] == "Ada Lovelace"
+    assert payload["display_name"] == "Mira Vale"
     assert payload["fact_counts"] == {"experience": 1, "language": 1}
     assert "email" not in payload
     assert "facts" not in payload

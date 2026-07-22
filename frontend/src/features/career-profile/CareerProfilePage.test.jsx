@@ -14,7 +14,7 @@ const showToast = vi.fn();
 
 vi.mock("../../services/career", () => ({ CareerService: { getProfile: (...args) => getProfile(...args), getJobSources: (...args) => getJobSources(...args), saveProfile: (...args) => saveProfile(...args), uploadSource: vi.fn() } }));
 vi.mock("../../services/resumes", () => ({ ResumeService: { listVersions: (...args) => listResumeVersions(...args) } }));
-vi.mock("../../context/AuthContext", () => ({ useAuth: () => ({ user: "ada" }) }));
+vi.mock("../../context/AuthContext", () => ({ useAuth: () => ({ user: "mira" }) }));
 vi.mock("../../context/ToastContext", () => ({ useToast: () => ({ showToast }) }));
 
 describe("CareerProfilePage", () => {

@@ -280,6 +280,7 @@ def test_create_job_without_platform_job_id_reuses_same_scraped_job(
 
     assert first.status_code == 200
     assert second.status_code == 200
+    assert first.json()["id"] == second.json()["id"]
     assert first.json()["scraped_job_id"] == second.json()["scraped_job_id"]
 
     scraped_jobs = (
@@ -287,6 +288,72 @@ def test_create_job_without_platform_job_id_reuses_same_scraped_job(
     )
     assert len(scraped_jobs) == 1
     assert scraped_jobs[0].platform_job_id.startswith("manual-")
+
+
+def test_manual_job_namespace_is_private_per_user_and_ignores_spoofed_id(
+    client, auth_headers, db_session
+):
+    payload = {
+        "title": "Private manual role",
+        "company": "Private company",
+        "external_url": "https://example.com/private-manual-role",
+        "platform": "manual",
+        "platform_job_id": "shared-spoofed-id",
+    }
+    first = client.post("/api/v1/jobs/", json=payload, headers=auth_headers)
+    assert first.status_code == 200, first.text
+
+    other = User(
+        username="manual_namespace_other",
+        hashed_password=get_password_hash("OtherPass123"),
+    )
+    db_session.add(other)
+    db_session.commit()
+    login = client.post(
+        "/api/v1/auth/login",
+        data={"username": other.username, "password": "OtherPass123"},
+    )
+    other_headers = {"Authorization": f"Bearer {login.json()['access_token']}"}
+    second = client.post("/api/v1/jobs/", json=payload, headers=other_headers)
+    assert second.status_code == 200, second.text
+
+    assert first.json()["scraped_job_id"] != second.json()["scraped_job_id"]
+    assert first.json()["platform_job_id"] != second.json()["platform_job_id"]
+    assert first.json()["platform_job_id"].startswith("manual-")
+    assert second.json()["platform_job_id"].startswith("manual-")
+    assert "shared-spoofed-id" not in {
+        first.json()["platform_job_id"], second.json()["platform_job_id"]
+    }
+    first_visible = client.get("/api/v1/jobs/", headers=auth_headers).json()["items"]
+    second_visible = client.get("/api/v1/jobs/", headers=other_headers).json()["items"]
+    assert [item["id"] for item in first_visible] == [first.json()["id"]]
+    assert [item["id"] for item in second_visible] == [second.json()["id"]]
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {
+            "title": "Role",
+            "company": "Company",
+            "external_url": "https://example.test/role",
+            "unexpected": "not accepted",
+        },
+        {
+            "title": "R" * 241,
+            "company": "Company",
+            "external_url": "https://example.test/role",
+        },
+        {
+            "title": "Role",
+            "company": "Company",
+            "external_url": "https://example.test/role",
+            "raw_metadata": {str(index): index for index in range(101)},
+        },
+    ],
+)
+def test_manual_job_import_schema_is_bounded_and_forbids_extra(client, auth_headers, payload):
+    assert client.post("/api/v1/jobs/", json=payload, headers=auth_headers).status_code == 422
 
 
 def test_jobs_response_includes_normalized_job_data(client, auth_headers, db_session, test_user):

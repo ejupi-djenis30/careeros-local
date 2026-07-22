@@ -13,9 +13,11 @@ const create = vi.fn();
 const showToast = vi.fn();
 const readiness = vi.fn();
 const addEvent = vi.fn();
+const resumeList = vi.fn();
+const resumeGet = vi.fn();
 
 vi.mock("../../services/applications", () => ({ ApplicationService: { list: (...args) => list(...args), get: (...args) => get(...args), create: (...args) => create(...args), readiness: (...args) => readiness(...args), downloadReadiness: vi.fn(), updatePreparation: vi.fn(), addEvent: (...args) => addEvent(...args) } }));
-vi.mock("../../services/resumes", () => ({ ResumeService: { list: vi.fn(async () => []), get: vi.fn() } }));
+vi.mock("../../services/resumes", () => ({ ResumeService: { list: (...args) => resumeList(...args), get: (...args) => resumeGet(...args) } }));
 vi.mock("../../context/ToastContext", () => ({ useToast: () => ({ showToast }) }));
 
 function summary(id, title, company = "Local Co") {
@@ -43,6 +45,8 @@ describe("ApplicationsPage", () => {
         get.mockResolvedValue(application());
         create.mockResolvedValue(application());
         addEvent.mockResolvedValue(application());
+        resumeList.mockResolvedValue([]);
+        resumeGet.mockResolvedValue({ title: "ATS Resume", versions: [] });
         readiness.mockResolvedValue({
             status: "blocked", completeness_score: 10, blocker_count: 8, warning_count: 0,
             fingerprint: "a".repeat(64), checks: [],
@@ -92,6 +96,29 @@ describe("ApplicationsPage", () => {
         unmount();
 
         expect(signal.aborted).toBe(true);
+    });
+
+    it("distinguishes a resume metadata failure from an empty library and retries it", async () => {
+        const user = userEvent.setup();
+        resumeList
+            .mockRejectedValueOnce(new Error("offline"))
+            .mockResolvedValueOnce([{ id: "draft-1" }]);
+        resumeGet.mockResolvedValue({
+            title: "ATS Resume",
+            versions: [{ id: "version-1", semantic_version: "1.0.0", selected_fact_ids: [] }],
+        });
+        render(<MemoryRouter initialEntries={["/applications"]}><ApplicationsPage /></MemoryRouter>);
+
+        expect(await screen.findByRole("alert")).toHaveTextContent(
+            "Non è stato possibile caricare le versioni CV pubblicate"
+        );
+        expect(screen.queryByText(/Non ci sono ancora versioni CV pubblicate/i)).not.toBeInTheDocument();
+
+        await user.click(screen.getByRole("button", { name: "Riprova a caricare i CV" }));
+        await waitFor(() => expect(screen.queryByRole("alert")).not.toBeInTheDocument());
+        await user.click(screen.getByRole("button", { name: "Aggiungi la prima candidatura" }));
+        expect(screen.getByRole("option", { name: "ATS Resume · v1.0.0" })).toBeInTheDocument();
+        expect(resumeList).toHaveBeenCalledTimes(2);
     });
 
     it("opens an accessible modal, contains keyboard focus and restores the page", async () => {

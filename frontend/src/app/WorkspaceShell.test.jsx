@@ -7,7 +7,7 @@ import { renderWithItalian as render } from "../test/renderWithI18n";
 
 vi.mock("react-router-dom", () => ({ useLocation: () => ({ pathname: "/" }) }));
 vi.mock("../context/AuthContext", () => ({
-    useAuth: () => ({ user: "ada", logout: vi.fn() }),
+    useAuth: () => ({ user: "mira", logout: vi.fn() }),
 }));
 vi.mock("../components/Layout/Sidebar", () => ({
     Sidebar: ({ isOpen, onClose, containerRef }) => (

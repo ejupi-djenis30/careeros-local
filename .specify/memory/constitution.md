@@ -2,9 +2,9 @@
 
 <!--
 Sync impact report
-- Amendment: readiness artifact claims must verify safely contained durable bytes, and application
-  detail overlays must behave as accessible modal dialogs.
-- Version: 1.0.2 (clarifies evidence integrity and modal accessibility behavior).
+- Amendment: manual captures are user-namespaced, provider queries require explicit search input,
+  and append-only application projections use compare-and-swap revisions.
+- Version: 1.0.3 (clarifies private acquisition and concurrent application state behavior).
 - Ratified: 2026-07-17.
 - Last amended: 2026-07-22.
 - Principles: desktop ownership, local intelligence, grounded career truth, durable vault,
@@ -48,6 +48,9 @@ MUST NOT be required to inspect, explain or export readiness evidence.
 Claims that a published document is available MUST be backed by readable bytes inside the approved
 data root that match the immutable digest and declared length; database metadata alone is not
 evidence of artifact availability.
+Deterministic provider queries MUST use only user-entered search instructions and explicit
+preferences. CV prose, LLM-normalized profile fields and unconfirmed model intent MUST NOT become
+provider queries without a separate user confirmation.
 
 Rationale: accuracy is more valuable than fluency in high-stakes career material.
 
@@ -67,6 +70,10 @@ SQLite and user-selected local files are canonical. Schema migrations MUST be tr
 backed up when destructive, and tested from both an empty database and the supported prior
 version. Users MUST be able to export, import and delete their complete vault in documented,
 non-proprietary formats. Application updates MUST preserve data and generated documents.
+Manual opportunity captures MUST use a server-owned per-user namespace and idempotent retries;
+client identifiers MUST NOT merge private captures across users. Concurrent application writers
+MUST advance revisions with an atomic compare-and-swap, and derived board projections MUST never
+replace the immutable event history.
 
 Rationale: local storage without portability and recovery is only local lock-in.
 
@@ -135,4 +142,4 @@ minor; clarification without changed obligations is patch. Every plan MUST perfo
 check before research and again before release. Exceptions require owner approval, an expiry date
 and a tracked remediation task; there are no implicit exceptions.
 
-**Version**: 1.0.2 | **Ratified**: 2026-07-17 | **Last amended**: 2026-07-22
+**Version**: 1.0.3 | **Ratified**: 2026-07-17 | **Last amended**: 2026-07-22

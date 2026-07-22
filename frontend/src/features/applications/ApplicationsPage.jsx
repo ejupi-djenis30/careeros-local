@@ -8,7 +8,7 @@ import { ApplicationDetailDialog } from "./ApplicationDetailDialog";
 import { BOARD_STAGES, STAGES, getStageLabels } from "./applicationModel";
 
 function ApplicationCard({ application, onClick, locale, opening, expanded }) {
-    return <button type="button" className="application-card" onClick={onClick} disabled={opening} aria-busy={opening || undefined} aria-haspopup="dialog" aria-expanded={expanded}><strong>{application.title}</strong><span>{application.company}</span>{application.location && <small><i className="bi bi-geo-alt" /> {application.location}</small>}<time dateTime={application.updated_at}>{new Date(application.updated_at).toLocaleDateString(locale)}</time></button>;
+    return <button type="button" className="application-card" onClick={onClick} disabled={opening} aria-busy={opening || undefined} aria-haspopup="dialog" aria-expanded={expanded}><strong>{application.title}</strong><span>{application.company}</span>{application.location && <small><i className="bi bi-geo-alt" /> {application.location}</small>}{application.next_action && <small className="application-card__next"><i className="bi bi-arrow-return-right" /> {application.next_action.title}</small>}<time dateTime={application.updated_at}>{new Date(application.updated_at).toLocaleDateString(locale)}</time></button>;
 }
 
 const emptyForm = (jobId = "") => ({
@@ -23,6 +23,8 @@ export function ApplicationsPage() {
     const [applications, setApplications] = useState([]);
     const [selected, setSelected] = useState(null);
     const [resumeVersions, setResumeVersions] = useState([]);
+    const [resumeMetadataStatus, setResumeMetadataStatus] = useState("loading");
+    const [resumeMetadataRevision, setResumeMetadataRevision] = useState(0);
     const [loading, setLoading] = useState(true);
     const [creating, setCreating] = useState(false);
     const [error, setError] = useState("");
@@ -78,14 +80,20 @@ export function ApplicationsPage() {
             .then((items) => Promise.all(items.map((item) => ResumeService.get(item.id, { signal: controller.signal }))))
             .then((drafts) => {
                 if (controller.signal.aborted) return;
-                setResumeVersions(drafts.flatMap((draft) => draft.versions.map((version) => ({ id: version.id, label: `${draft.title} · v${version.semantic_version}` }))));
+                setResumeVersions(drafts.flatMap((draft) => draft.versions.map((version) => ({ id: version.id, label: `${draft.title} · v${version.semantic_version}`, selected_fact_ids: version.selected_fact_ids || [] }))));
+                setResumeMetadataStatus("ready");
             })
             .catch((loadError) => {
                 if (controller.signal.aborted || loadError?.name === "AbortError") return;
-                setResumeVersions([]);
+                setResumeMetadataStatus("error");
             });
         return () => controller.abort();
-    }, []);
+    }, [resumeMetadataRevision]);
+
+    const retryResumeMetadata = () => {
+        setResumeMetadataStatus("loading");
+        setResumeMetadataRevision((current) => current + 1);
+    };
 
     const grouped = useMemo(() => Object.fromEntries(STAGES.map((stage) => [stage, applications.filter((item) => item.current_stage === stage)])), [applications]);
     const closed = grouped.rejected.length + grouped.withdrawn.length + grouped.archived.length;
@@ -157,12 +165,15 @@ export function ApplicationsPage() {
             <div ref={backgroundRef} className="applications-workspace__background">
             <div className="application-overview"><div><span>{t("applications.active")}</span><strong>{applications.length - closed}</strong></div><div><span>{t("applications.interviews")}</span><strong>{grouped.interview.length}</strong></div><div><span>{t("applications.offers")}</span><strong>{grouped.offer.length}</strong></div><div><span>{t("applications.closed")}</span><strong>{closed}</strong></div><button ref={addApplicationRef} type="button" className="button button--primary" onClick={() => setShowCreate((value) => !value)}><i className="bi bi-plus-lg" /> {t("applications.add")}</button></div>
             {error && <div className="inline-alert inline-alert--danger" role="alert">{error}</div>}
+            {resumeMetadataStatus === "loading" && <div className="inline-alert" role="status">{t("applications.resumeMetadataLoading")}</div>}
+            {resumeMetadataStatus === "error" && <div className="inline-alert inline-alert--danger" role="alert"><span>{t("applications.resumeMetadataError")}</span> <button type="button" className="button button--secondary" onClick={retryResumeMetadata}>{t("applications.resumeMetadataRetry")}</button></div>}
+            {resumeMetadataStatus === "ready" && resumeVersions.length === 0 && <div className="inline-alert" role="status">{t("applications.resumeMetadataEmpty")}</div>}
             {showCreate && <form className="surface-section create-application" onSubmit={create}>
                 <div className="section-heading"><div><span className="section-kicker">{t("applications.newSnapshot")}</span><h2>{t("applications.add")}</h2></div><button type="button" className="icon-button" onClick={() => setShowCreate(false)} aria-label={t("applications.close")}><i className="bi bi-x-lg" /></button></div>
                 <div className="form-grid form-grid--3">
                     <label className="field-stack"><span>{t("applications.jobId")} <small>({t("applications.optional")})</small></span><input className="form-control" type="number" min="1" value={form.job_id} onChange={(e) => setForm({ ...form, job_id: e.target.value })} /></label>
                     <label className="field-stack"><span>{t("applications.initialStage")}</span><select className="form-select" value={form.initial_stage} onChange={(e) => setForm({ ...form, initial_stage: e.target.value })}>{["saved", "preparing", "applied"].map((stage) => <option key={stage} value={stage}>{stageLabels[stage]}</option>)}</select></label>
-                    <label className="field-stack"><span>{t("applications.resumeVersion")}</span><select className="form-select" value={form.resume_version_id} onChange={(e) => setForm({ ...form, resume_version_id: e.target.value })}><option value="">{t("applications.none")}</option>{resumeVersions.map((version) => <option key={version.id} value={version.id}>{version.label}</option>)}</select></label>
+                    <label className="field-stack"><span>{t("applications.resumeVersion")}</span><select className="form-select" value={form.resume_version_id} disabled={resumeMetadataStatus !== "ready"} onChange={(e) => setForm({ ...form, resume_version_id: e.target.value })}><option value="">{resumeMetadataStatus === "loading" ? t("applications.resumeMetadataLoadingOption") : resumeMetadataStatus === "error" ? t("applications.resumeMetadataErrorOption") : t("applications.none")}</option>{resumeVersions.map((version) => <option key={version.id} value={version.id}>{version.label}</option>)}</select></label>
                 </div>
                 {!form.job_id && <>
                     <div className="form-grid form-grid--3">
@@ -178,7 +189,7 @@ export function ApplicationsPage() {
             </form>}
             {applications.length === 0 ? <div className="state-panel"><i className="bi bi-kanban" /><h2>{t("applications.emptyTitle")}</h2><p>{t("applications.emptyCopy")}</p><button className="button button--primary" onClick={() => setShowCreate(true)}>{t("applications.addFirst")}</button></div> : <div className="application-board">{BOARD_STAGES.map((stage) => <section key={stage} className="application-column"><header><span className={`stage-dot stage-dot--${stage}`} /><h2>{stageLabels[stage]}</h2><strong>{grouped[stage].length}</strong></header><div>{grouped[stage].map((application) => <ApplicationCard key={application.id} application={application} locale={locale} opening={openingId === application.id} expanded={selected?.id === application.id} onClick={(event) => openApplication(application.id, event.currentTarget)} />)}{grouped[stage].length === 0 && <p className="application-column__empty">{t("applications.emptyColumn")}</p>}</div></section>)}{closed > 0 && <section className="application-column application-column--closed"><header><span className="stage-dot" /><h2>{t("applications.closed")}</h2><strong>{closed}</strong></header><div>{[...grouped.rejected, ...grouped.withdrawn, ...grouped.archived].map((application) => <ApplicationCard key={application.id} application={application} locale={locale} opening={openingId === application.id} expanded={selected?.id === application.id} onClick={(event) => openApplication(application.id, event.currentTarget)} />)}</div></section>}</div>}
             </div>
-            {selected && <ApplicationDetailDialog application={selected} resumeVersions={resumeVersions} onChanged={handleChanged} onClose={() => setSelected(null)} returnFocus={detailOpener} backgroundRef={backgroundRef} />}
+            {selected && <ApplicationDetailDialog application={selected} resumeVersions={resumeVersions} resumeMetadataStatus={resumeMetadataStatus} onRetryResumeMetadata={retryResumeMetadata} onChanged={handleChanged} onClose={() => setSelected(null)} returnFocus={detailOpener} backgroundRef={backgroundRef} />}
         </div>
     );
 }

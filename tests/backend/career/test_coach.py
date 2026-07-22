@@ -16,7 +16,7 @@ def _structured(payload):
 def _profile_payload():
     return {
         "expected_revision": 0,
-        "display_name": "Ada Lovelace",
+        "display_name": "Mira Vale",
         "headline": "Analytical Engineer",
         "summary": "Private summary that is not sent unless represented as a fact.",
         "email": "private@example.test",

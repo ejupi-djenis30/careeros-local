@@ -74,8 +74,8 @@ describe("desktop bootstrap", () => {
 
     it("uses scoped native dialogs for backup save and restore", async () => {
         window.__TAURI_INTERNALS__ = {};
-        save.mockResolvedValue("C:/Users/Ada/backup.zip");
-        open.mockResolvedValue("C:/Users/Ada/backup.zip");
+        save.mockResolvedValue("C:/Users/DemoUser/backup.zip");
+        open.mockResolvedValue("C:/Users/DemoUser/backup.zip");
         readFile.mockResolvedValue(new Uint8Array([80, 75, 3, 4]));
         const blob = { arrayBuffer: vi.fn().mockResolvedValue(Uint8Array.from([1, 2, 3]).buffer) };
 
@@ -83,7 +83,7 @@ describe("desktop bootstrap", () => {
         const selected = await openBackupWithNativeDialog();
 
         expect(writeFile).toHaveBeenCalledWith(
-            "C:/Users/Ada/backup.zip",
+            "C:/Users/DemoUser/backup.zip",
             new Uint8Array([1, 2, 3]),
         );
         expect(selected.name).toBe("backup.zip");

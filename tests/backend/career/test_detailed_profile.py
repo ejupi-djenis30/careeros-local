@@ -12,7 +12,7 @@ SKILL_ID = "10000000-0000-4000-8000-000000000002"
 def _payload() -> dict:
     return {
         "expected_revision": 0,
-        "display_name": "Grace Hopper",
+        "display_name": "Noa Rowan",
         "headline": "Engineering leader",
         "summary": "Builds teams and dependable compilers.",
         "preferences": {"workload_min": 80, "workload_max": 100},

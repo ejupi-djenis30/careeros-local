@@ -25,10 +25,10 @@ from backend.workflows.models import WorkflowRun
 def _profile_payload():
     return {
         "expected_revision": 0,
-        "display_name": "Ada Lovelace",
+        "display_name": "Mira Vale",
         "headline": "Computing pioneer",
         "summary": "Builds rigorous analytical systems.",
-        "email": "ada@example.test",
+        "email": "mira@example.test",
         "location": {"city": "Zurich", "country": "CH"},
         "preferences": {"workload_min": 80, "workload_max": 100},
         "facts": [
@@ -82,7 +82,7 @@ def _seed_related_records(db, user_id: int, profile_id: str, fact_id: str) -> st
         draft_id=draft_id,
         version_number=1,
         semantic_version="1.0.0",
-        snapshot={"display_name": "Ada Lovelace"},
+        snapshot={"display_name": "Mira Vale"},
         snapshot_sha256="0" * 64,
         profile_revision=1,
         selected_fact_ids=[fact_id],
@@ -109,7 +109,15 @@ def _seed_related_records(db, user_id: int, profile_id: str, fact_id: str) -> st
         resume_version_id=version_id,
         revision=1,
         current_stage="applied",
-        job_snapshot={"title": "Backend Engineer", "company": "Local Co"},
+        job_snapshot={
+            "title": "Backend Engineer",
+            "company": "Local Co",
+            "location": "Zurich",
+        },
+        job_title="Backend Engineer",
+        job_company="Local Co",
+        job_location="Zurich",
+        latest_event_at=now,
     )
     event = ApplicationEvent(
         id=str(uuid.uuid4()),
@@ -188,6 +196,67 @@ def _rewrite_application_job(archive_data: bytes, job_id: int) -> bytes:
         payload, ensure_ascii=False, separators=(",", ":"), sort_keys=True
     ).encode("utf-8")
     manifest = json.loads(files["manifest.json"])
+    payload_entry = next(
+        entry for entry in manifest["entries"] if entry["path"] == "payload.json"
+    )
+    payload_entry["byte_size"] = len(files["payload.json"])
+    payload_entry["sha256"] = hashlib.sha256(files["payload.json"]).hexdigest()
+    files["manifest.json"] = json.dumps(
+        manifest, ensure_ascii=False, separators=(",", ":"), sort_keys=True
+    ).encode("utf-8")
+    output = BytesIO()
+    with zipfile.ZipFile(output, "w", zipfile.ZIP_DEFLATED) as target:
+        for name, content in files.items():
+            target.writestr(name, content)
+    return output.getvalue()
+
+
+APPLICATION_PROJECTION_FIELDS = {
+    "job_title",
+    "job_company",
+    "job_location",
+    "latest_event_at",
+    "next_action_task_id",
+    "next_action_title",
+    "next_action_at",
+    "next_action_priority",
+}
+
+
+def _rewrite_application_projection_fixture(
+    archive_data: bytes,
+    *,
+    format_version: int = 3,
+    remove_projections: bool = False,
+    projection_overrides: dict | None = None,
+) -> bytes:
+    with zipfile.ZipFile(BytesIO(archive_data), "r") as source:
+        files = {name: source.read(name) for name in source.namelist()}
+    payload = json.loads(files["payload.json"])
+    application = payload["tables"]["applications"][0]
+    if remove_projections:
+        for field in APPLICATION_PROJECTION_FIELDS:
+            application.pop(field, None)
+    if projection_overrides:
+        application.update(projection_overrides)
+
+    removed_tables: list[str] = []
+    if format_version < 3:
+        removed_tables.extend(
+            ["search_profiles", "scraped_jobs", "jobs", "preference_signals"]
+        )
+    if format_version < 2:
+        removed_tables.append("ai_executions")
+    for table_name in removed_tables:
+        payload["tables"].pop(table_name)
+
+    files["payload.json"] = json.dumps(
+        payload, ensure_ascii=False, separators=(",", ":"), sort_keys=True
+    ).encode("utf-8")
+    manifest = json.loads(files["manifest.json"])
+    manifest["format_version"] = format_version
+    for table_name in removed_tables:
+        manifest["record_counts"].pop(table_name)
     payload_entry = next(
         entry for entry in manifest["entries"] if entry["path"] == "payload.json"
     )
@@ -295,9 +364,29 @@ def _seed_search_portability_records(db, user_id: int):
         job_id=job.id,
         revision=1,
         current_stage="applied",
-        job_snapshot={"title": scraped.title, "company": scraped.company},
+        job_snapshot={
+            "title": scraped.title,
+            "company": scraped.company,
+            "location": scraped.location,
+        },
+        job_title=scraped.title,
+        job_company=scraped.company,
+        job_location=scraped.location,
+        latest_event_at=updated_at,
     )
     db.add(application)
+    db.flush()
+    db.add(
+        ApplicationEvent(
+            application_id=application.id,
+            event_type="stage",
+            stage="applied",
+            occurred_at=updated_at,
+            note=None,
+            payload={"initial": True},
+            created_at=updated_at,
+        )
+    )
     db.commit()
     return profile.id, scraped.id, job.id, application.id, signals
 
@@ -314,6 +403,126 @@ def _clear_search_records(db, user_id: int, scraped_job_id: int) -> None:
     owner.preference_signals = None
     owner.preference_updated_at = None
     db.commit()
+
+
+def _seed_portable_application_via_api(client, auth_headers) -> tuple[dict, dict]:
+    profile = client.put(
+        "/api/v1/career-profile", json=_profile_payload(), headers=auth_headers
+    )
+    assert profile.status_code == 200, profile.text
+    created = client.post(
+        "/api/v1/applications",
+        json={
+            "manual_job": {
+                "title": "Reliability Engineer",
+                "company": "Northstar Systems",
+                "location": "Zurich",
+            },
+            "initial_stage": "preparing",
+        },
+        headers=auth_headers,
+    )
+    assert created.status_code == 201, created.text
+    application = created.json()
+    task_response = client.post(
+        f"/api/v1/applications/{application['id']}/tasks",
+        json={
+            "expected_revision": 1,
+            "title": "Review the application pack",
+            "due_at": "2026-08-01T09:00:00+02:00",
+            "priority": "high",
+        },
+        headers=auth_headers,
+    )
+    assert task_response.status_code == 201, task_response.text
+    return task_response.json(), task_response.json()["tasks"][0]
+
+
+@pytest.mark.parametrize("format_version", [1, 2, 3])
+def test_historical_archive_rebuilds_application_projections_after_events(
+    client,
+    auth_headers,
+    db_session,
+    test_user,
+    portable_data_dir,
+    format_version,
+):
+    application, task = _seed_portable_application_via_api(client, auth_headers)
+    exported = client.get("/api/v1/portability/export", headers=auth_headers)
+    assert exported.status_code == 200, exported.text
+    legacy = _rewrite_application_projection_fixture(
+        exported.content,
+        format_version=format_version,
+        remove_projections=True,
+    )
+    deleted = client.delete(
+        "/api/v1/career-profile",
+        headers={**auth_headers, "X-Confirm-Delete": "DELETE-MY-CAREER-VAULT"},
+    )
+    assert deleted.status_code == 204, deleted.text
+
+    restored = client.post(
+        "/api/v1/portability/restore",
+        files={"file": (f"historical-v{format_version}.zip", legacy, "application/zip")},
+        headers=auth_headers,
+    )
+
+    assert restored.status_code == 200, restored.text
+    assert restored.json()["format_version"] == format_version
+    db_session.expire_all()
+    stored = db_session.get(Application, application["id"])
+    assert stored is not None
+    assert stored.job_title == "Reliability Engineer"
+    assert stored.job_company == "Northstar Systems"
+    assert stored.job_location == "Zurich"
+    assert stored.latest_event_at == max(event.occurred_at for event in stored.events)
+    assert stored.next_action_task_id == task["id"]
+    assert stored.next_action_title == "Review the application pack"
+    assert stored.next_action_at == datetime(2026, 8, 1, 7, 0, tzinfo=timezone.utc)
+    assert stored.next_action_priority == "high"
+
+
+def test_modern_v3_archive_rejects_inconsistent_application_projections(
+    client, auth_headers, db_session, test_user, portable_data_dir
+):
+    application, _task = _seed_portable_application_via_api(client, auth_headers)
+    exported = client.get("/api/v1/portability/export", headers=auth_headers)
+    assert exported.status_code == 200, exported.text
+    inconsistent = _rewrite_application_projection_fixture(
+        exported.content,
+        projection_overrides={
+            "job_title": "Tampered role",
+            "job_company": "Tampered company",
+            "job_location": "Elsewhere",
+            "latest_event_at": "2020-01-01T00:00:00Z",
+            "next_action_task_id": "00000000-0000-4000-8000-000000000000",
+            "next_action_title": "Tampered task",
+            "next_action_at": "2020-01-01T00:00:00Z",
+            "next_action_priority": "low",
+        },
+    )
+    deleted = client.delete(
+        "/api/v1/career-profile",
+        headers={**auth_headers, "X-Confirm-Delete": "DELETE-MY-CAREER-VAULT"},
+    )
+    assert deleted.status_code == 204, deleted.text
+
+    restored = client.post(
+        "/api/v1/portability/restore",
+        files={"file": ("inconsistent-v3.zip", inconsistent, "application/zip")},
+        headers=auth_headers,
+    )
+
+    assert restored.status_code == 422, restored.text
+    assert "projections are inconsistent" in restored.json()["detail"]
+    db_session.expire_all()
+    assert db_session.get(Application, application["id"]) is None
+    assert (
+        db_session.query(CandidateProfile)
+        .filter(CandidateProfile.user_id == test_user.id)
+        .count()
+        == 0
+    )
 
 
 def test_export_delete_restore_round_trip(

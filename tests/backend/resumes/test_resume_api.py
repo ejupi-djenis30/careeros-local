@@ -18,13 +18,13 @@ from backend.storage import atomic
 def _profile_payload(expected_revision=0):
     return {
         "expected_revision": expected_revision,
-        "display_name": "Ada Lovelace",
+        "display_name": "Mira Vale",
         "headline": "Analytical Engineer",
         "summary": "Builds rigorous, human-centered computing systems.",
-        "email": "ada@example.test",
+        "email": "mira@example.test",
         "phone": "+41 79 000 00 00",
         "location": {"city": "Zurich", "country": "CH"},
-        "website": "https://ada.example.test",
+        "website": "https://mira.example.test",
         "preferences": {},
         "facts": [
             {
@@ -116,7 +116,7 @@ def test_ats_resume_publishes_text_extractable_immutable_artifacts(
         assert hashlib.sha256(pdf_response.content).hexdigest() == artifacts["pdf"]["sha256"]
         pdf = PdfReader(BytesIO(pdf_response.content))
         text = "\n".join(page.extract_text() or "" for page in pdf.pages)
-        assert "Ada Lovelace" in text
+        assert "Mira Vale" in text
         assert "EXPERIENCE" in text
         assert sum(len(page.images) for page in pdf.pages) == 0
 

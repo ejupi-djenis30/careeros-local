@@ -92,7 +92,7 @@ export function SearchFormAdvanced({ profile, handleChange, setProfile, existing
                             value={profile.max_queries}
                             onChange={handleChange}
                             placeholder={t("searchForm.noLimit")}
-                            min="1"
+                            min="0"
                             className="form-control form-control-sm bg-black-20 border-white-10 text-white"
                         />
                     </div>

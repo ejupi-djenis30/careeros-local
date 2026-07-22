@@ -86,7 +86,7 @@ class SequenceRaceApi(FakeReleaseApi):
             self.release_values.append(
                 {
                     "id": 202,
-                    "tag_name": "v1.3.0",
+                    "tag_name": "v1.4.0",
                     "draft": False,
                     "immutable": True,
                 }
@@ -100,10 +100,10 @@ def _publisher(tmp_path: Path, api: FakeReleaseApi) -> Publisher:
     directory.mkdir()
     (directory / "release-manifest.json").write_text("{}\n", encoding="utf-8")
     (directory / "SHA256SUMS").write_text("inventory\n", encoding="utf-8")
-    (directory / "CareerOS-Local_1.2.0_windows-x64-setup.exe").write_bytes(b"installer")
+    (directory / "CareerOS-Local_1.3.0_windows-x64-setup.exe").write_bytes(b"installer")
     changelog = tmp_path / "CHANGELOG.md"
     changelog.write_text(
-        "# Changelog\n\n## [1.2.0] - 2026-07-22\n\n### Fixed\n\n- Exact releases.\n",
+        "# Changelog\n\n## [1.3.0] - 2026-07-22\n\n### Fixed\n\n- Exact releases.\n",
         encoding="utf-8",
     )
     return Publisher(

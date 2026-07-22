@@ -13,6 +13,21 @@ export const ApplicationService = {
     addEvent(id, data) {
         return ApiClient.post(`/applications/${encodeURIComponent(id)}/events`, data);
     },
+    createTask(id, data) {
+        return ApiClient.post(`/applications/${encodeURIComponent(id)}/tasks`, data);
+    },
+    updateTask(id, taskId, data) {
+        return ApiClient.patch(`/applications/${encodeURIComponent(id)}/tasks/${encodeURIComponent(taskId)}`, data);
+    },
+    downloadTaskCalendar(id) {
+        return ApiClient.download(`/applications/${encodeURIComponent(id)}/tasks/calendar.ics`);
+    },
+    publishDossier(id, data) {
+        return ApiClient.post(`/applications/${encodeURIComponent(id)}/dossiers`, data);
+    },
+    downloadDossier(id, dossierId) {
+        return ApiClient.download(`/applications/${encodeURIComponent(id)}/dossiers/${encodeURIComponent(dossierId)}/download`);
+    },
     readiness(id, options = {}) {
         return ApiClient.get(`/applications/${encodeURIComponent(id)}/readiness`, options.signal, options);
     },

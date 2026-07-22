@@ -20,6 +20,8 @@ function focusableChildren(dialog) {
 export function ApplicationDetailDialog({
     application,
     resumeVersions,
+    resumeMetadataStatus,
+    onRetryResumeMetadata,
     onChanged,
     onClose,
     returnFocus,
@@ -95,6 +97,8 @@ export function ApplicationDetailDialog({
             <ApplicationDetail
                 application={application}
                 resumeVersions={resumeVersions}
+                resumeMetadataStatus={resumeMetadataStatus}
+                onRetryResumeMetadata={onRetryResumeMetadata}
                 onChanged={onChanged}
                 onClose={() => closeHandlerRef.current?.()}
                 dialogRef={dialogRef}

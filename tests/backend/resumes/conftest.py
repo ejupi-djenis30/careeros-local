@@ -9,13 +9,13 @@ import pytest
 def detailed_profile_payload() -> dict:
     return {
         "expected_revision": 0,
-        "display_name": "Ada Lovelace",
+        "display_name": "Mira Vale",
         "headline": "Principal Software Engineer",
         "summary": "Builds dependable systems and develops engineering teams.",
-        "email": "ada@example.test",
+        "email": "mira@example.test",
         "phone": "+41 79 000 00 00",
         "location": {"city": "Zurich", "country": "CH"},
-        "website": "https://ada.example.test",
+        "website": "https://mira.example.test",
         "preferences": {
             "workload_min": 80,
             "workload_max": 100,

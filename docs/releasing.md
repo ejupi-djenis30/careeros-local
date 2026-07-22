@@ -24,7 +24,7 @@ Run the metadata and release-contract tests locally:
 
 ## Read-only rehearsal
 
-Run **Desktop packages** from `main`. You may supply the planned tag, such as `v1.2.0`, in
+Run **Desktop packages** from `main`. You may supply the planned tag, such as `v1.3.0`, in
 `expected_tag`. The workflow builds six native targets on versioned GitHub-hosted runners,
 smoke-tests each package, normalizes installer names, and assembles one exact candidate.
 
@@ -98,16 +98,16 @@ If you downloaded only one Windows installer and `SHA256SUMS`, compare that exac
 PowerShell's native `Get-FileHash` before verifying provenance:
 
 ```powershell
-$asset = "CareerOS-Local_1.2.0_windows-x64-setup.exe"
+$asset = "CareerOS-Local_1.3.0_windows-x64-setup.exe"
 $entry = @(Get-Content .\SHA256SUMS | Where-Object { ($_ -split '\s+', 2)[1] -eq $asset })
 if ($entry.Count -ne 1) { throw "Expected exactly one checksum entry for $asset" }
 $expected = ($entry[0] -split '\s+', 2)[0]
 $actual = (Get-FileHash -Algorithm SHA256 -LiteralPath $asset).Hash
 if ($actual -ne $expected) { throw "SHA-256 mismatch for $asset" }
 
-gh attestation verify .\CareerOS-Local_1.2.0_windows-x64-setup.exe `
+gh attestation verify .\CareerOS-Local_1.3.0_windows-x64-setup.exe `
   --repo ejupi-djenis30/careeros-local `
-  --source-ref refs/tags/v1.2.0
+  --source-ref refs/tags/v1.3.0
 ```
 
 The packages remain unsigned community builds until platform signature checks are configured and
