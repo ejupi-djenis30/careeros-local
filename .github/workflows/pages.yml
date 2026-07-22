@@ -9,6 +9,9 @@ on:
       - "scripts/render_brand_assets.mjs"
       - "scripts/validate_portfolio_site.py"
       - "tests/backend/unit/test_validate_portfolio_site.py"
+      - "frontend/e2e/portfolio-responsive.mjs"
+      - "frontend/package.json"
+      - "frontend/package-lock.json"
       - ".github/workflows/pages.yml"
   push:
     branches: [main]
@@ -17,6 +20,9 @@ on:
       - "scripts/render_brand_assets.mjs"
       - "scripts/validate_portfolio_site.py"
       - "tests/backend/unit/test_validate_portfolio_site.py"
+      - "frontend/e2e/portfolio-responsive.mjs"
+      - "frontend/package.json"
+      - "frontend/package-lock.json"
       - ".github/workflows/pages.yml"
 
 permissions:
@@ -39,6 +45,25 @@ jobs:
 
       - name: Validate static portfolio
         run: python scripts/validate_portfolio_site.py
+
+      - name: Install Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install locked browser-test dependencies
+        working-directory: frontend
+        run: npm ci --ignore-scripts
+
+      - name: Install Chromium for responsive validation
+        working-directory: frontend
+        run: npx playwright install --with-deps chromium
+
+      - name: Validate responsive portfolio geometry
+        working-directory: frontend
+        run: npm run test:pages
 
       - name: Configure Pages
         if: github.event_name != 'pull_request'

@@ -1493,6 +1493,12 @@ h2 {
   }
 }
 
+@media (min-width: 1021px) and (max-width: 1240px) {
+  .privacy-float {
+    right: 0;
+  }
+}
+
 @media (max-width: 720px) {
   .container {
     width: min(calc(100% - 32px), var(--page));
