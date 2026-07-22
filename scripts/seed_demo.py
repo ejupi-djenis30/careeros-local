@@ -17,10 +17,10 @@ from typing import IO, Any, Protocol
 
 API_PREFIX = "/api/v1"
 DEFAULT_BASE_URL = "http://127.0.0.1:8000"
-DEFAULT_USERNAME = "ada_demo"
-DEFAULT_PASSWORD = "AdaDemo2026!"
-DEMO_NAME = "Ada Lovelace"
-DEMO_RESUME_TITLE = "Ada Lovelace — ATS Demo"
+DEFAULT_USERNAME = "mira_demo"
+DEFAULT_PASSWORD = "MiraDemo2026!"
+DEMO_NAME = "Mira Vale"
+DEMO_RESUME_TITLE = "Mira Vale — ATS Demo"
 DEMO_JOB_TITLE = "Local Systems Architect"
 DEMO_JOB_COMPANY = "Analytical Engines Cooperative"
 
@@ -32,10 +32,10 @@ PROFILE_PAYLOAD: dict[str, Any] = {
         "Builds dependable, privacy-preserving software and helps engineering teams turn "
         "ambiguous problems into testable systems."
     ),
-    "email": "ada@example.test",
+    "email": "mira@example.test",
     "phone": "+41 79 000 00 00",
     "location": {"city": "Zurich", "country": "CH"},
-    "website": "https://ada.example.test",
+    "website": "https://mira.example.test",
     "preferences": {
         "workload_min": 80,
         "workload_max": 100,
@@ -384,7 +384,7 @@ def ensure_profile(api: JsonApi, token: str) -> tuple[dict[str, Any], str]:
     )
     profile = _object(created.value, "career profile")
     if not _profile_ready(profile):
-        raise SeedError("The local API did not persist the verified Ada demo profile")
+        raise SeedError("The local API did not persist the verified Mira demo profile")
     return profile, "created"
 
 
@@ -449,7 +449,7 @@ def ensure_resume(api: JsonApi, token: str) -> tuple[str, str]:
         api.request_json(
             "POST",
             f"/resumes/{draft_id}/publish",
-            payload={"name": "Ada Lovelace — application pack"},
+            payload={"name": "Mira Vale — application pack"},
             token=token,
             allowed_statuses=(201,),
         ).value,
@@ -560,7 +560,7 @@ def seed_demo(api: JsonApi, username: str, password: str) -> SeedSummary:
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="Populate a fictional Ada workspace through a loopback CareerOS API."
+        description="Populate a fictional Mira workspace through a loopback CareerOS API."
     )
     parser.add_argument("--base-url", default=DEFAULT_BASE_URL, help="Loopback server origin")
     parser.add_argument("--username", default=DEFAULT_USERNAME, help="Local demo account name")

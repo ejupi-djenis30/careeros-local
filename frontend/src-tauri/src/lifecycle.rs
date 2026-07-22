@@ -373,7 +373,7 @@ mod tests {
             BackendLifecycle::new(
                 43127,
                 "x".repeat(64),
-                "1.2.0".into(),
+                "1.3.0".into(),
                 PathBuf::from("C:/CareerOS"),
                 PathBuf::from("C:/CareerOS/careeros-backend.exe"),
                 smoke_mode,
@@ -409,7 +409,7 @@ mod tests {
         let lifecycle = BackendLifecycle::new(
             43127,
             "x".repeat(64),
-            "1.2.0".into(),
+            "1.3.0".into(),
             data_directory.clone(),
             data_directory.join("careeros-backend.exe"),
             true,

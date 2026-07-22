@@ -16,7 +16,7 @@ from backend.models import Job, ScrapedJob, SearchProfile, User
 
 PROFILE = {
     "expected_revision": 0,
-    "display_name": "Katherine Johnson",
+    "display_name": "Iris Arden",
     "headline": "Research mathematician",
     "summary": "Calculates reliable trajectories.",
     "email": "katherine@example.test",

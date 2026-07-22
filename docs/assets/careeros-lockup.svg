@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 680 160" role="img" aria-labelledby="title description">
   <title id="title">CareerOS Local</title>
-  <desc id="description">Private career intelligence, on your device.</desc>
+  <desc id="description">Local-first career utility, on your device.</desc>
   <rect x="16" y="16" width="128" height="128" rx="32" fill="#101411" stroke="#2b362f" stroke-width="4"/>
   <path d="M104 51A36 36 0 1 0 104 109" fill="none" stroke="#b9f27c" stroke-width="14" stroke-linecap="round"/>
   <path d="M90 80h14" fill="none" stroke="#f4f7f2" stroke-width="7" stroke-linecap="round"/>
@@ -8,5 +8,5 @@
   <circle cx="108" cy="80" r="3.6" fill="#101411"/>
   <text x="176" y="78" fill="#f4f7f2" font-family="Inter, ui-sans-serif, system-ui, sans-serif" font-size="50" font-weight="720" letter-spacing="-2">CareerOS</text>
   <text x="411" y="78" fill="#b9f27c" font-family="Inter, ui-sans-serif, system-ui, sans-serif" font-size="50" font-weight="650" letter-spacing="-1.5">Local</text>
-  <text x="179" y="111" fill="#9eaaa2" font-family="Inter, ui-sans-serif, system-ui, sans-serif" font-size="14" font-weight="650" letter-spacing="2.1">PRIVATE CAREER INTELLIGENCE · ON YOUR DEVICE</text>
+  <text x="179" y="111" fill="#9eaaa2" font-family="Inter, ui-sans-serif, system-ui, sans-serif" font-size="14" font-weight="650" letter-spacing="2.1">LOCAL-FIRST CAREER UTILITY · ON YOUR DEVICE</text>
 </svg>

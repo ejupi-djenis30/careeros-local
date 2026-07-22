@@ -5,6 +5,7 @@ import { FilterBar } from '../components/FilterBar';
 import { useJobs } from '../hooks/useJobs';
 import { useI18n } from '../i18n/useI18n';
 import { translateMessage } from '../i18n/runtime';
+import { ManualJobImporter } from '../components/ManualJobImporter';
 
 const StatCard = ({ label, value, color, icon, isLoading }) => (
   <div className="glass-panel p-4 d-flex align-items-center hover-card h-100">
@@ -72,6 +73,8 @@ export function JobsPage() {
           <StatCard label={t("jobsPage.applied")} value={Number(appliedCount || 0).toLocaleString(locale)} color="success" icon="bi-send-check-fill" isLoading={isLoading} />
         </div>
       </div>
+
+      <ManualJobImporter onImported={() => fetchJobs(false)} />
 
       <div className="glass-panel overflow-hidden d-flex flex-column">
         <div className="p-3 border-bottom border-white-10 bg-black-20 transition-all">

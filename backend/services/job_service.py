@@ -16,9 +16,17 @@ class JobService:
         self.profile_repo = ProfileRepository(db)
 
     @staticmethod
-    def _stable_manual_platform_job_id(job_dict: Dict[str, Any]) -> str:
+    def _stable_manual_platform_job_id(user_id: int, job_dict: Dict[str, Any]) -> str:
+        """Return a stable identifier in a server-owned, per-user namespace.
+
+        Manual listings are private user input rather than shared provider data.  Including
+        the authenticated user id in the one-way fingerprint prevents two users who save the
+        same URL from being attached to the same mutable ``ScrapedJob`` row.  The caller must
+        never use a client-supplied platform id for the ``manual`` platform.
+        """
         fingerprint_parts = [
-            str(job_dict.get("platform") or "manual").strip().lower(),
+            f"user:{user_id}",
+            "platform:manual",
             str(job_dict.get("title") or "").strip().lower(),
             str(job_dict.get("company") or "").strip().lower(),
             str(job_dict.get("external_url") or "").strip().lower(),
@@ -70,12 +78,22 @@ class JobService:
                 raise HTTPException(status_code=403, detail="Unauthorized profile access")
 
         # Split fields: scraped-job fields vs user-relationship fields
+        platform = str(job_dict.get("platform") or "manual").strip().lower() or "manual"
+        supplied_platform_job_id = str(job_dict.get("platform_job_id") or "").strip()
+        if platform == "manual":
+            # Manual ids are always derived server-side.  Ignoring a spoofed client id is
+            # essential: otherwise a user could deliberately collide with another user's row.
+            platform_job_id = self._stable_manual_platform_job_id(user_id, job_dict)
+        else:
+            platform_job_id = supplied_platform_job_id or self._stable_manual_platform_job_id(
+                user_id, {**job_dict, "platform": "manual"}
+            )
+
         scraped_fields = {
             "title": job_dict.get("title", ""),
             "company": job_dict.get("company", ""),
-            "platform": job_dict.get("platform") or "manual",
-            "platform_job_id": job_dict.get("platform_job_id", None)
-            or self._stable_manual_platform_job_id(job_dict),
+            "platform": platform,
+            "platform_job_id": platform_job_id,
             "external_url": job_dict.get("external_url", None),
             "description": job_dict.get("description", None),
             "location": job_dict.get("location", None),
@@ -104,6 +122,17 @@ class JobService:
 
         if scraped_job is None:
             raise HTTPException(status_code=500, detail="Shared scraped job record is unavailable")
+
+        # POSTing the same manual capture twice is a retry, not a request for a duplicate
+        # relationship.  SQLite permits duplicate composite UNIQUE rows when the profile is
+        # NULL, so enforce idempotency explicitly at the service boundary.
+        existing_job = self.repo.get_job_by_user_scraped_profile(
+            user_id,
+            scraped_job.id,
+            profile_id,
+        )
+        if existing_job is not None:
+            return existing_job
 
         # Create the user-specific Job record
         job_data = {

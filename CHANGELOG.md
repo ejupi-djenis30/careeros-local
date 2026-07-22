@@ -5,6 +5,39 @@ All notable changes to CareerOS Local are documented here. The format follows
 
 ## [Unreleased]
 
+## [1.3.0] - 2026-07-22
+
+### Added
+
+- Added explicit-only, deterministic provider-query planning with a versioned provenance cache;
+  CV prose and model-derived fields remain local matching inputs and cannot become search queries.
+- Added private manual job capture with stable user-scoped identity, idempotent retries and no
+  leakage into the shared provider catalogue.
+- Added typed application next actions, canonical board projections, calendar exports and a
+  versioned evidence dossier with deterministic ZIP manifests.
+- Added bounded application summaries and detail payloads so the board remains responsive while
+  complete timelines, tasks and dossiers stay available on demand.
+
+### Changed
+
+- Application archives now rebuild derived projections from snapshots and events. Modern v3
+  archives are also checked against that replay before any restore is committed.
+- The application workspace now distinguishes resume metadata loading, an empty library and a
+  transport error, with accessible retry paths that preserve the dossier draft.
+- Search status copy now reflects the explicit-query contract and the home workspace describes
+  search and matching without obsolete model-planning language.
+- CI now executes every opt-in performance acceptance gate, including 10k-record reads,
+  application readiness and resume canvas budgets.
+
+### Fixed
+
+- Restoring historical v1, v2 and projection-free v3 application rows no longer leaves blank or
+  stale board projections.
+- Dossier evidence no longer appears empty when resume-version metadata or Career Vault evidence
+  failed to load.
+- Application deadlines remain timezone-aware and next-action ordering is deterministic across
+  API responses, archives and calendar exports.
+
 ## [1.2.0] - 2026-07-22
 
 ### Added
@@ -151,7 +184,8 @@ All notable changes to CareerOS Local are documented here. The format follows
   autosave/revision loop.
 - Removed the rate-limit error and incomplete pipeline from public screenshots.
 
-[Unreleased]: https://github.com/ejupi-djenis30/careeros-local/compare/v1.2.0...HEAD
+[Unreleased]: https://github.com/ejupi-djenis30/careeros-local/compare/v1.3.0...HEAD
+[1.3.0]: https://github.com/ejupi-djenis30/careeros-local/compare/v1.2.0...v1.3.0
 [1.2.0]: https://github.com/ejupi-djenis30/careeros-local/compare/v1.1.2...v1.2.0
 [1.1.2]: https://github.com/ejupi-djenis30/careeros-local/compare/v1.1.1...v1.1.2
 [1.1.1]: https://github.com/ejupi-djenis30/careeros-local/compare/v1.1.0...v1.1.1

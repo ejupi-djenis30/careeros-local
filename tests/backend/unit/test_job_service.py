@@ -12,6 +12,7 @@ from backend.services.job_service import JobService
 def mock_repo():
     repo = MagicMock()
     repo.get_applied_scraped_job_ids.return_value = set()
+    repo.get_job_by_user_scraped_profile.return_value = None
     return repo
 
 
@@ -84,6 +85,48 @@ def test_create_job_uses_deterministic_manual_platform_job_id(job_service, mock_
 
     assert isinstance(first_scraped, ScrapedJob)
     assert first_scraped.platform_job_id == second_scraped.platform_job_id
+
+
+def test_manual_platform_id_ignores_client_value_and_is_user_scoped(job_service, mock_repo):
+    mock_repo.get_scraped_job_by_platform_and_id.return_value = None
+    mock_repo.create_scraped_job_nested.return_value = True
+    job_in = JobCreate(
+        title="Private role",
+        company="Private company",
+        external_url="https://example.test/private-role",
+        platform="manual",
+        platform_job_id="attacker-controlled-shared-id",
+    )
+
+    job_service.create_job(1, job_in)
+    first = mock_repo.create_scraped_job_nested.call_args.args[0]
+    mock_repo.create_scraped_job_nested.reset_mock()
+    job_service.create_job(2, job_in)
+    second = mock_repo.create_scraped_job_nested.call_args.args[0]
+
+    assert first.platform_job_id.startswith("manual-")
+    assert second.platform_job_id.startswith("manual-")
+    assert first.platform_job_id != second.platform_job_id
+    assert "attacker-controlled" not in first.platform_job_id
+
+
+def test_manual_import_retry_returns_existing_user_job(job_service, mock_repo):
+    scraped = MagicMock(id=81)
+    existing = MagicMock(id=91)
+    mock_repo.get_scraped_job_by_platform_and_id.return_value = scraped
+    mock_repo.get_job_by_user_scraped_profile.return_value = existing
+
+    result = job_service.create_job(
+        7,
+        JobCreate(
+            title="Stable role",
+            company="Local company",
+            external_url="https://example.test/stable-role",
+        ),
+    )
+
+    assert result is existing
+    mock_repo.create.assert_not_called()
 
 
 def test_create_job_rejects_foreign_profile(job_service, mock_repo):

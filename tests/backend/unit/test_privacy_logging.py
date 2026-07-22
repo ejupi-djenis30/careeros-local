@@ -5,12 +5,12 @@ from backend.core.logging import PrivacyFormatter, PrivacyRedactionFilter, redac
 
 def test_redactor_removes_contact_prompt_and_credentials():
     raw = (
-        "email=ada@example.test phone='+41 79 123 45 67' "
+        "email=mira@example.test phone='+41 79 123 45 67' "
         "prompt='My complete private career history' "
         "Authorization: Bearer secret-token"
     )
     redacted = redact_text(raw)
-    assert "ada@example.test" not in redacted
+    assert "mira@example.test" not in redacted
     assert "private career history" not in redacted
     assert "secret-token" not in redacted
     assert "[redacted]" in redacted

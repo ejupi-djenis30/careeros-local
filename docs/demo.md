@@ -29,7 +29,7 @@ The command performs the complete workflow:
 1. Creates an operating-system temporary directory and disposable SQLite vault.
 2. Applies every Alembic migration to that vault.
 3. Starts FastAPI and Vite on dynamically allocated loopback ports.
-4. Seeds the fictional `ada_demo` workspace through the public loopback API.
+4. Seeds the fictional `mira_demo` workspace through the public loopback API.
 5. Opens a 1600×900 browser viewport and records a 1280×720 tour.
 6. Uses the clean-install English interface and visits the daily workspace, Career Vault,
    Resume Studio and application pipeline.

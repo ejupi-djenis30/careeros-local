@@ -51,9 +51,48 @@ def test_cache_payload_roundtrip_and_compatibility():
     searches, meta = unpack_plan_cache_payload(payload)
 
     assert len(searches) == 1
-    assert meta["version"] >= 2
+    assert meta["version"] >= 3
+    assert meta["provenance"] == "deterministic-explicit"
     assert is_cached_plan_compatible(meta, fingerprint) is True
     assert is_cached_plan_compatible(meta, "other") is False
+
+
+def test_provider_plan_fingerprint_excludes_cv_and_rejects_legacy_or_model_cache():
+    kwargs = {
+        "max_queries": 4,
+        "max_occupation_queries": 2,
+        "max_keyword_queries": 2,
+    }
+    first = compute_plan_input_fingerprint(
+        {
+            "role_description": "Platform Engineer",
+            "search_strategy": 'Use "distributed systems"',
+            "cv_content": "PRIVATE FIRST CV",
+            "profile_normalization": {"skills": ["secret-one"]},
+        },
+        **kwargs,
+    )
+    second = compute_plan_input_fingerprint(
+        {
+            "role_description": "Platform Engineer",
+            "search_strategy": 'Use "distributed systems"',
+            "cv_content": "PRIVATE SECOND CV",
+            "profile_normalization": {"skills": ["secret-two"]},
+        },
+        **kwargs,
+    )
+    assert first == second
+
+    _searches, legacy_meta = unpack_plan_cache_payload([{"query": "secret-one"}])
+    assert is_cached_plan_compatible(legacy_meta, first) is False
+    assert is_cached_plan_compatible(
+        {
+            "version": 3,
+            "provenance": "model-derived",
+            "input_fingerprint": first,
+        },
+        first,
+    ) is False
 
 
 def test_route_provider_names_orders_it_sources_first():

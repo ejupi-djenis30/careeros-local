@@ -71,10 +71,10 @@ jobs:
         run: >-
           python -m pytest tests/backend -q --tb=short --cov=backend --cov-branch
           --cov-fail-under=80 --cov-report=term:skip-covered --cov-report=xml
-      - name: Run 10k-record performance acceptance
+      - name: Run all opt-in performance acceptance gates
         env:
           RUN_PERFORMANCE_TESTS: "1"
-        run: python -m pytest tests/backend/performance/test_local_read_p95.py -q -s
+        run: python -m pytest tests/backend/performance -q -s
       - name: Upload backend evidence
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1

@@ -278,6 +278,35 @@ real stored artifacts, deletion/corruption/path containment/read failures, fresh
 exports and redaction; frontend tests cover dialog semantics, dynamic focus, corrective navigation,
 editing and downloads.
 
+### Phase I — Private daily-driver workflow
+
+Treat provider listings and manual captures as different trust domains. `JobService` derives a
+stable opaque manual identifier from the authenticated user namespace and listing identity,
+discards supplied manual ids and resolves same-user retries before creating a relationship. This
+ships with the unreleased importer, so no historical-row migration is required. Pydantic rejects
+unknown and oversized import fields at transport entry.
+
+The provider planner consumes only `role_description`, `search_strategy` and explicit preferences
+and never calls an LLM. Cache v3 records carry `deterministic-explicit` provenance and an
+explicit-input-only fingerprint; legacy and model-derived entries are replaced. LLM-normalized
+profile fields remain available to downstream local matching but cannot cross the provider
+boundary. Integer zero is preserved as a disable signal; only `NULL` uses a configured default.
+
+Application stage, task and dossier writers share `_advance_revision`, which performs a conditional
+revision update and maintains stage or next-action projection columns in the same transaction as
+the append-only event. Task detail replay groups by task id and revision, rejects incoherent or
+regressive history and selects the maximum contiguous revision independent of occurrence time. The
+board constructs its narrow response from scalar role, latest-event and next-action projections in
+one SQL query that cannot select the event payload or `job_snapshot`.
+
+The dossier UI uses bounded repeatable rows for requirements/evidence, answers and checklist items.
+It never drops a partial question-answer pair silently, keeps draft state on validation errors and
+provides named add/remove controls in English and Italian. A resume change removes only stale
+evidence IDs with an accessible notice. The API accepts only UUID evidence ids owned by the linked
+immutable resume, stores each fact snapshot once in a v2 catalog, and preflights input, event,
+artifact and ZIP byte limits. Backend cross-user/concurrency/replay/schema tests and
+frontend multi-row/accessibility tests provide the release evidence.
+
 ## Complexity Tracking
 
 | Violation | Why Needed During Migration | Required Resolution |

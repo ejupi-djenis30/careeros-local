@@ -9,8 +9,13 @@ from sqlalchemy.exc import IntegrityError, StatementError
 from sqlalchemy.orm import Session
 
 from backend.applications.models import Application
+from backend.applications.service import (
+    ApplicationService,
+    ApplicationValidationError,
+)
 from backend.career.models import CandidateProfile
 from backend.core.config import settings
+from backend.db.types import UTCDateTime, aware_utc
 from backend.desktop.lifecycle import VaultLockTimeout, desktop_vault_lock
 from backend.models import Job, ScrapedJob, SearchProfile, User
 from backend.portability.archive import (
@@ -45,6 +50,18 @@ USER_SCOPED_TABLES = frozenset(
 )
 REMAPPABLE_TABLES = frozenset({"search_profiles", "scraped_jobs", "jobs"})
 PREFERENCE_FIELDS = frozenset({"preference_signals", "preference_updated_at"})
+APPLICATION_PROJECTION_FIELDS = frozenset(
+    {
+        "job_title",
+        "job_company",
+        "job_location",
+        "latest_event_at",
+        "next_action_task_id",
+        "next_action_title",
+        "next_action_at",
+        "next_action_priority",
+    }
+)
 
 
 def _decode_row(model: type[Any], row: dict[str, Any]) -> dict[str, Any]:
@@ -59,7 +76,7 @@ def _decode_row(model: type[Any], row: dict[str, Any]) -> dict[str, Any]:
         column_type = columns[key].type
         if value is None:
             continue
-        if isinstance(column_type, DateTime) and isinstance(value, str):
+        if isinstance(column_type, (DateTime, UTCDateTime)) and isinstance(value, str):
             try:
                 decoded[key] = datetime.fromisoformat(value.replace("Z", "+00:00"))
             except ValueError as exc:
@@ -165,6 +182,42 @@ def _validate_search_relationships(
             raise ArchiveError("Archive application references a missing job")
 
 
+def _extract_application_projection_contract(
+    format_version: int,
+    rows: list[dict[str, Any]],
+) -> dict[str, dict[str, Any]]:
+    """Separate untrusted read-model fields from canonical archive records.
+
+    Archive versions 1 and 2 predate application projections. Version 3 exists in
+    both historical (projection-free) and current (complete projection) forms.
+    Current v3 values are checked after the append-only events have been restored;
+    every accepted archive is then rebuilt from its canonical snapshot and events.
+    """
+
+    expected: dict[str, dict[str, Any]] = {}
+    for row in rows:
+        application_id = str(row.get("id") or "")
+        present = APPLICATION_PROJECTION_FIELDS.intersection(row)
+        if format_version < 3 and present:
+            raise ArchiveError(
+                f"Archive version {format_version} application rows cannot contain projections"
+            )
+        if format_version == 3 and present not in (
+            frozenset(),
+            APPLICATION_PROJECTION_FIELDS,
+        ):
+            raise ArchiveError(
+                "Archive v3 application projections must be either absent or complete"
+            )
+        if present == APPLICATION_PROJECTION_FIELDS:
+            expected[application_id] = {
+                field: row[field] for field in APPLICATION_PROJECTION_FIELDS
+            }
+        for field in APPLICATION_PROJECTION_FIELDS:
+            row.pop(field, None)
+    return expected
+
+
 def _decode_payload(
     db: Session,
     manifest: ArchiveManifest,
@@ -173,6 +226,7 @@ def _decode_payload(
     dict[str, list[dict[str, Any]]],
     list[dict[str, Any]],
     dict[str, Any] | None,
+    dict[str, dict[str, Any]],
 ]:
     try:
         payload = json.loads(members[PAYLOAD_MEMBER])
@@ -212,7 +266,10 @@ def _decode_payload(
             _assert_ids_available(db, model, decoded[table_name])
     preference_state = _decode_preference_state(manifest.format_version, tables)
     _validate_search_relationships(manifest.format_version, decoded)
-    return decoded, bindings, preference_state
+    projection_contract = _extract_application_projection_contract(
+        manifest.format_version, decoded["applications"]
+    )
+    return decoded, bindings, preference_state, projection_contract
 
 
 def _assert_empty_vault(db: Session, user_id: int, format_version: int) -> None:
@@ -421,12 +478,91 @@ def _restore_preference_state(
         raise ArchiveConflictError("Restore requires empty preference signals")
 
 
+def _canonical_application_projection(
+    application: Application,
+    service: ApplicationService,
+) -> dict[str, Any]:
+    snapshot = application.job_snapshot
+    if not isinstance(snapshot, dict):
+        raise ArchiveError("Archive application snapshot must be an object")
+    if not application.events:
+        raise ArchiveError("Archive application must contain at least one timeline event")
+    event_times = [aware_utc(event.occurred_at) for event in application.events]
+    if any(value is None for value in event_times):
+        raise ArchiveError("Archive application event is missing its timestamp")
+    try:
+        tasks = service._task_snapshots(application)
+    except ApplicationValidationError as exc:
+        raise ArchiveError("Archive application task history is invalid") from exc
+    next_action = service._next_action(tasks)
+    return {
+        "job_title": str(snapshot.get("title") or "Untitled role")[:240],
+        "job_company": str(snapshot.get("company") or "Unknown company")[:240],
+        "job_location": (
+            str(snapshot["location"])[:500]
+            if snapshot.get("location") is not None
+            else None
+        ),
+        "latest_event_at": max(value for value in event_times if value is not None),
+        "next_action_task_id": next_action.id if next_action else None,
+        "next_action_title": next_action.title if next_action else None,
+        "next_action_at": next_action.due_at if next_action else None,
+        "next_action_priority": next_action.priority if next_action else None,
+    }
+
+
+def _projection_value_matches(field: str, archived: Any, canonical: Any) -> bool:
+    if field in {"latest_event_at", "next_action_at"}:
+        return aware_utc(archived) == aware_utc(canonical)
+    return bool(archived == canonical)
+
+
+def _rebuild_application_projections(
+    db: Session,
+    user_id: int,
+    archived_contract: dict[str, dict[str, Any]],
+) -> None:
+    """Validate current v3 projections and rebuild every restored read model."""
+
+    db.expire_all()
+    service = ApplicationService(db)
+    applications = (
+        db.query(Application)
+        .filter(Application.user_id == user_id)
+        .order_by(Application.id.asc())
+        .all()
+    )
+    for application in applications:
+        canonical = _canonical_application_projection(application, service)
+        archived = archived_contract.get(application.id)
+        if archived is not None:
+            mismatches = sorted(
+                field
+                for field, value in canonical.items()
+                if not _projection_value_matches(field, archived[field], value)
+            )
+            if mismatches:
+                raise ArchiveError(
+                    "Archive v3 application projections are inconsistent with its "
+                    f"snapshot or timeline: {', '.join(mismatches)}"
+                )
+        preserved_updated_at = application.updated_at
+        db.execute(
+            update(Application)
+            .where(Application.id == application.id)
+            .values(**canonical, updated_at=preserved_updated_at)
+            .execution_options(synchronize_session=False)
+        )
+    db.flush()
+
+
 def _restore_transaction(
     db: Session,
     user_id: int,
     format_version: int,
     decoded: dict[str, list[dict[str, Any]]],
     preference_state: dict[str, Any] | None,
+    application_projection_contract: dict[str, dict[str, Any]],
     writes: list[tuple[str, bytes]],
 ) -> None:
     created_paths: list[str] = []
@@ -449,6 +585,9 @@ def _restore_transaction(
                 )
                 db.add(model(**row))
             db.flush()
+        _rebuild_application_projections(
+            db, user_id, application_projection_contract
+        )
         _restore_preference_state(db, user_id, preference_state)
         db.flush()
         db.commit()
@@ -469,7 +608,12 @@ def restore_archive(db: Session, user_id: int, data: bytes) -> RestoreResponse:
         with desktop_vault_lock():
             manifest, members = _validated_members(data)
             _assert_empty_vault(db, user_id, manifest.format_version)
-            decoded, bindings, preference_state = _decode_payload(db, manifest, members)
+            (
+                decoded,
+                bindings,
+                preference_state,
+                application_projection_contract,
+            ) = _decode_payload(db, manifest, members)
             writes = _prepare_file_writes(decoded, bindings, members)
             _restore_transaction(
                 db,
@@ -477,6 +621,7 @@ def restore_archive(db: Session, user_id: int, data: bytes) -> RestoreResponse:
                 manifest.format_version,
                 decoded,
                 preference_state,
+                application_projection_contract,
                 writes,
             )
     except VaultLockTimeout as exc:

@@ -21,8 +21,8 @@ const assetsDir = join(repoRoot, "docs", "assets");
 const requireFromFrontend = createRequire(join(frontendDir, "package.json"));
 const { chromium } = requireFromFrontend("playwright");
 
-const demoUsername = "ada_demo";
-const demoPassword = "AdaDemo2026!";
+const demoUsername = "mira_demo";
+const demoPassword = "MiraDemo2026!";
 const viewport = { width: 1600, height: 900 };
 const videoSize = { width: 1280, height: 720 };
 const services = [];

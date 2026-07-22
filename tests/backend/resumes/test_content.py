@@ -162,14 +162,14 @@ def test_date_helpers_and_content_override_preserve_explicit_empty_values() -> N
 def test_build_content_groups_facts_and_builds_the_selected_contact_fields() -> None:
     snapshot = {
         "profile": {
-            "display_name": "Ada Example",
+            "display_name": "Mira Example",
             "headline": "Local systems engineer",
             "summary": "Builds dependable tools.",
-            "email": "ada@example.test",
+            "email": "mira@example.test",
             "phone": "+41 00 000 00 00",
             "location": {"city": "Zurich", "country": "Switzerland"},
             "website": "https://example.test",
-            "linkedin": "https://linkedin.example/ada",
+            "linkedin": "https://linkedin.example/mira",
             "github": "https://github.com/example",
         },
         "facts": [
@@ -199,13 +199,13 @@ def test_build_content_groups_facts_and_builds_the_selected_contact_fields() -> 
 
     content = build_content(snapshot)
 
-    assert content.display_name == "Ada Example"
+    assert content.display_name == "Mira Example"
     assert content.summary == "Builds dependable tools."
     assert content.required_headings == ["PROFILE", "EXPERIENCE"]
     assert content.sections[0].entries[0].title == "Principal Engineer"
     assert content.contact_line == (
-        "ada@example.test | +41 00 000 00 00 | Zurich, Switzerland | "
-        "https://example.test | https://linkedin.example/ada | https://github.com/example"
+        "mira@example.test | +41 00 000 00 00 | Zurich, Switzerland | "
+        "https://example.test | https://linkedin.example/mira | https://github.com/example"
     )
 
 
@@ -224,9 +224,9 @@ def test_build_content_uses_visible_canvas_blocks_and_layout() -> None:
                             {
                                 "visible": True,
                                 "content": {
-                                    "title": "Ada Canvas",
+                                    "title": "Mira Canvas",
                                     "subtitle": "Principal Engineer",
-                                    "description": "ada@example.test",
+                                    "description": "mira@example.test",
                                 },
                             }
                         ],
@@ -269,9 +269,9 @@ def test_build_content_uses_visible_canvas_blocks_and_layout() -> None:
 
     content = build_content(snapshot)
 
-    assert content.display_name == "Ada Canvas"
+    assert content.display_name == "Mira Canvas"
     assert content.headline == "Principal Engineer"
-    assert content.contact_line == "ada@example.test"
+    assert content.contact_line == "mira@example.test"
     assert content.summary == "Visible summary"
     assert content.summary_heading == "ABOUT"
     assert content.style == {"accent": "#b9f27c"}

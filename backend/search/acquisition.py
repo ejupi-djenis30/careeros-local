@@ -5,7 +5,6 @@
 import asyncio
 import inspect
 import logging
-import re
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
@@ -19,6 +18,7 @@ from backend.providers.jobs.jobroom.client import JobRoomProvider
 from backend.providers.jobs.swissdevjobs.client import SwissDevJobsProvider
 from backend.repositories.job_repository import JobRepository
 from backend.repositories.profile_repository import ProfileRepository
+from backend.search.deterministic_planning import build_deterministic_search_plan
 from backend.search.normalization.listings import (
     bootstrap_normalized_job_data,
     coerce_int,
@@ -36,7 +36,6 @@ from backend.search.normalization.listings import (
     normalize_listing_identifier,
     parse_listing_publication_date,
 )
-from backend.services.llm_service import llm_service
 from backend.services.search.matching_engine import SearchNormalizationFilterEngine
 from backend.services.search.persistence import SearchPipelinePersistence
 from backend.services.search.prompt_compaction import (
@@ -140,99 +139,20 @@ class AcquisitionMixin:
             filtered.append(search)
         return filtered, stats
 
-    def _build_degraded_fallback_plan(self, profile_dict: dict, profile) -> List[Dict[str, str]]:
-        """Build a minimal executable plan when LLM returns no queries.
-
-        This is a safety fallback and is intentionally conservative.
-        """
-        role_description = (profile_dict.get("role_description") or "").strip()
-        search_strategy = (profile_dict.get("search_strategy") or "").strip()
-        cv_content = (profile_dict.get("cv_content") or "").strip()
-        if not role_description:
-            return []
-
-        max_by_profile = getattr(profile, "max_queries", None)
-        configured_max = int(getattr(settings, "SEARCH_DEGRADED_PLAN_MAX_QUERIES", 3))
-        if isinstance(max_by_profile, int) and max_by_profile > 0:
-            max_count = max_by_profile
-        elif configured_max > 0:
-            max_count = configured_max
-        else:
-            max_count = None
-
-        raw_candidates: List[Dict[str, Any]] = []
-
-        # Primary occupation candidate from role description.
-        raw_candidates.append(
-            {
-                "query": role_description,
-                "type": "occupation",
-                "domain": "general",
-                "language": "en",
-            }
+    def _build_deterministic_explicit_plan(
+        self, profile_dict: dict, profile
+    ) -> List[Dict[str, str]]:
+        """Build provider queries exclusively from explicit search settings."""
+        return build_deterministic_search_plan(
+            profile_dict,
+            profile,
+            default_max_queries=max(
+                0, int(getattr(settings, "SEARCH_DEGRADED_PLAN_MAX_QUERIES", 3))
+            ),
+            default_max_keywords=max(
+                0, int(getattr(settings, "SEARCH_DEGRADED_PLAN_MAX_KEYWORDS", 2))
+            ),
         )
-
-        # Split role description on common separators to capture concrete sub-roles.
-        for token in re.split(r"[,;/|]", role_description):
-            token = token.strip()
-            if token and token.lower() != role_description.lower():
-                raw_candidates.append(
-                    {
-                        "query": token,
-                        "type": "occupation",
-                        "domain": "general",
-                        "language": "en",
-                    }
-                )
-
-        keyword_pool = [
-            "python",
-            "java",
-            "javascript",
-            "typescript",
-            "react",
-            "docker",
-            "sql",
-            "aws",
-        ]
-        lower_text = f"{role_description} {search_strategy} {cv_content}".lower()
-        for kw in keyword_pool:
-            if kw in lower_text:
-                raw_candidates.append(
-                    {
-                        "query": kw,
-                        "type": "keyword",
-                        "domain": "general",
-                        "language": "en",
-                    }
-                )
-
-        fallback_searches: List[Dict[str, str]] = []
-        seen = set()
-        configured_keyword_limit = int(getattr(settings, "SEARCH_DEGRADED_PLAN_MAX_KEYWORDS", 2))
-        max_keywords = configured_keyword_limit if configured_keyword_limit > 0 else None
-        keyword_count = 0
-        for candidate in raw_candidates:
-            normalized_search, _ = normalize_search_item(candidate)
-            if not normalized_search:
-                continue
-            if (
-                normalized_search.get("type") == "keyword"
-                and max_keywords is not None
-                and keyword_count >= max_keywords
-            ):
-                continue
-            fingerprint = exact_query_fingerprint(normalized_search)
-            if not fingerprint or fingerprint in seen:
-                continue
-            seen.add(fingerprint)
-            fallback_searches.append(normalized_search)
-            if normalized_search.get("type") == "keyword":
-                keyword_count += 1
-            if max_count is not None and len(fallback_searches) >= max_count:
-                break
-
-        return fallback_searches
 
     async def _close_provider_resources(self) -> None:
         for provider_name, provider in self.providers.items():
@@ -260,82 +180,67 @@ class AcquisitionMixin:
     async def _generate_plan(
         self, profile_id: int, profile_dict: dict, profile, provider_infos
     ) -> list:
+        # Provider-facing queries are intentionally model-free.  Local model output may
+        # still enrich matching later in the pipeline, but it never crosses this boundary.
+        del provider_infos
         preferences = self._profile_preferences(profile)
-        # Feature 3: check cached queries
         force_regen_q = profile_dict.get("force_regenerate_queries", False)
         add_log(
             profile_id,
-            "[LLM_DEBUG] plan_input "
+            "Provider query plan: deterministic explicit-input planner; "
             f"profile_id={profile_id} force_regenerate_queries={force_regen_q} "
             f"max_queries={profile.max_queries} max_occupation_queries={profile.max_occupation_queries} "
             f"max_keyword_queries={profile.max_keyword_queries} "
-            f"role_description_len={len(profile_dict.get('role_description') or '')} "
-            f"cv_content_len={len(profile_dict.get('cv_content') or '')}",
+            f"role_description_len={len(profile_dict.get('role_description') or '')}",
         )
+        fingerprint_profile = {
+            **profile_dict,
+            "preferred_domains": preferences.get("preferred_domains") or [],
+        }
         input_fingerprint = compute_plan_input_fingerprint(
-            profile_dict,
+            fingerprint_profile,
             max_queries=profile.max_queries,
             max_occupation_queries=profile.max_occupation_queries,
             max_keyword_queries=profile.max_keyword_queries,
         )
 
+        cache_compatible = False
+        searches: list[dict[str, Any]] = []
         if profile.cached_queries and not force_regen_q:
             try:
                 cached_searches, cache_meta = unpack_plan_cache_payload(profile.cached_queries)
                 if is_cached_plan_compatible(cache_meta, input_fingerprint):
                     searches = cached_searches
-                    add_log(profile_id, f"✓ Using {len(searches)} cached queries")
+                    cache_compatible = True
+                    add_log(
+                        profile_id,
+                        f"Using {len(searches)} cached deterministic explicit queries.",
+                    )
                     update_status(profile_id, plan_cache_hit=1, plan_cache_miss=0)
                 else:
-                    searches = []
-                    add_log(profile_id, "Cached queries ignored because planning inputs changed.")
+                    add_log(
+                        profile_id,
+                        "Cached queries ignored: legacy, model-derived, or built from different explicit inputs.",
+                    )
                     update_status(profile_id, plan_cache_hit=0, plan_cache_miss=1)
             except Exception as e:
                 logger.error(f"Failed to parse cached queries: {e}")
-                searches = []
                 update_status(profile_id, plan_cache_hit=0, plan_cache_miss=1)
         else:
-            searches = []
             update_status(profile_id, plan_cache_hit=0, plan_cache_miss=1)
 
-        if not searches:
-            try:
-                searches = await llm_service.generate_search_plan(
-                    profile_dict,
-                    list(provider_infos.values()),
-                    max_queries=profile.max_queries,
-                    max_occupation_queries=profile.max_occupation_queries,
-                    max_keyword_queries=profile.max_keyword_queries,
-                )
-                add_log(
-                    profile_id,
-                    f"[LLM_DEBUG] plan_raw_output_count={len(searches) if searches else 0}",
-                )
-                update_status(profile_id, plan_raw_count=len(searches) if searches else 0)
-            except Exception as e:
-                logger.error(f"LLM keyword generation failed: {e}")
-                error_text = str(e).lower()
-                terminal_reason = "llm_plan_error"
-                if "rate limit" in error_text or "rate_limit" in error_text:
-                    terminal_reason = "llm_plan_rate_limited"
-                update_status(
-                    profile_id, state="error", terminal_reason=terminal_reason, error=str(e)
-                )
-                return []
-
-            if not searches:
-                return []
-
-            # Save queries to cache (Feature 3)
-            try:
-                cache_payload = build_plan_cache_payload(
-                    searches,
-                    input_fingerprint=input_fingerprint,
-                    stats={"count": len(searches)},
-                )
-                self.profile_repo.update(profile, {"cached_queries": cache_payload})
-            except Exception as e:
-                logger.warning(f"Failed to cache queries: {e}")
+        if not cache_compatible:
+            searches = self._build_deterministic_explicit_plan(profile_dict, profile)
+            add_log(
+                profile_id,
+                f"Built {len(searches)} provider queries from explicit search instructions.",
+            )
+            update_status(
+                profile_id,
+                planner_mode="deterministic_explicit",
+                plan_provenance="deterministic-explicit",
+                plan_raw_count=len(searches),
+            )
 
         unique_searches = []
         seen_queries = set()
@@ -359,7 +264,7 @@ class AcquisitionMixin:
         if dropped_by_preferences:
             add_log(
                 profile_id,
-                "[LLM_DEBUG] plan_preference_filter "
+                "Provider plan preference filter: "
                 f"kept={len(preferred_searches)} dropped={dropped_by_preferences} "
                 f"dropped_language={pref_stats.get('dropped_language', 0)} "
                 f"dropped_domain={pref_stats.get('dropped_domain', 0)}",
@@ -368,15 +273,28 @@ class AcquisitionMixin:
 
         add_log(
             profile_id,
-            "[LLM_DEBUG] plan_filter_stats "
+            "Provider plan validation: "
             f"input={len(searches)} kept={len(unique_searches)} "
             f"dropped_empty={dropped_empty_queries} dropped_duplicates={dropped_duplicate_queries}",
         )
-        if searches and not unique_searches:
-            terminal_reason = "no_valid_queries_after_filter"
-            if dropped_by_preferences:
-                terminal_reason = "no_queries_matching_preferences"
-            update_status(profile_id, terminal_reason=terminal_reason)
+        terminal_reason = None
+        if not unique_searches:
+            terminal_reason = (
+                "no_queries_matching_preferences"
+                if dropped_by_preferences
+                else "no_explicit_queries"
+            )
+
+        if not cache_compatible:
+            try:
+                cache_payload = build_plan_cache_payload(
+                    unique_searches,
+                    input_fingerprint=input_fingerprint,
+                    stats={"count": len(unique_searches)},
+                )
+                self.profile_repo.update(profile, {"cached_queries": cache_payload})
+            except Exception as e:
+                logger.warning(f"Failed to cache deterministic queries: {e}")
 
         # Update status with the actual plan details
         update_status(
@@ -384,8 +302,14 @@ class AcquisitionMixin:
             total_searches=len(unique_searches),
             searches_generated=unique_searches,
             plan_unique_count=len(unique_searches),
+            planner_mode="deterministic_explicit",
+            plan_provenance="deterministic-explicit",
+            terminal_reason=terminal_reason,
         )
-        add_log(profile_id, f"Generated {len(searches)} queries → {len(unique_searches)} unique")
+        add_log(
+            profile_id,
+            f"Provider plan contains {len(unique_searches)} validated explicit queries.",
+        )
         if profile.max_queries and len(unique_searches) < profile.max_queries:
             add_log(
                 profile_id,

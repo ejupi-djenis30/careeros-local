@@ -4,11 +4,11 @@ CareerOS Local is designed to minimize disclosure of highly sensitive career dat
 
 ## Stored locally
 
-The app may store identity and contact data, work and education history, skills, languages, achievements, goals, preferences, source documents, profile photos, resume drafts and publications, job snapshots, applications, coach conversations, and redacted AI execution metadata. Model binaries and partial downloads are stored in separate app-managed directories.
+The app may store identity and contact data, work and education history, skills, languages, achievements, goals, preferences, source documents, profile photos, resume drafts and publications, job snapshots, application tasks and dossier versions, coach conversations, and redacted AI execution metadata. Model binaries and partial downloads are stored in separate app-managed directories.
 
 ## Not collected
 
-The project contains no product telemetry, advertising identifiers, cloud AI integration, remote prompt logging, or analytics SDK. The application does not silently upload a profile or resume. Job-provider requests are user-initiated search operations and disclose only the search parameters required by that provider.
+The project contains no product telemetry, advertising identifiers, cloud AI integration, remote prompt logging, or analytics SDK. The application does not silently upload a profile or resume. Job-provider requests are user-initiated search operations and disclose only deterministic queries built from the explicit role, strategy and preferences. Provider planning never invokes the local model, and only v3 cache records marked `deterministic-explicit` can be reused.
 
 ## Model context
 
@@ -16,7 +16,7 @@ The local model does not automatically receive the complete vault. Each task sel
 
 ## Control and portability
 
-Users can export a manifest-verified ZIP backup from one consistent database snapshot and restore it into an empty vault. Shared job-listing records exclude user-specific discovery queries, while restore rejects private or stale cross-user collisions instead of silently merging them.
+Users can export a manifest-verified ZIP backup from one consistent database snapshot and restore it into an empty vault. Provider listings may be shared only when their provider identity is stable. Manually captured listings use a one-way, server-derived per-user namespace, ignore client-supplied manual ids, and are never merged across users. Shared provider rows exclude user-specific discovery queries, while restore rejects private or stale cross-user collisions instead of silently merging them.
 
 The exact confirmation phrase erases profile, resume, search, match, application, workflow, coaching, learned-preference, and AI-audit data plus app-owned files. SQLite secure deletion, WAL checkpoints, and vacuuming reduce recoverable database remnants; user-scoped staged-file cleanup is retryable if an operating-system error interrupts it. Managed model/runtime files can be removed in the same operation. Backup files are not encrypted by the application; store them in an encrypted location if confidentiality is required.
 

@@ -4,7 +4,8 @@ import re
 from datetime import datetime, timezone
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
-PLAN_CACHE_VERSION = 2
+PLAN_CACHE_VERSION = 3
+PLAN_CACHE_PROVENANCE = "deterministic-explicit"
 
 _LANGUAGE_ALIASES = {
     "english": "en",
@@ -247,12 +248,29 @@ def compute_plan_input_fingerprint(
     max_occupation_queries: Optional[int],
     max_keyword_queries: Optional[int],
 ) -> str:
+    """Fingerprint only user-confirmed inputs that may shape provider queries.
+
+    CV text and model-produced normalization deliberately do not participate in
+    this contract.  A cache entry created from either source must never become a
+    provider-facing query plan.
+    """
+
+    advanced_preferences = profile.get("advanced_preferences")
+    if not isinstance(advanced_preferences, dict):
+        advanced_preferences = {}
+    preferred_domains = profile.get("preferred_domains")
+    if preferred_domains is None:
+        preferred_domains = advanced_preferences.get("preferred_domains")
     payload = {
         "role_description": sanitize_prompt_text(
             profile.get("role_description", ""), max_chars=4000
         ),
         "search_strategy": sanitize_prompt_text(profile.get("search_strategy", ""), max_chars=4000),
-        "cv_content": sanitize_prompt_text(profile.get("cv_content", ""), max_chars=12000),
+        "preferred_domains": sorted(
+            normalize_domain(value)
+            for value in preferred_domains or []
+            if isinstance(value, str) and value.strip()
+        ),
         "max_queries": _coerce_optional_int(max_queries),
         "max_occupation_queries": _coerce_optional_int(max_occupation_queries),
         "max_keyword_queries": _coerce_optional_int(max_keyword_queries),
@@ -269,6 +287,7 @@ def build_plan_cache_payload(
 ) -> Dict[str, Any]:
     return {
         "version": PLAN_CACHE_VERSION,
+        "provenance": PLAN_CACHE_PROVENANCE,
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "input_fingerprint": input_fingerprint,
         "stats": stats or {},
@@ -282,25 +301,39 @@ def unpack_plan_cache_payload(cached_queries: Any) -> Tuple[List[Dict[str, Any]]
         payload = json.loads(payload)
 
     if isinstance(payload, list):
-        return payload, {"version": 1, "input_fingerprint": None, "stats": {}}
+        return payload, {
+            "version": 1,
+            "provenance": None,
+            "input_fingerprint": None,
+            "stats": {},
+        }
 
     if isinstance(payload, dict):
         searches = payload.get("searches", [])
         if isinstance(searches, list):
             meta = {
                 "version": payload.get("version", 1),
+                "provenance": payload.get("provenance"),
                 "input_fingerprint": payload.get("input_fingerprint"),
                 "generated_at": payload.get("generated_at"),
                 "stats": payload.get("stats", {}),
             }
             return searches, meta
 
-    return [], {"version": 0, "input_fingerprint": None, "stats": {}}
+    return [], {
+        "version": 0,
+        "provenance": None,
+        "input_fingerprint": None,
+        "stats": {},
+    }
 
 
 def is_cached_plan_compatible(cache_meta: Dict[str, Any], input_fingerprint: str) -> bool:
-    cached_fingerprint = cache_meta.get("input_fingerprint")
-    return cached_fingerprint in {None, input_fingerprint}
+    return (
+        cache_meta.get("version") == PLAN_CACHE_VERSION
+        and cache_meta.get("provenance") == PLAN_CACHE_PROVENANCE
+        and cache_meta.get("input_fingerprint") == input_fingerprint
+    )
 
 
 def route_provider_names(

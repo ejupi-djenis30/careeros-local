@@ -114,6 +114,7 @@ export function SearchProgress({ profileId, status, onStateChange, onClear }) {
     const isDone = state === "done";
     const isError = state === "error" || state === "stopped";
     const doneNoticeByReason = {
+        no_explicit_queries: t("searchProgress.notice.noQueries"),
         no_queries: t("searchProgress.notice.noQueries"),
         no_valid_queries_after_filter: t("searchProgress.notice.noValidQueries"),
         no_queries_matching_preferences: t("searchProgress.notice.noMatchingQueries"),
@@ -122,7 +123,6 @@ export function SearchProgress({ profileId, status, onStateChange, onClear }) {
         no_jobs_after_dedup: t("searchProgress.notice.afterDedup"),
         no_relevant_jobs: t("searchProgress.notice.noRelevantJobs"),
         no_jobs_after_structured_filters: t("searchProgress.notice.structuredFilters"),
-        degraded_plan_fallback: t("searchProgress.notice.fallback"),
     };
     const errorNoticeByReason = {
         search_execution_failed: t("searchProgress.error.execution"),
@@ -130,8 +130,6 @@ export function SearchProgress({ profileId, status, onStateChange, onClear }) {
         job_persistence_failed: t("searchProgress.error.persistence"),
         pipeline_timeout: t("searchProgress.error.timeout"),
         server_shutdown: t("searchProgress.error.shutdown"),
-        llm_plan_error: t("searchProgress.error.plan"),
-        llm_plan_rate_limited: t("searchProgress.error.busy"),
     };
     const statusNotice = isDone
         ? doneNoticeByReason[terminal_reason]

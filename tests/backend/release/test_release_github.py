@@ -34,7 +34,7 @@ class SourceApi:
         if path in {"/repos/owner/repo/commits/main", "/repos/owner/repo/commits/trunk"}:
             self.branch_reads += 1
             return {"sha": ("b" if self.moving and self.branch_reads > 1 else "a") * 40}
-        if path == "/repos/owner/repo/git/ref/tags/v1.2.0":
+        if path == "/repos/owner/repo/git/ref/tags/v1.3.0":
             return {"object": {"type": "tag" if self.annotated else "commit", "sha": "c" * 40}}
         if path == "/repos/owner/repo/git/tags/" + "c" * 40:
             return {
@@ -53,25 +53,25 @@ class SourceApi:
 def test_source_policy_requires_verified_annotated_tag_on_stable_default_branch() -> None:
     assert (
         verify_source_policy(
-            SourceApi(), repo="owner/repo", tag="v1.2.0", source_commit=COMMIT
+            SourceApi(), repo="owner/repo", tag="v1.3.0", source_commit=COMMIT
         )
         == "main"
     )
 
     with pytest.raises(RuntimeError, match="annotated"):
         verify_source_policy(
-            SourceApi(annotated=False), repo="owner/repo", tag="v1.2.0", source_commit=COMMIT
+            SourceApi(annotated=False), repo="owner/repo", tag="v1.3.0", source_commit=COMMIT
         )
     with pytest.raises(RuntimeError, match="GitHub-verified"):
         verify_source_policy(
-            SourceApi(verified=False), repo="owner/repo", tag="v1.2.0", source_commit=COMMIT
+            SourceApi(verified=False), repo="owner/repo", tag="v1.3.0", source_commit=COMMIT
         )
     assert verify_source_policy(
-        SourceApi(moving=True), repo="owner/repo", tag="v1.2.0", source_commit=COMMIT
+        SourceApi(moving=True), repo="owner/repo", tag="v1.3.0", source_commit=COMMIT
     ) == "main"
     with pytest.raises(RuntimeError, match="identity changed"):
         verify_source_policy(
-            SourceApi(renamed=True), repo="owner/repo", tag="v1.2.0", source_commit=COMMIT
+            SourceApi(renamed=True), repo="owner/repo", tag="v1.3.0", source_commit=COMMIT
         )
 
 
@@ -80,7 +80,7 @@ def test_verified_annotated_tag_outside_default_branch_fails_closed() -> None:
         verify_source_policy(
             SourceApi(contained=False),
             repo="owner/repo",
-            tag="v1.2.0",
+            tag="v1.3.0",
             source_commit=COMMIT,
         )
 

@@ -234,67 +234,21 @@ class FinalizationMixin:
 
         # ── Step 1: Initialize status immediately ──
         init_status(profile_id, user_id=user_id)
-        add_log(profile_id, "Step 1: Generating/Retrieving search plan...")
+        add_log(profile_id, "Step 1: Building the explicit deterministic provider plan...")
 
         provider_infos = {name: p.get_provider_info() for name, p in self.providers.items() if p}
 
         searches = await self._generate_plan(profile_id, profile_dict, profile, provider_infos)
         if not searches:
             status_data = get_status(profile_id)
-            status_state = status_data.get("state")
-            status_reason = status_data.get("terminal_reason")
-
-            if status_state == "error":
-                add_log(
-                    profile_id,
-                    f"[LLM_DEBUG] state=error terminal_reason={status_reason or 'llm_plan_error'} profile_id={profile_id}",
-                )
-                return
-
-            enable_degraded_fallback = bool(
-                getattr(settings, "SEARCH_ENABLE_DEGRADED_PLAN_FALLBACK", False)
+            terminal_reason = status_data.get("terminal_reason") or "no_explicit_queries"
+            add_log(
+                profile_id,
+                "No provider query was produced. Add an explicit role or search strategy, "
+                "or enable at least one query category.",
             )
-            if enable_degraded_fallback:
-                degraded_searches = self._build_degraded_fallback_plan(profile_dict, profile)
-                if degraded_searches:
-                    searches = degraded_searches
-                    add_log(
-                        profile_id,
-                        f"⚠ LLM returned no usable plan. Using degraded fallback plan with {len(searches)} query(s).",
-                    )
-                    add_log(
-                        profile_id,
-                        f"[LLM_DEBUG] degraded_plan_fallback profile_id={profile_id} queries={len(searches)}",
-                    )
-                    update_status(
-                        profile_id,
-                        terminal_reason="degraded_plan_fallback",
-                        degraded_mode=True,
-                        total_searches=len(searches),
-                        searches_generated=searches,
-                    )
-                else:
-                    add_log(
-                        profile_id, "Degraded fallback plan did not produce executable queries."
-                    )
-
-            if searches:
-                add_log(profile_id, "Continuing search with degraded fallback plan.")
-            else:
-                terminal_reason = status_reason or "no_queries"
-                if terminal_reason == "no_valid_queries_after_filter":
-                    add_log(
-                        profile_id,
-                        "LLM generated plan candidates, but all were filtered out as invalid/duplicates.",
-                    )
-                else:
-                    add_log(profile_id, "No valid search queries were generated.")
-                add_log(
-                    profile_id,
-                    f"[LLM_DEBUG] state=done terminal_reason={terminal_reason} profile_id={profile_id}",
-                )
-                update_status(profile_id, state="done", terminal_reason=terminal_reason)
-                return
+            update_status(profile_id, state="done", terminal_reason=terminal_reason)
+            return
 
         # ── CV Summary (with caching Feature 3) ──
         cv_summary = ""

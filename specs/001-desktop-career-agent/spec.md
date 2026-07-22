@@ -191,6 +191,44 @@ and verify that the report, score, fingerprint and exported bytes are stable for
    modal, Escape closes it, obscured workspace controls cannot receive focus or scroll, and focus
    returns to the opening card.
 
+---
+
+### User Story 7 - Run applications as a private daily workflow (Priority: P1)
+
+A person can discover a role from an explicit brief or capture it manually, then keep a dated next
+action and publish a verifiable application dossier with every requirement, answer and checklist
+item represented. The workflow remains complete without a model.
+
+**Why this priority**: A useful local career utility must preserve privacy and intent at ingestion,
+survive concurrent edits, and export the exact application material the user reviewed.
+
+**Independent Test**: Disable deterministic query classes with zero limits, save the same manual
+listing as two users, race two stage updates at the same revision, reorder task event timestamps,
+and publish a multi-row dossier. Verify isolation, one CAS winner, max-revision replay, projection-
+only board reads and lossless payloads.
+
+**Acceptance Scenarios**:
+
+1. **Given** a manual listing with a client-supplied platform id, **When** it is saved repeatedly by
+   one user and then by another, **Then** the client id is ignored, the same-user retry returns the
+   same job, and each user has a distinct private listing row.
+2. **Given** explicit role and strategy input, **When** provider search runs with or without an
+   optional model installed, **Then** the planner uses only those inputs and explicit preferences,
+   never calls the model, rejects legacy/model-derived cache entries, keeps CV text and normalized
+   fields behind the provider boundary, treats zero as disabled and `NULL` as the local default.
+3. **Given** two sessions at the same application revision, **When** both append a stage event,
+   **Then** exactly one conditional update and event commit; the other receives a conflict.
+4. **Given** task events whose user-controlled occurrence timestamps are out of order, **When** the
+   detail timeline is replayed, **Then** the highest coherent contiguous revision wins and
+   regressive or conflicting duplicate histories are rejected.
+5. **Given** the application board is loaded, **When** a next action is shown, **Then** one narrow,
+   deterministically ordered SQL query reads transactionally maintained scalar projections without
+   selecting `job_snapshot`, events or dossier payloads.
+6. **Given** multiple requirements, questions, answers and checklist items, **When** a dossier is
+   published, **Then** every complete row is preserved, partial question-answer pairs produce a
+   visible error, evidence ids are valid UUIDs, fact snapshots are deduplicated in a bounded catalog,
+   archive/event sizes are preflighted, and add/remove controls have accessible names.
+
 ### Edge Cases
 
 - Disk space becomes insufficient during model acquisition, migration, backup or export.
@@ -331,6 +369,23 @@ and verify that the report, score, fingerprint and exported bytes are stable for
 - **FR-045**: Application Detail MUST be exposed as a labelled modal dialog that locks background
   scrolling, makes obscured workspace content inert, contains focus across dynamically inserted
   controls, closes with Escape and restores focus to the control that opened it.
+- **FR-046**: Manual listing imports MUST ignore client-supplied ids for the `manual` platform,
+  derive a stable opaque identifier from the authenticated user namespace and listing identity,
+  return the existing same-user relationship on retry, and never share a manual row across users.
+- **FR-047**: Deterministic planning MUST use only the user-entered role description, search strategy
+  and explicit preferences. It MUST NOT mine CV text, LLM-normalized fields or unconfirmed intent;
+  zero query limits disable and `NULL` query limits select configured defaults.
+- **FR-048**: Every application event append MUST advance the expected revision through one
+  conditional update that includes the resulting stage; a stale concurrent writer MUST append no
+  event and receive a conflict.
+- **FR-049**: Task replay MUST select the highest coherent revision per task independently of event
+  occurrence order and reject missing, regressive or conflicting duplicate revisions. Application
+  board reads MUST use the maintained next-action projection without replaying task events.
+- **FR-050**: Dossier input MUST accept repeatable requirement/evidence, question/answer and
+  checklist rows, preserve every complete row, report partial pairs without clearing draft input,
+  use accessible add/remove controls, and validate evidence references as UUIDs.
+- **FR-051**: Manual import and dossier schemas MUST reject unknown fields and enforce bounded text,
+  collection and metadata sizes before domain services execute.
 
 ### Key Entities
 
@@ -401,6 +456,9 @@ and verify that the report, score, fingerprint and exported bytes are stable for
 - **SC-015**: Artifact acceptance tests prove deleted, corrupt, path-escaping, size-mismatched and
   unreadable resume files cannot pass readiness; keyboard tests prove focus containment, Escape,
   background inertness/scroll lock and opener-focus restoration for the application dialog.
+- **SC-016**: Concurrency, cross-user, planner-boundary, replay-integrity, projection-read and
+  repeatable-dossier tests pass with networking disabled and demonstrate exactly one CAS winner,
+  zero manual cross-user collisions and no silently omitted UI rows.
 
 ## Assumptions
 

@@ -1,4 +1,7 @@
 import hashlib
+import io
+import json
+import zipfile
 from datetime import datetime, timezone
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -6,7 +9,7 @@ from tempfile import TemporaryDirectory
 import pytest
 from sqlalchemy import update
 
-from backend.applications.models import ApplicationEvent
+from backend.applications.models import Application, ApplicationEvent
 from backend.career.models import CandidateProfile, CareerFact
 from backend.models import Job, ScrapedJob, User
 from backend.resumes.models import ResumeArtifact, ResumeDraft, ResumeVersion
@@ -53,6 +56,35 @@ def _job(db_session, test_user):
     db_session.commit()
     db_session.refresh(job)
     return job
+
+
+def _assert_application_projections(
+    db_session,
+    application_id: str,
+    *,
+    title: str,
+    company: str,
+    location: str | None,
+) -> Application:
+    """Verify board projections against the committed append-only timeline."""
+    db_session.expire_all()
+    stored = (
+        db_session.query(Application)
+        .filter(Application.id == application_id)
+        .one()
+    )
+    event_times = [
+        event.occurred_at
+        for event in db_session.query(ApplicationEvent)
+        .filter(ApplicationEvent.application_id == application_id)
+        .all()
+    ]
+    assert event_times
+    assert stored.job_title == title
+    assert stored.job_company == company
+    assert stored.job_location == location
+    assert stored.latest_event_at == max(event_times)
+    return stored
 
 
 def test_application_timeline_is_append_only_and_revisioned(
@@ -117,10 +149,35 @@ def test_application_timeline_is_append_only_and_revisioned(
     )
     assert invalid.status_code == 409
 
+    historical = client.post(
+        f"/api/v1/applications/{application['id']}/events",
+        json={
+            "expected_revision": 3,
+            "event_type": "note",
+            "note": "Imported historical context",
+            "occurred_at": "2024-01-01T10:00:00+02:00",
+        },
+        headers=auth_headers,
+    )
+    assert historical.status_code == 201, historical.text
+    assert historical.json()["revision"] == 4
+
     listing = client.get("/api/v1/applications", headers=auth_headers)
     assert listing.status_code == 200
     assert listing.json()[0]["title"] == "Local Platform Engineer"
+    assert listing.json()[0]["company"] == "Local Systems AG"
+    assert listing.json()[0]["location"] == "Zurich"
     assert "job_snapshot" not in listing.json()[0]
+    stored = _assert_application_projections(
+        db_session,
+        application["id"],
+        title="Local Platform Engineer",
+        company="Local Systems AG",
+        location="Zurich",
+    )
+    assert listing.json()[0]["latest_event_at"] == stored.latest_event_at.isoformat().replace(
+        "+00:00", "Z"
+    )
 
     assert client.get(
         "/api/v1/applications?offset=1&limit=1", headers=auth_headers
@@ -129,7 +186,14 @@ def test_application_timeline_is_append_only_and_revisioned(
         "/api/v1/applications?limit=0", headers=auth_headers
     ).status_code == 422
 
-    event = db_session.query(ApplicationEvent).filter(ApplicationEvent.event_type == "note").one()
+    event = (
+        db_session.query(ApplicationEvent)
+        .filter(
+            ApplicationEvent.event_type == "note",
+            ApplicationEvent.note == "Research hiring manager",
+        )
+        .one()
+    )
     event.note = "Attempted edit"
     with pytest.raises(ValueError, match="append-only"):
         db_session.commit()
@@ -146,7 +210,9 @@ def test_application_rejects_unowned_or_duplicate_job(client, auth_headers, db_s
     assert missing.status_code == 422
 
 
-def test_application_accepts_a_safe_manual_job_snapshot(client, auth_headers):
+def test_application_accepts_a_safe_manual_job_snapshot(
+    client, auth_headers, db_session
+):
     created = client.post(
         "/api/v1/applications",
         json={
@@ -170,6 +236,20 @@ def test_application_accepts_a_safe_manual_job_snapshot(client, auth_headers):
     assert body["job_snapshot"]["title"] == "Platform Engineer"
     assert body["job_snapshot"]["external_url"] == "https://example.test/jobs/platform"
     assert body["events"][0]["stage"] == "applied"
+    listing = client.get("/api/v1/applications", headers=auth_headers).json()[0]
+    assert listing["title"] == "Platform Engineer"
+    assert listing["company"] == "Private Local Company"
+    assert listing["location"] == "Bern"
+    stored = _assert_application_projections(
+        db_session,
+        body["id"],
+        title="Platform Engineer",
+        company="Private Local Company",
+        location="Bern",
+    )
+    assert listing["latest_event_at"] == stored.latest_event_at.isoformat().replace(
+        "+00:00", "Z"
+    )
 
 
 @pytest.mark.parametrize("url", ["javascript:alert(1)", "file:///private/cv.txt"])
@@ -269,9 +349,9 @@ def _renderable_snapshot(facts: list[CareerFact]) -> dict:
     ]
     return {
         "profile": {
-            "display_name": "Ada Lovelace",
+            "display_name": "Mira Vale",
             "headline": "Principal Software Engineer",
-            "email": "ada@example.test",
+            "email": "mira@example.test",
         },
         "resume": {
             "title": "Platform application",
@@ -303,10 +383,10 @@ def _renderable_snapshot(facts: list[CareerFact]) -> dict:
                                 "fact_ids": [],
                                 "visible": True,
                                 "content": {
-                                    "title": "Ada Lovelace",
+                                    "title": "Mira Vale",
                                     "subtitle": "Principal Software Engineer",
                                     "date_range": "",
-                                    "description": "ada@example.test",
+                                    "description": "mira@example.test",
                                     "bullets": [],
                                 },
                                 "manual_fields": [],
@@ -357,10 +437,10 @@ def _complete_application_pack(
     profile = CandidateProfile(
         user_id=test_user.id,
         revision=3,
-        display_name="Ada Lovelace",
+        display_name="Mira Vale",
         headline="Principal Software Engineer",
         summary="Builds dependable local systems and develops engineering teams.",
-        email="ada@example.test",
+        email="mira@example.test",
         location={"city": "Zurich", "country": "CH"},
         preferences={
             "target_roles": ["Staff Engineer"],
@@ -744,6 +824,19 @@ def test_preparation_update_resolves_blockers_with_revisioned_audit(
     )
     assert readiness.json()["status"] == "ready"
     assert readiness.json()["completeness_score"] == 100
+    listing = client.get("/api/v1/applications", headers=auth_headers).json()[0]
+    assert listing["title"] == "Senior Platform Engineer"
+    assert listing["company"] == "Local Systems AG"
+    stored = _assert_application_projections(
+        db_session,
+        application_id,
+        title="Senior Platform Engineer",
+        company="Local Systems AG",
+        location=None,
+    )
+    assert listing["latest_event_at"] == stored.latest_event_at.isoformat().replace(
+        "+00:00", "Z"
+    )
 
     stale = client.patch(
         f"/api/v1/applications/{application_id}/preparation",
@@ -825,3 +918,463 @@ def test_readiness_hides_another_users_application(
         json={"expected_revision": 1, "description": "Foreign update"},
         headers=other_headers,
     ).status_code == 404
+
+
+def test_application_tasks_are_append_only_and_export_as_local_calendar(
+    client, auth_headers, db_session
+):
+    created = client.post(
+        "/api/v1/applications",
+        json={"manual_job": {"title": "Platform Engineer", "company": "Local Systems"}},
+        headers=auth_headers,
+    ).json()
+    application_id = created["id"]
+    due_at = "2026-08-01T09:00:00+02:00"
+    reminder_at = "2026-08-01T08:30:00+02:00"
+
+    task_response = client.post(
+        f"/api/v1/applications/{application_id}/tasks",
+        json={
+            "expected_revision": 1,
+            "title": "Send tailored application",
+            "due_at": due_at,
+            "reminder_at": reminder_at,
+            "priority": "high",
+        },
+        headers=auth_headers,
+    )
+
+    assert task_response.status_code == 201, task_response.text
+    body = task_response.json()
+    assert body["revision"] == 2
+    assert len(body["tasks"]) == 1
+    task = body["tasks"][0]
+    assert task["status"] == "pending"
+    assert task["priority"] == "high"
+    assert task["due_at"] == "2026-08-01T07:00:00Z"
+    assert task["reminder_at"] == "2026-08-01T06:30:00Z"
+    assert body["events"][-1]["event_type"] == "task_created"
+    listing = client.get("/api/v1/applications", headers=auth_headers).json()[0]
+    assert listing["next_action"]["id"] == task["id"]
+    assert listing["next_action"]["title"] == "Send tailored application"
+    assert listing["next_action"]["due_at"] == "2026-08-01T07:00:00Z"
+    assert listing["title"] == "Platform Engineer"
+    assert listing["company"] == "Local Systems"
+    stored = _assert_application_projections(
+        db_session,
+        application_id,
+        title="Platform Engineer",
+        company="Local Systems",
+        location=None,
+    )
+    assert listing["latest_event_at"] == stored.latest_event_at.isoformat().replace(
+        "+00:00", "Z"
+    )
+    detail = client.get(
+        f"/api/v1/applications/{application_id}", headers=auth_headers
+    ).json()
+    assert detail["tasks"][0]["due_at"] == "2026-08-01T07:00:00Z"
+    assert detail["events"][-1]["occurred_at"].endswith("Z")
+
+    calendar = client.get(
+        f"/api/v1/applications/{application_id}/tasks/calendar.ics",
+        headers=auth_headers,
+    )
+    assert calendar.status_code == 200, calendar.text
+    assert calendar.headers["cache-control"] == "private, no-store"
+    assert calendar.headers["x-content-sha256"] == hashlib.sha256(calendar.content).hexdigest()
+    text = calendar.content.decode("utf-8")
+    assert "BEGIN:VCALENDAR\r\n" in text
+    assert "SUMMARY:Send tailored application" in text
+    assert "DTSTART:20260801T070000Z" in text
+    assert "TRIGGER:-PT1800S" in text
+
+    completed = client.patch(
+        f"/api/v1/applications/{application_id}/tasks/{task['id']}",
+        json={"expected_revision": 2, "status": "completed"},
+        headers=auth_headers,
+    )
+    assert completed.status_code == 200, completed.text
+    completed_body = completed.json()
+    assert completed_body["revision"] == 3
+    assert completed_body["tasks"][0]["status"] == "completed"
+    assert completed_body["tasks"][0]["completed_at"] is not None
+    assert completed_body["events"][-1]["event_type"] == "task_completed"
+    assert client.get("/api/v1/applications", headers=auth_headers).json()[0][
+        "next_action"
+    ] is None
+    completed_listing = client.get(
+        "/api/v1/applications", headers=auth_headers
+    ).json()[0]
+    stored = _assert_application_projections(
+        db_session,
+        application_id,
+        title="Platform Engineer",
+        company="Local Systems",
+        location=None,
+    )
+    assert completed_listing["latest_event_at"] == stored.latest_event_at.isoformat().replace(
+        "+00:00", "Z"
+    )
+
+    task_events = (
+        db_session.query(ApplicationEvent)
+        .filter(ApplicationEvent.application_id == application_id)
+        .filter(ApplicationEvent.event_type.like("task_%"))
+        .all()
+    )
+    assert [event.event_type for event in task_events] == ["task_created", "task_completed"]
+
+
+def test_application_task_schedule_validation_and_revision_conflicts(
+    client, auth_headers
+):
+    application = client.post(
+        "/api/v1/applications",
+        json={"manual_job": {"title": "Role", "company": "Company"}},
+        headers=auth_headers,
+    ).json()
+    endpoint = f"/api/v1/applications/{application['id']}/tasks"
+    assert client.post(
+        endpoint,
+        json={
+            "expected_revision": 1,
+            "title": "Invalid reminder",
+            "reminder_at": "2026-08-01T08:30:00Z",
+        },
+        headers=auth_headers,
+    ).status_code == 422
+    assert client.post(
+        endpoint,
+        json={"expected_revision": 1, "title": "   "},
+        headers=auth_headers,
+    ).status_code == 422
+    valid = client.post(
+        endpoint,
+        json={"expected_revision": 1, "title": "Research team"},
+        headers=auth_headers,
+    )
+    assert valid.status_code == 201
+    assert client.post(
+        endpoint,
+        json={"expected_revision": 1, "title": "Stale task"},
+        headers=auth_headers,
+    ).status_code == 409
+    task = valid.json()["tasks"][0]
+    assert client.patch(
+        f"{endpoint}/{task['id']}",
+        json={"expected_revision": 2, "status": None},
+        headers=auth_headers,
+    ).status_code == 422
+
+
+def test_application_dossier_is_versioned_and_zip_manifest_is_verifiable(
+    client, auth_headers, db_session, test_user, readiness_storage
+):
+    version_id = _complete_application_pack(db_session, test_user)
+    application_id = _ready_application(client, auth_headers, version_id)
+    version = db_session.query(ResumeVersion).filter(ResumeVersion.id == version_id).one()
+    evidence_id = version.selected_fact_ids[0]
+
+    published = client.post(
+        f"/api/v1/applications/{application_id}/dossiers",
+        json={
+            "expected_revision": 1,
+            "cover_letter": "I build dependable local systems and can explain the trade-offs.",
+            "answers": [
+                {"question": "Why this role?", "answer": "The engineering scope matches my work."}
+            ],
+            "checklist": [
+                {"label": "Resume reviewed", "completed": True},
+                {"label": "References available", "completed": False},
+            ],
+            "requirement_matrix": [
+                {
+                    "requirement": "Operate dependable platforms",
+                    "evidence_fact_ids": [evidence_id],
+                }
+            ],
+        },
+        headers=auth_headers,
+    )
+
+    assert published.status_code == 201, published.text
+    body = published.json()
+    assert body["revision"] == 2
+    assert body["events"][-1]["event_type"] == "dossier_published"
+    assert len(body["dossiers"]) == 1
+    dossier = body["dossiers"][0]
+    assert dossier["version_number"] == 1
+    assert dossier["application_revision"] == 2
+    assert dossier["completed_checklist"] == 1
+    assert dossier["checklist_total"] == 2
+
+    url = f"/api/v1/applications/{application_id}/dossiers/{dossier['id']}/download"
+    first = client.get(url, headers=auth_headers)
+    second = client.get(url, headers=auth_headers)
+    assert first.status_code == 200, first.text
+    assert first.content == second.content
+    assert first.headers["x-content-sha256"] == hashlib.sha256(first.content).hexdigest()
+    with zipfile.ZipFile(io.BytesIO(first.content)) as archive:
+        names = archive.namelist()
+        assert names == sorted(names[:-1]) + ["manifest.json"]
+        assert {"resume.pdf", "resume.docx", "manifest.json"} <= set(names)
+        manifest_bytes = archive.read("manifest.json")
+        manifest = json.loads(manifest_bytes)
+        assert hashlib.sha256(manifest_bytes).hexdigest() == dossier["manifest_sha256"]
+        assert first.headers["x-dossier-manifest-sha256"] == dossier["manifest_sha256"]
+        for entry in manifest["entries"]:
+            payload = archive.read(entry["path"])
+            assert len(payload) == entry["byte_size"]
+            assert hashlib.sha256(payload).hexdigest() == entry["sha256"]
+        application_record = json.loads(archive.read("application.json"))
+        assert application_record["readiness"]["score_kind"] == "preflight_completeness"
+        assert "prediction" not in json.dumps(application_record).casefold()
+        evidence_record = json.loads(archive.read("requirement-evidence.json"))
+        assert evidence_record["schema_version"] == "2.0"
+        assert len(evidence_record["evidence_catalog"]) == 1
+        assert evidence_record["requirements"] == [
+            {
+                "requirement": "Operate dependable platforms",
+                "evidence_fact_ids": [evidence_id],
+            }
+        ]
+        assert "snapshot" not in evidence_record["requirements"][0]
+
+    dossier_event = (
+        db_session.query(ApplicationEvent)
+        .filter(ApplicationEvent.id == dossier["id"])
+        .one()
+    )
+    persisted_dossier = dossier_event.payload["dossier"]
+    assert persisted_dossier["schema_version"] == "2.0"
+    assert len(persisted_dossier["evidence_catalog"]) == 1
+    listing = client.get("/api/v1/applications", headers=auth_headers).json()[0]
+    stored = _assert_application_projections(
+        db_session,
+        application_id,
+        title="Senior Platform Engineer",
+        company="Local Systems AG",
+        location=None,
+    )
+    assert listing["latest_event_at"] == stored.latest_event_at.isoformat().replace(
+        "+00:00", "Z"
+    )
+
+    stale = client.post(
+        f"/api/v1/applications/{application_id}/dossiers",
+        json={
+            "expected_revision": 1,
+            "requirement_matrix": [
+                {"requirement": "A requirement", "evidence_fact_ids": [evidence_id]}
+            ],
+        },
+        headers=auth_headers,
+    )
+    assert stale.status_code == 409
+
+
+def test_application_dossier_rejects_oversized_deduplicated_event_before_commit(
+    client, auth_headers, db_session, test_user, readiness_storage
+):
+    version_id = _complete_application_pack(db_session, test_user)
+    application_id = _ready_application(client, auth_headers, version_id)
+    version = db_session.query(ResumeVersion).filter(ResumeVersion.id == version_id).one()
+    snapshot = json.loads(json.dumps(version.snapshot))
+    evidence_id = version.selected_fact_ids[0]
+    snapshot["facts"][0]["oversized_local_evidence"] = "x" * 600_000
+    db_session.execute(
+        update(ResumeVersion)
+        .where(ResumeVersion.id == version_id)
+        .values(snapshot=snapshot)
+    )
+    db_session.commit()
+
+    response = client.post(
+        f"/api/v1/applications/{application_id}/dossiers",
+        json={
+            "expected_revision": 1,
+            "requirement_matrix": [
+                {
+                    "requirement": "Operate dependable platforms",
+                    "evidence_fact_ids": [evidence_id],
+                }
+            ],
+        },
+        headers=auth_headers,
+    )
+
+    assert response.status_code == 422
+    assert "Dossier event exceeds" in response.text
+    detail = client.get(
+        f"/api/v1/applications/{application_id}", headers=auth_headers
+    ).json()
+    assert detail["revision"] == 1
+    assert detail["dossiers"] == []
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        {
+            "expected_revision": 1,
+            "requirement_matrix": [
+                {"requirement": "A requirement", "evidence_fact_ids": ["not-a-uuid"]}
+            ],
+        },
+        {
+            "expected_revision": 1,
+            "requirement_matrix": [
+                {
+                    "requirement": "A requirement",
+                    "evidence_fact_ids": ["10000000-0000-4000-8000-000000000001"],
+                    "unexpected": "rejected",
+                }
+            ],
+        },
+        {
+            "expected_revision": 1,
+            "requirement_matrix": [
+                {
+                    "requirement": "A requirement",
+                    "evidence_fact_ids": [
+                        "10000000-0000-4000-8000-000000000001",
+                        "10000000-0000-4000-8000-000000000001",
+                    ],
+                }
+            ],
+        },
+    ],
+)
+def test_dossier_schema_rejects_unbounded_or_ambiguous_evidence_ids(
+    client, auth_headers, body
+):
+    created = client.post(
+        "/api/v1/applications",
+        json={"manual_job": {"title": "Role", "company": "Company"}},
+        headers=auth_headers,
+    ).json()
+    response = client.post(
+        f"/api/v1/applications/{created['id']}/dossiers",
+        json=body,
+        headers=auth_headers,
+    )
+    assert response.status_code == 422
+
+
+def test_manual_application_snapshot_forbids_extra_fields(client, auth_headers):
+    response = client.post(
+        "/api/v1/applications",
+        json={
+            "manual_job": {
+                "title": "Role",
+                "company": "Company",
+                "private_unbounded_blob": "not accepted",
+            }
+        },
+        headers=auth_headers,
+    )
+    assert response.status_code == 422
+
+
+def test_application_api_rejects_unbounded_event_json_and_unknown_fields(
+    client, auth_headers
+):
+    created = client.post(
+        "/api/v1/applications",
+        json={"manual_job": {"title": "Role", "company": "Company"}},
+        headers=auth_headers,
+    ).json()
+    endpoint = f"/api/v1/applications/{created['id']}/events"
+
+    oversized = client.post(
+        endpoint,
+        json={
+            "expected_revision": 1,
+            "event_type": "task",
+            "payload": {"blob": "x" * 2_000_000},
+        },
+        headers=auth_headers,
+    )
+    assert oversized.status_code == 422
+
+    extra = client.post(
+        endpoint,
+        json={
+            "expected_revision": 1,
+            "event_type": "task",
+            "payload": {},
+            "unexpected": "rejected",
+        },
+        headers=auth_headers,
+    )
+    assert extra.status_code == 422
+
+    nested: dict = {}
+    cursor = nested
+    for _index in range(10):
+        cursor["child"] = {}
+        cursor = cursor["child"]
+    too_deep = client.post(
+        endpoint,
+        json={
+            "expected_revision": 1,
+            "event_type": "task",
+            "payload": nested,
+        },
+        headers=auth_headers,
+    )
+    assert too_deep.status_code == 422
+
+    too_many_nodes = client.post(
+        endpoint,
+        json={
+            "expected_revision": 1,
+            "event_type": "task",
+            "payload": {"items": list(range(1_001))},
+        },
+        headers=auth_headers,
+    )
+    assert too_many_nodes.status_code == 422
+
+
+def test_application_api_validates_uuid_inputs(client, auth_headers):
+    assert client.get(
+        "/api/v1/applications/not-a-uuid", headers=auth_headers
+    ).status_code == 422
+    assert client.post(
+        "/api/v1/applications",
+        json={
+            "manual_job": {"title": "Role", "company": "Company"},
+            "resume_version_id": "not-a-uuid",
+        },
+        headers=auth_headers,
+    ).status_code == 422
+    missing = "10000000-0000-4000-8000-000000000001"
+    assert client.get(
+        f"/api/v1/applications/{missing}", headers=auth_headers
+    ).status_code == 404
+
+
+def test_dossier_schema_caps_aggregate_evidence_links(client, auth_headers):
+    created = client.post(
+        "/api/v1/applications",
+        json={"manual_job": {"title": "Role", "company": "Company"}},
+        headers=auth_headers,
+    ).json()
+    evidence = [f"10000000-0000-4000-8000-{index:012d}" for index in range(5)]
+    response = client.post(
+        f"/api/v1/applications/{created['id']}/dossiers",
+        json={
+            "expected_revision": 1,
+            "requirement_matrix": [
+                {
+                    "requirement": f"Requirement {index}",
+                    "evidence_fact_ids": evidence,
+                }
+                for index in range(21)
+            ],
+        },
+        headers=auth_headers,
+    )
+    assert response.status_code == 422

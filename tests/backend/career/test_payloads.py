@@ -122,7 +122,7 @@ def test_profile_rejects_cross_fact_self_evidence():
     fact_id = "10000000-0000-4000-8000-000000000001"
     payload = {
         "expected_revision": 0,
-        "display_name": "Ada",
+        "display_name": "Mira",
         "facts": [
             {
                 "id": fact_id,

@@ -186,7 +186,7 @@ async def test_run_search_success(search_service, mock_profile_repo, mock_job_re
 
         await svc.run_search(1)
 
-        mock_llm.generate_search_plan.assert_called_once()
+        mock_llm.generate_search_plan.assert_not_called()
 
 
 @pytest.mark.asyncio
@@ -210,7 +210,9 @@ async def test_run_search_stopped_by_user(search_service, mock_profile_repo, moc
 
 
 @pytest.mark.asyncio
-async def test_run_search_no_plan(search_service, mock_profile_repo, mock_db):
+async def test_run_search_provider_plan_never_calls_model(
+    search_service, mock_profile_repo, mock_db
+):
     mock_profile = MagicMock()
     mock_profile.id = 1
     mock_profile.user_id = 42
@@ -241,7 +243,13 @@ async def test_run_search_no_plan(search_service, mock_profile_repo, mock_db):
     ):
         mock_llm.generate_search_plan = AsyncMock(return_value=[])
         await search_service.run_search(1)
-        mock_update.assert_any_call(1, state="done", terminal_reason="no_queries")
+        mock_llm.generate_search_plan.assert_not_called()
+        assert any(
+            call.kwargs.get("planner_mode") == "deterministic_explicit"
+            and call.kwargs.get("plan_provenance") == "deterministic-explicit"
+            for call in mock_update.call_args_list
+        )
+        mock_update.assert_any_call(1, state="done", terminal_reason="no_results")
 
 
 @pytest.mark.asyncio
@@ -289,7 +297,7 @@ async def test_run_search_keeps_error_state_when_plan_failed(
         assert unexpected == []
 
 
-def test_build_degraded_fallback_plan_generates_minimal_queries(search_service):
+def test_build_deterministic_explicit_plan_generates_minimal_queries(search_service):
     profile = MagicMock()
     profile.max_queries = 2
     profile_dict = {
@@ -302,7 +310,7 @@ def test_build_degraded_fallback_plan_generates_minimal_queries(search_service):
         patch("backend.services.search_service.settings.SEARCH_DEGRADED_PLAN_MAX_QUERIES", 3),
         patch("backend.services.search_service.settings.SEARCH_DEGRADED_PLAN_MAX_KEYWORDS", 2),
     ):
-        plan = search_service._build_degraded_fallback_plan(profile_dict, profile)
+        plan = search_service._build_deterministic_explicit_plan(profile_dict, profile)
 
     assert len(plan) == 2
     assert all(item.get("query") for item in plan)
@@ -310,7 +318,7 @@ def test_build_degraded_fallback_plan_generates_minimal_queries(search_service):
 
 
 @pytest.mark.asyncio
-async def test_run_search_uses_degraded_fallback_plan_when_enabled(
+async def test_run_search_does_not_reintroduce_legacy_fallback_when_plan_is_empty(
     search_service, mock_profile_repo, mock_db
 ):
     mock_profile = MagicMock()
@@ -335,7 +343,9 @@ async def test_run_search_uses_degraded_fallback_plan_when_enabled(
 
     with (
         patch.object(search_service, "_generate_plan", new=AsyncMock(return_value=[])),
-        patch.object(search_service, "_build_degraded_fallback_plan", return_value=fallback_plan),
+        patch.object(
+            search_service, "_build_deterministic_explicit_plan", return_value=fallback_plan
+        ) as mock_planner,
         patch.object(
             search_service, "_search_and_produce", new=AsyncMock(return_value=(0, 0))
         ) as mock_prod,
@@ -356,15 +366,9 @@ async def test_run_search_uses_degraded_fallback_plan_when_enabled(
     ):
         await search_service.run_search(1)
 
-    mock_prod.assert_awaited_once()
-    mock_update.assert_any_call(
-        1,
-        terminal_reason="degraded_plan_fallback",
-        degraded_mode=True,
-        total_searches=1,
-        searches_generated=fallback_plan,
-    )
-    mock_update.assert_any_call(1, state="done", terminal_reason="no_results")
+    mock_planner.assert_not_called()
+    mock_prod.assert_not_awaited()
+    assert any(call.kwargs.get("state") == "done" for call in mock_update.call_args_list)
 
 
 @pytest.mark.asyncio

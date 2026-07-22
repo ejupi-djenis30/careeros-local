@@ -11,7 +11,7 @@ def _detached_profile() -> CandidateProfile:
         id=str(uuid4()),
         user_id=1,
         revision=7,
-        display_name="Ada Scale",
+        display_name="Mira Scale",
         headline="Staff Engineer",
         summary="Builds dependable local systems.",
         location={"city": "Zurich", "country": "CH"},

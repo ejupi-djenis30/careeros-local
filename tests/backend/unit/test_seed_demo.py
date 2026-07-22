@@ -150,7 +150,7 @@ def test_first_seed_creates_verified_profile_ats_resume_and_application():
         ]
     )
 
-    summary = seed_demo.seed_demo(api, "ada_demo", "AdaDemo2026!")
+    summary = seed_demo.seed_demo(api, "mira_demo", "MiraDemo2026!")
 
     assert summary == seed_demo.SeedSummary("created", "created", "created", "created")
     profile_write = next(call for call in api.calls if call["method"] == "PUT")
@@ -193,7 +193,7 @@ def test_repeat_seed_reuses_owned_demo_records_without_product_writes():
         ]
     )
 
-    summary = seed_demo.seed_demo(api, "ada_demo", "AdaDemo2026!")
+    summary = seed_demo.seed_demo(api, "mira_demo", "MiraDemo2026!")
 
     assert summary == seed_demo.SeedSummary("reused", "reused", "reused", "reused")
     product_writes = [
@@ -212,8 +212,8 @@ def test_seed_payloads_match_the_real_api_and_second_run_is_idempotent(
         monkeypatch.setattr("backend.storage.atomic.settings.DATA_DIR", directory)
         api = ApiTestAdapter(client)
 
-        first = seed_demo.seed_demo(api, "ada_contract", "AdaContract2026!")
-        second = seed_demo.seed_demo(api, "ada_contract", "AdaContract2026!")
+        first = seed_demo.seed_demo(api, "contract_demo", "ContractDemo2026!")
+        second = seed_demo.seed_demo(api, "contract_demo", "ContractDemo2026!")
 
         assert first == seed_demo.SeedSummary("created", "created", "created", "created")
         assert second == seed_demo.SeedSummary("reused", "reused", "reused", "reused")
@@ -248,7 +248,7 @@ def test_cli_prints_one_secret_free_summary(monkeypatch, capsys):
             "--base-url",
             "http://127.0.0.1:9876",
             "--username",
-            "ada_judge",
+            "review_demo",
             "--password",
             "DoNotPrint2026!",
         ]
@@ -256,7 +256,7 @@ def test_cli_prints_one_secret_free_summary(monkeypatch, capsys):
 
     captured = capsys.readouterr()
     assert result == 0
-    assert observed == {"username": "ada_judge", "password": "DoNotPrint2026!"}
+    assert observed == {"username": "review_demo", "password": "DoNotPrint2026!"}
     assert captured.err == ""
     assert captured.out.count("\n") == 1
     assert "DoNotPrint2026!" not in captured.out

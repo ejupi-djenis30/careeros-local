@@ -1,6 +1,14 @@
 import { ApiClient } from "../lib/client";
 
 export const JobService = {
+    async importManual(listing) {
+        return ApiClient.post("/jobs/", {
+            ...listing,
+            platform: "manual",
+            worth_applying: false,
+        });
+    },
+
     /**
      * Fetch jobs with optional filters and sorting.
      * @param {Object} filters

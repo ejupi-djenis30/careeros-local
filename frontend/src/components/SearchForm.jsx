@@ -24,9 +24,9 @@ export function SearchForm({ onStartSearch, isLoading, prefill }) {
         cv_content: "",
         schedule_enabled: false,
         schedule_interval_hours: 24,
-        max_queries: "",             // Empty means unlimited
-        max_occupation_queries: "",  // Empty means AI decides
-        max_keyword_queries: "",     // Empty means AI decides
+        max_queries: "",             // Empty uses the configured deterministic default
+        max_occupation_queries: "",  // Empty uses the default occupation split
+        max_keyword_queries: "",     // Empty uses the default keyword split
         // Feature 3: force-regeneration flags (only used on re-run)
         force_regenerate_cv_summary: false,
         force_regenerate_queries: false,

@@ -9,10 +9,10 @@ export function careerProfile(overrides = {}) {
         id: PROFILE_ID,
         user_id: 1,
         revision: 3,
-        display_name: "Ada Lovelace",
+        display_name: "Mira Vale",
         headline: "Software engineer",
         summary: "Costruisco sistemi affidabili.",
-        email: "ada@example.test",
+        email: "mira@example.test",
         phone: null,
         location: { name: "Zurigo" },
         birth_date: null,
@@ -124,7 +124,7 @@ export function resumeDraft(overrides = {}) {
         canvas_document: {
             schema_version: 2,
             sections: [
-                { id: "identity", kind: "identity", title: "Identità", visible: true, page_break_before: false, blocks: [{ id: "identity-main", kind: "identity", fact_ids: [], visible: true, content: { title: "Ada Lovelace", subtitle: "Software engineer", description: "", bullets: [] }, manual_fields: [], layout: { spacing_before_pt: 0, keep_together: true } }] },
+                { id: "identity", kind: "identity", title: "Identità", visible: true, page_break_before: false, blocks: [{ id: "identity-main", kind: "identity", fact_ids: [], visible: true, content: { title: "Mira Vale", subtitle: "Software engineer", description: "", bullets: [] }, manual_fields: [], layout: { spacing_before_pt: 0, keep_together: true } }] },
                 { id: "experience", kind: "experience", title: "Esperienza", visible: true, page_break_before: false, blocks: [{ id: `fact-${EXPERIENCE_ID}`, kind: "fact", fact_ids: [EXPERIENCE_ID], visible: true, content: { title: "Principal Engineer", subtitle: "Local Systems", description: "Guida piattaforme affidabili e rispettose della privacy.", bullets: ["Ridotto il lead time del 40%."] }, manual_fields: [], layout: { spacing_before_pt: 0, keep_together: true } }] },
             ],
             style: { font_family: "Helvetica", base_font_size: 10, line_height: 1.3, section_spacing: 10, margin_mm: 18, accent_color: "#243B53", columns: 1 },

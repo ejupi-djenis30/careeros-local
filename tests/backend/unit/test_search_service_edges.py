@@ -351,12 +351,13 @@ async def test_generate_plan_exception(mock_service):
     with patch(
         "backend.services.search_service.llm_service.generate_search_plan",
         side_effect=Exception("LLM Fail"),
-    ):
+    ) as generate:
         res = await mock_service._generate_plan(1, {}, MagicMock(max_queries=5), {})
         assert res == []
+        generate.assert_not_called()
 
 
-async def test_generate_plan_rate_limit_sets_specific_terminal_reason(mock_service):
+async def test_generate_plan_is_independent_from_model_availability(mock_service):
     profile = MagicMock(
         max_queries=5, max_occupation_queries=None, max_keyword_queries=None, cached_queries=None
     )
@@ -365,34 +366,35 @@ async def test_generate_plan_rate_limit_sets_specific_terminal_reason(mock_servi
         patch(
             "backend.services.search_service.llm_service.generate_search_plan",
             side_effect=Exception("rate_limit_exceeded"),
-        ),
+        ) as generate,
         patch("backend.services.search_service.update_status") as mock_update,
     ):
         res = await mock_service._generate_plan(1, profile_dict, profile, {})
-        assert res == []
-        mock_update.assert_called_with(
-            1,
-            state="error",
-            terminal_reason="llm_plan_rate_limited",
-            error="rate_limit_exceeded",
+        assert [item["query"] for item in res] == ["dev"]
+        generate.assert_not_called()
+        assert any(
+            call.kwargs.get("planner_mode") == "deterministic_explicit"
+            and call.kwargs.get("plan_provenance") == "deterministic-explicit"
+            for call in mock_update.call_args_list
         )
 
 
-async def test_generate_plan_empty_query(mock_service):
+async def test_generate_plan_ignores_model_output_without_explicit_input(mock_service):
     with patch(
         "backend.services.search_service.llm_service.generate_search_plan",
         return_value=[{"query": ""}, {"query": "dev"}],
-    ):
+    ) as generate:
         profile = MagicMock(max_queries=5, cached_queries=None)
         res = await mock_service._generate_plan(1, {}, profile, {})
-        assert len(res) == 1
-        assert res[0]["query"] == "dev"
+        assert res == []
+        generate.assert_not_called()
 
 
 async def test_generate_plan_uses_cache_metadata_when_inputs_match(mock_service):
     profile = MagicMock(max_queries=5, max_occupation_queries=None, max_keyword_queries=None)
     profile.cached_queries = {
-        "version": 2,
+        "version": 3,
+        "provenance": "deterministic-explicit",
         "input_fingerprint": "abc",
         "searches": [{"query": "dev", "type": "occupation", "domain": "it", "language": "en"}],
     }
@@ -416,7 +418,8 @@ async def test_generate_plan_uses_cache_metadata_when_inputs_match(mock_service)
 async def test_generate_plan_sets_cache_hit_metrics(mock_service):
     profile = MagicMock(max_queries=5, max_occupation_queries=None, max_keyword_queries=None)
     profile.cached_queries = {
-        "version": 2,
+        "version": 3,
+        "provenance": "deterministic-explicit",
         "input_fingerprint": "abc",
         "searches": [{"query": "dev", "type": "occupation", "domain": "it", "language": "en"}],
     }
@@ -442,6 +445,9 @@ async def test_generate_plan_sets_cache_hit_metrics(mock_service):
             {"query": "dev", "type": "occupation", "domain": "it", "language": "en"}
         ],
         plan_unique_count=1,
+        planner_mode="deterministic_explicit",
+        plan_provenance="deterministic-explicit",
+        terminal_reason=None,
     )
 
 
@@ -459,14 +465,15 @@ async def test_generate_plan_sets_cache_miss_metrics(mock_service):
         patch(
             "backend.services.search_service.llm_service.generate_search_plan",
             return_value=[{"query": "dev", "type": "occupation", "domain": "it", "language": "en"}],
-        ),
+        ) as generate,
         patch("backend.services.search_service.add_log"),
         patch("backend.services.search_service.update_status") as mock_update,
     ):
         await mock_service._generate_plan(1, profile_dict, profile, {})
 
     mock_update.assert_any_call(1, plan_cache_hit=0, plan_cache_miss=1)
-    mock_update.assert_any_call(1, plan_raw_count=1)
+    generate.assert_not_called()
+    assert any(call.kwargs.get("plan_raw_count") == 1 for call in mock_update.call_args_list)
 
 
 async def test_analyze_and_save_stopped_and_truncation(mock_service):

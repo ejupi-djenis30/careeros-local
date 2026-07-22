@@ -41,7 +41,7 @@ def test_canvas_migration_preserves_legacy_drafts_and_round_trips(monkeypatch):
                         "INSERT INTO candidate_profiles "
                         "(id, user_id, revision, display_name, headline, summary, location, "
                         "work_authorization, preferences) VALUES "
-                        "(:id, 1, 1, 'Ada', 'Engineer', 'Builds systems', :empty, :empty, :empty)"
+                        "(:id, 1, 1, 'Mira', 'Engineer', 'Builds systems', :empty, :empty, :empty)"
                     ),
                     {"id": "11111111-1111-4111-8111-111111111111", "empty": "{}"},
                 )

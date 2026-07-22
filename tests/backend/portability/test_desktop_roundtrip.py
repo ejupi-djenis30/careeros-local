@@ -2,6 +2,7 @@ import hashlib
 import json
 import threading
 import zipfile
+from datetime import datetime, timezone
 from io import BytesIO
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -22,7 +23,7 @@ from backend.storage.atomic import resolve_data_path
 
 PROFILE = {
     "expected_revision": 0,
-    "display_name": "Grace Hopper",
+    "display_name": "Noa Rowan",
     "headline": "Compiler pioneer",
     "summary": "Turns evidence into reliable systems.",
     "email": "grace@example.test",
@@ -72,6 +73,29 @@ def _convert_to_version(data: bytes, version: int) -> bytes:
     manifest["format_version"] = version
     for table_name in removed_tables:
         manifest["record_counts"].pop(table_name)
+    for entry in manifest["entries"]:
+        if entry["path"] == "payload.json":
+            entry["byte_size"] = len(files["payload.json"])
+            entry["sha256"] = hashlib.sha256(files["payload.json"]).hexdigest()
+    files["manifest.json"] = json.dumps(
+        manifest, ensure_ascii=False, separators=(",", ":"), sort_keys=True
+    ).encode("utf-8")
+    output = BytesIO()
+    with zipfile.ZipFile(output, "w", zipfile.ZIP_DEFLATED) as target:
+        for name, content in files.items():
+            target.writestr(name, content)
+    return output.getvalue()
+
+
+def _with_profile_created_at(data: bytes, timestamp: str) -> bytes:
+    with zipfile.ZipFile(BytesIO(data), "r") as source:
+        files = {name: source.read(name) for name in source.namelist()}
+    payload = json.loads(files["payload.json"])
+    payload["tables"]["candidate_profiles"][0]["created_at"] = timestamp
+    files["payload.json"] = json.dumps(
+        payload, ensure_ascii=False, separators=(",", ":"), sort_keys=True
+    ).encode("utf-8")
+    manifest = json.loads(files["manifest.json"])
     for entry in manifest["entries"]:
         if entry["path"] == "payload.json":
             entry["byte_size"] = len(files["payload.json"])
@@ -145,6 +169,49 @@ def test_v3_archive_restores_ai_audit_and_v2_v1_remain_compatible(
     assert restored_v1.status_code == 200, restored_v1.text
     assert restored_v1.json()["format_version"] == 1
     assert restored_v1.json()["restored_records"]["ai_executions"] == 0
+
+
+@pytest.mark.parametrize("format_version", [1, 2, 3])
+@pytest.mark.parametrize(
+    "archived_timestamp",
+    ["2026-07-22T12:15:00+02:00", "2026-07-22T10:15:00"],
+    ids=["non-utc-offset", "legacy-naive-utc"],
+)
+def test_archive_versions_normalize_legacy_timestamps_to_aware_utc(
+    client,
+    auth_headers,
+    db_session,
+    test_user,
+    desktop_data_dir,
+    format_version,
+    archived_timestamp,
+):
+    _create_profile(client, auth_headers)
+    exported = client.get("/api/v1/portability/export", headers=auth_headers)
+    assert exported.status_code == 200, exported.text
+    _delete_profile(client, auth_headers)
+
+    archive = (
+        exported.content
+        if format_version == 3
+        else _convert_to_version(exported.content, format_version)
+    )
+    archive = _with_profile_created_at(archive, archived_timestamp)
+    restored = client.post(
+        "/api/v1/portability/restore",
+        files={"file": ("legacy.zip", archive, "application/zip")},
+        headers=auth_headers,
+    )
+
+    assert restored.status_code == 200, restored.text
+    assert restored.json()["format_version"] == format_version
+    db_session.expire_all()
+    profile = (
+        db_session.query(CandidateProfile)
+        .filter(CandidateProfile.user_id == test_user.id)
+        .one()
+    )
+    assert profile.created_at == datetime(2026, 7, 22, 10, 15, tzinfo=timezone.utc)
 
 
 def test_interrupted_restore_rolls_back_database_and_created_files(
