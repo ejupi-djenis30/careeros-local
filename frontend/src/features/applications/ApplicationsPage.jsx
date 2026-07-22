@@ -4,11 +4,11 @@ import { ApplicationService } from "../../services/applications";
 import { ResumeService } from "../../services/resumes";
 import { useToast } from "../../context/ToastContext";
 import { useI18n } from "../../i18n/useI18n";
-import { ApplicationDetail } from "./ApplicationDetail";
+import { ApplicationDetailDialog } from "./ApplicationDetailDialog";
 import { BOARD_STAGES, STAGES, getStageLabels } from "./applicationModel";
 
-function ApplicationCard({ application, onClick, locale }) {
-    return <button type="button" className="application-card" onClick={onClick}><strong>{application.title}</strong><span>{application.company}</span>{application.location && <small><i className="bi bi-geo-alt" /> {application.location}</small>}<time dateTime={application.updated_at}>{new Date(application.updated_at).toLocaleDateString(locale)}</time></button>;
+function ApplicationCard({ application, onClick, locale, opening, expanded }) {
+    return <button type="button" className="application-card" onClick={onClick} disabled={opening} aria-busy={opening || undefined} aria-haspopup="dialog" aria-expanded={expanded}><strong>{application.title}</strong><span>{application.company}</span>{application.location && <small><i className="bi bi-geo-alt" /> {application.location}</small>}<time dateTime={application.updated_at}>{new Date(application.updated_at).toLocaleDateString(locale)}</time></button>;
 }
 
 const emptyForm = (jobId = "") => ({
@@ -27,8 +27,13 @@ export function ApplicationsPage() {
     const [creating, setCreating] = useState(false);
     const [error, setError] = useState("");
     const [showCreate, setShowCreate] = useState(searchParams.has("jobId"));
+    const [openingId, setOpeningId] = useState("");
     const [form, setForm] = useState(emptyForm(searchParams.get("jobId") || ""));
     const applicationRequestRef = useRef({ controller: null, id: 0 });
+    const detailRequestRef = useRef({ controller: null, id: 0 });
+    const [detailOpener, setDetailOpener] = useState(null);
+    const backgroundRef = useRef(null);
+    const addApplicationRef = useRef(null);
     const stageLabels = getStageLabels(t);
     const locale = language === "it" ? "it-IT" : "en-GB";
 
@@ -56,18 +61,15 @@ export function ApplicationsPage() {
             });
     }, []);
 
-    const load = useCallback(() => {
-        setLoading(true);
-        setError("");
-        return requestApplications();
-    }, [requestApplications]);
-
     useEffect(() => {
         void requestApplications();
         return () => {
             applicationRequestRef.current.id += 1;
             applicationRequestRef.current.controller?.abort();
             applicationRequestRef.current.controller = null;
+            detailRequestRef.current.id += 1;
+            detailRequestRef.current.controller?.abort();
+            detailRequestRef.current.controller = null;
         };
     }, [requestApplications]);
     useEffect(() => {
@@ -88,9 +90,26 @@ export function ApplicationsPage() {
     const grouped = useMemo(() => Object.fromEntries(STAGES.map((stage) => [stage, applications.filter((item) => item.current_stage === stage)])), [applications]);
     const closed = grouped.rejected.length + grouped.withdrawn.length + grouped.archived.length;
 
-    const openApplication = async (id) => {
+    const openApplication = async (id, opener) => {
+        const requestId = detailRequestRef.current.id + 1;
+        detailRequestRef.current.controller?.abort();
+        const controller = new AbortController();
+        detailRequestRef.current = { controller, id: requestId };
         setError("");
-        try { setSelected(await ApplicationService.get(id)); } catch (loadError) { setError(loadError.message); }
+        setOpeningId(id);
+        try {
+            const detail = await ApplicationService.get(id, { signal: controller.signal });
+            if (controller.signal.aborted || detailRequestRef.current.id !== requestId) return;
+            setDetailOpener(opener);
+            setSelected(detail);
+        } catch (loadError) {
+            if (!controller.signal.aborted && detailRequestRef.current.id === requestId) setError(loadError.message);
+        } finally {
+            if (detailRequestRef.current.id === requestId) {
+                detailRequestRef.current.controller = null;
+                setOpeningId("");
+            }
+        }
     };
 
     const create = async (event) => {
@@ -112,7 +131,8 @@ export function ApplicationsPage() {
                 resume_version_id: form.resume_version_id || null,
                 note: form.note.trim() || null,
             });
-            await load();
+            await requestApplications();
+            setDetailOpener(addApplicationRef.current);
             setSelected(application);
             setShowCreate(false);
             setSearchParams({});
@@ -125,16 +145,17 @@ export function ApplicationsPage() {
         }
     };
 
-    const handleChanged = async (updated) => {
+    const handleChanged = (updated) => {
         setSelected(updated);
-        await load();
+        void requestApplications();
     };
 
     if (loading) return <div className="page-loader" role="status"><span className="spinner-border" /><span>{t("applications.loading")}</span></div>;
 
     return (
         <div className="applications-workspace">
-            <div className="application-overview"><div><span>{t("applications.active")}</span><strong>{applications.length - closed}</strong></div><div><span>{t("applications.interviews")}</span><strong>{grouped.interview.length}</strong></div><div><span>{t("applications.offers")}</span><strong>{grouped.offer.length}</strong></div><div><span>{t("applications.closed")}</span><strong>{closed}</strong></div><button type="button" className="button button--primary" onClick={() => setShowCreate((value) => !value)}><i className="bi bi-plus-lg" /> {t("applications.add")}</button></div>
+            <div ref={backgroundRef} className="applications-workspace__background">
+            <div className="application-overview"><div><span>{t("applications.active")}</span><strong>{applications.length - closed}</strong></div><div><span>{t("applications.interviews")}</span><strong>{grouped.interview.length}</strong></div><div><span>{t("applications.offers")}</span><strong>{grouped.offer.length}</strong></div><div><span>{t("applications.closed")}</span><strong>{closed}</strong></div><button ref={addApplicationRef} type="button" className="button button--primary" onClick={() => setShowCreate((value) => !value)}><i className="bi bi-plus-lg" /> {t("applications.add")}</button></div>
             {error && <div className="inline-alert inline-alert--danger" role="alert">{error}</div>}
             {showCreate && <form className="surface-section create-application" onSubmit={create}>
                 <div className="section-heading"><div><span className="section-kicker">{t("applications.newSnapshot")}</span><h2>{t("applications.add")}</h2></div><button type="button" className="icon-button" onClick={() => setShowCreate(false)} aria-label={t("applications.close")}><i className="bi bi-x-lg" /></button></div>
@@ -155,8 +176,9 @@ export function ApplicationsPage() {
                 <label className="field-stack"><span>{t("applications.initialNote")}</span><textarea className="form-control" rows="3" value={form.note} onChange={(e) => setForm({ ...form, note: e.target.value })} /></label>
                 <button className="button button--primary" disabled={creating}>{creating ? t("applications.creating") : t("applications.create")}</button>
             </form>}
-            {applications.length === 0 ? <div className="state-panel"><i className="bi bi-kanban" /><h2>{t("applications.emptyTitle")}</h2><p>{t("applications.emptyCopy")}</p><button className="button button--primary" onClick={() => setShowCreate(true)}>{t("applications.addFirst")}</button></div> : <div className="application-board">{BOARD_STAGES.map((stage) => <section key={stage} className="application-column"><header><span className={`stage-dot stage-dot--${stage}`} /><h2>{stageLabels[stage]}</h2><strong>{grouped[stage].length}</strong></header><div>{grouped[stage].map((application) => <ApplicationCard key={application.id} application={application} locale={locale} onClick={() => openApplication(application.id)} />)}{grouped[stage].length === 0 && <p className="application-column__empty">{t("applications.emptyColumn")}</p>}</div></section>)}{closed > 0 && <section className="application-column application-column--closed"><header><span className="stage-dot" /><h2>{t("applications.closed")}</h2><strong>{closed}</strong></header><div>{[...grouped.rejected, ...grouped.withdrawn, ...grouped.archived].map((application) => <ApplicationCard key={application.id} application={application} locale={locale} onClick={() => openApplication(application.id)} />)}</div></section>}</div>}
-            {selected && <div className="application-detail-scrim" onClick={(event) => { if (event.target === event.currentTarget) setSelected(null); }}><ApplicationDetail application={selected} onChanged={handleChanged} onClose={() => setSelected(null)} /></div>}
+            {applications.length === 0 ? <div className="state-panel"><i className="bi bi-kanban" /><h2>{t("applications.emptyTitle")}</h2><p>{t("applications.emptyCopy")}</p><button className="button button--primary" onClick={() => setShowCreate(true)}>{t("applications.addFirst")}</button></div> : <div className="application-board">{BOARD_STAGES.map((stage) => <section key={stage} className="application-column"><header><span className={`stage-dot stage-dot--${stage}`} /><h2>{stageLabels[stage]}</h2><strong>{grouped[stage].length}</strong></header><div>{grouped[stage].map((application) => <ApplicationCard key={application.id} application={application} locale={locale} opening={openingId === application.id} expanded={selected?.id === application.id} onClick={(event) => openApplication(application.id, event.currentTarget)} />)}{grouped[stage].length === 0 && <p className="application-column__empty">{t("applications.emptyColumn")}</p>}</div></section>)}{closed > 0 && <section className="application-column application-column--closed"><header><span className="stage-dot" /><h2>{t("applications.closed")}</h2><strong>{closed}</strong></header><div>{[...grouped.rejected, ...grouped.withdrawn, ...grouped.archived].map((application) => <ApplicationCard key={application.id} application={application} locale={locale} opening={openingId === application.id} expanded={selected?.id === application.id} onClick={(event) => openApplication(application.id, event.currentTarget)} />)}</div></section>}</div>}
+            </div>
+            {selected && <ApplicationDetailDialog application={selected} resumeVersions={resumeVersions} onChanged={handleChanged} onClose={() => setSelected(null)} returnFocus={detailOpener} backgroundRef={backgroundRef} />}
         </div>
     );
 }

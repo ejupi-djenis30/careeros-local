@@ -230,6 +230,51 @@
                 />
               </div>
             </article>
+
+            <article
+              class="feature-card feature-card-wide feature-card-readiness"
+              id="application-readiness"
+            >
+              <div class="feature-copy">
+                <span class="feature-number" aria-hidden="true">04</span>
+                <p class="card-kicker">Application Readiness</p>
+                <h3>Check the pack before you send it.</h3>
+                <p>
+                  CareerOS runs a deterministic preflight over the saved role, application route,
+                  profile, linked resume, rendered files and supporting evidence. Every check shows
+                  what it found and what to fix. No model is involved.
+                </p>
+                <ul class="readiness-proof-list" aria-label="Application readiness guarantees">
+                  <li>Completeness only, never a hiring prediction</li>
+                  <li>The same local state produces the same report</li>
+                  <li>Canonical JSON and Markdown exports with a SHA-256 fingerprint</li>
+                </ul>
+              </div>
+
+              <div class="readiness-console" aria-hidden="true">
+                <div class="readiness-console__header">
+                  <span>SAMPLE / LOCAL PREFLIGHT</span>
+                  <span>SCHEMA 1.0</span>
+                </div>
+                <div class="readiness-console__summary">
+                  <div>
+                    <span>COMPLETENESS</span>
+                    <strong>Action needed</strong>
+                  </div>
+                  <div class="readiness-meter"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+                </div>
+                <div class="readiness-checks">
+                  <div data-state="pass"><i></i><span>Role brief</span><strong>PASS</strong></div>
+                  <div data-state="pass"><i></i><span>Application route</span><strong>PASS</strong></div>
+                  <div data-state="warning"><i></i><span>Published resume</span><strong>REVIEW</strong></div>
+                  <div data-state="pass"><i></i><span>Evidence links</span><strong>PASS</strong></div>
+                </div>
+                <div class="readiness-console__footer">
+                  <span>JSON · MARKDOWN</span>
+                  <span>SHA-256 / CANONICAL BYTES</span>
+                </div>
+              </div>
+            </article>
           </div>
         </div>
       </section>

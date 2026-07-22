@@ -126,6 +126,12 @@ async function terminate(child) {
             killer.once("exit", resolveExit);
             killer.once("error", resolveExit);
         });
+        if (child.exitCode === null) {
+            await Promise.race([
+                new Promise((resolveExit) => child.once("exit", resolveExit)),
+                new Promise((resolveWait) => setTimeout(resolveWait, 2_000)),
+            ]);
+        }
         return;
     }
     child.kill("SIGTERM");
@@ -168,10 +174,12 @@ async function showScene(page, runtimeErrors, {
     description,
     screenshot,
     readySelector = null,
+    clickSelector = null,
     waitForSavedDraft = false,
 }) {
     if (navigation) await page.getByRole("link", { name: navigation, exact: true }).click();
     await page.getByRole("heading", { name: heading, level: 1 }).waitFor({ state: "visible" });
+    if (clickSelector) await page.locator(clickSelector).click();
     if (readySelector) await page.locator(readySelector).waitFor({ state: "visible" });
     await page.evaluate(() => {
         window.scrollTo({ top: 0, left: 0, behavior: "instant" });
@@ -277,10 +285,11 @@ async function recordTour(frontendUrl, python, stagingDir) {
         await showScene(page, runtimeErrors, {
             navigation: "Applications",
             heading: "Applications",
-            chapter: "Immutable application pipeline",
-            description: "Each opportunity keeps a local snapshot and append-only timeline",
+            chapter: "Deterministic application readiness",
+            description: "Nine local checks turn missing material into clear next actions before sending",
             screenshot: screenshots.applications,
-            readySelector: ".application-board",
+            clickSelector: '.application-card:has-text("Local Systems Architect")',
+            readySelector: ".readiness-badge--ready",
         });
         await page.screencast.showChapter("CareerOS Local", {
             description: "Private by design. Useful even without an AI model.",
@@ -370,7 +379,7 @@ async function main() {
         if (stagingDir) {
             try {
                 assertOwnedPath(stagingDir, dirname(assetsDir));
-                await rm(stagingDir, { recursive: true, force: true });
+                await rm(stagingDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
             } catch (error) {
                 cleanupErrors.push(error);
             }
@@ -378,7 +387,7 @@ async function main() {
         if (tempRoot) {
             try {
                 assertOwnedPath(tempRoot, tmpdir());
-                await rm(tempRoot, { recursive: true, force: true });
+                await rm(tempRoot, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
             } catch (error) {
                 cleanupErrors.push(error);
             }
@@ -388,6 +397,9 @@ async function main() {
 }
 
 main().catch((error) => {
-    console.error(error.stack || error.message);
+    const details = error instanceof AggregateError
+        ? error.errors.map((item) => item?.stack || item?.message || String(item)).join("\n")
+        : "";
+    console.error([error.stack || error.message, details].filter(Boolean).join("\n"));
     process.exitCode = 1;
 });

@@ -1,10 +1,14 @@
-from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from typing import Literal
+
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from sqlalchemy.orm import Session
 
 from backend.api.deps import get_current_user_id, limiter
 from backend.applications.schemas import (
     ApplicationCreate,
     ApplicationEventCreate,
+    ApplicationPreparationUpdate,
+    ApplicationReadinessReport,
     ApplicationResponse,
     ApplicationSummary,
 )
@@ -60,6 +64,59 @@ def get_application(
     try:
         return ApplicationService(db).get(user_id, application_id)
     except ApplicationNotFoundError as exc:
+        raise _http_error(exc) from exc
+
+
+@router.get("/{application_id}/readiness", response_model=ApplicationReadinessReport)
+def get_application_readiness(
+    application_id: str,
+    user_id: int = Depends(get_current_user_id),
+    db: Session = Depends(get_db),
+) -> ApplicationReadinessReport:
+    try:
+        return ApplicationService(db).readiness(user_id, application_id)
+    except ApplicationNotFoundError as exc:
+        raise _http_error(exc) from exc
+
+
+@router.get("/{application_id}/readiness/export")
+def export_application_readiness(
+    application_id: str,
+    export_format: Literal["json", "markdown"] = Query(default="json", alias="format"),
+    user_id: int = Depends(get_current_user_id),
+    db: Session = Depends(get_db),
+) -> Response:
+    try:
+        exported = ApplicationService(db).export_readiness(
+            user_id, application_id, export_format
+        )
+    except ApplicationNotFoundError as exc:
+        raise _http_error(exc) from exc
+    return Response(
+        content=exported.data,
+        media_type=exported.media_type,
+        headers={
+            "Cache-Control": "private, no-store",
+            "Content-Disposition": f'attachment; filename="{exported.filename}"',
+            "X-Content-SHA256": exported.sha256,
+            "X-Content-Type-Options": "nosniff",
+        },
+    )
+
+
+@router.patch("/{application_id}/preparation", response_model=ApplicationResponse)
+@limiter.limit("20/minute")
+def update_application_preparation(
+    request: Request,
+    application_id: str,
+    data: ApplicationPreparationUpdate,
+    user_id: int = Depends(get_current_user_id),
+    db: Session = Depends(get_db),
+) -> ApplicationResponse:
+    try:
+        return ApplicationService(db).update_preparation(user_id, application_id, data)
+    except (ApplicationNotFoundError, ApplicationConflictError, ApplicationValidationError) as exc:
+        db.rollback()
         raise _http_error(exc) from exc
 
 

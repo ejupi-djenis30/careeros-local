@@ -154,6 +154,43 @@ temporary document content remains in application-managed storage.
    application removes its vault, generated documents and sensitive temporary files while
    leaving unrelated user files untouched.
 
+---
+
+### User Story 6 - Verify an application pack before sending (Priority: P1)
+
+A person opens a saved application and sees a plain, evidence-based readiness audit covering
+the captured role, contact route, career profile, linked resume version, exported documents and
+resume evidence. They can export the same audit as Markdown or JSON for their own records.
+
+**Why this priority**: A pipeline is useful only when it helps the user take the next concrete
+step. A deterministic preflight catches missing material without asking the user to trust an AI
+opinion or send private career data elsewhere.
+
+**Independent Test**: Create an incomplete manual application and verify its blocker list, then
+add a complete profile and a current published resume with artifacts, link it to the application,
+and verify that the report, score, fingerprint and exported bytes are stable for the same state.
+
+**Acceptance Scenarios**:
+
+1. **Given** an application without a full role description, application route, profile or linked
+   resume, **When** readiness is opened, **Then** each missing input appears as a separate blocker
+   with a direct corrective action that opens the relevant application form, Career Vault or
+   Resume Studio workflow.
+2. **Given** a linked published resume, **When** readiness is computed, **Then** CareerOS checks
+   ownership, safely contained readable artifact bytes, immutable digest and byte-size integrity,
+   publication quality, profile revision and selected-fact verification without invoking a model.
+3. **Given** the same vault state, **When** JSON or Markdown is exported more than once, **Then**
+   the bytes and SHA-256 digest are identical and contain no access token or filesystem path.
+4. **Given** a user who works offline or has no local model installed, **When** the report is
+   inspected or exported, **Then** the complete workflow remains available.
+5. **Given** a recorded resume artifact that is missing, unreadable, corrupt or resolves outside
+   the vault data root, **When** readiness is computed, **Then** that format is not counted as
+   available and the report blocks sending until the resume is republished.
+6. **Given** the application drawer is opened from a board card, **When** the user navigates by
+   keyboard or opens the dynamic preparation editor, **Then** focus remains inside the labelled
+   modal, Escape closes it, obscured workspace controls cannot receive focus or scroll, and focus
+   returns to the opening card.
+
 ### Edge Cases
 
 - Disk space becomes insufficient during model acquisition, migration, backup or export.
@@ -175,6 +212,9 @@ temporary document content remains in application-managed storage.
   release host would normalize differently from the local checksum inventory.
 - The default branch advances while a signed version tag and its release candidate are being
   verified.
+- A resume artifact database row outlives a deleted file, points through a path escape or no longer
+  matches its immutable digest or declared byte length.
+- The application preparation editor adds focusable controls after the surrounding drawer opens.
 
 ## Requirements *(mandatory)*
 
@@ -272,6 +312,25 @@ temporary document content remains in application-managed storage.
   Releases. Tag publication runs MUST share one concurrency group with cancellation disabled for
   the running tag, and the publisher MUST rediscover the release sequence immediately before
   promotion.
+- **FR-040**: Every application MUST expose a deterministic readiness report composed from the
+  user's local application snapshot, profile and owned immutable resume version; no AI runtime or
+  network access may participate in the calculation.
+- **FR-041**: A readiness report MUST expose stable check identifiers, pass/warning/blocker state,
+  score contribution, corrective action, source revision and a canonical SHA-256 fingerprint.
+- **FR-042**: Readiness MUST verify role identity and detail, an application route, profile
+  availability, linked resume ownership, safely contained readable rendered-artifact bytes against
+  their immutable SHA-256 digest and declared length, publication validation, profile revision
+  freshness and selected-fact verification. Artifact metadata without verified bytes MUST NOT pass.
+- **FR-043**: The user MUST be able to download canonical JSON and human-readable Markdown
+  readiness reports whose bytes are reproducible for unchanged state and contain neither local
+  storage paths nor authentication material.
+- **FR-044**: The user MUST be able to update the captured role title, company, description,
+  application URL, application email and linked owned resume version without recreating the
+  application. The write MUST require the expected application revision, reject stale writers and
+  append a content-free audit event identifying only the changed field names.
+- **FR-045**: Application Detail MUST be exposed as a labelled modal dialog that locks background
+  scrolling, makes obscured workspace content inert, contains focus across dynamically inserted
+  controls, closes with Escape and restores focus to the control that opened it.
 
 ### Key Entities
 
@@ -289,6 +348,8 @@ temporary document content remains in application-managed storage.
   compensation, state, relevance evidence and user decisions.
 - **Application**: The user's lifecycle for an opportunity, including stages, tasks, events,
   contacts, notes and related document versions.
+- **Application Readiness Report**: A derived, versioned preflight record containing inspectable
+  checks, weighted score, status, source revisions and a canonical content fingerprint.
 - **Resume Document**: A user-owned resume with target, template category, evidence map,
   canvas state and a history of immutable versions.
 - **Resume Version**: A snapshot of content, layout, provenance, validation results, exports
@@ -334,6 +395,12 @@ temporary document content remains in application-managed storage.
   or extra targets, altered checksums, unsigned/off-branch tags, paginated duplicate drafts,
   foreign contracts and mismatched remote assets; deterministic retry tests prove no duplicate
   mutation after every create, upload and publish ambiguity.
+- **SC-014**: Backend and UI acceptance tests prove that an unchanged application readiness report
+  produces identical canonical JSON and Markdown bytes, accurate blocker counts and a matching
+  SHA-256 response header with all networking disabled.
+- **SC-015**: Artifact acceptance tests prove deleted, corrupt, path-escaping, size-mismatched and
+  unreadable resume files cannot pass readiness; keyboard tests prove focus containment, Escape,
+  background inertness/scroll lock and opener-focus restoration for the application dialog.
 
 ## Assumptions
 

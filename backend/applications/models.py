@@ -74,9 +74,9 @@ class ApplicationEvent(Base):
     application_id: Mapped[str] = mapped_column(
         String(36), ForeignKey("applications.id", ondelete="CASCADE"), nullable=False, index=True
     )
-    event_type: Mapped[Literal["stage", "note", "task", "contact", "interview"]] = (
-        mapped_column(String(30), nullable=False)
-    )
+    event_type: Mapped[
+        Literal["stage", "note", "task", "contact", "interview", "preparation"]
+    ] = mapped_column(String(30), nullable=False)
     stage: Mapped[
         Literal[
             "saved",

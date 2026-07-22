@@ -20,7 +20,9 @@ largest AI/search orchestrators behind stable facades, adds non-sensitive AI aud
 and introduces per-platform installer CI with checksums, SBOMs and smoke tests. The v1.1
 release path canonicalizes every native filename before hashing, assembles one exact manifest,
 attests all public assets and binds publication to a verified annotated tag through an
-idempotent GitHub Release state machine.
+idempotent GitHub Release state machine. Application Readiness adds a bounded deterministic
+domain service that joins only owned local records, emits inspectable checks and exposes
+canonical JSON/Markdown exports without introducing persistence or migration work.
 
 ## Technical Context
 
@@ -48,7 +50,8 @@ and an optional managed native model-runtime child process
 
 **Performance Goals**: warm local API reads p95 below 200 ms for a 10,000-record vault;
 desktop shell interactive within 5 seconds after sidecar readiness; compact-model structured
-task median below 45 seconds on reference CPU; canvas interactions at 60 fps for 100 blocks
+task median below 45 seconds on reference CPU; canvas interactions at 60 fps for 100 blocks;
+application readiness calculation below 100 ms for one application with 300 selected facts
 
 **Constraints**: no remote inference or API keys; zero hidden startup egress; installer does
 not bundle the 1.83 GB model; all service/model endpoints loopback-only; one active vault
@@ -74,6 +77,8 @@ families in the first evaluation suite
   the sidecar; Tauri exposes one read-only bootstrap command and a restrictive CSP.
 - **PASS — Release evidence**: the plan includes unit, contract, integration, evaluation,
   supply-chain, packaged-artifact and lifecycle gates.
+- **PASS — Deterministic readiness**: the application preflight reads only local owned records,
+  publishes every weighted check, omits storage paths and produces canonical exports without AI.
 
 ### Post-design gate
 
@@ -244,6 +249,34 @@ digest, predicate and hosted-runner identity before publication. The publisher d
 through bounded authenticated pagination, accepts only its exact durable contract, resumes exact
 partial uploads, reconciles ambiguous API transitions and treats an already exact immutable
 latest release as a no-write success.
+
+### Phase H — Deterministic Application Readiness Pack
+
+Add a focused `backend/applications/readiness.py` service below the transport layer. It loads the
+owned application, candidate profile and linked immutable resume version, evaluates a fixed set of
+weighted checks, and hashes canonical report content. Routes return the structured report or stream
+canonical JSON/Markdown bytes with matching digest headers. The React application detail loads the
+report on demand, shows score, state and corrective actions, and downloads either representation
+through the existing authenticated loopback client. A revision-checked preparation PATCH updates only
+the captured role identity, description, application route and owned resume link through a conditional SQLite write;
+it appends a content-free field-name audit event so every blocker has an in-product resolution path.
+Artifact availability calls the existing `backend.storage.atomic.read_verified` boundary for every
+owned artifact row, which enforces data-root containment, readability and SHA-256 integrity; the
+check also compares the immutable declared byte length. Both verified PDF and DOCX with no failed
+row pass. One verified format with no integrity failure warns that the pack is incomplete. Any
+unsafe, unreadable, missing, digest-mismatched or size-mismatched recorded artifact blocks sending,
+as does having no verified format. Evidence reports only recorded/verified/unavailable format names,
+never storage paths or digests.
+
+Application Detail is rendered through a body portal as a labelled modal dialog. While open it
+makes the workspace background inert and hidden from assistive technology, locks body scrolling,
+queries focusable descendants on every Tab press so preparation-editor controls join the trap,
+closes on Escape and restores the captured opening control. The drawer keeps full-width mobile
+layout, uses the dynamic viewport height and contains overscroll. No schema change, model process,
+remote request or background calculation is required. Backend tests cover ownership, stale writers,
+real stored artifacts, deletion/corruption/path containment/read failures, freshness, deterministic
+exports and redaction; frontend tests cover dialog semantics, dynamic focus, corrective navigation,
+editing and downloads.
 
 ## Complexity Tracking
 

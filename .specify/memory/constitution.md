@@ -2,9 +2,11 @@
 
 <!--
 Sync impact report
-- Reset: all previous product documentation retired by owner request.
-- Version: 1.0.0 (new CareerOS Local baseline).
+- Amendment: readiness artifact claims must verify safely contained durable bytes, and application
+  detail overlays must behave as accessible modal dialogs.
+- Version: 1.0.2 (clarifies evidence integrity and modal accessibility behavior).
 - Ratified: 2026-07-17.
+- Last amended: 2026-07-22.
 - Principles: desktop ownership, local intelligence, grounded career truth, durable vault,
   bounded architecture, measurable delivery, secure distribution, accessible documents.
 - Dependent artifacts: plan, specification, task and checklist templates reviewed.
@@ -39,6 +41,13 @@ compress and rewrite supported facts, but MUST NOT invent employers, dates, cred
 skills, results or metrics. Structured outputs MUST pass schema, evidence and consistency
 validation before persistence. Low-confidence results MUST be surfaced for review instead
 of silently accepted.
+
+Application-readiness decisions MUST be computed from versioned local records, expose every
+contributing check, and produce the same report bytes for the same application state. A model
+MUST NOT be required to inspect, explain or export readiness evidence.
+Claims that a published document is available MUST be backed by readable bytes inside the approved
+data root that match the immutable digest and declared length; database metadata alone is not
+evidence of artifact availability.
 
 Rationale: accuracy is more valuable than fluency in high-stakes career material.
 
@@ -86,6 +95,8 @@ Rationale: production-grade is a verified state, not a label.
 Logs MUST exclude profile bodies, prompts, tokens, document text and contact details. The
 desktop shell MUST enforce a restrictive content security policy, disable arbitrary navigation,
 validate IPC messages and avoid renderer privileges. Core workflows MUST be keyboard accessible.
+Modal workflows MUST identify themselves to assistive technology, contain keyboard focus while
+open, make obscured content inert, close with Escape where safe, and return focus to their opener.
 ATS resumes MUST be text-extractable and photo-free; visual templates MUST remain readable
 without color and strip image metadata. PDF and DOCX exports are generated locally and checked
 for required sections, non-empty text and overflow.
@@ -124,4 +135,4 @@ minor; clarification without changed obligations is patch. Every plan MUST perfo
 check before research and again before release. Exceptions require owner approval, an expiry date
 and a tracked remediation task; there are no implicit exceptions.
 
-**Version**: 1.0.0 | **Ratified**: 2026-07-17 | **Last amended**: 2026-07-17
+**Version**: 1.0.2 | **Ratified**: 2026-07-17 | **Last amended**: 2026-07-22
