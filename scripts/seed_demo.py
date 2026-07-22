@@ -40,6 +40,10 @@ PROFILE_PAYLOAD: dict[str, Any] = {
         "workload_min": 80,
         "workload_max": 100,
         "preferred_languages": ["en"],
+        "target_roles": ["Staff Engineer", "Principal Engineer"],
+        "target_industries": ["Software"],
+        "preferred_work_modes": ["hybrid", "remote"],
+        "salary_min_chf": 150000,
     },
     "facts": [
         {
@@ -108,8 +112,16 @@ PROFILE_PAYLOAD: dict[str, Any] = {
                 "target_seniority": ["staff", "lead"],
                 "work_modes": ["hybrid", "remote"],
                 "contract_types": ["permanent"],
+                "target_date": "2027-06-30",
                 "must_haves": ["Technical leadership", "Privacy-respecting product"],
                 "deal_breakers": ["Mandatory relocation"],
+                "success_criteria": ["Sign a role aligned with local-first product work"],
+                "milestones": [
+                    {"id": "portfolio", "title": "Publish evidence portfolio", "status": "achieved", "completed_date": "2026-07-21"}
+                ],
+                "actions": [
+                    {"id": "application", "title": "Prepare a complete application pack", "status": "completed", "completed_date": "2026-07-21"}
+                ],
             },
         }
     ],
@@ -120,10 +132,14 @@ APPLICATION_PAYLOAD: dict[str, Any] = {
         "title": DEMO_JOB_TITLE,
         "company": DEMO_JOB_COMPANY,
         "description": (
-            "Fictional role for demonstrating CareerOS Local's application workflow."
+            "Design and operate privacy-preserving local systems, document architecture "
+            "decisions, improve release reliability, support incident reviews and work with "
+            "product teams on secure, measurable delivery. This is a fictional demo role."
         ),
         "location": "Zurich",
         "external_url": "https://example.test/jobs/careeros-demo",
+        "application_url": "https://example.test/apply/careeros-demo",
+        "application_email": "careers@example.test",
         "workload": "80–100%",
     },
     "initial_stage": "preparing",
@@ -372,7 +388,22 @@ def ensure_profile(api: JsonApi, token: str) -> tuple[dict[str, Any], str]:
     return profile, "created"
 
 
-def ensure_resume(api: JsonApi, token: str) -> str:
+def _published_resume_version(value: object) -> str | None:
+    if not isinstance(value, dict) or not isinstance(value.get("id"), str):
+        return None
+    artifacts = value.get("artifacts")
+    formats = {
+        item.get("format")
+        for item in artifacts
+        if isinstance(artifacts, list) and isinstance(item, dict)
+    } if isinstance(artifacts, list) else set()
+    quality = value.get("quality_report")
+    if {"pdf", "docx"}.issubset(formats) and isinstance(quality, dict) and quality.get("passed"):
+        return str(value["id"])
+    return None
+
+
+def ensure_resume(api: JsonApi, token: str) -> tuple[str, str]:
     resumes = _array(
         api.request_json("GET", "/resumes", token=token, allowed_statuses=(200,)).value,
         "resume list",
@@ -380,67 +411,145 @@ def ensure_resume(api: JsonApi, token: str) -> str:
     matching = [
         item
         for item in resumes
-        if isinstance(item, dict) and item.get("title") == DEMO_RESUME_TITLE
+        if isinstance(item, dict)
+        and item.get("title") == DEMO_RESUME_TITLE
+        and item.get("template_kind") == "ats"
     ]
     if matching:
-        if any(item.get("template_kind") == "ats" for item in matching):
-            return "reused"
-        raise SeedError("A non-ATS resume already uses the reserved demo title")
-
-    created = _object(
+        draft = matching[0]
+        status = "reused"
+    else:
+        draft = _object(
+            api.request_json(
+                "POST",
+                "/resumes/generate",
+                payload={"title": DEMO_RESUME_TITLE, "template_kind": "ats"},
+                token=token,
+                allowed_statuses=(201,),
+            ).value,
+            "resume",
+        )
+        status = "created"
+    draft_id = draft.get("id")
+    if not isinstance(draft_id, str):
+        raise SeedError("The local API did not return the demo resume identifier")
+    detail = _object(
+        api.request_json(
+            "GET", f"/resumes/{draft_id}", token=token, allowed_statuses=(200,)
+        ).value,
+        "resume detail",
+    )
+    versions = detail.get("versions")
+    if isinstance(versions, list):
+        for version in versions:
+            version_id = _published_resume_version(version)
+            if version_id:
+                return status, version_id
+    published = _object(
         api.request_json(
             "POST",
-            "/resumes/generate",
-            payload={"title": DEMO_RESUME_TITLE, "template_kind": "ats"},
+            f"/resumes/{draft_id}/publish",
+            payload={"name": "Ada Lovelace — application pack"},
             token=token,
             allowed_statuses=(201,),
         ).value,
-        "resume",
+        "published resume",
     )
-    if created.get("title") != DEMO_RESUME_TITLE or created.get("template_kind") != "ats":
-        raise SeedError("The local API did not create the requested ATS resume")
-    return "created"
+    version_id = _published_resume_version(published)
+    if version_id is None:
+        raise SeedError("The local API did not publish verified PDF and DOCX resume files")
+    return status, version_id
 
 
-def ensure_application(api: JsonApi, token: str) -> str:
+def ensure_application(api: JsonApi, token: str, resume_version_id: str) -> str:
     applications = _array(
         api.request_json(
             "GET", "/applications?limit=500", token=token, allowed_statuses=(200,)
         ).value,
         "application list",
     )
-    if any(
-        isinstance(item, dict)
-        and item.get("title") == DEMO_JOB_TITLE
-        and item.get("company") == DEMO_JOB_COMPANY
-        for item in applications
-    ):
-        return "reused"
-
-    created = _object(
-        api.request_json(
-            "POST",
-            "/applications",
-            payload=APPLICATION_PAYLOAD,
-            token=token,
-            allowed_statuses=(201,),
-        ).value,
-        "application",
+    matched_item = next(
+        (
+            item
+            for item in applications
+            if isinstance(item, dict)
+            and item.get("title") == DEMO_JOB_TITLE
+            and item.get("company") == DEMO_JOB_COMPANY
+        ),
+        None,
     )
-    snapshot = created.get("job_snapshot")
+    if isinstance(matched_item, dict) and isinstance(matched_item.get("id"), str):
+        application = _object(
+            api.request_json(
+                "GET",
+                f"/applications/{matched_item['id']}",
+                token=token,
+                allowed_statuses=(200,),
+            ).value,
+            "application",
+        )
+        snapshot = application.get("job_snapshot")
+        if not isinstance(snapshot, dict):
+            raise SeedError("The demo application has no local job snapshot")
+        updates: dict[str, Any] = {"expected_revision": application.get("revision")}
+        expected = APPLICATION_PAYLOAD["manual_job"]
+        for field in ("description", "application_url", "application_email"):
+            if snapshot.get(field) != expected.get(field):
+                updates[field] = expected.get(field)
+        if application.get("resume_version_id") != resume_version_id:
+            updates["resume_version_id"] = resume_version_id
+        if len(updates) > 1:
+            application = _object(
+                api.request_json(
+                    "PATCH",
+                    f"/applications/{matched_item['id']}/preparation",
+                    payload=updates,
+                    token=token,
+                    allowed_statuses=(200,),
+                ).value,
+                "application",
+            )
+        status = "reused"
+    else:
+        application = _object(
+            api.request_json(
+                "POST",
+                "/applications",
+                payload={**APPLICATION_PAYLOAD, "resume_version_id": resume_version_id},
+                token=token,
+                allowed_statuses=(201,),
+            ).value,
+            "application",
+        )
+        status = "created"
+    snapshot = application.get("job_snapshot")
     if not isinstance(snapshot, dict) or (
         snapshot.get("title"), snapshot.get("company")
     ) != (DEMO_JOB_TITLE, DEMO_JOB_COMPANY):
         raise SeedError("The local API did not create the requested demo application")
-    return "created"
+    application_id = application.get("id")
+    if not isinstance(application_id, str):
+        raise SeedError("The local API did not return the demo application identifier")
+    readiness = _object(
+        api.request_json(
+            "GET",
+            f"/applications/{application_id}/readiness",
+            token=token,
+            allowed_statuses=(200,),
+        ).value,
+        "application readiness",
+    )
+    if readiness.get("status") != "ready" or readiness.get("completeness_score") != 100:
+        raise SeedError("The fictional application pack did not pass deterministic readiness")
+    return status
 
 
 def seed_demo(api: JsonApi, username: str, password: str) -> SeedSummary:
     validate_credentials(username, password)
     token, account = ensure_account(api, username, password)
     _profile, profile = ensure_profile(api, token)
-    ats_resume = ensure_resume(api, token)
-    application = ensure_application(api, token)
+    ats_resume, resume_version_id = ensure_resume(api, token)
+    application = ensure_application(api, token, resume_version_id)
     return SeedSummary(
         account=account,
         profile=profile,

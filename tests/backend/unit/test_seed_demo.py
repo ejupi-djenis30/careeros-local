@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Collection, Mapping
 from copy import deepcopy
+from tempfile import TemporaryDirectory
 from typing import Any
 
 import pytest
@@ -74,6 +75,27 @@ def _ready_profile() -> dict[str, Any]:
     return profile
 
 
+def _published_version() -> dict[str, Any]:
+    return {
+        "id": "resume-version-id",
+        "quality_report": {"passed": True},
+        "artifacts": [{"format": "pdf"}, {"format": "docx"}],
+    }
+
+
+def _ready_application() -> dict[str, Any]:
+    return {
+        "id": "application-id",
+        "revision": 1,
+        "resume_version_id": "resume-version-id",
+        "job_snapshot": deepcopy(seed_demo.APPLICATION_PAYLOAD["manual_job"]),
+    }
+
+
+def _readiness_report() -> dict[str, Any]:
+    return {"status": "ready", "completeness_score": 100}
+
+
 @pytest.mark.parametrize(
     ("value", "expected"),
     [
@@ -114,18 +136,17 @@ def test_first_seed_creates_verified_profile_ats_resume_and_application():
             seed_demo.ApiResult(200, []),
             seed_demo.ApiResult(
                 201,
-                {"title": seed_demo.DEMO_RESUME_TITLE, "template_kind": "ats"},
-            ),
-            seed_demo.ApiResult(200, []),
-            seed_demo.ApiResult(
-                201,
                 {
-                    "job_snapshot": {
-                        "title": seed_demo.DEMO_JOB_TITLE,
-                        "company": seed_demo.DEMO_JOB_COMPANY,
-                    }
+                    "id": "resume-draft-id",
+                    "title": seed_demo.DEMO_RESUME_TITLE,
+                    "template_kind": "ats",
                 },
             ),
+            seed_demo.ApiResult(200, {"versions": []}),
+            seed_demo.ApiResult(201, _published_version()),
+            seed_demo.ApiResult(200, []),
+            seed_demo.ApiResult(201, _ready_application()),
+            seed_demo.ApiResult(200, _readiness_report()),
         ]
     )
 
@@ -137,7 +158,12 @@ def test_first_seed_creates_verified_profile_ats_resume_and_application():
         fact["verification_status"] for fact in profile_write["payload"]["facts"]
     } == {"confirmed"}
     assert any(call["path"] == "/resumes/generate" for call in api.calls)
+    assert any(call["path"] == "/resumes/resume-draft-id/publish" for call in api.calls)
     assert any(call["path"] == "/applications" and call["method"] == "POST" for call in api.calls)
+    application_write = next(
+        call for call in api.calls if call["path"] == "/applications" and call["method"] == "POST"
+    )
+    assert application_write["payload"]["resume_version_id"] == "resume-version-id"
     assert "secret-token" not in summary.render()
 
 
@@ -149,17 +175,21 @@ def test_repeat_seed_reuses_owned_demo_records_without_product_writes():
             seed_demo.ApiResult(200, _ready_profile()),
             seed_demo.ApiResult(
                 200,
-                [{"title": seed_demo.DEMO_RESUME_TITLE, "template_kind": "ats"}],
+                [{"id": "resume-draft-id", "title": seed_demo.DEMO_RESUME_TITLE, "template_kind": "ats"}],
             ),
+            seed_demo.ApiResult(200, {"versions": [_published_version()]}),
             seed_demo.ApiResult(
                 200,
                 [
                     {
+                        "id": "application-id",
                         "title": seed_demo.DEMO_JOB_TITLE,
                         "company": seed_demo.DEMO_JOB_COMPANY,
                     }
                 ],
             ),
+            seed_demo.ApiResult(200, _ready_application()),
+            seed_demo.ApiResult(200, _readiness_report()),
         ]
     )
 
@@ -169,19 +199,24 @@ def test_repeat_seed_reuses_owned_demo_records_without_product_writes():
     product_writes = [
         call
         for call in api.calls
-        if call["method"] in {"POST", "PUT"} and not call["path"].startswith("/auth/")
+        if call["method"] in {"POST", "PUT", "PATCH"}
+        and not call["path"].startswith("/auth/")
     ]
     assert product_writes == []
 
 
-def test_seed_payloads_match_the_real_api_and_second_run_is_idempotent(client):
-    api = ApiTestAdapter(client)
+def test_seed_payloads_match_the_real_api_and_second_run_is_idempotent(
+    client, monkeypatch
+):
+    with TemporaryDirectory(prefix="careeros-seed-") as directory:
+        monkeypatch.setattr("backend.storage.atomic.settings.DATA_DIR", directory)
+        api = ApiTestAdapter(client)
 
-    first = seed_demo.seed_demo(api, "ada_contract", "AdaContract2026!")
-    second = seed_demo.seed_demo(api, "ada_contract", "AdaContract2026!")
+        first = seed_demo.seed_demo(api, "ada_contract", "AdaContract2026!")
+        second = seed_demo.seed_demo(api, "ada_contract", "AdaContract2026!")
 
-    assert first == seed_demo.SeedSummary("created", "created", "created", "created")
-    assert second == seed_demo.SeedSummary("reused", "reused", "reused", "reused")
+        assert first == seed_demo.SeedSummary("created", "created", "created", "created")
+        assert second == seed_demo.SeedSummary("reused", "reused", "reused", "reused")
 
 
 def test_existing_unrelated_profile_is_not_overwritten():

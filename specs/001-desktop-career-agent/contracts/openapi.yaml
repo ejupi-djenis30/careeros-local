@@ -93,6 +93,65 @@ paths:
       responses:
         "202": { description: Offline evaluation accepted. }
         "409": { description: Model unavailable or evaluation already active. }
+  /applications/{application_id}/readiness:
+    get:
+      operationId: getApplicationReadiness
+      parameters:
+        - name: application_id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: Deterministic local preflight completeness report.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApplicationReadinessReport" }
+        "404": { description: The application does not belong to the current user. }
+  /applications/{application_id}/readiness/export:
+    get:
+      operationId: exportApplicationReadiness
+      parameters:
+        - name: application_id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - name: format
+          in: query
+          required: false
+          schema: { type: string, enum: [json, markdown], default: json }
+      responses:
+        "200":
+          description: Canonical report bytes; X-Content-SHA256 hashes the exact response body.
+          headers:
+            X-Content-SHA256:
+              schema: { type: string, pattern: "^[a-f0-9]{64}$" }
+            Content-Disposition:
+              schema: { type: string }
+          content:
+            application/json:
+              schema: { type: string, format: binary }
+            text/markdown:
+              schema: { type: string, format: binary }
+        "404": { description: The application does not belong to the current user. }
+  /applications/{application_id}/preparation:
+    patch:
+      operationId: updateApplicationPreparation
+      parameters:
+        - name: application_id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ApplicationPreparationUpdate" }
+      responses:
+        "200": { description: Revisioned application with a content-free preparation audit event. }
+        "404": { description: The application does not belong to the current user. }
+        "409": { description: The expected revision is stale. }
+        "422": { description: A URL, email, resume link or update payload is invalid. }
 components:
   securitySchemes:
     desktopSession:
@@ -145,3 +204,61 @@ components:
         minimumRamBytes: { type: integer, minimum: 1 }
         recommendedRamBytes: { type: integer, minimum: 1 }
         contextTokens: { type: integer, minimum: 1024 }
+    ApplicationPreparationUpdate:
+      type: object
+      additionalProperties: false
+      required: [expected_revision]
+      anyOf:
+        - required: [title]
+        - required: [company]
+        - required: [description]
+        - required: [application_url]
+        - required: [application_email]
+        - required: [resume_version_id]
+      properties:
+        expected_revision: { type: integer, minimum: 1 }
+        title: { type: [string, "null"], maxLength: 240 }
+        company: { type: [string, "null"], maxLength: 240 }
+        description: { type: [string, "null"], maxLength: 100000 }
+        application_url: { type: [string, "null"], maxLength: 2048 }
+        application_email: { type: [string, "null"], maxLength: 320 }
+        resume_version_id: { type: [string, "null"], maxLength: 36 }
+    ApplicationReadinessReport:
+      type: object
+      additionalProperties: false
+      required: [schema_version, application_id, application_revision, role_title, company, status, score_kind, completeness_score, blocker_count, warning_count, checks, fingerprint]
+      properties:
+        schema_version: { const: "1.0" }
+        application_id: { type: string, format: uuid }
+        application_revision: { type: integer, minimum: 1 }
+        role_title: { type: string }
+        company: { type: string }
+        status: { type: string, enum: [ready, action_needed, blocked] }
+        score_kind: { const: preflight_completeness }
+        completeness_score: { type: integer, minimum: 0, maximum: 100 }
+        blocker_count: { type: integer, minimum: 0 }
+        warning_count: { type: integer, minimum: 0 }
+        checks:
+          type: array
+          items: { $ref: "#/components/schemas/ApplicationReadinessCheck" }
+        fingerprint: { type: string, pattern: "^[a-f0-9]{64}$" }
+    ApplicationReadinessCheck:
+      type: object
+      additionalProperties: false
+      required: [id, status, points_awarded, points_available, evidence]
+      properties:
+        id: { type: string }
+        status: { type: string, enum: [pass, warning, blocker] }
+        points_awarded: { type: integer, minimum: 0, maximum: 100 }
+        points_available: { type: integer, minimum: 1, maximum: 100 }
+        evidence:
+          type: array
+          items: { $ref: "#/components/schemas/ReadinessEvidence" }
+        action: { type: [string, "null"] }
+    ReadinessEvidence:
+      type: object
+      additionalProperties: false
+      required: [key, value]
+      properties:
+        key: { type: string }
+        value: { type: string }

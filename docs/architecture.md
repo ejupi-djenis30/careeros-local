@@ -6,6 +6,7 @@ CareerOS Local is a Tauri 2 desktop application with a React UI, a bundled FastA
 flowchart LR
   UI["React workspace"] -->|"authenticated loopback HTTP"| API["FastAPI transport"]
   API --> DOMAIN["Career, resumes, applications, workflows"]
+  DOMAIN --> READY["Deterministic application readiness"]
   DOMAIN --> DB["SQLite Career Vault"]
   DOMAIN --> FILES["Atomic local assets"]
   API --> SEARCH["Search pipeline"]
@@ -26,6 +27,32 @@ Rust allocates an ephemeral IPv4 loopback port, generates a desktop session secr
 The Career Vault is the canonical user-owned record. Typed profile facts carry verification state and provenance. Resume drafts reference selected facts; publishing creates immutable versions and content-addressed PDF/DOCX artifacts. Applications, events, workflows, conversations, and AI audit records reference the owning local user.
 
 SQLite connections enforce foreign keys, secure deletion, WAL mode, and a busy timeout. Alembic owns schema changes. Files are always resolved beneath the configured data root and written with flush, fsync, and atomic replacement.
+
+## Application readiness
+
+`backend/applications/readiness.py` derives a preflight completeness index from one user-owned
+application, the local Career Vault profile and an owned immutable resume version. Nine stable,
+weighted checks report their state, evidence and corrective action. The index is explicitly not a
+hiring probability or a judgment of candidate quality.
+
+The application-pack editor updates only the captured role title, company, description,
+application URL or email, and owned resume link. A conditional write on `expected_revision`
+rejects stale sessions, then appends a timeline event containing only sorted field names.
+User-entered values never enter that audit payload.
+`readiness_export.py` emits canonical JSON and escaped Markdown; unchanged state yields unchanged
+bytes, and the download header hashes the exact response body.
+
+Artifact availability is established from the file, not its database row. Each recorded PDF or
+DOCX path must remain inside the vault data root, be readable, match its immutable SHA-256 digest
+and have the declared byte length. Any failed recorded format blocks the pack and exposes only the
+affected format name, never a storage path or digest.
+
+Application Detail uses a body portal and labelled modal semantics. Its dynamic focus trap includes
+controls added by the preparation editor, Escape closes it, the background is inert and scroll
+locked, and focus returns to the card that opened it. Detail reads use abortable latest-request-wins
+loading; application updates refresh the board without tearing down the open modal. The workflow
+starts no model and calls no external service; the desktop UI reaches it only through the existing
+authenticated loopback API.
 
 ## Local AI
 

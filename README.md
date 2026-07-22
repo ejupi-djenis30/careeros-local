@@ -12,9 +12,10 @@
 > Your career history should become more useful over time, not more exposed.
 
 CareerOS Local is a private desktop system for turning verified experience into tailored
-resumes, relevant opportunities, and an application pipeline you can actually operate. The
-Career Vault preserves source facts and revision history; core workflows remain inspectable and
-usable without AI, while enabled inference uses the approved local runtime.
+resumes, relevant opportunities, and an application pipeline you can actually operate. Before
+anything is sent, a deterministic readiness pack shows exactly what is present, what is missing
+and where to fix it. The Career Vault preserves source facts and revision history; core workflows
+remain inspectable and usable without AI, while enabled inference uses the approved local runtime.
 
 [![Watch the 40-second CareerOS Local product tour](docs/assets/careeros-demo.gif)](https://ejupi-djenis30.github.io/careeros-local/#demo)
 
@@ -34,7 +35,8 @@ usable without AI, while enabled inference uses the approved local runtime.
 - **Keep the private parts private:** the API, database, artifacts, and optional model runtime
   remain on the device, with no telemetry and no cloud-model fallback.
 - **Move from intent to follow-through:** immutable PDF/DOCX resume versions, local job
-  snapshots, and an append-only application timeline keep the workflow coherent.
+  snapshots, an append-only application timeline and a nine-check preflight keep the workflow
+  coherent.
 
 ## Product tour
 
@@ -56,6 +58,8 @@ the assets.
 - React 19 provides the keyboard-accessible workspace and editable resume canvas.
 - SQLite, SQLAlchemy and Alembic provide transactional storage and migrations.
 - Versioned archives restore atomically and exclude private cross-user or runtime state.
+- Application readiness is calculated without a model from owned local records, exposes weighted
+  evidence and actions, and exports reproducible JSON or Markdown reports.
 - Vault erasure sanitizes SQLite even when artifact cleanup needs a retry.
 - Local AI calls use explicit context, strict schemas, bounded repair and content-free audit
   metadata through a managed llama.cpp-compatible runtime.
@@ -143,7 +147,8 @@ tour, run this only against a development database:
 ```
 
 Then sign in as `ada_demo` with the supplied password. The seeder accepts loopback destinations
-only, follows no redirects and does not overwrite unrelated profile data.
+only, follows no redirects, does not overwrite unrelated profile data, publishes locally verified
+PDF/DOCX files and confirms that the fictional application reaches 100/100 preflight completeness.
 
 For the native shell:
 
@@ -203,6 +208,7 @@ collectively to **CareerOS Local contributors**.
 - [Release process](docs/releasing.md)
 - [Devpost submission kit](docs/devpost.md)
 - [Product specification](specs/001-desktop-career-agent/spec.md)
+- [v1.2.0 release preparation](specs/001-desktop-career-agent/release-evidence-v1.2.0.md)
 - [v1.1.0 release preparation](specs/001-desktop-career-agent/release-evidence-v1.1.0.md)
 - [v1.0.2 release evidence](specs/001-desktop-career-agent/release-evidence-v1.0.2.md)
 - [Historical v1.0.0 Windows evidence](specs/001-desktop-career-agent/release-evidence.md)

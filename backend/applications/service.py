@@ -1,12 +1,17 @@
 import json
 from datetime import datetime, timezone
+from typing import Literal
 
 from sqlalchemy.orm import Session
 
 from backend.applications.models import Application, ApplicationEvent
+from backend.applications.readiness import ApplicationReadinessService
+from backend.applications.readiness_export import ReadinessExport, export_readiness
 from backend.applications.schemas import (
     ApplicationCreate,
     ApplicationEventCreate,
+    ApplicationPreparationUpdate,
+    ApplicationReadinessReport,
     ApplicationResponse,
     ApplicationSummary,
 )
@@ -214,6 +219,95 @@ class ApplicationService:
 
     def get(self, user_id: int, application_id: str) -> ApplicationResponse:
         return ApplicationResponse.model_validate(self._application(user_id, application_id))
+
+    def readiness(self, user_id: int, application_id: str) -> ApplicationReadinessReport:
+        application = self._application(user_id, application_id)
+        return ApplicationReadinessService(self.db).build(user_id, application)
+
+    def export_readiness(
+        self,
+        user_id: int,
+        application_id: str,
+        export_format: Literal["json", "markdown"],
+    ) -> ReadinessExport:
+        return export_readiness(
+            self.readiness(user_id, application_id), export_format
+        )
+
+    def update_preparation(
+        self, user_id: int, application_id: str, data: ApplicationPreparationUpdate
+    ) -> ApplicationResponse:
+        application = self._application(user_id, application_id)
+        if application.revision != data.expected_revision:
+            raise ApplicationConflictError(
+                f"Expected revision {data.expected_revision}, current revision is "
+                f"{application.revision}"
+            )
+
+        changed_fields: list[str] = []
+        snapshot = dict(application.job_snapshot or {})
+        for field in (
+            "title",
+            "company",
+            "description",
+            "application_url",
+            "application_email",
+        ):
+            if field not in data.model_fields_set:
+                continue
+            value = getattr(data, field)
+            if snapshot.get(field) != value:
+                snapshot[field] = value
+                changed_fields.append(field)
+
+        resume_version_id = application.resume_version_id
+        if "resume_version_id" in data.model_fields_set:
+            if data.resume_version_id is not None:
+                self._resume_version(user_id, data.resume_version_id)
+            if resume_version_id != data.resume_version_id:
+                resume_version_id = data.resume_version_id
+                changed_fields.append("resume_version_id")
+
+        if not changed_fields:
+            raise ApplicationValidationError("Application preparation is unchanged")
+
+        now = datetime.now(timezone.utc)
+        updated = (
+            self.db.query(Application)
+            .filter(
+                Application.id == application_id,
+                Application.user_id == user_id,
+                Application.revision == data.expected_revision,
+            )
+            .update(
+                {
+                    Application.job_snapshot: snapshot,
+                    Application.resume_version_id: resume_version_id,
+                    Application.revision: data.expected_revision + 1,
+                    Application.updated_at: now,
+                },
+                synchronize_session=False,
+            )
+        )
+        if updated != 1:
+            self.db.rollback()
+            raise ApplicationConflictError("Application changed during preparation update")
+        self.db.add(
+            ApplicationEvent(
+                application_id=application_id,
+                event_type="preparation",
+                stage=None,
+                occurred_at=now,
+                note=None,
+                payload={"changed_fields": sorted(changed_fields)},
+                created_at=now,
+            )
+        )
+        self.db.commit()
+        self.db.expire_all()
+        return ApplicationResponse.model_validate(
+            self._application(user_id, application_id)
+        )
 
     def list(
         self, user_id: int, *, offset: int = 0, limit: int = 200

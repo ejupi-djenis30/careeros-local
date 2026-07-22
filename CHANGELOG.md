@@ -5,6 +5,39 @@ All notable changes to CareerOS Local are documented here. The format follows
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-07-22
+
+### Added
+
+- Added a deterministic Application Readiness Pack with nine inspectable checks for the role
+  snapshot, application route, Career Vault profile, published resume files, document quality,
+  profile freshness and confirmed resume evidence.
+- Added canonical JSON and Markdown readiness exports with stable report fingerprints and an
+  exact response-body SHA-256 digest.
+- Added an in-place application-pack editor for the role title, company, description, application
+  URL/email and owned published resume link, plus direct paths to Career Vault and Resume Studio.
+
+### Changed
+
+- The fictional offline demo now publishes verified PDF/DOCX resume artifacts, links them to the
+  application and records the real readiness drawer at 100/100.
+- Application preparation writes now require the expected revision and append a content-free
+  timeline event naming only the fields that changed.
+
+### Fixed
+
+- Readiness now counts a published PDF or DOCX only after a contained read verifies its immutable
+  digest and byte length; deleted, corrupt, unreadable, path-escaping and size-mismatched artifacts
+  block the pack instead of passing from database metadata alone.
+- Application Detail now behaves as a labelled modal on desktop and mobile, with dynamic keyboard
+  focus containment, Escape close, inert and scroll-locked background, and reliable focus return.
+- Concurrent detail loads use latest-request-wins cancellation, while application updates keep the
+  drawer mounted and realign the next valid stage before another timeline write.
+- Readiness Markdown escapes user-controlled role and company text so snapshots cannot inject
+  links, formatting or HTML into exported reports.
+- The Windows demo recorder now waits for child processes and retries bounded temporary cleanup,
+  avoiding a post-publication directory race.
+
 ## [1.1.2] - 2026-07-20
 
 ### Fixed
@@ -118,7 +151,8 @@ All notable changes to CareerOS Local are documented here. The format follows
   autosave/revision loop.
 - Removed the rate-limit error and incomplete pipeline from public screenshots.
 
-[Unreleased]: https://github.com/ejupi-djenis30/careeros-local/compare/v1.1.2...HEAD
+[Unreleased]: https://github.com/ejupi-djenis30/careeros-local/compare/v1.2.0...HEAD
+[1.2.0]: https://github.com/ejupi-djenis30/careeros-local/compare/v1.1.2...v1.2.0
 [1.1.2]: https://github.com/ejupi-djenis30/careeros-local/compare/v1.1.1...v1.1.2
 [1.1.1]: https://github.com/ejupi-djenis30/careeros-local/compare/v1.1.0...v1.1.1
 [1.1.0]: https://github.com/ejupi-djenis30/careeros-local/compare/v1.0.2...v1.1.0

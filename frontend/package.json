@@ -1,7 +1,7 @@
 {
   "name": "careeros-local-desktop",
   "private": true,
-  "version": "1.1.2",
+  "version": "1.2.0",
   "description": "Private, local-first career workspace for verified resumes and applications",
   "author": "Ejupi Labs",
   "contributors": [

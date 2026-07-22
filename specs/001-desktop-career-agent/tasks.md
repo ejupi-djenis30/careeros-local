@@ -213,7 +213,8 @@ Setup -> Foundation -> US1 desktop
                     -> US3 resume
 US2 + Foundation -> US4 AI
 US1 + Foundation -> US5 portability
-US1..US5 -> Heavy refactor and release gates -> physical folder rename
+US2 + US3 -> US6 application readiness
+US1..US6 -> Heavy refactor and release gates -> physical folder rename
 ```
 
 - Setup and Foundation block every story.
@@ -272,12 +273,13 @@ T047 model-manager UI tests
 
 ## Task validation
 
-- Total tasks: 104.
+- Total tasks: 115.
 - User Story 1: 14 tasks (T015–T028).
 - User Story 2: 6 tasks (T029–T034).
 - User Story 3: 7 tasks (T035–T041).
 - User Story 4: 17 tasks (T042–T058).
 - User Story 5: 6 tasks (T059–T064).
+- User Story 6: 10 tasks (T106–T115).
 - Setup/Foundation/Polish/Convergence: 37 tasks.
 - Convergence: 11 tasks (T077–T087).
 - Post-audit release hardening: 7 tasks (T088–T094).
@@ -322,3 +324,42 @@ T047 model-manager UI tests
 - [x] T103 Run Python release tests, workflow-policy validation, actionlint, frontend/Rust release checks and repository diff validation; record only commands actually executed
 - [x] T104 Perform final cross-artifact convergence against FR-037–FR-039 and SC-013 before the immutable version tag is authorized
 - [x] T105 Map the canonical project `LICENSE` into every Tauri distribution and verify its exact bytes in mounted, extracted or installed MSI, NSIS, AppImage, DEB and DMG payloads before staging
+
+## Phase 12: User Story 6 — Deterministic Application Readiness Pack
+
+**Goal**: Turn a saved application into a practical local preflight with inspectable evidence,
+corrective actions and reproducible exports. The score is a completeness index only; it MUST NOT
+be presented as hiring probability, candidate quality or advice from a model.
+
+**Independent Test**: Compare zero-data, incomplete and complete application reports; request the
+same JSON and Markdown exports twice; verify exact byte/digest equality, ownership isolation and
+the absence of local paths or authentication material.
+
+- [x] T106 [US6] Amend the constitution and specify deterministic readiness outcomes, boundaries,
+  acceptance scenarios and measurable export behavior in `.specify/memory/constitution.md` and
+  `specs/001-desktop-career-agent/spec.md`
+- [x] T107 [US6] Plan the bounded service, API, UI and no-migration approach in
+  `specs/001-desktop-career-agent/plan.md`
+- [x] T108 [US6] Implement stable readiness schemas, weighted completeness checks, evidence/action
+  fields, canonical serialization and content fingerprints in `backend/applications/`
+- [x] T109 [US6] Add user-scoped readiness and JSON/Markdown export routes with deterministic
+  filenames and digest headers in `backend/api/routes/applications.py`
+- [x] T110 [US6] Add Application Detail preflight state, accessible check presentation and local
+  downloads in `frontend/src/features/applications/`, `frontend/src/services/applications.js`,
+  `frontend/src/i18n/messages.js` and `frontend/src/career-os.css`
+- [x] T111 [US6] Cover zero-data, missing inputs, complete packs, foreign ownership, deterministic
+  bytes, content disposition, UI rendering and downloads in backend/frontend tests
+- [x] T112 [US6] Run proportional gates and record cross-artifact analysis and convergence in
+  `specs/001-desktop-career-agent/application-readiness-analysis.md` and
+  `specs/001-desktop-career-agent/application-readiness-convergence.md`
+- [x] T113 [US6] Add an expected-revision preparation PATCH with a content-free append-only audit
+  event, an editable application-pack form and direct Career Vault/Resume Studio remediation paths
+  across `backend/applications/`, `backend/api/routes/applications.py` and
+  `frontend/src/features/applications/`
+- [x] T114 [US6] Verify each owned resume artifact through the contained storage read, immutable
+  digest and declared byte length; replace metadata-only complete fixtures and cover deleted,
+  corrupt, escaping, unreadable and size-mismatched files in `backend/applications/readiness.py`,
+  `tests/backend/applications/test_application_api.py` and the deterministic demo seed
+- [x] T115 [US6] Convert Application Detail into a portal-backed labelled modal with dynamic focus
+  containment, Escape, opener restoration, inert/scroll-locked background and mobile-safe
+  overscroll; prove semantics and keyboard traversal in `frontend/src/features/applications/`
