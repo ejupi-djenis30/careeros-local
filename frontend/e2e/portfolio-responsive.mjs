@@ -9,7 +9,7 @@ import { chromium } from "playwright";
 
 const siteRoot = resolve(fileURLToPath(new URL("../../docs/", import.meta.url)));
 const mountPath = "/careeros-local";
-const widths = [320, 375, 720, 721, 1020, 1021, 1180, 1240, 1280, 1425, 1600];
+const widths = [320, 375, 720, 721, 1020, 1021, 1180, 1240, 1256, 1270, 1271, 1280, 1425, 1600];
 const measuredSelectors = [
   ".nav.container",
   ".brand",
@@ -206,12 +206,10 @@ try {
       );
     }
 
-    if (width >= 1021 && width <= 1240) {
-      assert(
-        report.privacyRightGap >= 16,
-        `${width}px: privacy badge needs a 16px viewport gutter (received ${report.privacyRightGap})`,
-      );
-    }
+    assert(
+      report.privacyRightGap >= 16,
+      `${width}px: privacy badge needs a 16px viewport gutter (received ${report.privacyRightGap})`,
+    );
   }
 
   console.log(`Responsive portfolio validation passed at ${widths.length} viewport widths.`);
