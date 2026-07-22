@@ -374,6 +374,7 @@ h1 span {
 
 .hero-visual {
   position: relative;
+  margin-inline-end: 22px;
   padding: 18px 0 54px;
   perspective: 1200px;
 }
@@ -1490,12 +1491,6 @@ h2 {
   .footer-meta {
     grid-column: 1 / -1;
     justify-self: start;
-  }
-}
-
-@media (min-width: 1021px) and (max-width: 1240px) {
-  .privacy-float {
-    right: 0;
   }
 }
 
