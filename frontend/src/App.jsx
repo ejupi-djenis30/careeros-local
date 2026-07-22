@@ -7,6 +7,7 @@ import { SearchProvider } from "./context/SearchContext";
 import { ToastProvider } from "./context/ToastContext";
 import { isDesktopShell } from "./platform/desktop";
 import { useI18n } from "./i18n/useI18n";
+import { RequiredLocalAnalysis } from "./features/local-model/RequiredLocalAnalysis";
 
 const ApplicationsPage = lazy(() => import("./features/applications/ApplicationsPage").then((module) => ({ default: module.ApplicationsPage })));
 const CareerProfilePage = lazy(() => import("./features/career-profile/CareerProfilePage").then((module) => ({ default: module.CareerProfilePage })));
@@ -62,12 +63,12 @@ function AuthenticatedApp() {
                             <Route path="/profile" element={<CareerProfilePage />} />
                             <Route path="/resumes" element={<ResumeStudioPage />} />
                             <Route path="/applications" element={<ApplicationsPage />} />
-                            <Route path="/coach" element={<CareerCoachPage />} />
+                            <Route path="/coach" element={<RequiredLocalAnalysis><CareerCoachPage /></RequiredLocalAnalysis>} />
                             <Route path="/jobs" element={<JobsPage />} />
-                            <Route path="/search" element={<NewSearchPage />} />
+                            <Route path="/search" element={<RequiredLocalAnalysis><NewSearchPage /></RequiredLocalAnalysis>} />
                             <Route path="/new" element={<Navigate to="/search" replace />} />
                             <Route path="/schedules" element={<SchedulesPage />} />
-                            <Route path="/history" element={<HistoryPage />} />
+                            <Route path="/history" element={<RequiredLocalAnalysis><HistoryPage /></RequiredLocalAnalysis>} />
                             <Route path="/progress" element={<ProgressPage />} />
                             <Route path="*" element={<Navigate to="/" replace />} />
                         </Routes>

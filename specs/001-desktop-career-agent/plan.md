@@ -9,7 +9,8 @@ distribution, profile/goal depth, automatic resumes and editable resume canvas.
 
 CareerOS Local becomes a Tauri v2 desktop product around the existing React workspace and
 a frozen Python sidecar. Tauri owns one authenticated loopback process on a random port;
-the sidecar owns the SQLite vault and an optional managed `llama.cpp` process. Runtime and
+the sidecar owns the SQLite vault and a managed `llama.cpp` process required by analysis workflows.
+Runtime and
 model acquisition are explicit, pinned and integrity-verified. The existing deterministic
 career-profile, goal, resume and canvas capabilities remain the source of truth while a new
 bounded AI package adds schema-constrained generation, deterministic evidence retrieval,
@@ -46,7 +47,7 @@ offline AI golden-set evaluator
 remain contributor-only development modes
 
 **Project Type**: Cross-platform desktop application with a local Python service sidecar
-and an optional managed native model-runtime child process
+and a managed native model-runtime child process required for AI analysis
 
 **Performance Goals**: warm local API reads p95 below 200 ms for a 10,000-record vault;
 desktop shell interactive within 5 seconds after sidecar readiness; compact-model structured
@@ -79,6 +80,9 @@ families in the first evaluation suite
   supply-chain, packaged-artifact and lifecycle gates.
 - **PASS — Deterministic readiness**: the application preflight reads only local owned records,
   publishes every weighted check, omits storage paths and produces canonical exports without AI.
+- **PASS — Truthful analysis**: non-AI Vault, portability, document and deterministic readiness
+  workflows remain available without a model, while analysis fails closed unless the loopback
+  runtime is ready and a content-free schema probe validates structured output.
 
 ### Post-design gate
 
@@ -306,6 +310,29 @@ evidence IDs with an accessible notice. The API accepts only UUID evidence ids o
 immutable resume, stores each fact snapshot once in a v2 catalog, and preflights input, event,
 artifact and ZIP byte limits. Backend cross-user/concurrency/replay/schema tests and
 frontend multi-row/accessibility tests provide the release evidence.
+
+### Phase J — Mandatory local analysis capability
+
+Keep the verified managed llama.cpp catalog and authenticated random-loopback runtime as the
+desktop default. When Windows application-control policy blocks that runtime, allow an official
+Ollama installation as a production local fallback on an allowlisted loopback endpoint; it must
+pass the same identity, schema, grounding, and readiness checks, with cloud endpoints disabled. Extend the
+model status contract with an explicit required-analysis boundary and add an authenticated
+readiness probe that checks endpoint policy, runtime reachability, configured-model availability
+and one temperature-zero schema-constrained response containing no career data. The probe validates
+the response with a strict Pydantic contract and reports stable diagnostic codes only.
+
+After authentication, expose model setup as a keyboard-accessible prerequisite panel. Users may
+still open and edit the Vault, inspect existing documents, use portability and calculate/export the
+deterministic application preflight while the model is absent; every navigation path that claims AI
+analysis remains visibly locked until the probe passes. Opportunity-search startup performs a cheap
+server-side ready-state precondition, and search matching removes every deterministic fallback:
+runtime, circuit, timeout or structured-output failure returns an explicit failed analysis state and
+persists no substitute score. Heuristic scoring remains an accurately labelled pre-filter only.
+
+No database migration is required. Backend tests cover loopback/schema diagnostics, search
+preconditions and fail-closed matching. Frontend tests cover setup, retry, unlock, English/Italian
+copy, keyboard operation and no analysis-content rendering before readiness.
 
 ## Complexity Tracking
 

@@ -69,6 +69,9 @@ export class ApiClient {
         if (Array.isArray(errorData?.detail)) {
             return errorData.detail.map((entry) => entry.msg || String(entry)).join(", ");
         }
+        if (errorData?.detail && typeof errorData.detail === "object") {
+            return errorData.detail.message || errorData.detail.code || fallbackMessage;
+        }
         if (errorData?.detail) return JSON.stringify(errorData.detail);
         return errorData?.message || fallbackMessage;
     }

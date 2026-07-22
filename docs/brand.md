@@ -48,7 +48,7 @@ Product copy should be direct, calm, and evidence-led:
 
 - Lead with what the person can accomplish.
 - Explain privacy through concrete architecture rather than broad promises.
-- Treat AI as optional assistance, never as an autonomous authority.
+- Use local AI for opportunity matching and career coaching, but never treat it as an autonomous authority.
 - Avoid invented performance claims, urgency language, or surveillance-adjacent terminology.
 
 ## Color

@@ -6,11 +6,9 @@ from typing import Any, Final, Literal
 
 from backend.portability.schemas import ArchiveManifest
 
-ARCHIVE_FORMAT: Final[Literal["careeros-portable-archive"]] = (
-    "careeros-portable-archive"
-)
-CURRENT_ARCHIVE_VERSION: Final = 3
-SUPPORTED_ARCHIVE_VERSIONS: Final = frozenset({1, 2, 3})
+ARCHIVE_FORMAT: Final[Literal["careeros-portable-archive"]] = "careeros-portable-archive"
+CURRENT_ARCHIVE_VERSION: Final = 4
+SUPPORTED_ARCHIVE_VERSIONS: Final = frozenset({1, 2, 3, 4})
 MANIFEST_MEMBER: Final = "manifest.json"
 PAYLOAD_MEMBER: Final = "payload.json"
 
@@ -37,17 +35,19 @@ V3_TABLES: Final = (
     "jobs",
     "preference_signals",
 )
+V4_TABLES: Final = V3_TABLES
 TABLES_BY_VERSION: Final = {
     1: frozenset(V1_TABLES),
     2: frozenset(V2_TABLES),
     3: frozenset(V3_TABLES),
+    4: frozenset(V4_TABLES),
 }
 
 
 def canonical_json(value: Any) -> bytes:
-    return json.dumps(
-        value, sort_keys=True, ensure_ascii=False, separators=(",", ":")
-    ).encode("utf-8")
+    return json.dumps(value, sort_keys=True, ensure_ascii=False, separators=(",", ":")).encode(
+        "utf-8"
+    )
 
 
 def sha256(data: bytes) -> str:

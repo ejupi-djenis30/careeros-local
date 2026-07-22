@@ -8,6 +8,15 @@ from typing import Any, Awaitable, Callable, Dict, List, Sequence, cast
 
 from sqlalchemy.orm import Session
 
+from backend.ai.attestation import MatchAttestationError, validate_match_attestation
+from backend.ai.match_evidence import (
+    candidate_evidence_document,
+    job_evidence_document,
+    match_input_fingerprint,
+    match_quote_bindings,
+)
+from backend.ai.match_policy import DIMENSION_SCORE_FIELDS, materialize_match_citations
+from backend.ai.models import AIExecution
 from backend.core.config import settings
 from backend.jobs.urls import normalize_job_url
 from backend.models import Job, ScrapedJob
@@ -203,7 +212,6 @@ class SearchPipelinePersistence:
                 application_email=application_email,
                 workload=workload_str or None,
                 publication_date=pub_date,
-                source_query=getattr(listing, "_source_query", "Unknown"),
                 raw_metadata=raw_metadata,
                 content_fingerprint=content_fingerprint,
                 compact_description=compact_description or None,
@@ -233,7 +241,6 @@ class SearchPipelinePersistence:
                 "application_email": application_email,
                 "workload": workload_str or None,
                 "publication_date": pub_date,
-                "source_query": getattr(listing, "_source_query", None),
                 "raw_metadata": raw_metadata,
                 "content_fingerprint": content_fingerprint,
                 "compact_description": compact_description or None,
@@ -250,9 +257,7 @@ class SearchPipelinePersistence:
                 self._clear_normalization(existing_sj)
                 for field, value in normalized_bootstrap.items():
                     setattr(existing_sj, field, value)
-                metadata = dict(
-                    cast(Dict[str, Any] | None, existing_sj.normalized_metadata) or {}
-                )
+                metadata = dict(cast(Dict[str, Any] | None, existing_sj.normalized_metadata) or {})
                 metadata["content_changed_at"] = datetime.now(timezone.utc).isoformat()
                 existing_sj.normalized_metadata = metadata
             else:
@@ -410,9 +415,7 @@ class SearchPipelinePersistence:
         for scraped_job, normalized in zip(candidate_records, normalized_rows):
             if not normalized:
                 scraped_job.normalization_status = "failed"
-                fail_meta = dict(
-                    cast(Dict[str, Any] | None, scraped_job.normalized_metadata) or {}
-                )
+                fail_meta = dict(cast(Dict[str, Any] | None, scraped_job.normalized_metadata) or {})
                 fail_meta["normalization_failed_at"] = datetime.now(timezone.utc).isoformat()
                 scraped_job.normalized_metadata = fail_meta
                 continue
@@ -485,9 +488,58 @@ class SearchPipelinePersistence:
     ) -> None:
         platform = getattr(listing, "source", None) or getattr(listing, "platform", "unknown")
         platform_id = str(getattr(listing, "id", "") or getattr(listing, "platform_job_id", ""))
-
         existing_sj, _ = upsert_scraped_job(listing)
-
+        validated_at = datetime.now(timezone.utc)
+        attested_analysis = {**analysis, "analysis_validated_at": validated_at}
+        execution_id = str(analysis.get("analysis_execution_id") or "").strip()
+        execution = self.db.get(AIExecution, execution_id) if execution_id else None
+        row_index = analysis.get("analysis_execution_row_index")
+        evidence_index = (
+            row_index if isinstance(row_index, int) and not isinstance(row_index, bool) else 0
+        )
+        candidate_evidence = candidate_evidence_document(profile_dict)
+        job_evidence = job_evidence_document(
+            {
+                "title": existing_sj.title,
+                "company": existing_sj.company,
+                "location": existing_sj.location,
+                "workload": existing_sj.workload,
+                "description": existing_sj.description,
+            },
+            evidence_index,
+            description_limit=1800,
+        )
+        expected_input_fingerprint = match_input_fingerprint(candidate_evidence, job_evidence)
+        try:
+            expected_citations = materialize_match_citations(
+                candidate=candidate_evidence,
+                job=job_evidence,
+                dimension_scores={
+                    dimension: (
+                        int(attested_analysis.get(field))
+                        if isinstance(attested_analysis.get(field), int)
+                        and not isinstance(attested_analysis.get(field), bool)
+                        else 50
+                    )
+                    for dimension, field in DIMENSION_SCORE_FIELDS.items()
+                },
+            )
+            validate_match_attestation(
+                attested_analysis,
+                execution,
+                expected_user_id=profile_dict["user_id"],
+                expected_input_fingerprint=expected_input_fingerprint,
+                expected_quote_bindings=match_quote_bindings(candidate_evidence, job_evidence),
+                expected_citations=expected_citations,
+            )
+        except MatchAttestationError as exc:
+            raise ValueError(
+                "Only an exact, accepted local-model analysis may be persisted"
+            ) from exc
+        provenance = str(analysis["analysis_provenance"])
+        model_id = str(analysis["analysis_model_id"]).strip()
+        contract_version = str(analysis["analysis_contract_version"])
+        output_fingerprint = str(analysis["analysis_output_fingerprint"])
         location_str = extract_listing_location_string(listing)
 
         distance_km = None
@@ -513,6 +565,11 @@ class SearchPipelinePersistence:
                 )
 
         analysis_fields = {
+            "source_query": (
+                str(source_query).strip()[:1000]
+                if (source_query := getattr(listing, "_source_query", None))
+                else None
+            ),
             "affinity_score": analysis.get("affinity_score", 0),
             "affinity_analysis": analysis.get("affinity_analysis", ""),
             "worth_applying": analysis.get("worth_applying", False),
@@ -526,6 +583,15 @@ class SearchPipelinePersistence:
             "qualification_gap_score": analysis.get("qualification_gap_score"),
             "analysis_structured": analysis.get("analysis_structured"),
             "red_flags": analysis.get("red_flags"),
+            "analysis_provenance": provenance,
+            "analysis_model_id": model_id[:240],
+            "analysis_contract_version": contract_version,
+            "analysis_validated_at": validated_at,
+            "analysis_execution_id": execution_id,
+            "analysis_output_fingerprint": output_fingerprint,
+            "analysis_execution_row_index": analysis["analysis_execution_row_index"],
+            "analysis_row_fingerprint": analysis["analysis_row_fingerprint"],
+            "analysis_input_fingerprint": analysis["analysis_input_fingerprint"],
         }
         existing_job = self.job_repo.get_job_by_user_scraped_profile(
             profile_dict["user_id"],
@@ -578,64 +644,9 @@ class SearchPipelinePersistence:
         increment_status_errors: IncrementStatusErrors,
         report_progress: ReportRefinedAnalysisProgress | None = None,
     ) -> int:
-        updated_count = 0
-        for current_index, (job, analysis) in enumerate(jobs_to_refine, start=1):
-            if report_progress is not None:
-                report_progress(current_index, getattr(job, "title", "Unknown"))
-            scraped_job_id = getattr(job, "_scraped_job_id", None)
-            if scraped_job_id is None:
-                continue
-            try:
-                existing_job = self.job_repo.get_job_by_user_scraped_profile(
-                    profile_dict["user_id"],
-                    scraped_job_id,
-                    profile_dict.get("id"),
-                )
-                if not existing_job:
-                    continue
-                existing_job.affinity_score = analysis.get(
-                    "affinity_score", existing_job.affinity_score
-                )
-                existing_job.affinity_analysis = analysis.get(
-                    "affinity_analysis", existing_job.affinity_analysis
-                )
-                existing_job.worth_applying = analysis.get(
-                    "worth_applying", existing_job.worth_applying
-                )
-                existing_job.skill_match_score = analysis.get(
-                    "skill_match_score", existing_job.skill_match_score
-                )
-                existing_job.experience_match_score = analysis.get(
-                    "experience_match_score", existing_job.experience_match_score
-                )
-                existing_job.intent_match_score = analysis.get(
-                    "intent_match_score", existing_job.intent_match_score
-                )
-                existing_job.language_match_score = analysis.get(
-                    "language_match_score", existing_job.language_match_score
-                )
-                existing_job.location_match_score = analysis.get(
-                    "location_match_score", existing_job.location_match_score
-                )
-                existing_job.transferability_score = analysis.get(
-                    "transferability_score", existing_job.transferability_score
-                )
-                existing_job.qualification_gap_score = analysis.get(
-                    "qualification_gap_score", existing_job.qualification_gap_score
-                )
-                existing_job.analysis_structured = analysis.get(
-                    "analysis_structured", existing_job.analysis_structured
-                )
-                existing_job.red_flags = analysis.get("red_flags", existing_job.red_flags)
-                self.db.commit()
-                updated_count += 1
-            except Exception as exc:
-                self.db.rollback()
-                increment_status_errors(profile_id, 1)
-                logger.warning(
-                    "Final-pass update failed for scraped_job_id %s (profile %s): %s",
-                    scraped_job_id,
-                    profile_dict.get("id"),
-                    exc,
-                )
-        return updated_count
+        logger.info(
+            "Skipped %d refined match update(s): persisted analysis requires one auditable "
+            "job_match provenance chain",
+            len(jobs_to_refine),
+        )
+        return 0

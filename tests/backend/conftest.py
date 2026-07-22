@@ -19,6 +19,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 import backend.services.search_status as search_status
+from backend.api.deps import require_local_analysis_ready
 from backend.db.base import Base, SessionLocal, engine, get_db
 from backend.main import app
 from backend.models import User
@@ -76,6 +77,18 @@ def override_get_db():
 
 
 app.dependency_overrides[get_db] = override_get_db
+
+
+async def override_local_analysis_ready() -> None:
+    return None
+
+
+@pytest.fixture(autouse=True)
+def allow_local_analysis_by_default():
+    """Keep unrelated API tests independent from the installed model/runtime state."""
+    app.dependency_overrides[require_local_analysis_ready] = override_local_analysis_ready
+    yield
+    app.dependency_overrides.pop(require_local_analysis_ready, None)
 
 
 @pytest.fixture(scope="function")

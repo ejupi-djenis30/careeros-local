@@ -5,6 +5,40 @@ All notable changes to CareerOS Local are documented here. The format follows
 
 ## [Unreleased]
 
+## [1.4.0] - 2026-07-23
+
+### Added
+
+- Added a managed, local Qwen runtime with model download, lifecycle controls, readiness probes and
+  actionable recovery diagnostics in the desktop interface.
+- Added evidence-bound multilingual matching for English, German, French and Italian requirements,
+  including alternatives, negations, experience, language level and qualification gaps.
+- Added durable analysis provenance, content-free audit records and server-owned citations for
+  every verified opportunity assessment.
+
+### Changed
+
+- Opportunity search, matching, recommendations and Career Coach now require a ready local model;
+  Career Vault, documents, manual applications, exports, backups and deterministic readiness remain
+  available while the model is unavailable.
+- Model output is limited to a strict score contract. CareerOS derives decisions, caps, risks,
+  citations and persisted assessment fields from server-owned evidence and policy.
+- Job APIs, application snapshots and portable archives expose only verified local-model analysis;
+  legacy, imported or client-authored analysis is quarantined rather than presented as trusted.
+
+### Fixed
+
+- Prevented malformed, truncated, extra-row or identity-mismatched model responses from reaching
+  the job history, application pipeline or Career Coach.
+- Prevented inferred requirements, unsupported coaching claims and tampered snapshot analysis from
+  being promoted to user-visible facts.
+- Moved private discovery queries off shared provider listings and onto each user's saved job, so
+  one local account cannot read or overwrite another account's search terms.
+- Preserved historical and restored Career Coach replies in explicit quarantine instead of
+  deleting them, while keeping unauthenticated imported advice out of the active conversation.
+- Kept inference endpoints restricted to loopback and exact, explicitly allowlisted container
+  aliases while rejecting remote, private-network, link-local and malformed targets.
+
 ## [1.3.0] - 2026-07-22
 
 ### Added
@@ -184,7 +218,8 @@ All notable changes to CareerOS Local are documented here. The format follows
   autosave/revision loop.
 - Removed the rate-limit error and incomplete pipeline from public screenshots.
 
-[Unreleased]: https://github.com/ejupi-djenis30/careeros-local/compare/v1.3.0...HEAD
+[Unreleased]: https://github.com/ejupi-djenis30/careeros-local/compare/v1.4.0...HEAD
+[1.4.0]: https://github.com/ejupi-djenis30/careeros-local/compare/v1.3.0...v1.4.0
 [1.3.0]: https://github.com/ejupi-djenis30/careeros-local/compare/v1.2.0...v1.3.0
 [1.2.0]: https://github.com/ejupi-djenis30/careeros-local/compare/v1.1.2...v1.2.0
 [1.1.2]: https://github.com/ejupi-djenis30/careeros-local/compare/v1.1.1...v1.1.2

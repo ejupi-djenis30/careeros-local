@@ -2,9 +2,10 @@
 
 <!--
 Sync impact report
-- Amendment: manual captures are user-namespaced, provider queries require explicit search input,
-  and append-only application projections use compare-and-swap revisions.
-- Version: 1.0.3 (clarifies private acquisition and concurrent application state behavior).
+- Amendment: every workflow presented as AI analysis now requires a ready, validated local model
+  and fails closed instead of substituting heuristic output; owned records and deterministic
+  preflight/export workflows remain available without inference.
+- Version: 1.1.0 (adds a mandatory truth-in-analysis product boundary).
 - Ratified: 2026-07-17.
 - Last amended: 2026-07-22.
 - Principles: desktop ownership, local intelligence, grounded career truth, durable vault,
@@ -45,6 +46,11 @@ of silently accepted.
 Application-readiness decisions MUST be computed from versioned local records, expose every
 contributing check, and produce the same report bytes for the same application state. A model
 MUST NOT be required to inspect, explain or export readiness evidence.
+Any workflow presented as profile analysis, opportunity analysis, matching, tailoring, coaching
+or another AI-derived judgment MUST require a ready local model and MUST fail closed when local
+inference or structured-output validation is unavailable. Deterministic checks MAY remain
+available under their own accurate labels, but MUST NOT be substituted for, persisted as or
+displayed as completed AI analysis.
 Claims that a published document is available MUST be backed by readable bytes inside the approved
 data root that match the immutable digest and declared length; database metadata alone is not
 evidence of artifact availability.
@@ -115,6 +121,10 @@ Rationale: private data and career documents deserve secure, inclusive defaults.
 - No code, package, environment variable or UI path may enable remote AI inference.
 - No hidden network request may occur during launch, editing, inference, rendering or tests.
 - Job-source access and model download are separate, explicit, auditable capabilities.
+- The vault, manual editing, portability, deterministic readiness and existing exports remain
+  usable without inference; an AI analysis action is blocked until the local model passes the
+  product readiness check.
+- A failed model call never degrades into an unlabeled heuristic match or completed AI result.
 - A generated career claim without evidence is rejected before it reaches the user.
 - The default installer starts on a clean supported OS without developer tooling.
 - The desktop app must recover cleanly from a crashed local model or backend process.
@@ -142,4 +152,4 @@ minor; clarification without changed obligations is patch. Every plan MUST perfo
 check before research and again before release. Exceptions require owner approval, an expiry date
 and a tracked remediation task; there are no implicit exceptions.
 
-**Version**: 1.0.3 | **Ratified**: 2026-07-17 | **Last amended**: 2026-07-22
+**Version**: 1.1.0 | **Ratified**: 2026-07-17 | **Last amended**: 2026-07-22

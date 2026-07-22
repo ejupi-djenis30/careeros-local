@@ -28,6 +28,22 @@ describe('ApiClient', () => {
     window.removeEventListener('careeros:api-error', listener);
   });
 
+  it('uses the message from a structured API detail instead of serializing JSON into the UI', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue({
+      status: 428,
+      ok: false,
+      clone() { return this; },
+      json: async () => ({ detail: { code: 'local_model_required', message: 'Local model setup required' } }),
+    });
+
+    const request = ApiClient.post('/search/start', {}, { suppressGlobalError: true });
+    await expect(request).rejects.toMatchObject({
+      status: 428,
+      message: 'Local model setup required',
+      details: { detail: { code: 'local_model_required' } },
+    });
+  });
+
   it('dispatches a global api error event for failed multipart uploads', async () => {
     const listener = vi.fn();
     window.addEventListener('careeros:api-error', listener);

@@ -1,28 +1,163 @@
 import asyncio
-from unittest.mock import AsyncMock, MagicMock, patch
+from types import SimpleNamespace
+from unittest.mock import ANY, AsyncMock, MagicMock, patch
+from uuid import uuid4
 
 import pytest
 
+from backend.ai.audit import fingerprint_output
+from backend.ai.match_policy import derive_match_outcome, derive_match_presentation
 from backend.repositories.job_repository import JobRepository
 from backend.repositories.profile_repository import ProfileRepository
 from backend.services.search_service import SearchService, get_search_service
+from backend.services.search_status import get_status
+
+_TEST_EXECUTIONS: dict[str, SimpleNamespace] = {}
+
+
+class _AnyFingerprint(str):
+    def __eq__(self, other):
+        return isinstance(other, str) and len(other) == 64
+
+    def __ne__(self, other):
+        return not self.__eq__(other)
+
+    __hash__ = str.__hash__
+
+
+class _AnyEvidence(str):
+    def __eq__(self, other):
+        return isinstance(other, str) and bool(other)
+
+    def __ne__(self, other):
+        return not self.__eq__(other)
+
+    __hash__ = str.__hash__
+
+
+class _AnyMaterializedAssessment(str):
+    """Keep fixture outcomes stable while accepting evidence-derived materialization."""
+
+    def __ne__(self, other):
+        if other in {"strength", "weakness", "gap", "risk", "insufficient_evidence"}:
+            return False
+        return super().__ne__(other)
+
+
+class _AnyQuoteId(str):
+    def __ne__(self, other):
+        return False if isinstance(other, str) and other else super().__ne__(other)
+
+
+def _validated_analysis(score: int = 70, worth_applying: bool = True) -> dict:
+    dimensions = (
+        "skill",
+        "experience",
+        "intent",
+        "language",
+        "location",
+        "transferability",
+        "qualification",
+    )
+    model_citations = [
+        {
+            "type": dimension,
+            "job_evidence_id": "job:0",
+            "candidate_evidence_id": "candidate:profile",
+            "job_quote_id": _AnyQuoteId(f"job:0:{dimension}:0"),
+            "candidate_quote_id": _AnyQuoteId(f"candidate:profile:{dimension}:0"),
+        }
+        for dimension in dimensions
+    ]
+    assessment = _AnyMaterializedAssessment(
+        "strength" if score >= 60 else ("insufficient_evidence" if score == 50 else "gap")
+    )
+    citations = [
+        {
+            **citation,
+            "assessment": assessment,
+            "job_quote_hash": _AnyFingerprint("a" * 64),
+            "candidate_quote_hash": _AnyFingerprint("a" * 64),
+            "job_evidence": _AnyEvidence("test evidence"),
+            "candidate_evidence": _AnyEvidence("test evidence"),
+        }
+        for citation in model_citations
+    ]
+    raw_contract_row = {
+        "skill_match_score": score,
+        "experience_match_score": score,
+        "intent_match_score": score,
+        "language_match_score": score,
+        "location_match_score": score,
+        "transferability_score": score,
+        "qualification_gap_score": score,
+    }
+    dimension_scores = {dimension: score for dimension in dimensions}
+    derived_score, recommendation, derived_worth = derive_match_outcome(dimension_scores, citations)
+    assert worth_applying is derived_worth
+    summary, flags = derive_match_presentation(recommendation, citations)
+    execution_id = str(uuid4())
+    row_fingerprint = fingerprint_output(raw_contract_row)
+    input_fingerprint = _AnyFingerprint("a" * 64)
+    output_fingerprint = "b" * 64
+    _TEST_EXECUTIONS[execution_id] = SimpleNamespace(
+        id=execution_id,
+        user_id=ANY,
+        task="job_match",
+        contract_version="1.1.0",
+        model_id="llama-cpp-local/test-model",
+        accepted=True,
+        output_fingerprint=output_fingerprint,
+        row_fingerprints=[row_fingerprint],
+        row_input_fingerprints=[input_fingerprint],
+    )
+    return {
+        **raw_contract_row,
+        "analysis_structured": {
+            "recommendation": recommendation,
+            "evidence_citations": citations,
+        },
+        "affinity_score": derived_score,
+        "affinity_analysis": summary,
+        "worth_applying": derived_worth,
+        "red_flags": flags,
+        "analysis_provenance": "local_model_validated",
+        "analysis_model_id": "llama-cpp-local/test-model",
+        "analysis_contract_version": "1.1.0",
+        "analysis_execution_id": execution_id,
+        "analysis_output_fingerprint": output_fingerprint,
+        "analysis_execution_row_index": 0,
+        "analysis_row_fingerprint": row_fingerprint,
+        "analysis_input_fingerprint": input_fingerprint,
+    }
 
 
 @pytest.fixture
 def mock_service():
     mock_job_repo = MagicMock()
     mock_profile_repo = MagicMock()
-    service = SearchService(job_repo=mock_job_repo, profile_repo=mock_profile_repo)
+    service = SearchService(
+        job_repo=mock_job_repo,
+        profile_repo=mock_profile_repo,
+        analysis_readiness_check=AsyncMock(
+            return_value=SimpleNamespace(ready=True, error_code=None)
+        ),
+    )
+    mock_job_repo.db.get.side_effect = lambda _model, key: _TEST_EXECUTIONS.get(str(key))
     return service
 
 
 @pytest.fixture
 def mock_service_with_real_repos():
     mock_db = MagicMock()
+    mock_db.get.side_effect = lambda _model, key: _TEST_EXECUTIONS.get(str(key))
     return SearchService(
         db=mock_db,
         job_repo=JobRepository(mock_db),
         profile_repo=ProfileRepository(mock_db),
+        analysis_readiness_check=AsyncMock(
+            return_value=SimpleNamespace(ready=True, error_code=None)
+        ),
     )
 
 
@@ -30,6 +165,27 @@ async def test_get_search_service():
     mock_db = MagicMock()
     service = get_search_service(mock_db)
     assert isinstance(service, SearchService)
+
+
+@pytest.mark.asyncio
+async def test_run_search_checks_analysis_readiness_before_contacting_providers(mock_service):
+    profile = MagicMock(id=1, user_id=42)
+    mock_service.profile_repo.get.return_value = profile
+    mock_service.analysis_readiness_check = AsyncMock(
+        return_value=SimpleNamespace(ready=False, error_code="structured_probe_failed")
+    )
+    provider = MagicMock()
+    provider.search = AsyncMock()
+    provider.close = AsyncMock()
+    mock_service.providers = {"job_room": provider}
+
+    await mock_service.run_search(1)
+
+    provider.search.assert_not_awaited()
+    status = get_status(1)
+    assert status["state"] == "error"
+    assert status["terminal_reason"] == "local_model_required"
+    assert "structured_probe_failed" in status["error"]
 
 
 async def test_deduplicate(mock_service):
@@ -247,8 +403,8 @@ async def test_analyze_and_save_success(mock_service):
     with patch("backend.services.search_service.llm_service.analyze_job_batch") as mock_analyze:
         # Return 2 results — all analyzed jobs are now saved (relevant filter removed)
         mock_analyze.return_value = [
-            {"affinity_score": 90, "worth_applying": True},
-            {"affinity_score": 10, "worth_applying": False},
+            _validated_analysis(90, True),
+            _validated_analysis(10, False),
         ]
 
         with (
@@ -483,7 +639,7 @@ async def test_analyze_and_save_stopped_and_truncation(mock_service):
 
     long_desc = "A" * 5000
 
-    # Long descriptions should be compressed before analysis and still persist correctly.
+    # Raw descriptions reach the match boundary; deterministic compaction happens there.
     job1 = SimpleNamespace(
         id="1",
         source="test",
@@ -508,9 +664,7 @@ async def test_analyze_and_save_stopped_and_truncation(mock_service):
             new_callable=AsyncMock,
         ) as mock_compress,
     ):
-        mock_analyze.return_value = [
-            {"relevant": True, "affinity_score": 50, "worth_applying": False}
-        ]
+        mock_analyze.return_value = [{**_validated_analysis(50, False), "relevant": True}]
         mock_compress.return_value = "compressed"
 
         with (
@@ -525,7 +679,7 @@ async def test_analyze_and_save_stopped_and_truncation(mock_service):
             assert saved == 1
             assert skipped == 0
             mock_session.commit.assert_called_once()
-            mock_compress.assert_awaited_once_with(long_desc, 100)
+            mock_compress.assert_not_awaited()
 
 
 async def test_analyze_and_save_length_mismatch(mock_service):
@@ -559,7 +713,7 @@ async def test_save_single_job_invalid_publication_date_logs_warning(mock_servic
     with patch("backend.services.search.listing_utils.logger") as mock_logger:
         await mock_service._save_single_job(
             listing,
-            {"affinity_score": 80, "affinity_analysis": "ok", "worth_applying": True},
+            _validated_analysis(80, True),
             {"id": 1, "user_id": 99},
             None,
         )
@@ -590,7 +744,7 @@ async def test_save_single_job_geocodes_missing_coordinates(mock_service_with_re
     ):
         await mock_service_with_real_repos._save_single_job(
             listing,
-            {"affinity_score": 60, "affinity_analysis": "ok", "worth_applying": False},
+            _validated_analysis(60, False),
             {"id": 1, "user_id": 99},
             (47.3769, 8.5417),
         )
@@ -617,7 +771,7 @@ async def test_save_single_job_deferred_commit_does_not_commit(mock_service_with
 
     await mock_service_with_real_repos._save_single_job(
         listing,
-        {"affinity_score": 60, "affinity_analysis": "ok", "worth_applying": False},
+        _validated_analysis(60, False),
         {"id": 1, "user_id": 99},
         None,
         commit=False,
@@ -646,7 +800,7 @@ async def test_save_single_job_initializes_applied_false(mock_service_with_real_
 
     await mock_service_with_real_repos._save_single_job(
         listing,
-        {"affinity_score": 60, "affinity_analysis": "ok", "worth_applying": False},
+        _validated_analysis(60, False),
         {"id": 1, "user_id": 99},
         None,
     )
@@ -675,7 +829,7 @@ async def test_save_single_job_bootstraps_normalized_fields(mock_service_with_re
 
     await mock_service_with_real_repos._save_single_job(
         listing,
-        {"affinity_score": 60, "affinity_analysis": "ok", "worth_applying": False},
+        _validated_analysis(60, False),
         {"id": 1, "user_id": 99},
         None,
     )
@@ -1345,9 +1499,8 @@ async def test_run_search_sets_error_when_processing_fails_before_analysis(mock_
     )
 
 
-async def test_run_search_analysis_failure_not_pipeline_error_when_all_accounted(mock_service):
-    """Regression: analysis batch failures should NOT produce pipeline_processing_failed when
-    every unique job is either filtered OR lost to analysis errors (no truly unexplained jobs).
+async def test_run_search_analysis_failure_is_an_explicit_terminal_error(mock_service):
+    """Analysis failure is explicit even when every fetched job is otherwise accounted for.
 
     Scenario:
     - 3 unique jobs found
@@ -1355,7 +1508,7 @@ async def test_run_search_analysis_failure_not_pipeline_error_when_all_accounted
     - 2 reached analysis but LLM failed for both  (analysis_failed=2, errors=2)
     - analyzed_pairs is empty
 
-    Expected: state=done because unexplained_unique = 3 - 1 - 2 = 0.
+    Expected: state=error/local_analysis_failed and no heuristic result.
     """
     profile = MagicMock(
         id=1,
@@ -1390,21 +1543,19 @@ async def test_run_search_analysis_failure_not_pipeline_error_when_all_accounted
     ):
         await mock_service.run_search(1)
 
-    # Must NOT declare pipeline_processing_failed — all 3 jobs are accounted for.
-    terminal_reason_calls = [
-        call.kwargs.get("terminal_reason")
-        for call in mock_update.call_args_list
-        if "terminal_reason" in (call.kwargs or {})
-    ]
-    assert "pipeline_processing_failed" not in terminal_reason_calls, (
-        f"Unexpectedly triggered pipeline_processing_failed; terminal reasons seen: {terminal_reason_calls}"
+    mock_update.assert_any_call(
+        1,
+        state="error",
+        terminal_reason="local_analysis_failed",
+        jobs_found=3,
+        jobs_duplicates=0,
+        jobs_unique=3,
+        jobs_skipped=3,
+        error=(
+            "The required local-model analysis failed. Check model readiness and retry; "
+            "no heuristic analysis was saved."
+        ),
     )
-    final_state_calls = [
-        call.kwargs.get("state")
-        for call in mock_update.call_args_list
-        if call.kwargs.get("state") in {"done", "error"}
-    ]
-    assert "done" in final_state_calls, f"Expected state=done, got: {final_state_calls}"
 
 
 async def test_run_search_normalization_exception_zero_errors(mock_service):
@@ -1591,7 +1742,6 @@ def test_upsert_scraped_job_updates_existing_record():
     existing_sj.application_email = None
     existing_sj.workload = None
     existing_sj.publication_date = None
-    existing_sj.source_query = None
     db.query.return_value.filter.return_value.first.return_value = existing_sj
 
     listing = _make_listing()
@@ -1905,9 +2055,9 @@ async def test_analyze_and_save_match_payload_includes_all_normalized_fields(moc
 
     captured_batches = []
 
-    async def mock_analyze(batch, profile):
+    async def mock_analyze(batch, profile, **_audit_context):
         captured_batches.append(batch)
-        return [{"affinity_score": 70, "affinity_analysis": "ok", "worth_applying": True}]
+        return [_validated_analysis(70, True)]
 
     profile_dict = {
         "id": 1,

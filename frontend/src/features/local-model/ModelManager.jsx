@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { LocalModelService } from "../../services/localModel";
+import { ConfirmationDialog } from "../../components/ConfirmationDialog";
 import { LocalModelStatus } from "./LocalModelStatus";
 import { useLocalModelStatus } from "./useLocalModelStatus";
 import { useI18n } from "../../i18n/useI18n";
@@ -13,24 +14,48 @@ function formatBytes(value) {
     return gigabytes >= 1 ? `${gigabytes.toFixed(1)} GB` : `${Math.round(value / (1024 ** 2))} MB`;
 }
 
-export function ModelManager() {
+export function ModelManager({ status: controlledStatus = null, onRefresh = null }) {
     const { t } = useI18n();
-    const { status, refresh } = useLocalModelStatus({ refreshMs: 2_000 });
+    const localSource = useLocalModelStatus({ refreshMs: 2_000, enabled: controlledStatus === null });
+    const status = controlledStatus || localSource.status;
+    const refresh = onRefresh || localSource.refresh;
     const [catalog, setCatalog] = useState(null);
+    const [catalogState, setCatalogState] = useState("loading");
+    const catalogController = useRef(null);
     const [selectionOverride, setSelectionOverride] = useState("");
     const [accepted, setAccepted] = useState(false);
     const [busy, setBusy] = useState(false);
     const [error, setError] = useState("");
+    const [catalogError, setCatalogError] = useState("");
+    const [confirmRemoval, setConfirmRemoval] = useState(false);
+
+    const loadCatalog = useCallback(async () => {
+        catalogController.current?.abort();
+        const controller = new AbortController();
+        catalogController.current = controller;
+        setCatalogState("loading");
+        setCatalogError("");
+        try {
+            const result = await LocalModelService.catalog({ signal: controller.signal });
+            if (controller.signal.aborted) return;
+            setCatalog(result);
+            setCatalogState("ready");
+        } catch (reason) {
+            if (controller.signal.aborted) return;
+            setCatalogState("failed");
+            setCatalogError(reason.message || t("model.catalogUnavailable"));
+        } finally {
+            if (catalogController.current === controller) catalogController.current = null;
+        }
+    }, [t]);
 
     useEffect(() => {
-        const controller = new AbortController();
-        LocalModelService.catalog({ signal: controller.signal })
-            .then(setCatalog)
-            .catch((reason) => {
-                if (!controller.signal.aborted) setError(reason.message || t("model.catalogUnavailable"));
-            });
-        return () => controller.abort();
-    }, [t]);
+        const initialLoad = window.setTimeout(() => void loadCatalog(), 0);
+        return () => {
+            window.clearTimeout(initialLoad);
+            catalogController.current?.abort();
+        };
+    }, [loadCatalog]);
 
     const managed = status.managed || {};
     const selected = selectionOverride || managed.model_key || catalog?.models?.[0]?.key || "";
@@ -56,8 +81,21 @@ export function ModelManager() {
     }
 
     return (
-        <div className="model-manager">
-            <LocalModelStatus />
+        <div className="model-manager" aria-busy={busy || active}>
+            <LocalModelStatus status={status} onRefresh={refresh} />
+
+            {catalogState === "loading" && (
+                <p className="model-manager__operation" role="status">{t("model.loadingCatalog")}</p>
+            )}
+
+            {catalogState === "failed" && (
+                <div className="model-manager__catalog-error" role="alert">
+                    <p>{catalogError || t("model.catalogUnavailable")}</p>
+                    <button type="button" className="button button--secondary" onClick={loadCatalog}>
+                        {t("model.retryCatalog")}
+                    </button>
+                </div>
+            )}
 
             {!active && catalog?.models?.length > 1 && (
                 <label>
@@ -98,7 +136,7 @@ export function ModelManager() {
                             ? t("model.replace")
                             : managed.error_code ? t("model.retryInstall") : t("model.install")}
                     </button>
-                    {canRemove && <button type="button" className="button button--ghost" disabled={busy} onClick={() => perform(() => LocalModelService.remove())}>{t("model.removeInstallation")}</button>}
+                    {canRemove && <button type="button" className="button button--ghost" disabled={busy} onClick={() => setConfirmRemoval(true)}>{t("model.removeInstallation")}</button>}
                 </div>
             )}
 
@@ -124,7 +162,7 @@ export function ModelManager() {
                 <div className="model-manager__ready">
                     <span>{t("model.loopback")}</span>
                     <button type="button" className="button button--ghost" disabled={busy} onClick={() => perform(() => LocalModelService.restart())}>{t("model.restart")}</button>
-                    <button type="button" className="button button--ghost" disabled={busy} onClick={() => perform(() => LocalModelService.remove())}>{t("model.remove")}</button>
+                    <button type="button" className="button button--ghost" disabled={busy} onClick={() => setConfirmRemoval(true)}>{t("model.remove")}</button>
                 </div>
             )}
 
@@ -139,7 +177,20 @@ export function ModelManager() {
                 </div>
             )}
 
+            {busy && <p className="model-manager__operation" role="status">{t("model.operationInProgress")}</p>}
             {error && <p className="field-error" role="alert">{error}</p>}
+
+            <ConfirmationDialog
+                isOpen={confirmRemoval}
+                title={t("model.removeConfirmTitle")}
+                message={t("model.removeConfirmCopy")}
+                confirmText={t("model.removeConfirmAction")}
+                onCancel={() => setConfirmRemoval(false)}
+                onConfirm={() => {
+                    setConfirmRemoval(false);
+                    void perform(() => LocalModelService.remove());
+                }}
+            />
         </div>
     );
 }

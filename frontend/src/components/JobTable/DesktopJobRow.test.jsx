@@ -20,9 +20,10 @@ describe('DesktopJobRow', () => {
         location: 'Zürich',
         created_at: new Date().toISOString(),
         external_url: 'https://example.com/job',
-        application_email: 'jobs@techcorp.com',
+        application_email: 'jobs@techcorp.example.test',
         affinity_score: 85,
         affinity_analysis: 'Great match for your Python skills.',
+        analysis_verified: true,
         applied: false
     };
 
@@ -140,5 +141,16 @@ describe('DesktopJobRow', () => {
         );
         expect(screen.getByTitle('Top pick')).toBeInTheDocument();
         expect(screen.getByText('80%')).toBeInTheDocument();
+    });
+
+    it('hides every analysis-derived field when the result is not verified', () => {
+        const unverifiedJob = { ...mockJob, analysis_verified: false, worth_applying: true };
+        render(
+            <table><tbody><DesktopJobRow {...defaultProps} job={unverifiedJob} onViewAnalysis={vi.fn()} /></tbody></table>
+        );
+
+        expect(screen.queryByText('85%')).not.toBeInTheDocument();
+        expect(screen.queryByTitle('Top pick')).not.toBeInTheDocument();
+        expect(screen.queryByTitle('View match analysis')).not.toBeInTheDocument();
     });
 });

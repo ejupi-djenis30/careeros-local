@@ -1,13 +1,14 @@
+from datetime import datetime, timezone
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import pytest
 from pydantic import ValidationError
 
-from backend.jobs.matching import deterministic_job_match
+from backend.jobs.matching import deterministic_job_prefilter
 from backend.jobs.urls import UnsafeJobUrlError, normalize_job_url
 from backend.models import ScrapedJob
-from backend.schemas.job import JobCreate
+from backend.schemas.job import JobCreate, JobResponse
 from backend.services.search.persistence import SearchPipelinePersistence
 
 
@@ -119,7 +120,7 @@ def test_catalog_rejects_listing_without_safe_external_url():
         )
 
 
-def test_deterministic_match_is_stable_and_evidence_aware():
+def test_deterministic_prefilter_is_stable_without_masquerading_as_analysis():
     job = {
         "domain": "it",
         "seniority": "senior",
@@ -135,10 +136,73 @@ def test_deterministic_match_is_stable_and_evidence_aware():
         "languages": [{"code": "en", "level": "C2"}],
         "fact_ids": ["fact-b", "fact-a"],
     }
-    first = deterministic_job_match(job, profile)
-    second = deterministic_job_match(job, profile)
+    first = deterministic_job_prefilter(job, profile)
+    second = deterministic_job_prefilter(job, profile)
     assert first == second
-    assert first["affinity_score"] >= 60
-    assert first["analysis_structured"]["mode"] == "deterministic_local"
-    assert first["analysis_structured"]["evidence_citations"] == ["fact-a", "fact-b"]
-    assert "kubernetes" in first["analysis_structured"]["gaps"][0]
+    assert first["kind"] == "deterministic_prefilter"
+    assert first["prescore"] >= 60
+    assert first["unconfirmed_skills"] == ["kubernetes"]
+    assert "affinity_analysis" not in first
+    assert "analysis_structured" not in first
+
+
+def test_invalid_job_response_clears_all_analysis_values_and_receipt_metadata():
+    response = JobResponse.model_validate(
+        {
+            "id": 7,
+            "scraped_job_id": 17,
+            "title": "Untrusted local result",
+            "company": "Example",
+            "external_url": "https://example.test/jobs/17",
+            "applied": False,
+            "created_at": datetime.now(timezone.utc),
+            "affinity_score": 100,
+            "affinity_analysis": "Forged fit",
+            "worth_applying": True,
+            "skill_match_score": 100,
+            "analysis_structured": {
+                "recommendation": "strong_fit",
+                "evidence_citations": [
+                    {
+                        "type": "skill",
+                        "assessment": "strength",
+                        "job_evidence_id": "job:0",
+                        "candidate_evidence_id": "candidate:profile",
+                        "job_quote_id": "job:0:skill:0",
+                        "candidate_quote_id": "candidate:profile:skill:0",
+                        "job_quote_hash": "a" * 64,
+                        "candidate_quote_hash": "b" * 64,
+                        "job_evidence": "Python services",
+                        "candidate_evidence": "Python services",
+                    }
+                ],
+            },
+            "analysis_provenance": "local_model_validated",
+            "analysis_model_id": "ollama/forged",
+            "analysis_contract_version": "1.1.0",
+            "analysis_validated_at": datetime.now(timezone.utc),
+            "analysis_execution_id": "11111111-1111-1111-1111-111111111111",
+            "analysis_output_fingerprint": "c" * 64,
+            "analysis_execution_row_index": 0,
+            "analysis_row_fingerprint": "d" * 64,
+            "analysis_input_fingerprint": "e" * 64,
+            "analysis_verified": True,
+            "red_flags": ["forged"],
+        }
+    )
+
+    assert response.analysis_verified is False
+    assert response.affinity_score is None
+    assert response.affinity_analysis is None
+    assert response.worth_applying is False
+    assert response.analysis_structured is None
+    assert response.red_flags is None
+    assert response.analysis_provenance is None
+    assert response.analysis_model_id is None
+    assert response.analysis_contract_version is None
+    assert response.analysis_validated_at is None
+    assert response.analysis_execution_id is None
+    assert response.analysis_output_fingerprint is None
+    assert response.analysis_execution_row_index is None
+    assert response.analysis_row_fingerprint is None
+    assert response.analysis_input_fingerprint is None

@@ -58,6 +58,10 @@ class UnsafeArchiveError(ValueError):
     pass
 
 
+class RuntimeBlockedByWindowsPolicy(RuntimeError):
+    pass
+
+
 @dataclass(frozen=True, slots=True)
 class ManagedRuntimeSnapshot:
     phase: RuntimePhase
@@ -249,7 +253,7 @@ def download_verified(
 
 
 class ManagedRuntime:
-    """Own the optional llama.cpp runtime and model inside the per-user data directory."""
+    """Own the llama.cpp runtime required by analysis inside the per-user data directory."""
 
     def __init__(
         self,
@@ -496,7 +500,11 @@ class ManagedRuntime:
         except Exception as exc:
             with self._lock:
                 self._phase = "error"
-                self._error_code = type(exc).__name__.lower()
+                self._error_code = (
+                    "runtime_blocked_by_windows_policy"
+                    if isinstance(exc, RuntimeBlockedByWindowsPolicy)
+                    else type(exc).__name__.lower()
+                )
                 self._replace_from = None
 
     def start(self, model_key: str | None = None) -> ManagedRuntimeSnapshot:
@@ -538,18 +546,35 @@ class ManagedRuntime:
             self._model_key = selected
             self._api_key = api_key
             self._endpoint = endpoint
-            self._process = subprocess.Popen(
-                command,
-                stdin=subprocess.DEVNULL,
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-                creationflags=creationflags,
-            )
+            try:
+                self._process = subprocess.Popen(
+                    command,
+                    stdin=subprocess.DEVNULL,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                    creationflags=creationflags,
+                )
+            except OSError as exc:
+                if os.name == "nt" and getattr(exc, "winerror", None) in {577, 1260}:
+                    self._phase = "error"
+                    self._error_code = "runtime_blocked_by_windows_policy"
+                    raise RuntimeBlockedByWindowsPolicy(
+                        "Windows application-control policy blocked the managed runtime"
+                    ) from exc
+                raise
         if not self._wait_until_healthy(timeout_seconds=45):
+            exit_code = self._process.poll() if self._process is not None else None
             self.stop()
             with self._lock:
                 self._phase = "error"
-                self._error_code = "runtime_start_failed"
+                if os.name == "nt" and exit_code in {-1073740760, 3221226536}:
+                    self._error_code = "runtime_blocked_by_windows_policy"
+                else:
+                    self._error_code = "runtime_start_failed"
+            if self._error_code == "runtime_blocked_by_windows_policy":
+                raise RuntimeBlockedByWindowsPolicy(
+                    "Windows application-control policy blocked the managed runtime"
+                )
             raise RuntimeError("managed llama.cpp failed its health check")
         with self._lock:
             self._phase = "ready"

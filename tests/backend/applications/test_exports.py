@@ -60,9 +60,7 @@ def test_dossier_bundle_rejects_oversized_artifact_before_zip_creation():
             requirement_matrix=[
                 {
                     "requirement": "Operate systems",
-                    "evidence_fact_ids": [
-                        "10000000-0000-4000-8000-000000000004"
-                    ],
+                    "evidence_fact_ids": ["10000000-0000-4000-8000-000000000004"],
                 }
             ],
             evidence_catalog={},

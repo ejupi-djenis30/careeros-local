@@ -8,6 +8,31 @@ from backend.schemas.job import (
 )
 from backend.schemas.profile import ScheduleToggle, SearchProfileCreate, SearchProfileUpdate
 
+JOB_ANALYSIS_FIELDS = {
+    "affinity_score": 91,
+    "affinity_analysis": "Client-authored analysis must be rejected.",
+    "worth_applying": True,
+    "skill_match_score": 91,
+    "experience_match_score": 91,
+    "intent_match_score": 91,
+    "language_match_score": 91,
+    "location_match_score": 91,
+    "transferability_score": 91,
+    "qualification_gap_score": 91,
+    "analysis_structured": {},
+    "analysis_provenance": "local_model_validated",
+    "analysis_model_id": "client-supplied",
+    "analysis_contract_version": "1.1.0",
+    "analysis_validated_at": "2026-07-22T20:00:00Z",
+    "analysis_execution_id": "00000000-0000-4000-8000-000000000000",
+    "analysis_output_fingerprint": "a" * 64,
+    "analysis_execution_row_index": 0,
+    "analysis_row_fingerprint": "b" * 64,
+    "analysis_input_fingerprint": "c" * 64,
+    "red_flags": ["client-authored"],
+    "analysis_verified": True,
+}
+
 
 def test_job_create_schema_valid():
     payload = {
@@ -19,9 +44,20 @@ def test_job_create_schema_valid():
     assert job.title == "Software Engineer"
     assert job.company == "Tech Corp"
     assert job.external_url == "https://example.com/job"
-    # Default fields
-    assert job.worth_applying is False
-    assert job.affinity_score is None
+    assert JOB_ANALYSIS_FIELDS.keys().isdisjoint(job.model_dump())
+
+
+@pytest.mark.parametrize(("field", "value"), JOB_ANALYSIS_FIELDS.items())
+def test_job_create_rejects_client_supplied_analysis_fields(field: str, value: object):
+    payload = {
+        "title": "Software Engineer",
+        "company": "Tech Corp",
+        "external_url": "https://example.com/job",
+        field: value,
+    }
+
+    with pytest.raises(ValidationError, match="Extra inputs are not permitted"):
+        JobCreate(**payload)
 
 
 def test_job_create_schema_missing_required():

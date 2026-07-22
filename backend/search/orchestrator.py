@@ -10,13 +10,13 @@ from typing import Any, Dict, List, Optional
 from sqlalchemy.orm import Session
 
 from backend.core.config import settings
-from backend.jobs.matching import deterministic_job_match
 from backend.models import ScrapedJob, SearchProfile
 from backend.providers.circuit_breaker import CircuitOpenError
 from backend.providers.jobs.jobroom.client import JobRoomProvider
 from backend.providers.jobs.swissdevjobs.client import SwissDevJobsProvider
 from backend.repositories.job_repository import JobRepository
 from backend.repositories.profile_repository import ProfileRepository
+from backend.inference.service import check_local_model_readiness
 from backend.services.llm_service import llm_service
 from backend.search.normalization.listings import (
     bootstrap_normalized_job_data,
@@ -122,6 +122,7 @@ class SearchService(AcquisitionMixin, PersistenceMixin, NormalizationMixin, Matc
         profile_repo=None,
         normalization_filter_engine: SearchNormalizationFilterEngine | None = None,
         search_persistence: SearchPipelinePersistence | None = None,
+        analysis_readiness_check=None,
     ):
         self.db = db or getattr(job_repo, "db", None) or getattr(profile_repo, "db", None)
         self.job_repo = job_repo or (JobRepository(db) if db else None)
@@ -132,6 +133,9 @@ class SearchService(AcquisitionMixin, PersistenceMixin, NormalizationMixin, Matc
         self.search_persistence = search_persistence or SearchPipelinePersistence(
             self.db,
             self.job_repo,
+        )
+        self.analysis_readiness_check = (
+            analysis_readiness_check or check_local_model_readiness
         )
         # Providers (registered by domain)
         self.providers = {

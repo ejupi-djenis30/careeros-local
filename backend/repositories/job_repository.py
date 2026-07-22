@@ -246,6 +246,49 @@ class JobRepository(BaseRepository[Job]):
 
         return q.offset(skip).limit(limit).all()
 
+    def get_trust_candidates_by_user(
+        self,
+        user_id: int,
+        *,
+        min_distance: Optional[float] = None,
+        max_distance: Optional[float] = None,
+        applied: Optional[bool] = None,
+        search_profile_id: Optional[int] = None,
+        include_dismissed: Optional[bool] = None,
+        sort_by: str = "created_at",
+        sort_order: str = "desc",
+    ) -> List[Job]:
+        """Return the full non-analysis-filtered scope for receipt-aware queries.
+
+        Match scores and recommendations cannot be trusted in SQL alone: their receipt,
+        current profile, listing evidence, and exact model row must all be validated in the
+        service.  This query therefore applies only ordinary database-owned filters and never
+        paginates before that validation has happened.
+        """
+        q = self._build_filter_query(
+            user_id,
+            min_distance=min_distance,
+            max_distance=max_distance,
+            applied=applied,
+            search_profile_id=search_profile_id,
+            include_dismissed=include_dismissed,
+        )
+
+        allowed_sort = {
+            "created_at": self.model.created_at,
+            "distance_km": self.model.distance_km,
+        }
+        # Affinity ordering is performed only after full receipt validation.  A stable,
+        # non-analysis order here also determines the placement of untrusted rows at the end.
+        effective_sort = "created_at" if sort_by == "affinity_score" else sort_by
+        col = allowed_sort.get(effective_sort, self.model.created_at)
+        if effective_sort in ["title", "publication_date"]:
+            q = q.join(self.model.scraped_job)
+            col = getattr(ScrapedJob, effective_sort)
+
+        order_fn = desc if sort_order == "desc" else asc
+        return q.order_by(order_fn(col), order_fn(self.model.id)).all()
+
     def count_by_user_filtered(
         self,
         user_id: int,

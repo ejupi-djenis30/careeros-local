@@ -61,8 +61,20 @@ def _convert_to_version(data: bytes, version: int) -> bytes:
     with zipfile.ZipFile(BytesIO(data), "r") as source:
         files = {name: source.read(name) for name in source.namelist()}
     payload = json.loads(files["payload.json"])
-    removed_tables = ["search_profiles", "scraped_jobs", "jobs", "preference_signals"]
-    if version == 1:
+    removed_tables = []
+    if version < 3:
+        removed_tables.extend(["search_profiles", "scraped_jobs", "jobs", "preference_signals"])
+    elif version == 3:
+        for row in payload["tables"]["jobs"]:
+            for field in (
+                "analysis_provenance",
+                "analysis_model_id",
+                "analysis_contract_version",
+                "analysis_validated_at",
+                "analysis_legacy_snapshot",
+            ):
+                row.pop(field, None)
+    if version < 2:
         removed_tables.append("ai_executions")
     for table_name in removed_tables:
         payload["tables"].pop(table_name)
@@ -110,7 +122,7 @@ def _with_profile_created_at(data: bytes, timestamp: str) -> bytes:
     return output.getvalue()
 
 
-def test_v3_archive_restores_ai_audit_and_v2_v1_remain_compatible(
+def test_v4_archive_restores_ai_audit_and_v3_v2_v1_remain_compatible(
     client, auth_headers, db_session, test_user, desktop_data_dir
 ):
     _create_profile(client, auth_headers)
@@ -134,7 +146,7 @@ def test_v3_archive_restores_ai_audit_and_v2_v1_remain_compatible(
     assert exported.status_code == 200, exported.text
     with zipfile.ZipFile(BytesIO(exported.content)) as archive:
         manifest = json.loads(archive.read("manifest.json"))
-    assert manifest["format_version"] == 3
+    assert manifest["format_version"] == 4
     assert manifest["record_counts"]["ai_executions"] == 1
     assert manifest["record_counts"]["preference_signals"] == 1
 
@@ -147,6 +159,16 @@ def test_v3_archive_restores_ai_audit_and_v2_v1_remain_compatible(
     assert restored.status_code == 200, restored.text
     db_session.expire_all()
     assert db_session.query(AIExecution).filter(AIExecution.user_id == test_user.id).count() == 1
+
+    _delete_profile(client, auth_headers)
+    v3_data = _convert_to_version(exported.content, 3)
+    restored_v3 = client.post(
+        "/api/v1/portability/restore",
+        files={"file": ("v3.zip", v3_data, "application/zip")},
+        headers=auth_headers,
+    )
+    assert restored_v3.status_code == 200, restored_v3.text
+    assert restored_v3.json()["format_version"] == 3
 
     _delete_profile(client, auth_headers)
     v2_data = _convert_to_version(exported.content, 2)
@@ -171,7 +193,7 @@ def test_v3_archive_restores_ai_audit_and_v2_v1_remain_compatible(
     assert restored_v1.json()["restored_records"]["ai_executions"] == 0
 
 
-@pytest.mark.parametrize("format_version", [1, 2, 3])
+@pytest.mark.parametrize("format_version", [1, 2, 3, 4])
 @pytest.mark.parametrize(
     "archived_timestamp",
     ["2026-07-22T12:15:00+02:00", "2026-07-22T10:15:00"],
@@ -193,7 +215,7 @@ def test_archive_versions_normalize_legacy_timestamps_to_aware_utc(
 
     archive = (
         exported.content
-        if format_version == 3
+        if format_version == 4
         else _convert_to_version(exported.content, format_version)
     )
     archive = _with_profile_created_at(archive, archived_timestamp)
@@ -207,9 +229,7 @@ def test_archive_versions_normalize_legacy_timestamps_to_aware_utc(
     assert restored.json()["format_version"] == format_version
     db_session.expire_all()
     profile = (
-        db_session.query(CandidateProfile)
-        .filter(CandidateProfile.user_id == test_user.id)
-        .one()
+        db_session.query(CandidateProfile).filter(CandidateProfile.user_id == test_user.id).one()
     )
     assert profile.created_at == datetime(2026, 7, 22, 10, 15, tzinfo=timezone.utc)
 
@@ -285,9 +305,7 @@ def test_export_reads_one_sqlite_snapshot_while_a_writer_commits(desktop_data_di
     )
     event.listen(local_engine, "connect", configure_sqlite_connection)
     Base.metadata.create_all(local_engine)
-    local_session = sessionmaker(
-        bind=local_engine, autoflush=False, expire_on_commit=False
-    )
+    local_session = sessionmaker(bind=local_engine, autoflush=False, expire_on_commit=False)
     seed = local_session()
     owner = User(username="snapshot-owner", hashed_password="unused-local-hash")
     seed.add(owner)

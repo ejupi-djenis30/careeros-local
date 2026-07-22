@@ -12,6 +12,7 @@ from backend.inference.ports import (
     StructuredInferenceRequest,
     StructuredInferenceResult,
 )
+from backend.inference.runtime_schema import runtime_json_schema
 from backend.providers.llm.base import LLMProvider, extract_json_payload
 
 
@@ -41,6 +42,10 @@ class LlamaCppProvider(LLMProvider):
         self.async_transport = async_transport
 
     @property
+    def runtime_name(self) -> str:
+        return "llama.cpp"
+
+    @property
     def model_id(self) -> str:
         return f"llama-cpp-local/{self.model}"
 
@@ -64,7 +69,10 @@ class LlamaCppProvider(LLMProvider):
             "top_p": request.top_p,
             "seed": request.seed,
             "max_tokens": request.max_tokens,
-            "response_format": {"type": "json_schema", "schema": request.json_schema},
+            "response_format": {
+                "type": "json_schema",
+                "schema": runtime_json_schema(request.json_schema),
+            },
         }
 
     @staticmethod

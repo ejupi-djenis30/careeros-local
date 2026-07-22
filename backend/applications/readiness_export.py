@@ -66,9 +66,9 @@ def _json_bytes(report: ApplicationReadinessReport, *, include_fingerprint: bool
     payload = report.model_dump(mode="json")
     if not include_fingerprint:
         payload.pop("fingerprint", None)
-    return json.dumps(
-        payload, ensure_ascii=False, sort_keys=True, separators=(",", ":")
-    ).encode("utf-8")
+    return json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode(
+        "utf-8"
+    )
 
 
 def canonical_fingerprint(report: ApplicationReadinessReport) -> str:
@@ -104,8 +104,7 @@ def canonical_markdown(report: ApplicationReadinessReport) -> bytes:
     ]
     for check in report.checks:
         evidence = "; ".join(
-            f"{EVIDENCE_LABELS.get(item.key, item.key)}: {item.value}"
-            for item in check.evidence
+            f"{EVIDENCE_LABELS.get(item.key, item.key)}: {item.value}" for item in check.evidence
         )
         action = ACTION_TEXT.get(check.action or "", "None")
         lines.append(

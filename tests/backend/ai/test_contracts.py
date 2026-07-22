@@ -38,3 +38,23 @@ def test_grounded_coach_contract_rejects_unbounded_or_extra_output() -> None:
     assert valid.confidence == 0.8
     with pytest.raises(ValidationError):
         CoachResult.model_validate({**valid.model_dump(), "private_reasoning": "secret"})
+
+
+def test_coach_contract_materializes_only_omitted_aggregate_citations() -> None:
+    fact_id = "00000000-0000-0000-0000-000000000001"
+    compact_payload = {
+        "answer": "Delivery improved.",
+        "claims": [{"text": "Delivery improved.", "fact_ids": [fact_id], "job_ids": [7]}],
+        "confidence": 0.8,
+        "missing_evidence": [],
+    }
+
+    result = CoachResult.model_validate(compact_payload)
+
+    assert result.fact_citations == [fact_id]
+    assert result.job_citations == [7]
+
+    with pytest.raises(ValidationError, match="aggregate fact citations"):
+        CoachResult.model_validate({**compact_payload, "fact_citations": []})
+    with pytest.raises(ValidationError, match="aggregate job citations"):
+        CoachResult.model_validate({**compact_payload, "job_citations": []})

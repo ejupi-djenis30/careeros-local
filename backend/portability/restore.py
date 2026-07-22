@@ -13,6 +13,7 @@ from backend.applications.service import (
     ApplicationService,
     ApplicationValidationError,
 )
+from backend.applications.snapshots import sanitize_application_snapshot
 from backend.career.models import CandidateProfile
 from backend.core.config import settings
 from backend.db.types import UTCDateTime, aware_utc
@@ -62,6 +63,83 @@ APPLICATION_PROJECTION_FIELDS = frozenset(
         "next_action_priority",
     }
 )
+UNVERIFIED_ANALYSIS_FIELDS = frozenset(
+    {
+        "affinity_score",
+        "affinity_analysis",
+        "skill_match_score",
+        "experience_match_score",
+        "intent_match_score",
+        "language_match_score",
+        "location_match_score",
+        "transferability_score",
+        "qualification_gap_score",
+        "analysis_structured",
+        "red_flags",
+        "analysis_provenance",
+        "analysis_model_id",
+        "analysis_contract_version",
+        "analysis_validated_at",
+        "analysis_execution_id",
+        "analysis_output_fingerprint",
+        "analysis_execution_row_index",
+        "analysis_row_fingerprint",
+        "analysis_input_fingerprint",
+        "worth_applying",
+    }
+)
+
+
+def _quarantined_coach_metadata(value: object, *, reason: str) -> dict[str, Any]:
+    """Preserve imported assistant audit data while making its trust state explicit."""
+    source = _json_value(value) if isinstance(value, dict) else {"legacy_value": _json_value(value)}
+    if (
+        isinstance(source, dict)
+        and source.get("provenance") == "quarantined"
+        and isinstance(source.get("source_generation_metadata"), dict)
+    ):
+        source = source["source_generation_metadata"]
+    return {
+        "provenance": "quarantined",
+        "quarantine_reason": reason,
+        "source_generation_metadata": source,
+    }
+
+
+def _quarantine_unverified_analysis(
+    row: dict[str, Any],
+    *,
+    format_version: int,
+) -> None:
+    has_analysis = bool(row.get("worth_applying")) or any(
+        row.get(field) is not None
+        for field in UNVERIFIED_ANALYSIS_FIELDS
+        if field != "worth_applying"
+    )
+    if not has_analysis:
+        return
+    # Portable ZIPs are checksummed for corruption, not authenticated. An archive author can
+    # forge both a match row and its AIExecution receipt, so imported analysis can never inherit
+    # the local database's trusted-display bit. Preserve it in local quarantine for audit, but
+    # require a fresh local-model run before any claim is rendered or exported.
+    preserved = {
+        field: _json_value(row.get(field))
+        for field in UNVERIFIED_ANALYSIS_FIELDS
+        if field in row and (row.get(field) is not None or field == "worth_applying")
+    }
+    prior_snapshot = row.get("analysis_legacy_snapshot")
+    snapshot: dict[str, Any] = {
+        "schema_version": "1.0",
+        "reason": f"unsigned_v{format_version}_analysis_requires_revalidation",
+        "analysis": preserved,
+    }
+    if prior_snapshot is not None:
+        snapshot["previous_snapshot"] = _json_value(prior_snapshot)
+    row["analysis_legacy_snapshot"] = snapshot
+    for field in UNVERIFIED_ANALYSIS_FIELDS:
+        if field in row:
+            row[field] = False if field == "worth_applying" else None
+    row["worth_applying"] = False
 
 
 def _decode_row(model: type[Any], row: dict[str, Any]) -> dict[str, Any]:
@@ -80,9 +158,7 @@ def _decode_row(model: type[Any], row: dict[str, Any]) -> dict[str, Any]:
             try:
                 decoded[key] = datetime.fromisoformat(value.replace("Z", "+00:00"))
             except ValueError as exc:
-                raise ArchiveError(
-                    f"Invalid timestamp in {model.__tablename__}.{key}"
-                ) from exc
+                raise ArchiveError(f"Invalid timestamp in {model.__tablename__}.{key}") from exc
         elif isinstance(column_type, Date) and isinstance(value, str):
             try:
                 decoded[key] = date.fromisoformat(value)
@@ -91,18 +167,14 @@ def _decode_row(model: type[Any], row: dict[str, Any]) -> dict[str, Any]:
     return decoded
 
 
-def _assert_ids_available(
-    db: Session, model: type[Any], rows: list[dict[str, Any]]
-) -> None:
+def _assert_ids_available(db: Session, model: type[Any], rows: list[dict[str, Any]]) -> None:
     ids = [str(row["id"]) for row in rows if row.get("id")]
     for start in range(0, len(ids), 400):
         if db.query(model).filter(model.id.in_(ids[start : start + 400])).first() is not None:
             raise ArchiveConflictError(f"Archive IDs already exist in {model.__tablename__}")
 
 
-def _assert_unique_archive_ids(
-    table_name: str, rows: list[dict[str, Any]]
-) -> None:
+def _assert_unique_archive_ids(table_name: str, rows: list[dict[str, Any]]) -> None:
     ids: list[Any] = []
     for row in rows:
         record_id = row.get("id")
@@ -117,14 +189,12 @@ def _assert_unique_archive_ids(
         raise ArchiveError(f"Archive {table_name} contains duplicate IDs")
 
 
-def _decode_preference_state(
-    format_version: int, tables: dict[str, Any]
-) -> dict[str, Any] | None:
+def _decode_preference_state(format_version: int, tables: dict[str, Any]) -> dict[str, Any] | None:
     if format_version < 3:
         return None
     rows = tables["preference_signals"]
     if len(rows) != 1 or not isinstance(rows[0], dict):
-        raise ArchiveError("A version 3 archive must contain one preference signal record")
+        raise ArchiveError("Archive versions 3 and 4 require one preference signal record")
     if set(rows[0]) != PREFERENCE_FIELDS:
         raise ArchiveError("The preference signal record contains unsupported fields")
     decoded = _decode_row(User, rows[0])
@@ -161,9 +231,12 @@ def _validate_search_relationships(
     for row in decoded["scraped_jobs"]:
         platform = row.get("platform")
         platform_job_id = row.get("platform_job_id")
-        if not isinstance(platform, str) or not platform or not isinstance(
-            platform_job_id, str
-        ) or not platform_job_id:
+        if (
+            not isinstance(platform, str)
+            or not platform
+            or not isinstance(platform_job_id, str)
+            or not platform_job_id
+        ):
             raise ArchiveError("Archive scraped listing is missing its provider identity")
         key = (platform, platform_job_id)
         if key in listing_keys:
@@ -188,9 +261,9 @@ def _extract_application_projection_contract(
 ) -> dict[str, dict[str, Any]]:
     """Separate untrusted read-model fields from canonical archive records.
 
-    Archive versions 1 and 2 predate application projections. Version 3 exists in
-    both historical (projection-free) and current (complete projection) forms.
-    Current v3 values are checked after the append-only events have been restored;
+    Archive versions 1 and 2 predate application projections. Versions 3 and 4 use
+    either historical projection-free or complete projection records. Current values
+    are checked after the append-only events have been restored;
     every accepted archive is then rebuilt from its canonical snapshot and events.
     """
 
@@ -202,13 +275,11 @@ def _extract_application_projection_contract(
             raise ArchiveError(
                 f"Archive version {format_version} application rows cannot contain projections"
             )
-        if format_version == 3 and present not in (
+        if format_version >= 3 and present not in (
             frozenset(),
             APPLICATION_PROJECTION_FIELDS,
         ):
-            raise ArchiveError(
-                "Archive v3 application projections must be either absent or complete"
-            )
+            raise ArchiveError("Archive application projections must be either absent or complete")
         if present == APPLICATION_PROJECTION_FIELDS:
             expected[application_id] = {
                 field: row[field] for field in APPLICATION_PROJECTION_FIELDS
@@ -251,19 +322,47 @@ def _decode_payload(
 
     decoded: dict[str, list[dict[str, Any]]] = {}
     for table_name, model in EXPORT_MODELS:
-        decoded[table_name] = [
-            _decode_row(model, row) for row in tables.get(table_name, [])
-        ]
+        raw_rows = tables.get(table_name, [])
         if table_name == "scraped_jobs":
-            # Version 3 archives created before the privacy hardening included
-            # this shared-model field. Accept those archives, but never carry
-            # their user-specific discovery query into the restored database.
-            for row in decoded[table_name]:
-                for field in SCRAPED_JOB_PRIVATE_FIELDS:
-                    row.pop(field, None)
+            # Strip legacy private fields before strict model-column decoding. They are not
+            # columns on the current shared catalog model and must never be propagated.
+            raw_rows = [
+                {key: value for key, value in row.items() if key not in SCRAPED_JOB_PRIVATE_FIELDS}
+                if isinstance(row, dict)
+                else row
+                for row in raw_rows
+            ]
+        decoded[table_name] = [_decode_row(model, row) for row in raw_rows]
         _assert_unique_archive_ids(table_name, decoded[table_name])
         if table_name not in REMAPPABLE_TABLES:
             _assert_ids_available(db, model, decoded[table_name])
+    for row in decoded["jobs"]:
+        _quarantine_unverified_analysis(
+            row,
+            format_version=manifest.format_version,
+        )
+    for row in decoded["applications"]:
+        snapshot = row.get("job_snapshot")
+        if not isinstance(snapshot, dict):
+            raise ArchiveError("Archive application snapshot must be an object")
+        # Portable archives are integrity-checksummed, not authenticated. Even if the linked
+        # Job and AIExecution were forged consistently, their embedded application projection
+        # cannot cross the restore boundary as trusted analysis.
+        row["job_snapshot"] = sanitize_application_snapshot(
+            snapshot,
+            quarantine_reason=(
+                f"unsigned_v{manifest.format_version}_application_match_requires_revalidation"
+            ),
+        )
+    # Archive checksums detect corruption, not authorship. Assistant messages and their execution
+    # rows can be forged together, so imported advice cannot be displayed as current validated
+    # output. Preserve it in explicit, non-rendered quarantine instead of deleting user history.
+    for row in decoded["coach_messages"]:
+        if row.get("role") == "assistant":
+            row["generation_metadata"] = _quarantined_coach_metadata(
+                row.get("generation_metadata"),
+                reason=f"unsigned_v{manifest.format_version}_coach_output_requires_revalidation",
+            )
     preference_state = _decode_preference_state(manifest.format_version, tables)
     _validate_search_relationships(manifest.format_version, decoded)
     projection_contract = _extract_application_projection_contract(
@@ -309,9 +408,7 @@ def _prepare_file_writes(
         table_value = binding.get("table")
         record_value = binding.get("record_id")
         member_value = binding.get("member")
-        if not all(
-            isinstance(value, str) for value in (table_value, record_value, member_value)
-        ):
+        if not all(isinstance(value, str) for value in (table_value, record_value, member_value)):
             raise ArchiveError("Archive file binding fields must be strings")
         assert isinstance(table_value, str)
         assert isinstance(record_value, str)
@@ -326,9 +423,7 @@ def _prepare_file_writes(
         if member not in members or member == PAYLOAD_MEMBER:
             raise ArchiveError("Archive file binding references a missing member")
         file_data = members[member]
-        if sha256(file_data) != record.get("sha256") or len(file_data) != record.get(
-            "byte_size"
-        ):
+        if sha256(file_data) != record.get("sha256") or len(file_data) != record.get("byte_size"):
             raise ArchiveError("Archived file does not match its database record")
         try:
             resolve_data_path(str(record["storage_path"]))
@@ -339,9 +434,7 @@ def _prepare_file_writes(
 
     if actual_keys != set(records):
         raise ArchiveError("Archive is missing one or more persisted file bindings")
-    if set(members) != {str(binding.get("member")) for binding in bindings} | {
-        PAYLOAD_MEMBER
-    }:
+    if set(members) != {str(binding.get("member")) for binding in bindings} | {PAYLOAD_MEMBER}:
         raise ArchiveError("Archive contains unbound file members")
     return writes
 
@@ -373,9 +466,7 @@ def _prepare_row(
             row["error_code"] = "restored_without_execution"
 
 
-def _add_remappable_row(
-    db: Session, model: type[Any], row: dict[str, Any]
-) -> Any:
+def _add_remappable_row(db: Session, model: type[Any], row: dict[str, Any]) -> Any:
     prepared = dict(row)
     archived_id = prepared["id"]
     if db.get(model, archived_id) is not None:
@@ -390,9 +481,7 @@ def _shared_listing_content(record: ScrapedJob | dict[str, Any]) -> dict[str, An
     ignored = {"id", "created_at", "updated_at", *SCRAPED_JOB_PRIVATE_FIELDS}
     return {
         column.name: _json_value(
-            record.get(column.name)
-            if isinstance(record, dict)
-            else getattr(record, column.name)
+            record.get(column.name) if isinstance(record, dict) else getattr(record, column.name)
         )
         for column in ScrapedJob.__table__.columns
         if column.name not in ignored
@@ -426,12 +515,9 @@ def _restore_search_records(
             .one_or_none()
         )
         if existing is not None:
-            if (
-                existing.source_query is not None
-                or _shared_listing_content(existing) != _shared_listing_content(row)
-            ):
+            if _shared_listing_content(existing) != _shared_listing_content(row):
                 raise ArchiveConflictError(
-                    "A shared scraped listing already exists with private or different content"
+                    "A shared scraped listing already exists with different public content"
                 )
             restored = existing
         else:
@@ -499,9 +585,7 @@ def _canonical_application_projection(
         "job_title": str(snapshot.get("title") or "Untitled role")[:240],
         "job_company": str(snapshot.get("company") or "Unknown company")[:240],
         "job_location": (
-            str(snapshot["location"])[:500]
-            if snapshot.get("location") is not None
-            else None
+            str(snapshot["location"])[:500] if snapshot.get("location") is not None else None
         ),
         "latest_event_at": max(value for value in event_times if value is not None),
         "next_action_task_id": next_action.id if next_action else None,
@@ -522,7 +606,7 @@ def _rebuild_application_projections(
     user_id: int,
     archived_contract: dict[str, dict[str, Any]],
 ) -> None:
-    """Validate current v3 projections and rebuild every restored read model."""
+    """Validate current projections and rebuild every restored read model."""
 
     db.expire_all()
     service = ApplicationService(db)
@@ -543,7 +627,7 @@ def _rebuild_application_projections(
             )
             if mismatches:
                 raise ArchiveError(
-                    "Archive v3 application projections are inconsistent with its "
+                    "Archive application projections are inconsistent with its "
                     f"snapshot or timeline: {', '.join(mismatches)}"
                 )
         preserved_updated_at = application.updated_at
@@ -585,9 +669,7 @@ def _restore_transaction(
                 )
                 db.add(model(**row))
             db.flush()
-        _rebuild_application_projections(
-            db, user_id, application_projection_contract
-        )
+        _rebuild_application_projections(db, user_id, application_projection_contract)
         _restore_preference_state(db, user_id, preference_state)
         db.flush()
         db.commit()
@@ -628,7 +710,7 @@ def restore_archive(db: Session, user_id: int, data: bytes) -> RestoreResponse:
         raise ArchiveConflictError(str(exc)) from exc
 
     restored_records = {
-        name: manifest.record_counts.get(name, 0)
+        name: len(decoded[name]) if name in decoded else manifest.record_counts.get(name, 0)
         for name in expected_tables(CURRENT_ARCHIVE_VERSION)
     }
     return RestoreResponse(

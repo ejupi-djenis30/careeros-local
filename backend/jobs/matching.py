@@ -13,8 +13,8 @@ def _job_value(job: dict[str, Any], field: str):
     return value if value is not None else job.get(f"normalized_{field}")
 
 
-def deterministic_job_match(job: dict[str, Any], profile: dict[str, Any]) -> dict[str, Any]:
-    """Build a stable, model-free match result from structured local facts."""
+def deterministic_job_prefilter(job: dict[str, Any], profile: dict[str, Any]) -> dict[str, Any]:
+    """Build model-free pre-filter signals; never represent them as completed analysis."""
     score = round(compute_prescore(job, profile), 1)
     job_skills = [str(item) for item in (_job_value(job, "required_skills") or []) if item]
     profile_skills = [
@@ -78,45 +78,17 @@ def deterministic_job_match(job: dict[str, Any], profile: dict[str, Any]) -> dic
     else:
         language_score = round(len(required_codes & available_codes) / len(required_codes) * 100, 1)
 
-    strengths = []
-    gaps = []
-    if matched_skills:
-        strengths.append("Matched skills: " + ", ".join(matched_skills))
-    if job_domain == profile_domain and job_domain != "general":
-        strengths.append(f"Target domain matches: {job_domain}")
-    if missing_skills:
-        gaps.append("Unconfirmed required skills: " + ", ".join(missing_skills))
-    if experience_score < 50:
-        gaps.append("Experience is below the structured minimum")
-    if required_codes and language_score < 100:
-        missing_languages = sorted(required_codes - available_codes)
-        gaps.append("Unconfirmed languages: " + ", ".join(missing_languages))
-    if not strengths:
-        strengths.append("No strong structured match signal is available yet")
-    if not gaps:
-        gaps.append("No deterministic blocker found in the available structured data")
-    verdict = "strong" if score >= 75 else "possible" if score >= 55 else "weak"
-    explanation = f"Deterministic local match: {score:.1f}/100 ({verdict}). " + " ".join(
-        strengths + gaps
-    )
-    fact_ids = sorted(str(item) for item in (profile.get("fact_ids") or []) if item)
+    missing_languages = sorted(required_codes - available_codes)
     return {
-        "affinity_score": score,
-        "affinity_analysis": explanation,
-        "worth_applying": score >= 60,
-        "skill_match_score": skill_score,
-        "experience_match_score": experience_score,
-        "intent_match_score": intent_score,
-        "language_match_score": language_score,
-        "location_match_score": 50.0,
-        "transferability_score": skill_score,
-        "qualification_gap_score": 50.0,
-        "analysis_structured": {
-            "mode": "deterministic_local",
-            "strengths": strengths,
-            "gaps": gaps,
-            "verdict": verdict,
-            "evidence_citations": fact_ids,
+        "kind": "deterministic_prefilter",
+        "prescore": score,
+        "signals": {
+            "skills": skill_score,
+            "experience": experience_score,
+            "intent": intent_score,
+            "language": language_score,
         },
-        "red_flags": [],
+        "matched_skills": matched_skills,
+        "unconfirmed_skills": missing_skills,
+        "unconfirmed_languages": missing_languages,
     }

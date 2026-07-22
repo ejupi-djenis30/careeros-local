@@ -1,3 +1,5 @@
+import asyncio
+import time
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -67,9 +69,7 @@ async def test_structured_call_sends_versioned_deterministic_schema(mock_provide
     breaker = MagicMock(state=CircuitState.CLOSED)
     breaker.call = AsyncMock(side_effect=passthrough)
     with patch("backend.services.llm_service.circuit_registry.get", return_value=breaker):
-        result = await LLMService()._call_provider_json(
-            mock_provider, "plan", "system", "user"
-        )
+        result = await LLMService()._call_provider_json(mock_provider, "plan", "system", "user")
 
     assert result["searches"]
     request = mock_provider.generate_structured_async.await_args.args[0]
@@ -91,7 +91,12 @@ async def test_structured_call_fails_closed_after_one_repair(mock_provider):
 async def test_generate_search_plan_is_strict_deduplicated_and_capped(mock_provider):
     payload = _golden("search_plan")
     payload["searches"].append(
-        {"query": "Senior Python Backend Engineer", "domain": "it", "type": "occupation", "language": "en"}
+        {
+            "query": "Senior Python Backend Engineer",
+            "domain": "it",
+            "type": "occupation",
+            "language": "en",
+        }
     )
     mock_provider.generate_structured_async.return_value = _result(payload)
     with patch("backend.services.llm_service.get_provider_for_step", return_value=mock_provider):
@@ -148,23 +153,55 @@ async def test_normalize_job_batch_rejects_wrong_row_count(mock_provider):
     mock_provider.generate_structured_async.return_value = _result(payload)
     with patch("backend.services.llm_service.get_provider_for_step", return_value=mock_provider):
         with pytest.raises(Exception):
-            await LLMService().normalize_job_batch(
-                [{"title": "One"}, {"title": "Two"}]
-            )
+            await LLMService().normalize_job_batch([{"title": "One"}, {"title": "Two"}])
 
 
 async def test_match_returns_calibrated_dimension_scores(mock_provider):
     mock_provider.generate_structured_async.return_value = _result(_golden("job_match"))
     with patch("backend.services.llm_service.get_provider_for_step", return_value=mock_provider):
         rows = await LLMService().analyze_job_batch(
-            [{"title": "Backend", "description": "Python C1"}],
-            {"role_description": "Backend", "cv_summary": "7 years Python"},
+            [
+                {
+                    "title": "Backend",
+                    "description": "Requires 5 years Python and English C1.",
+                }
+            ],
+            {
+                "role_description": "Backend",
+                "cv_content": "7 years Python; English C1.",
+            },
         )
 
-    assert rows[0]["affinity_score"] == 91
+    assert rows[0]["affinity_score"] == 75
     assert rows[0]["skill_match_score"] == 95
     assert rows[0]["worth_applying"] is True
+    assert rows[0]["analysis_provenance"] == "local_model_validated"
+    assert rows[0]["analysis_contract_version"] == "1.1.0"
     assert mock_provider.generate_structured_async.await_args.args[0].task_id == "job_match"
+    request = mock_provider.generate_structured_async.await_args.args[0]
+    assert request.max_tokens == 256
+    assert request.json_schema["properties"]["results"]["minItems"] == 1
+    assert request.json_schema["properties"]["results"]["maxItems"] == 1
+
+
+async def test_match_has_one_hard_deadline_without_outer_retries(mock_provider):
+    async def never_finishes(_request):
+        await asyncio.sleep(1)
+
+    mock_provider.generate_structured_async.side_effect = never_finishes
+    started = time.monotonic()
+    with (
+        patch("backend.services.llm_service.get_provider_for_step", return_value=mock_provider),
+        patch.object(settings, "LLM_CALL_TIMEOUT_MATCH", 0.06),
+    ):
+        with pytest.raises(TimeoutError):
+            await LLMService().analyze_job_batch(
+                [{"title": "Backend", "description": "Python required."}],
+                {"role_description": "Backend", "cv_content": "Python."},
+            )
+
+    assert time.monotonic() - started < 0.15
+    assert 1 <= mock_provider.generate_structured_async.await_count <= 2
 
 
 async def test_critique_and_rerank_use_bounded_contracts(mock_provider):
@@ -197,6 +234,51 @@ async def test_summarize_cv_keeps_local_text_timeout_boundary(mock_provider):
 
     assert "Python" in summary
     assert mock_provider.generate_text_async.await_count == 1
+
+
+async def test_structured_entrypoints_do_not_multiply_their_hard_deadline(mock_provider):
+    async def never_finishes(_request):
+        await asyncio.sleep(1)
+
+    service = LLMService()
+    calls = (
+        lambda: service.generate_search_plan(
+            {"role_description": "Python", "search_strategy": "", "cv_content": "Python"},
+            [],
+        ),
+        lambda: service.normalize_user_profile("Python", "Backend", ""),
+        lambda: service.normalize_job_batch(
+            [{"title": "Backend", "description": "Python required."}]
+        ),
+    )
+    with (
+        patch("backend.services.llm_service.get_provider_for_step", return_value=mock_provider),
+        patch.object(settings, "LLM_CALL_TIMEOUT_PLAN", 0.06),
+        patch.object(settings, "LLM_CALL_TIMEOUT_NORMALIZE", 0.06),
+    ):
+        for call in calls:
+            mock_provider.generate_structured_async.reset_mock(side_effect=True)
+            mock_provider.generate_structured_async.side_effect = never_finishes
+            started = time.monotonic()
+            with pytest.raises(TimeoutError):
+                await call()
+            assert time.monotonic() - started < 0.15
+            assert 1 <= mock_provider.generate_structured_async.await_count <= 2
+
+
+async def test_text_summary_timeout_is_not_retried_by_an_outer_decorator(mock_provider):
+    async def timeout_once(*_args, **_kwargs):
+        await asyncio.sleep(0.05)
+        raise TimeoutError
+
+    mock_provider.generate_text_async_with_timeout = AsyncMock(side_effect=timeout_once)
+    started = time.monotonic()
+    with patch("backend.services.llm_service.get_provider_for_step", return_value=mock_provider):
+        with pytest.raises(TimeoutError):
+            await LLMService().summarize_cv("Python")
+
+    assert time.monotonic() - started < 0.15
+    assert mock_provider.generate_text_async_with_timeout.await_count == 1
 
 
 def test_runtime_policy_clamps_small_context_batch_and_prompt(mock_provider):

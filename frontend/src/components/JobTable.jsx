@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import { MobileJobCard } from "./JobTable/MobileJobCard";
 import { DesktopJobRow } from "./JobTable/DesktopJobRow";
 import { JobAnalysisModal } from "./JobTable/JobAnalysisModal";
@@ -15,6 +15,7 @@ export function JobTable({ jobs, isGlobalView, onToggleApplied, isAppliedPending
     const locale = language === "it" ? "it-IT" : "en-GB";
 
     const handleViewAnalysis = (job) => {
+        if (job?.analysis_verified !== true) return;
         setSelectedJobForAnalysis(job);
         // Fire-and-forget view recording (idempotent on the server)
         if (job?.id) {
@@ -23,15 +24,6 @@ export function JobTable({ jobs, isGlobalView, onToggleApplied, isAppliedPending
             });
         }
     };
-
-    useEffect(() => {
-        if (!selectedJobForAnalysis) return;
-        const handleEscape = (e) => {
-            if (e.key === "Escape") setSelectedJobForAnalysis(null);
-        };
-        document.addEventListener("keydown", handleEscape);
-        return () => document.removeEventListener("keydown", handleEscape);
-    }, [selectedJobForAnalysis]);
 
     const handleOpenDismissDialog = (job) => {
         setSelectedJobForDismiss(job);
@@ -45,6 +37,24 @@ export function JobTable({ jobs, isGlobalView, onToggleApplied, isAppliedPending
     };
 
     const handleCopy = (job) => {
+        const verifiedAnalysis = job.analysis_verified === true ? {
+            affinity_score: job.affinity_score,
+            worth_applying: job.worth_applying,
+            skill_match_score: job.skill_match_score,
+            experience_match_score: job.experience_match_score,
+            intent_match_score: job.intent_match_score,
+            language_match_score: job.language_match_score,
+            location_match_score: job.location_match_score,
+            transferability_score: job.transferability_score,
+            qualification_gap_score: job.qualification_gap_score,
+            affinity_analysis: job.affinity_analysis,
+            analysis_structured: job.analysis_structured,
+            analysis_provenance: job.analysis_provenance,
+            analysis_model_id: job.analysis_model_id,
+            analysis_contract_version: job.analysis_contract_version,
+            analysis_validated_at: job.analysis_validated_at,
+            analysis_verified: true,
+        } : {};
         const data = {
             // Core
             title: job.title,
@@ -63,20 +73,8 @@ export function JobTable({ jobs, isGlobalView, onToggleApplied, isAppliedPending
             // Work details
             workload: job.workload,
             distance_km: job.distance_km,
-            // Scores
-            affinity_score: job.affinity_score,
-            worth_applying: job.worth_applying,
-            skill_match_score: job.skill_match_score,
-            experience_match_score: job.experience_match_score,
-            intent_match_score: job.intent_match_score,
-            language_match_score: job.language_match_score,
-            location_match_score: job.location_match_score,
-            transferability_score: job.transferability_score,
-            qualification_gap_score: job.qualification_gap_score,
-            // Analysis
-            affinity_analysis: job.affinity_analysis,
-            analysis_structured: job.analysis_structured,
-            red_flags: job.red_flags,
+            // Verified local analysis only. Legacy/untrusted fields never leave the row UI.
+            ...verifiedAnalysis,
             // Metadata
             raw_metadata: job.raw_metadata,
             normalized_job: job.normalized_job,

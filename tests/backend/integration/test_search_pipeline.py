@@ -4,6 +4,15 @@ from unittest.mock import AsyncMock
 import pytest
 
 import backend.services.search_service as search_service_module
+from backend.ai.audit import fingerprint_output
+from backend.ai.match_evidence import (
+    candidate_evidence_document,
+    fingerprint_match_input_rows,
+    job_evidence_document,
+)
+from backend.ai.match_policy import derive_match_outcome, derive_match_presentation
+from backend.ai.matching import _materialize_match_citations
+from backend.ai.models import AIExecution
 from backend.career.models import CandidateProfile
 from backend.models import Job, ScrapedJob, SearchProfile
 from backend.services.search_service import SearchService
@@ -93,6 +102,9 @@ async def test_run_search_pipeline_persists_catalog_filters_and_refines_jobs(
 
     provider = FakeProvider([kept_listing, filtered_listing])
     service = SearchService(db=db_session)
+    service.analysis_readiness_check = AsyncMock(
+        return_value=SimpleNamespace(ready=True, error_code=None)
+    )
     service.providers = {"job_room": provider}
 
     profile_norm = {
@@ -193,35 +205,89 @@ async def test_run_search_pipeline_persists_catalog_filters_and_refines_jobs(
                 )
         return results
 
-    async def fake_analyze_job_batch(jobs_metadata, profile_dict):
-        return [
-            {
-                "affinity_score": 55,
-                "affinity_analysis": "Strong backend overlap but requires deeper review.",
-                "worth_applying": True,
-                "skill_match_score": 79,
-                "experience_match_score": 74,
-                "intent_match_score": 88,
-                "language_match_score": 100,
-                "location_match_score": 100,
-                "transferability_score": 70,
-                "qualification_gap_score": 10,
-                "analysis_structured": {"verdict": "borderline_positive"},
-                "red_flags": [],
-            }
-            for _ in jobs_metadata
-        ]
+    async def fake_analyze_job_batch(jobs_metadata, profile_dict, **_audit_context):
+        contract_rows = []
+        for index, _item in enumerate(jobs_metadata):
+            contract_rows.append(
+                {
+                    "skill_match_score": 79,
+                    "experience_match_score": 50,
+                    "intent_match_score": 88,
+                    "language_match_score": 50,
+                    "location_match_score": 50,
+                    "transferability_score": 50,
+                    "qualification_gap_score": 50,
+                }
+            )
 
-    async def fake_critique_job_batch(jobs_metadata, analyses, profile_dict):
-        return [
-            {
-                **analysis,
-                "affinity_score": 82,
-                "affinity_analysis": "Critique confirms this is a strong fit.",
-                "analysis_structured": {"verdict": "strong_fit"},
+        evidence = (
+            candidate_evidence_document(profile_dict),
+            *[
+                job_evidence_document(item, index, description_limit=1800)
+                for index, item in enumerate(jobs_metadata)
+            ],
+        )
+        output_fingerprint = fingerprint_output({"results": contract_rows})
+        row_fingerprints = [fingerprint_output(row) for row in contract_rows]
+        input_fingerprints = fingerprint_match_input_rows(evidence)
+        execution = AIExecution(
+            user_id=profile_dict["user_id"],
+            task="job_match",
+            contract_version="1.1.0",
+            model_id="llama-cpp-local/test-model",
+            input_fingerprint="c" * 64,
+            output_fingerprint=output_fingerprint,
+            row_fingerprints=row_fingerprints,
+            row_input_fingerprints=input_fingerprints,
+            evidence_count=len(evidence),
+            accepted=True,
+            repair_count=0,
+            validation_codes=[],
+            duration_ms=1,
+        )
+        db_session.add(execution)
+        db_session.commit()
+
+        results = []
+        for index, row in enumerate(contract_rows):
+            dimensions = {
+                "skill": row["skill_match_score"],
+                "experience": row["experience_match_score"],
+                "intent": row["intent_match_score"],
+                "language": row["language_match_score"],
+                "location": row["location_match_score"],
+                "transferability": row["transferability_score"],
+                "qualification": row["qualification_gap_score"],
             }
-            for analysis in analyses
-        ]
+            citations = _materialize_match_citations(
+                candidate=evidence[0],
+                job=evidence[index + 1],
+                dimension_scores=dimensions,
+            )
+            score, recommendation, worth = derive_match_outcome(dimensions, citations)
+            summary, flags = derive_match_presentation(recommendation, citations)
+            results.append(
+                {
+                    **row,
+                    "affinity_score": score,
+                    "affinity_analysis": summary,
+                    "worth_applying": worth,
+                    "analysis_structured": {
+                        "recommendation": recommendation,
+                        "evidence_citations": citations,
+                    },
+                    "red_flags": flags,
+                    "analysis_provenance": "local_model_validated",
+                    "analysis_model_id": execution.model_id,
+                    "analysis_contract_version": execution.contract_version,
+                    "analysis_execution_id": execution.id,
+                    "analysis_output_fingerprint": output_fingerprint,
+                    "analysis_execution_row_index": index,
+                    "analysis_row_fingerprint": row_fingerprints[index],
+                    "analysis_input_fingerprint": input_fingerprints[index],
+                }
+            )
+        return results
 
     async def passthrough_description(text, max_chars):
         return text
@@ -231,7 +297,7 @@ async def test_run_search_pipeline_persists_catalog_filters_and_refines_jobs(
         search_service_module.settings, "SEARCH_ENABLE_NORMALIZATION_MATCHING", True
     )
     monkeypatch.setattr(search_service_module.settings, "STRUCTURED_PRESCORE_ENABLED", False)
-    monkeypatch.setattr(search_service_module.settings, "MATCH_CRITIQUE_ENABLED", True)
+    monkeypatch.setattr(search_service_module.settings, "MATCH_CRITIQUE_ENABLED", False)
     monkeypatch.setattr(search_service_module.settings, "MATCH_RERANK_ENABLED", False)
     monkeypatch.setattr(search_service_module.settings, "SALARY_BENCHMARK_ENABLED", False)
     monkeypatch.setattr(search_service_module.llm_service, "clear_provider_cache", lambda: None)
@@ -259,11 +325,6 @@ async def test_run_search_pipeline_persists_catalog_filters_and_refines_jobs(
         search_service_module.llm_service,
         "analyze_job_batch",
         AsyncMock(side_effect=fake_analyze_job_batch),
-    )
-    monkeypatch.setattr(
-        search_service_module.llm_service,
-        "critique_job_batch",
-        AsyncMock(side_effect=fake_critique_job_batch),
     )
     monkeypatch.setattr(
         search_service_module.llm_service,
@@ -305,6 +366,7 @@ async def test_run_search_pipeline_persists_catalog_filters_and_refines_jobs(
     assert len(saved_jobs) == 1
     saved_job = saved_jobs[0]
     assert saved_job.scraped_job.platform_job_id == "dev-1"
-    assert saved_job.affinity_score == 82
-    assert saved_job.affinity_analysis == "Critique confirms this is a strong fit."
-    assert saved_job.analysis_structured == {"verdict": "strong_fit"}
+    assert saved_job.affinity_score == 65
+    assert saved_job.affinity_analysis.startswith("Local evidence review: consider")
+    assert saved_job.analysis_structured["recommendation"] == "consider"
+    assert saved_job.analysis_provenance == "local_model_validated"

@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from sqlalchemy.orm import Session
 
-from backend.api.deps import get_current_user_id, limiter
+from backend.api.deps import get_current_user_id, limiter, require_local_analysis_ready
 from backend.career.coach import (
     CareerCoachService,
     CoachNotFoundError,
@@ -66,6 +66,7 @@ async def create_message(
     data: CoachMessageCreate,
     user_id: int = Depends(get_current_user_id),
     db: Session = Depends(get_db),
+    _analysis_ready: None = Depends(require_local_analysis_ready),
 ) -> CoachReply:
     try:
         return await _service(db).reply(user_id, data)

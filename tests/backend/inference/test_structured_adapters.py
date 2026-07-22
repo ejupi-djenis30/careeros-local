@@ -9,7 +9,20 @@ from backend.inference.ports import StructuredInferenceRequest
 
 SCHEMA = {
     "type": "object",
-    "properties": {"answer": {"type": "string"}},
+    "properties": {
+        "answer": {
+            "type": "string",
+            "pattern": "^[a-z]+$",
+            "maxLength": 6000,
+            "items": {"pattern": "nested"},
+        }
+    },
+    "required": ["answer"],
+    "additionalProperties": False,
+}
+RUNTIME_SCHEMA = {
+    "type": "object",
+    "properties": {"answer": {"type": "string", "items": {}}},
     "required": ["answer"],
     "additionalProperties": False,
 }
@@ -33,7 +46,10 @@ async def test_llama_cpp_uses_authenticated_json_schema_contract() -> None:
     def handler(request: httpx.Request) -> httpx.Response:
         assert request.headers["authorization"] == "Bearer " + "k" * 48
         payload = json.loads(request.content)
-        assert payload["response_format"] == {"type": "json_schema", "schema": SCHEMA}
+        assert payload["response_format"] == {
+            "type": "json_schema",
+            "schema": RUNTIME_SCHEMA,
+        }
         assert payload["seed"] == 7
         return httpx.Response(
             200,
@@ -54,13 +70,15 @@ async def test_llama_cpp_uses_authenticated_json_schema_contract() -> None:
     assert result.payload == {"answer": "grounded"}
     assert result.usage.prompt_tokens == 12
     assert result.runtime == "llama.cpp"
+    assert SCHEMA["properties"]["answer"]["pattern"] == "^[a-z]+$"
+    assert SCHEMA["properties"]["answer"]["maxLength"] == 6000
 
 
 @pytest.mark.asyncio
 async def test_ollama_uses_native_schema_and_deterministic_options() -> None:
     def handler(request: httpx.Request) -> httpx.Response:
         payload = json.loads(request.content)
-        assert payload["format"] == SCHEMA
+        assert payload["format"] == RUNTIME_SCHEMA
         assert payload["options"]["seed"] == 7
         assert payload["options"]["temperature"] == 0
         assert payload["think"] is False
@@ -83,3 +101,5 @@ async def test_ollama_uses_native_schema_and_deterministic_options() -> None:
     assert result.payload == {"answer": "grounded"}
     assert result.usage.completion_tokens == 3
     assert result.runtime == "ollama"
+    assert SCHEMA["properties"]["answer"]["pattern"] == "^[a-z]+$"
+    assert SCHEMA["properties"]["answer"]["maxLength"] == 6000

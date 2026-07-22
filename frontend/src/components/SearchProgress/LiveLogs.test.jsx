@@ -4,7 +4,7 @@ import { describe, it, expect } from 'vitest';
 import { LiveLogs } from './LiveLogs';
 
 describe('LiveLogs', () => {
-  it('renders LLM_DEBUG logs as structured key/value badges', () => {
+  it('removes internal LLM debug records from the release log', () => {
     const log = [
       {
         time: '2026-03-25T01:14:05.000Z',
@@ -14,11 +14,8 @@ describe('LiveLogs', () => {
 
     render(<LiveLogs log={log} logEndRef={{ current: null }} />);
 
-    expect(screen.getByTestId('llm-debug-log-row')).toBeInTheDocument();
-    expect(screen.getByText('LLM_DEBUG')).toBeInTheDocument();
-    expect(screen.getByText('state:done')).toBeInTheDocument();
-    expect(screen.getByText('terminal_reason:no_queries')).toBeInTheDocument();
-    expect(screen.getByText('profile_id:1')).toBeInTheDocument();
+    expect(screen.queryByText(/LLM_DEBUG|profile_id|terminal_reason/)).not.toBeInTheDocument();
+    expect(screen.getByText('Waiting for activity…')).toBeInTheDocument();
   });
 
   it('keeps non-debug logs unchanged', () => {
@@ -31,7 +28,18 @@ describe('LiveLogs', () => {
 
     render(<LiveLogs log={log} logEndRef={{ current: null }} />);
 
-    expect(screen.queryByTestId('llm-debug-log-row')).not.toBeInTheDocument();
     expect(screen.getByText('Step 1: Generating/Retrieving search plan...')).toBeInTheDocument();
+  });
+
+  it('redacts profile identifiers from ordinary release logs', () => {
+    const log = [{
+      time: '2026-03-25T01:14:05.000Z',
+      message: 'Search resumed profile_id=private-42 safely',
+    }];
+
+    render(<LiveLogs log={log} logEndRef={{ current: null }} />);
+
+    expect(screen.getByText('Search resumed safely')).toBeInTheDocument();
+    expect(screen.queryByText(/private-42|profile_id/)).not.toBeInTheDocument();
   });
 });

@@ -7,6 +7,13 @@ export const LocalModelService = {
     catalog({ signal } = {}) {
         return ApiClient.get("/local-model/catalog", signal);
     },
+    readiness({ signal } = {}) {
+        return ApiClient.post("/local-model/readiness", {}, {
+            signal,
+            timeoutMs: 50_000,
+            suppressGlobalError: true,
+        });
+    },
     install(modelKey, { signal } = {}) {
         return ApiClient.post("/local-model/install", {
             model_key: modelKey,

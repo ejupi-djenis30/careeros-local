@@ -21,8 +21,7 @@ def test_bm25_ranking_is_relevant_and_deterministic() -> None:
 
 def test_retrieval_never_exceeds_context_budget() -> None:
     documents = [
-        EvidenceDocument(id=str(index), kind="fact", text="Python " * 200)
-        for index in range(10)
+        EvidenceDocument(id=str(index), kind="fact", text="Python " * 200) for index in range(10)
     ]
 
     result = retrieve_evidence("Python", documents, max_context_chars=400, limit=10)

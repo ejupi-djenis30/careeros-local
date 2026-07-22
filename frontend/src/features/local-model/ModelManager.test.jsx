@@ -123,7 +123,24 @@ describe("ModelManager", () => {
         render(<ModelManager />);
 
         await user.click(await screen.findByRole("button", { name: "Rimuovi modello" }));
+        expect(LocalModelService.remove).not.toHaveBeenCalled();
+        expect(screen.getByRole("dialog", { name: "Rimuovere il modello locale?" })).toBeInTheDocument();
+        await user.click(screen.getByRole("button", { name: "Rimuovi modello locale" }));
         expect(LocalModelService.remove).toHaveBeenCalledTimes(1);
+    });
+
+    it("offers an explicit retry when the verified catalog cannot be loaded", async () => {
+        const user = userEvent.setup();
+        LocalModelService.catalog
+            .mockRejectedValueOnce(new Error("catalog offline"))
+            .mockResolvedValueOnce(catalog);
+
+        render(<ModelManager />);
+
+        expect(await screen.findByRole("alert")).toHaveTextContent("catalog offline");
+        await user.click(screen.getByRole("button", { name: "Riprova a caricare il catalogo" }));
+        expect(await screen.findByRole("combobox")).toBeInTheDocument();
+        expect(LocalModelService.catalog).toHaveBeenCalledTimes(2);
     });
 
     it("selects the managed model when status arrives after the catalog", async () => {

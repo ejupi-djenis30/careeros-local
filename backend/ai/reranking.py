@@ -24,6 +24,7 @@ from backend.services.search.query_contracts import (
 
 logger = logging.getLogger(__name__)
 
+
 def _is_retryable_plan_error(exc: Exception) -> bool:
     """Return True for transient PLAN-step failures worth retrying."""
     real_exc = exc

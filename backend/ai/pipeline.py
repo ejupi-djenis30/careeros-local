@@ -38,6 +38,7 @@ from backend.services.search.query_contracts import (
 
 logger = logging.getLogger(__name__)
 
+
 def _is_retryable_plan_error(exc: Exception) -> bool:
     """Return True for transient PLAN-step failures worth retrying."""
     real_exc = exc
@@ -93,21 +94,28 @@ def _query_fingerprint(search: Dict[str, Any]) -> str:
     return exact_query_fingerprint(search)
 
 
-class LLMService(RuntimePolicyMixin, PlanningMixin, ProfileNormalizationMixin, JobNormalizationMixin, MatchingMixin, RerankingMixin):
+class LLMService(
+    RuntimePolicyMixin,
+    PlanningMixin,
+    ProfileNormalizationMixin,
+    JobNormalizationMixin,
+    MatchingMixin,
+    RerankingMixin,
+):
     """Compatibility composition of the focused local-AI capabilities."""
 
     _STEP_PROMPT_TARGET_ATTRS = {
-            "match": "MATCH_PROMPT_TARGET_CHARS",
-            "normalize": "NORMALIZE_PROMPT_TARGET_CHARS",
-        }
+        "match": "MATCH_PROMPT_TARGET_CHARS",
+        "normalize": "NORMALIZE_PROMPT_TARGET_CHARS",
+    }
     _STEP_DESCRIPTION_TARGET_ATTRS = {
-            "match": "MATCH_PROMPT_JOB_MAX_DESCRIPTION_CHARS",
-            "normalize": "NORMALIZE_PROMPT_JOB_MAX_DESCRIPTION_CHARS",
-        }
+        "match": "MATCH_PROMPT_JOB_MAX_DESCRIPTION_CHARS",
+        "normalize": "NORMALIZE_PROMPT_JOB_MAX_DESCRIPTION_CHARS",
+    }
     _STEP_BATCH_ATTRS = {
-            "match": "ANALYSIS_BATCH_SIZE",
-            "normalize": "NORMALIZE_BATCH_SIZE",
-        }
+        "match": "ANALYSIS_BATCH_SIZE",
+        "normalize": "NORMALIZE_BATCH_SIZE",
+    }
 
     def __init__(self):
         self._provider_cache: Dict[str, Any] = {}

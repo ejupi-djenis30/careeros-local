@@ -6,6 +6,7 @@ import { CoachService } from "../../services/coach";
 import { useLocalModelStatus } from "../local-model/useLocalModelStatus";
 import { FACT_LABELS, factTitle } from "../career-profile/profileModel";
 import { useI18n } from "../../i18n/useI18n";
+import { describeLocalAnalysisError } from "../local-model/localAnalysisError";
 
 function ConversationList({ conversations, activeId, onSelect, onNew, onDelete, locale, t }) {
     return <aside className="coach-conversations"><button type="button" className="button button--primary" onClick={onNew}><i className="bi bi-plus-lg" /> {t("coach.newConversation")}</button><div>{conversations.map((conversation) => <div key={conversation.id} className={`conversation-row ${activeId === conversation.id ? "is-active" : ""}`}><button type="button" onClick={() => onSelect(conversation.id)}><strong>{conversation.title}</strong><span>{t("coach.messages", { count: conversation.message_count })} · {new Date(conversation.updated_at).toLocaleDateString(locale)}</span></button><button type="button" className="icon-button" onClick={() => onDelete(conversation)} aria-label={t("coach.deleteConversation", { title: conversation.title })}><i className="bi bi-trash3" /></button></div>)}</div>{conversations.length === 0 && <p className="coach-conversations__empty">{t("coach.savedLocally")}</p>}</aside>;
@@ -63,7 +64,7 @@ export function CareerCoachPage() {
             setConversation(loaded);
             await refreshConversations();
         } catch (sendError) {
-            setError(sendError.status === 503 ? t("coach.modelUnavailable") : sendError.message);
+            setError(describeLocalAnalysisError(sendError, t) || (sendError.status === 503 ? t("coach.modelUnavailable") : sendError.message));
             refreshModel();
         } finally {
             setSending(false);

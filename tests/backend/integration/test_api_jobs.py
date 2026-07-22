@@ -2,6 +2,15 @@ from datetime import datetime, timezone
 
 import pytest
 
+from backend.ai.audit import fingerprint_output
+from backend.ai.match_evidence import (
+    candidate_evidence_document,
+    job_evidence_document,
+    match_input_fingerprint,
+)
+from backend.ai.match_policy import derive_match_outcome, derive_match_presentation
+from backend.ai.matching import _materialize_match_citations
+from backend.ai.models import AIExecution
 from backend.models import Job, ScrapedJob, SearchProfile, User
 from backend.services.auth import get_password_hash
 
@@ -27,6 +36,107 @@ def _make_scraped_job(
     db_session.add(sj)
     db_session.flush()
     return sj
+
+
+def _make_receipt_verified_job(db_session, test_user, profile, scraped_job):
+    job = Job(
+        user_id=test_user.id,
+        search_profile_id=profile.id,
+        scraped_job_id=scraped_job.id,
+    )
+    db_session.add(job)
+    db_session.flush()
+
+    candidate = candidate_evidence_document(
+        {
+            "cv_content": profile.cv_content,
+            "role_description": profile.role_description,
+            "search_strategy": profile.search_strategy,
+        }
+    )
+    listing = job_evidence_document(
+        {
+            "title": scraped_job.title,
+            "company": scraped_job.company,
+            "location": scraped_job.location,
+            "workload": scraped_job.workload,
+            "description": scraped_job.description,
+        },
+        0,
+        description_limit=1800,
+    )
+    dimensions = {
+        "skill": 80,
+        "experience": 80,
+        "intent": 80,
+        "language": 80,
+        "location": 80,
+        "transferability": 80,
+        "qualification": 80,
+    }
+    contract_row = {
+        "skill_match_score": dimensions["skill"],
+        "experience_match_score": dimensions["experience"],
+        "intent_match_score": dimensions["intent"],
+        "language_match_score": dimensions["language"],
+        "location_match_score": dimensions["location"],
+        "transferability_score": dimensions["transferability"],
+        "qualification_gap_score": dimensions["qualification"],
+    }
+    row_fingerprint = fingerprint_output(contract_row)
+    output_fingerprint = fingerprint_output({"results": [contract_row]})
+    input_fingerprint = match_input_fingerprint(candidate, listing)
+    execution = AIExecution(
+        user_id=test_user.id,
+        task="job_match",
+        contract_version="1.1.0",
+        model_id="ollama/test-model",
+        input_fingerprint="f" * 64,
+        output_fingerprint=output_fingerprint,
+        row_fingerprints=[row_fingerprint],
+        row_input_fingerprints=[input_fingerprint],
+        evidence_count=2,
+        accepted=True,
+        repair_count=0,
+        validation_codes=[],
+        duration_ms=1,
+    )
+    db_session.add(execution)
+    db_session.flush()
+
+    citations = _materialize_match_citations(
+        candidate=candidate,
+        job=listing,
+        dimension_scores=dimensions,
+    )
+    affinity_score, recommendation, worth_applying = derive_match_outcome(dimensions, citations)
+    summary, red_flags = derive_match_presentation(recommendation, citations)
+    job.affinity_score = affinity_score
+    job.affinity_analysis = summary
+    job.worth_applying = worth_applying
+    job.skill_match_score = dimensions["skill"]
+    job.experience_match_score = dimensions["experience"]
+    job.intent_match_score = dimensions["intent"]
+    job.language_match_score = dimensions["language"]
+    job.location_match_score = dimensions["location"]
+    job.transferability_score = dimensions["transferability"]
+    job.qualification_gap_score = dimensions["qualification"]
+    job.analysis_structured = {
+        "recommendation": recommendation,
+        "evidence_citations": citations,
+    }
+    job.analysis_provenance = "local_model_validated"
+    job.analysis_model_id = execution.model_id
+    job.analysis_contract_version = execution.contract_version
+    job.analysis_validated_at = datetime.now(timezone.utc)
+    job.analysis_execution_id = execution.id
+    job.analysis_output_fingerprint = output_fingerprint
+    job.analysis_execution_row_index = 0
+    job.analysis_row_fingerprint = row_fingerprint
+    job.analysis_input_fingerprint = input_fingerprint
+    job.red_flags = red_flags
+    db_session.commit()
+    return job
 
 
 @pytest.fixture
@@ -187,6 +297,104 @@ class TestAdvancedJobsAPI:
         titles = [item["title"] for item in response.json()["items"]]
         assert titles[:2] == ["Newer Posting", "Older Posting"]
 
+    def test_untrusted_analysis_cannot_change_filters_order_pagination_or_stats(
+        self, client, auth_headers, db_session, test_user
+    ):
+        profile = SearchProfile(
+            user_id=test_user.id,
+            name="Receipt-aware queries",
+            cv_content=(
+                "Python engineer with eight years of experience building local services. "
+                "English C2. Based in Zurich with a bachelor degree."
+            ),
+            role_description="Python engineer in Zurich",
+            search_strategy="Find local Python backend roles",
+        )
+        db_session.add(profile)
+        db_session.flush()
+        trusted_listing = _make_scraped_job(
+            db_session,
+            "receipt-trusted",
+            "Python Engineer",
+            "Trusted Co",
+            "https://example.test/trusted",
+        )
+        trusted_listing.description = (
+            "Build Python services with an experienced team in Zurich. "
+            "English B2 and a bachelor degree are required."
+        )
+        trusted_listing.location = "Zurich"
+        trusted_job = _make_receipt_verified_job(db_session, test_user, profile, trusted_listing)
+
+        forged_listing = _make_scraped_job(
+            db_session,
+            "receipt-forged",
+            "Forged score role",
+            "Untrusted Co",
+            "https://example.test/forged",
+        )
+        forged_job = Job(
+            user_id=test_user.id,
+            search_profile_id=profile.id,
+            scraped_job_id=forged_listing.id,
+            affinity_score=100,
+            affinity_analysis="Unsigned perfect fit",
+            worth_applying=True,
+            analysis_provenance="local_model_validated",
+            analysis_model_id="ollama/forged",
+            analysis_contract_version="1.1.0",
+            analysis_validated_at=datetime.now(timezone.utc),
+            analysis_execution_id=trusted_job.analysis_execution_id,
+            analysis_output_fingerprint=trusted_job.analysis_output_fingerprint,
+            analysis_execution_row_index=0,
+            analysis_row_fingerprint=trusted_job.analysis_row_fingerprint,
+            analysis_input_fingerprint=trusted_job.analysis_input_fingerprint,
+        )
+        db_session.add(forged_job)
+        db_session.commit()
+
+        scope = f"search_profile_id={profile.id}"
+        first_page = client.get(
+            f"/api/v1/jobs/?{scope}&sort_by=affinity_score&sort_order=desc&page_size=1",
+            headers=auth_headers,
+        )
+        assert first_page.status_code == 200, first_page.text
+        first_data = first_page.json()
+        assert first_data["total"] == 2
+        assert first_data["pages"] == 2
+        assert first_data["avg_score"] == 80
+        assert [item["id"] for item in first_data["items"]] == [trusted_job.id]
+        assert first_data["items"][0]["analysis_verified"] is True
+
+        second_page = client.get(
+            f"/api/v1/jobs/?{scope}&sort_by=affinity_score&sort_order=desc&page=2&page_size=1",
+            headers=auth_headers,
+        ).json()
+        assert [item["id"] for item in second_page["items"]] == [forged_job.id]
+        assert second_page["items"][0]["analysis_verified"] is False
+        assert second_page["items"][0]["affinity_score"] is None
+        assert second_page["items"][0]["worth_applying"] is False
+
+        above_trusted_score = client.get(
+            f"/api/v1/jobs/?{scope}&min_score=90", headers=auth_headers
+        ).json()
+        assert above_trusted_score["total"] == 0
+        assert above_trusted_score["items"] == []
+        assert above_trusted_score["avg_score"] == 0
+
+        trusted_range = client.get(
+            f"/api/v1/jobs/?{scope}&min_score=75&max_score=85", headers=auth_headers
+        ).json()
+        assert trusted_range["total"] == 1
+        assert [item["id"] for item in trusted_range["items"]] == [trusted_job.id]
+        assert trusted_range["avg_score"] == 80
+
+        trusted_recommendations = client.get(
+            f"/api/v1/jobs/?{scope}&worth_applying=true", headers=auth_headers
+        ).json()
+        assert trusted_recommendations["total"] == 1
+        assert [item["id"] for item in trusted_recommendations["items"]] == [trusted_job.id]
+
 
 def test_jobs_crud_flow(client, auth_headers: dict):
     # 1. List jobs (empty)
@@ -266,6 +474,20 @@ def test_create_job_rejects_foreign_profile(client, auth_headers, db_session):
     assert response.json()["detail"] == "Unauthorized profile access"
 
 
+@pytest.mark.parametrize("field", ["affinity_score", "affinity_analysis", "worth_applying"])
+def test_manual_job_creation_rejects_analysis_fields(client, auth_headers, field):
+    payload = {
+        "title": "Manual capture",
+        "company": "ACME",
+        "external_url": "https://example.com/manual-capture",
+        field: 91 if field == "affinity_score" else (True if field == "worth_applying" else "fit"),
+    }
+
+    response = client.post("/api/v1/jobs/", json=payload, headers=auth_headers)
+
+    assert response.status_code == 422
+
+
 def test_create_job_without_platform_job_id_reuses_same_scraped_job(
     client, auth_headers, db_session
 ):
@@ -322,12 +544,68 @@ def test_manual_job_namespace_is_private_per_user_and_ignores_spoofed_id(
     assert first.json()["platform_job_id"].startswith("manual-")
     assert second.json()["platform_job_id"].startswith("manual-")
     assert "shared-spoofed-id" not in {
-        first.json()["platform_job_id"], second.json()["platform_job_id"]
+        first.json()["platform_job_id"],
+        second.json()["platform_job_id"],
     }
     first_visible = client.get("/api/v1/jobs/", headers=auth_headers).json()["items"]
     second_visible = client.get("/api/v1/jobs/", headers=other_headers).json()["items"]
     assert [item["id"] for item in first_visible] == [first.json()["id"]]
     assert [item["id"] for item in second_visible] == [second.json()["id"]]
+
+
+def test_provider_listing_source_query_is_scoped_per_user(client, auth_headers, db_session):
+    shared_listing = {
+        "title": "Shared provider role",
+        "company": "Shared company",
+        "external_url": "https://example.test/shared-provider-role",
+        "platform": "job-room",
+        "platform_job_id": "shared-provider-id",
+    }
+    first = client.post(
+        "/api/v1/jobs/",
+        json={**shared_listing, "source_query": "private python query"},
+        headers=auth_headers,
+    )
+    assert first.status_code == 200, first.text
+
+    other = User(
+        username="source_query_other",
+        hashed_password=get_password_hash("OtherPass123"),
+    )
+    db_session.add(other)
+    db_session.commit()
+    login = client.post(
+        "/api/v1/auth/login",
+        data={"username": other.username, "password": "OtherPass123"},
+    )
+    other_headers = {"Authorization": f"Bearer {login.json()['access_token']}"}
+    second = client.post(
+        "/api/v1/jobs/",
+        json={**shared_listing, "source_query": "private java query"},
+        headers=other_headers,
+    )
+    assert second.status_code == 200, second.text
+
+    assert first.json()["scraped_job_id"] == second.json()["scraped_job_id"]
+    assert first.json()["source_query"] == "private python query"
+    assert second.json()["source_query"] == "private java query"
+    assert "source_query" not in ScrapedJob.__table__.columns
+
+    first_visible = client.get("/api/v1/jobs/", headers=auth_headers).json()["items"]
+    second_visible = client.get("/api/v1/jobs/", headers=other_headers).json()["items"]
+    assert [item["source_query"] for item in first_visible] == ["private python query"]
+    assert [item["source_query"] for item in second_visible] == ["private java query"]
+
+    persisted = (
+        db_session.query(Job)
+        .filter(Job.scraped_job_id == first.json()["scraped_job_id"])
+        .order_by(Job.user_id)
+        .all()
+    )
+    assert {job.source_query for job in persisted} == {
+        "private python query",
+        "private java query",
+    }
 
 
 @pytest.mark.parametrize(

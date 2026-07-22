@@ -6,7 +6,7 @@ import asyncio
 import logging
 from typing import Any, Dict, List, Optional
 
-from tenacity import RetryError, retry, retry_if_exception, stop_after_attempt, wait_exponential
+from tenacity import RetryError
 
 from backend.ai.orchestrator import LocalAIOrchestrator, OrchestrationRequest
 from backend.core.config import settings
@@ -23,6 +23,7 @@ from backend.services.search.query_contracts import (
 )
 
 logger = logging.getLogger(__name__)
+
 
 def _is_retryable_plan_error(exc: Exception) -> bool:
     """Return True for transient PLAN-step failures worth retrying."""
@@ -80,7 +81,6 @@ def _query_fingerprint(search: Dict[str, Any]) -> str:
 
 
 class ProfileNormalizationMixin:
-    @retry(stop=stop_after_attempt(2), wait=wait_exponential(multiplier=1, min=2, max=5))
     async def summarize_cv(self, cv_content: str) -> str:
         """Produce a compact CV summary for downstream MATCH calls."""
         provider = self._get_provider("plan")
@@ -112,7 +112,6 @@ Return plain text, NOT JSON."""
 
         return await self._call_provider_text(provider, "plan", system_prompt, user_prompt)
 
-    @retry(stop=stop_after_attempt(2), wait=wait_exponential(multiplier=1, min=2, max=5))
     async def normalize_user_profile(
         self,
         cv_content: str,

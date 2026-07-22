@@ -33,6 +33,8 @@ class AIExecution(Base):
     model_id: Mapped[str] = mapped_column(String(240), nullable=False, index=True)
     input_fingerprint: Mapped[str] = mapped_column(String(64), nullable=False)
     output_fingerprint: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    row_fingerprints: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list)
+    row_input_fingerprints: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list)
     evidence_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     accepted: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     repair_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
@@ -47,9 +49,7 @@ class AIExecution(Base):
 
 class AIEvaluationRun(Base):
     __tablename__ = "ai_evaluation_runs"
-    __table_args__ = (
-        Index("ix_ai_evaluation_dataset_model", "dataset_version", "model_id"),
-    )
+    __table_args__ = (Index("ix_ai_evaluation_dataset_model", "dataset_version", "model_id"),)
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
     dataset_version: Mapped[str] = mapped_column(String(30), nullable=False, index=True)

@@ -21,9 +21,7 @@ from backend.storage.atomic import read_verified, resolve_data_path
 
 @pytest.fixture
 def readiness_storage(monkeypatch):
-    with TemporaryDirectory(
-        prefix="careeros-readiness-", ignore_cleanup_errors=True
-    ) as directory:
+    with TemporaryDirectory(prefix="careeros-readiness-", ignore_cleanup_errors=True) as directory:
         monkeypatch.setattr("backend.storage.atomic.settings.DATA_DIR", directory)
         yield Path(directory)
 
@@ -68,11 +66,7 @@ def _assert_application_projections(
 ) -> Application:
     """Verify board projections against the committed append-only timeline."""
     db_session.expire_all()
-    stored = (
-        db_session.query(Application)
-        .filter(Application.id == application_id)
-        .one()
-    )
+    stored = db_session.query(Application).filter(Application.id == application_id).one()
     event_times = [
         event.occurred_at
         for event in db_session.query(ApplicationEvent)
@@ -179,12 +173,8 @@ def test_application_timeline_is_append_only_and_revisioned(
         "+00:00", "Z"
     )
 
-    assert client.get(
-        "/api/v1/applications?offset=1&limit=1", headers=auth_headers
-    ).json() == []
-    assert client.get(
-        "/api/v1/applications?limit=0", headers=auth_headers
-    ).status_code == 422
+    assert client.get("/api/v1/applications?offset=1&limit=1", headers=auth_headers).json() == []
+    assert client.get("/api/v1/applications?limit=0", headers=auth_headers).status_code == 422
 
     event = (
         db_session.query(ApplicationEvent)
@@ -200,6 +190,52 @@ def test_application_timeline_is_append_only_and_revisioned(
     db_session.rollback()
 
 
+def test_application_create_and_read_never_expose_unverified_match_snapshot(
+    client, auth_headers, db_session, test_user
+):
+    job = _job(db_session, test_user)
+
+    created = client.post(
+        "/api/v1/applications",
+        json={"job_id": job.id},
+        headers=auth_headers,
+    )
+
+    assert created.status_code == 201, created.text
+    application = created.json()
+    assert application["job_snapshot"]["match"] == {
+        "score": None,
+        "analysis": None,
+        "worth_applying": None,
+        "receipt_verified": False,
+        "quarantine_reason": "analysis_not_receipt_verified",
+    }
+    assert "Deterministic local match" not in json.dumps(application["job_snapshot"])
+
+    stored = db_session.get(Application, application["id"])
+    stored.job_snapshot = {
+        **stored.job_snapshot,
+        "affinity_analysis": "forged top-level claim",
+        "raw_metadata": {"analysis": "forged nested metadata claim"},
+        "match": {
+            "score": 100,
+            "analysis": "forged embedded claim",
+            "worth_applying": True,
+            "receipt_verified": True,
+        },
+    }
+    db_session.commit()
+
+    loaded = client.get(f"/api/v1/applications/{application['id']}", headers=auth_headers)
+    assert loaded.status_code == 200, loaded.text
+    safe_snapshot = loaded.json()["job_snapshot"]
+    assert safe_snapshot["match"]["receipt_verified"] is False
+    assert safe_snapshot["match"]["score"] is None
+    assert "affinity_analysis" not in safe_snapshot
+    assert "raw_metadata" not in safe_snapshot
+    assert "forged" not in json.dumps(safe_snapshot)
+
+
 def test_application_rejects_unowned_or_duplicate_job(client, auth_headers, db_session, test_user):
     job = _job(db_session, test_user)
     first = client.post("/api/v1/applications", json={"job_id": job.id}, headers=auth_headers)
@@ -210,9 +246,7 @@ def test_application_rejects_unowned_or_duplicate_job(client, auth_headers, db_s
     assert missing.status_code == 422
 
 
-def test_application_accepts_a_safe_manual_job_snapshot(
-    client, auth_headers, db_session
-):
+def test_application_accepts_a_safe_manual_job_snapshot(client, auth_headers, db_session):
     created = client.post(
         "/api/v1/applications",
         json={
@@ -247,9 +281,7 @@ def test_application_accepts_a_safe_manual_job_snapshot(
         company="Private Local Company",
         location="Bern",
     )
-    assert listing["latest_event_at"] == stored.latest_event_at.isoformat().replace(
-        "+00:00", "Z"
-    )
+    assert listing["latest_event_at"] == stored.latest_event_at.isoformat().replace("+00:00", "Z")
 
 
 @pytest.mark.parametrize("url", ["javascript:alert(1)", "file:///private/cv.txt"])
@@ -289,9 +321,7 @@ def test_application_requires_authentication(client):
     assert client.get("/api/v1/applications").status_code == 401
 
 
-def test_readiness_reports_zero_data_and_missing_application_inputs(
-    client, auth_headers
-):
+def test_readiness_reports_zero_data_and_missing_application_inputs(client, auth_headers):
     missing = client.get(
         "/api/v1/applications/00000000-0000-0000-0000-000000000000/readiness",
         headers=auth_headers,
@@ -590,8 +620,7 @@ def test_readiness_complete_pack_and_exports_are_deterministic(
         "releases. This body must never appear in a readiness export."
     )
     hostile_title = (
-        "`[Senior](javascript:alert(1)) <script>alert(1)</script> "
-        "*Platform* # Engineer\nNext"
+        "`[Senior](javascript:alert(1)) <script>alert(1)</script> *Platform* # Engineer\nNext"
     )
     created = client.post(
         "/api/v1/applications",
@@ -610,9 +639,7 @@ def test_readiness_complete_pack_and_exports_are_deterministic(
     assert created.status_code == 201, created.text
     application_id = created.json()["id"]
 
-    report = client.get(
-        f"/api/v1/applications/{application_id}/readiness", headers=auth_headers
-    )
+    report = client.get(f"/api/v1/applications/{application_id}/readiness", headers=auth_headers)
     assert report.status_code == 200, report.text
     body = report.json()
     assert body["status"] == "ready"
@@ -622,10 +649,7 @@ def test_readiness_complete_pack_and_exports_are_deterministic(
     assert all(check["status"] == "pass" for check in body["checks"])
 
     for export_format, extension in (("json", "json"), ("markdown", "md")):
-        url = (
-            f"/api/v1/applications/{application_id}/readiness/export"
-            f"?format={export_format}"
-        )
+        url = f"/api/v1/applications/{application_id}/readiness/export?format={export_format}"
         first = client.get(url, headers=auth_headers)
         second = client.get(url, headers=auth_headers)
         assert first.status_code == 200, first.text
@@ -657,14 +681,10 @@ def test_readiness_complete_pack_and_exports_are_deterministic(
 def test_readiness_warns_when_one_required_artifact_was_never_published(
     client, auth_headers, db_session, test_user, readiness_storage
 ):
-    version_id = _complete_application_pack(
-        db_session, test_user, artifact_formats=("docx",)
-    )
+    version_id = _complete_application_pack(db_session, test_user, artifact_formats=("docx",))
     application_id = _ready_application(client, auth_headers, version_id)
 
-    report = client.get(
-        f"/api/v1/applications/{application_id}/readiness", headers=auth_headers
-    )
+    report = client.get(f"/api/v1/applications/{application_id}/readiness", headers=auth_headers)
 
     assert report.status_code == 200, report.text
     body = report.json()
@@ -672,9 +692,7 @@ def test_readiness_warns_when_one_required_artifact_was_never_published(
     assert body["completeness_score"] == 95
     assert body["blocker_count"] == 0
     assert body["warning_count"] == 1
-    artifact_check = next(
-        check for check in body["checks"] if check["id"] == "resume_artifacts"
-    )
+    artifact_check = next(check for check in body["checks"] if check["id"] == "resume_artifacts")
     assert artifact_check["status"] == "warning"
     assert artifact_check["action"] == "export_resume_files"
     assert {item["key"]: item["value"] for item in artifact_check["evidence"]} == {
@@ -720,14 +738,13 @@ def test_readiness_blocks_recorded_artifacts_without_verified_local_bytes(
         db_session.commit()
         db_session.expire_all()
     elif failure_mode == "unreadable":
+
         def deny_pdf(path, expected_sha256):
             if str(path).endswith(".pdf"):
                 raise PermissionError("simulated unreadable artifact")
             return read_verified(path, expected_sha256)
 
-        monkeypatch.setattr(
-            "backend.applications.readiness.read_verified", deny_pdf
-        )
+        monkeypatch.setattr("backend.applications.readiness.read_verified", deny_pdf)
     else:
         db_session.execute(
             update(ResumeArtifact)
@@ -738,9 +755,7 @@ def test_readiness_blocks_recorded_artifacts_without_verified_local_bytes(
         db_session.expire_all()
 
     application_id = _ready_application(client, auth_headers, version_id)
-    report = client.get(
-        f"/api/v1/applications/{application_id}/readiness", headers=auth_headers
-    )
+    report = client.get(f"/api/v1/applications/{application_id}/readiness", headers=auth_headers)
 
     assert report.status_code == 200, report.text
     body = report.json()
@@ -748,9 +763,7 @@ def test_readiness_blocks_recorded_artifacts_without_verified_local_bytes(
     assert body["completeness_score"] == 90
     assert body["blocker_count"] == 1
     assert body["warning_count"] == 0
-    artifact_check = next(
-        check for check in body["checks"] if check["id"] == "resume_artifacts"
-    )
+    artifact_check = next(check for check in body["checks"] if check["id"] == "resume_artifacts")
     assert artifact_check["status"] == "blocker"
     assert artifact_check["action"] == "republish_resume_artifacts"
     assert {item["key"]: item["value"] for item in artifact_check["evidence"]} == {
@@ -819,9 +832,7 @@ def test_preparation_update_resolves_blockers_with_revisioned_audit(
         ]
     }
     assert description not in str(audit["payload"])
-    readiness = client.get(
-        f"/api/v1/applications/{application_id}/readiness", headers=auth_headers
-    )
+    readiness = client.get(f"/api/v1/applications/{application_id}/readiness", headers=auth_headers)
     assert readiness.json()["status"] == "ready"
     assert readiness.json()["completeness_score"] == 100
     listing = client.get("/api/v1/applications", headers=auth_headers).json()[0]
@@ -834,9 +845,7 @@ def test_preparation_update_resolves_blockers_with_revisioned_audit(
         company="Local Systems AG",
         location=None,
     )
-    assert listing["latest_event_at"] == stored.latest_event_at.isoformat().replace(
-        "+00:00", "Z"
-    )
+    assert listing["latest_event_at"] == stored.latest_event_at.isoformat().replace("+00:00", "Z")
 
     stale = client.patch(
         f"/api/v1/applications/{application_id}/preparation",
@@ -844,56 +853,60 @@ def test_preparation_update_resolves_blockers_with_revisioned_audit(
         headers=auth_headers,
     )
     assert stale.status_code == 409
-    loaded = client.get(
-        f"/api/v1/applications/{application_id}", headers=auth_headers
-    ).json()
+    loaded = client.get(f"/api/v1/applications/{application_id}", headers=auth_headers).json()
     assert loaded["revision"] == 2
     assert loaded["job_snapshot"]["description"] == description
     assert [event["event_type"] for event in loaded["events"]].count("preparation") == 1
 
 
-def test_preparation_update_validates_changes_and_owned_resume(
-    client, auth_headers
-):
+def test_preparation_update_validates_changes_and_owned_resume(client, auth_headers):
     created = client.post(
         "/api/v1/applications",
         json={"manual_job": {"title": "Role", "company": "Company"}},
         headers=auth_headers,
     )
     application_id = created.json()["id"]
-    assert client.patch(
-        f"/api/v1/applications/{application_id}/preparation",
-        json={"expected_revision": 1},
-        headers=auth_headers,
-    ).status_code == 422
-    assert client.patch(
-        f"/api/v1/applications/{application_id}/preparation",
-        json={"expected_revision": 1, "application_url": "file:///private/resume.pdf"},
-        headers=auth_headers,
-    ).status_code == 422
-    assert client.patch(
-        f"/api/v1/applications/{application_id}/preparation",
-        json={"expected_revision": 1, "application_email": "not-an-email"},
-        headers=auth_headers,
-    ).status_code == 422
-    assert client.patch(
-        f"/api/v1/applications/{application_id}/preparation",
-        json={
-            "expected_revision": 1,
-            "resume_version_id": "00000000-0000-0000-0000-000000000000",
-        },
-        headers=auth_headers,
-    ).status_code == 422
+    assert (
+        client.patch(
+            f"/api/v1/applications/{application_id}/preparation",
+            json={"expected_revision": 1},
+            headers=auth_headers,
+        ).status_code
+        == 422
+    )
+    assert (
+        client.patch(
+            f"/api/v1/applications/{application_id}/preparation",
+            json={"expected_revision": 1, "application_url": "file:///private/resume.pdf"},
+            headers=auth_headers,
+        ).status_code
+        == 422
+    )
+    assert (
+        client.patch(
+            f"/api/v1/applications/{application_id}/preparation",
+            json={"expected_revision": 1, "application_email": "not-an-email"},
+            headers=auth_headers,
+        ).status_code
+        == 422
+    )
+    assert (
+        client.patch(
+            f"/api/v1/applications/{application_id}/preparation",
+            json={
+                "expected_revision": 1,
+                "resume_version_id": "00000000-0000-0000-0000-000000000000",
+            },
+            headers=auth_headers,
+        ).status_code
+        == 422
+    )
 
 
-def test_readiness_hides_another_users_application(
-    client, auth_headers, db_session, test_user
-):
+def test_readiness_hides_another_users_application(client, auth_headers, db_session, test_user):
     created = client.post(
         "/api/v1/applications",
-        json={
-            "manual_job": {"title": "Private role", "company": "Private company"}
-        },
+        json={"manual_job": {"title": "Private role", "company": "Private company"}},
         headers=auth_headers,
     )
     application_id = created.json()["id"]
@@ -906,18 +919,27 @@ def test_readiness_hides_another_users_application(
     )
     other_headers = {"Authorization": f"Bearer {login.json()['access_token']}"}
 
-    assert client.get(
-        f"/api/v1/applications/{application_id}/readiness", headers=other_headers
-    ).status_code == 404
-    assert client.get(
-        f"/api/v1/applications/{application_id}/readiness/export",
-        headers=other_headers,
-    ).status_code == 404
-    assert client.patch(
-        f"/api/v1/applications/{application_id}/preparation",
-        json={"expected_revision": 1, "description": "Foreign update"},
-        headers=other_headers,
-    ).status_code == 404
+    assert (
+        client.get(
+            f"/api/v1/applications/{application_id}/readiness", headers=other_headers
+        ).status_code
+        == 404
+    )
+    assert (
+        client.get(
+            f"/api/v1/applications/{application_id}/readiness/export",
+            headers=other_headers,
+        ).status_code
+        == 404
+    )
+    assert (
+        client.patch(
+            f"/api/v1/applications/{application_id}/preparation",
+            json={"expected_revision": 1, "description": "Foreign update"},
+            headers=other_headers,
+        ).status_code
+        == 404
+    )
 
 
 def test_application_tasks_are_append_only_and_export_as_local_calendar(
@@ -967,12 +989,8 @@ def test_application_tasks_are_append_only_and_export_as_local_calendar(
         company="Local Systems",
         location=None,
     )
-    assert listing["latest_event_at"] == stored.latest_event_at.isoformat().replace(
-        "+00:00", "Z"
-    )
-    detail = client.get(
-        f"/api/v1/applications/{application_id}", headers=auth_headers
-    ).json()
+    assert listing["latest_event_at"] == stored.latest_event_at.isoformat().replace("+00:00", "Z")
+    detail = client.get(f"/api/v1/applications/{application_id}", headers=auth_headers).json()
     assert detail["tasks"][0]["due_at"] == "2026-08-01T07:00:00Z"
     assert detail["events"][-1]["occurred_at"].endswith("Z")
 
@@ -1000,12 +1018,8 @@ def test_application_tasks_are_append_only_and_export_as_local_calendar(
     assert completed_body["tasks"][0]["status"] == "completed"
     assert completed_body["tasks"][0]["completed_at"] is not None
     assert completed_body["events"][-1]["event_type"] == "task_completed"
-    assert client.get("/api/v1/applications", headers=auth_headers).json()[0][
-        "next_action"
-    ] is None
-    completed_listing = client.get(
-        "/api/v1/applications", headers=auth_headers
-    ).json()[0]
+    assert client.get("/api/v1/applications", headers=auth_headers).json()[0]["next_action"] is None
+    completed_listing = client.get("/api/v1/applications", headers=auth_headers).json()[0]
     stored = _assert_application_projections(
         db_session,
         application_id,
@@ -1026,46 +1040,56 @@ def test_application_tasks_are_append_only_and_export_as_local_calendar(
     assert [event.event_type for event in task_events] == ["task_created", "task_completed"]
 
 
-def test_application_task_schedule_validation_and_revision_conflicts(
-    client, auth_headers
-):
+def test_application_task_schedule_validation_and_revision_conflicts(client, auth_headers):
     application = client.post(
         "/api/v1/applications",
         json={"manual_job": {"title": "Role", "company": "Company"}},
         headers=auth_headers,
     ).json()
     endpoint = f"/api/v1/applications/{application['id']}/tasks"
-    assert client.post(
-        endpoint,
-        json={
-            "expected_revision": 1,
-            "title": "Invalid reminder",
-            "reminder_at": "2026-08-01T08:30:00Z",
-        },
-        headers=auth_headers,
-    ).status_code == 422
-    assert client.post(
-        endpoint,
-        json={"expected_revision": 1, "title": "   "},
-        headers=auth_headers,
-    ).status_code == 422
+    assert (
+        client.post(
+            endpoint,
+            json={
+                "expected_revision": 1,
+                "title": "Invalid reminder",
+                "reminder_at": "2026-08-01T08:30:00Z",
+            },
+            headers=auth_headers,
+        ).status_code
+        == 422
+    )
+    assert (
+        client.post(
+            endpoint,
+            json={"expected_revision": 1, "title": "   "},
+            headers=auth_headers,
+        ).status_code
+        == 422
+    )
     valid = client.post(
         endpoint,
         json={"expected_revision": 1, "title": "Research team"},
         headers=auth_headers,
     )
     assert valid.status_code == 201
-    assert client.post(
-        endpoint,
-        json={"expected_revision": 1, "title": "Stale task"},
-        headers=auth_headers,
-    ).status_code == 409
+    assert (
+        client.post(
+            endpoint,
+            json={"expected_revision": 1, "title": "Stale task"},
+            headers=auth_headers,
+        ).status_code
+        == 409
+    )
     task = valid.json()["tasks"][0]
-    assert client.patch(
-        f"{endpoint}/{task['id']}",
-        json={"expected_revision": 2, "status": None},
-        headers=auth_headers,
-    ).status_code == 422
+    assert (
+        client.patch(
+            f"{endpoint}/{task['id']}",
+            json={"expected_revision": 2, "status": None},
+            headers=auth_headers,
+        ).status_code
+        == 422
+    )
 
 
 def test_application_dossier_is_versioned_and_zip_manifest_is_verifiable(
@@ -1142,9 +1166,7 @@ def test_application_dossier_is_versioned_and_zip_manifest_is_verifiable(
         assert "snapshot" not in evidence_record["requirements"][0]
 
     dossier_event = (
-        db_session.query(ApplicationEvent)
-        .filter(ApplicationEvent.id == dossier["id"])
-        .one()
+        db_session.query(ApplicationEvent).filter(ApplicationEvent.id == dossier["id"]).one()
     )
     persisted_dossier = dossier_event.payload["dossier"]
     assert persisted_dossier["schema_version"] == "2.0"
@@ -1157,9 +1179,7 @@ def test_application_dossier_is_versioned_and_zip_manifest_is_verifiable(
         company="Local Systems AG",
         location=None,
     )
-    assert listing["latest_event_at"] == stored.latest_event_at.isoformat().replace(
-        "+00:00", "Z"
-    )
+    assert listing["latest_event_at"] == stored.latest_event_at.isoformat().replace("+00:00", "Z")
 
     stale = client.post(
         f"/api/v1/applications/{application_id}/dossiers",
@@ -1184,9 +1204,7 @@ def test_application_dossier_rejects_oversized_deduplicated_event_before_commit(
     evidence_id = version.selected_fact_ids[0]
     snapshot["facts"][0]["oversized_local_evidence"] = "x" * 600_000
     db_session.execute(
-        update(ResumeVersion)
-        .where(ResumeVersion.id == version_id)
-        .values(snapshot=snapshot)
+        update(ResumeVersion).where(ResumeVersion.id == version_id).values(snapshot=snapshot)
     )
     db_session.commit()
 
@@ -1206,9 +1224,7 @@ def test_application_dossier_rejects_oversized_deduplicated_event_before_commit(
 
     assert response.status_code == 422
     assert "Dossier event exceeds" in response.text
-    detail = client.get(
-        f"/api/v1/applications/{application_id}", headers=auth_headers
-    ).json()
+    detail = client.get(f"/api/v1/applications/{application_id}", headers=auth_headers).json()
     assert detail["revision"] == 1
     assert detail["dossiers"] == []
 
@@ -1246,9 +1262,7 @@ def test_application_dossier_rejects_oversized_deduplicated_event_before_commit(
         },
     ],
 )
-def test_dossier_schema_rejects_unbounded_or_ambiguous_evidence_ids(
-    client, auth_headers, body
-):
+def test_dossier_schema_rejects_unbounded_or_ambiguous_evidence_ids(client, auth_headers, body):
     created = client.post(
         "/api/v1/applications",
         json={"manual_job": {"title": "Role", "company": "Company"}},
@@ -1277,9 +1291,7 @@ def test_manual_application_snapshot_forbids_extra_fields(client, auth_headers):
     assert response.status_code == 422
 
 
-def test_application_api_rejects_unbounded_event_json_and_unknown_fields(
-    client, auth_headers
-):
+def test_application_api_rejects_unbounded_event_json_and_unknown_fields(client, auth_headers):
     created = client.post(
         "/api/v1/applications",
         json={"manual_job": {"title": "Role", "company": "Company"}},
@@ -1339,21 +1351,20 @@ def test_application_api_rejects_unbounded_event_json_and_unknown_fields(
 
 
 def test_application_api_validates_uuid_inputs(client, auth_headers):
-    assert client.get(
-        "/api/v1/applications/not-a-uuid", headers=auth_headers
-    ).status_code == 422
-    assert client.post(
-        "/api/v1/applications",
-        json={
-            "manual_job": {"title": "Role", "company": "Company"},
-            "resume_version_id": "not-a-uuid",
-        },
-        headers=auth_headers,
-    ).status_code == 422
+    assert client.get("/api/v1/applications/not-a-uuid", headers=auth_headers).status_code == 422
+    assert (
+        client.post(
+            "/api/v1/applications",
+            json={
+                "manual_job": {"title": "Role", "company": "Company"},
+                "resume_version_id": "not-a-uuid",
+            },
+            headers=auth_headers,
+        ).status_code
+        == 422
+    )
     missing = "10000000-0000-4000-8000-000000000001"
-    assert client.get(
-        f"/api/v1/applications/{missing}", headers=auth_headers
-    ).status_code == 404
+    assert client.get(f"/api/v1/applications/{missing}", headers=auth_headers).status_code == 404
 
 
 def test_dossier_schema_caps_aggregate_evidence_links(client, auth_headers):

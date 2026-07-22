@@ -6,7 +6,7 @@ import asyncio
 import logging
 from typing import Any, Dict, List, Optional
 
-from tenacity import RetryError, retry, retry_if_exception, stop_after_attempt, wait_exponential
+from tenacity import RetryError
 
 from backend.ai.orchestrator import LocalAIOrchestrator, OrchestrationRequest
 from backend.core.config import settings
@@ -23,6 +23,7 @@ from backend.services.search.query_contracts import (
 )
 
 logger = logging.getLogger(__name__)
+
 
 def _is_retryable_plan_error(exc: Exception) -> bool:
     """Return True for transient PLAN-step failures worth retrying."""
@@ -220,11 +221,6 @@ class PlanningMixin:
 
         return normalized
 
-    @retry(
-        retry=retry_if_exception(_is_retryable_plan_error),
-        stop=stop_after_attempt(max(1, int(getattr(settings, "LLM_PLAN_RETRY_ATTEMPTS", 2)))),
-        wait=wait_exponential(multiplier=1, min=1, max=4),
-    )
     async def _call_generate_search_plan(
         self,
         profile: Dict[str, Any],

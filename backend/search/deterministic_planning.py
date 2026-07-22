@@ -1,9 +1,9 @@
-"""Deterministic search planning for the model-optional discovery workflow.
+"""Deterministic provider-query planning for the local-analysis discovery workflow.
 
 The planner deliberately uses only values the user has already entered or
 confirmed on the local search profile.  It performs no inference, network
-access or model lookup, which makes it safe to use as the primary recovery
-path when the optional local runtime is unavailable.
+access or model lookup. It controls what crosses the job-provider boundary; it
+does not replace the required local-model analysis of returned opportunities.
 """
 
 from __future__ import annotations

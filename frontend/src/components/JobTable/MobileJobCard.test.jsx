@@ -18,8 +18,9 @@ describe('MobileJobCard', () => {
         created_at: '2024-02-21T10:00:00Z',
         application_url: 'http://apply.com',
         external_url: 'http://source.com',
-        application_email: 'jobs@techcorp.com',
-        affinity_analysis: 'Analysis text'
+        application_email: 'jobs@techcorp.example.test',
+        affinity_analysis: 'Analysis text',
+        analysis_verified: true
     };
 
     const mockHandlers = {
@@ -101,5 +102,14 @@ describe('MobileJobCard', () => {
         const analysisBtn = screen.getByTitle('View match analysis');
         fireEvent.click(analysisBtn);
         expect(onViewAnalysis).toHaveBeenCalledWith(mockJob);
+    });
+
+    it('hides every analysis-derived field when the result is not verified', () => {
+        const unverifiedJob = { ...mockJob, analysis_verified: false };
+        render(<MobileJobCard job={unverifiedJob} isGlobalView={false} {...mockHandlers} />);
+
+        expect(screen.queryByText('85%')).not.toBeInTheDocument();
+        expect(screen.queryByTitle('Top pick')).not.toBeInTheDocument();
+        expect(screen.queryByTitle('View match analysis')).not.toBeInTheDocument();
     });
 });

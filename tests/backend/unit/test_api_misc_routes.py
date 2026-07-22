@@ -2,7 +2,13 @@ from unittest.mock import MagicMock, patch
 
 from fastapi.testclient import TestClient
 
-from backend.api.deps import get_current_user_id, get_db, job_service_dep, profile_service_dep
+from backend.api.deps import (
+    get_current_user_id,
+    get_db,
+    job_service_dep,
+    profile_service_dep,
+    require_local_analysis_ready,
+)
 from backend.main import app
 
 client = TestClient(app, raise_server_exceptions=False)
@@ -130,6 +136,11 @@ def test_search_routes_full():
     app.dependency_overrides[get_current_user_id] = lambda: 1
     mock_db = MagicMock()
     app.dependency_overrides[get_db] = lambda: mock_db
+
+    async def local_analysis_ready() -> None:
+        return None
+
+    app.dependency_overrides[require_local_analysis_ready] = local_analysis_ready
 
     # upload-cv success
     with patch("backend.api.routes.search.extract_text_from_file", return_value="CV content"):

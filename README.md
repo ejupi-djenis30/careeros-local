@@ -11,11 +11,12 @@
 
 > Your career history should become more useful over time, not more exposed.
 
-CareerOS Local is an open-source, local-first career utility for turning verified experience into tailored
+CareerOS Local is an open-source, local-first career utility for turning verified experience into polished
 resumes, relevant opportunities, and an application pipeline you can actually operate. Before
 anything is sent, a deterministic readiness pack shows exactly what is present, what is missing
-and where to fix it. The Career Vault preserves source facts and revision history; core workflows
-remain inspectable and usable without AI, while enabled inference uses the approved local runtime.
+and where to fix it. The Career Vault preserves source facts and revision history. Record keeping,
+manual applications, document editing, exports, backups, and readiness checks remain available
+without a model; opportunity matching and coaching require a ready, approved local runtime.
 
 [![Watch the 40-second CareerOS Local product tour](docs/assets/careeros-demo.gif)](https://ejupi-djenis30.github.io/careeros-local/#demo)
 
@@ -31,9 +32,9 @@ remain inspectable and usable without AI, while enabled inference uses the appro
 
 - **Trust the record:** career facts retain provenance, verification status, and revision
   history instead of dissolving into untraceable generated claims.
-- **Work with or without AI:** profile, resume, application, backup, and editing workflows stay
-  available when no model is installed.
-- **Keep the private parts private:** the API, database, artifacts, and optional model runtime
+- **Own the useful record:** profile, resume, manual application, backup, export, and editing
+  workflows stay available while a model is being installed or repaired.
+- **Keep the private parts private:** the API, database, artifacts, and analysis runtime
   remain on the device, with no telemetry and no cloud-model fallback.
 - **Move from intent to follow-through:** immutable PDF/DOCX resume versions, local job
   snapshots, dated next actions, verifiable application dossiers and a nine-check preflight keep
@@ -82,7 +83,7 @@ Current accepted dependency risks, their owners, controls, and expiry dates are 
 flowchart LR
     UI["Tauri 2 + React 19"] --> API["Loopback FastAPI sidecar"]
     API --> Vault["SQLite vault + local artifacts"]
-    API --> AI["Optional llama.cpp runtime"]
+    API --> AI["Required local analysis runtime"]
     API -. "explicit source consent" .-> Jobs["Public job providers"]
 ```
 
@@ -100,7 +101,7 @@ inference fallback. See the [architecture](docs/architecture.md),
 | Local API | Python 3.12, FastAPI, Pydantic |
 | Data | SQLite, SQLAlchemy, Alembic |
 | Documents | ReportLab, python-docx, pypdf, Pillow |
-| Optional AI | Managed llama.cpp-compatible runtime, schema-validated pipelines |
+| Local analysis | Managed llama.cpp-compatible runtime, schema-validated pipelines |
 | Quality | pytest, Vitest, ESLint, Ruff, mypy, Clippy, Cargo test, Trivy, CycloneDX |
 
 ## Install the desktop app
@@ -215,6 +216,7 @@ collectively to **CareerOS Local contributors**.
 - [Release process](docs/releasing.md)
 - [Devpost submission kit](docs/devpost.md)
 - [Product specification](specs/001-desktop-career-agent/spec.md)
+- [v1.4.0 release preparation](specs/001-desktop-career-agent/release-evidence-v1.4.0.md)
 - [v1.3.0 release preparation](specs/001-desktop-career-agent/release-evidence-v1.3.0.md)
 - [v1.2.0 release preparation](specs/001-desktop-career-agent/release-evidence-v1.2.0.md)
 - [v1.1.0 release preparation](specs/001-desktop-career-agent/release-evidence-v1.1.0.md)

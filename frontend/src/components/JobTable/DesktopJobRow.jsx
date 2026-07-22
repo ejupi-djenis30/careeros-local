@@ -12,6 +12,7 @@ export const DesktopJobRow = memo(function DesktopJobRow({ job, isGlobalView, on
     const sourceUrl = externalUrl && externalUrl !== applyUrl ? externalUrl : null;
     const mailtoUrl = safeMailto(job.application_email);
     const fmtDistance = job.distance_km != null ? parseFloat(Number(job.distance_km).toFixed(2)) : null;
+    const hasVerifiedAnalysis = job.analysis_verified === true;
 
     return (
         <tr className="job-row border-bottom border-white-5 hover-elevation hover-all-200">
@@ -45,12 +46,12 @@ export const DesktopJobRow = memo(function DesktopJobRow({ job, isGlobalView, on
             {!isGlobalView && (
                 <td className="border-0">
                     <div className="d-flex align-items-center gap-3">
-                        {job.affinity_score != null ? (
+                        {hasVerifiedAnalysis && job.affinity_score != null ? (
                             <ScoreBadge score={Math.round(job.affinity_score)} />
                         ) : <span className="text-muted opacity-25">—</span>}
 
                         <div className="d-flex flex-wrap gap-1 align-items-center">
-                            {job.worth_applying && (
+                            {hasVerifiedAnalysis && job.worth_applying && (
                                 <span className="bg-success rounded-circle d-inline-flex align-items-center justify-content-center sz-18" title={t("jobs.topPick")}>
                                     <i className="bi bi-check-lg text-white text-07"></i>
                                 </span>
@@ -60,11 +61,13 @@ export const DesktopJobRow = memo(function DesktopJobRow({ job, isGlobalView, on
                                     {job.workload}%
                                 </span>
                             )}
-                            {job.affinity_analysis && (
+                            {hasVerifiedAnalysis && job.affinity_analysis && (
                                 <button
+                                    type="button"
                                     className="btn btn-sm btn-icon btn-secondary rounded-circle d-flex align-items-center justify-content-center border-0 bg-white-5 hover-bg-white-10 ms-1 sz-28"
-                                        onClick={() => onViewAnalysis(job)}
+                                    onClick={() => onViewAnalysis(job)}
                                     title={t("jobs.viewAnalysis")}
+                                    aria-label={t("jobs.viewAnalysis")}
                                 >
                                     <i className="bi bi-robot"></i>
                                 </button>

@@ -130,15 +130,14 @@ export function SearchProgress({ profileId, status, onStateChange, onClear }) {
         job_persistence_failed: t("searchProgress.error.persistence"),
         pipeline_timeout: t("searchProgress.error.timeout"),
         server_shutdown: t("searchProgress.error.shutdown"),
+        local_model_required: t("searchProgress.error.localModelRequired"),
+        local_analysis_failed: t("searchProgress.error.localAnalysisFailed"),
     };
     const statusNotice = isDone
         ? doneNoticeByReason[terminal_reason]
         : isError
-            ? errorNoticeByReason[terminal_reason]
+            ? errorNoticeByReason[terminal_reason] || t("searchProgress.error.unknown")
             : null;
-    const showDebugLabel = isDone || isError;
-    const debugTerminalReason = terminal_reason || "n/a";
-    const debugLabel = `LLM_DEBUG state=${state} terminal_reason=${debugTerminalReason} profile_id=${profileId}`;
     const duplicateTotal = jobs_duplicates_total ?? jobs_duplicates ?? 0;
     const duplicateRuntime = jobs_duplicates_runtime ?? 0;
     const duplicateHistory = jobs_duplicates_history ?? 0;
@@ -200,18 +199,6 @@ export function SearchProgress({ profileId, status, onStateChange, onClear }) {
                 {statusNotice && (
                     <div className={`alert ${isError ? 'alert-danger' : 'alert-warning'} py-2 px-3 mb-3 small`} role="status">
                         {statusNotice}
-                    </div>
-                )}
-
-                {showDebugLabel && (
-                    <div className="mb-3 d-flex justify-content-end">
-                        <span
-                            className="badge bg-dark border border-warning text-warning small font-monospace"
-                            title={t("searchProgress.debugLabel")}
-                            data-testid="llm-debug-label"
-                        >
-                            {debugLabel}
-                        </span>
                     </div>
                 )}
 

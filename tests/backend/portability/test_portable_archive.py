@@ -3,13 +3,16 @@ import hashlib
 import json
 import uuid
 import zipfile
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from io import BytesIO
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
 import pytest
 
+from backend.ai.audit import fingerprint_output
+from backend.ai.contracts import CoachResult
+from backend.ai.models import AIExecution
 from backend.applications.models import Application, ApplicationEvent
 from backend.career.coach_models import CoachConversation, CoachMessage
 from backend.career.models import CandidateProfile, CareerAsset
@@ -175,6 +178,91 @@ def _seed_related_records(db, user_id: int, profile_id: str, fact_id: str) -> st
     return artifact_path
 
 
+def _seed_verified_coach_records(
+    db, user_id: int, profile_id: str, fact_id: str
+) -> tuple[str, str, CoachResult]:
+    now = datetime.now(timezone.utc)
+    model_id = "ollama-local/verified-coach"
+    result = CoachResult.model_validate(
+        {
+            "answer": "Python is a verified strength for this direction.",
+            "claims": [
+                {
+                    "text": "Python is a verified strength for this direction.",
+                    "fact_ids": [fact_id],
+                    "job_ids": [],
+                }
+            ],
+            "fact_citations": [fact_id],
+            "job_citations": [],
+            "confidence": 0.91,
+            "missing_evidence": [],
+        }
+    )
+    output_fingerprint = fingerprint_output(result)
+    execution = AIExecution(
+        user_id=user_id,
+        task="coach",
+        contract_version="1.0.0",
+        model_id=model_id,
+        input_fingerprint="a" * 64,
+        output_fingerprint=output_fingerprint,
+        row_fingerprints=[],
+        row_input_fingerprints=[],
+        evidence_count=1,
+        accepted=True,
+        repair_count=0,
+        validation_codes=[],
+        duration_ms=2,
+    )
+    db.add(execution)
+    db.flush()
+    conversation = CoachConversation(
+        id=str(uuid.uuid4()),
+        profile_id=profile_id,
+        title="Verified coach history",
+    )
+    db.add(conversation)
+    db.flush()
+    db.add_all(
+        [
+            CoachMessage(
+                id=str(uuid.uuid4()),
+                conversation_id=conversation.id,
+                role="user",
+                content="Which verified strength should I emphasize?",
+                cited_fact_ids=[],
+                cited_job_ids=[],
+                model_id=None,
+                generation_metadata={},
+                created_at=now,
+            ),
+            CoachMessage(
+                id=str(uuid.uuid4()),
+                conversation_id=conversation.id,
+                role="assistant",
+                content=result.answer,
+                cited_fact_ids=result.fact_citations,
+                cited_job_ids=result.job_citations,
+                model_id=model_id,
+                generation_metadata={
+                    "mode": "local",
+                    "claims": [claim.model_dump(mode="json") for claim in result.claims],
+                    "confidence": result.confidence,
+                    "missing_evidence": result.missing_evidence,
+                    "provenance": "local_model_validated",
+                    "contract_version": "1.0.0",
+                    "execution_id": execution.id,
+                    "output_fingerprint": output_fingerprint,
+                },
+                created_at=now + timedelta(microseconds=1),
+            ),
+        ]
+    )
+    db.commit()
+    return conversation.id, execution.id, result
+
+
 def _tamper_payload(archive_data: bytes) -> bytes:
     source = zipfile.ZipFile(BytesIO(archive_data), "r")
     output = BytesIO()
@@ -187,6 +275,40 @@ def _tamper_payload(archive_data: bytes) -> bytes:
     return output.getvalue()
 
 
+def _rewrite_forged_coach_message(archive_data: bytes) -> bytes:
+    with zipfile.ZipFile(BytesIO(archive_data), "r") as source:
+        files = {name: source.read(name) for name in source.namelist()}
+    payload = json.loads(files["payload.json"])
+    payload["tables"]["coach_messages"][0].update(
+        {
+            "content": "Forged authoritative executive advice.",
+            "cited_fact_ids": ["00000000-0000-4000-8000-000000000000"],
+            "model_id": "forged/model",
+            "generation_metadata": {
+                "provenance": "local_model_validated",
+                "contract_version": "1.0.0",
+                "execution_id": "00000000-0000-4000-8000-000000000001",
+                "output_fingerprint": "f" * 64,
+            },
+        }
+    )
+    files["payload.json"] = json.dumps(
+        payload, ensure_ascii=False, separators=(",", ":"), sort_keys=True
+    ).encode("utf-8")
+    manifest = json.loads(files["manifest.json"])
+    payload_entry = next(entry for entry in manifest["entries"] if entry["path"] == "payload.json")
+    payload_entry["byte_size"] = len(files["payload.json"])
+    payload_entry["sha256"] = hashlib.sha256(files["payload.json"]).hexdigest()
+    files["manifest.json"] = json.dumps(
+        manifest, ensure_ascii=False, separators=(",", ":"), sort_keys=True
+    ).encode("utf-8")
+    output = BytesIO()
+    with zipfile.ZipFile(output, "w", zipfile.ZIP_DEFLATED) as target:
+        for name, content in files.items():
+            target.writestr(name, content)
+    return output.getvalue()
+
+
 def _rewrite_application_job(archive_data: bytes, job_id: int) -> bytes:
     with zipfile.ZipFile(BytesIO(archive_data), "r") as source:
         files = {name: source.read(name) for name in source.namelist()}
@@ -196,9 +318,7 @@ def _rewrite_application_job(archive_data: bytes, job_id: int) -> bytes:
         payload, ensure_ascii=False, separators=(",", ":"), sort_keys=True
     ).encode("utf-8")
     manifest = json.loads(files["manifest.json"])
-    payload_entry = next(
-        entry for entry in manifest["entries"] if entry["path"] == "payload.json"
-    )
+    payload_entry = next(entry for entry in manifest["entries"] if entry["path"] == "payload.json")
     payload_entry["byte_size"] = len(files["payload.json"])
     payload_entry["sha256"] = hashlib.sha256(files["payload.json"]).hexdigest()
     files["manifest.json"] = json.dumps(
@@ -226,7 +346,7 @@ APPLICATION_PROJECTION_FIELDS = {
 def _rewrite_application_projection_fixture(
     archive_data: bytes,
     *,
-    format_version: int = 3,
+    format_version: int = 4,
     remove_projections: bool = False,
     projection_overrides: dict | None = None,
 ) -> bytes:
@@ -242,13 +362,22 @@ def _rewrite_application_projection_fixture(
 
     removed_tables: list[str] = []
     if format_version < 3:
-        removed_tables.extend(
-            ["search_profiles", "scraped_jobs", "jobs", "preference_signals"]
-        )
+        removed_tables.extend(["search_profiles", "scraped_jobs", "jobs", "preference_signals"])
     if format_version < 2:
         removed_tables.append("ai_executions")
     for table_name in removed_tables:
         payload["tables"].pop(table_name)
+    if format_version == 3 and "jobs" in payload["tables"]:
+        for row in payload["tables"]["jobs"]:
+            for field in (
+                "source_query",
+                "analysis_provenance",
+                "analysis_model_id",
+                "analysis_contract_version",
+                "analysis_validated_at",
+                "analysis_legacy_snapshot",
+            ):
+                row.pop(field, None)
 
     files["payload.json"] = json.dumps(
         payload, ensure_ascii=False, separators=(",", ":"), sort_keys=True
@@ -257,9 +386,7 @@ def _rewrite_application_projection_fixture(
     manifest["format_version"] = format_version
     for table_name in removed_tables:
         manifest["record_counts"].pop(table_name)
-    payload_entry = next(
-        entry for entry in manifest["entries"] if entry["path"] == "payload.json"
-    )
+    payload_entry = next(entry for entry in manifest["entries"] if entry["path"] == "payload.json")
     payload_entry["byte_size"] = len(files["payload.json"])
     payload_entry["sha256"] = hashlib.sha256(files["payload.json"]).hexdigest()
     files["manifest.json"] = json.dumps(
@@ -272,12 +399,20 @@ def _rewrite_application_projection_fixture(
     return output.getvalue()
 
 
-def _rewrite_legacy_v3_private_and_runtime_fields(
-    archive_data: bytes, source_query: str
-) -> bytes:
+def _rewrite_legacy_v3_private_and_runtime_fields(archive_data: bytes, source_query: str) -> bytes:
     with zipfile.ZipFile(BytesIO(archive_data), "r") as source:
         files = {name: source.read(name) for name in source.namelist()}
     payload = json.loads(files["payload.json"])
+    for row in payload["tables"]["jobs"]:
+        for field in (
+            "source_query",
+            "analysis_provenance",
+            "analysis_model_id",
+            "analysis_contract_version",
+            "analysis_validated_at",
+            "analysis_legacy_snapshot",
+        ):
+            row.pop(field, None)
     payload["tables"]["scraped_jobs"][0]["source_query"] = source_query
     payload["tables"]["search_profiles"][0].update(
         {
@@ -295,9 +430,62 @@ def _rewrite_legacy_v3_private_and_runtime_fields(
         payload, ensure_ascii=False, separators=(",", ":"), sort_keys=True
     ).encode("utf-8")
     manifest = json.loads(files["manifest.json"])
-    payload_entry = next(
-        entry for entry in manifest["entries"] if entry["path"] == "payload.json"
+    manifest["format_version"] = 3
+    payload_entry = next(entry for entry in manifest["entries"] if entry["path"] == "payload.json")
+    payload_entry["byte_size"] = len(files["payload.json"])
+    payload_entry["sha256"] = hashlib.sha256(files["payload.json"]).hexdigest()
+    files["manifest.json"] = json.dumps(
+        manifest, ensure_ascii=False, separators=(",", ":"), sort_keys=True
+    ).encode("utf-8")
+    output = BytesIO()
+    with zipfile.ZipFile(output, "w", zipfile.ZIP_DEFLATED) as target:
+        for name, content in files.items():
+            target.writestr(name, content)
+    return output.getvalue()
+
+
+def _rewrite_legacy_v3_heuristic_match(archive_data: bytes) -> bytes:
+    with zipfile.ZipFile(BytesIO(archive_data), "r") as source:
+        files = {name: source.read(name) for name in source.namelist()}
+    payload = json.loads(files["payload.json"])
+    for field in (
+        "analysis_provenance",
+        "analysis_model_id",
+        "analysis_contract_version",
+        "analysis_validated_at",
+        "analysis_legacy_snapshot",
+    ):
+        payload["tables"]["jobs"][0].pop(field, None)
+    payload["tables"]["jobs"][0].update(
+        {
+            "affinity_score": 94,
+            "affinity_analysis": "Legacy heuristic fit",
+            "worth_applying": True,
+            "skill_match_score": 90,
+            "analysis_structured": {
+                "mode": "deterministic_local",
+                "verdict": "strong",
+            },
+            "red_flags": ["legacy"],
+        }
     )
+    payload["tables"]["applications"][0]["job_snapshot"].update(
+        {
+            "affinity_analysis": "Legacy top-level application claim",
+            "match": {
+                "score": 100,
+                "analysis": "Legacy embedded application claim",
+                "worth_applying": True,
+                "receipt_verified": True,
+            },
+        }
+    )
+    files["payload.json"] = json.dumps(
+        payload, ensure_ascii=False, separators=(",", ":"), sort_keys=True
+    ).encode("utf-8")
+    manifest = json.loads(files["manifest.json"])
+    manifest["format_version"] = 3
+    payload_entry = next(entry for entry in manifest["entries"] if entry["path"] == "payload.json")
     payload_entry["byte_size"] = len(files["payload.json"])
     payload_entry["sha256"] = hashlib.sha256(files["payload.json"]).hexdigest()
     files["manifest.json"] = json.dumps(
@@ -343,7 +531,6 @@ def _seed_search_portability_records(db, user_id: int):
         location="Zurich",
         external_url="https://example.test/jobs/42",
         normalized_domain="it",
-        source_query="private Python search terms",
     )
     db.add_all([profile, scraped])
     db.flush()
@@ -351,8 +538,45 @@ def _seed_search_portability_records(db, user_id: int):
         user_id=user_id,
         search_profile_id=profile.id,
         scraped_job_id=scraped.id,
+        source_query="private Python search terms",
         affinity_score=93.0,
+        affinity_analysis=(
+            "Local evidence review: strong fit. 2 supported strength(s), 0 supported "
+            "gap(s), 0 risk signal(s). Evidence dimensions: experience, skill."
+        ),
         worth_applying=True,
+        skill_match_score=95,
+        experience_match_score=92,
+        intent_match_score=90,
+        language_match_score=85,
+        location_match_score=90,
+        transferability_score=88,
+        qualification_gap_score=90,
+        analysis_structured={
+            "recommendation": "strong_fit",
+            "evidence_citations": [
+                {
+                    "type": "skill",
+                    "assessment": "strength",
+                    "job_evidence_id": "job:0",
+                    "candidate_evidence_id": "candidate:profile",
+                    "job_evidence": "local-first systems",
+                    "candidate_evidence": "production Python services",
+                },
+                {
+                    "type": "experience",
+                    "assessment": "strength",
+                    "job_evidence_id": "job:0",
+                    "candidate_evidence_id": "candidate:profile",
+                    "job_evidence": "Backend Engineer",
+                    "candidate_evidence": "Backend engineering experience",
+                },
+            ],
+        },
+        analysis_provenance="local_model_validated",
+        analysis_model_id="llama-cpp-local/test-model",
+        analysis_contract_version="1.1.0",
+        analysis_validated_at=updated_at,
         applied=True,
         feedback_signal="already_applied",
     )
@@ -368,6 +592,14 @@ def _seed_search_portability_records(db, user_id: int):
             "title": scraped.title,
             "company": scraped.company,
             "location": scraped.location,
+            "affinity_analysis": "forged top-level snapshot claim",
+            "raw_metadata": {"analysis": "raw unverified provider metadata claim"},
+            "match": {
+                "score": 93.0,
+                "analysis": "raw unverified application snapshot claim",
+                "worth_applying": True,
+                "receipt_verified": True,
+            },
         },
         job_title=scraped.title,
         job_company=scraped.company,
@@ -396,9 +628,7 @@ def _clear_search_records(db, user_id: int, scraped_job_id: int) -> None:
     db.query(SearchProfile).filter(SearchProfile.user_id == user_id).delete(
         synchronize_session=False
     )
-    db.query(ScrapedJob).filter(ScrapedJob.id == scraped_job_id).delete(
-        synchronize_session=False
-    )
+    db.query(ScrapedJob).filter(ScrapedJob.id == scraped_job_id).delete(synchronize_session=False)
     owner = db.get(User, user_id)
     owner.preference_signals = None
     owner.preference_updated_at = None
@@ -406,9 +636,7 @@ def _clear_search_records(db, user_id: int, scraped_job_id: int) -> None:
 
 
 def _seed_portable_application_via_api(client, auth_headers) -> tuple[dict, dict]:
-    profile = client.put(
-        "/api/v1/career-profile", json=_profile_payload(), headers=auth_headers
-    )
+    profile = client.put("/api/v1/career-profile", json=_profile_payload(), headers=auth_headers)
     assert profile.status_code == 200, profile.text
     created = client.post(
         "/api/v1/applications",
@@ -438,7 +666,7 @@ def _seed_portable_application_via_api(client, auth_headers) -> tuple[dict, dict
     return task_response.json(), task_response.json()["tasks"][0]
 
 
-@pytest.mark.parametrize("format_version", [1, 2, 3])
+@pytest.mark.parametrize("format_version", [1, 2, 3, 4])
 def test_historical_archive_rebuilds_application_projections_after_events(
     client,
     auth_headers,
@@ -482,7 +710,7 @@ def test_historical_archive_rebuilds_application_projections_after_events(
     assert stored.next_action_priority == "high"
 
 
-def test_modern_v3_archive_rejects_inconsistent_application_projections(
+def test_modern_v4_archive_rejects_inconsistent_application_projections(
     client, auth_headers, db_session, test_user, portable_data_dir
 ):
     application, _task = _seed_portable_application_via_api(client, auth_headers)
@@ -518,9 +746,7 @@ def test_modern_v3_archive_rejects_inconsistent_application_projections(
     db_session.expire_all()
     assert db_session.get(Application, application["id"]) is None
     assert (
-        db_session.query(CandidateProfile)
-        .filter(CandidateProfile.user_id == test_user.id)
-        .count()
+        db_session.query(CandidateProfile).filter(CandidateProfile.user_id == test_user.id).count()
         == 0
     )
 
@@ -567,9 +793,7 @@ def test_export_delete_restore_round_trip(
         headers=auth_headers,
     )
     assert conflict.status_code == 409
-    assert (
-        client.delete("/api/v1/career-profile", headers=auth_headers).status_code == 409
-    )
+    assert client.delete("/api/v1/career-profile", headers=auth_headers).status_code == 409
 
     deleted = client.delete(
         "/api/v1/career-profile",
@@ -609,18 +833,142 @@ def test_export_delete_restore_round_trip(
     exported_again = client.get("/api/v1/portability/export", headers=auth_headers)
     assert exported_again.status_code == 200
     with zipfile.ZipFile(BytesIO(exported_again.content)) as archive:
-        assert archive.read("payload.json") == payload_before
+        payload_after = json.loads(archive.read("payload.json"))
+    expected_payload = json.loads(payload_before)
+    expected_messages = expected_payload["tables"].pop("coach_messages")
+    restored_messages = payload_after["tables"].pop("coach_messages")
+    assert len(expected_messages) == len(restored_messages) == 1
+    expected_message = expected_messages[0]
+    restored_message = restored_messages[0]
+    assert {
+        key: value for key, value in restored_message.items() if key != "generation_metadata"
+    } == {key: value for key, value in expected_message.items() if key != "generation_metadata"}
+    assert restored_message["generation_metadata"] == {
+        "provenance": "quarantined",
+        "quarantine_reason": "unsigned_v4_coach_output_requires_revalidation",
+        "source_generation_metadata": {"local": True},
+    }
+    assert payload_after == expected_payload
 
 
-def test_v3_round_trip_remaps_search_ids_and_preserves_application_job(
+def test_v4_restore_preserves_but_hides_self_checksummed_forged_coach_advice(
     client, auth_headers, db_session, test_user, portable_data_dir
 ):
-    created = client.put(
+    profile = client.put(
         "/api/v1/career-profile", json=_profile_payload(), headers=auth_headers
+    ).json()
+    _seed_related_records(db_session, test_user.id, profile["id"], profile["facts"][0]["id"])
+    exported = client.get("/api/v1/portability/export", headers=auth_headers)
+    assert exported.status_code == 200, exported.text
+    forged = _rewrite_forged_coach_message(exported.content)
+
+    deleted = client.delete(
+        "/api/v1/career-profile",
+        headers={**auth_headers, "X-Confirm-Delete": "DELETE-MY-CAREER-VAULT"},
     )
+    assert deleted.status_code == 204, deleted.text
+    restored = client.post(
+        "/api/v1/portability/restore",
+        files={"file": ("forged-v4.zip", forged, "application/zip")},
+        headers=auth_headers,
+    )
+
+    assert restored.status_code == 200, restored.text
+    assert restored.json()["restored_records"]["coach_messages"] == 1
+    db_session.expire_all()
+    assistant = db_session.query(CoachMessage).one()
+    assert assistant.content == "Forged authoritative executive advice."
+    assert assistant.generation_metadata == {
+        "provenance": "quarantined",
+        "quarantine_reason": "unsigned_v4_coach_output_requires_revalidation",
+        "source_generation_metadata": {
+            "provenance": "local_model_validated",
+            "contract_version": "1.0.0",
+            "execution_id": "00000000-0000-4000-8000-000000000001",
+            "output_fingerprint": "f" * 64,
+        },
+    }
+    detail = client.get(
+        f"/api/v1/career-coach/conversations/{assistant.conversation_id}",
+        headers=auth_headers,
+    )
+    assert detail.status_code == 200, detail.text
+    assert detail.json()["messages"] == []
+
+
+def test_v4_verified_coach_round_trip_preserves_record_but_requires_revalidation(
+    client, auth_headers, db_session, test_user, portable_data_dir
+):
+    profile = client.put(
+        "/api/v1/career-profile", json=_profile_payload(), headers=auth_headers
+    ).json()
+    fact_id = profile["facts"][0]["id"]
+    conversation_id, execution_id, result = _seed_verified_coach_records(
+        db_session, test_user.id, profile["id"], fact_id
+    )
+
+    before = client.get(
+        f"/api/v1/career-coach/conversations/{conversation_id}", headers=auth_headers
+    )
+    assert before.status_code == 200, before.text
+    assert [message["role"] for message in before.json()["messages"]] == [
+        "user",
+        "assistant",
+    ]
+    exported = client.get("/api/v1/portability/export", headers=auth_headers)
+    assert exported.status_code == 200, exported.text
+
+    deleted = client.delete(
+        "/api/v1/career-profile",
+        headers={**auth_headers, "X-Confirm-Delete": "DELETE-MY-CAREER-VAULT"},
+    )
+    assert deleted.status_code == 204, deleted.text
+    restored = client.post(
+        "/api/v1/portability/restore",
+        files={"file": ("verified-v4.zip", exported.content, "application/zip")},
+        headers=auth_headers,
+    )
+    assert restored.status_code == 200, restored.text
+    assert restored.json()["restored_records"]["coach_messages"] == 2
+
+    db_session.expire_all()
+    assistant = db_session.query(CoachMessage).filter_by(role="assistant").one()
+    assert assistant.content == result.answer
+    assert assistant.cited_fact_ids == [fact_id]
+    assert assistant.model_id == "ollama-local/verified-coach"
+    assert assistant.generation_metadata["provenance"] == "quarantined"
+    assert assistant.generation_metadata["quarantine_reason"] == (
+        "unsigned_v4_coach_output_requires_revalidation"
+    )
+    source_metadata = assistant.generation_metadata["source_generation_metadata"]
+    assert source_metadata["execution_id"] == execution_id
+    assert source_metadata["output_fingerprint"] == fingerprint_output(result)
+    assert db_session.get(AIExecution, execution_id) is not None
+
+    after = client.get(
+        f"/api/v1/career-coach/conversations/{conversation_id}", headers=auth_headers
+    )
+    assert after.status_code == 200, after.text
+    assert [message["role"] for message in after.json()["messages"]] == ["user"]
+
+    exported_again = client.get("/api/v1/portability/export", headers=auth_headers)
+    assert exported_again.status_code == 200, exported_again.text
+    with zipfile.ZipFile(BytesIO(exported_again.content)) as archive:
+        payload = json.loads(archive.read("payload.json"))
+    archived_assistant = next(
+        row for row in payload["tables"]["coach_messages"] if row["role"] == "assistant"
+    )
+    assert archived_assistant["content"] == result.answer
+    assert archived_assistant["generation_metadata"]["provenance"] == "quarantined"
+
+
+def test_v4_round_trip_remaps_search_ids_and_preserves_application_job(
+    client, auth_headers, db_session, test_user, portable_data_dir
+):
+    created = client.put("/api/v1/career-profile", json=_profile_payload(), headers=auth_headers)
     assert created.status_code == 200, created.text
-    profile_id, scraped_id, job_id, application_id, signals = (
-        _seed_search_portability_records(db_session, test_user.id)
+    profile_id, scraped_id, job_id, application_id, signals = _seed_search_portability_records(
+        db_session, test_user.id
     )
 
     exported = client.get("/api/v1/portability/export", headers=auth_headers)
@@ -628,7 +976,7 @@ def test_v3_round_trip_remaps_search_ids_and_preserves_application_job(
     with zipfile.ZipFile(BytesIO(exported.content)) as archive:
         manifest = json.loads(archive.read("manifest.json"))
         payload = json.loads(archive.read("payload.json"))
-    assert manifest["format_version"] == 3
+    assert manifest["format_version"] == 4
     expected_search_counts = {
         "search_profiles": 1,
         "scraped_jobs": 1,
@@ -639,8 +987,19 @@ def test_v3_round_trip_remaps_search_ids_and_preserves_application_job(
         name: manifest["record_counts"][name] for name in expected_search_counts
     } == expected_search_counts
     assert payload["tables"]["applications"][0]["job_id"] == job_id
+    exported_job = payload["tables"]["jobs"][0]
+    assert exported_job["affinity_score"] is None
+    assert exported_job["affinity_analysis"] is None
+    assert exported_job["worth_applying"] is False
+    assert exported_job["analysis_legacy_snapshot"] is None
+    exported_snapshot = payload["tables"]["applications"][0]["job_snapshot"]
+    assert exported_snapshot["match"]["receipt_verified"] is False
+    assert exported_snapshot["match"]["score"] is None
+    assert "affinity_analysis" not in exported_snapshot
+    assert "raw unverified" not in json.dumps(exported_snapshot)
     assert payload["tables"]["preference_signals"][0]["preference_signals"] == signals
     assert "source_query" not in payload["tables"]["scraped_jobs"][0]
+    assert payload["tables"]["jobs"][0]["source_query"] == "private Python search terms"
     runtime_fields = {
         "search_lock_token",
         "search_lock_state",
@@ -704,23 +1063,33 @@ def test_v3_round_trip_remaps_search_ids_and_preserves_application_job(
     assert restored_job.search_profile_id == restored_profile.id
     assert restored_job.scraped_job_id != scraped_id
     assert restored_job.scraped_job.title == "Local Backend Engineer"
-    assert restored_job.scraped_job.source_query is None
+    assert restored_job.source_query == "private Python search terms"
+    assert restored_job.affinity_score is None
+    assert restored_job.analysis_provenance is None
+    assert restored_job.analysis_structured is None
+    assert restored_job.analysis_legacy_snapshot is None
     assert restored_application.job_id == restored_job.id
+    assert restored_application.job_snapshot["match"] == {
+        "score": None,
+        "analysis": None,
+        "worth_applying": None,
+        "receipt_verified": False,
+        "quarantine_reason": "unsigned_v4_application_match_requires_revalidation",
+    }
+    assert "affinity_analysis" not in restored_application.job_snapshot
     assert all(getattr(restored_profile, field) is None for field in runtime_fields)
     owner = db_session.get(User, test_user.id)
     assert owner.preference_signals == signals
     assert owner.preference_updated_at is not None
 
 
-def test_damaged_v3_relationship_leaves_search_vault_and_preferences_unchanged(
+def test_damaged_v4_relationship_leaves_search_vault_and_preferences_unchanged(
     client, auth_headers, db_session, test_user, portable_data_dir
 ):
-    created = client.put(
-        "/api/v1/career-profile", json=_profile_payload(), headers=auth_headers
-    )
+    created = client.put("/api/v1/career-profile", json=_profile_payload(), headers=auth_headers)
     assert created.status_code == 200, created.text
-    _profile_id, scraped_id, _job_id, _application_id, _signals = (
-        _seed_search_portability_records(db_session, test_user.id)
+    _profile_id, scraped_id, _job_id, _application_id, _signals = _seed_search_portability_records(
+        db_session, test_user.id
     )
     exported = client.get("/api/v1/portability/export", headers=auth_headers)
     assert exported.status_code == 200, exported.text
@@ -754,15 +1123,63 @@ def test_damaged_v3_relationship_leaves_search_vault_and_preferences_unchanged(
     assert db_session.get(User, test_user.id).preference_signals is None
 
 
-def test_v3_restore_rejects_preexisting_preference_signals_without_mutation(
+def test_legacy_v3_restore_quarantines_unverified_match_analysis(
     client, auth_headers, db_session, test_user, portable_data_dir
 ):
-    created = client.put(
-        "/api/v1/career-profile", json=_profile_payload(), headers=auth_headers
-    )
+    created = client.put("/api/v1/career-profile", json=_profile_payload(), headers=auth_headers)
     assert created.status_code == 200, created.text
-    _profile_id, scraped_id, _job_id, _application_id, _signals = (
-        _seed_search_portability_records(db_session, test_user.id)
+    _profile_id, scraped_id, _job_id, _application_id, _signals = _seed_search_portability_records(
+        db_session, test_user.id
+    )
+    exported = client.get("/api/v1/portability/export", headers=auth_headers)
+    assert exported.status_code == 200, exported.text
+    legacy = _rewrite_legacy_v3_heuristic_match(exported.content)
+
+    deleted = client.delete(
+        "/api/v1/career-profile",
+        headers={**auth_headers, "X-Confirm-Delete": "DELETE-MY-CAREER-VAULT"},
+    )
+    assert deleted.status_code == 204, deleted.text
+    db_session.expire_all()
+    _clear_search_records(db_session, test_user.id, scraped_id)
+
+    restored = client.post(
+        "/api/v1/portability/restore",
+        files={"file": ("legacy-v3.zip", legacy, "application/zip")},
+        headers=auth_headers,
+    )
+
+    assert restored.status_code == 200, restored.text
+    db_session.expire_all()
+    job = db_session.query(Job).filter_by(user_id=test_user.id).one()
+    assert job.affinity_score is None
+    assert job.affinity_analysis is None
+    assert job.worth_applying is False
+    assert job.skill_match_score is None
+    assert job.analysis_structured is None
+    assert job.red_flags is None
+    assert job.analysis_legacy_snapshot["reason"] == ("unsigned_v3_analysis_requires_revalidation")
+    assert job.analysis_legacy_snapshot["analysis"]["affinity_analysis"] == ("Legacy heuristic fit")
+    assert job.analysis_legacy_snapshot["analysis"]["worth_applying"] is True
+    application = db_session.query(Application).filter_by(user_id=test_user.id).one()
+    assert application.job_snapshot["match"] == {
+        "score": None,
+        "analysis": None,
+        "worth_applying": None,
+        "receipt_verified": False,
+        "quarantine_reason": "unsigned_v3_application_match_requires_revalidation",
+    }
+    assert "affinity_analysis" not in application.job_snapshot
+    assert "Legacy" not in json.dumps(application.job_snapshot)
+
+
+def test_v4_restore_rejects_preexisting_preference_signals_without_mutation(
+    client, auth_headers, db_session, test_user, portable_data_dir
+):
+    created = client.put("/api/v1/career-profile", json=_profile_payload(), headers=auth_headers)
+    assert created.status_code == 200, created.text
+    _profile_id, scraped_id, _job_id, _application_id, _signals = _seed_search_portability_records(
+        db_session, test_user.id
     )
     exported = client.get("/api/v1/portability/export", headers=auth_headers)
     assert exported.status_code == 200, exported.text
@@ -794,28 +1211,17 @@ def test_v3_restore_rejects_preexisting_preference_signals_without_mutation(
     assert db_session.get(User, test_user.id).preference_signals == sentinel
 
 
-@pytest.mark.parametrize(
-    ("existing_title", "existing_source_query"),
-    [
-        ("Local Backend Engineer", "another user's private query"),
-        ("Stale Backend Engineer", None),
-    ],
-)
-def test_v3_restore_rejects_unsafe_existing_shared_listing(
+def test_v4_restore_rejects_unsafe_existing_shared_listing(
     client,
     auth_headers,
     db_session,
     test_user,
     portable_data_dir,
-    existing_title,
-    existing_source_query,
 ):
-    created = client.put(
-        "/api/v1/career-profile", json=_profile_payload(), headers=auth_headers
-    )
+    created = client.put("/api/v1/career-profile", json=_profile_payload(), headers=auth_headers)
     assert created.status_code == 200, created.text
-    _profile_id, scraped_id, _job_id, _application_id, _signals = (
-        _seed_search_portability_records(db_session, test_user.id)
+    _profile_id, scraped_id, _job_id, _application_id, _signals = _seed_search_portability_records(
+        db_session, test_user.id
     )
     exported = client.get("/api/v1/portability/export", headers=auth_headers)
     assert exported.status_code == 200, exported.text
@@ -831,17 +1237,22 @@ def test_v3_restore_rejects_unsafe_existing_shared_listing(
     existing = ScrapedJob(
         platform="portable-test",
         platform_job_id="listing-42",
-        title=existing_title,
+        title="Stale Backend Engineer",
         company="Portable Co",
         description="Build local-first systems.",
         location="Zurich",
         external_url="https://example.test/jobs/42",
         normalized_domain="it",
-        source_query=existing_source_query,
     )
     db_session.add_all([other_user, existing])
     db_session.flush()
-    db_session.add(Job(user_id=other_user.id, scraped_job_id=existing.id))
+    db_session.add(
+        Job(
+            user_id=other_user.id,
+            scraped_job_id=existing.id,
+            source_query="another user's private query",
+        )
+    )
     db_session.commit()
 
     restored = client.post(
@@ -856,18 +1267,19 @@ def test_v3_restore_rejects_unsafe_existing_shared_listing(
     assert db_session.query(CandidateProfile).filter_by(user_id=test_user.id).count() == 0
     assert db_session.query(Job).filter_by(user_id=test_user.id).count() == 0
     assert db_session.query(Job).filter_by(user_id=other_user.id).count() == 1
-    assert db_session.get(ScrapedJob, existing.id).source_query == existing_source_query
+    assert (
+        db_session.query(Job).filter_by(user_id=other_user.id).one().source_query
+        == "another user's private query"
+    )
 
 
-def test_v3_restore_reuses_only_identical_public_shared_listing(
+def test_v4_restore_reuses_only_identical_public_shared_listing(
     client, auth_headers, db_session, test_user, portable_data_dir
 ):
-    created = client.put(
-        "/api/v1/career-profile", json=_profile_payload(), headers=auth_headers
-    )
+    created = client.put("/api/v1/career-profile", json=_profile_payload(), headers=auth_headers)
     assert created.status_code == 200, created.text
-    _profile_id, scraped_id, _job_id, _application_id, _signals = (
-        _seed_search_portability_records(db_session, test_user.id)
+    _profile_id, scraped_id, _job_id, _application_id, _signals = _seed_search_portability_records(
+        db_session, test_user.id
     )
     exported = client.get("/api/v1/portability/export", headers=auth_headers)
     assert exported.status_code == 200, exported.text
@@ -893,7 +1305,13 @@ def test_v3_restore_reuses_only_identical_public_shared_listing(
     db_session.add_all([other_user, existing])
     db_session.flush()
     existing_id = existing.id
-    db_session.add(Job(user_id=other_user.id, scraped_job_id=existing_id))
+    db_session.add(
+        Job(
+            user_id=other_user.id,
+            scraped_job_id=existing_id,
+            source_query="other owner's private query",
+        )
+    )
     db_session.commit()
 
     restored = client.post(
@@ -906,18 +1324,20 @@ def test_v3_restore_reuses_only_identical_public_shared_listing(
     db_session.expire_all()
     restored_job = db_session.query(Job).filter_by(user_id=test_user.id).one()
     assert restored_job.scraped_job_id == existing_id
-    assert restored_job.scraped_job.source_query is None
+    assert restored_job.source_query == "private Python search terms"
+    assert (
+        db_session.query(Job).filter_by(user_id=other_user.id).one().source_query
+        == "other owner's private query"
+    )
 
 
 def test_v3_restore_accepts_legacy_private_field_but_does_not_propagate_it(
     client, auth_headers, db_session, test_user, portable_data_dir
 ):
-    created = client.put(
-        "/api/v1/career-profile", json=_profile_payload(), headers=auth_headers
-    )
+    created = client.put("/api/v1/career-profile", json=_profile_payload(), headers=auth_headers)
     assert created.status_code == 200, created.text
-    _profile_id, scraped_id, _job_id, _application_id, _signals = (
-        _seed_search_portability_records(db_session, test_user.id)
+    _profile_id, scraped_id, _job_id, _application_id, _signals = _seed_search_portability_records(
+        db_session, test_user.id
     )
     exported = client.get("/api/v1/portability/export", headers=auth_headers)
     assert exported.status_code == 200, exported.text
@@ -942,7 +1362,7 @@ def test_v3_restore_accepts_legacy_private_field_but_does_not_propagate_it(
     db_session.expire_all()
     restored_job = db_session.query(Job).filter_by(user_id=test_user.id).one()
     restored_profile = db_session.query(SearchProfile).filter_by(user_id=test_user.id).one()
-    assert restored_job.scraped_job.source_query is None
+    assert restored_job.source_query is None
     assert restored_profile.search_lock_token is None
     assert restored_profile.search_lock_state is None
     assert restored_profile.search_lock_acquired_at is None
@@ -977,9 +1397,7 @@ def test_backup_restore_disk_full_rolls_back_records_and_first_file(
         .one()
         .storage_path
     )
-    archive_data = client.get(
-        "/api/v1/portability/export", headers=auth_headers
-    ).content
+    archive_data = client.get("/api/v1/portability/export", headers=auth_headers).content
     deleted = client.delete(
         "/api/v1/career-profile",
         headers={**auth_headers, "X-Confirm-Delete": "DELETE-MY-CAREER-VAULT"},
@@ -1014,9 +1432,7 @@ def test_backup_restore_disk_full_rolls_back_records_and_first_file(
 def test_backup_export_interruption_returns_507_without_mutating_vault(
     client, auth_headers, db_session, monkeypatch
 ):
-    created = client.put(
-        "/api/v1/career-profile", json=_profile_payload(), headers=auth_headers
-    )
+    created = client.put("/api/v1/career-profile", json=_profile_payload(), headers=auth_headers)
     assert created.status_code == 200, created.text
     original_write = archive_module.zipfile.ZipFile.writestr
     calls = 0

@@ -3,11 +3,13 @@ from fastapi import status as http_status
 
 from backend.api.deps import get_current_user_id
 from backend.inference.service import (
+    LocalModelReadiness,
     LocalModelStatus,
     ManagedModelStatus,
     ModelInstallRequest,
     ModelRemovalResult,
     cancel_managed_model_install,
+    check_local_model_readiness,
     get_local_model_catalog,
     get_local_model_status,
     install_managed_model,
@@ -29,6 +31,13 @@ async def status() -> LocalModelStatus:
 @router.get("/catalog")
 def catalog() -> dict[str, object]:
     return get_local_model_catalog()
+
+
+@router.post("/readiness", response_model=LocalModelReadiness)
+async def readiness(
+    _user_id: int = Depends(get_current_user_id),
+) -> LocalModelReadiness:
+    return await check_local_model_readiness(force=True)
 
 
 @router.post(

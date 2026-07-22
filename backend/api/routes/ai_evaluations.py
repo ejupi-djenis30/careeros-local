@@ -11,7 +11,7 @@ from backend.ai.evaluation import (
     run_live_evaluation,
     validate_offline_dataset,
 )
-from backend.api.deps import get_current_user_id
+from backend.api.deps import get_current_user_id, require_local_analysis_ready
 from backend.db.base import get_db
 from backend.providers.llm.factory import get_provider_for_step
 
@@ -36,6 +36,8 @@ async def run_evaluation(
     _user_id: int = Depends(get_current_user_id),
     db: Session = Depends(get_db),
 ) -> EvaluationRunSummary:
+    if payload.mode == "live":
+        await require_local_analysis_ready()
     try:
         report = (
             validate_offline_dataset()
