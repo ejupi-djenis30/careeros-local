@@ -35,6 +35,7 @@
     "brand:icons": "tauri icon public/careeros.svg --output src-tauri/icons",
     "demo:install": "playwright install chromium",
     "demo:record": "node ../scripts/record_demo.mjs",
+    "test:pages": "node e2e/portfolio-responsive.mjs",
     "test:licenses": "node --test ../scripts/audit_frontend_licenses.test.mjs"
   },
   "dependencies": {
