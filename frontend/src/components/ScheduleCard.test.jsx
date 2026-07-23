@@ -1,0 +1,96 @@
+import React from 'react';
+import { render, screen, fireEvent, act } from '@testing-library/react';
+import { describe, it, expect, vi } from 'vitest';
+import { ScheduleCard } from './ScheduleCard';
+import { assertAccessible } from '../test/accessibility';
+
+const mockProfile = {
+    id: 10,
+    name: 'Custom Campaign Name',
+    role_description: 'Frontend Developer',
+    location_filter: 'Berlin',
+    schedule_enabled: true,
+    schedule_interval_hours: 12
+};
+
+describe('ScheduleCard', () => {
+    it('renders profile details and custom name correctly', () => {
+        render(<ScheduleCard profile={mockProfile} onToggle={vi.fn()} onChangeInterval={vi.fn()} onDelete={vi.fn()} />);
+
+        expect(screen.getByText('Custom Campaign Name')).toBeInTheDocument();
+        expect(screen.getByText('Frontend Developer')).toBeInTheDocument();
+        expect(screen.getByText('Berlin')).toBeInTheDocument();
+        expect(screen.getByText('ID: 10')).toBeInTheDocument();
+    });
+
+    it('gives the interval input an accessible localized name', async () => {
+        const { container } = render(<ScheduleCard profile={mockProfile} onToggle={vi.fn()} onChangeInterval={vi.fn()} onDelete={vi.fn()} />);
+
+        expect(screen.getByRole('spinbutton', { name: 'Interval in hours' })).toHaveValue(12);
+        await assertAccessible(container);
+    });
+
+    it('renders default name and falsy fallbacks when profile is missing info', () => {
+        const profileMissingInfo = { ...mockProfile, name: '', location_filter: '', schedule_interval_hours: null };
+        render(<ScheduleCard profile={profileMissingInfo} onToggle={vi.fn()} onChangeInterval={vi.fn()} onDelete={vi.fn()} />);
+
+        expect(screen.getByText('Campaign #10')).toBeInTheDocument();
+        expect(screen.getByText('Any location')).toBeInTheDocument();
+        const intervalInput = screen.getByRole('spinbutton');
+        expect(intervalInput.value).toBe("24"); // Checks the fallback
+    });
+
+    it('calls onToggle when schedule switch is clicked', async () => {
+        const onToggle = vi.fn();
+        render(<ScheduleCard profile={mockProfile} onToggle={onToggle} onChangeInterval={vi.fn()} onDelete={vi.fn()} />);
+
+        const toggleSwitch = screen.getByRole('checkbox');
+        // Initial state
+        expect(toggleSwitch).toBeChecked();
+
+        await act(async () => {
+            fireEvent.click(toggleSwitch);
+        });
+
+        // Ensure the handler was called with the correct previous state
+        expect(onToggle).toHaveBeenCalledWith(mockProfile.id, true, 12);
+    });
+
+    it('calls onChangeInterval when interval input changes', () => {
+        const onChangeInterval = vi.fn();
+        render(<ScheduleCard profile={mockProfile} onToggle={vi.fn()} onChangeInterval={onChangeInterval} onDelete={vi.fn()} />);
+
+        const intervalInput = screen.getByRole('spinbutton');
+        expect(intervalInput.value).toBe('12');
+
+        fireEvent.change(intervalInput, { target: { value: '240' } });
+
+        expect(onChangeInterval).toHaveBeenCalledWith(mockProfile.id, '240');
+    });
+
+    it('calls onChangeInterval when a preset button is clicked', () => {
+        const onChangeInterval = vi.fn();
+        render(<ScheduleCard profile={mockProfile} onToggle={vi.fn()} onChangeInterval={onChangeInterval} onDelete={vi.fn()} />);
+
+        fireEvent.click(screen.getByRole('button', { name: '24h' }));
+
+        expect(onChangeInterval).toHaveBeenCalledWith(mockProfile.id, '24');
+    });
+
+    it('calls onDelete when delete button is clicked', () => {
+        const onDelete = vi.fn();
+        render(<ScheduleCard profile={mockProfile} onToggle={vi.fn()} onChangeInterval={vi.fn()} onDelete={onDelete} />);
+
+        const deleteBtn = screen.getByRole('button', { name: 'Delete campaign' });
+        fireEvent.click(deleteBtn);
+
+        expect(onDelete).toHaveBeenCalledWith(mockProfile.id);
+    });
+
+    it('handles disabled schedule state', () => {
+        const disabledProfile = { ...mockProfile, schedule_enabled: false };
+        render(<ScheduleCard profile={disabledProfile} onToggle={vi.fn()} onChangeInterval={vi.fn()} onDelete={vi.fn()} />);
+        const toggleSwitch = screen.getByRole('checkbox');
+        expect(toggleSwitch).not.toBeChecked();
+    });
+});

@@ -1,0 +1,169 @@
+from unittest.mock import MagicMock
+
+import pytest
+from fastapi import HTTPException
+
+from backend.models import ScrapedJob
+from backend.schemas import JobCreate, JobUpdate
+from backend.services.job_service import JobService
+
+
+@pytest.fixture
+def mock_repo():
+    repo = MagicMock()
+    repo.get_applied_scraped_job_ids.return_value = set()
+    repo.get_job_by_user_scraped_profile.return_value = None
+    return repo
+
+
+@pytest.fixture
+def job_service(mock_repo):
+    service = JobService(MagicMock())
+    service.repo = mock_repo
+    service.profile_repo = MagicMock()
+    return service
+
+
+def test_get_jobs_by_user(job_service, mock_repo):
+    job1 = MagicMock()
+    job1.applied = False
+    job1.scraped_job_id = 101
+
+    job2 = MagicMock()
+    job2.applied = True
+    job2.scraped_job_id = 102
+
+    mock_repo.get_trust_candidates_by_user.return_value = [job1, job2]
+    mock_repo.get_applied_scraped_job_ids.return_value = {101}  # job1 applied elsewhere
+
+    result = job_service.get_jobs_by_user(
+        1, page=1, page_size=10, filters={"sort_by": "created_at"}
+    )
+
+    assert result["total"] == 2
+    assert len(result["items"]) == 2
+    assert result["items"][0].applied_elsewhere is True
+    assert result["items"][1].applied_elsewhere is False
+    assert result["total_applied"] == 1
+    mock_repo.get_trust_candidates_by_user.assert_called_once()
+    mock_repo.get_applied_scraped_job_ids.assert_called_once_with(1)
+
+
+def test_create_job(job_service, mock_repo):
+    # JobCreate requires title, company, external_url
+    job_in = JobCreate(
+        title="New Job", company="Test Corp", external_url="https://test.com", scraped_job_id=1
+    )
+    mock_repo.get_scraped_job_by_platform_and_id.return_value = None
+    mock_repo.create_scraped_job_nested.return_value = True
+    job_service.create_job(1, job_in)
+    mock_repo.create.assert_called_once()
+
+
+def test_create_job_uses_deterministic_manual_platform_job_id(job_service, mock_repo):
+    mock_repo.get_scraped_job_by_platform_and_id.return_value = None
+    mock_repo.create_scraped_job_nested.return_value = True
+
+    job_in = JobCreate(
+        title="Stable Job",
+        company="ACME",
+        external_url="https://example.com/stable-job",
+    )
+
+    job_service.create_job(1, job_in)
+    first_scraped = mock_repo.create_scraped_job_nested.call_args_list[0].args[0]
+
+    mock_repo.create_scraped_job_nested.reset_mock()
+    mock_repo.get_scraped_job_by_platform_and_id.return_value = None
+    job_service.create_job(1, job_in)
+    second_scraped = mock_repo.create_scraped_job_nested.call_args_list[0].args[0]
+
+    assert isinstance(first_scraped, ScrapedJob)
+    assert first_scraped.platform_job_id == second_scraped.platform_job_id
+
+
+def test_manual_platform_id_ignores_client_value_and_is_user_scoped(job_service, mock_repo):
+    mock_repo.get_scraped_job_by_platform_and_id.return_value = None
+    mock_repo.create_scraped_job_nested.return_value = True
+    job_in = JobCreate(
+        title="Private role",
+        company="Private company",
+        external_url="https://example.test/private-role",
+        platform="manual",
+        platform_job_id="attacker-controlled-shared-id",
+    )
+
+    job_service.create_job(1, job_in)
+    first = mock_repo.create_scraped_job_nested.call_args.args[0]
+    mock_repo.create_scraped_job_nested.reset_mock()
+    job_service.create_job(2, job_in)
+    second = mock_repo.create_scraped_job_nested.call_args.args[0]
+
+    assert first.platform_job_id.startswith("manual-")
+    assert second.platform_job_id.startswith("manual-")
+    assert first.platform_job_id != second.platform_job_id
+    assert "attacker-controlled" not in first.platform_job_id
+
+
+def test_manual_import_retry_returns_existing_user_job(job_service, mock_repo):
+    scraped = MagicMock(id=81)
+    existing = MagicMock(id=91)
+    mock_repo.get_scraped_job_by_platform_and_id.return_value = scraped
+    mock_repo.get_job_by_user_scraped_profile.return_value = existing
+
+    result = job_service.create_job(
+        7,
+        JobCreate(
+            title="Stable role",
+            company="Local company",
+            external_url="https://example.test/stable-role",
+        ),
+    )
+
+    assert result is existing
+    mock_repo.create.assert_not_called()
+
+
+def test_create_job_rejects_foreign_profile(job_service, mock_repo):
+    job_service.profile_repo.get_for_user.return_value = None
+
+    with pytest.raises(HTTPException) as exc:
+        job_service.create_job(
+            1,
+            JobCreate(
+                title="Foreign Profile Job",
+                company="ACME",
+                external_url="https://example.com/foreign",
+                search_profile_id=999,
+            ),
+        )
+
+    assert exc.value.status_code == 403
+
+
+def test_update_job_success(job_service, mock_repo):
+    mock_job = MagicMock()
+    mock_job.user_id = 1
+    mock_job.dismissed = False
+    mock_repo.get.return_value = mock_job
+
+    updates = JobUpdate(applied=True)
+    job_service.update_job(1, 101, updates)
+    mock_repo.update.assert_called_once_with(mock_job, {"applied": True})
+
+
+def test_update_job_not_found(job_service, mock_repo):
+    mock_repo.get.return_value = None
+    with pytest.raises(Exception) as exc:
+        job_service.update_job(1, 999, JobUpdate())
+    assert "404" in str(exc.value)
+
+
+def test_update_job_forbidden(job_service, mock_repo):
+    mock_job = MagicMock()
+    mock_job.user_id = 2  # Different user
+    mock_repo.get.return_value = mock_job
+
+    with pytest.raises(Exception) as exc:
+        job_service.update_job(1, 101, JobUpdate())
+    assert "403" in str(exc.value)

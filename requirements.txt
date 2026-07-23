@@ -1,0 +1,33 @@
+# Direct production dependencies. Regenerate requirements.lock with:
+# pip-compile --generate-hashes --output-file requirements.lock requirements.txt
+
+fastapi==0.139.2
+# Keep the loopback sidecar portable across Windows ARM64 and Linux runners.
+# The optional ``standard`` extra pulls platform-specific event loops that are not
+# required by CareerOS and make a single hash-locked dependency set impossible.
+uvicorn==0.51.0
+python-multipart==0.0.32
+
+SQLAlchemy==2.0.51
+# SQLAlchemy's architecture marker misses Windows-on-ARM while Linux ARM64 needs this.
+# Pinning it directly keeps the hashed lock portable across both build targets.
+greenlet==3.5.3
+alembic==1.18.5
+
+PyJWT==2.13.0
+bcrypt==5.0.0
+
+httpx[http2]==0.28.1
+tenacity==9.1.4
+
+pydantic==2.13.4
+pydantic-settings==2.14.2
+APScheduler==3.11.3
+
+pypdf==6.14.2
+Pillow==12.3.0
+reportlab==4.5.1
+python-docx==1.2.0
+
+python-dotenv==1.2.2
+slowapi==0.1.10

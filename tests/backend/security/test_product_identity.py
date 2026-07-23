@@ -1,0 +1,79 @@
+from __future__ import annotations
+
+import re
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[3]
+
+
+def _text(path: str) -> str:
+    return (ROOT / path).read_text(encoding="utf-8")
+
+
+def test_product_surfaces_use_only_careeros_identity() -> None:
+    product_surfaces = (
+        "pyproject.toml",
+        "frontend/package.json",
+        "frontend/package-lock.json",
+        "Dockerfile",
+        "docker-compose.yml",
+        "alembic.ini",
+        ".serena/project.yml",
+        "backend/ai/planning.py",
+    )
+    combined = "\n".join(_text(path) for path in product_surfaces).lower()
+    assert "job-hunter-ai" not in combined
+    assert "job_hunter" not in combined
+    assert "ejupi-djenis30/job-hunter-ai" not in combined
+    assert "careeros-local" in combined
+
+
+def test_public_metadata_credits_people_collectively() -> None:
+    public_metadata = (
+        "README.md",
+        "SECURITY.md",
+        "LICENSE",
+        "pyproject.toml",
+        "docs/index.html",
+        "frontend/package.json",
+        "frontend/src-tauri/Cargo.toml",
+        "frontend/src-tauri/tauri.conf.json",
+        "CODE_OF_CONDUCT.md",
+    )
+    contents = {path: _text(path) for path in public_metadata}
+    combined = "\n".join(contents.values())
+    assert "CareerOS Local contributors" in combined
+    for relative, content in contents.items():
+        assert "Djenis Ejupi" not in content, relative
+        assert "djenis.ejupi@" not in content.lower(), relative
+    assert 'href="https://github.com/ejupi-djenis30">' not in contents["docs/index.html"]
+
+
+def test_runtime_dependencies_have_no_remote_ai_client() -> None:
+    dependency_files = ("requirements.txt", "frontend/package.json")
+    forbidden = re.compile(r"\b(openai|anthropic|groq|google-generativeai|g4f)\b", re.I)
+    for relative in dependency_files:
+        assert not forbidden.search(_text(relative)), relative
+
+
+def test_frontend_events_have_no_job_hunter_namespace() -> None:
+    frontend_sources = "\n".join(
+        path.read_text(encoding="utf-8")
+        for path in (ROOT / "frontend" / "src").rglob("*")
+        if path.suffix in {".js", ".jsx"}
+    )
+    assert "jh_api_error" not in frontend_sources
+    assert "jh_unauthorized" not in frontend_sources
+    assert "careeros:api-error" in frontend_sources
+    assert "careeros:unauthorized" in frontend_sources
+
+
+def test_repository_uses_no_legacy_scratch_directory() -> None:
+    checked = (
+        ".gitignore",
+        ".dockerignore",
+        ".github/workflows/ci.yml",
+        ".pre-commit-config.yaml",
+    )
+    for relative in checked:
+        assert "cmd_outputs" not in _text(relative), relative

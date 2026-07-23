@@ -1,0 +1,49 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://careeros.local/contracts/ai-contracts.schema.json",
+  "title": "CareerOS Local grounded coach contract v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["answer", "claims", "fact_citations", "job_citations", "confidence", "missing_evidence"],
+  "properties": {
+    "answer": { "type": "string", "minLength": 1, "maxLength": 6000 },
+    "claims": {
+      "type": "array",
+      "maxItems": 12,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["text", "fact_ids", "job_ids"],
+        "properties": {
+          "text": { "type": "string", "minLength": 1, "maxLength": 800 },
+          "fact_ids": {
+            "type": "array",
+            "uniqueItems": true,
+            "items": { "type": "string", "format": "uuid" }
+          },
+          "job_ids": {
+            "type": "array",
+            "uniqueItems": true,
+            "items": { "type": "integer", "minimum": 1 }
+          }
+        }
+      }
+    },
+    "fact_citations": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": { "type": "string", "format": "uuid" }
+    },
+    "job_citations": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": { "type": "integer", "minimum": 1 }
+    },
+    "confidence": { "type": "number", "minimum": 0, "maximum": 1 },
+    "missing_evidence": {
+      "type": "array",
+      "maxItems": 8,
+      "items": { "type": "string", "minLength": 1, "maxLength": 240 }
+    }
+  }
+}

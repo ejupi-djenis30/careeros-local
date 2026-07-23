@@ -1,0 +1,87 @@
+# ═══════════════════════════════════════
+# CareerOS Local — generated and private paths
+# ═══════════════════════════════════════
+
+# ─── Python ───
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg-info/
+*.egg
+dist/
+build/
+*.whl
+
+# ─── Virtual Environments ───
+venv/
+.venv/
+env/
+ENV/
+
+# ─── Environment & Secrets ───
+.env
+.env.local
+.env.*.local
+*.pem
+*.key
+secrets/
+
+# ─── Database ───
+*.db
+*.sqlite3
+*.db.bak
+data/
+
+# ─── IDE ───
+.vscode/
+.idea/
+*.code-workspace
+*.iml
+*.swp
+*.swo
+*~
+
+# ─── OS ───
+.DS_Store
+Thumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# ─── Node.js ───
+node_modules/
+frontend/dist/
+frontend/coverage/
+frontend/src-tauri/target/
+frontend/src-tauri/binaries/
+
+# ─── Testing & Coverage ───
+htmlcov/
+.coverage
+.coverage.*
+.pytest_cache/
+.mypy_cache/
+coverage.xml
+frontend/coverage/
+coverage/
+test_*.txt
+
+# ─── Logs, package outputs & Temp ───
+logs/
+*.log
+tmp/
+*.tmp
+.artifacts/
+.build/
+desktop/build/
+desktop/dist/
+
+# ─── Runtime Data ───
+data/
+!backend/data/
+
+# ─── Poetry / packaging ───
+poetry.lock
+
+# ─── Local assistants ───
+.gemini/

@@ -1,0 +1,20 @@
+{
+  "pythonVersion": "3.12",
+  "venvPath": ".",
+  "venv": ".venv",
+  "include": ["backend"],
+  "typeCheckingMode": "basic",
+  "reportAttributeAccessIssue": "none",
+  "reportGeneralTypeIssues": "none",
+  "reportOperatorIssue": "none",
+  "reportOptionalMemberAccess": "none",
+  "reportArgumentType": "none",
+  "reportAssignmentType": "none",
+  "exclude": [
+    "venv",
+    ".venv",
+    "node_modules",
+    "frontend",
+    "alembic"
+  ]
+}

@@ -1,0 +1,123 @@
+import React, { useCallback, useEffect, useRef, useState } from "react";
+import { SearchService } from "../services/search";
+import { useToast } from "../context/ToastContext";
+import { HistoryCard } from "./HistoryCard";
+import { useI18n } from "../i18n/useI18n";
+import { translateMessage } from "../i18n/runtime";
+
+export function History({ onStartSearch, onStartSearchWithOptions, onUseAsTemplate, onSaveAsSchedule, loadingProfileId }) {
+    const [profiles, setProfiles] = useState([]);
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState(null);
+    const { showToast } = useToast();
+    const { t } = useI18n();
+    const requestIdRef = useRef(0);
+    const requestControllerRef = useRef(null);
+
+    const loadProfiles = useCallback(() => {
+        const requestId = requestIdRef.current + 1;
+        requestIdRef.current = requestId;
+        requestControllerRef.current?.abort();
+        const controller = new AbortController();
+        requestControllerRef.current = controller;
+
+        return SearchService.getProfiles({ signal: controller.signal })
+            .then((data) => {
+                if (controller.signal.aborted || requestId !== requestIdRef.current) return;
+                const nextProfiles = Array.isArray(data) ? [...data] : [];
+                setProfiles(nextProfiles.sort((a, b) => b.id - a.id));
+                setError(null);
+            })
+            .catch((loadError) => {
+                if (controller.signal.aborted || loadError?.name === "AbortError" || requestId !== requestIdRef.current) return;
+                console.error("Failed to load profiles:", loadError);
+                setError({ messageKey: "historyList.loadFailed" });
+                showToast({ messageKey: "historyList.loadFailed" });
+            })
+            .finally(() => {
+                if (!controller.signal.aborted && requestId === requestIdRef.current) {
+                    requestControllerRef.current = null;
+                    setLoading(false);
+                }
+            });
+    }, [showToast]);
+
+    const refreshProfiles = useCallback(() => {
+        setError(null);
+        setLoading(true);
+        void loadProfiles();
+    }, [loadProfiles]);
+
+    useEffect(() => {
+        void loadProfiles();
+        return () => {
+            requestIdRef.current += 1;
+            requestControllerRef.current?.abort();
+            requestControllerRef.current = null;
+        };
+    }, [loadProfiles]);
+
+    if (loading) {
+        return (
+            <div className="d-flex justify-content-center align-items-center h-100">
+                <div className="spinner-border text-primary" role="status"></div>
+            </div>
+        );
+    }
+
+    if (error) {
+        return (
+            <div className="glass-panel text-center py-5 animate-fade-in align-items-center d-flex flex-column justify-content-center h-100">
+                <i className="bi bi-exclamation-triangle-fill fs-1 text-danger mb-3"></i>
+                <p className="text-secondary opacity-75 mb-3">{translateMessage(error, t)}</p>
+                <button onClick={refreshProfiles} className="btn btn-outline-primary">
+                    <i className="bi bi-arrow-clockwise me-2"></i>{t("historyList.retry")}
+                </button>
+            </div>
+        );
+    }
+
+    if (!profiles.length) {
+        return (
+            <div className="glass-panel text-center py-5 animate-fade-in align-items-center d-flex flex-column justify-content-center h-100">
+                <div className="mb-4">
+                    <div className="rounded-circle bg-secondary bg-opacity-10 d-inline-flex align-items-center justify-content-center" style={{ width: 80, height: 80 }}>
+                        <i className="bi bi-journal-x fs-1 text-secondary opacity-50"></i>
+                    </div>
+                </div>
+                <h4 className="text-white fw-bold">{t("historyList.emptyTitle")}</h4>
+                <p className="text-secondary opacity-75">{t("historyList.emptyCopy")}</p>
+            </div>
+        );
+    }
+
+    return (
+        <div className="animate-fade-in h-100 d-flex flex-column">
+            <div className="d-flex justify-content-end align-items-center mb-4">
+                <button
+                    onClick={refreshProfiles}
+                    className="btn btn-icon btn-secondary rounded-circle shadow-sm"
+                    title={t("historyList.refresh")}
+                    aria-label={t("historyList.refresh")}
+                >
+                    <i className="bi bi-arrow-clockwise"></i>
+                </button>
+            </div>
+
+            <div className="d-flex flex-column gap-3 overflow-auto custom-scrollbar pb-3">
+                {profiles.map(p => (
+                    <HistoryCard
+                        key={p.id}
+                        profile={p}
+                        onStartSearch={onStartSearch}
+                        onStartSearchWithOptions={onStartSearchWithOptions}
+                        onUseAsTemplate={onUseAsTemplate}
+                        onSaveAsSchedule={onSaveAsSchedule}
+                        isLoading={loadingProfileId === p.id}
+                        isDisabled={loadingProfileId !== null}
+                    />
+                ))}
+            </div>
+        </div>
+    );
+}

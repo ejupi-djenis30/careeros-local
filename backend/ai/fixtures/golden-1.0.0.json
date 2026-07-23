@@ -1,0 +1,251 @@
+{
+  "dataset_version": "1.0.0",
+  "synthetic_only": true,
+  "cases": [
+    {
+      "id": "coach-grounded-transition",
+      "task_id": "coach",
+      "user_prompt": "Come posso valorizzare la mia esperienza Python per un ruolo backend?",
+      "evidence": [
+        {
+          "id": "11111111-1111-4111-8111-111111111111",
+          "kind": "fact",
+          "text": "Ha sviluppato API backend in Python e FastAPI per tre anni.",
+          "metadata": {"status": "confirmed"}
+        }
+      ],
+      "expected_output": {
+        "answer": "Metti in evidenza i tre anni di sviluppo di API backend in Python e FastAPI.",
+        "claims": [
+          {
+            "text": "Ha tre anni di esperienza Python backend.",
+            "fact_ids": ["11111111-1111-4111-8111-111111111111"],
+            "job_ids": []
+          }
+        ],
+        "fact_citations": ["11111111-1111-4111-8111-111111111111"],
+        "job_citations": [],
+        "confidence": 0.92,
+        "missing_evidence": []
+      },
+      "expectations": [
+        {"path": "confidence", "operator": "gte", "value": 0.7},
+        {"path": "fact_citations", "operator": "contains", "value": "11111111-1111-4111-8111-111111111111"}
+      ]
+    },
+    {
+      "id": "profile-normalize-explicit",
+      "task_id": "profile_normalize",
+      "user_prompt": "Senior Python engineer, 7 anni, bachelor, italiano madrelingua e inglese C1. Cerco backend senior in IT.",
+      "evidence": [],
+      "expected_output": {
+        "candidate_profile": {
+          "seniority": "senior",
+          "domain": "it",
+          "role_family": "backend engineering",
+          "role_type": "technical",
+          "qualification_level": "bachelor",
+          "experience_years": 7,
+          "languages": [{"code": "it", "level": "native"}, {"code": "en", "level": "C1"}],
+          "skills": ["Python", "FastAPI"],
+          "industry_sectors": ["software"],
+          "transferable_skills": ["API design"],
+          "confidence": 0.95
+        },
+        "search_intent": {
+          "target_domain": "it",
+          "target_role_type": "technical",
+          "target_seniority": "senior",
+          "target_seniority_min": "senior",
+          "target_seniority_max": "senior",
+          "target_role_family": "backend engineering",
+          "target_qualification_level": "bachelor",
+          "target_skills": ["Python"],
+          "open_to_unrelated": false,
+          "intent_keywords": ["backend"],
+          "dealbreakers": [],
+          "flexibility": {"domain": false, "seniority": false, "qualification": true, "location": true},
+          "confidence": 0.94
+        }
+      },
+      "expectations": [
+        {"path": "candidate_profile.experience_years", "operator": "equals", "value": 7},
+        {"path": "search_intent.target_domain", "operator": "equals", "value": "it"}
+      ]
+    },
+    {
+      "id": "search-plan-multilingual",
+      "task_id": "search_plan",
+      "user_prompt": "Crea ricerche precise per backend engineer Python senior in Svizzera italiana e tedesca.",
+      "evidence": [],
+      "expected_output": {
+        "searches": [
+          {"query": "Senior Python Backend Engineer", "domain": "it", "type": "occupation", "language": "en"},
+          {"query": "Senior Python Backend Entwickler", "domain": "it", "type": "occupation", "language": "de"}
+        ]
+      },
+      "expectations": [
+        {"path": "searches.0.domain", "operator": "equals", "value": "it"},
+        {"path": "searches.1.language", "operator": "equals", "value": "de"}
+      ]
+    },
+    {
+      "id": "job-normalize-range",
+      "task_id": "job_normalize",
+      "user_prompt": "Una posizione: Senior Backend Engineer, 80-100%, 5+ anni Python, inglese C1, remoto ibrido.",
+      "evidence": [],
+      "expected_rows": 1,
+      "expected_output": {
+        "results": [
+          {
+            "title": "Senior Backend Engineer",
+            "role_family": "backend engineering",
+            "domain": "it",
+            "industry_sector": null,
+            "role_type": "technical",
+            "seniority": "senior",
+            "employment_mode": "hybrid",
+            "contract_type": "permanent",
+            "qualification_level": null,
+            "experience_min_years": 5,
+            "experience_max_years": null,
+            "workload_min": 80,
+            "workload_max": 100,
+            "salary_min_chf": null,
+            "salary_max_chf": null,
+            "required_languages": [{"code": "en", "level": "C1"}],
+            "required_skills": ["Python"],
+            "preferred_skills": [],
+            "soft_skills": [],
+            "physical_requirements": [],
+            "entry_barrier": "high",
+            "career_changer_friendly": false,
+            "education_levels": [],
+            "key_requirements": ["5+ anni Python"],
+            "hard_blockers": [],
+            "confidence": 0.96
+          }
+        ]
+      },
+      "expectations": [
+        {"path": "results.0.experience_min_years", "operator": "equals", "value": 5},
+        {"path": "results.0.workload_max", "operator": "equals", "value": 100}
+      ]
+    },
+    {
+      "id": "job-match-calibrated",
+      "task_id": "job_match",
+      "user_prompt": "Il candidato ha 7 anni Python e inglese C1. Il lavoro richiede 5 anni Python e inglese C1.",
+      "evidence": [
+        {"id": "22222222-2222-4222-8222-222222222222", "kind": "fact", "text": "Sette anni di Python; inglese C1.", "metadata": {}},
+        {"id": "42", "kind": "job", "text": "Richiesti cinque anni Python e inglese C1.", "metadata": {}}
+      ],
+      "expected_rows": 1,
+      "expected_output": {
+        "results": [
+          {
+            "affinity_score": 91,
+            "affinity_analysis": "Esperienza e lingua superano i requisiti espliciti.",
+            "worth_applying": true,
+            "skill_match_score": 95,
+            "experience_match_score": 95,
+            "intent_match_score": 85,
+            "language_match_score": 100,
+            "location_match_score": 70,
+            "transferability_score": 90,
+            "qualification_gap_score": 100,
+            "red_flags": []
+          }
+        ]
+      },
+      "expectations": [
+        {"path": "results.0.affinity_score", "operator": "gte", "value": 75},
+        {"path": "results.0.worth_applying", "operator": "equals", "value": true}
+      ]
+    },
+    {
+      "id": "job-critique-bounded",
+      "task_id": "job_critique",
+      "user_prompt": "Rivedi un punteggio iniziale 70: requisiti Python coperti, certificazione cloud preferita ma non obbligatoria.",
+      "evidence": [],
+      "expected_rows": 1,
+      "expected_output": {
+        "results": [
+          {
+            "affinity_score": 72,
+            "worth_applying": true,
+            "critique_notes": "Il punteggio iniziale è coerente; la certificazione è solo preferita.",
+            "score_changed": true
+          }
+        ]
+      },
+      "expectations": [
+        {"path": "results.0.affinity_score", "operator": "gte", "value": 65},
+        {"path": "results.0.worth_applying", "operator": "equals", "value": true}
+      ]
+    },
+    {
+      "id": "job-rerank-unique",
+      "task_id": "job_rerank",
+      "user_prompt": "Confronta due ruoli: A copre Python e località, B copre Python ma richiede trasferimento.",
+      "evidence": [],
+      "expected_rows": 2,
+      "expected_output": {
+        "results": [
+          {"final_score": 88, "rank": 1, "rank_notes": "Migliore compatibilità di competenze e località."},
+          {"final_score": 74, "rank": 2, "rank_notes": "Buone competenze, ma il trasferimento riduce la compatibilità."}
+        ]
+      },
+      "expectations": [
+        {"path": "results.0.rank", "operator": "equals", "value": 1},
+        {"path": "results.1.rank", "operator": "equals", "value": 2}
+      ]
+    },
+    {
+      "id": "resume-tailor-grounded",
+      "task_id": "resume_tailor",
+      "user_prompt": "Adatta le dichiarazioni del CV al ruolo backend senza aggiungere competenze non verificate.",
+      "evidence": [
+        {
+          "id": "33333333-3333-4333-8333-333333333333",
+          "kind": "fact",
+          "text": "Ha sviluppato API backend in Python e FastAPI per tre anni.",
+          "metadata": {"status": "confirmed"}
+        },
+        {
+          "id": "77",
+          "kind": "job",
+          "text": "Il ruolo backend richiede Python e FastAPI; Kubernetes è preferito.",
+          "metadata": {}
+        }
+      ],
+      "expected_output": {
+        "claims": [
+          {
+            "text": "Ha sviluppato API backend in Python e FastAPI per tre anni.",
+            "fact_ids": ["33333333-3333-4333-8333-333333333333"],
+            "job_ids": [77],
+            "section": "experience",
+            "operation": "rewrite",
+            "source_text": "Sviluppatore backend.",
+            "matched_keywords": ["Python", "FastAPI", "backend"]
+          }
+        ],
+        "gaps": [
+          {
+            "requirement": "Kubernetes non è verificato nel profilo.",
+            "job_ids": [77]
+          }
+        ],
+        "fact_citations": ["33333333-3333-4333-8333-333333333333"],
+        "job_citations": [77],
+        "confidence": 0.94
+      },
+      "expectations": [
+        {"path": "claims.0.matched_keywords", "operator": "contains", "value": "FastAPI"},
+        {"path": "gaps.0.requirement", "operator": "contains", "value": "Kubernetes"},
+        {"path": "confidence", "operator": "gte", "value": 0.8}
+      ]
+    }
+  ]
+}

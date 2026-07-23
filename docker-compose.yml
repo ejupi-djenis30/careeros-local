@@ -1,0 +1,92 @@
+name: careeros-local
+
+services:
+  ollama:
+    image: ollama/ollama:0.30.8@sha256:05b6fe5143ed006d6d4abd39bdd575f962a5822bdf81e6fbb5e6894eb984ab9c
+    restart: unless-stopped
+    environment:
+      OLLAMA_HOST: 0.0.0.0:11434
+      OLLAMA_KEEP_ALIVE: 15m
+      OLLAMA_NO_CLOUD: "true"
+    volumes:
+      - ollama_data:/root/.ollama
+    expose:
+      - "11434"
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+    security_opt:
+      - no-new-privileges:true
+
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    init: true
+    depends_on:
+      ollama:
+        condition: service_healthy
+    environment:
+      ENVIRONMENT: production
+      OFFLINE_MODE: ${OFFLINE_MODE:-false}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      DATABASE_URL: sqlite:////app/data/careeros.db
+      DATA_DIR: /app/data
+      LOCAL_INFERENCE_URL: http://ollama:11434
+      LOCAL_INFERENCE_ALLOWED_HOSTS: ollama
+      LOCAL_MODEL: ${LOCAL_MODEL:-qwen3:1.7b}
+      CORS_ORIGINS: http://localhost:5173,http://127.0.0.1:5173
+      CORS_ALLOW_ORIGIN_REGEX: ^https?://(localhost|127\.0\.0\.1)(:5173)?$
+      ALLOWED_HOSTS: '["localhost","127.0.0.1","backend","testserver"]'
+    volumes:
+      - app_data:/app/data
+    ports:
+      - "127.0.0.1:8000:8000"
+    read_only: true
+    tmpfs:
+      - /tmp:size=128m,mode=1777
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/v1/health/ready', timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    init: true
+    depends_on:
+      backend:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:5173:8080"
+    read_only: true
+    tmpfs:
+      - /tmp:size=64m,mode=1777
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--output-document=-", "http://127.0.0.1:8080/"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+
+volumes:
+  app_data:
+    name: careeros-local-vault
+  ollama_data:
+    name: careeros-local-models

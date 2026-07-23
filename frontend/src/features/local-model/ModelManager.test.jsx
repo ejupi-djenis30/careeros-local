@@ -1,0 +1,212 @@
+import { screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { assertAccessible } from "../../test/accessibility";
+import { renderWithItalian as render } from "../../test/renderWithI18n";
+import { LocalModelService } from "../../services/localModel";
+import { ModelManager } from "./ModelManager";
+
+const refresh = vi.fn();
+const hook = vi.fn();
+vi.mock("./useLocalModelStatus", () => ({ useLocalModelStatus: () => hook() }));
+vi.mock("../../services/localModel", () => ({
+    LocalModelService: {
+        catalog: vi.fn(),
+        install: vi.fn(),
+        replace: vi.fn(),
+        cancel: vi.fn(),
+        pause: vi.fn(),
+        resume: vi.fn(),
+        remove: vi.fn(),
+        restart: vi.fn(),
+    },
+}));
+
+const catalog = {
+    models: [
+        {
+            key: "qwen3-1.7b-q8",
+            displayName: "Qwen3 1.7B · Accurate compact",
+            parameters: "1.7B",
+            quantization: "Q8_0",
+            sizeBytes: 1834426016,
+            license: "Apache-2.0",
+        },
+        {
+            key: "qwen3-4b-q4",
+            displayName: "Qwen3 4B · Balanced",
+            parameters: "4B",
+            quantization: "Q4_K_M",
+            sizeBytes: 2500000000,
+            license: "Apache-2.0",
+        },
+    ],
+};
+
+describe("ModelManager", () => {
+    beforeEach(() => {
+        vi.clearAllMocks();
+        LocalModelService.catalog.mockResolvedValue(catalog);
+        LocalModelService.install.mockResolvedValue({ phase: "downloading_model" });
+        LocalModelService.cancel.mockResolvedValue({ phase: "cancelled" });
+        LocalModelService.pause.mockResolvedValue({ phase: "paused" });
+        LocalModelService.resume.mockResolvedValue({ phase: "downloading_model" });
+        LocalModelService.remove.mockResolvedValue({ status: { phase: "idle" } });
+        hook.mockReturnValue({
+            status: { loading: false, ready: false, available: false, managed: { phase: "idle" } },
+            refresh,
+        });
+    });
+
+    it("requires explicit license consent before installation", async () => {
+        const user = userEvent.setup();
+        render(<ModelManager />);
+
+        const install = await screen.findByRole("button", { name: "Installa modello locale" });
+        expect(install).toBeDisabled();
+        await user.click(screen.getByRole("checkbox", { name: /Accetto la licenza Apache-2.0/ }));
+        await user.click(install);
+
+        await waitFor(() => expect(LocalModelService.install).toHaveBeenCalledWith("qwen3-1.7b-q8"));
+        expect(refresh).toHaveBeenCalled();
+    });
+
+    it("shows verified progress and supports pause and destructive cancellation", async () => {
+        const user = userEvent.setup();
+        hook.mockReturnValue({
+            status: {
+                loading: false,
+                ready: false,
+                available: true,
+                managed: { phase: "downloading_model", bytes_downloaded: 50, bytes_total: 100 },
+            },
+            refresh,
+        });
+        render(<ModelManager />);
+
+        expect(await screen.findByRole("progressbar")).toHaveAttribute("value", "50");
+        await user.click(screen.getByRole("button", { name: "Metti in pausa" }));
+        expect(LocalModelService.pause).toHaveBeenCalledTimes(1);
+        await user.click(screen.getByRole("button", { name: "Annulla e rimuovi download" }));
+        expect(LocalModelService.cancel).toHaveBeenCalledTimes(1);
+    });
+
+    it("resumes a paused partial download without requiring new consent", async () => {
+        const user = userEvent.setup();
+        hook.mockReturnValue({
+            status: {
+                loading: false,
+                ready: false,
+                available: true,
+                managed: { phase: "paused", bytes_downloaded: 25, bytes_total: 100 },
+            },
+            refresh,
+        });
+        render(<ModelManager />);
+
+        expect(await screen.findByText("Download in pausa")).toBeInTheDocument();
+        await user.click(screen.getByRole("button", { name: "Riprendi download" }));
+        expect(LocalModelService.resume).toHaveBeenCalledTimes(1);
+    });
+
+    it("can remove an installed local model", async () => {
+        const user = userEvent.setup();
+        hook.mockReturnValue({
+            status: {
+                loading: false,
+                ready: true,
+                available: true,
+                managed: { phase: "ready", model_key: "qwen3-1.7b-q8", model_installed: true, runtime_installed: true },
+            },
+            refresh,
+        });
+        render(<ModelManager />);
+
+        await user.click(await screen.findByRole("button", { name: "Rimuovi modello" }));
+        expect(LocalModelService.remove).not.toHaveBeenCalled();
+        expect(screen.getByRole("dialog", { name: "Rimuovere il modello locale?" })).toBeInTheDocument();
+        await user.click(screen.getByRole("button", { name: "Rimuovi modello locale" }));
+        expect(LocalModelService.remove).toHaveBeenCalledTimes(1);
+    });
+
+    it("offers an explicit retry when the verified catalog cannot be loaded", async () => {
+        const user = userEvent.setup();
+        LocalModelService.catalog
+            .mockRejectedValueOnce(new Error("catalog offline"))
+            .mockResolvedValueOnce(catalog);
+
+        render(<ModelManager />);
+
+        expect(await screen.findByRole("alert")).toHaveTextContent("catalog offline");
+        await user.click(screen.getByRole("button", { name: "Riprova a caricare il catalogo" }));
+        expect(await screen.findByRole("combobox")).toBeInTheDocument();
+        expect(LocalModelService.catalog).toHaveBeenCalledTimes(2);
+    });
+
+    it("selects the managed model when status arrives after the catalog", async () => {
+        const { rerender } = render(<ModelManager />);
+        expect(await screen.findByRole("combobox")).toHaveValue("qwen3-1.7b-q8");
+
+        hook.mockReturnValue({
+            status: {
+                loading: false,
+                ready: true,
+                available: true,
+                managed: { phase: "ready", model_key: "qwen3-4b-q4", model_installed: true },
+            },
+            refresh,
+        });
+        rerender(<ModelManager />);
+
+        expect(screen.getByRole("combobox")).toHaveValue("qwen3-4b-q4");
+    });
+
+    it("keeps an explicit model choice across status refreshes", async () => {
+        const user = userEvent.setup();
+        hook.mockReturnValue({
+            status: {
+                loading: false,
+                ready: true,
+                available: true,
+                managed: { phase: "ready", model_key: "qwen3-1.7b-q8", model_installed: true },
+            },
+            refresh,
+        });
+        const { rerender } = render(<ModelManager />);
+        const selector = await screen.findByRole("combobox");
+        await user.selectOptions(selector, "qwen3-4b-q4");
+
+        hook.mockReturnValue({
+            status: {
+                loading: false,
+                ready: true,
+                available: true,
+                managed: { phase: "ready", model_key: "qwen3-1.7b-q8", model_installed: true, runtime_installed: true },
+            },
+            refresh,
+        });
+        rerender(<ModelManager />);
+
+        expect(screen.getByRole("combobox")).toHaveValue("qwen3-4b-q4");
+    });
+
+    it("passes the model setup accessibility and keyboard gate", async () => {
+        const user = userEvent.setup();
+        const { container } = render(<main><h1>Gestione modello locale</h1><ModelManager /></main>);
+        const consent = await screen.findByRole("checkbox", { name: /Accetto la licenza Apache-2.0/ });
+
+        await assertAccessible(container);
+        await user.tab();
+        expect(screen.getByRole("button", { name: "Ricontrolla modello locale" })).toHaveFocus();
+        await user.tab();
+        expect(screen.getByRole("combobox")).toHaveFocus();
+        await user.tab();
+        expect(consent).toHaveFocus();
+        await user.keyboard(" ");
+        await user.tab();
+        const install = screen.getByRole("button", { name: "Installa modello locale" });
+        expect(install).toHaveFocus();
+        await user.keyboard("{Enter}");
+        await waitFor(() => expect(LocalModelService.install).toHaveBeenCalledTimes(1));
+    });
+});

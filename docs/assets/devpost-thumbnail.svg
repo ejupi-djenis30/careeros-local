@@ -1,0 +1,54 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="1200" viewBox="0 0 1200 1200" role="img" aria-labelledby="title description">
+  <title id="title">CareerOS Local project mark</title>
+  <desc id="description">A centered local vault connected to four balanced career workflow modules.</desc>
+  <defs>
+    <radialGradient id="thumb-field" cx="50%" cy="50%" r="70%">
+      <stop offset="0" stop-color="#1a251e"/>
+      <stop offset="0.56" stop-color="#101713"/>
+      <stop offset="1" stop-color="#0a0d0b"/>
+    </radialGradient>
+    <linearGradient id="thumb-panel" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#18211b"/>
+      <stop offset="1" stop-color="#101411"/>
+    </linearGradient>
+    <g id="thumb-quadrant">
+      <path d="M328 328 438 438" fill="none" stroke="#2b362f" stroke-width="3"/>
+      <circle cx="384" cy="384" r="7" fill="#0a0d0b" stroke="#82b9ff" stroke-width="3"/>
+      <rect x="96" y="96" width="232" height="232" rx="42" fill="url(#thumb-panel)" stroke="#2b362f" stroke-width="3"/>
+      <rect x="126" y="126" width="172" height="172" rx="28" fill="#0b100d" stroke="#202a23" stroke-width="2"/>
+      <circle cx="176" cy="176" r="22" fill="#101411" stroke="#3b4940" stroke-width="2"/>
+      <path d="M166 176h20M176 166v20" fill="none" stroke="#b9f27c" stroke-width="4" stroke-linecap="round"/>
+      <rect x="214" y="166" width="54" height="8" rx="4" fill="#f4f7f2" fill-opacity="0.9"/>
+      <rect x="214" y="190" width="70" height="8" rx="4" fill="#9eaaa2" fill-opacity="0.55"/>
+      <rect x="144" y="238" width="140" height="8" rx="4" fill="#82b9ff" fill-opacity="0.8"/>
+      <circle cx="260" cy="266" r="14" fill="#b9f27c"/>
+      <circle cx="260" cy="266" r="5" fill="#101411"/>
+    </g>
+    <g id="thumb-mark">
+      <rect x="-32" y="-32" width="64" height="64" rx="16" fill="#101411" stroke="#2b362f" stroke-width="2"/>
+      <path d="M13-13.5A18 18 0 1 0 13 13.5" fill="none" stroke="#b9f27c" stroke-width="7" stroke-linecap="round"/>
+      <path d="M6 0h7" fill="none" stroke="#f4f7f2" stroke-width="3.5" stroke-linecap="round"/>
+      <circle cx="15" cy="0" r="5" fill="#b9f27c"/>
+      <circle cx="15" cy="0" r="1.8" fill="#101411"/>
+    </g>
+  </defs>
+
+  <rect width="1200" height="1200" fill="url(#thumb-field)"/>
+  <rect data-frame="true" x="48" y="48" width="1104" height="1104" rx="72" fill="none" stroke="#2b362f" stroke-width="3"/>
+  <path d="M72 600h1056M600 72v1056" fill="none" stroke="#202a23" stroke-width="2"/>
+  <circle cx="600" cy="600" r="396" fill="none" stroke="#202a23" stroke-width="3"/>
+  <circle cx="600" cy="600" r="300" fill="none" stroke="#2b362f" stroke-width="3"/>
+
+  <use data-quadrant="top-left" href="#thumb-quadrant"/>
+  <use data-quadrant="top-right" href="#thumb-quadrant" transform="translate(1200 0) scale(-1 1)"/>
+  <use data-quadrant="bottom-left" href="#thumb-quadrant" transform="translate(0 1200) scale(1 -1)"/>
+  <use data-quadrant="bottom-right" href="#thumb-quadrant" transform="translate(1200 1200) scale(-1 -1)"/>
+
+  <rect data-center="true" x="400" y="400" width="400" height="400" rx="88" fill="#101411" stroke="#3b4940" stroke-width="3"/>
+  <rect x="428" y="428" width="344" height="344" rx="66" fill="#0a0d0b" stroke="#2b362f" stroke-width="2"/>
+  <circle cx="600" cy="600" r="136" fill="none" stroke="#2b362f" stroke-width="3"/>
+  <path d="M600 442v28M600 730v28M442 600h28M730 600h28" stroke="#b9f27c" stroke-width="5" stroke-linecap="round"/>
+  <g transform="translate(600 600) scale(3)">
+    <use href="#thumb-mark"/>
+  </g>
+</svg>

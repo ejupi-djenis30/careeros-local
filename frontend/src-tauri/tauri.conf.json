@@ -1,0 +1,60 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "CareerOS Local",
+  "version": "1.5.0",
+  "identifier": "local.careeros.desktop",
+  "build": {
+    "beforeDevCommand": "npm run dev",
+    "devUrl": "http://127.0.0.1:5173",
+    "beforeBuildCommand": "npm run build",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "withGlobalTauri": false,
+    "windows": [
+      {
+        "label": "main",
+        "title": "CareerOS Local",
+        "width": 1440,
+        "height": 900,
+        "minWidth": 1024,
+        "minHeight": 700,
+        "resizable": true,
+        "fullscreen": false,
+        "center": true
+      }
+    ],
+    "security": {
+      "capabilities": ["main"],
+      "csp": {
+        "default-src": "'self' customprotocol: asset:",
+        "connect-src": "ipc: http://ipc.localhost http://127.0.0.1:*",
+        "font-src": "'self' data:",
+        "img-src": "'self' asset: http://asset.localhost blob: data:",
+        "script-src": "'self'",
+        "style-src": "'self' 'unsafe-inline'"
+      },
+      "dangerousDisableAssetCspModification": false
+    }
+  },
+  "bundle": {
+    "active": true,
+    "resources": {
+      "../../LICENSE": "LICENSE",
+      "binaries/careeros-backend-runtime/": "careeros-backend-runtime/"
+    },
+    "targets": "all",
+    "createUpdaterArtifacts": false,
+    "category": "Productivity",
+    "shortDescription": "Open-source, local-first career utility",
+    "longDescription": "CareerOS Local turns verified career history into resumes, locally analyzed job searches and applications while keeping private data and required AI analysis on your computer.",
+    "copyright": "Copyright © 2026 Ejupi Labs and CareerOS Local contributors",
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ]
+  }
+}

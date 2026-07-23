@@ -1,0 +1,73 @@
+{
+  "name": "careeros-local-desktop",
+  "private": true,
+  "version": "1.5.0",
+  "description": "Open-source, local-first career utility for verified resumes, deterministic job search, and applications",
+  "author": "Ejupi Labs",
+  "contributors": [
+    "CareerOS Local contributors"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ejupi-djenis30/careeros-local.git"
+  },
+  "bugs": {
+    "url": "https://github.com/ejupi-djenis30/careeros-local/issues"
+  },
+  "homepage": "https://github.com/ejupi-djenis30/careeros-local#readme",
+  "engines": {
+    "node": ">=24"
+  },
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "lint": "eslint .",
+    "preview": "vite preview",
+    "tauri": "tauri",
+    "desktop:prepare": "python ../scripts/build_backend_sidecar.py",
+    "tauri:dev": "python ../scripts/run_desktop.py dev",
+    "tauri:build": "python ../scripts/run_desktop.py build",
+    "test": "vitest run && npm run test:licenses",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage && npm run test:licenses",
+    "brand:icons": "tauri icon public/careeros.svg --output src-tauri/icons",
+    "demo:install": "playwright install chromium",
+    "demo:record": "node ../scripts/record_demo.mjs",
+    "test:pages": "node e2e/portfolio-responsive.mjs",
+    "test:agenda-responsive": "node e2e/application-agenda-responsive.mjs",
+    "test:licenses": "node --test ../scripts/audit_frontend_licenses.test.mjs"
+  },
+  "dependencies": {
+    "@tauri-apps/api": "2.11.1",
+    "@tauri-apps/plugin-dialog": "2.7.2",
+    "@tauri-apps/plugin-fs": "2.5.1",
+    "@tauri-apps/plugin-opener": "2.5.4",
+    "bootstrap": "^5.3.8",
+    "bootstrap-icons": "^1.13.1",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8",
+    "react-router-dom": "^7.13.0"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.39.5",
+    "@tauri-apps/cli": "2.11.4",
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.2",
+    "@testing-library/user-event": "^14.6.1",
+    "@types/react": "^19.2.17",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^5.2.0",
+    "@vitest/coverage-v8": "^4.1.10",
+    "axe-core": "4.12.1",
+    "eslint": "^9.39.5",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "eslint-plugin-react-refresh": "^0.5.3",
+    "globals": "^16.5.0",
+    "jsdom": "^28.1.0",
+    "playwright": "^1.61.1",
+    "vite": "^7.3.1",
+    "vitest": "^4.0.18"
+  }
+}

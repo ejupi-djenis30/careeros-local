@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Support and setup guidance
+    url: https://github.com/ejupi-djenis30/careeros-local/blob/main/SUPPORT.md
+    about: Check supported versions, troubleshooting context, and safe reporting guidance.
+  - name: Security and privacy reports
+    url: https://github.com/ejupi-djenis30/careeros-local/security/policy
+    about: Report vulnerabilities or accidental private-data exposure through the security policy.
