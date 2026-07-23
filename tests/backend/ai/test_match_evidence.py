@@ -484,6 +484,8 @@ def test_multilingual_typed_mismatches_cap_and_risk_the_outcome(
     [
         "I don't know Python.",
         "I haven't used Python.",
+        "I can't use Python.",
+        "I cannot use Python.",
         "I lack Python experience.",
         "Ich kenne Python nicht.",
         "Je ne connais pas Python.",
@@ -492,6 +494,8 @@ def test_multilingual_typed_mismatches_cap_and_risk_the_outcome(
     ids=(
         "english-contraction",
         "english-havent",
+        "english-cannot-contraction",
+        "english-cannot",
         "english-lack",
         "german",
         "french",
@@ -641,6 +645,828 @@ def test_requirement_scaffolding_never_becomes_a_mandatory_skill(job_text: str) 
 
     assert summary["required_skill_terms"] == ["python"]
     assert summary["required_skill_groups"] == [["python"]]
+
+
+@pytest.mark.parametrize(
+    "job_text",
+    [
+        "Python must not be used.",
+        "Python darf nicht verwendet werden.",
+        "Python ne doit pas être utilisé.",
+        "Non deve usare Python.",
+    ],
+    ids=("english", "german", "french", "italian"),
+)
+def test_multilingual_passive_exclusions_only_exclude_the_target_skill(job_text: str) -> None:
+    job = job_evidence_document({"description": job_text}, 0, description_limit=1_800)
+    candidate = candidate_evidence_document({"cv_content": "Python."})
+    proposal = _payload({"skill": 100, "transferability": 100}).model_dump(mode="json")
+
+    row = enforce_match_score_policy(proposal, (candidate, job))["results"][0]
+    summary = job.validation_metadata["requirement_summary"]
+
+    assert summary["required_skill_terms"] == []
+    assert summary["excluded_skill_terms"] == ["python"]
+    assert row["skill_match_score"] <= 40
+    assert row["transferability_score"] <= 40
+
+
+@pytest.mark.parametrize(
+    "job_text",
+    [
+        "Python skills aren't required.",
+        "Python skills aren’t required.",
+        "Python is not mandatory.",
+        "Python ist keine Voraussetzung.",
+        "Python muss nicht bekannt sein.",
+        "Python n’est pas obligatoire.",
+        "Python non è obbligatorio.",
+    ],
+)
+def test_multilingual_natural_optional_phrases_remain_neutral(job_text: str) -> None:
+    job = job_evidence_document({"description": job_text}, 0, description_limit=1_800)
+    proposal = _payload({"skill": 100}).model_dump(mode="json")
+
+    for candidate_text in ("Python.", "Java."):
+        candidate = candidate_evidence_document({"cv_content": candidate_text})
+        row = enforce_match_score_policy(proposal, (candidate, job))["results"][0]
+        assert row["skill_match_score"] == 50
+
+
+@pytest.mark.parametrize(
+    "job_text",
+    [
+        "Hands-on Python experience is mandatory.",
+        "Gute Kenntnisse in Python sind erforderlich.",
+        "Une bonne maîtrise de Python est requise.",
+        "Buona conoscenza di Python richiesta.",
+    ],
+    ids=("english", "german", "french", "italian"),
+)
+def test_localized_requirement_scaffolding_does_not_become_a_skill(job_text: str) -> None:
+    job = job_evidence_document({"description": job_text}, 0, description_limit=1_800)
+    candidate = candidate_evidence_document({"cv_content": "Python."})
+    proposal = _payload({"skill": 100, "transferability": 100}).model_dump(mode="json")
+
+    row = enforce_match_score_policy(proposal, (candidate, job))["results"][0]
+    summary = job.validation_metadata["requirement_summary"]
+
+    assert summary["required_skill_terms"] == ["python"]
+    assert summary["required_skill_groups"] == [["python"]]
+    assert row["skill_match_score"] == 100
+    assert row["transferability_score"] == 100
+
+
+@pytest.mark.parametrize(
+    "candidate_text",
+    [
+        "Built Python services without Java.",
+        "Python entwickelt ohne Java.",
+        "Développé Python sans Java.",
+        "Sviluppato Python senza Java.",
+    ],
+    ids=("english", "german", "french", "italian"),
+)
+def test_bounded_absence_does_not_negate_positive_evidence_before_it(
+    candidate_text: str,
+) -> None:
+    candidate = candidate_evidence_document({"cv_content": candidate_text})
+    job = job_evidence_document({"description": "Python is required."}, 0, description_limit=1_800)
+    proposal = _payload({"skill": 100}).model_dump(mode="json")
+
+    row = enforce_match_score_policy(proposal, (candidate, job))["results"][0]
+    summary = candidate.validation_metadata["requirement_summary"]
+
+    assert "python" in summary["observed_skill_terms"]
+    assert "python" not in summary["negated_skill_terms"]
+    assert "java" in summary["negated_skill_terms"]
+    assert row["skill_match_score"] == 100
+
+
+def test_unrelated_without_gerund_does_not_negate_preceding_python() -> None:
+    candidate = candidate_evidence_document(
+        {"cv_content": "Built Python services without sacrificing quality."}
+    )
+    job = job_evidence_document({"description": "Python is required."}, 0, description_limit=1_800)
+    proposal = _payload({"skill": 100}).model_dump(mode="json")
+
+    row = enforce_match_score_policy(proposal, (candidate, job))["results"][0]
+    summary = candidate.validation_metadata["requirement_summary"]
+
+    assert "python" in summary["observed_skill_terms"]
+    assert "python" not in summary["negated_skill_terms"]
+    assert row["skill_match_score"] == 100
+
+
+def test_french_apostrophe_negation_is_bounded_and_negative() -> None:
+    candidate = candidate_evidence_document({"cv_content": "Je n’utilise pas Python."})
+    job = job_evidence_document({"description": "Python is required."}, 0, description_limit=1_800)
+    proposal = _payload({"skill": 100}).model_dump(mode="json")
+
+    row = enforce_match_score_policy(proposal, (candidate, job))["results"][0]
+    summary = candidate.validation_metadata["requirement_summary"]
+
+    assert "python" not in summary["observed_skill_terms"]
+    assert "python" in summary["negated_skill_terms"]
+    assert row["skill_match_score"] <= 40
+
+
+@pytest.mark.parametrize(
+    ("job_text", "candidate_text", "expected_group"),
+    [
+        (
+            "English C1 or German B2 is required.",
+            "German B2.",
+            {"english": 5, "german": 4},
+        ),
+        (
+            "Deutsch C1 oder Englisch B2 ist erforderlich.",
+            "Englisch B2.",
+            {"english": 4, "german": 5},
+        ),
+        (
+            "Français C1 ou Anglais B2 est requis.",
+            "Anglais B2.",
+            {"english": 4, "french": 5},
+        ),
+        (
+            "Italiano C1 o Inglese B2 è richiesto.",
+            "Inglese B2.",
+            {"english": 4, "italian": 5},
+        ),
+    ],
+    ids=("english", "german", "french", "italian"),
+)
+def test_multilingual_required_language_alternatives_accept_any_member(
+    job_text: str,
+    candidate_text: str,
+    expected_group: dict[str, int],
+) -> None:
+    job = job_evidence_document({"description": job_text}, 0, description_limit=1_800)
+    proposal = _payload({"language": 100}).model_dump(mode="json")
+    summary = job.validation_metadata["requirement_summary"]
+
+    candidate = candidate_evidence_document({"cv_content": candidate_text})
+    matching_row = enforce_match_score_policy(proposal, (candidate, job))["results"][0]
+    missing = candidate_evidence_document({"cv_content": "Spanish C2."})
+    missing_row = enforce_match_score_policy(proposal, (missing, job))["results"][0]
+
+    assert summary["required_language_groups"] == [expected_group]
+    assert matching_row["language_match_score"] == 100
+    assert missing_row["language_match_score"] == 30
+
+
+def test_italian_singular_year_is_a_typed_mandatory_mismatch() -> None:
+    candidate = candidate_evidence_document({"cv_content": "0 anni di esperienza."})
+    job = job_evidence_document(
+        {"description": "Almeno 1 anno di esperienza richiesto."},
+        0,
+        description_limit=1_800,
+    )
+    proposal = _payload({"experience": 100}).model_dump(mode="json")
+
+    row = enforce_match_score_policy(proposal, (candidate, job))["results"][0]
+    summary = job.validation_metadata["requirement_summary"]
+
+    assert summary["required_experience_years"] == 1
+    assert summary["required_skill_terms"] == []
+    assert row["experience_match_score"] == 40
+
+
+@pytest.mark.parametrize(
+    "job_text",
+    [
+        "Hands-on Python experience without direct supervision is required.",
+        "Praktische Python-Erfahrung ohne direkte Aufsicht ist erforderlich.",
+        "Expérience pratique de Python sans supervision directe requise.",
+        "Esperienza pratica con Python senza supervisione diretta richiesta.",
+    ],
+    ids=("english", "german", "french", "italian"),
+)
+def test_required_marker_after_scoped_absence_governs_positive_skill(
+    job_text: str,
+) -> None:
+    job = job_evidence_document({"description": job_text}, 0, description_limit=1_800)
+    proposal = _payload({"skill": 100, "transferability": 100}).model_dump(mode="json")
+    summary = job.validation_metadata["requirement_summary"]
+
+    matching = candidate_evidence_document({"cv_content": "Python."})
+    matching_row = enforce_match_score_policy(proposal, (matching, job))["results"][0]
+    missing = candidate_evidence_document({"cv_content": "Java."})
+    missing_row = enforce_match_score_policy(proposal, (missing, job))["results"][0]
+
+    assert summary["required_skill_terms"] == ["python"]
+    assert summary["required_skill_groups"] == [["python"]]
+    assert matching_row["skill_match_score"] == 100
+    assert missing_row["skill_match_score"] == 40
+    assert missing_row["transferability_score"] == 40
+
+
+def test_unrelated_role_or_does_not_group_required_languages() -> None:
+    job = job_evidence_document(
+        {"description": ("English C1 plus German B2 required for frontend or backend roles.")},
+        0,
+        description_limit=1_800,
+    )
+    proposal = _payload({"language": 100}).model_dump(mode="json")
+    summary = job.validation_metadata["requirement_summary"]
+
+    english_only = candidate_evidence_document({"cv_content": "English C1."})
+    row = enforce_match_score_policy(proposal, (english_only, job))["results"][0]
+
+    assert summary["required_language_groups"] == [{"english": 5}, {"german": 4}]
+    assert row["language_match_score"] == 30
+
+
+@pytest.mark.parametrize(
+    ("job_text", "candidate_text", "expected_group"),
+    [
+        (
+            "English C1, French B2, or German B2 required.",
+            "German B2.",
+            {"english": 5, "french": 4, "german": 4},
+        ),
+        (
+            "Deutsch C1, Französisch B2 oder Englisch B2 erforderlich.",
+            "Englisch B2.",
+            {"english": 4, "french": 4, "german": 5},
+        ),
+        (
+            "Français C1, Allemand B2 ou Anglais B2 requis.",
+            "Anglais B2.",
+            {"english": 4, "french": 5, "german": 4},
+        ),
+        (
+            "Italiano C1, Tedesco B2 o Inglese B2 richiesto.",
+            "Inglese B2.",
+            {"english": 4, "german": 4, "italian": 5},
+        ),
+    ],
+    ids=("english", "german", "french", "italian"),
+)
+def test_multilingual_oxford_language_lists_remain_alternatives(
+    job_text: str,
+    candidate_text: str,
+    expected_group: dict[str, int],
+) -> None:
+    job = job_evidence_document({"description": job_text}, 0, description_limit=1_800)
+    candidate = candidate_evidence_document({"cv_content": candidate_text})
+    proposal = _payload({"language": 100}).model_dump(mode="json")
+
+    row = enforce_match_score_policy(proposal, (candidate, job))["results"][0]
+    summary = job.validation_metadata["requirement_summary"]
+
+    assert summary["required_language_groups"] == [expected_group]
+    assert row["language_match_score"] == 100
+
+
+def test_oxford_skill_list_remains_one_alternative_group() -> None:
+    job = job_evidence_document(
+        {"description": "Python, Java, or Go is required."},
+        0,
+        description_limit=1_800,
+    )
+    candidate = candidate_evidence_document({"cv_content": "Java."})
+    proposal = _payload({"skill": 100, "transferability": 100}).model_dump(mode="json")
+
+    row = enforce_match_score_policy(proposal, (candidate, job))["results"][0]
+    summary = job.validation_metadata["requirement_summary"]
+
+    assert summary["required_skill_groups"] == [["go", "java", "python"]]
+    assert row["skill_match_score"] == 100
+    assert row["transferability_score"] == 100
+
+
+def test_customer_support_remains_a_real_required_skill() -> None:
+    job = job_evidence_document(
+        {"description": "Customer support mandatory."},
+        0,
+        description_limit=1_800,
+    )
+    proposal = _payload({"skill": 100, "transferability": 100}).model_dump(mode="json")
+    summary = job.validation_metadata["requirement_summary"]
+
+    matching = candidate_evidence_document({"cv_content": "Customer support."})
+    matching_row = enforce_match_score_policy(proposal, (matching, job))["results"][0]
+    missing = candidate_evidence_document({"cv_content": "Customer analytics."})
+    missing_row = enforce_match_score_policy(proposal, (missing, job))["results"][0]
+
+    assert summary["required_skill_terms"] == ["customer", "support"]
+    assert matching_row["skill_match_score"] == 100
+    assert missing_row["skill_match_score"] == 40
+    assert missing_row["transferability_score"] == 40
+
+
+def test_without_support_is_negative_not_positive_skill_evidence() -> None:
+    candidate = candidate_evidence_document(
+        {"cv_content": "Built Python services without support."}
+    )
+    summary = candidate.validation_metadata["requirement_summary"]
+
+    assert "python" in summary["observed_skill_terms"]
+    assert "support" not in summary["observed_skill_terms"]
+    assert "support" in summary["negated_skill_terms"]
+
+
+@pytest.mark.parametrize(
+    "job_text",
+    [
+        "Le candidat ne doit pas seulement connaître Python.",
+        "Il candidato non solo deve conoscere Python.",
+    ],
+    ids=("french", "italian"),
+)
+def test_not_only_required_phrases_are_not_exclusions(job_text: str) -> None:
+    job = job_evidence_document({"description": job_text}, 0, description_limit=1_800)
+    proposal = _payload({"skill": 100}).model_dump(mode="json")
+    summary = job.validation_metadata["requirement_summary"]
+
+    matching = candidate_evidence_document({"cv_content": "Python."})
+    matching_row = enforce_match_score_policy(proposal, (matching, job))["results"][0]
+    missing = candidate_evidence_document({"cv_content": "Java."})
+    missing_row = enforce_match_score_policy(proposal, (missing, job))["results"][0]
+
+    assert summary["excluded_skill_terms"] == []
+    assert summary["required_skill_terms"] == ["python"]
+    assert matching_row["skill_match_score"] == 100
+    assert missing_row["skill_match_score"] == 40
+
+
+def test_later_positive_reassertion_overrides_historical_negation_in_order() -> None:
+    job = job_evidence_document({"description": "Python required."}, 0, description_limit=1_800)
+    proposal = _payload({"skill": 100}).model_dump(mode="json")
+    positive_now = candidate_evidence_document(
+        {"cv_content": "I haven't used Python before 2020; now use daily."}
+    )
+    negative_now = candidate_evidence_document(
+        {"cv_content": "Now use Python daily; I haven't used Python before 2020."}
+    )
+
+    positive_summary = positive_now.validation_metadata["requirement_summary"]
+    negative_summary = negative_now.validation_metadata["requirement_summary"]
+    positive_row = enforce_match_score_policy(proposal, (positive_now, job))["results"][0]
+    negative_row = enforce_match_score_policy(proposal, (negative_now, job))["results"][0]
+
+    assert "python" in positive_summary["observed_skill_terms"]
+    assert "python" not in positive_summary["negated_skill_terms"]
+    assert positive_row["skill_match_score"] == 100
+    assert "python" not in negative_summary["observed_skill_terms"]
+    assert "python" in negative_summary["negated_skill_terms"]
+    assert negative_row["skill_match_score"] == 40
+
+
+@pytest.mark.parametrize(
+    "job_text",
+    [
+        "Les candidats doivent connaître Python.",
+        "Les candidats doivent maîtriser Python.",
+        "I candidati devono conoscere Python.",
+        "I candidati devono padroneggiare Python.",
+    ],
+    ids=("french-connaitre", "french-maitriser", "italian-conoscere", "italian-padroneggiare"),
+)
+def test_french_and_italian_plural_required_verbs(job_text: str) -> None:
+    job = job_evidence_document({"description": job_text}, 0, description_limit=1_800)
+    proposal = _payload({"skill": 100}).model_dump(mode="json")
+    summary = job.validation_metadata["requirement_summary"]
+
+    matching = candidate_evidence_document({"cv_content": "Python."})
+    matching_row = enforce_match_score_policy(proposal, (matching, job))["results"][0]
+    missing = candidate_evidence_document({"cv_content": "Java."})
+    missing_row = enforce_match_score_policy(proposal, (missing, job))["results"][0]
+
+    assert summary["required_skill_terms"] == ["python"]
+    assert matching_row["skill_match_score"] == 100
+    assert missing_row["skill_match_score"] == 40
+
+
+def test_unrelated_role_or_does_not_group_required_skills() -> None:
+    job = job_evidence_document(
+        {"description": "Python plus Java required for frontend or backend roles."},
+        0,
+        description_limit=1_800,
+    )
+    proposal = _payload({"skill": 100, "transferability": 100}).model_dump(mode="json")
+    summary = job.validation_metadata["requirement_summary"]
+
+    python_only = candidate_evidence_document({"cv_content": "Python."})
+    row = enforce_match_score_policy(proposal, (python_only, job))["results"][0]
+
+    assert summary["required_skill_terms"] == ["java", "python"]
+    assert summary["required_skill_groups"] == [["java"], ["python"]]
+    assert row["skill_match_score"] == 40
+    assert row["transferability_score"] == 40
+
+
+def test_oxford_alternative_does_not_swallow_a_later_required_clause() -> None:
+    job = job_evidence_document(
+        {"description": "Python, Java, or Go required, customer support mandatory."},
+        0,
+        description_limit=1_800,
+    )
+    proposal = _payload({"skill": 100, "transferability": 100}).model_dump(mode="json")
+    summary = job.validation_metadata["requirement_summary"]
+
+    python_only = candidate_evidence_document({"cv_content": "Python."})
+    row = enforce_match_score_policy(proposal, (python_only, job))["results"][0]
+
+    assert summary["required_skill_terms"] == [
+        "customer",
+        "go",
+        "java",
+        "python",
+        "support",
+    ]
+    assert summary["required_skill_groups"] == [
+        ["go", "java", "python"],
+        ["customer"],
+        ["support"],
+    ]
+    assert row["skill_match_score"] == 40
+    assert row["transferability_score"] == 40
+
+
+def test_optional_clause_before_oxford_list_does_not_contaminate_it() -> None:
+    job = job_evidence_document(
+        {"description": "Customer support optional, Python, Java, or Go required."},
+        0,
+        description_limit=1_800,
+    )
+    proposal = _payload({"skill": 100, "transferability": 100}).model_dump(mode="json")
+    summary = job.validation_metadata["requirement_summary"]
+
+    missing = candidate_evidence_document({"cv_content": "Ruby."})
+    row = enforce_match_score_policy(proposal, (missing, job))["results"][0]
+
+    assert summary["required_skill_terms"] == ["go", "java", "python"]
+    assert summary["required_skill_groups"] == [["go", "java", "python"]]
+    assert row["skill_match_score"] == 40
+    assert row["transferability_score"] == 40
+
+
+def test_modal_required_scope_uses_the_skill_after_the_modal() -> None:
+    job = job_evidence_document(
+        {"description": "Java developers must know Python."},
+        0,
+        description_limit=1_800,
+    )
+    proposal = _payload({"skill": 100, "transferability": 100}).model_dump(mode="json")
+    summary = job.validation_metadata["requirement_summary"]
+
+    matching = candidate_evidence_document({"cv_content": "Python."})
+    matching_row = enforce_match_score_policy(proposal, (matching, job))["results"][0]
+    missing = candidate_evidence_document({"cv_content": "Java."})
+    missing_row = enforce_match_score_policy(proposal, (missing, job))["results"][0]
+
+    assert summary["required_skill_terms"] == ["python"]
+    assert summary["required_skill_groups"] == [["python"]]
+    assert matching_row["skill_match_score"] == 100
+    assert missing_row["skill_match_score"] == 40
+    assert missing_row["transferability_score"] == 40
+
+
+@pytest.mark.parametrize(
+    "job_text",
+    [
+        "Le candidat ne doit pas seulement connaître Python, mais aussi Java.",
+        "Il candidato non solo deve conoscere Python, ma anche Java.",
+    ],
+    ids=("french", "italian"),
+)
+def test_not_only_additive_pair_requires_both_skills(job_text: str) -> None:
+    job = job_evidence_document({"description": job_text}, 0, description_limit=1_800)
+    proposal = _payload({"skill": 100, "transferability": 100}).model_dump(mode="json")
+    summary = job.validation_metadata["requirement_summary"]
+
+    python_only = candidate_evidence_document({"cv_content": "Python."})
+    row = enforce_match_score_policy(proposal, (python_only, job))["results"][0]
+
+    assert summary["excluded_skill_terms"] == []
+    assert summary["required_skill_terms"] == ["java", "python"]
+    assert summary["required_skill_groups"] == [["java"], ["python"]]
+    assert row["skill_match_score"] == 40
+    assert row["transferability_score"] == 40
+
+
+@pytest.mark.parametrize(
+    "job_text",
+    [
+        "Le candidat ne doit pas seulement connaître Python, mais aussi Java ou Go.",
+        "Il candidato non solo deve conoscere Python, ma anche Java o Go.",
+    ],
+    ids=("french", "italian"),
+)
+def test_not_only_additive_pair_can_contain_a_nested_alternative(job_text: str) -> None:
+    job = job_evidence_document({"description": job_text}, 0, description_limit=1_800)
+    proposal = _payload({"skill": 100, "transferability": 100}).model_dump(mode="json")
+    summary = job.validation_metadata["requirement_summary"]
+
+    python_only = candidate_evidence_document({"cv_content": "Python."})
+    python_only_row = enforce_match_score_policy(proposal, (python_only, job))["results"][0]
+    matching = candidate_evidence_document({"cv_content": "Python and Go."})
+    matching_row = enforce_match_score_policy(proposal, (matching, job))["results"][0]
+
+    assert summary["required_skill_terms"] == ["go", "java", "python"]
+    assert summary["required_skill_groups"] == [["go", "java"], ["python"]]
+    assert python_only_row["skill_match_score"] == 40
+    assert python_only_row["transferability_score"] == 40
+    assert matching_row["skill_match_score"] == 100
+
+
+def test_repeated_scoped_absence_preserves_trailing_required_marker() -> None:
+    job = job_evidence_document(
+        {
+            "description": (
+                "Hands-on Python experience without direct supervision "
+                "and without support is required."
+            )
+        },
+        0,
+        description_limit=1_800,
+    )
+    proposal = _payload({"skill": 100, "transferability": 100}).model_dump(mode="json")
+    summary = job.validation_metadata["requirement_summary"]
+
+    missing = candidate_evidence_document({"cv_content": "Java."})
+    row = enforce_match_score_policy(proposal, (missing, job))["results"][0]
+
+    assert summary["required_skill_terms"] == ["python"]
+    assert summary["required_skill_groups"] == [["python"]]
+    assert summary["excluded_skill_terms"] == ["support"]
+    assert row["skill_match_score"] == 40
+    assert row["transferability_score"] == 40
+
+
+def test_scoped_absence_status_does_not_cross_a_later_clause() -> None:
+    job = job_evidence_document(
+        {"description": ("Python experience without support is preferred, but Java is required.")},
+        0,
+        description_limit=1_800,
+    )
+    proposal = _payload({"skill": 100, "transferability": 100}).model_dump(mode="json")
+    summary = job.validation_metadata["requirement_summary"]
+
+    matching = candidate_evidence_document({"cv_content": "Java."})
+    matching_row = enforce_match_score_policy(proposal, (matching, job))["results"][0]
+    missing = candidate_evidence_document({"cv_content": "Python."})
+    missing_row = enforce_match_score_policy(proposal, (missing, job))["results"][0]
+
+    assert summary["required_skill_terms"] == ["java"]
+    assert summary["preferred_skill_terms"] == ["python"]
+    assert summary["excluded_skill_terms"] == ["support"]
+    assert matching_row["skill_match_score"] == 100
+    assert missing_row["skill_match_score"] == 40
+    assert missing_row["transferability_score"] == 40
+
+
+def test_pronoun_reassertion_resolves_only_the_immediately_pending_skill() -> None:
+    job = job_evidence_document({"description": "Python required."}, 0, description_limit=1_800)
+    proposal = _payload({"skill": 100}).model_dump(mode="json")
+    positive_now = candidate_evidence_document(
+        {"cv_content": "I haven't used Python before 2020; now use it daily."}
+    )
+    negative_now = candidate_evidence_document(
+        {"cv_content": "Now use it daily; I haven't used Python before 2020."}
+    )
+
+    positive_summary = positive_now.validation_metadata["requirement_summary"]
+    negative_summary = negative_now.validation_metadata["requirement_summary"]
+    positive_row = enforce_match_score_policy(proposal, (positive_now, job))["results"][0]
+    negative_row = enforce_match_score_policy(proposal, (negative_now, job))["results"][0]
+
+    assert positive_summary["observed_skill_terms"] == ["python"]
+    assert positive_summary["negated_skill_terms"] == []
+    assert positive_row["skill_match_score"] == 100
+    assert negative_summary["observed_skill_terms"] == []
+    assert negative_summary["negated_skill_terms"] == ["python"]
+    assert negative_row["skill_match_score"] == 40
+
+
+def test_pronoun_reassertion_ignores_trailing_context_terms() -> None:
+    job = job_evidence_document({"description": "Python required."}, 0, description_limit=1_800)
+    proposal = _payload({"skill": 100}).model_dump(mode="json")
+    candidate = candidate_evidence_document(
+        {"cv_content": ("I haven't used Python before 2020; now use it daily in production.")}
+    )
+
+    summary = candidate.validation_metadata["requirement_summary"]
+    row = enforce_match_score_policy(proposal, (candidate, job))["results"][0]
+
+    assert summary["observed_skill_terms"] == ["python"]
+    assert summary["negated_skill_terms"] == []
+    assert row["skill_match_score"] == 100
+
+
+@pytest.mark.parametrize(
+    "case",
+    [
+        pytest.param(
+            {
+                "kind": "job",
+                "text": "Required Python and Java.",
+                "required": ["java", "python"],
+                "groups": [["java"], ["python"]],
+                "scores": (("Python Java.", 100), ("Python.", 40)),
+            },
+            id="leading-required-and-inverse",
+        ),
+        pytest.param(
+            {
+                "kind": "job",
+                "text": "Must have Python and Java.",
+                "required": ["java", "python"],
+                "groups": [["java"], ["python"]],
+                "scores": (("Python Java.", 100), ("Java.", 40)),
+            },
+            id="leading-must-have-and-inverse",
+        ),
+        pytest.param(
+            {
+                "kind": "job",
+                "text": "Customer support optional, Python, Java, or Go required.",
+                "required": ["go", "java", "python"],
+                "groups": [["go", "java", "python"]],
+                "scores": (("Go.", 100), ("Ruby.", 40)),
+            },
+            id="optional-before-oxford-and-inverse",
+        ),
+        pytest.param(
+            {
+                "kind": "job",
+                "text": "Die Kandidaten müssen Python kennen.",
+                "required": ["python"],
+                "groups": [["python"]],
+                "scores": (("Python.", 100), ("Java.", 40)),
+            },
+            id="german-active-modal-and-inverse",
+        ),
+        *[
+            pytest.param(
+                {
+                    "kind": "job",
+                    "text": text,
+                    "required": ["java"],
+                    "groups": [["java"]],
+                    "preferred": ["python"],
+                    "scores": (("Java.", 100), ("Python.", 40)),
+                },
+                id=f"{language}-adversative-and-inverse",
+            )
+            for language, text in (
+                ("english", "Python preferred, but Java required."),
+                ("french", "Python préféré, mais Java requis."),
+                ("italian", "Python preferito, ma Java richiesto."),
+            )
+        ],
+        *[
+            pytest.param(
+                {
+                    "kind": "job",
+                    "text": text,
+                    "required": ["java", "python"],
+                    "groups": [["java"], ["python"]],
+                    "scores": (("Python Java.", 100), ("Python.", 40)),
+                },
+                id=f"{language}-additive-rhs-and-inverse",
+            )
+            for language, text in (
+                ("english", "Python is required, but also Java."),
+                ("french", "Python est requis, mais aussi Java."),
+                ("italian", "Python è richiesto, ma anche Java."),
+            )
+        ],
+        pytest.param(
+            {
+                "kind": "job",
+                "text": "Python optional, Java without direct supervision is required.",
+                "required": ["java"],
+                "groups": [["java"]],
+                "excluded": [],
+                "scores": (("Java.", 100), ("Python.", 40)),
+            },
+            id="prior-polarity-before-scoped-required-and-inverse",
+        ),
+        pytest.param(
+            {
+                "kind": "job",
+                "text": "Python required without Java and Go.",
+                "required": ["python"],
+                "groups": [["python"]],
+                "excluded": ["go", "java"],
+                "scores": (("Python.", 100), ("Python Java.", 40)),
+            },
+            id="job-coordinated-absence-and-inverse",
+        ),
+        pytest.param(
+            {
+                "kind": "candidate",
+                "text": "Python without Java and Go.",
+                "observed": ["python"],
+                "negated": ["go", "java"],
+                "scores": (("Python", 100), ("Java", 40)),
+            },
+            id="candidate-coordinated-absence-and-inverse",
+        ),
+        pytest.param(
+            {
+                "kind": "job",
+                "text": "Python must be used with Docker.",
+                "required": ["docker", "python"],
+                "groups": [["docker"], ["python"]],
+                "scores": (("Python Docker.", 100), ("Python.", 40)),
+            },
+            id="passive-modal-subject-and-complement",
+        ),
+        pytest.param(
+            {
+                "kind": "job",
+                "text": "Required Python, Java or Go and Docker.",
+                "required": ["docker", "go", "java", "python"],
+                "groups": [["docker"], ["go", "java", "python"]],
+                "scores": (("Go Docker.", 100), ("Go.", 40)),
+            },
+            id="leading-oxford-plus-additive-and-inverse",
+        ),
+        *[
+            pytest.param(
+                {
+                    "kind": "candidate",
+                    "text": forward,
+                    "observed": ["python"],
+                    "negated": [],
+                    "scores": (("Python", 100),),
+                },
+                id=f"{language}-anaphora-forward",
+            )
+            for language, forward in (
+                (
+                    "german",
+                    "Ich verwende Python nicht; jetzt verwende ich es täglich.",
+                ),
+                (
+                    "french",
+                    "Je n’utilise pas Python; maintenant je l’utilise quotidiennement.",
+                ),
+                ("italian", "Non uso Python; ora lo uso ogni giorno."),
+            )
+        ],
+        *[
+            pytest.param(
+                {
+                    "kind": "candidate",
+                    "text": reverse,
+                    "observed": [],
+                    "negated": ["python"],
+                    "scores": (("Python", 40),),
+                },
+                id=f"{language}-anaphora-reverse",
+            )
+            for language, reverse in (
+                (
+                    "german",
+                    "Jetzt verwende ich es täglich; ich verwende Python nicht.",
+                ),
+                (
+                    "french",
+                    "Maintenant je l’utilise quotidiennement; je n’utilise pas Python.",
+                ),
+                ("italian", "Ora lo uso ogni giorno; non uso Python."),
+            )
+        ],
+    ],
+)
+def test_structured_clause_connector_matrix(case: dict[str, object]) -> None:
+    proposal = _payload({"skill": 100, "transferability": 100}).model_dump(mode="json")
+    text = str(case["text"])
+    if case["kind"] == "job":
+        job = job_evidence_document({"description": text}, 0, description_limit=1_800)
+        summary = job.validation_metadata["requirement_summary"]
+        assert summary["required_skill_terms"] == case["required"]
+        assert summary["required_skill_groups"] == case["groups"]
+        if "preferred" in case:
+            assert summary["preferred_skill_terms"] == case["preferred"]
+        if "excluded" in case:
+            assert summary["excluded_skill_terms"] == case["excluded"]
+        for candidate_text, expected_score in case["scores"]:
+            candidate = candidate_evidence_document({"cv_content": candidate_text})
+            row = enforce_match_score_policy(proposal, (candidate, job))["results"][0]
+            assert row["skill_match_score"] == expected_score
+            assert row["transferability_score"] == expected_score
+        return
+
+    candidate = candidate_evidence_document({"cv_content": text})
+    summary = candidate.validation_metadata["requirement_summary"]
+    assert summary["observed_skill_terms"] == case["observed"]
+    assert summary["negated_skill_terms"] == case["negated"]
+    for required_skill, expected_score in case["scores"]:
+        job = job_evidence_document(
+            {"description": f"{required_skill} required."},
+            0,
+            description_limit=1_800,
+        )
+        row = enforce_match_score_policy(proposal, (candidate, job))["results"][0]
+        assert row["skill_match_score"] == expected_score
+        assert row["transferability_score"] == expected_score
 
 
 @pytest.mark.parametrize(
@@ -836,7 +1662,7 @@ def test_catalog_version_is_bound_into_the_input_fingerprint(monkeypatch) -> Non
     job_v2 = job_evidence_document(listing, 0, description_limit=400)
     fingerprint_v2 = match_input_fingerprint(candidate_v2, job_v2)
 
-    monkeypatch.setattr(match_evidence, "MATCH_EVIDENCE_CATALOG_VERSION", "6")
+    monkeypatch.setattr(match_evidence, "MATCH_EVIDENCE_CATALOG_VERSION", "9")
     candidate_v3 = candidate_evidence_document(profile)
     job_v3 = job_evidence_document(listing, 0, description_limit=400)
 

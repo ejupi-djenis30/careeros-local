@@ -9,8 +9,9 @@ Cross-artifact result: [daily agenda convergence](daily-agenda-convergence.md).
 
 ## Candidate scope
 
-v1.5.0 adds a private daily action agenda to the application workspace. It turns the existing
-next-action projection into a bounded queue for overdue, today, upcoming, unscheduled and
+v1.5.0 adds a private daily action agenda to the application workspace and hardens the
+evidence-bound matching policy in English, German, French and Italian. The agenda turns the
+existing next-action projection into a bounded queue for overdue, today, upcoming, unscheduled and
 needs-action work. Ordering is deterministic, every row belongs to the authenticated local user,
 and omitted totals remain visible when the seven-day horizon or compact row limit is reached.
 
@@ -19,14 +20,19 @@ snapshots, dossiers, model prompts or generated documents. Rows and totals share
 snapshot. The browser supplies a validated local-day boundary and refreshes at the next deadline or
 midnight, including both Zurich daylight-saving transitions.
 
+The matching catalog now normalizes contractions and natural localized requirement language,
+keeps negation scoped to the evidence it modifies, and treats alternative languages as alternatives
+rather than cumulative requirements. Deterministic caps prevent missing mandatory experience,
+language or qualification evidence from becoming a strong recommendation.
+
 All seven authoritative version sources report `1.5.0`; the planned stable tag is `v1.5.0`.
 
 ## Local verification recorded for this candidate
 
 - Version contract: `python scripts/check_release_versions.py --expected-tag v1.5.0` passes with
   `RELEASE_VERSION=1.5.0 SOURCES=7`.
-- Backend acceptance: 1,274 passed with 4 expected performance skips. Branch-aware coverage was
-  80.73%, above the 80% release threshold.
+- Backend acceptance: 1,354 passed with 4 expected performance skips. Branch-aware coverage was
+  81.05%, above the 80% release threshold.
 - Python static checks: Ruff passed for backend, tests, migrations and scripts; mypy passed for
   backend and release scripts.
 - Frontend: 64 files and 330 tests passed with 81.31% line coverage. ESLint, the production Vite
@@ -43,6 +49,9 @@ All seven authoritative version sources report `1.5.0`; the planned stable tag i
   validation failure.
 - Privacy and concurrency: tests cover user isolation, a writer interleaved between count and row
   reads, stale-request cancellation and payload exclusion.
+- Multilingual matching: parameterized and end-to-end tests cover required, preferred, optional and
+  excluded evidence, contractions, bounded negation, alternatives, tenure, language levels and
+  qualifications across English, German, French and Italian.
 
 ## Publication sequence
 

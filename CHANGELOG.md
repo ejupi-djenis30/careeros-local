@@ -23,6 +23,9 @@ All notable changes to CareerOS Local are documented here. The format follows
 
 ### Fixed
 
+- Hardened English, German, French and Italian requirement parsing for natural negations,
+  alternatives, experience, language levels and qualifications, so missing mandatory evidence
+  cannot be promoted to a strong match.
 - Preserved the correct local day across both Zurich daylight-saving transitions.
 - Returned a typed `422` response for invalid agenda windows instead of exposing transport-level
   validation details.
