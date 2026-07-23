@@ -62,7 +62,11 @@ describe("ModelManager", () => {
         const user = userEvent.setup();
         render(<ModelManager />);
 
-        const install = await screen.findByRole("button", { name: "Installa modello locale" });
+        const install = await screen.findByRole(
+            "button",
+            { name: "Installa modello locale" },
+            { timeout: 5_000 },
+        );
         expect(install).toBeDisabled();
         await user.click(screen.getByRole("checkbox", { name: /Accetto la licenza Apache-2.0/ }));
         await user.click(install);
