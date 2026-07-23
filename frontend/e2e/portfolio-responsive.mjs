@@ -37,6 +37,7 @@ const measuredSelectors = [
 ];
 
 const contentTypes = new Map([
+  [".avif", "image/avif"],
   [".css", "text/css; charset=utf-8"],
   [".gif", "image/gif"],
   [".html", "text/html; charset=utf-8"],
@@ -44,7 +45,9 @@ const contentTypes = new Map([
   [".json", "application/json; charset=utf-8"],
   [".png", "image/png"],
   [".svg", "image/svg+xml"],
+  [".txt", "text/plain; charset=utf-8"],
   [".webm", "video/webm"],
+  [".webp", "image/webp"],
 ]);
 
 function resolveRequestPath(requestUrl) {
@@ -107,8 +110,12 @@ try {
   const cssResponsePromise = page.waitForResponse((response) =>
     response.url().endsWith(`${mountPath}/site/styles.css`),
   );
+  const heroImageResponsePromise = page.waitForResponse((response) =>
+    /\/careeros-workspace-\d+\.avif$/.test(response.url()),
+  );
   const navigationResponse = await page.goto(baseUrl, { waitUntil: "domcontentloaded" });
   const cssResponse = await cssResponsePromise;
+  const heroImageResponse = await heroImageResponsePromise;
 
   assert.equal(navigationResponse?.status(), 200, "Portfolio document must load successfully");
   assert.equal(cssResponse.status(), 200, "Portfolio stylesheet must load successfully");
@@ -116,6 +123,12 @@ try {
     cssResponse.headers()["content-type"] ?? "",
     /^text\/css\b/,
     "Portfolio stylesheet must be served with a CSS MIME type",
+  );
+  assert.equal(heroImageResponse.status(), 200, "Responsive hero image must load successfully");
+  assert.match(
+    heroImageResponse.headers()["content-type"] ?? "",
+    /^image\/avif\b/,
+    "Responsive hero image must be served with an AVIF MIME type",
   );
 
   const styleState = await page.evaluate(() => {
@@ -145,6 +158,34 @@ try {
       .locator('a[href="https://github.com/ejupi-djenis30/careeros-local/releases/latest"]')
       .count()) >= 1,
     "Portfolio must link to the latest CareerOS release",
+  );
+  assert.equal(
+    await page.getByRole("link", { name: "View source for CareerOS Local on GitHub" }).count(),
+    1,
+    "The source link accessible name must retain its visible label",
+  );
+  assert.equal(
+    await page.locator('picture source[type="image/avif"]').count(),
+    4,
+    "Every product screenshot must expose an AVIF source",
+  );
+  assert.equal(
+    await page.locator('picture source[type="image/webp"]').count(),
+    4,
+    "Every product screenshot must expose a WebP source",
+  );
+  assert.equal(
+    await page.locator("video").getAttribute("poster"),
+    "assets/careeros-demo-poster.webp",
+    "The product tour poster must use a modern image format",
+  );
+
+  const robotsResponse = await page.request.get(`${baseUrl}robots.txt`);
+  assert.equal(robotsResponse.status(), 200, "robots.txt must be published");
+  assert.equal(
+    await robotsResponse.text(),
+    "User-agent: *\nAllow: /\n",
+    "robots.txt must expose the intended crawler policy",
   );
 
   for (const width of widths) {
@@ -210,6 +251,39 @@ try {
       report.privacyRightGap >= 16,
       `${width}px: privacy badge needs a 16px viewport gutter (received ${report.privacyRightGap})`,
     );
+  }
+
+  const mobilePage = await browser.newPage({ viewport: { width: 375, height: 900 } });
+  try {
+    await mobilePage.goto(baseUrl, { waitUntil: "domcontentloaded" });
+    const screenshots = mobilePage.locator("picture img");
+    assert.equal(
+      await screenshots.count(),
+      4,
+      "The responsive site must retain all four real product screenshots",
+    );
+    for (let index = 0; index < (await screenshots.count()); index += 1) {
+      const screenshot = screenshots.nth(index);
+      await screenshot.scrollIntoViewIfNeeded();
+      await screenshot.evaluate((image) => image.decode());
+      const state = await screenshot.evaluate((image) => ({
+        complete: image.complete,
+        currentSrc: image.currentSrc,
+        naturalWidth: image.naturalWidth,
+      }));
+      assert.equal(state.complete, true, `Mobile screenshot ${index + 1} must finish loading`);
+      assert.match(
+        state.currentSrc,
+        /-480\.avif$/,
+        `Mobile screenshot ${index + 1} must select its 480px AVIF candidate`,
+      );
+      assert(
+        state.naturalWidth > 0 && state.naturalWidth <= 480,
+        `Mobile screenshot ${index + 1} must decode within its responsive width`,
+      );
+    }
+  } finally {
+    await mobilePage.close();
   }
 
   console.log(`Responsive portfolio validation passed at ${widths.length} viewport widths.`);

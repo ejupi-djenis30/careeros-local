@@ -32,6 +32,26 @@
     <meta property="og:url" content="https://ejupi-djenis30.github.io/careeros-local/" />
     <meta name="twitter:card" content="summary_large_image" />
     <link rel="canonical" href="https://ejupi-djenis30.github.io/careeros-local/" />
+    <link
+      rel="preload"
+      as="image"
+      href="assets/careeros-workspace-960.avif"
+      imagesrcset="
+        assets/careeros-workspace-480.avif 480w,
+        assets/careeros-workspace-560.avif 560w,
+        assets/careeros-workspace-640.avif 640w,
+        assets/careeros-workspace-720.avif 720w,
+        assets/careeros-workspace-960.avif 960w,
+        assets/careeros-workspace-1600.avif 1600w
+      "
+      imagesizes="
+        (max-width: 720px) calc(100vw - 34px),
+        (max-width: 1020px) min(95vw, 830px),
+        min(54vw, 660px)
+      "
+      type="image/avif"
+      fetchpriority="high"
+    />
     <link rel="icon" href="site/favicon.svg" type="image/svg+xml" />
     <link rel="stylesheet" href="site/styles.css" />
     <title>CareerOS Local — Your career history, on your device</title>
@@ -71,7 +91,7 @@
         <a
           class="nav-cta"
           href="https://github.com/ejupi-djenis30/careeros-local"
-          aria-label="View CareerOS Local source code on GitHub"
+          aria-label="View source for CareerOS Local on GitHub"
         >
           View source
           <svg aria-hidden="true" viewBox="0 0 20 20" width="16" height="16">
@@ -130,13 +150,48 @@
                 <span></span><span></span><span></span>
                 <p>CareerOS Local</p>
               </div>
-              <img
-                src="assets/careeros-workspace.png"
-                alt="CareerOS Local dashboard showing career progress, goals, and application activity"
-                width="1600"
-                height="900"
-                fetchpriority="high"
-              />
+              <picture>
+                <source
+                  type="image/avif"
+                  srcset="
+                    assets/careeros-workspace-480.avif 480w,
+                    assets/careeros-workspace-560.avif 560w,
+                    assets/careeros-workspace-640.avif 640w,
+                    assets/careeros-workspace-720.avif 720w,
+                    assets/careeros-workspace-960.avif 960w,
+                    assets/careeros-workspace-1600.avif 1600w
+                  "
+                  sizes="
+                    (max-width: 720px) calc(100vw - 34px),
+                    (max-width: 1020px) min(95vw, 830px),
+                    min(54vw, 660px)
+                  "
+                />
+                <source
+                  type="image/webp"
+                  srcset="
+                    assets/careeros-workspace-480.webp 480w,
+                    assets/careeros-workspace-560.webp 560w,
+                    assets/careeros-workspace-640.webp 640w,
+                    assets/careeros-workspace-720.webp 720w,
+                    assets/careeros-workspace-960.webp 960w,
+                    assets/careeros-workspace-1600.webp 1600w
+                  "
+                  sizes="
+                    (max-width: 720px) calc(100vw - 34px),
+                    (max-width: 1020px) min(95vw, 830px),
+                    min(54vw, 660px)
+                  "
+                />
+                <img
+                  src="assets/careeros-workspace.png"
+                  alt="CareerOS Local dashboard showing career progress, goals, and application activity"
+                  width="1600"
+                  height="900"
+                  decoding="async"
+                  fetchpriority="high"
+                />
+              </picture>
             </div>
             <div class="privacy-float">
               <span class="privacy-icon" aria-hidden="true">
@@ -179,13 +234,48 @@
                 </p>
               </div>
               <div class="feature-image">
-                <img
-                  src="assets/careeros-vault.png"
-                  alt="Career Vault displaying verified career facts and their evidence status"
-                  width="1600"
-                  height="900"
-                  loading="lazy"
-                />
+                <picture>
+                  <source
+                    type="image/avif"
+                    srcset="
+                      assets/careeros-vault-480.avif 480w,
+                      assets/careeros-vault-560.avif 560w,
+                      assets/careeros-vault-640.avif 640w,
+                      assets/careeros-vault-720.avif 720w,
+                      assets/careeros-vault-960.avif 960w,
+                      assets/careeros-vault-1600.avif 1600w
+                    "
+                    sizes="
+                      (max-width: 720px) calc(100vw - 68px),
+                      (max-width: 1020px) 62vw,
+                      min(62vw, 710px)
+                    "
+                  />
+                  <source
+                    type="image/webp"
+                    srcset="
+                      assets/careeros-vault-480.webp 480w,
+                      assets/careeros-vault-560.webp 560w,
+                      assets/careeros-vault-640.webp 640w,
+                      assets/careeros-vault-720.webp 720w,
+                      assets/careeros-vault-960.webp 960w,
+                      assets/careeros-vault-1600.webp 1600w
+                    "
+                    sizes="
+                      (max-width: 720px) calc(100vw - 68px),
+                      (max-width: 1020px) 62vw,
+                      min(62vw, 710px)
+                    "
+                  />
+                  <img
+                    src="assets/careeros-vault.png"
+                    alt="Career Vault displaying verified career facts and their evidence status"
+                    width="1600"
+                    height="900"
+                    loading="lazy"
+                    decoding="async"
+                  />
+                </picture>
               </div>
             </article>
 
@@ -200,13 +290,46 @@
                 </p>
               </div>
               <div class="feature-image feature-image-tall">
-                <img
-                  src="assets/careeros-resume-studio.png"
-                  alt="Resume Studio with fact selection and a visual resume preview"
-                  width="1600"
-                  height="900"
-                  loading="lazy"
-                />
+                <picture>
+                  <source
+                    type="image/avif"
+                    srcset="
+                      assets/careeros-resume-studio-480.avif 480w,
+                      assets/careeros-resume-studio-560.avif 560w,
+                      assets/careeros-resume-studio-640.avif 640w,
+                      assets/careeros-resume-studio-720.avif 720w,
+                      assets/careeros-resume-studio-960.avif 960w,
+                      assets/careeros-resume-studio-1600.avif 1600w
+                    "
+                    sizes="
+                      (max-width: 720px) calc(100vw - 68px),
+                      min(44vw, 540px)
+                    "
+                  />
+                  <source
+                    type="image/webp"
+                    srcset="
+                      assets/careeros-resume-studio-480.webp 480w,
+                      assets/careeros-resume-studio-560.webp 560w,
+                      assets/careeros-resume-studio-640.webp 640w,
+                      assets/careeros-resume-studio-720.webp 720w,
+                      assets/careeros-resume-studio-960.webp 960w,
+                      assets/careeros-resume-studio-1600.webp 1600w
+                    "
+                    sizes="
+                      (max-width: 720px) calc(100vw - 68px),
+                      min(44vw, 540px)
+                    "
+                  />
+                  <img
+                    src="assets/careeros-resume-studio.png"
+                    alt="Resume Studio with fact selection and a visual resume preview"
+                    width="1600"
+                    height="900"
+                    loading="lazy"
+                    decoding="async"
+                  />
+                </picture>
               </div>
             </article>
 
@@ -222,13 +345,46 @@
                 </p>
               </div>
               <div class="feature-image feature-image-tall">
-                <img
-                  src="assets/careeros-applications.png"
-                  alt="Application pipeline showing job opportunities organized by stage"
-                  width="1600"
-                  height="900"
-                  loading="lazy"
-                />
+                <picture>
+                  <source
+                    type="image/avif"
+                    srcset="
+                      assets/careeros-applications-480.avif 480w,
+                      assets/careeros-applications-560.avif 560w,
+                      assets/careeros-applications-640.avif 640w,
+                      assets/careeros-applications-720.avif 720w,
+                      assets/careeros-applications-960.avif 960w,
+                      assets/careeros-applications-1600.avif 1600w
+                    "
+                    sizes="
+                      (max-width: 720px) calc(100vw - 68px),
+                      min(44vw, 540px)
+                    "
+                  />
+                  <source
+                    type="image/webp"
+                    srcset="
+                      assets/careeros-applications-480.webp 480w,
+                      assets/careeros-applications-560.webp 560w,
+                      assets/careeros-applications-640.webp 640w,
+                      assets/careeros-applications-720.webp 720w,
+                      assets/careeros-applications-960.webp 960w,
+                      assets/careeros-applications-1600.webp 1600w
+                    "
+                    sizes="
+                      (max-width: 720px) calc(100vw - 68px),
+                      min(44vw, 540px)
+                    "
+                  />
+                  <img
+                    src="assets/careeros-applications.png"
+                    alt="Application pipeline showing job opportunities organized by stage"
+                    width="1600"
+                    height="900"
+                    loading="lazy"
+                    decoding="async"
+                  />
+                </picture>
               </div>
             </article>
 
@@ -371,7 +527,7 @@
             <video
               controls
               preload="metadata"
-              poster="assets/careeros-demo-poster.jpg"
+              poster="assets/careeros-demo-poster.webp"
               aria-label="CareerOS Local product tour"
               aria-describedby="demo-description"
             >

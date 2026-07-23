@@ -429,6 +429,11 @@ h1 span {
   font-weight: 650;
 }
 
+.product-window picture,
+.feature-image picture {
+  display: block;
+}
+
 .product-window img {
   width: 100%;
   height: auto;
@@ -1088,7 +1093,7 @@ h2 {
 }
 
 .privacy-list li > span {
-  color: rgba(11, 16, 12, 0.5);
+  color: rgba(11, 16, 12, 0.72);
   font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
   font-size: 0.68rem;
   font-weight: 800;

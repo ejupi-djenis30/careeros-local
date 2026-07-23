@@ -9,12 +9,16 @@ import pytest
 
 from scripts.validate_portfolio_site import (
     EDITORIAL_ASSET_SPECS,
+    RESPONSIVE_SCREENSHOTS,
+    RESPONSIVE_WIDTHS,
     ROOT,
     PortfolioParser,
     _validate_png_asset,
     _validate_svg_asset,
     validate,
     validate_editorial_assets,
+    validate_responsive_screenshots,
+    validate_robots,
 )
 
 
@@ -84,6 +88,63 @@ def test_trust_label_meets_small_text_contrast():
     assert contrast >= 4.5
 
 
+def test_privacy_numbers_meet_small_text_contrast():
+    css = (ROOT / "docs" / "site" / "styles.css").read_text(encoding="utf-8")
+    declarations = (
+        css.split(".privacy-list li > span {", maxsplit=1)[1]
+        .split("}", maxsplit=1)[0]
+    )
+    match = re.search(
+        r"color:\s*rgba\(\s*(\d+),\s*(\d+),\s*(\d+),\s*([0-9.]+)\s*\)",
+        declarations,
+    )
+    assert match is not None
+    foreground = tuple(float(match.group(index)) for index in range(1, 4))
+    alpha = float(match.group(4))
+    background = (185.0, 242.0, 124.0)
+    composited = tuple(
+        channel * alpha + background[index] * (1 - alpha)
+        for index, channel in enumerate(foreground)
+    )
+
+    def relative_luminance(color: tuple[float, ...]) -> float:
+        channels = []
+        for channel in color:
+            normalized = channel / 255
+            channels.append(
+                normalized / 12.92
+                if normalized <= 0.04045
+                else ((normalized + 0.055) / 1.055) ** 2.4
+            )
+        return 0.2126 * channels[0] + 0.7152 * channels[1] + 0.0722 * channels[2]
+
+    foreground_luminance = relative_luminance(composited)
+    background_luminance = relative_luminance(background)
+    contrast = (background_luminance + 0.05) / (foreground_luminance + 0.05)
+
+    assert contrast >= 4.5
+
+
+def test_portfolio_delivers_responsive_modern_screenshots():
+    parser = _parse((ROOT / "docs" / "index.html").read_text(encoding="utf-8"))
+
+    assert validate_responsive_screenshots(parser) == []
+    assert len(parser.picture_contracts) == len(RESPONSIVE_SCREENSHOTS)
+    for stem in RESPONSIVE_SCREENSHOTS:
+        for width in RESPONSIVE_WIDTHS:
+            for extension in ("avif", "webp"):
+                asset = ROOT / "docs" / "assets" / f"{stem}-{width}.{extension}"
+                assert asset.is_file()
+                assert asset.stat().st_size > 1_000
+
+
+def test_portfolio_crawler_policy_is_explicit_and_valid():
+    assert validate_robots() == []
+    assert (ROOT / "docs" / "robots.txt").read_text(encoding="utf-8") == (
+        "User-agent: *\nAllow: /\n"
+    )
+
+
 def test_portfolio_keeps_one_real_product_demo():
     parser = _parse((ROOT / "docs" / "index.html").read_text(encoding="utf-8"))
 
@@ -115,6 +176,12 @@ def test_portfolio_declares_strict_browser_policies():
     assert "base-uri 'none'" in policy
     assert "'unsafe-inline'" not in policy
     assert "'unsafe-eval'" not in policy
+
+
+def test_source_link_accessible_name_starts_with_visible_label():
+    html = (ROOT / "docs" / "index.html").read_text(encoding="utf-8")
+
+    assert 'aria-label="View source for CareerOS Local on GitHub"' in html
 
 
 def _write_changed_svg(tmp_path: Path, changed_source: str) -> Path:
