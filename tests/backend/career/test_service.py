@@ -3,6 +3,7 @@ from copy import deepcopy
 
 import pytest
 
+from backend.career.completeness import analyze_profile, calculate_completeness_score
 from backend.career.repository import CareerProfileRepository
 from backend.career.schemas import CareerProfileWrite
 from backend.storage.atomic import StorageWriteError
@@ -99,9 +100,7 @@ def _profile() -> dict:
     }
 
 
-def test_service_returns_deterministic_completeness_conflicts_and_evidence(
-    client, auth_headers
-):
+def test_service_returns_deterministic_completeness_conflicts_and_evidence(client, auth_headers):
     response = client.put("/api/v1/career-profile", json=_profile(), headers=auth_headers)
     assert response.status_code == 200, response.text
     analysis = response.json()["analysis"]
@@ -119,6 +118,12 @@ def test_service_returns_deterministic_completeness_conflicts_and_evidence(
     summary = client.get("/api/v1/career-profile/summary", headers=auth_headers).json()
     assert summary["completeness_score"] == analysis["completeness_score"]
     assert summary["issue_count"] == len(analysis["issues"])
+
+
+def test_fast_completeness_score_matches_full_profile_analysis():
+    profile = _profile()
+
+    assert calculate_completeness_score(profile) == analyze_profile(profile).completeness_score
 
 
 def test_goal_actions_progress_and_links_round_trip(client, auth_headers):
