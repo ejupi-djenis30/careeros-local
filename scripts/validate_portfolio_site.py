@@ -21,6 +21,13 @@ PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
 ALLOWED_PNG_CHUNKS = {b"IHDR", b"IDAT", b"IEND"}
 DISALLOWED_SVG_ELEMENTS = {"foreignobject", "image", "script", "text"}
 SVG_URL_REFERENCE = re.compile(r"url\(\s*([^)]+?)\s*\)", re.IGNORECASE)
+RESPONSIVE_SCREENSHOTS = (
+    "careeros-workspace",
+    "careeros-vault",
+    "careeros-resume-studio",
+    "careeros-applications",
+)
+RESPONSIVE_WIDTHS = (480, 560, 640, 720, 960, 1600)
 
 
 @dataclass(frozen=True)
@@ -63,6 +70,17 @@ EDITORIAL_ASSET_SPECS = (
 )
 
 
+def _parse_srcset(value: str) -> list[tuple[str, str]]:
+    """Return URL and width descriptor pairs from the site's constrained srcsets."""
+
+    candidates: list[tuple[str, str]] = []
+    for raw_candidate in value.split(","):
+        parts = raw_candidate.split()
+        if parts:
+            candidates.append((parts[0], parts[1] if len(parts) == 2 else ""))
+    return candidates
+
+
 class PortfolioParser(HTMLParser):
     """Collect the small set of structural facts needed for a static-site gate."""
 
@@ -80,12 +98,28 @@ class PortfolioParser(HTMLParser):
         self.referrer_policies: list[str] = []
         self.csp_policies: list[str] = []
         self.inline_scripts: list[tuple[str, int]] = []
+        self.picture_contracts: list[dict[str, object]] = []
+        self.picture_errors: list[str] = []
+        self._picture: dict[str, object] | None = None
         self._inline_script: list[str] | None = None
         self._inline_script_line = 0
 
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
         attributes = dict(attrs)
         line, _ = self.getpos()
+
+        if tag == "picture":
+            if self._picture is not None:
+                self.picture_errors.append(f"line {line}: picture elements must not be nested")
+            self._picture = {"line": line, "sources": [], "images": []}
+        elif tag == "source" and self._picture is not None:
+            sources = self._picture["sources"]
+            assert isinstance(sources, list)
+            sources.append(attributes)
+        elif tag == "img" and self._picture is not None:
+            images = self._picture["images"]
+            assert isinstance(images, list)
+            images.append(attributes)
 
         element_id = attributes.get("id")
         if element_id:
@@ -116,6 +150,11 @@ class PortfolioParser(HTMLParser):
             value = attributes.get(attribute)
             if value:
                 self.references.append((attribute, value, line))
+        for attribute in ("srcset", "imagesrcset"):
+            value = attributes.get(attribute)
+            if value:
+                for reference, _descriptor in _parse_srcset(value):
+                    self.references.append((attribute, reference, line))
 
         executable = None
         if tag == "script" and attributes.get("src"):
@@ -130,6 +169,9 @@ class PortfolioParser(HTMLParser):
             self._inline_script.append(data)
 
     def handle_endtag(self, tag: str) -> None:
+        if tag == "picture" and self._picture is not None:
+            self.picture_contracts.append(self._picture)
+            self._picture = None
         if tag == "script" and self._inline_script is not None:
             self.inline_scripts.append(("".join(self._inline_script), self._inline_script_line))
             self._inline_script = None
@@ -365,6 +407,128 @@ def validate_editorial_assets(site_root: Path = SITE_ROOT) -> list[str]:
     return errors
 
 
+def validate_responsive_screenshots(parser: PortfolioParser) -> list[str]:
+    """Require responsive AVIF/WebP delivery for every real application screenshot."""
+
+    errors = list(parser.picture_errors)
+    contracts_by_fallback: dict[str, list[dict[str, object]]] = {}
+    for contract in parser.picture_contracts:
+        images = contract["images"]
+        assert isinstance(images, list)
+        line = contract["line"]
+        if len(images) != 1:
+            errors.append(f"line {line}: picture must contain exactly one img fallback")
+            continue
+        fallback = images[0]
+        assert isinstance(fallback, dict)
+        source = fallback.get("src")
+        if isinstance(source, str):
+            contracts_by_fallback.setdefault(source, []).append(contract)
+
+    for stem in RESPONSIVE_SCREENSHOTS:
+        fallback_source = f"assets/{stem}.png"
+        matching_contracts = contracts_by_fallback.get(fallback_source, [])
+        if len(matching_contracts) != 1:
+            errors.append(
+                f"{fallback_source}: expected exactly one responsive picture contract"
+            )
+            continue
+
+        contract = matching_contracts[0]
+        line = contract["line"]
+        images = contract["images"]
+        sources = contract["sources"]
+        assert isinstance(images, list)
+        assert isinstance(sources, list)
+        fallback = images[0]
+        assert isinstance(fallback, dict)
+
+        if fallback.get("width") != "1600" or fallback.get("height") != "900":
+            errors.append(f"line {line}: screenshot fallback must declare 1600x900")
+        if fallback.get("decoding") != "async":
+            errors.append(f"line {line}: screenshot fallback must decode asynchronously")
+        if stem == "careeros-workspace":
+            if fallback.get("fetchpriority") != "high":
+                errors.append(f"line {line}: hero screenshot must have high fetch priority")
+        elif fallback.get("loading") != "lazy":
+            errors.append(f"line {line}: offscreen screenshot must load lazily")
+
+        sources_by_type = {
+            source.get("type"): source
+            for source in sources
+            if isinstance(source, dict) and isinstance(source.get("type"), str)
+        }
+        if set(sources_by_type) != {"image/avif", "image/webp"}:
+            errors.append(
+                f"line {line}: screenshot picture must contain AVIF and WebP sources"
+            )
+            continue
+
+        sizes_values: set[str] = set()
+        for media_type, extension in (
+            ("image/avif", "avif"),
+            ("image/webp", "webp"),
+        ):
+            source = sources_by_type[media_type]
+            srcset = source.get("srcset")
+            sizes = source.get("sizes")
+            if not isinstance(srcset, str) or not isinstance(sizes, str):
+                errors.append(
+                    f"line {line}: {media_type} source must declare srcset and sizes"
+                )
+                continue
+            sizes_values.add(" ".join(sizes.split()))
+            candidates = _parse_srcset(srcset)
+            expected_candidates = [
+                (f"assets/{stem}-{width}.{extension}", f"{width}w")
+                for width in RESPONSIVE_WIDTHS
+            ]
+            if candidates != expected_candidates:
+                errors.append(
+                    f"line {line}: {media_type} source must provide "
+                    "the complete responsive width set"
+                )
+            fallback_path = SITE_ROOT / fallback_source
+            for candidate, _descriptor in expected_candidates:
+                candidate_path = SITE_ROOT / candidate
+                if not candidate_path.is_file():
+                    continue
+                payload = candidate_path.read_bytes()
+                valid_signature = (
+                    extension == "avif"
+                    and len(payload) >= 12
+                    and payload[4:12] == b"ftypavif"
+                ) or (
+                    extension == "webp"
+                    and len(payload) >= 12
+                    and payload[:4] == b"RIFF"
+                    and payload[8:12] == b"WEBP"
+                )
+                if not valid_signature:
+                    errors.append(f"{candidate}: invalid {extension.upper()} signature")
+                if fallback_path.is_file() and len(payload) >= fallback_path.stat().st_size:
+                    errors.append(f"{candidate}: optimized image must be smaller than PNG")
+        if len(sizes_values) != 1:
+            errors.append(f"line {line}: AVIF and WebP sizes must match")
+
+    return errors
+
+
+def validate_robots(site_root: Path = SITE_ROOT) -> list[str]:
+    """Keep crawler policy explicit so GitHub Pages never serves its HTML 404."""
+
+    path = site_root / "robots.txt"
+    if not path.is_file():
+        return ["missing robots.txt"]
+    try:
+        policy = path.read_text(encoding="utf-8")
+    except UnicodeDecodeError:
+        return ["robots.txt must be UTF-8"]
+    if policy.replace("\r\n", "\n") != "User-agent: *\nAllow: /\n":
+        return ["robots.txt must explicitly allow all crawlers"]
+    return []
+
+
 def validate() -> list[str]:
     errors: list[str] = []
     if not INDEX.is_file():
@@ -375,6 +539,8 @@ def validate() -> list[str]:
     parser.close()
 
     errors.extend(validate_editorial_assets())
+    errors.extend(validate_responsive_screenshots(parser))
+    errors.extend(validate_robots())
 
     if parser.h1_count != 1:
         errors.append(f"expected exactly one h1, found {parser.h1_count}")
