@@ -2,12 +2,16 @@
 
 <!--
 Sync impact report
+- Amendment: daily-work counts and rows must share one database snapshot, and local-day
+  classification must use an explicit DST-correct boundary supplied by the local renderer.
+- Amendment: the daily application agenda must be derived from authenticated user-scoped
+  projections, classify deadlines deterministically and disclose any bounded truncation.
 - Amendment: every workflow presented as AI analysis now requires a ready, validated local model
   and fails closed instead of substituting heuristic output; owned records and deterministic
   preflight/export workflows remain available without inference.
-- Version: 1.1.0 (adds a mandatory truth-in-analysis product boundary).
+- Version: 1.1.2 (hardens coherent snapshots and DST-correct daily-work boundaries).
 - Ratified: 2026-07-17.
-- Last amended: 2026-07-22.
+- Last amended: 2026-07-23.
 - Principles: desktop ownership, local intelligence, grounded career truth, durable vault,
   bounded architecture, measurable delivery, secure distribution, accessible documents.
 - Dependent artifacts: plan, specification, task and checklist templates reviewed.
@@ -80,6 +84,12 @@ Manual opportunity captures MUST use a server-owned per-user namespace and idemp
 client identifiers MUST NOT merge private captures across users. Concurrent application writers
 MUST advance revisions with an atomic compare-and-swap, and derived board projections MUST never
 replace the immutable event history.
+Daily-work views MUST read only authenticated user-scoped application projections, MUST classify
+deadlines deterministically from an explicit time window, and MUST disclose when a bounded result
+set omits lower-priority items. They MUST NOT replay or expose another user's event payloads.
+Counts and rows in one daily-work response MUST come from one database statement or an explicitly
+verified snapshot transaction. Local-day boundaries MUST be supplied as timezone-aware instants
+calculated by the renderer's local calendar, not reconstructed from a fixed UTC offset.
 
 Rationale: local storage without portability and recovery is only local lock-in.
 
@@ -152,4 +162,4 @@ minor; clarification without changed obligations is patch. Every plan MUST perfo
 check before research and again before release. Exceptions require owner approval, an expiry date
 and a tracked remediation task; there are no implicit exceptions.
 
-**Version**: 1.1.0 | **Ratified**: 2026-07-17 | **Last amended**: 2026-07-22
+**Version**: 1.1.2 | **Ratified**: 2026-07-17 | **Last amended**: 2026-07-23

@@ -4,6 +4,17 @@ export const ApplicationService = {
     list(options = {}) {
         return ApiClient.get("/applications", undefined, options);
     },
+    agenda(
+        { localDayEnd, horizonDays = 7, limit = 12 } = {},
+        options = {},
+    ) {
+        const query = new URLSearchParams({
+            local_day_end: String(localDayEnd),
+            horizon_days: String(horizonDays),
+            limit: String(limit),
+        });
+        return ApiClient.get(`/applications/agenda?${query}`, undefined, options);
+    },
     get(id, options = {}) {
         return ApiClient.get(`/applications/${encodeURIComponent(id)}`, options.signal, options);
     },

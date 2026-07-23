@@ -83,6 +83,9 @@ families in the first evaluation suite
 - **PASS — Truthful analysis**: non-AI Vault, portability, document and deterministic readiness
   workflows remain available without a model, while analysis fails closed unless the loopback
   runtime is ready and a content-free schema probe validates structured output.
+- **PASS — Private daily agenda**: the new daily-work read model uses only owned scalar
+  projections, bounded time-window inputs and explicit omission counts; it neither replays event
+  payloads nor invokes local or remote inference.
 
 ### Post-design gate
 
@@ -333,6 +336,33 @@ persists no substitute score. Heuristic scoring remains an accurately labelled p
 No database migration is required. Backend tests cover loopback/schema diagnostics, search
 preconditions and fail-closed matching. Frontend tests cover setup, retry, unlock, English/Italian
 copy, keyboard operation and no analysis-content rendering before readiness.
+
+### Phase K — Private daily application agenda
+
+Add a focused `ApplicationAgendaService` read path over the same scalar fields used by the board
+instead of growing the existing application facade. One CTE/window statement excludes rejected,
+withdrawn and archived applications, calculates one UTC `generated_at`, consumes a validated
+timezone-aware next-local-midnight instant calculated by the browser's local calendar, and
+classifies projected next actions as overdue, due today, upcoming, undated or beyond the bounded
+horizon. Active applications without a projection become explicit `needs_action` rows. Aggregate
+counts and limit-ranked item rows are joined inside that statement so concurrent writes cannot
+produce mixed snapshots.
+
+The response reports active, visible, later and truncated counts before applying the caller's
+bounded row limit. Ordering is stable: classification urgency, due instant, task priority, least
+recent activity and application id. It selects no `job_snapshot`, event or dossier payload and
+requires no migration or model process.
+
+The Applications page loads this agenda independently of the board, so an agenda error cannot
+remove manual pipeline access. Agenda rows are native buttons that open the existing accessible
+detail dialog and retain the existing opener-focus behavior. A managed timer refreshes at the
+earliest returned future deadline or next local midnight; focus and visible-state restoration also
+refresh, while every superseded request and timer is cancelled. English and Italian labels explain
+that the queue is local and deterministic. Visible heading and description text drive ARIA
+relationships. Chromium validates real 320 px geometry and WCAG AA contrast. Backend tests cover
+DST boundaries, ordering, snapshot coherence, omission counts, invalid bounds, query plan and
+cross-user isolation; frontend tests cover rendering, refresh lifecycle, failure independence and
+row navigation.
 
 ## Complexity Tracking
 

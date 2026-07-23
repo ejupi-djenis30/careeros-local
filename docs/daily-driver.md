@@ -40,6 +40,21 @@ URL cannot share the same private listing row.
 
 ## Operate the application
 
+Start with **Next actions** at the top of Applications. It brings together the current projected
+action from every active application and orders overdue work first, followed by work due today,
+the next seven days, undated tasks and applications that still need an action. The local-day
+boundary is the next local midnight calculated by the browser calendar, so daylight-saving
+transitions do not inherit a stale fixed offset. The queue refreshes at the next returned deadline
+or local midnight, and whenever the window regains focus or becomes visible. Actions beyond seven
+days and rows beyond the compact view are counted explicitly; the full board always remains below
+it.
+
+This agenda is a deterministic local read model. It reads only the authenticated user's scalar
+application projections, does not inspect task-event bodies, and does not need the local model. If
+the agenda cannot load, application cards and manual task editing remain available. Counts and
+rows come from one SQL-statement snapshot, so a concurrent application update cannot mix an old
+total with a new row list.
+
 Open an application card and use **Next action** for the one concrete step that should happen next.
 Actions may have a due date, priority and a local calendar reminder. Complete, cancel or reopen an
 action from the same panel. Every change appends a typed event, so the earlier state remains in the

@@ -232,6 +232,47 @@ only board reads and lossless payloads.
    visible error, evidence ids are valid UUIDs, fact snapshots are deduplicated in a bounded catalog,
    archive/event sizes are preflighted, and add/remove controls have accessible names.
 
+---
+
+### User Story 8 - Start from one private daily action agenda (Priority: P1)
+
+A person opens Applications and immediately sees the most useful next moves across the whole
+pipeline: overdue work, work due today, upcoming deadlines, undated tasks and active applications
+that do not yet have a next action. The agenda is a deterministic local read model and does not
+require or imitate AI analysis.
+
+**Why this priority**: Per-application tasks are durable, but a daily utility must answer “what do
+I need to do next?” without making the user inspect every board column and dialog.
+
+**Independent Test**: Create applications for two users with overdue, today, upcoming, later,
+undated and absent next actions. Request one user's agenda with a DST-correct next-local-midnight
+instant and horizon; verify exact classification and order, one-snapshot counts and rows, no
+foreign records or event payload reads, explicit later/truncation counts, timed/focus refresh and
+keyboard access from each agenda row to the owned application dialog.
+
+**Acceptance Scenarios**:
+
+1. **Given** active applications with projected next actions, **When** the agenda is requested,
+   **Then** it classifies them as overdue, due today, upcoming or undated using one explicit UTC
+   instant, the browser-calculated timezone-aware next local midnight and a bounded horizon.
+2. **Given** an active application without a projected next action, **When** the agenda is loaded,
+   **Then** it appears as needing an action, ordered from the least recently touched application.
+3. **Given** actions beyond the horizon or more visible rows than the requested limit, **When** the
+   agenda is returned, **Then** it reports the omitted-later count and truncation count rather than
+   implying that no other work exists.
+4. **Given** another local account with its own applications, **When** the current user opens the
+   agenda, **Then** no foreign role, company, task identifier, title or timing is returned.
+5. **Given** the local model is unavailable, **When** the agenda is opened, **Then** classification,
+   board navigation and manual task editing remain available because no analysis claim is made.
+6. **Given** an agenda read while an application writer commits, **When** the response is built,
+   **Then** counts and returned rows describe the same SQL-statement snapshot.
+7. **Given** a visible Applications page, **When** the next deadline or local midnight passes, the
+   window regains focus, or a hidden document becomes visible, **Then** the agenda refreshes once
+   without leaking timers or retaining obsolete requests.
+8. **Given** a 320 px viewport or keyboard/screen-reader navigation, **When** agenda content is
+   inspected, **Then** functional text meets WCAG AA contrast, visible labels/descriptions are
+   programmatically associated, and row content does not overlap or create horizontal scrolling.
+
 ### Edge Cases
 
 - Disk space becomes insufficient during model acquisition, migration, backup or export.
@@ -403,6 +444,20 @@ only board reads and lossless payloads.
   inference. Diagnostics MUST expose stable codes without logging prompts, model output, user data
   or secrets and MUST accept only the managed authenticated loopback runtime or the explicit local
   development allowlist.
+- **FR-055**: Applications MUST expose a user-scoped daily agenda derived only from scalar
+  application and next-action projections. It MUST classify overdue, local-today, upcoming,
+  undated and missing-action work deterministically without replaying application event payloads
+  or invoking a model. Counts and rows MUST be produced by one SQL-statement snapshot.
+- **FR-056**: Agenda queries MUST accept only a validated timezone-aware next-local-midnight
+  instant, bounded horizon and bounded result limit, exclude closed applications, return stable
+  priority/deadline ordering, and expose active, later, visible and truncated counts so omitted
+  work cannot be mistaken for an empty queue.
+- **FR-057**: The Applications interface MUST present the agenda as keyboard-operable controls,
+  preserve access to the full board when agenda loading fails, and open an owned application using
+  the existing labelled, focus-contained detail dialog. It MUST refresh on focus, visible-state
+  restoration, the next returned deadline and local midnight; clear obsolete requests and timers;
+  associate visible heading/description text; and avoid overlap at 320 px with WCAG AA functional
+  text contrast.
 
 ### Key Entities
 
@@ -480,6 +535,11 @@ only board reads and lossless payloads.
   ready loopback model and validated structured output, model failures produce zero heuristic
   analysis rows, and the authenticated onboarding gate unlocks only after the content-free
   structured readiness probe succeeds.
+- **SC-018**: Agenda acceptance tests classify fixed deadlines and DST-correct day boundaries exactly, return zero
+  foreign-user fields, perform no event-payload replay, produce counts and rows in one SQL
+  statement, disclose every horizon/limit omission, refresh at temporal/visibility boundaries,
+  preserve a usable application board when the agenda request fails, and pass Chromium geometry
+  and contrast checks at 320 px.
 
 ## Assumptions
 

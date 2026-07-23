@@ -1,6 +1,6 @@
 [project]
 name = "careeros-local"
-version = "1.4.0"
+version = "1.5.0"
 description = "Open-source, local-first career utility for resumes, deterministic job search, and application tracking"
 readme = "README.md"
 authors = [

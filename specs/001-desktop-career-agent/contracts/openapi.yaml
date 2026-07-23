@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: CareerOS Local Desktop Additions
-  version: 1.1.0
+  version: 1.1.2
   description: New local model management and evaluation interfaces for feature 001.
 servers:
   - url: http://127.0.0.1:{port}/api/v1
@@ -48,6 +48,32 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/LocalModelReadiness" }
         "401": { description: The local user session is not authenticated. }
+  /applications/agenda:
+    get:
+      operationId: getApplicationAgenda
+      description: Builds a deterministic private queue from owned scalar application projections.
+      parameters:
+        - name: local_day_end
+          in: query
+          required: true
+          description: Timezone-aware instant of the browser's next local midnight, at most 26 hours after generation.
+          schema: { type: string, format: date-time }
+        - name: horizon_days
+          in: query
+          required: false
+          schema: { type: integer, minimum: 1, maximum: 30, default: 7 }
+        - name: limit
+          in: query
+          required: false
+          schema: { type: integer, minimum: 1, maximum: 200, default: 50 }
+      responses:
+        "200":
+          description: User-scoped agenda with explicit later and limit-truncation counts.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApplicationAgendaResponse" }
+        "401": { description: The local user session is not authenticated. }
+        "422": { description: A query bound or persisted next-action projection is invalid. }
   /local-model/install:
     post:
       operationId: installLocalModel
@@ -240,6 +266,54 @@ components:
         minimumRamBytes: { type: integer, minimum: 1 }
         recommendedRamBytes: { type: integer, minimum: 1 }
         contextTokens: { type: integer, minimum: 1024 }
+    ApplicationAgendaResponse:
+      type: object
+      additionalProperties: false
+      required: [generated_at, local_day_end, horizon_end, active_count, visible_count, later_count, truncated_count, items]
+      properties:
+        generated_at: { type: string, format: date-time }
+        local_day_end: { type: string, format: date-time }
+        horizon_end: { type: string, format: date-time }
+        active_count: { type: integer, minimum: 0 }
+        visible_count: { type: integer, minimum: 0 }
+        later_count: { type: integer, minimum: 0 }
+        truncated_count: { type: integer, minimum: 0 }
+        items:
+          type: array
+          maxItems: 200
+          items: { $ref: "#/components/schemas/ApplicationAgendaItem" }
+    ApplicationAgendaItem:
+      type: object
+      additionalProperties: false
+      required: [application_id, application_revision, title, company, current_stage, latest_event_at, state, next_action]
+      properties:
+        application_id: { type: string, format: uuid }
+        application_revision: { type: integer, minimum: 1 }
+        title: { type: string, minLength: 1, maxLength: 240 }
+        company: { type: string, minLength: 1, maxLength: 240 }
+        current_stage:
+          type: string
+          enum: [saved, preparing, applied, screening, interview, offer, accepted]
+        latest_event_at: { type: string, format: date-time }
+        state:
+          type: string
+          enum: [overdue, today, upcoming, unscheduled, needs_action]
+        next_action:
+          oneOf:
+            - { $ref: "#/components/schemas/ApplicationNextAction" }
+            - { type: "null" }
+    ApplicationNextAction:
+      type: object
+      additionalProperties: false
+      required: [id, title, due_at, priority]
+      properties:
+        id: { type: string, minLength: 1, maxLength: 36 }
+        title: { type: string, minLength: 1, maxLength: 500 }
+        due_at:
+          oneOf:
+            - { type: string, format: date-time }
+            - { type: "null" }
+        priority: { type: string, enum: [low, normal, high, urgent] }
     ApplicationPreparationUpdate:
       type: object
       additionalProperties: false

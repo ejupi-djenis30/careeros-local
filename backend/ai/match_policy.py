@@ -31,11 +31,36 @@ RISK_SCORE_CAPS = {"intent": 20, "language": 30, "qualification": 40}
 _GENERIC_MATCH_TERMS = {
     "application",
     "applications",
+    "ability",
+    "advanced",
+    "assistance",
+    "bonne",
+    "buona",
+    "command",
+    "connaissance",
+    "connaissances",
+    "direct",
     "delivery",
     "engineer",
     "evidence",
+    "experience",
+    "expertise",
+    "familiarity",
+    "gute",
+    "hands-on",
+    "kenntnisse",
+    "knowledge",
+    "maîtrise",
+    "maitrise",
+    "mandatory",
+    "necessary",
+    "needed",
+    "proficiency",
+    "proficient",
     "production",
     "required",
+    "strong",
+    "supervision",
     "service",
     "services",
     "software",
@@ -64,6 +89,9 @@ _GENERIC_MATCH_TERMS = {
     "richiesto",
     "richiesta",
     "wünschenswert",
+    "utilise",
+    "utilisé",
+    "usare",
 }
 
 _MANDATORY_SCORE_CAPS = {
@@ -112,6 +140,15 @@ def _dimension_has_support(
     candidate: EvidenceDocument,
     job: EvidenceDocument,
 ) -> bool:
+    if dimension in {"skill", "transferability"}:
+        candidate_summary = _summary(candidate)
+        job_summary = _summary(job)
+        observed = set(candidate_summary.get("observed_skill_terms") or [])
+        observed -= set(candidate_summary.get("negated_skill_terms") or [])
+        positive_job_terms = set(job_summary.get("required_skill_terms") or [])
+        positive_job_terms.update(job_summary.get("preferred_skill_terms") or [])
+        positive_job_terms.update(job_summary.get("present_skill_terms") or [])
+        return bool(observed & positive_job_terms)
     for _job_id, job_quote in _document_quotes(job, dimension):
         if not _positive_quote(job_quote):
             continue
@@ -190,13 +227,42 @@ def _mandatory_mismatch_dimensions(
         mismatches.add("experience")
 
     required_languages = job_summary.get("required_languages")
+    raw_language_groups = job_summary.get("required_language_groups")
     observed_languages = candidate_summary.get("observed_languages")
     if isinstance(required_languages, Mapping) and isinstance(observed_languages, Mapping):
-        if any(
-            not isinstance(observed_languages.get(language), int)
-            or int(observed_languages[language]) < int(required_rank)
-            for language, required_rank in required_languages.items()
-        ):
+        language_groups = (
+            [
+                {
+                    str(language): int(rank)
+                    for language, rank in group.items()
+                    if isinstance(language, str)
+                    and isinstance(rank, int)
+                    and not isinstance(rank, bool)
+                }
+                for group in raw_language_groups
+                if isinstance(group, Mapping)
+            ]
+            if isinstance(raw_language_groups, Sequence)
+            and not isinstance(raw_language_groups, (str, bytes))
+            else []
+        )
+        language_groups = [group for group in language_groups if group]
+        if language_groups:
+            language_mismatch = any(
+                not any(
+                    isinstance(observed_languages.get(language), int)
+                    and int(observed_languages[language]) >= required_rank
+                    for language, required_rank in group.items()
+                )
+                for group in language_groups
+            )
+        else:
+            language_mismatch = any(
+                not isinstance(observed_languages.get(language), int)
+                or int(observed_languages[language]) < int(required_rank)
+                for language, required_rank in required_languages.items()
+            )
+        if language_mismatch:
             mismatches.add("language")
 
     required_qualification = job_summary.get("required_qualification_rank")

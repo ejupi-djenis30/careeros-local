@@ -3,15 +3,16 @@ from __future__ import annotations
 import hashlib
 import json
 import re
-from collections.abc import Mapping, Sequence
-from typing import Any
+from collections.abc import Callable, Collection, Mapping, Sequence
+from dataclasses import dataclass
+from typing import Any, Literal
 
 from backend.ai.retrieval import EvidenceDocument
 from backend.services.search.prompt_compaction import compact_prompt_text
 from backend.services.search.query_contracts import sanitize_prompt_text
 from backend.services.utils import clean_html_tags
 
-MATCH_EVIDENCE_CATALOG_VERSION = "5"
+MATCH_EVIDENCE_CATALOG_VERSION = "8"
 MATCH_EVIDENCE_DESCRIPTION_CHARS = 6_000
 _FRAGMENT_SPLIT = re.compile(r"(?:\n+|(?<=[.!?;])\s+)")
 _DIMENSIONS = (
@@ -61,15 +62,20 @@ _REQUIREMENT_STATUS_PATTERNS = (
     (
         "explicit_not_required",
         re.compile(
-            r"\b(?:not\s+required|not\s+(?:a\s+)?requirement|"
-            r"no\s+requirement\s+for|no\s+[^.;]{0,80}\s+(?:required|needed)|optional|"
+            r"\b(?:not\s+(?:required|mandatory|needed|necessary|essential|"
+            r"(?:a\s+)?requirement|(?:a\s+)?must)|"
+            r"no\s+requirement\s+for|"
+            r"no\s+[^.;]{0,80}\s+(?:required|needed|necessary|mandatory|essential)|optional|"
             r"isn['’]t\s+required|(?:doesn['’]t|does\s+not)\s+(?:need|require)|"
             r"(?:don['’]t|doesn['’]t|do\s+not|does\s+not)\s+have\s+to|"
             r"needn['’]t|not\s+needed|not\s+a\s+must|"
-            r"nicht\s+(?:erforderlich|notwendig|benötigt|benoetigt)|kein\s+muss|optional|"
-            r"non\s+requis(?:e|es|s)?|pas\s+(?:requis|nécessaire|necessaire)|"
+            r"nicht\b[^.;]{0,30}\b(?:erforderlich|notwendig|benötigt|benoetigt|zwingend)|"
+            r"kein(?:e|en)?\s+(?:muss|voraussetzung|pflicht)|muss\s+nicht|optional|"
+            r"non\s+requis(?:e|es|s)?|"
+            r"pas\s+(?:requis(?:e|es|s)?|nécessaire|necessaire|obligatoire)|"
             r"facultati(?:f|ve)|optionnel(?:le)?|"
-            r"non\s+richiest[oaie]|non\s+necessari[oaie]|facoltativ[oaie]|opzional[eaio])\b",
+            r"non\b[^.;]{0,20}\b(?:richiest[oaie]|necessari[oaie]|obbligatori[oaie])|"
+            r"facoltativ[oaie]|opzional[eaio])\b",
             re.IGNORECASE,
         ),
     ),
@@ -77,12 +83,15 @@ _REQUIREMENT_STATUS_PATTERNS = (
         "exclusion",
         re.compile(
             r"\b(?:do(?:es)?\s+not\s+(?:know|have|use)|must\s+not\s+(?:know|have|use)|"
+            r"must\s+not\s+be\s+(?:used|utilized|known|permitted)|"
+            r"cannot\s+(?:know|have|use)|"
             r"(?:don['’]t|doesn['’]t)\s+(?:know|have|use)|"
             r"(?:haven['’]t|hasn['’]t)\s+(?:used|worked\s+with)|"
+            r"(?:have|has)\s+not\s+(?:used|worked\s+with)|"
             r"lacks?(?:\s+experience)?\s+(?:with|in)?|"
             r"no\s+experience\s+(?:with|in)|never\s+(?:used|worked\s+with)|"
             r"without\s+(?!(?:(?:direct|close|constant)\s+)?(?:supervision|assistance|"
-            r"support|restriction|relocation)\b)(?:any\s+)?(?:experience\s+(?:with|in)\s+)?"
+            r"restriction|relocation)\b)(?:any\s+)?(?:experience\s+(?:with|in)\s+)?"
             r"[\w+#.-]+|"
             r"prohibited|forbidden|not\s+permitted|"
             r"darf\b[^.;]{0,60}\bnicht|"
@@ -93,14 +102,19 @@ _REQUIREMENT_STATUS_PATTERNS = (
             r"ohne\s+(?!(?:(?:direkte|direkter|direkten|ständige|staendige)\s+)?"
             r"(?:aufsicht|unterstützung|unterstuetzung|hilfe|umzug)\b)[\w+#.-]+|"
             r"(?:verwendet|benutzt)\s+kein(?:e|en)?|verboten|ausgeschlossen|"
-            r"ne\b[^.;]{0,60}\b(?:connais|maîtrise|maitrise|utilise)\b[^.;]{0,30}\bpas|"
+            r"(?:ne|n['’])\b[^.;]{0,60}\b(?:connais|connaît|connait|maîtrise|"
+            r"maitrise|utilise)\b[^.;]{0,30}\bpas\b(?!\s+seulement\b)|"
+            r"(?:ne|n['’])\b[^.;]{0,40}\b(?:doit|doivent)\b[^.;]{0,30}\b"
+            r"pas\b(?!\s+seulement\b)|"
             r"aucune?\s+expérience\s+avec|jamais\s+utilisé|"
             r"sans\s+(?!(?:(?:supervision|assistance|aide|déménagement|demenagement))\b)"
             r"[\w+#.-]+|"
             r"interdit|exclu|"
             r"non\s+(?:conosco|conosce|abbiamo|ho|uso|usa|utilizzo|utilizza)|"
+            r"non\b(?!\s+solo\b)[^.;]{0,30}\b(?:deve|devono)\b[^.;]{0,40}\b"
+            r"(?:usare|utilizzare|essere\s+(?:usat|utilizzat)\w*)|"
             r"nessuna?\s+esperienza\s+con|mai\s+usat[oa]|"
-            r"senza\s+(?!(?:supervisione|assistenza|supporto|trasferimento)\b)[\w+#.-]+|"
+            r"senza\s+(?!(?:supervisione|assistenza|trasferimento)\b)[\w+#.-]+|"
             r"vietat[oaie]|esclus[oaie]|"
             r"no\s+(?!explicit\b|[^.;]{0,80}\b(?:required|needed)\b)[\w+#.-]+)\b",
             re.IGNORECASE,
@@ -115,8 +129,8 @@ _REQUIREMENT_STATUS_PATTERNS = (
             r"erforderlich|vorausgesetzt|pflicht|zwingend|notwendig|benötigt|benoetigt|"
             r"muss|müssen|muessen|mindestens|"
             r"requis(?:e|es|s)?|exigé(?:e|es|s)?|obligatoire|nécessaire|necessaire|"
-            r"doit|devez|minimum|au\s+moins|"
-            r"richiest[oaie]|obbligatori[oaie]|necessari[oaie]|deve|devi|"
+            r"doit|doivent|devez|minimum|au\s+moins|"
+            r"richiest[oaie]|obbligatori[oaie]|necessari[oaie]|deve|devono|devi|"
             r"minimo|almeno)\b",
             re.IGNORECASE,
         ),
@@ -185,7 +199,7 @@ _NUMBER_WORDS = {
 _YEARS_PATTERN = re.compile(
     r"\b(?P<years>\d{1,2}|"
     + "|".join(sorted(_NUMBER_WORDS, key=len, reverse=True))
-    + r")\s*\+?\s*(?:years?|yrs?|jahre?n?|ans?|années?|anni?)\b",
+    + r")\s*\+?\s*(?:years?|yrs?|jahre?n?|ans?|années?|ann(?:o|i))\b",
     re.IGNORECASE,
 )
 _LANGUAGE_ALIASES = {
@@ -481,12 +495,518 @@ _SKILL_STOPWORDS.update(
         "qualifica",
     }
 )
+_SKILL_STOPWORDS.update(
+    {
+        # Natural-language requirement scaffolding and contractions.
+        "ability",
+        "aren",
+        "assistance",
+        "before",
+        "cannot",
+        "close",
+        "constant",
+        "currently",
+        "daily",
+        "didn",
+        "direct",
+        "exposure",
+        "hadn",
+        "hands-on",
+        "necessary",
+        "needed",
+        "now",
+        "plus",
+        "practical",
+        "relocation",
+        "restriction",
+        "roles",
+        "supervision",
+        "today",
+        "understanding",
+        "used",
+        "wasn",
+        "weren",
+        # German scaffolding and bounded-negation verbs.
+        "bekannt",
+        "benutzt",
+        "benutzen",
+        "beherrschung",
+        "aufsicht",
+        "darf",
+        "direkte",
+        "direkten",
+        "direkter",
+        "direktes",
+        "fundiert",
+        "fundierte",
+        "fundierten",
+        "fundierter",
+        "fundiertes",
+        "gute",
+        "guten",
+        "guter",
+        "gutes",
+        "habe",
+        "haben",
+        "hat",
+        "kenntnis",
+        "kenntnisse",
+        "nie",
+        "niemals",
+        "ohne",
+        "praktisch",
+        "praktische",
+        "praktischen",
+        "praktischer",
+        "praktisches",
+        "sein",
+        "umgang",
+        "verwendet",
+        "verwenden",
+        "voraussetzung",
+        "werden",
+        # French scaffolding and bounded-negation verbs.
+        "bon",
+        "bonne",
+        "bonnes",
+        "candidat",
+        "candidats",
+        "connaissance",
+        "connaissances",
+        "connaître",
+        "connaitre",
+        "directe",
+        "directes",
+        "doivent",
+        "être",
+        "etre",
+        "excellente",
+        "excellentes",
+        "je",
+        "maîtrise",
+        "maitrise",
+        "moins",
+        "ne",
+        "pratique",
+        "pratiques",
+        "sans",
+        "seulement",
+        "solide",
+        "solides",
+        "sont",
+        "supervision",
+        "utilise",
+        "utilisé",
+        "utilisee",
+        "utilisée",
+        "utiliser",
+        # Italian scaffolding and bounded-negation verbs.
+        "abbiamo",
+        "anno",
+        "buon",
+        "buona",
+        "buono",
+        "candidato",
+        "candidati",
+        "conoscenza",
+        "conoscenze",
+        "conoscere",
+        "devono",
+        "diretta",
+        "dirette",
+        "diretti",
+        "diretto",
+        "essere",
+        "ha",
+        "ho",
+        "il",
+        "ottima",
+        "ottimo",
+        "pratica",
+        "pratiche",
+        "pratici",
+        "pratico",
+        "senza",
+        "solo",
+        "solida",
+        "solido",
+        "supervisione",
+        "usare",
+        "usata",
+        "usate",
+        "usati",
+        "usato",
+        "utilizzare",
+        "utilizzata",
+        "utilizzate",
+        "utilizzati",
+        "utilizzato",
+    }
+)
 _SKILL_STOPWORDS.update(_LANGUAGE_ALIASES)
 _SKILL_STOPWORDS.update(_CEFR_RANK)
 _SKILL_STOPWORDS.update(_NUMBER_WORDS)
 _SKILL_STOPWORDS.update(word for phrase in _CEFR_RANK for word in phrase.split())
 
-_ALTERNATIVE_CONNECTOR = re.compile(r"\b(?:or|either|oder|entweder|ou|soit|o|oppure)\b", re.I)
+_LANGUAGE_ALIAS_PATTERN = re.compile(
+    r"\b(?:"
+    + "|".join(re.escape(alias) for alias in sorted(_LANGUAGE_ALIASES, key=len, reverse=True))
+    + r")\b",
+    re.IGNORECASE,
+)
+_LANGUAGE_LEVEL_PATTERN = re.compile(
+    r"\b(?:"
+    + "|".join(re.escape(level) for level in sorted(_CEFR_RANK, key=len, reverse=True))
+    + r")\b",
+    re.IGNORECASE,
+)
+_ConnectorKind = Literal[
+    "start",
+    "list",
+    "additive",
+    "adversative",
+    "alternative",
+    "scoped_absence",
+]
+_MarkerDirection = Literal["none", "forward", "backward", "both", "local"]
+
+
+@dataclass(slots=True)
+class _ClauseSegment:
+    text: str
+    connector: _ConnectorKind
+    connector_text: str = ""
+    explicit_status: str | None = None
+    inherited_status: str | None = None
+    marker_direction: _MarkerDirection = "none"
+    marker_start: int | None = None
+    marker_end: int | None = None
+    absence_scope: bool = False
+
+    @property
+    def status(self) -> str:
+        if self.absence_scope:
+            return "exclusion"
+        return self.explicit_status or self.inherited_status or "present"
+
+
+_STRUCTURAL_CONNECTOR_PATTERN = re.compile(
+    r"(?P<additive_correlative>,?\s*\b(?:but\s+also|sondern\s+auch|"
+    r"mais\s+aussi|ma\s+anche)\b)|"
+    r"(?P<alternative>,?\s*\b(?:or|oder|ou|oppure|o)\b)|"
+    r"(?P<scoped_absence>\b(?:without|ohne|sans|senza)\b)|"
+    r"(?P<adversative>,?\s*\b(?:but|whereas|while|aber|jedoch|während|"
+    r"mais|tandis\s+que|ma|però|pero|mentre)\b|;)|"
+    r"(?P<additive>\b(?:and|plus|und|et|e)\b)|"
+    r"(?P<list>[,/])",
+    re.IGNORECASE,
+)
+_FORWARD_MODAL_MARKER = re.compile(
+    r"^(?:must\s+(?:have|know|use)|must-have|"
+    r"muss|müssen|muessen|doit|doivent|devez|deve|devono|devi)$",
+    re.IGNORECASE,
+)
+_PASSIVE_MODAL_MARKER = re.compile(r"^must\s+be$", re.IGNORECASE)
+_MODAL_ACTION_WORD_PATTERN = re.compile(
+    r"\b(?:know|known|use|used|have|"
+    r"kenne|kennt|kennen|beherrsche|beherrscht|beherrschen|"
+    r"verwende|verwendet|verwenden|benutze|benutzt|benutzen|nutze|nutzt|nutzen|"
+    r"connais|connaît|connait|connaître|connaitre|"
+    r"maîtrise|maitrise|maîtriser|maitriser|utilise|utiliser|"
+    r"conosco|conosce|conoscere|padroneggiare|"
+    r"uso|usa|usare|utilizzo|utilizza|utilizzare)\b",
+    re.IGNORECASE,
+)
+_CLAUSE_GRAMMAR_PRONOUN_PATTERN = re.compile(
+    r"\b(?:ich|wir|er|sie|es|das|je|nous|il|elle|on|io|lo|la|li|le)\b",
+    re.IGNORECASE,
+)
+_REASSERTION_GRAMMARS = (
+    (
+        re.compile(
+            r"\b(?:now|currently|today)\b[^.;]{0,60}\b"
+            r"(?:use|using|work(?:ing)?\s+with|know|have)\b",
+            re.IGNORECASE,
+        ),
+        re.compile(
+            r"\b(?:now|currently|today)\b[^.;]{0,40}\b"
+            r"(?:use|using|work(?:ing)?\s+with|know|have)\s+(?:it|them)\b",
+            re.IGNORECASE,
+        ),
+    ),
+    (
+        re.compile(
+            r"\b(?:jetzt|derzeit|heute|inzwischen)\b[^.;]{0,60}\b"
+            r"(?:verwende|verwenden|benutze|benutzen|nutze|nutzen|kenne|kennen)\b",
+            re.IGNORECASE,
+        ),
+        re.compile(
+            r"\b(?:jetzt|derzeit|heute|inzwischen)\b[^.;]{0,60}\b"
+            r"(?:verwende|verwenden|benutze|benutzen|nutze|nutzen|kenne|kennen)"
+            r"\b[^.;]{0,25}\b(?:es|sie|das)\b",
+            re.IGNORECASE,
+        ),
+    ),
+    (
+        re.compile(
+            r"\b(?:maintenant|actuellement|aujourd['’]hui)\b[^.;]{0,60}\b"
+            r"(?:utilise|utiliser|travaille|connais|maîtrise|maitrise)\b",
+            re.IGNORECASE,
+        ),
+        re.compile(
+            r"\b(?:maintenant|actuellement|aujourd['’]hui)\b[^.;]{0,40}"
+            r"(?:l['’]|le|la|les)\s*"
+            r"(?:utilise|utiliser|connais|maîtrise|maitrise)\b",
+            re.IGNORECASE,
+        ),
+    ),
+    (
+        re.compile(
+            r"\b(?:ora|adesso|attualmente|oggi)\b[^.;]{0,60}\b"
+            r"(?:uso|usa|usare|utilizzo|utilizza|conosco|conosce)\b",
+            re.IGNORECASE,
+        ),
+        re.compile(
+            r"\b(?:ora|adesso|attualmente|oggi)\b[^.;]{0,40}\b"
+            r"(?:lo|la|li|le)\s+"
+            r"(?:uso|usa|usare|utilizzo|utilizza|conosco|conosce)\b",
+            re.IGNORECASE,
+        ),
+    ),
+)
+_STRUCTURED_EXCLUSION_GRAMMARS = (
+    re.compile(
+        r"\b(?:kenne|kennt|verwende|verwendet|benutze|benutzt|nutze|nutzt|"
+        r"beherrsche|beherrscht)\b[^.;]{0,60}\bnicht\b",
+        re.IGNORECASE,
+    ),
+    re.compile(
+        r"\b(?:ne|n['’])[^.;]{0,60}\b"
+        r"(?:connais|connaît|connait|utilise|maîtrise|maitrise)\b"
+        r"[^.;]{0,30}\bpas\b(?!\s+seulement\b)",
+        re.IGNORECASE,
+    ),
+    re.compile(
+        r"\bnon\s+(?:conosco|conosce|uso|usa|utilizzo|utilizza)\b",
+        re.IGNORECASE,
+    ),
+)
+_CLASSIFICATION_CONTRACTIONS = (
+    (re.compile(r"\bcan['’]t\b", re.IGNORECASE), "cannot"),
+    (re.compile(r"\bwon['’]t\b", re.IGNORECASE), "will not"),
+    (re.compile(r"\bisn['’]t\b", re.IGNORECASE), "is not"),
+    (re.compile(r"\baren['’]t\b", re.IGNORECASE), "are not"),
+    (re.compile(r"\bwasn['’]t\b", re.IGNORECASE), "was not"),
+    (re.compile(r"\bweren['’]t\b", re.IGNORECASE), "were not"),
+    (re.compile(r"\bdon['’]t\b", re.IGNORECASE), "do not"),
+    (re.compile(r"\bdoesn['’]t\b", re.IGNORECASE), "does not"),
+    (re.compile(r"\bdidn['’]t\b", re.IGNORECASE), "did not"),
+    (re.compile(r"\bhaven['’]t\b", re.IGNORECASE), "have not"),
+    (re.compile(r"\bhasn['’]t\b", re.IGNORECASE), "has not"),
+    (re.compile(r"\bhadn['’]t\b", re.IGNORECASE), "had not"),
+    (re.compile(r"\bmustn['’]t\b", re.IGNORECASE), "must not"),
+    (re.compile(r"\bneedn['’]t\b", re.IGNORECASE), "need not"),
+)
+
+
+def _classification_text(value: str) -> str:
+    normalized = value.replace("’", "'").replace("‘", "'")
+    for pattern, replacement in _CLASSIFICATION_CONTRACTIONS:
+        normalized = pattern.sub(replacement, normalized)
+    return normalized
+
+
+def _connector_kind(match: re.Match[str]) -> _ConnectorKind:
+    if match.lastgroup == "additive_correlative":
+        return "additive"
+    if match.lastgroup == "alternative":
+        return "alternative"
+    if match.lastgroup == "scoped_absence":
+        return "scoped_absence"
+    if match.lastgroup == "adversative":
+        return "adversative"
+    if match.lastgroup == "additive":
+        return "additive"
+    return "list"
+
+
+def _raw_clause_segments(sentence: str) -> list[_ClauseSegment]:
+    segments: list[_ClauseSegment] = []
+    cursor = 0
+    pending_connector: _ConnectorKind = "start"
+    pending_text = ""
+    for match in _STRUCTURAL_CONNECTOR_PATTERN.finditer(sentence):
+        chunk = sentence[cursor : match.start()].strip(" ,-;/")
+        if chunk:
+            segments.append(
+                _ClauseSegment(
+                    text=chunk,
+                    connector=pending_connector,
+                    connector_text=pending_text,
+                )
+            )
+        pending_connector = _connector_kind(match)
+        pending_text = match.group(0).strip(" ,;/")
+        cursor = match.end()
+    tail = sentence[cursor:].strip(" ,-;/")
+    if tail:
+        segments.append(
+            _ClauseSegment(
+                text=tail,
+                connector=pending_connector,
+                connector_text=pending_text,
+            )
+        )
+    return segments
+
+
+def _has_requirement_subject(value: str) -> bool:
+    return bool(
+        _skill_terms(value)
+        or _LANGUAGE_ALIAS_PATTERN.search(value)
+        or _YEARS_PATTERN.search(value)
+        or any(pattern.search(value) for _rank, pattern in _QUALIFICATION_PATTERNS)
+    )
+
+
+def _marker_direction(
+    value: str,
+    status: str,
+    match: re.Match[str],
+) -> _MarkerDirection:
+    if status == "exclusion":
+        return "local"
+    marker = match.group(0)
+    if status == "required" and _PASSIVE_MODAL_MARKER.fullmatch(marker):
+        return "both"
+    if status == "required" and _FORWARD_MODAL_MARKER.fullmatch(marker):
+        return "forward"
+    left_has_subject = _has_requirement_subject(value[: match.start()])
+    right_has_subject = _has_requirement_subject(value[match.end() :])
+    if right_has_subject and not left_has_subject:
+        return "forward"
+    if left_has_subject and not right_has_subject:
+        return "backward"
+    if match.start() <= len(value) - len(value.lstrip()) + 1 and right_has_subject:
+        return "forward"
+    return "local"
+
+
+def _annotate_explicit_status(segment: _ClauseSegment) -> None:
+    normalized = _classification_text(segment.text)
+    structured_exclusion = next(
+        (
+            match
+            for pattern in _STRUCTURED_EXCLUSION_GRAMMARS
+            if (match := pattern.search(normalized)) is not None
+        ),
+        None,
+    )
+    if structured_exclusion is not None:
+        segment.explicit_status = "exclusion"
+        segment.marker_direction = "local"
+        segment.marker_start = structured_exclusion.start()
+        segment.marker_end = structured_exclusion.end()
+        return
+    for status, pattern in _REQUIREMENT_STATUS_PATTERNS:
+        match = pattern.search(normalized)
+        if match is None:
+            continue
+        segment.explicit_status = status
+        segment.marker_direction = _marker_direction(normalized, status, match)
+        segment.marker_start = match.start()
+        segment.marker_end = match.end()
+        return
+
+
+def _classify_clause_commas(segments: list[_ClauseSegment]) -> None:
+    for index in range(1, len(segments)):
+        segment = segments[index]
+        if segment.connector != "list":
+            continue
+        previous = segments[index - 1]
+        if previous.explicit_status is not None and previous.marker_direction in {
+            "backward",
+            "local",
+        }:
+            segment.connector = "adversative"
+
+
+def _apply_absence_scope(segments: list[_ClauseSegment]) -> None:
+    absence_active = False
+    for segment in segments:
+        if segment.connector in {"start", "adversative"}:
+            absence_active = False
+        if segment.connector == "scoped_absence":
+            absence_active = True
+        segment.absence_scope = absence_active
+
+
+def _apply_status_propagation(segments: list[_ClauseSegment]) -> None:
+    group_start = 0
+    for group_end in [
+        *(
+            index
+            for index, segment in enumerate(segments)
+            if index > 0 and segment.connector == "adversative"
+        ),
+        len(segments),
+    ]:
+        group = segments[group_start:group_end]
+        explicit_statuses = [
+            segment.explicit_status for segment in group if segment.explicit_status is not None
+        ]
+        for segment in group:
+            if segment.explicit_status is not None or not explicit_statuses:
+                continue
+            unique_statuses = set(explicit_statuses)
+            if len(unique_statuses) == 1:
+                segment.inherited_status = explicit_statuses[0]
+        group_start = group_end
+
+
+def _structured_clauses(value: str) -> list[_ClauseSegment]:
+    clauses: list[_ClauseSegment] = []
+    for sentence in _FRAGMENT_SPLIT.split(value):
+        normalized = " ".join(sentence.split())
+        if not normalized:
+            continue
+        sentence_segments = _raw_clause_segments(normalized)
+        for segment in sentence_segments:
+            _annotate_explicit_status(segment)
+        _classify_clause_commas(sentence_segments)
+        _apply_absence_scope(sentence_segments)
+        _apply_status_propagation(sentence_segments)
+        clauses.extend(sentence_segments)
+    return clauses
+
+
+def _positive_reassertion(value: str) -> bool:
+    normalized = _classification_text(value)
+    return any(positive.search(normalized) for positive, _anaphoric in _REASSERTION_GRAMMARS)
+
+
+def _anaphoric_reassertion(value: str) -> bool:
+    normalized = _classification_text(value)
+    return any(anaphoric.search(normalized) for _positive, anaphoric in _REASSERTION_GRAMMARS)
+
+
+def _segment_fragment(segment: _ClauseSegment) -> str:
+    fragment = segment.text
+    if segment.connector == "scoped_absence" and segment.connector_text:
+        fragment = f"{segment.connector_text} {fragment}"
+    if segment.absence_scope and _skill_terms(segment.text):
+        fragment = f"{fragment} prohibited"
+    elif segment.explicit_status is None and segment.inherited_status is not None:
+        marker = {
+            "explicit_not_required": "optional",
+            "exclusion": "prohibited",
+            "preferred": "preferred",
+            "required": "required",
+        }.get(segment.inherited_status)
+        if marker is not None:
+            fragment = f"{fragment} {marker}"
+    return fragment.strip()
 
 
 def _matching_fragments(text: str, dimension: str) -> str:
@@ -538,6 +1058,7 @@ def _catalog_fingerprint(
 
 
 def _explicit_requirement_status(value: str) -> str | None:
+    value = _classification_text(value)
     for status, pattern in _REQUIREMENT_STATUS_PATTERNS:
         if pattern.search(value):
             return status
@@ -567,37 +1088,8 @@ def _requirement_status(value: str) -> str:
 
 
 def _all_fragments(value: str) -> list[str]:
-    """Split mixed-polarity requirement lists into independently classified clauses."""
-    fragments: list[str] = []
-    for sentence in _FRAGMENT_SPLIT.split(value):
-        sentence = " ".join(sentence.split())
-        if not sentence:
-            continue
-        parts = [
-            part.strip(" ,-;/")
-            for part in re.split(
-                r"\s*(?:[,;/]|\b(?:and|but|whereas|while|und|aber|jedoch|während|"
-                r"et|mais|tandis\s+que|e|ma|però|pero|mentre)\b)\s*",
-                sentence,
-                flags=re.IGNORECASE,
-            )
-            if part.strip(" ,-;/")
-        ]
-        # In lists such as "Python, FastAPI and Docker required", the trailing
-        # marker governs preceding unmarked list items. Never propagate across a
-        # clause that already carries its own polarity.
-        marker_suffix = {
-            "required": "required",
-            "preferred": "preferred",
-            "explicit_not_required": "optional",
-            "exclusion": "prohibited",
-        }
-        for index in range(len(parts) - 2, -1, -1):
-            next_status = _explicit_requirement_status(parts[index + 1])
-            if _explicit_requirement_status(parts[index]) is None and next_status in marker_suffix:
-                parts[index] = f"{parts[index]} {marker_suffix[str(next_status)]}"
-        fragments.extend(parts)
-    return fragments
+    """Project structured clauses into independently classifiable quote text."""
+    return [_segment_fragment(segment) for segment in _structured_clauses(value)]
 
 
 def _years(value: str) -> list[int]:
@@ -636,19 +1128,141 @@ def _qualification_rank(value: str) -> int:
     )
 
 
-def _skill_terms(value: str) -> set[str]:
-    return {
-        token.strip(".-").casefold()
-        for token in re.findall(r"[\w+#.-]+", value, re.UNICODE)
-        if len(token.strip(".-")) >= 2
-        and not token.strip(".-").isdigit()
-        and token.strip(".-").casefold() not in _SKILL_STOPWORDS
-    }
+def _skill_parse_text(value: str, *, modal_frame: bool = False) -> str:
+    if not modal_frame:
+        return value
+    masked = _MODAL_ACTION_WORD_PATTERN.sub(
+        lambda match: " " * len(match.group(0)),
+        value,
+    )
+    return _CLAUSE_GRAMMAR_PRONOUN_PATTERN.sub(
+        lambda match: " " * len(match.group(0)),
+        masked,
+    )
+
+
+def _skill_term_mentions(
+    value: str,
+    *,
+    modal_frame: bool = False,
+) -> list[tuple[int, int, str]]:
+    mentions: list[tuple[int, int, str]] = []
+    parsed = _skill_parse_text(value, modal_frame=modal_frame)
+    for token_match in re.finditer(r"[\w+#.-]+", parsed, re.UNICODE):
+        token = token_match.group(0).strip(".-").casefold()
+        if len(token) < 2 or token.isdigit() or token in _SKILL_STOPWORDS:
+            continue
+        components = [
+            component
+            for component in token.split("-")
+            if len(component) >= 2 and not component.isdigit() and component not in _SKILL_STOPWORDS
+        ]
+        if len(components) < len(token.split("-")):
+            mentions.extend(
+                (token_match.start(), token_match.end(), component) for component in components
+            )
+        else:
+            mentions.append((token_match.start(), token_match.end(), token))
+    return mentions
+
+
+def _skill_terms(value: str, *, modal_frame: bool = False) -> set[str]:
+    return {term for _start, _end, term in _skill_term_mentions(value, modal_frame=modal_frame)}
+
+
+def _segment_skill_text(segment: _ClauseSegment) -> tuple[str, bool]:
+    if segment.absence_scope:
+        return segment.text, False
+    if segment.explicit_status == "exclusion":
+        return segment.text, True
+    marker_start = segment.marker_start
+    marker_end = segment.marker_end
+    if segment.marker_direction == "forward" and marker_end is not None:
+        scope = segment.text[marker_end:]
+    elif segment.marker_direction == "backward" and marker_start is not None:
+        scope = segment.text[:marker_start]
+    else:
+        scope = segment.text
+    marker = (
+        segment.text[marker_start:marker_end]
+        if marker_start is not None and marker_end is not None
+        else ""
+    )
+    modal_frame = bool(
+        _FORWARD_MODAL_MARKER.fullmatch(marker) or _PASSIVE_MODAL_MARKER.fullmatch(marker)
+    )
+    modal_frame = modal_frame or segment.explicit_status == "exclusion"
+    modal_frame = modal_frame or _positive_reassertion(segment.text)
+    return scope, modal_frame
+
+
+def _segment_skill_terms(segment: _ClauseSegment) -> set[str]:
+    scope, modal_frame = _segment_skill_text(segment)
+    return _skill_terms(scope, modal_frame=modal_frame)
+
+
+def _required_value_groups(
+    clauses: Sequence[_ClauseSegment],
+    values_for: Callable[[_ClauseSegment], Collection[str]],
+) -> list[list[str]]:
+    all_groups: list[list[str]] = []
+    group_start = 0
+    boundaries = [
+        *(
+            index
+            for index, clause in enumerate(clauses)
+            if index > 0 and clause.connector == "adversative"
+        ),
+        len(clauses),
+    ]
+    for group_end in boundaries:
+        local_groups: list[list[str]] = []
+        chunk: list[str] = []
+        chunk_has_alternative = False
+
+        def flush_chunk() -> None:
+            nonlocal chunk, chunk_has_alternative
+            if not chunk:
+                return
+            unique = list(dict.fromkeys(chunk))
+            if chunk_has_alternative:
+                local_groups.append(sorted(unique))
+            else:
+                local_groups.extend([value] for value in unique)
+            chunk = []
+            chunk_has_alternative = False
+
+        for clause in clauses[group_start:group_end]:
+            if clause.status != "required" or clause.absence_scope:
+                flush_chunk()
+                continue
+            values = sorted({str(value) for value in values_for(clause)})
+            for value_index, value in enumerate(values):
+                connector = clause.connector if value_index == 0 else "additive"
+                if not chunk:
+                    chunk = [value]
+                    continue
+                if connector == "alternative":
+                    chunk.append(value)
+                    chunk_has_alternative = True
+                elif connector == "list":
+                    chunk.append(value)
+                else:
+                    flush_chunk()
+                    chunk = [value]
+        flush_chunk()
+        all_groups.extend(sorted(local_groups, key=lambda group: tuple(group)))
+        group_start = group_end
+    return all_groups
 
 
 def _skill_evidence(value: str, fallback: str) -> str:
     """Keep skill clauses separate from language, degree and tenure requirements."""
-    relevant = [fragment for fragment in _all_fragments(value) if _skill_terms(fragment)]
+    relevant = [
+        fragment
+        for fragment in _all_fragments(value)
+        if _skill_terms(fragment) or _positive_reassertion(fragment)
+    ]
     return "\n".join(relevant) or fallback
 
 
@@ -656,52 +1270,60 @@ def _requirement_summary(
     dimensions: Mapping[str, str],
     *,
     source_kind: str,
+    source_text: str | None = None,
 ) -> dict[str, Any]:
-    skill_fragments = _all_fragments(str(dimensions.get("skill") or ""))
-    experience_fragments = _all_fragments(str(dimensions.get("experience") or ""))
-    language_fragments = _all_fragments(str(dimensions.get("language") or ""))
-    qualification_fragments = _all_fragments(str(dimensions.get("qualification") or ""))
+    clauses = _structured_clauses(
+        source_text if source_text is not None else str(dimensions.get("skill") or "")
+    )
     if source_kind == "candidate":
         observed_languages: dict[str, int] = {}
-        for fragment in language_fragments:
-            if _requirement_status(fragment) in {"explicit_not_required", "exclusion"}:
+        for clause in clauses:
+            if clause.status in {"explicit_not_required", "exclusion"}:
                 continue
-            for language, rank in _languages(fragment).items():
+            for language, rank in _languages(clause.text).items():
                 observed_languages[language] = max(observed_languages.get(language, 0), rank)
-        positive_skill_fragments = [
-            fragment
-            for fragment in skill_fragments
-            if _requirement_status(fragment) in {"present", "required", "preferred"}
-        ]
-        negative_skill_fragments = [
-            fragment
-            for fragment in skill_fragments
-            if _requirement_status(fragment) in {"explicit_not_required", "exclusion"}
-        ]
+        skill_state: dict[str, bool] = {}
+        pending_negative_terms: set[str] = set()
+        for clause in clauses:
+            status = clause.status
+            terms = _segment_skill_terms(clause)
+            if status in {"explicit_not_required", "exclusion"}:
+                for term in terms:
+                    skill_state[term] = False
+                pending_negative_terms = terms
+                continue
+            if _positive_reassertion(clause.text):
+                if _anaphoric_reassertion(clause.text):
+                    terms = set(pending_negative_terms) if pending_negative_terms else set()
+                if not terms and pending_negative_terms:
+                    terms = set(pending_negative_terms)
+            for term in terms:
+                skill_state[term] = True
+            pending_negative_terms = set()
         return {
             "observed_experience_years": max(
                 (
                     year
-                    for fragment in experience_fragments
-                    if _requirement_status(fragment) not in {"explicit_not_required", "exclusion"}
-                    for year in _years(fragment)
+                    for clause in clauses
+                    if clause.status not in {"explicit_not_required", "exclusion"}
+                    for year in _years(clause.text)
                 ),
                 default=None,
             ),
             "observed_languages": dict(sorted(observed_languages.items())),
             "observed_qualification_rank": max(
                 (
-                    _qualification_rank(fragment)
-                    for fragment in qualification_fragments
-                    if _requirement_status(fragment) not in {"explicit_not_required", "exclusion"}
+                    _qualification_rank(clause.text)
+                    for clause in clauses
+                    if clause.status not in {"explicit_not_required", "exclusion"}
                 ),
                 default=0,
             ),
             "observed_skill_terms": sorted(
-                {term for fragment in positive_skill_fragments for term in _skill_terms(fragment)}
+                term for term, positive in skill_state.items() if positive
             ),
             "negated_skill_terms": sorted(
-                {term for fragment in negative_skill_fragments for term in _skill_terms(fragment)}
+                term for term, positive in skill_state.items() if not positive
             ),
         }
 
@@ -710,44 +1332,48 @@ def _requirement_summary(
     preferred_skill_terms: set[str] = set()
     present_skill_terms: set[str] = set()
     excluded_skill_terms: set[str] = set()
-    for fragment in skill_fragments:
-        status = _requirement_status(fragment)
+    for clause in clauses:
+        status = clause.status
+        terms = _segment_skill_terms(clause)
         if status == "required":
-            terms = _skill_terms(fragment)
             required_skill_terms.update(terms)
-            if terms:
-                if _ALTERNATIVE_CONNECTOR.search(fragment):
-                    required_skill_groups.append(sorted(terms))
-                else:
-                    required_skill_groups.extend([term] for term in sorted(terms))
         elif status == "preferred":
-            preferred_skill_terms.update(_skill_terms(fragment))
+            preferred_skill_terms.update(terms)
         elif status == "present":
-            present_skill_terms.update(_skill_terms(fragment))
+            present_skill_terms.update(terms)
         elif status == "exclusion":
-            excluded_skill_terms.update(_skill_terms(fragment))
+            excluded_skill_terms.update(terms)
+    required_skill_groups.extend(_required_value_groups(clauses, _segment_skill_terms))
     required_languages: dict[str, int] = {}
-    for fragment in language_fragments:
-        if _requirement_status(fragment) != "required":
+    for clause in clauses:
+        if clause.status != "required" or clause.absence_scope:
             continue
-        for language, rank in _languages(fragment).items():
+        for language, rank in _languages(clause.text).items():
             required_languages[language] = max(required_languages.get(language, 0), rank)
+    required_language_groups = [
+        {language: required_languages[language] for language in group}
+        for group in _required_value_groups(
+            clauses,
+            lambda clause: _languages(clause.text),
+        )
+    ]
     required_years = [
         year
-        for fragment in experience_fragments
-        if _requirement_status(fragment) == "required"
-        for year in _years(fragment)
+        for clause in clauses
+        if clause.status == "required" and not clause.absence_scope
+        for year in _years(clause.text)
     ]
     qualification_ranks = [
-        _qualification_rank(fragment)
-        for fragment in qualification_fragments
-        if _requirement_status(fragment) == "required"
+        _qualification_rank(clause.text)
+        for clause in clauses
+        if clause.status == "required" and not clause.absence_scope
     ]
     return {
         "excluded_skill_terms": sorted(excluded_skill_terms),
         "preferred_skill_terms": sorted(preferred_skill_terms),
         "present_skill_terms": sorted(present_skill_terms),
         "required_experience_years": max(required_years, default=None),
+        "required_language_groups": required_language_groups,
         "required_languages": dict(sorted(required_languages.items())),
         "required_qualification_rank": max(qualification_ranks, default=0),
         "required_skill_groups": required_skill_groups,
@@ -924,7 +1550,11 @@ def candidate_evidence_document(profile: Mapping[str, Any]) -> EvidenceDocument:
         max_document_chars=_CANDIDATE_EVIDENCE_CHARS,
         source_kind="candidate",
     )
-    requirement_summary = _requirement_summary(summary_dimensions, source_kind="candidate")
+    requirement_summary = _requirement_summary(
+        summary_dimensions,
+        source_kind="candidate",
+        source_text=raw_cv,
+    )
     coverage_complete = _coverage_complete(summary_dimensions, source_kind="candidate")
     if not cv:
         text += "\nSOURCE_STATUS: Candidate CV is empty."
@@ -1017,7 +1647,11 @@ def job_evidence_document(
         max_document_chars=_JOB_EVIDENCE_CHARS,
         source_kind="job",
     )
-    requirement_summary = _requirement_summary(summary_dimensions, source_kind="job")
+    requirement_summary = _requirement_summary(
+        summary_dimensions,
+        source_kind="job",
+        source_text=raw_description,
+    )
     coverage_complete = _coverage_complete(summary_dimensions, source_kind="job")
     return EvidenceDocument(
         id=f"job:{row_index}",

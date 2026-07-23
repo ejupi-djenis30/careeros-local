@@ -37,8 +37,8 @@ without a model; opportunity matching and coaching require a ready, approved loc
 - **Keep the private parts private:** the API, database, artifacts, and analysis runtime
   remain on the device, with no telemetry and no cloud-model fallback.
 - **Move from intent to follow-through:** immutable PDF/DOCX resume versions, local job
-  snapshots, dated next actions, verifiable application dossiers and a nine-check preflight keep
-  the workflow coherent.
+  snapshots, a private daily action agenda, verifiable application dossiers and a nine-check
+  preflight keep the workflow coherent.
 
 ## Product tour
 
@@ -68,6 +68,11 @@ the assets.
 - Application tasks are append-only events with a narrow next-action projection and portable
   calendar reminders. Dossier ZIPs include versioned answers, ID-only requirement mappings, one
   deduplicated evidence catalog, verified resume files and a canonical SHA-256 manifest.
+- The daily application agenda reads only owned scalar projections. It orders overdue, today,
+  upcoming, undated and missing next actions without replaying private event payloads or requiring
+  the model, and reports actions omitted by its seven-day horizon or compact row limit. Counts and
+  rows share one SQL-statement snapshot; the renderer supplies the next browser-local midnight so
+  today remains correct across daylight-saving transitions.
 - Vault erasure sanitizes SQLite even when artifact cleanup needs a retry.
 - Local AI calls use explicit context, strict schemas, bounded repair and content-free audit
   metadata through a managed llama.cpp-compatible runtime.
@@ -216,6 +221,7 @@ collectively to **CareerOS Local contributors**.
 - [Release process](docs/releasing.md)
 - [Devpost submission kit](docs/devpost.md)
 - [Product specification](specs/001-desktop-career-agent/spec.md)
+- [v1.5.0 release preparation](specs/001-desktop-career-agent/release-evidence-v1.5.0.md)
 - [v1.4.0 release preparation](specs/001-desktop-career-agent/release-evidence-v1.4.0.md)
 - [v1.3.0 release preparation](specs/001-desktop-career-agent/release-evidence-v1.3.0.md)
 - [v1.2.0 release preparation](specs/001-desktop-career-agent/release-evidence-v1.2.0.md)

@@ -63,6 +63,16 @@ latest event timestamp. The board selects only those scalar columns in one deter
 does not load `job_snapshot`, the event relationship or dossier payloads. Calendar export derives pending dated tasks from the
 event stream and includes local `VALARM` reminders.
 
+`backend/applications/agenda.py` builds the daily application queue from those same scalar
+projections with one authenticated CTE/window statement. The statement excludes closed
+applications, classifies deadlines against one generated UTC instant and the browser-supplied next
+local midnight, ranks the bounded item view, and joins aggregate counts from the same SQLite
+statement snapshot. The boundary must be timezone-aware, later than `generated_at`, and no more
+than 26 hours ahead; horizon and row limits are bounded separately. The query selects no event,
+dossier or `job_snapshot` payloads. The route is limited to 120 local reads per minute, and the
+React agenda cancels superseded requests and timers, so temporal refresh cannot remove access to
+the full board.
+
 An application dossier is also an immutable typed event. Publishing validates the linked resume,
 confirms every requirement-to-evidence reference against the exact resume version and records each
 fact snapshot once in a content-addressed evidence catalog. Requirement rows reference fact IDs

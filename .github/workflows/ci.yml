@@ -126,6 +126,12 @@ jobs:
       - name: Build
         working-directory: frontend
         run: npm run build
+      - name: Install Chromium for agenda acceptance
+        working-directory: frontend
+        run: npx --no-install playwright install --with-deps chromium
+      - name: Validate agenda geometry, contrast and local-day boundaries
+        working-directory: frontend
+        run: npm run test:agenda-responsive
       - name: Validate demo recorder
         working-directory: frontend
         run: |

@@ -94,6 +94,16 @@ def test_portfolio_keeps_one_real_product_demo():
     )
 
 
+def test_portfolio_presents_the_bounded_daily_action_agenda():
+    html = (ROOT / "docs" / "index.html").read_text(encoding="utf-8")
+
+    assert 'id="daily-action-agenda"' in html
+    assert "Bounded, deterministic ordering with explicit omitted-item counts" in html
+    assert "Local-day boundaries remain correct through daylight-saving changes" in html
+    assert "Incomplete projections fail closed instead of guessing" in html
+    assert "BOUNDED SQL · NO MODEL" in html
+
+
 def test_portfolio_declares_strict_browser_policies():
     parser = _parse((ROOT / "docs" / "index.html").read_text(encoding="utf-8"))
 

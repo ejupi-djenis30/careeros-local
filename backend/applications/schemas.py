@@ -29,6 +29,13 @@ ReadinessCheckStatus = Literal["pass", "warning", "blocker"]
 ReadinessReportStatus = Literal["ready", "action_needed", "blocked"]
 ApplicationTaskPriority = Literal["low", "normal", "high", "urgent"]
 ApplicationTaskStatus = Literal["pending", "completed", "cancelled"]
+ApplicationAgendaState = Literal[
+    "overdue",
+    "today",
+    "upcoming",
+    "unscheduled",
+    "needs_action",
+]
 
 MAX_EVENT_PAYLOAD_BYTES = 64 * 1024
 MAX_EVENT_PAYLOAD_DEPTH = 8
@@ -462,6 +469,58 @@ class ApplicationNextAction(BaseModel):
     title: str = Field(min_length=1, max_length=500)
     due_at: datetime | None = None
     priority: ApplicationTaskPriority
+
+
+class ApplicationAgendaItem(BaseModel):
+    """One owned application that needs attention inside the requested agenda window."""
+
+    application_id: str = Field(min_length=1, max_length=36)
+    application_revision: int = Field(ge=1)
+    title: str = Field(min_length=1, max_length=240)
+    company: str = Field(min_length=1, max_length=240)
+    current_stage: ApplicationStage
+    latest_event_at: datetime
+    state: ApplicationAgendaState
+    next_action: ApplicationNextAction | None = None
+
+    @model_validator(mode="after")
+    def action_matches_state(self):
+        if self.state == "needs_action" and self.next_action is not None:
+            raise ValueError("needs_action items cannot include a next action")
+        if self.state != "needs_action" and self.next_action is None:
+            raise ValueError(f"{self.state} items require a next action")
+        if self.next_action is not None:
+            if self.state in {"overdue", "today", "upcoming"}:
+                if self.next_action.due_at is None:
+                    raise ValueError(f"{self.state} items require a due date")
+            elif self.state == "unscheduled" and self.next_action.due_at is not None:
+                raise ValueError("unscheduled items cannot include a due date")
+        return self
+
+
+class ApplicationAgendaResponse(BaseModel):
+    """Bounded daily-work read model with explicit omission accounting."""
+
+    generated_at: datetime
+    local_day_end: datetime
+    horizon_end: datetime
+    active_count: int = Field(ge=0)
+    visible_count: int = Field(ge=0)
+    later_count: int = Field(ge=0)
+    truncated_count: int = Field(ge=0)
+    items: list[ApplicationAgendaItem] = Field(max_length=200)
+
+    @model_validator(mode="after")
+    def counts_are_coherent(self):
+        if self.local_day_end <= self.generated_at:
+            raise ValueError("local day boundary cannot end before agenda generation")
+        if self.horizon_end < self.generated_at:
+            raise ValueError("agenda horizon cannot end before it starts")
+        if self.active_count != self.visible_count + self.later_count:
+            raise ValueError("agenda active count is inconsistent")
+        if self.truncated_count != self.visible_count - len(self.items):
+            raise ValueError("agenda truncation count is inconsistent")
+        return self
 
 
 class ApplicationSummary(BaseModel):
