@@ -5,6 +5,30 @@ All notable changes to CareerOS Local are documented here. The format follows
 
 ## [Unreleased]
 
+## [1.5.0] - 2026-07-23
+
+### Added
+
+- Added a private daily action agenda that groups owned applications into overdue, today,
+  upcoming, unscheduled and needs-action queues with deterministic ordering and bounded results.
+- Added explicit omission counts, browser-local day boundaries and automatic refresh at the next
+  deadline or local midnight.
+
+### Changed
+
+- Agenda rows and category totals now come from one user-scoped SQL statement, so the compact list
+  and its counts describe the same database snapshot without loading event, dossier or job payloads.
+- The application workspace now cancels obsolete agenda requests and refreshes on focus, visibility
+  and time boundaries while keeping agenda failures separate from the board.
+
+### Fixed
+
+- Preserved the correct local day across both Zurich daylight-saving transitions.
+- Returned a typed `422` response for invalid agenda windows instead of exposing transport-level
+  validation details.
+- Kept the agenda usable at 320 px with visible accessible labels, WCAG AA contrast and no
+  overlapping controls.
+
 ## [1.4.0] - 2026-07-23
 
 ### Added
@@ -218,7 +242,8 @@ All notable changes to CareerOS Local are documented here. The format follows
   autosave/revision loop.
 - Removed the rate-limit error and incomplete pipeline from public screenshots.
 
-[Unreleased]: https://github.com/ejupi-djenis30/careeros-local/compare/v1.4.0...HEAD
+[Unreleased]: https://github.com/ejupi-djenis30/careeros-local/compare/v1.5.0...HEAD
+[1.5.0]: https://github.com/ejupi-djenis30/careeros-local/compare/v1.4.0...v1.5.0
 [1.4.0]: https://github.com/ejupi-djenis30/careeros-local/compare/v1.3.0...v1.4.0
 [1.3.0]: https://github.com/ejupi-djenis30/careeros-local/compare/v1.2.0...v1.3.0
 [1.2.0]: https://github.com/ejupi-djenis30/careeros-local/compare/v1.1.2...v1.2.0

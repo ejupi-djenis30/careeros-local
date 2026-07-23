@@ -2039,6 +2039,44 @@ summary:focus-visible {
 .application-overview strong { color: var(--cos-text); font-size: 1.45rem; letter-spacing: -0.05em; }
 .application-overview > .button { min-height: 76px; }
 
+.application-agenda { display: grid; gap: 0.85rem; }
+.application-agenda .section-heading { align-items: flex-end; }
+.application-agenda .section-heading p { max-width: 680px; margin: 0.35rem 0 0; color: var(--cos-muted); font-size: 0.62rem; line-height: 1.55; }
+.application-agenda__count { display: grid; width: 42px; height: 42px; flex: 0 0 auto; place-items: center; border: 1px solid var(--cos-border); border-radius: 50%; color: var(--cos-accent); font-size: 0.86rem; }
+.application-agenda__status, .application-agenda__empty { color: var(--cos-muted); font-size: 0.66rem; }
+.application-agenda__empty { padding: 0.8rem 0; }
+.application-agenda__empty strong { color: var(--cos-text); font-size: 0.76rem; }
+.application-agenda__empty p { margin: 0.25rem 0 0; }
+.application-agenda__list { display: grid; border-top: 1px solid var(--cos-border); }
+.application-agenda__item {
+  display: grid;
+  width: 100%;
+  min-height: 66px;
+  align-items: center;
+  gap: 0.8rem;
+  padding: 0.72rem 0.2rem;
+  border: 0;
+  border-bottom: 1px solid var(--cos-border);
+  background: transparent;
+  color: inherit;
+  grid-template-columns: 88px minmax(0, 1fr) minmax(130px, auto) auto;
+  text-align: left;
+}
+.application-agenda__item:hover { background: rgba(255, 255, 255, 0.025); }
+.application-agenda__item:focus-visible { outline: 2px solid var(--cos-accent); outline-offset: 3px; }
+.application-agenda__item:disabled { opacity: 0.62; }
+.application-agenda__main { display: grid; min-width: 0; gap: 0.18rem; }
+.application-agenda__main strong { overflow: hidden; color: var(--cos-text); font-size: 0.72rem; text-overflow: ellipsis; white-space: nowrap; }
+.application-agenda__main small { overflow: hidden; color: var(--cos-muted); font-size: 0.58rem; text-overflow: ellipsis; white-space: nowrap; }
+.application-agenda__item time, .application-agenda__no-date { color: var(--cos-muted); font-size: 0.58rem; white-space: nowrap; }
+.application-agenda__item > i { color: var(--cos-faint); }
+.agenda-state { width: fit-content; padding: 0.25rem 0.42rem; border: 1px solid var(--cos-border); border-radius: 999px; color: var(--cos-muted); font-size: 0.5rem; font-weight: 760; letter-spacing: 0.06em; text-transform: uppercase; white-space: nowrap; }
+.agenda-state--overdue { border-color: rgba(255, 116, 116, 0.32); color: #ff9c9c; }
+.agenda-state--today { border-color: rgba(255, 174, 76, 0.35); color: #ffc06d; }
+.agenda-state--upcoming { border-color: rgba(130, 185, 255, 0.3); color: var(--cos-blue); }
+.agenda-state--needs_action { border-color: rgba(187, 255, 91, 0.28); color: var(--cos-accent); }
+.application-agenda__omissions { margin: 0; color: var(--cos-muted); font-size: 0.56rem; line-height: 1.5; }
+
 .create-application { animation: cos-reveal 0.18s ease-out; }
 
 .application-board {
@@ -2474,6 +2512,9 @@ summary:focus-visible {
   .canvas-inline--title { padding-right: 0.12rem; }
   .application-overview { grid-template-columns: repeat(2, 1fr); }
   .application-overview > .button { grid-column: 1 / -1; }
+  .application-agenda__item { grid-template-columns: 82px minmax(0, 1fr) auto; }
+  .application-agenda__item time, .application-agenda__no-date { grid-column: 2; }
+  .application-agenda__item > i { grid-column: 3; grid-row: 1 / span 2; }
   .application-detail { width: 100%; }
   .application-snapshot { align-items: stretch; flex-direction: column; }
   .readiness-check { grid-template-columns: 1fr; }
@@ -2512,6 +2553,27 @@ summary:focus-visible {
   .surface-section { padding: 1rem; }
   .button-cluster { flex-wrap: wrap; }
   .application-overview { grid-template-columns: 1fr 1fr; }
+  .application-agenda .section-heading { align-items: flex-start; }
+  .application-agenda__item {
+    align-items: start;
+    gap: 0.45rem 0.65rem;
+    padding: 0.8rem 0.1rem;
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+  .application-agenda__item .agenda-state { grid-column: 1; grid-row: 1; }
+  .application-agenda__item > i { grid-column: 2; grid-row: 1; }
+  .application-agenda__main { grid-column: 1 / -1; grid-row: 2; }
+  .application-agenda__item time, .application-agenda__no-date {
+    grid-column: 1 / -1;
+    grid-row: 3;
+    white-space: normal;
+  }
+  .application-agenda__main strong, .application-agenda__main small {
+    overflow: visible;
+    overflow-wrap: anywhere;
+    text-overflow: clip;
+    white-space: normal;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {

@@ -1,12 +1,16 @@
 import hashlib
+from datetime import datetime
 from typing import Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
+from pydantic import ValidationError
 from sqlalchemy.orm import Session
 
 from backend.api.deps import get_current_user_id, limiter
+from backend.applications.agenda import ApplicationAgendaService
 from backend.applications.schemas import (
+    ApplicationAgendaResponse,
     ApplicationCreate,
     ApplicationDossierCreate,
     ApplicationEventCreate,
@@ -43,6 +47,45 @@ def list_applications(
     user_id: int = Depends(get_current_user_id), db: Session = Depends(get_db)
 ) -> list[ApplicationSummary]:
     return ApplicationService(db).list(user_id, offset=offset, limit=limit)
+
+
+@router.get("/agenda", response_model=ApplicationAgendaResponse)
+@limiter.limit("120/minute")
+def get_application_agenda(
+    request: Request,
+    local_day_end: datetime = Query(
+        ...,
+        description="Timezone-aware instant of the browser's next local midnight",
+    ),
+    horizon_days: int = Query(
+        default=7,
+        ge=1,
+        le=30,
+        description="Number of days after generation to include",
+    ),
+    limit: int = Query(
+        default=50,
+        ge=1,
+        le=200,
+        description="Maximum number of priority agenda rows to return",
+    ),
+    user_id: int = Depends(get_current_user_id),
+    db: Session = Depends(get_db),
+) -> ApplicationAgendaResponse:
+    try:
+        return ApplicationAgendaService(db).build(
+            user_id,
+            local_day_end=local_day_end,
+            horizon_days=horizon_days,
+            limit=limit,
+        )
+    except ApplicationValidationError as exc:
+        raise _http_error(exc) from exc
+    except ValidationError as exc:
+        validation_error = ApplicationValidationError(
+            "Application agenda projection is invalid"
+        )
+        raise _http_error(validation_error) from exc
 
 
 @router.post("", response_model=ApplicationResponse, status_code=201)

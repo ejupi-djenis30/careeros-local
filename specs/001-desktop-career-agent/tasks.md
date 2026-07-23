@@ -401,3 +401,35 @@ editing, portability, existing documents or deterministic application readiness.
   with local-model requirements, data boundaries and recovery steps
 - [x] T131 [US4] Run proportional gates and record cross-artifact analysis and convergence in
   `mandatory-local-analysis-analysis.md` and `mandatory-local-analysis-convergence.md`
+
+## Phase 14: User Story 8 — Private daily application agenda
+
+**Goal**: Turn projected next actions into one deterministic, user-scoped daily queue without
+replaying event payloads or requiring the local model.
+
+- [x] T132 [US8] Amend constitution, specification and plan for deterministic classification,
+  authenticated projection-only reads, explicit omission counts and model independence
+- [x] T133 [US8] Add bounded agenda contracts and a focused projection-only service query in
+  `backend/applications/schemas.py` and `backend/applications/agenda.py`
+- [x] T134 [US8] Add the authenticated static agenda route before dynamic application routes and
+  cover day boundaries, ordering, input bounds, query shape and cross-user isolation
+- [x] T135 [US8] Add an independently loaded, keyboard-operable agenda to Applications with
+  English/Italian copy and existing dialog navigation
+- [x] T136 [US8] Update owner and daily-driver documentation with agenda behavior and boundaries
+- [x] T137 [US8] Run proportional gates and record cross-artifact analysis and convergence in
+  `daily-agenda-analysis.md` and `daily-agenda-convergence.md`
+
+## Phase 15: User Story 8 — Daily agenda review hardening
+
+- [x] T138 [US8] Amend constitution, specification, plan and tasks for one-snapshot reads,
+  DST-correct day boundaries, refresh lifecycle, accessible relationships and 320 px/AA evidence
+- [x] T139 [US8] Replace the two-query agenda read with one CTE/window statement, translate schema
+  validation failures to 422 and cover concurrent/interleaved snapshot coherence
+- [x] T140 [US8] Replace fixed offsets with a browser-calculated next-local-midnight instant,
+  validate its safe window in the backend and update OpenAPI/contracts/tests
+- [x] T141 [US8] Refresh on focus, visible-state restoration, next deadline and local midnight with
+  abort/timer cleanup tests and an appropriate agenda read rate limit
+- [x] T142 [US8] Associate visible agenda labels/descriptions, harden functional contrast and prove
+  non-overlapping 320 px geometry in real Chromium
+- [x] T143 [US8] Benchmark/query-plan the bounded statement, run proportional gates and update
+  daily-agenda analysis/convergence with exact evidence

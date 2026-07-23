@@ -1,7 +1,7 @@
 {
   "name": "careeros-local-desktop",
   "private": true,
-  "version": "1.4.0",
+  "version": "1.5.0",
   "description": "Open-source, local-first career utility for verified resumes, deterministic job search, and applications",
   "author": "Ejupi Labs",
   "contributors": [
@@ -36,6 +36,7 @@
     "demo:install": "playwright install chromium",
     "demo:record": "node ../scripts/record_demo.mjs",
     "test:pages": "node e2e/portfolio-responsive.mjs",
+    "test:agenda-responsive": "node e2e/application-agenda-responsive.mjs",
     "test:licenses": "node --test ../scripts/audit_frontend_licenses.test.mjs"
   },
   "dependencies": {

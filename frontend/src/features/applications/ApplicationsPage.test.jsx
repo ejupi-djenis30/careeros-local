@@ -8,6 +8,7 @@ import { renderWithItalian as render } from "../../test/renderWithI18n";
 import { ApplicationsPage } from "./ApplicationsPage";
 
 const list = vi.fn();
+const agenda = vi.fn();
 const get = vi.fn();
 const create = vi.fn();
 const showToast = vi.fn();
@@ -16,7 +17,7 @@ const addEvent = vi.fn();
 const resumeList = vi.fn();
 const resumeGet = vi.fn();
 
-vi.mock("../../services/applications", () => ({ ApplicationService: { list: (...args) => list(...args), get: (...args) => get(...args), create: (...args) => create(...args), readiness: (...args) => readiness(...args), downloadReadiness: vi.fn(), updatePreparation: vi.fn(), addEvent: (...args) => addEvent(...args) } }));
+vi.mock("../../services/applications", () => ({ ApplicationService: { list: (...args) => list(...args), agenda: (...args) => agenda(...args), get: (...args) => get(...args), create: (...args) => create(...args), readiness: (...args) => readiness(...args), downloadReadiness: vi.fn(), updatePreparation: vi.fn(), addEvent: (...args) => addEvent(...args) } }));
 vi.mock("../../services/resumes", () => ({ ResumeService: { list: (...args) => resumeList(...args), get: (...args) => resumeGet(...args) } }));
 vi.mock("../../context/ToastContext", () => ({ useToast: () => ({ showToast }) }));
 
@@ -42,6 +43,16 @@ describe("ApplicationsPage", () => {
         vi.clearAllMocks();
         document.body.style.overflow = "";
         list.mockResolvedValue([]);
+        agenda.mockResolvedValue({
+            generated_at: "2026-07-23T10:00:00Z",
+            local_day_end: "2026-07-23T22:00:00Z",
+            horizon_end: "2026-07-30T10:00:00Z",
+            active_count: 0,
+            visible_count: 0,
+            later_count: 0,
+            truncated_count: 0,
+            items: [],
+        });
         get.mockResolvedValue(application());
         create.mockResolvedValue(application());
         addEvent.mockResolvedValue(application());
@@ -119,6 +130,20 @@ describe("ApplicationsPage", () => {
         await user.click(screen.getByRole("button", { name: "Aggiungi la prima candidatura" }));
         expect(screen.getByRole("option", { name: "ATS Resume · v1.0.0" })).toBeInTheDocument();
         expect(resumeList).toHaveBeenCalledTimes(2);
+    });
+
+    it("keeps the full board usable when the daily agenda fails", async () => {
+        agenda.mockRejectedValue(new Error("agenda unavailable"));
+        list.mockResolvedValue([
+            summary("44444444-4444-4444-8444-444444444444", "Backend Engineer"),
+        ]);
+
+        render(<MemoryRouter initialEntries={["/applications"]}><ApplicationsPage /></MemoryRouter>);
+
+        expect(await screen.findByRole("alert")).toHaveTextContent(
+            "La board completa resta disponibile"
+        );
+        expect(screen.getByRole("button", { name: /Backend Engineer/i })).toBeEnabled();
     });
 
     it("opens an accessible modal, contains keyboard focus and restores the page", async () => {

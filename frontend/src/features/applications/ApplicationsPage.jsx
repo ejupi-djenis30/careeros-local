@@ -4,6 +4,7 @@ import { ApplicationService } from "../../services/applications";
 import { ResumeService } from "../../services/resumes";
 import { useToast } from "../../context/ToastContext";
 import { useI18n } from "../../i18n/useI18n";
+import { ApplicationAgenda } from "./ApplicationAgenda";
 import { ApplicationDetailDialog } from "./ApplicationDetailDialog";
 import { BOARD_STAGES, STAGES, getStageLabels } from "./applicationModel";
 
@@ -30,6 +31,7 @@ export function ApplicationsPage() {
     const [error, setError] = useState("");
     const [showCreate, setShowCreate] = useState(searchParams.has("jobId"));
     const [openingId, setOpeningId] = useState("");
+    const [agendaRevision, setAgendaRevision] = useState(0);
     const [form, setForm] = useState(emptyForm(searchParams.get("jobId") || ""));
     const applicationRequestRef = useRef({ controller: null, id: 0 });
     const detailRequestRef = useRef({ controller: null, id: 0 });
@@ -140,6 +142,7 @@ export function ApplicationsPage() {
                 note: form.note.trim() || null,
             });
             await requestApplications();
+            setAgendaRevision((value) => value + 1);
             setDetailOpener(addApplicationRef.current);
             setSelected(application);
             setShowCreate(false);
@@ -155,6 +158,7 @@ export function ApplicationsPage() {
 
     const handleChanged = (updated) => {
         setSelected(updated);
+        setAgendaRevision((value) => value + 1);
         void requestApplications();
     };
 
@@ -168,6 +172,7 @@ export function ApplicationsPage() {
             {resumeMetadataStatus === "loading" && <div className="inline-alert" role="status">{t("applications.resumeMetadataLoading")}</div>}
             {resumeMetadataStatus === "error" && <div className="inline-alert inline-alert--danger" role="alert"><span>{t("applications.resumeMetadataError")}</span> <button type="button" className="button button--secondary" onClick={retryResumeMetadata}>{t("applications.resumeMetadataRetry")}</button></div>}
             {resumeMetadataStatus === "ready" && resumeVersions.length === 0 && <div className="inline-alert" role="status">{t("applications.resumeMetadataEmpty")}</div>}
+            <ApplicationAgenda onOpen={openApplication} openingId={openingId} expandedId={selected?.id || ""} refreshKey={agendaRevision} />
             {showCreate && <form className="surface-section create-application" onSubmit={create}>
                 <div className="section-heading"><div><span className="section-kicker">{t("applications.newSnapshot")}</span><h2>{t("applications.add")}</h2></div><button type="button" className="icon-button" onClick={() => setShowCreate(false)} aria-label={t("applications.close")}><i className="bi bi-x-lg" /></button></div>
                 <div className="form-grid form-grid--3">

@@ -10,6 +10,10 @@ The app may store identity and contact data, work and education history, skills,
 
 The project contains no product telemetry, advertising identifiers, cloud AI integration, remote prompt logging, or analytics SDK. The application does not silently upload a profile or resume. Job-provider requests are user-initiated search operations and disclose only deterministic queries built from the explicit role, strategy and preferences. Provider planning never invokes the local model, and only v3 cache records marked `deterministic-explicit` can be reused.
 
+The daily application agenda is calculated locally from the authenticated user's scalar role and
+next-action projections. It does not read task-event or dossier bodies, contact a calendar service,
+or invoke the local model.
+
 ## Model context
 
 The local model does not automatically receive the complete vault. Each task selects a bounded evidence set. Retrieved source text is treated as untrusted data, and generated claims must cite selected local identifiers. Execution audits store fingerprints, counts, validation codes, timing, and model identity—not prompts or generated text.

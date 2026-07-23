@@ -2,7 +2,7 @@ import json
 import math
 import os
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
@@ -10,6 +10,7 @@ import pytest
 from sqlalchemy import create_engine, event, insert
 from sqlalchemy.orm import Session
 
+from backend.applications.agenda import ApplicationAgendaService
 from backend.applications.models import Application, ApplicationEvent
 from backend.applications.service import ApplicationService
 from backend.career.models import CandidateProfile
@@ -128,13 +129,23 @@ def test_profile_and_application_page_reads_under_200ms_p95(
 
         profile_service = CareerProfileService(session)
         application_service = ApplicationService(session)
+        agenda_service = ApplicationAgendaService(session)
 
         # Warm filesystem pages and SQLAlchemy/Pydantic code paths before sampling.
         assert profile_service.get(user.id) is not None
         assert len(application_service.list(user.id, limit=PAGE_SIZE)) == PAGE_SIZE
+        assert len(
+            agenda_service.build(
+                user.id,
+                local_day_end=now + timedelta(hours=12),
+                limit=50,
+                now=now,
+            ).items
+        ) == 50
 
         profile_samples: list[float] = []
         application_samples: list[float] = []
+        agenda_samples: list[float] = []
         for _ in range(SAMPLES):
             session.expunge_all()
             started = time.perf_counter_ns()
@@ -148,12 +159,25 @@ def test_profile_and_application_page_reads_under_200ms_p95(
             application_samples.append((time.perf_counter_ns() - started) / 1_000_000)
             assert len(applications) == PAGE_SIZE
 
+            session.expunge_all()
+            started = time.perf_counter_ns()
+            agenda = agenda_service.build(
+                user.id,
+                local_day_end=now + timedelta(hours=12),
+                limit=50,
+                now=now,
+            )
+            agenda_samples.append((time.perf_counter_ns() - started) / 1_000_000)
+            assert agenda.active_count == RECORD_COUNT
+            assert len(agenda.items) == 50
+
         result = {
             "records": RECORD_COUNT,
             "page_size": PAGE_SIZE,
             "samples": SAMPLES,
             "profile_read_p95_ms": round(_p95_ms(profile_samples), 3),
             "application_page_p95_ms": round(_p95_ms(application_samples), 3),
+            "application_agenda_p95_ms": round(_p95_ms(agenda_samples), 3),
             "budget_ms": P95_BUDGET_MS,
             "database_bytes": database_path.stat().st_size,
         }
@@ -162,5 +186,6 @@ def test_profile_and_application_page_reads_under_200ms_p95(
 
         assert result["profile_read_p95_ms"] < P95_BUDGET_MS
         assert result["application_page_p95_ms"] < P95_BUDGET_MS
+        assert result["application_agenda_p95_ms"] < P95_BUDGET_MS
 
     engine.dispose()
