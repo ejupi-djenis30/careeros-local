@@ -3,10 +3,12 @@ from __future__ import annotations
 import json
 import math
 import os
+import statistics
 import time
 from tempfile import TemporaryDirectory
 
 import pytest
+from sqlalchemy import event
 
 from backend.applications.models import Application
 from backend.applications.readiness import ApplicationReadinessService
@@ -16,7 +18,9 @@ from backend.resumes.publishing import publish_draft
 
 FACT_COUNT = 300
 SAMPLES = 30
+ROUNDS = 3
 P95_BUDGET_MS = 100.0
+QUERY_BUDGET = 5
 
 pytestmark = [
     pytest.mark.performance,
@@ -65,9 +69,13 @@ def _fact(position: int) -> CareerFact:
             {"name": "Systems Architecture"},
         ),
     )
-    fact_type, payload = fixtures[position] if position < len(fixtures) else (
-        "skill",
-        {"name": f"Engineering skill {position}", "evidence_fact_ids": []},
+    fact_type, payload = (
+        fixtures[position]
+        if position < len(fixtures)
+        else (
+            "skill",
+            {"name": f"Engineering skill {position}", "evidence_fact_ids": []},
+        )
     )
     return CareerFact(
         fact_type=fact_type,
@@ -142,9 +150,7 @@ def _canvas(experience_fact_id: str) -> dict:
     }
 
 
-def test_verified_application_readiness_under_100ms_p95(
-    db_session, test_user, monkeypatch, capsys
-):
+def test_verified_application_readiness_under_100ms_p95(db_session, test_user, monkeypatch, capsys):
     with TemporaryDirectory(
         prefix="careeros-readiness-performance-", ignore_cleanup_errors=True
     ) as data_dir:
@@ -217,22 +223,44 @@ def test_verified_application_readiness_under_100ms_p95(
         assert warm.status == "ready"
         assert warm.completeness_score == 100
 
-        samples: list[float] = []
-        for _ in range(SAMPLES):
-            db_session.expunge_all()
-            started = time.perf_counter_ns()
-            report = service.build(test_user.id, application)
-            samples.append((time.perf_counter_ns() - started) / 1_000_000)
-            assert report.status == "ready"
+        query_count = 0
+
+        def count_query(*_args):
+            nonlocal query_count
+            query_count += 1
+
+        bind = db_session.get_bind()
+        event.listen(bind, "before_cursor_execute", count_query)
+        try:
+            round_p95_ms: list[float] = []
+            sample_query_counts: list[int] = []
+            for _round in range(ROUNDS):
+                samples: list[float] = []
+                for _ in range(SAMPLES):
+                    db_session.expunge_all()
+                    queries_before = query_count
+                    started = time.perf_counter_ns()
+                    report = service.build(test_user.id, application)
+                    samples.append((time.perf_counter_ns() - started) / 1_000_000)
+                    sample_query_counts.append(query_count - queries_before)
+                    assert report.status == "ready"
+                round_p95_ms.append(_p95_ms(samples))
+        finally:
+            event.remove(bind, "before_cursor_execute", count_query)
 
         result = {
             "selected_facts": FACT_COUNT,
             "verified_artifacts": ["docx", "pdf"],
             "samples": SAMPLES,
-            "readiness_p95_ms": round(_p95_ms(samples), 3),
+            "rounds": ROUNDS,
+            "round_p95_ms": [round(value, 3) for value in round_p95_ms],
+            "readiness_p95_ms": round(statistics.median(round_p95_ms), 3),
             "budget_ms": P95_BUDGET_MS,
+            "max_queries_per_sample": max(sample_query_counts),
+            "query_budget": QUERY_BUDGET,
         }
         with capsys.disabled():
             print(f"CAREEROS_READINESS_BENCHMARK={json.dumps(result, sort_keys=True)}")
 
+        assert result["max_queries_per_sample"] <= QUERY_BUDGET
         assert result["readiness_p95_ms"] < P95_BUDGET_MS

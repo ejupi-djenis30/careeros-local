@@ -3,7 +3,7 @@ from __future__ import annotations
 import re
 from typing import Literal
 
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, lazyload, selectinload
 
 from backend.applications.models import Application
 from backend.applications.readiness_export import canonical_fingerprint
@@ -12,7 +12,7 @@ from backend.applications.schemas import (
     ApplicationReadinessReport,
     ReadinessEvidence,
 )
-from backend.career.completeness import analyze_profile
+from backend.career.completeness import calculate_completeness_score
 from backend.career.models import CandidateProfile
 from backend.resumes.models import ResumeDraft, ResumeVersion
 from backend.storage.atomic import read_verified
@@ -74,7 +74,17 @@ class ApplicationReadinessService:
         self.db = db
 
     def _profile(self, user_id: int) -> CandidateProfile | None:
-        return self.db.query(CandidateProfile).filter(CandidateProfile.user_id == user_id).first()
+        return (
+            self.db.query(CandidateProfile)
+            .options(
+                selectinload(CandidateProfile.facts),
+                selectinload(CandidateProfile.goals),
+                lazyload(CandidateProfile.assets),
+                lazyload(CandidateProfile.source_documents),
+            )
+            .filter(CandidateProfile.user_id == user_id)
+            .first()
+        )
 
     def _resume_version(self, user_id: int, version_id: str | None) -> ResumeVersion | None:
         if version_id is None:
@@ -130,7 +140,7 @@ class ApplicationReadinessService:
             ),
         ]
 
-        profile_score = analyze_profile(profile).completeness_score if profile else 0
+        profile_score = calculate_completeness_score(profile) if profile else 0
         profile_status: Literal["pass", "warning", "blocker"]
         if profile is None:
             profile_status = "blocker"

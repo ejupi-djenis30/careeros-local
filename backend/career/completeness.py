@@ -71,12 +71,8 @@ def _fact_id(fact: Any, index: int) -> str:
 def _fact_score(facts: list[Any], *, rich_fields: tuple[str, ...] = ()) -> int:
     if not facts:
         return 0
-    confirmed = sum(
-        1 for item in facts if _value(item, "verification_status") == "confirmed"
-    )
-    rich = sum(
-        1 for item in facts if any(_payload(item).get(field) for field in rich_fields)
-    )
+    confirmed = sum(1 for item in facts if _value(item, "verification_status") == "confirmed")
+    rich = sum(1 for item in facts if any(_payload(item).get(field) for field in rich_fields))
     score = 50 + round(25 * confirmed / len(facts))
     if rich_fields:
         score += round(25 * rich / len(facts))
@@ -233,14 +229,14 @@ def _duplicate_issues(facts: list[Any]) -> list[ProfileIssue]:
     ]
 
 
-def analyze_profile(profile: Any, *, reference_date: date | None = None) -> ProfileAnalysis:
+def _section_scores(profile: Any) -> tuple[list[Any], dict[str, int]]:
     facts = list(_value(profile, "facts", []) or [])
     goals = list(_value(profile, "goals", []) or [])
     by_type: dict[str, list[Any]] = defaultdict(list)
     for fact in facts:
         by_type[str(_value(fact, "fact_type"))].append(fact)
 
-    sections = {
+    return facts, {
         "identity": _identity_score(profile),
         "experience": _fact_score(
             by_type["experience"], rich_fields=("achievements", "metrics", "description")
@@ -271,9 +267,21 @@ def analyze_profile(profile: Any, *, reference_date: date | None = None) -> Prof
         "preferences": _preference_score(profile),
         "goals": _goal_score(goals),
     }
-    completeness_score = round(
-        sum(sections[name] * weight for name, weight in SECTION_WEIGHTS.items()) / 100
-    )
+
+
+def _weighted_completeness_score(sections: dict[str, int]) -> int:
+    return round(sum(sections[name] * weight for name, weight in SECTION_WEIGHTS.items()) / 100)
+
+
+def calculate_completeness_score(profile: Any) -> int:
+    """Return the profile score without constructing evidence and issue models."""
+    _facts, sections = _section_scores(profile)
+    return _weighted_completeness_score(sections)
+
+
+def analyze_profile(profile: Any, *, reference_date: date | None = None) -> ProfileAnalysis:
+    facts, sections = _section_scores(profile)
+    completeness_score = _weighted_completeness_score(sections)
     evidence = _evidence(facts)
     issues = _overlap_issues(facts)
     issues.extend(_future_date_issues(facts, reference_date or date.today()))
