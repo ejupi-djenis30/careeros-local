@@ -1,4 +1,4 @@
-import { screen } from "@testing-library/react";
+import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -40,6 +40,8 @@ describe("DesktopBoot accessibility", () => {
         render(<DesktopBoot><p>Area privata</p></DesktopBoot>);
 
         expect(await screen.findByText("Area privata")).toBeInTheDocument();
-        expect(reportDesktopReady).toHaveBeenCalledTimes(1);
+        await waitFor(() => {
+            expect(reportDesktopReady).toHaveBeenCalledTimes(1);
+        });
     });
 });
