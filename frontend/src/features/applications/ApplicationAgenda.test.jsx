@@ -13,10 +13,13 @@ vi.mock("../../services/applications", () => ({
 }));
 
 function response(overrides = {}) {
+    const generatedAt = new Date();
+    const localDayEnd = new Date(generatedAt.getTime() + 24 * 60 * 60 * 1000);
+    const horizonEnd = new Date(generatedAt.getTime() + 7 * 24 * 60 * 60 * 1000);
     return {
-        generated_at: "2026-07-23T10:00:00Z",
-        local_day_end: "2026-07-23T22:00:00Z",
-        horizon_end: "2026-07-30T10:00:00Z",
+        generated_at: generatedAt.toISOString(),
+        local_day_end: localDayEnd.toISOString(),
+        horizon_end: horizonEnd.toISOString(),
         active_count: 3,
         visible_count: 2,
         later_count: 1,
@@ -115,7 +118,7 @@ describe("ApplicationAgenda", () => {
     });
 
     it("refreshes when the window regains focus or the document becomes visible", async () => {
-        render(<ApplicationAgenda onOpen={vi.fn()} />);
+        const view = render(<ApplicationAgenda onOpen={vi.fn()} />);
         await screen.findByRole("heading", { name: "Prossime azioni" });
         expect(agenda).toHaveBeenCalledTimes(1);
 
@@ -129,6 +132,16 @@ describe("ApplicationAgenda", () => {
         act(() => document.dispatchEvent(new Event("visibilitychange")));
         await waitFor(() => expect(agenda).toHaveBeenCalledTimes(3));
         expect(agenda.mock.calls[1][1].signal.aborted).toBe(true);
+
+        const finalSignal = agenda.mock.calls[2][1].signal;
+        view.unmount();
+        expect(finalSignal.aborted).toBe(true);
+
+        act(() => {
+            window.dispatchEvent(new Event("focus"));
+            document.dispatchEvent(new Event("visibilitychange"));
+        });
+        expect(agenda).toHaveBeenCalledTimes(3);
     });
 
     it("refreshes at the next deadline and clears its timer on unmount", async () => {
