@@ -132,6 +132,7 @@ if settings.cors_origins_list:
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
+        expose_headers=["Content-Disposition", "X-Content-SHA256"],
     )
 else:
     logger.warning("CORS_ORIGINS is empty — CORS middleware not added!")

@@ -1,3 +1,4 @@
+mod backup;
 mod commands;
 mod lifecycle;
 
@@ -49,6 +50,7 @@ pub fn run() {
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_opener::init())
         .invoke_handler(tauri::generate_handler![
+            backup::desktop_save_verified_backup,
             commands::desktop_bootstrap,
             commands::desktop_frontend_ready
         ])

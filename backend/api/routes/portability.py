@@ -16,12 +16,26 @@ from backend.portability.archive import (
     ArchiveError,
     export_archive,
 )
+from backend.portability.inspection import inspect_archive
 from backend.portability.restore import restore_archive
-from backend.portability.schemas import RestoreResponse
+from backend.portability.schemas import ArchiveInspection, RestoreResponse
 from backend.storage.atomic import StorageWriteError
 
 router = APIRouter()
 ERASE_CONFIRMATION = "ERASE-LOCAL-CAREER-DATA"
+
+
+async def _bounded_archive_bytes(file: UploadFile) -> bytes:
+    data = await file.read(settings.PORTABLE_ARCHIVE_MAX_BYTES + 1)
+    if len(data) > settings.PORTABLE_ARCHIVE_MAX_BYTES:
+        raise HTTPException(
+            status_code=413,
+            detail={
+                "code": "archive_too_large",
+                "message": "The backup exceeds the configured size limit.",
+            },
+        )
+    return data
 
 
 @router.get("/export")
@@ -59,9 +73,7 @@ async def restore_portable_archive(
     user_id: int = Depends(get_current_user_id),
     db: Session = Depends(get_db),
 ) -> RestoreResponse:
-    data = await file.read(settings.PORTABLE_ARCHIVE_MAX_BYTES + 1)
-    if len(data) > settings.PORTABLE_ARCHIVE_MAX_BYTES:
-        raise HTTPException(status_code=413, detail="Archive exceeds the configured size limit")
+    data = await _bounded_archive_bytes(file)
     try:
         return restore_archive(db, user_id, data)
     except ArchiveConflictError as exc:
@@ -73,6 +85,37 @@ async def restore_portable_archive(
     except ArchiveError as exc:
         db.rollback()
         raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@router.post("/inspect", response_model=ArchiveInspection)
+@limiter.limit("6/hour")
+async def inspect_portable_archive(
+    request: Request,
+    file: UploadFile = File(...),
+    user_id: int = Depends(get_current_user_id),
+    db: Session = Depends(get_db),
+) -> ArchiveInspection:
+    data = await _bounded_archive_bytes(file)
+    try:
+        return inspect_archive(db, user_id, data)
+    except ArchiveConflictError as exc:
+        db.rollback()
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "code": "vault_busy",
+                "message": "The local vault is busy. Try verification again.",
+            },
+        ) from exc
+    except ArchiveError as exc:
+        db.rollback()
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "code": "archive_invalid",
+                "message": "Backup verification failed.",
+            },
+        ) from exc
 
 
 @router.delete("/erase", response_model=dict[str, int])

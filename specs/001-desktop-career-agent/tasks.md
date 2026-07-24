@@ -433,3 +433,20 @@ replaying event payloads or requiring the local model.
   non-overlapping 320 px geometry in real Chromium
 - [x] T143 [US8] Benchmark/query-plan the bounded statement, run proportional gates and update
   daily-agenda analysis/convergence with exact evidence
+
+## Phase 16: User Story 9 — Backup assurance center
+
+**Goal**: Let a user prove a portable backup is structurally usable before deleting anything, while
+keeping inspection content-free and restore explicitly separate.
+
+- [x] T144 [US9] Amend constitution, specification, plan and tasks for non-mutating inspection,
+  content-free response fields, honest trust copy and verified destination writes
+- [x] T145 [US9] Extract reusable archive preflight, validate application projections before writes,
+  add the bounded inspection response and authenticated rate-limited endpoint
+- [x] T146 [US9] Add adversarial, historical-version, populated-vault and complete zero-mutation
+  backend coverage
+- [x] T147 [US9] Add distinct verify/restore UI, English/Italian summary copy and service tests
+- [x] T148 [US9] Make the native backup destination write temporary, digest-verified, rollback-safe
+  and covered by frontend/platform fault tests with the minimum filesystem permissions
+- [x] T149 [US9] Update owner documentation, run proportional gates and record backup-assurance
+  analysis/convergence with exact evidence

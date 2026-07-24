@@ -24,7 +24,7 @@ env:
   PYTHON_VERSION: "3.12.10"
   NODE_VERSION: "24.18.0"
   RUST_VERSION: "1.96.0"
-  RELEASE_DATE: "2026-07-23"
+  RELEASE_DATE: "2026-07-24"
 
 jobs:
   supply-chain:
@@ -77,7 +77,9 @@ jobs:
           if [[ -n "$EXPECTED_TAG" ]]; then
             arguments+=(--expected-tag "$EXPECTED_TAG")
           fi
-          python -m scripts.check_release_versions "${arguments[@]}"
+          python -m scripts.check_release_versions \
+            --expected-release-date "$RELEASE_DATE" \
+            "${arguments[@]}"
       - name: Install Node.js
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
@@ -124,8 +126,16 @@ jobs:
       - name: Audit npm and create exact evidence
         working-directory: frontend
         run: |
+          set +e
           npm audit --audit-level=high --json \
             > "$RUNNER_TEMP/careeros-evidence/frontend-audit.json"
+          audit_status=$?
+          set -e
+          cp ../frontend-security-exceptions.json \
+            "$RUNNER_TEMP/careeros-evidence/frontend-security-exceptions.json"
+          python3 ../scripts/check_frontend_security_exceptions.py \
+            --audit "$RUNNER_TEMP/careeros-evidence/frontend-audit.json" \
+            --npm-audit-exit-code "$audit_status"
           npm sbom --sbom-format cyclonedx \
             > "$RUNNER_TEMP/careeros-evidence/frontend-sbom.cdx.json"
           node ../scripts/audit_frontend_licenses.mjs \

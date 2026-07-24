@@ -4,6 +4,11 @@ export const PortabilityService = {
     exportArchive() {
         return ApiClient.download("/portability/export");
     },
+    inspectArchive(file) {
+        const formData = new FormData();
+        formData.append("file", file, file.name || "careeros-backup.zip");
+        return ApiClient.postMultipart("/portability/inspect", formData, { timeoutMs: 120_000 });
+    },
     restoreArchive(file) {
         const formData = new FormData();
         formData.append("file", file, file.name || "careeros-backup.zip");

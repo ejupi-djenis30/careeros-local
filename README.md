@@ -59,7 +59,11 @@ the assets.
 - Tauri 2 owns the desktop shell and supervised FastAPI sidecar lifecycle.
 - React 19 provides the keyboard-accessible workspace and editable resume canvas.
 - SQLite, SQLAlchemy and Alembic provide transactional storage and migrations.
-- Versioned archives restore atomically and exclude private cross-user or runtime state.
+- Versioned archives can be inspected without changing the vault, report only content-free
+  counts and verification codes, restore atomically into an empty vault, and exclude private
+  cross-user or runtime state. Desktop saves verify the server digest before and after the native
+  write; portable ZIP checksums detect corruption but do not encrypt the archive or prove its
+  author.
 - Application readiness is calculated without a model from owned local records, exposes weighted
   evidence and actions, and exports reproducible JSON or Markdown reports.
 - Search planning has a deterministic path based only on the role, strategy and preferences the
@@ -221,6 +225,7 @@ collectively to **CareerOS Local contributors**.
 - [Release process](docs/releasing.md)
 - [Devpost submission kit](docs/devpost.md)
 - [Product specification](specs/001-desktop-career-agent/spec.md)
+- [v1.6.0 release preparation](specs/001-desktop-career-agent/release-evidence-v1.6.0.md)
 - [v1.5.0 release preparation](specs/001-desktop-career-agent/release-evidence-v1.5.0.md)
 - [v1.4.0 release preparation](specs/001-desktop-career-agent/release-evidence-v1.4.0.md)
 - [v1.3.0 release preparation](specs/001-desktop-career-agent/release-evidence-v1.3.0.md)

@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "exceptions": [
+    {
+      "id": "CE-NPM-2026-002",
+      "advisory": "GHSA-qwww-vcr4-c8h2",
+      "dependency": "react-router",
+      "version": "7.18.1",
+      "package_lock": "frontend/package-lock.json",
+      "guard": "client-no-rsc",
+      "scope": "Client-side DOM routing without React Server Components",
+      "patched_package": "react-router-dom",
+      "patched_version": "8.3.0",
+      "expires": "2026-07-31",
+      "reason": "The advisory affects unstable RSC APIs that CareerOS does not import, and the patched npm package is not yet published."
+    }
+  ]
+}

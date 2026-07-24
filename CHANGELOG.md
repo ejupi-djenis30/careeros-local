@@ -5,6 +5,33 @@ All notable changes to CareerOS Local are documented here. The format follows
 
 ## [Unreleased]
 
+## [1.6.0] - 2026-07-24
+
+### Added
+
+- Added authenticated, rate-limited inspection for portable backup versions 1 through 4. The
+  preflight validates archive structure, digests, typed records, relationships, application
+  projections and file bindings without changing the current vault.
+- Added a bilingual Backup Assurance Center that separates choosing and inspecting an archive from
+  the later restore operation and keeps inspection available while the vault contains data.
+- Added a narrow native backup writer that opens its own save dialog, verifies the service digest,
+  re-reads the final file and restores a verified previous backup if promotion fails.
+
+### Changed
+
+- Backup inspection now reports structural validity, compatibility and current restore eligibility
+  as separate facts through a bounded, content-free response.
+- Desktop backup paths remain inside the Rust process. The renderer no longer receives a save path
+  or permissions to write and rename sibling files.
+
+### Fixed
+
+- Prevented backup hashing and file I/O of up to 512 MiB from blocking the desktop main thread.
+- Replayed current and historical application projections during preflight so inconsistent archive
+  timelines fail before restore.
+- Preserved the empty-vault requirement at restore time and documented that inspection eligibility
+  is only a snapshot of the current destination state.
+
 ## [1.5.0] - 2026-07-23
 
 ### Added
@@ -245,7 +272,8 @@ All notable changes to CareerOS Local are documented here. The format follows
   autosave/revision loop.
 - Removed the rate-limit error and incomplete pipeline from public screenshots.
 
-[Unreleased]: https://github.com/ejupi-djenis30/careeros-local/compare/v1.5.0...HEAD
+[Unreleased]: https://github.com/ejupi-djenis30/careeros-local/compare/v1.6.0...HEAD
+[1.6.0]: https://github.com/ejupi-djenis30/careeros-local/compare/v1.5.0...v1.6.0
 [1.5.0]: https://github.com/ejupi-djenis30/careeros-local/compare/v1.4.0...v1.5.0
 [1.4.0]: https://github.com/ejupi-djenis30/careeros-local/compare/v1.3.0...v1.4.0
 [1.3.0]: https://github.com/ejupi-djenis30/careeros-local/compare/v1.2.0...v1.3.0

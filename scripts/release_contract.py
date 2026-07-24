@@ -49,6 +49,7 @@ EVIDENCE_FILES = (
     "frontend-audit.json",
     "frontend-licenses.json",
     "frontend-sbom.cdx.json",
+    "frontend-security-exceptions.json",
     "python-dev-audit.json",
     "python-production-audit.json",
     "python-tooling-audit.json",
@@ -132,6 +133,7 @@ def validate_evidence_directory(directory: Path) -> list[dict[str, Any]]:
     for name in (
         "backend-licenses.json",
         "frontend-audit.json",
+        "frontend-security-exceptions.json",
         "frontend-licenses.json",
         "python-dev-audit.json",
         "python-production-audit.json",

@@ -85,6 +85,24 @@ writing anything to the timeline.
 The readiness number describes only package completeness. It is not a candidate score and never
 predicts whether an employer will respond, interview or hire.
 
+## Verify and restore a backup
+
+Open **Backups and local data** and choose **Create backup**. In the desktop app, CareerOS checks the
+server's SHA-256 digest, writes through a temporary file, reads the destination back, and reports
+success only after the final bytes match. Browser mode checks the bytes before starting the download
+but cannot verify where the browser eventually stores them.
+
+Use **Choose and verify backup** before deleting anything. Verification works with a populated
+vault and does not import records or write managed files. The summary reports format, creation
+time, record and file totals, digest, checks performed, honest ZIP trust warnings, and whether the
+current vault can accept the backup. A valid backup can still be blocked from restore because the
+vault is not empty or a managed identifier conflicts.
+
+Restore is a separate action. Empty the Career Vault, select and verify the backup again, review the
+summary, then choose **Restore verified backup**. Imported AI output remains quarantined until it
+passes the installed local model's current validation contract. Portable ZIPs are not encrypted or
+authenticated, so keep them in an encrypted location you control.
+
 ## Private by default
 
 - Search-provider calls disclose only the parameters required for that explicit search.
