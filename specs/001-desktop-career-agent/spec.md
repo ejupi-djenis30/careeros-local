@@ -458,6 +458,18 @@ keyboard access from each agenda row to the owned application dialog.
   restoration, the next returned deadline and local midnight; clear obsolete requests and timers;
   associate visible heading/description text; and avoid overlap at 320 px with WCAG AA functional
   text contrast.
+- **FR-058**: An authenticated user MUST be able to inspect a bounded portable archive without
+  changing the active vault, even when that vault is populated. Inspection MUST validate archive
+  structure, compatibility, member digests, typed records, relationships, application projections
+  and persisted-file bindings; return only version, timestamps, digests, counts, byte totals and
+  stable content-free codes; and report separately whether the current vault can accept a restore.
+- **FR-059**: The desktop backup save flow MUST write to an isolated temporary sibling, verify the
+  selected archive against the server-issued SHA-256 digest, replace the destination with rollback
+  on failure where the filesystem permits, clean managed temporary files, and describe the backup
+  as verified only after the final destination bytes have been re-read successfully.
+- **FR-060**: Backup copy MUST state that the current portable ZIP is neither encrypted nor
+  authenticated and that imported AI analysis or coaching output requires fresh local-model
+  validation. Restore MUST remain a separate explicit action and MUST still require an empty vault.
 
 ### Key Entities
 
@@ -540,6 +552,15 @@ keyboard access from each agenda row to the owned application dialog.
   statement, disclose every horizon/limit omission, refresh at temporal/visibility boundaries,
   preserve a usable application board when the agenda request fails, and pass Chromium geometry
   and contrast checks at 320 px.
+- **SC-019**: Inspection acceptance tests prove that valid historical and current archives return
+  stable content-free summaries; malformed, oversized, traversing, duplicate, tampered,
+  relationship-invalid and projection-inconsistent archives fail without changing database rows,
+  application files or the active session; and inspection remains available with a populated vault.
+- **SC-020**: Desktop save fault tests prove that a digest mismatch or write/rename/read failure
+  never replaces the previous destination with unverified bytes, removes managed temporary files,
+  and surfaces a verified result only when the final destination digest matches exactly. Frontend
+  tests prove distinct verify and restore controls, English/Italian copy and keyboard-accessible
+  summaries.
 
 ## Assumptions
 

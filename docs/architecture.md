@@ -22,7 +22,7 @@ flowchart LR
 
 ## Native boundary
 
-Rust allocates an ephemeral IPv4 loopback port, generates a desktop session secret, starts the bundled backend without a visible terminal, waits for readiness, supervises failure, and terminates the child on exit. Tauri capabilities permit only required core, native dialog, scoped file read/write, and safe URL-opening commands.
+Rust allocates an ephemeral IPv4 loopback port, generates a desktop session secret, starts the bundled backend without a visible terminal, waits for readiness, supervises failure, and terminates the child on exit. Tauri capabilities permit only required core, native open-dialog, scoped file-read, and safe URL-opening commands. Backup writes stay inside a dedicated Rust command that opens its own save dialog.
 
 ## Domain and persistence
 
@@ -144,4 +144,24 @@ snapshots and event streams; partial or inconsistent projections are rejected tr
 Export runs against one database snapshot and excludes in-flight search state and user-specific
 query data from shared listing records.
 
-Restore requires an empty vault, rejects ambiguous shared-listing or preference collisions, neutralizes runtime search state, and runs preflight, file writes, and database insertion under an exclusive desktop vault lock with rollback. Explicit erasure deletes every user-scoped vault domain, checkpoints and vacuums SQLite, and removes user-namespaced staging paths. Post-commit cleanup failures remain discoverable and retryable without traversing unrelated directories.
+The authenticated inspection route runs the same bounded member, row, relationship, projection,
+file-binding and path-containment preflight under the vault lock without writing a row or file.
+Destination conflicts affect only its `restorable` flag. The fixed response contains version,
+digest, time, counts, byte totals, compatibility, restore eligibility and stable codes; no archive
+member names, paths, user identifiers, career content, prompts or output cross that boundary.
+
+Restore requires an empty vault, rejects ambiguous shared-listing or preference collisions,
+neutralizes runtime search state, and runs preflight, file writes, and database insertion under an
+exclusive desktop vault lock with rollback. The desktop renderer verifies the export header digest
+in memory, then sends bounded raw bytes, the digest, and a validated suggested filename to a narrow
+Rust command. The command runs off the main thread, opens the native save dialog itself, and never
+returns the selected path to JavaScript. It reserves a random part sibling with `create_new`, flushes
+and re-reads it, moves an existing destination to a distinct random rollback sibling, promotes the
+part, re-verifies the final path, and restores the verified prior file on failure. The webview has
+no save-dialog or filesystem-write capability. File `sync_all` is cross-platform, while
+parent-directory synchronization is available through the standard API on Unix; final durability
+and rename behavior still depend on the destination filesystem.
+
+Explicit erasure deletes every user-scoped vault domain, checkpoints and vacuums SQLite, and
+removes user-namespaced staging paths. Post-commit cleanup failures remain discoverable and
+retryable without traversing unrelated directories.

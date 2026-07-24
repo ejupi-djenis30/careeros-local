@@ -275,6 +275,16 @@ def _tamper_payload(archive_data: bytes) -> bytes:
     return output.getvalue()
 
 
+def _add_unsafe_member(archive_data: bytes) -> bytes:
+    output = BytesIO()
+    with zipfile.ZipFile(BytesIO(archive_data), mode="r") as source:
+        with zipfile.ZipFile(output, mode="w", compression=zipfile.ZIP_DEFLATED) as target:
+            for info in source.infolist():
+                target.writestr(info, source.read(info.filename))
+            target.writestr("../PRIVATE-ARCHIVE-PATH", b"unsafe")
+    return output.getvalue()
+
+
 def _rewrite_forged_coach_message(archive_data: bytes) -> bytes:
     with zipfile.ZipFile(BytesIO(archive_data), "r") as source:
         files = {name: source.read(name) for name in source.namelist()}
@@ -710,6 +720,55 @@ def test_historical_archive_rebuilds_application_projections_after_events(
     assert stored.next_action_priority == "high"
 
 
+@pytest.mark.parametrize("format_version", [1, 2, 3, 4])
+def test_historical_archive_inspection_is_non_mutating_with_a_populated_vault(
+    client,
+    auth_headers,
+    db_session,
+    test_user,
+    portable_data_dir,
+    format_version,
+):
+    application, _task = _seed_portable_application_via_api(client, auth_headers)
+    exported = client.get("/api/v1/portability/export", headers=auth_headers)
+    assert exported.status_code == 200, exported.text
+    archive_data = _rewrite_application_projection_fixture(
+        exported.content,
+        format_version=format_version,
+        remove_projections=True,
+    )
+    before_applications = db_session.query(Application).count()
+
+    inspected = client.post(
+        "/api/v1/portability/inspect",
+        files={"file": (f"historical-v{format_version}.zip", archive_data, "application/zip")},
+        headers=auth_headers,
+    )
+
+    assert inspected.status_code == 200, inspected.text
+    body = inspected.json()
+    assert body["status"] == "valid"
+    assert body["format_version"] == format_version
+    assert body["compatible"] is True
+    assert body["restorable"] is False
+    assert body["record_counts"]["applications"] == 1
+    assert body["record_counts"]["application_events"] >= 1
+    assert body["total_records"] == sum(body["record_counts"].values())
+    assert body["verification_codes"] == [
+        "manifest_verified",
+        "members_verified",
+        "records_verified",
+        "relationships_verified",
+        "file_bindings_verified",
+    ]
+    assert "archive_not_encrypted" in body["warning_codes"]
+    assert "archive_not_authenticated" in body["warning_codes"]
+    assert "restore_requires_empty_vault" in body["warning_codes"]
+    db_session.expire_all()
+    assert db_session.query(Application).count() == before_applications
+    assert db_session.get(Application, application["id"]) is not None
+
+
 def test_modern_v4_archive_rejects_inconsistent_application_projections(
     client, auth_headers, db_session, test_user, portable_data_dir
 ):
@@ -729,6 +788,22 @@ def test_modern_v4_archive_rejects_inconsistent_application_projections(
             "next_action_priority": "low",
         },
     )
+    before_revision = db_session.get(Application, application["id"]).revision
+    inspected = client.post(
+        "/api/v1/portability/inspect",
+        files={"file": ("inconsistent-v4.zip", inconsistent, "application/zip")},
+        headers=auth_headers,
+    )
+    assert inspected.status_code == 422, inspected.text
+    assert inspected.json() == {
+        "detail": {
+            "code": "archive_invalid",
+            "message": "Backup verification failed.",
+        }
+    }
+    db_session.expire_all()
+    assert db_session.get(Application, application["id"]).revision == before_revision
+
     deleted = client.delete(
         "/api/v1/career-profile",
         headers={**auth_headers, "X-Confirm-Delete": "DELETE-MY-CAREER-VAULT"},
@@ -749,6 +824,211 @@ def test_modern_v4_archive_rejects_inconsistent_application_projections(
         db_session.query(CandidateProfile).filter(CandidateProfile.user_id == test_user.id).count()
         == 0
     )
+
+
+def test_inspection_reports_content_free_file_totals_and_restore_eligibility(
+    client,
+    auth_headers,
+    db_session,
+    test_user,
+    portable_data_dir,
+):
+    profile_response = client.put(
+        "/api/v1/career-profile", json=_profile_payload(), headers=auth_headers
+    )
+    assert profile_response.status_code == 200, profile_response.text
+    profile = profile_response.json()
+    private_source = b"PRIVATE-INSPECTION-CONTENT-SENTINEL"
+    source_response = client.post(
+        "/api/v1/career-profile/sources",
+        files={"file": ("PRIVATE-NAME-SENTINEL.txt", private_source, "text/plain")},
+        headers=auth_headers,
+    )
+    assert source_response.status_code == 201, source_response.text
+    db_session.expire_all()
+    asset = db_session.query(CareerAsset).filter(CareerAsset.profile_id == profile["id"]).one()
+    stored_source = resolve_data_path(asset.storage_path)
+    stored_before = stored_source.read_bytes()
+    row_counts_before = (
+        db_session.query(CandidateProfile).count(),
+        db_session.query(CareerAsset).count(),
+        db_session.query(Application).count(),
+    )
+
+    exported = client.get(
+        "/api/v1/portability/export",
+        headers={**auth_headers, "Origin": "http://localhost:5173"},
+    )
+    assert exported.status_code == 200, exported.text
+    exposed = exported.headers["Access-Control-Expose-Headers"].lower()
+    assert "content-disposition" in exposed
+    assert "x-content-sha256" in exposed
+    inspected = client.post(
+        "/api/v1/portability/inspect",
+        files={"file": ("backup.zip", exported.content, "application/zip")},
+        headers=auth_headers,
+    )
+
+    assert inspected.status_code == 200, inspected.text
+    body = inspected.json()
+    assert set(body) == {
+        "status",
+        "archive_sha256",
+        "archive_bytes",
+        "format_version",
+        "created_at",
+        "record_counts",
+        "total_records",
+        "file_count",
+        "file_bytes",
+        "compatible",
+        "restorable",
+        "verification_codes",
+        "warning_codes",
+    }
+    assert body["archive_sha256"] == hashlib.sha256(exported.content).hexdigest()
+    assert body["archive_bytes"] == len(exported.content)
+    assert body["file_count"] == 1
+    assert body["file_bytes"] == len(private_source)
+    assert body["restorable"] is False
+    serialized = inspected.text
+    assert "PRIVATE-INSPECTION-CONTENT-SENTINEL" not in serialized
+    assert "PRIVATE-NAME-SENTINEL" not in serialized
+    assert asset.storage_path not in serialized
+    db_session.expire_all()
+    assert row_counts_before == (
+        db_session.query(CandidateProfile).count(),
+        db_session.query(CareerAsset).count(),
+        db_session.query(Application).count(),
+    )
+    assert stored_source.read_bytes() == stored_before
+
+    deleted = client.delete(
+        "/api/v1/career-profile",
+        headers={**auth_headers, "X-Confirm-Delete": "DELETE-MY-CAREER-VAULT"},
+    )
+    assert deleted.status_code == 204, deleted.text
+    inspected_empty = client.post(
+        "/api/v1/portability/inspect",
+        files={"file": ("backup.zip", exported.content, "application/zip")},
+        headers=auth_headers,
+    )
+    assert inspected_empty.status_code == 200, inspected_empty.text
+    assert inspected_empty.json()["restorable"] is True
+    assert "restore_requires_empty_vault" not in inspected_empty.json()["warning_codes"]
+    assert not stored_source.exists()
+    db_session.expire_all()
+    assert db_session.query(CandidateProfile).count() == 0
+    assert db_session.query(CareerAsset).count() == 0
+
+
+def test_inspection_reports_managed_file_conflicts_without_changing_them(
+    client,
+    auth_headers,
+    db_session,
+    test_user,
+    portable_data_dir,
+):
+    profile_response = client.put(
+        "/api/v1/career-profile", json=_profile_payload(), headers=auth_headers
+    )
+    assert profile_response.status_code == 200, profile_response.text
+    private_source = b"PRIVATE-RESTORE-TARGET-CONTENT"
+    source_response = client.post(
+        "/api/v1/career-profile/sources",
+        files={"file": ("source.txt", private_source, "text/plain")},
+        headers=auth_headers,
+    )
+    assert source_response.status_code == 201, source_response.text
+    db_session.expire_all()
+    asset = db_session.query(CareerAsset).one()
+    destination = resolve_data_path(asset.storage_path)
+    exported = client.get("/api/v1/portability/export", headers=auth_headers)
+    assert exported.status_code == 200, exported.text
+    deleted = client.delete(
+        "/api/v1/career-profile",
+        headers={**auth_headers, "X-Confirm-Delete": "DELETE-MY-CAREER-VAULT"},
+    )
+    assert deleted.status_code == 204, deleted.text
+
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    destination.write_bytes(b"different orphan")
+    conflicting = client.post(
+        "/api/v1/portability/inspect",
+        files={"file": ("backup.zip", exported.content, "application/zip")},
+        headers=auth_headers,
+    )
+
+    assert conflicting.status_code == 200, conflicting.text
+    assert conflicting.json()["restorable"] is False
+    assert "restore_target_conflict" in conflicting.json()["warning_codes"]
+    assert destination.read_bytes() == b"different orphan"
+    db_session.expire_all()
+    assert db_session.query(CandidateProfile).count() == 0
+    assert db_session.query(CareerAsset).count() == 0
+
+    destination.write_bytes(private_source)
+    identical = client.post(
+        "/api/v1/portability/inspect",
+        files={"file": ("backup.zip", exported.content, "application/zip")},
+        headers=auth_headers,
+    )
+    assert identical.status_code == 200, identical.text
+    assert identical.json()["restorable"] is True
+    assert "restore_target_conflict" not in identical.json()["warning_codes"]
+
+
+@pytest.mark.parametrize("mutator", [_tamper_payload, _add_unsafe_member])
+def test_inspection_rejects_adversarial_archives_with_stable_content_free_error(
+    client,
+    auth_headers,
+    db_session,
+    test_user,
+    portable_data_dir,
+    mutator,
+):
+    created = client.put("/api/v1/career-profile", json=_profile_payload(), headers=auth_headers)
+    assert created.status_code == 200, created.text
+    exported = client.get("/api/v1/portability/export", headers=auth_headers)
+    before_profiles = db_session.query(CandidateProfile).count()
+
+    inspected = client.post(
+        "/api/v1/portability/inspect",
+        files={"file": ("PRIVATE-FILENAME.zip", mutator(exported.content), "application/zip")},
+        headers=auth_headers,
+    )
+
+    assert inspected.status_code == 422, inspected.text
+    assert inspected.json() == {
+        "detail": {
+            "code": "archive_invalid",
+            "message": "Backup verification failed.",
+        }
+    }
+    assert "PRIVATE" not in inspected.text
+    db_session.expire_all()
+    assert db_session.query(CandidateProfile).count() == before_profiles
+
+
+def test_inspection_requires_authentication_and_bounds_uploads(
+    client,
+    auth_headers,
+    monkeypatch,
+):
+    unauthorized = client.post(
+        "/api/v1/portability/inspect",
+        files={"file": ("backup.zip", b"archive", "application/zip")},
+    )
+    assert unauthorized.status_code == 401
+
+    monkeypatch.setattr(settings, "PORTABLE_ARCHIVE_MAX_BYTES", 8)
+    oversized = client.post(
+        "/api/v1/portability/inspect",
+        files={"file": ("backup.zip", b"123456789", "application/zip")},
+        headers=auth_headers,
+    )
+    assert oversized.status_code == 413
+    assert oversized.json()["detail"]["code"] == "archive_too_large"
 
 
 def test_export_delete_restore_round_trip(

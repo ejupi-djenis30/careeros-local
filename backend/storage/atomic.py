@@ -31,13 +31,14 @@ def is_storage_exhaustion(error: BaseException) -> bool:
     return False
 
 
-def data_root() -> Path:
+def data_root(*, create: bool = True) -> Path:
     root = Path(settings.DATA_DIR).expanduser().resolve()
-    root.mkdir(parents=True, exist_ok=True)
+    if create:
+        root.mkdir(parents=True, exist_ok=True)
     return root
 
 
-def resolve_data_path(relative_path: str | Path) -> Path:
+def resolve_data_path(relative_path: str | Path, *, create_root: bool = True) -> Path:
     raw_path = relative_path.as_posix() if isinstance(relative_path, Path) else relative_path
     if not isinstance(raw_path, str) or not raw_path:
         raise ValueError("Stored paths must be non-empty relative paths")
@@ -52,7 +53,7 @@ def resolve_data_path(relative_path: str | Path) -> Path:
     if any(part in {"", ".", ".."} for part in parts):
         raise ValueError("Stored paths must be normalized and cannot contain traversal")
 
-    root = data_root()
+    root = data_root(create=create_root)
     root_real = os.path.realpath(os.fspath(root))
     try:
         resolved = os.path.realpath(os.path.join(root_real, *parts))

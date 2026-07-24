@@ -90,6 +90,17 @@ def test_resolve_data_path_accepts_canonical_string_and_path_inputs(monkeypatch)
         )
 
 
+def test_resolve_data_path_can_validate_without_creating_the_data_root(monkeypatch):
+    with TemporaryDirectory() as directory:
+        root = Path(directory) / "not-created"
+        monkeypatch.setattr(settings, "DATA_DIR", str(root))
+
+        resolved = resolve_data_path("assets/file.bin", create_root=False)
+
+        assert resolved == root / "assets" / "file.bin"
+        assert not root.exists()
+
+
 def test_resolve_data_path_rejects_symlink_escape(monkeypatch):
     with TemporaryDirectory() as data_directory, TemporaryDirectory() as outside_directory:
         root = Path(data_directory)

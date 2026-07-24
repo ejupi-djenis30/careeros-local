@@ -1,13 +1,11 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 const invoke = vi.fn();
-const save = vi.fn();
 const open = vi.fn();
-const writeFile = vi.fn();
 const readFile = vi.fn();
 vi.mock("@tauri-apps/api/core", () => ({ invoke }));
-vi.mock("@tauri-apps/plugin-dialog", () => ({ save, open }));
-vi.mock("@tauri-apps/plugin-fs", () => ({ writeFile, readFile }));
+vi.mock("@tauri-apps/plugin-dialog", () => ({ open }));
+vi.mock("@tauri-apps/plugin-fs", () => ({ readFile }));
 
 import { resetApiRuntime } from "../lib/client";
 import {
@@ -16,15 +14,23 @@ import {
     openBackupWithNativeDialog,
     reportDesktopReady,
     saveBackupWithNativeDialog,
+    sha256Hex,
 } from "./desktop";
 
 describe("desktop bootstrap", () => {
+    async function archive(value = "portable archive") {
+        const bytes = new TextEncoder().encode(value);
+        return {
+            blob: new Blob([bytes]),
+            filename: "backup.zip",
+            sha256: await sha256Hex(bytes),
+        };
+    }
+
     afterEach(() => {
         delete window.__TAURI_INTERNALS__;
         invoke.mockReset();
-        save.mockReset();
         open.mockReset();
-        writeFile.mockReset();
         readFile.mockReset();
         resetApiRuntime();
         vi.restoreAllMocks();
@@ -72,21 +78,42 @@ describe("desktop bootstrap", () => {
         expect(fetchMock.mock.calls[0][1].headers["X-CareerOS-Session"]).toBe(token);
     });
 
-    it("uses scoped native dialogs for backup save and restore", async () => {
+    it("uses the native backup writer and scoped restore picker", async () => {
         window.__TAURI_INTERNALS__ = {};
-        save.mockResolvedValue("C:/Users/DemoUser/backup.zip");
         open.mockResolvedValue("C:/Users/DemoUser/backup.zip");
+        const payload = await archive();
+        invoke.mockResolvedValue({
+            saved: true,
+            sha256: payload.sha256,
+            byteSize: payload.blob.size,
+        });
         readFile.mockResolvedValue(new Uint8Array([80, 75, 3, 4]));
-        const blob = { arrayBuffer: vi.fn().mockResolvedValue(Uint8Array.from([1, 2, 3]).buffer) };
 
-        await expect(saveBackupWithNativeDialog({ blob, filename: "backup.zip" })).resolves.toBe(true);
+        await expect(saveBackupWithNativeDialog(payload)).resolves.toMatchObject({
+            saved: true,
+            sha256: payload.sha256,
+        });
         const selected = await openBackupWithNativeDialog();
 
-        expect(writeFile).toHaveBeenCalledWith(
-            "C:/Users/DemoUser/backup.zip",
-            new Uint8Array([1, 2, 3]),
-        );
+        const saveCall = invoke.mock.calls.find(([command]) => command === "desktop_save_verified_backup");
+        expect(Array.from(saveCall[1])).toEqual(Array.from(new TextEncoder().encode("portable archive")));
+        expect(saveCall[2].headers["X-Content-SHA256"]).toBe(payload.sha256);
+        expect(new TextDecoder().decode(
+            Uint8Array.from(atob(saveCall[2].headers["X-CareerOS-Dialog-Title"]), (character) => character.charCodeAt(0)),
+        )).toBe("Save CareerOS Local backup");
+        expect(new TextDecoder().decode(
+            Uint8Array.from(atob(saveCall[2].headers["X-CareerOS-Filename"]), (character) => character.charCodeAt(0)),
+        )).toBe("backup.zip");
         expect(selected.name).toBe("backup.zip");
         expect(selected.type).toBe("application/zip");
+    });
+
+    it("rejects a server checksum mismatch before invoking the native writer", async () => {
+        window.__TAURI_INTERNALS__ = {};
+        const payload = { ...await archive(), sha256: "0".repeat(64) };
+
+        await expect(saveBackupWithNativeDialog(payload)).rejects.toThrow("downloaded bytes");
+
+        expect(invoke).not.toHaveBeenCalled();
     });
 });

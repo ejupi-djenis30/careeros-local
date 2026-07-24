@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import hashlib
 import json
 from datetime import date, datetime
-from typing import Any
+from types import SimpleNamespace
+from typing import Any, cast
 
 from sqlalchemy import JSON, Date, DateTime, or_, update
 from sqlalchemy.exc import IntegrityError, StatementError
@@ -293,6 +295,8 @@ def _decode_payload(
     db: Session,
     manifest: ArchiveManifest,
     members: dict[str, bytes],
+    *,
+    enforce_destination_ids: bool = True,
 ) -> tuple[
     dict[str, list[dict[str, Any]]],
     list[dict[str, Any]],
@@ -334,7 +338,7 @@ def _decode_payload(
             ]
         decoded[table_name] = [_decode_row(model, row) for row in raw_rows]
         _assert_unique_archive_ids(table_name, decoded[table_name])
-        if table_name not in REMAPPABLE_TABLES:
+        if enforce_destination_ids and table_name not in REMAPPABLE_TABLES:
             _assert_ids_available(db, model, decoded[table_name])
     for row in decoded["jobs"]:
         _quarantine_unverified_analysis(
@@ -368,7 +372,16 @@ def _decode_payload(
     projection_contract = _extract_application_projection_contract(
         manifest.format_version, decoded["applications"]
     )
+    _validate_application_projection_contract(decoded, projection_contract)
     return decoded, bindings, preference_state, projection_contract
+
+
+def _assert_decoded_ids_available(db: Session, decoded: dict[str, list[dict[str, Any]]]) -> None:
+    """Apply destination-only ID checks after a content-only archive preflight."""
+
+    for table_name, model in EXPORT_MODELS:
+        if table_name not in REMAPPABLE_TABLES:
+            _assert_ids_available(db, model, decoded[table_name])
 
 
 def _assert_empty_vault(db: Session, user_id: int, format_version: int) -> None:
@@ -394,6 +407,8 @@ def _prepare_file_writes(
     decoded: dict[str, list[dict[str, Any]]],
     bindings: list[dict[str, Any]],
     members: dict[str, bytes],
+    *,
+    create_data_root: bool = True,
 ) -> list[tuple[str, bytes]]:
     records = {
         (table_name, str(row.get("id"))): row
@@ -426,7 +441,10 @@ def _prepare_file_writes(
         if sha256(file_data) != record.get("sha256") or len(file_data) != record.get("byte_size"):
             raise ArchiveError("Archived file does not match its database record")
         try:
-            resolve_data_path(str(record["storage_path"]))
+            resolve_data_path(
+                str(record["storage_path"]),
+                create_root=create_data_root,
+            )
         except ValueError as exc:
             raise ArchiveError("Archive contains an unsafe storage path") from exc
         writes.append((str(record["storage_path"]), file_data))
@@ -437,6 +455,27 @@ def _prepare_file_writes(
     if set(members) != {str(binding.get("member")) for binding in bindings} | {PAYLOAD_MEMBER}:
         raise ArchiveError("Archive contains unbound file members")
     return writes
+
+
+def _file_destinations_available(writes: list[tuple[str, bytes]]) -> bool:
+    """Check restore destinations without creating directories or changing files."""
+
+    for relative_path, file_data in writes:
+        destination = resolve_data_path(relative_path, create_root=False)
+        try:
+            if not destination.exists():
+                continue
+            if not destination.is_file() or destination.stat().st_size != len(file_data):
+                return False
+            digest = hashlib.sha256()
+            with destination.open("rb") as existing:
+                for chunk in iter(lambda: existing.read(128 * 1024), b""):
+                    digest.update(chunk)
+            if digest.hexdigest() != sha256(file_data):
+                return False
+        except OSError:
+            return False
+    return True
 
 
 def _prepare_row(
@@ -564,23 +603,23 @@ def _restore_preference_state(
         raise ArchiveConflictError("Restore requires empty preference signals")
 
 
-def _canonical_application_projection(
-    application: Application,
-    service: ApplicationService,
+def _canonical_application_projection_parts(
+    snapshot: object,
+    events: list[object],
 ) -> dict[str, Any]:
-    snapshot = application.job_snapshot
     if not isinstance(snapshot, dict):
         raise ArchiveError("Archive application snapshot must be an object")
-    if not application.events:
+    if not events:
         raise ArchiveError("Archive application must contain at least one timeline event")
-    event_times = [aware_utc(event.occurred_at) for event in application.events]
+    event_times = [aware_utc(getattr(event, "occurred_at", None)) for event in events]
     if any(value is None for value in event_times):
         raise ArchiveError("Archive application event is missing its timestamp")
     try:
-        tasks = service._task_snapshots(application)
+        application_view = cast(Application, SimpleNamespace(events=events))
+        tasks = ApplicationService._task_snapshots(application_view)
     except ApplicationValidationError as exc:
         raise ArchiveError("Archive application task history is invalid") from exc
-    next_action = service._next_action(tasks)
+    next_action = ApplicationService._next_action(tasks)
     return {
         "job_title": str(snapshot.get("title") or "Untitled role")[:240],
         "job_company": str(snapshot.get("company") or "Unknown company")[:240],
@@ -595,10 +634,52 @@ def _canonical_application_projection(
     }
 
 
+def _canonical_application_projection(application: Application) -> dict[str, Any]:
+    return _canonical_application_projection_parts(
+        application.job_snapshot,
+        list(application.events),
+    )
+
+
 def _projection_value_matches(field: str, archived: Any, canonical: Any) -> bool:
     if field in {"latest_event_at", "next_action_at"}:
         return aware_utc(archived) == aware_utc(canonical)
     return bool(archived == canonical)
+
+
+def _validate_application_projection_contract(
+    decoded: dict[str, list[dict[str, Any]]],
+    archived_contract: dict[str, dict[str, Any]],
+) -> None:
+    """Validate application timelines and projections without writing archive rows."""
+
+    applications = {str(row["id"]): row for row in decoded["applications"]}
+    events_by_application: dict[str, list[object]] = {
+        application_id: [] for application_id in applications
+    }
+    for event in decoded["application_events"]:
+        application_id = str(event.get("application_id") or "")
+        if application_id not in applications:
+            raise ArchiveError("Archive application event references a missing application")
+        events_by_application[application_id].append(SimpleNamespace(**event))
+
+    for application_id, row in applications.items():
+        canonical = _canonical_application_projection_parts(
+            row.get("job_snapshot"),
+            events_by_application[application_id],
+        )
+        archived = archived_contract.get(application_id)
+        if archived is None:
+            continue
+        mismatches = sorted(
+            field
+            for field, value in canonical.items()
+            if not _projection_value_matches(field, archived[field], value)
+        )
+        if mismatches:
+            raise ArchiveError(
+                "Archive application projections are inconsistent with its snapshot or timeline"
+            )
 
 
 def _rebuild_application_projections(
@@ -609,7 +690,6 @@ def _rebuild_application_projections(
     """Validate current projections and rebuild every restored read model."""
 
     db.expire_all()
-    service = ApplicationService(db)
     applications = (
         db.query(Application)
         .filter(Application.user_id == user_id)
@@ -617,7 +697,7 @@ def _rebuild_application_projections(
         .all()
     )
     for application in applications:
-        canonical = _canonical_application_projection(application, service)
+        canonical = _canonical_application_projection(application)
         archived = archived_contract.get(application.id)
         if archived is not None:
             mismatches = sorted(
@@ -652,7 +732,12 @@ def _restore_transaction(
     created_paths: list[str] = []
     try:
         for relative_path, file_data in writes:
-            _path, created = atomic_write(relative_path, file_data)
+            try:
+                _path, created = atomic_write(relative_path, file_data)
+            except ValueError as exc:
+                raise ArchiveConflictError(
+                    "Restore target contains a different managed file"
+                ) from exc
             if created:
                 created_paths.append(relative_path)
         job_id_map = _restore_search_records(db, user_id, decoded)

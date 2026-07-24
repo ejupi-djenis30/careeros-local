@@ -4,10 +4,12 @@ import {
     isDesktopShell,
     openBackupWithNativeDialog,
     saveBackupWithNativeDialog,
+    verifyArchivePayload,
 } from "../../platform/desktop";
 import { PortabilityService } from "../../services/portability";
 import { useI18n } from "../../i18n/useI18n";
 import { translateMessage } from "../../i18n/runtime";
+import { BackupInspectionSummary } from "./BackupInspectionSummary";
 
 function browserDownload({ blob, filename }) {
     const url = URL.createObjectURL(blob);
@@ -25,15 +27,21 @@ export function DataRecoveryPanel({ hasProfile, onErased }) {
     const [busy, setBusy] = useState("");
     const [message, setMessage] = useState(null);
     const [erasePhrase, setErasePhrase] = useState("");
+    const [verifiedBackup, setVerifiedBackup] = useState(null);
 
     const backup = async () => {
         setBusy("backup");
         setMessage(null);
         try {
             const archive = await PortabilityService.exportArchive();
-            const saved = await saveBackupWithNativeDialog(archive, { title: t("desktop.saveBackup") });
-            if (!isDesktopShell()) browserDownload(archive);
-            setMessage({ messageKey: saved || !isDesktopShell() ? "data.backupSaved" : "data.saveCancelled" });
+            if (isDesktopShell()) {
+                const saved = await saveBackupWithNativeDialog(archive, { title: t("desktop.saveBackup") });
+                setMessage({ messageKey: saved ? "data.backupSaved" : "data.saveCancelled" });
+            } else {
+                await verifyArchivePayload(archive);
+                browserDownload(archive);
+                setMessage({ messageKey: "data.backupDownloaded" });
+            }
         } catch (error) {
             setMessage(error.message ? { message: error.message } : { messageKey: "data.backupFailed" });
         } finally {
@@ -41,12 +49,37 @@ export function DataRecoveryPanel({ hasProfile, onErased }) {
         }
     };
 
-    const restore = async (file) => {
+    const inspect = async (file) => {
         if (!file) return;
+        setBusy("inspect");
+        setMessage(null);
+        setVerifiedBackup(null);
+        try {
+            const inspection = await PortabilityService.inspectArchive(file);
+            setVerifiedBackup({ file, inspection });
+            setMessage({ messageKey: "data.inspectDone" });
+        } catch (error) {
+            setMessage(error.message ? { message: error.message } : { messageKey: "data.inspectFailed" });
+        } finally {
+            setBusy("");
+            if (fileInput.current) fileInput.current.value = "";
+        }
+    };
+
+    const chooseBackup = async () => {
+        if (isDesktopShell()) {
+            await inspect(await openBackupWithNativeDialog({ title: t("desktop.openBackup") }));
+        } else {
+            fileInput.current?.click();
+        }
+    };
+
+    const restore = async () => {
+        if (hasProfile || !verifiedBackup?.inspection.restorable) return;
         setBusy("restore");
         setMessage(null);
         try {
-            const result = await PortabilityService.restoreArchive(file);
+            const result = await PortabilityService.restoreArchive(verifiedBackup.file);
             setMessage({
                 messageKey: "data.restoreDone",
                 variables: {
@@ -59,15 +92,6 @@ export function DataRecoveryPanel({ hasProfile, onErased }) {
             setMessage(error.message ? { message: error.message } : { messageKey: "data.restoreFailed" });
         } finally {
             setBusy("");
-            if (fileInput.current) fileInput.current.value = "";
-        }
-    };
-
-    const chooseRestore = async () => {
-        if (isDesktopShell()) {
-            await restore(await openBackupWithNativeDialog({ title: t("desktop.openBackup") }));
-        } else {
-            fileInput.current?.click();
         }
     };
 
@@ -77,6 +101,7 @@ export function DataRecoveryPanel({ hasProfile, onErased }) {
         try {
             const result = await PortabilityService.eraseLocalData();
             setErasePhrase("");
+            setVerifiedBackup(null);
             setMessage({ messageKey: "data.eraseDone", variables: { files: result.files + result.model_files } });
             onErased?.();
         } catch (error) {
@@ -92,10 +117,12 @@ export function DataRecoveryPanel({ hasProfile, onErased }) {
             <p>{t("data.copy")}</p>
             <div className="data-actions">
                 <button className="button button--secondary" type="button" onClick={backup} disabled={!hasProfile || Boolean(busy)}><i className="bi bi-download" />{busy === "backup" ? t("data.backupBusy") : t("data.backup")}</button>
-                <button className="button button--secondary" type="button" onClick={chooseRestore} disabled={hasProfile || Boolean(busy)}><i className="bi bi-upload" />{busy === "restore" ? t("data.restoreBusy") : t("data.restore")}</button>
-                <input ref={fileInput} className="visually-hidden" type="file" accept=".zip,application/zip" aria-label={t("data.backupFile")} onChange={(event) => restore(event.target.files?.[0])} />
+                <button className="button button--secondary" type="button" onClick={chooseBackup} disabled={Boolean(busy)}><i className="bi bi-shield-check" />{busy === "inspect" ? t("data.inspectBusy") : t("data.inspect")}</button>
+                <button className="button button--secondary" type="button" onClick={restore} disabled={hasProfile || !verifiedBackup?.inspection.restorable || Boolean(busy)}><i className="bi bi-upload" />{busy === "restore" ? t("data.restoreBusy") : t("data.restoreVerified")}</button>
+                <input ref={fileInput} className="visually-hidden" type="file" accept=".zip,application/zip" aria-label={t("data.backupFile")} onChange={(event) => inspect(event.target.files?.[0])} />
             </div>
-            {hasProfile && <small>{t("data.restoreRequiresEmpty")}</small>}
+            <small>{t("data.restoreRequiresEmpty")}</small>
+            {verifiedBackup && <BackupInspectionSummary inspection={verifiedBackup.inspection} />}
             <div className="danger-zone">
                 <label htmlFor="erase-career-data">{t("data.eraseInstruction")} <strong>{erasePhraseRequired}</strong></label>
                 <div><input id="erase-career-data" className="form-control" value={erasePhrase} onChange={(event) => setErasePhrase(event.target.value)} autoComplete="off" /><button className="button button--danger" type="button" onClick={erase} disabled={erasePhrase !== erasePhraseRequired || Boolean(busy)}>{busy === "erase" ? t("data.eraseBusy") : t("data.erase")}</button></div>

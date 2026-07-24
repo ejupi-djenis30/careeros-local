@@ -80,6 +80,11 @@ SQLite and user-selected local files are canonical. Schema migrations MUST be tr
 backed up when destructive, and tested from both an empty database and the supported prior
 version. Users MUST be able to export, import and delete their complete vault in documented,
 non-proprietary formats. Application updates MUST preserve data and generated documents.
+Portable backups MUST be inspectable without changing the active vault. A successful inspection
+MUST validate bounded archive structure, member digests, record relationships and persisted-file
+bindings while returning only content-free metadata. Saving a backup MUST NOT be described as
+verified until the bytes at the selected destination match the server-issued digest. Plain ZIP
+archives MUST be identified accurately as neither encrypted nor authenticated.
 Manual opportunity captures MUST use a server-owned per-user namespace and idempotent retries;
 client identifiers MUST NOT merge private captures across users. Concurrent application writers
 MUST advance revisions with an atomic compare-and-swap, and derived board projections MUST never
@@ -162,4 +167,4 @@ minor; clarification without changed obligations is patch. Every plan MUST perfo
 check before research and again before release. Exceptions require owner approval, an expiry date
 and a tracked remediation task; there are no implicit exceptions.
 
-**Version**: 1.1.2 | **Ratified**: 2026-07-17 | **Last amended**: 2026-07-23
+**Version**: 1.1.3 | **Ratified**: 2026-07-17 | **Last amended**: 2026-07-24

@@ -364,6 +364,30 @@ DST boundaries, ordering, snapshot coherence, omission counts, invalid bounds, q
 cross-user isolation; frontend tests cover rendering, refresh lifecycle, failure independence and
 row navigation.
 
+### Phase L — Backup assurance center
+
+Extract one non-mutating archive preflight from the existing restore boundary. The preflight reuses
+the bounded ZIP/member validation, typed row decoding, relationship checks, application-event replay
+and file-binding verification, but separates archive validity from destination conflicts. It returns
+only a fixed inspection schema: archive version and digest, creation time, per-table and total record
+counts, archive/file byte totals, compatibility, current restore eligibility and stable verification
+or warning codes. It never returns archive member names, storage paths, user identifiers, prompts,
+model output, document text or profile fields.
+
+Expose preflight through one authenticated, rate-limited multipart endpoint. A populated vault may
+inspect any supported backup; it only makes `restorable` false and adds a stable empty-vault warning.
+Restore remains the existing explicit endpoint and retains the vault lock, transactional rollback,
+path containment and local-analysis quarantine. No schema migration or model process is required.
+
+The Home recovery panel adds a separate backup-verification picker and an accessible English/Italian
+summary. The desktop save path consumes the export response digest, writes a unique `.part` sibling,
+re-reads and hashes it, preserves an existing destination through a unique rollback sibling, renames
+the verified file, re-verifies the final path and cleans temporary files on every exit. Browser
+downloads are labelled as prepared downloads because a web renderer cannot inspect the eventual
+filesystem destination. Tests cover historical/current success, adversarial archives, zero mutation,
+populated-vault inspection, final-byte verification, rollback faults, service behavior and keyboard
+accessibility.
+
 ## Complexity Tracking
 
 | Violation | Why Needed During Migration | Required Resolution |
