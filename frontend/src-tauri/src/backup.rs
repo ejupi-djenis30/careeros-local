@@ -102,7 +102,12 @@ fn decode_filename(request: &Request<'_>) -> Result<String, BackupSaveError> {
 
 fn validate_filename(value: String) -> Result<String, BackupSaveError> {
     let path = Path::new(&value);
-    if value.len() > 180
+    if value.is_empty()
+        || value.len() > 180
+        || value.trim() != value
+        || value.contains('/')
+        || value.contains('\\')
+        || value.chars().any(char::is_control)
         || path.components().count() != 1
         || path.file_name().and_then(|name| name.to_str()) != Some(value.as_str())
         || !path
@@ -471,6 +476,8 @@ mod tests {
             r"nested\backup.zip",
             "backup.txt",
             ".zip",
+            " backup.zip",
+            "backup.zip\n",
         ] {
             assert_eq!(
                 validate_filename(unsafe_name.to_string()).unwrap_err().code,
