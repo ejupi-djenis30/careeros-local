@@ -341,6 +341,28 @@ def _rewrite_application_job(archive_data: bytes, job_id: int) -> bytes:
     return output.getvalue()
 
 
+def _rewrite_career_asset_profile(archive_data: bytes, profile_id: str) -> bytes:
+    with zipfile.ZipFile(BytesIO(archive_data), "r") as source:
+        files = {name: source.read(name) for name in source.namelist()}
+    payload = json.loads(files["payload.json"])
+    payload["tables"]["career_assets"][0]["profile_id"] = profile_id
+    files["payload.json"] = json.dumps(
+        payload, ensure_ascii=False, separators=(",", ":"), sort_keys=True
+    ).encode("utf-8")
+    manifest = json.loads(files["manifest.json"])
+    payload_entry = next(entry for entry in manifest["entries"] if entry["path"] == "payload.json")
+    payload_entry["byte_size"] = len(files["payload.json"])
+    payload_entry["sha256"] = hashlib.sha256(files["payload.json"]).hexdigest()
+    files["manifest.json"] = json.dumps(
+        manifest, ensure_ascii=False, separators=(",", ":"), sort_keys=True
+    ).encode("utf-8")
+    output = BytesIO()
+    with zipfile.ZipFile(output, "w", zipfile.ZIP_DEFLATED) as target:
+        for name, content in files.items():
+            target.writestr(name, content)
+    return output.getvalue()
+
+
 APPLICATION_PROJECTION_FIELDS = {
     "job_title",
     "job_company",
@@ -976,6 +998,50 @@ def test_inspection_reports_managed_file_conflicts_without_changing_them(
     assert identical.status_code == 200, identical.text
     assert identical.json()["restorable"] is True
     assert "restore_target_conflict" not in identical.json()["warning_codes"]
+
+
+def test_inspection_rejects_an_orphaned_archive_file_relationship(
+    client,
+    auth_headers,
+    db_session,
+    test_user,
+    portable_data_dir,
+):
+    profile_response = client.put(
+        "/api/v1/career-profile", json=_profile_payload(), headers=auth_headers
+    )
+    assert profile_response.status_code == 200, profile_response.text
+    source_response = client.post(
+        "/api/v1/career-profile/sources",
+        files={"file": ("source.txt", b"portable source", "text/plain")},
+        headers=auth_headers,
+    )
+    assert source_response.status_code == 201, source_response.text
+    exported = client.get("/api/v1/portability/export", headers=auth_headers)
+    assert exported.status_code == 200, exported.text
+    orphaned = _rewrite_career_asset_profile(exported.content, str(uuid.uuid4()))
+
+    deleted = client.delete(
+        "/api/v1/career-profile",
+        headers={**auth_headers, "X-Confirm-Delete": "DELETE-MY-CAREER-VAULT"},
+    )
+    assert deleted.status_code == 204, deleted.text
+    inspected = client.post(
+        "/api/v1/portability/inspect",
+        files={"file": ("orphaned.zip", orphaned, "application/zip")},
+        headers=auth_headers,
+    )
+
+    assert inspected.status_code == 422, inspected.text
+    assert inspected.json() == {
+        "detail": {
+            "code": "archive_invalid",
+            "message": "Backup verification failed.",
+        }
+    }
+    db_session.expire_all()
+    assert db_session.query(CandidateProfile).count() == 0
+    assert db_session.query(CareerAsset).count() == 0
 
 
 @pytest.mark.parametrize("mutator", [_tamper_payload, _add_unsafe_member])

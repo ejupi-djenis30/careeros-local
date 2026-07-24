@@ -257,6 +257,62 @@ def _validate_search_relationships(
             raise ArchiveError("Archive application references a missing job")
 
 
+def _validate_portable_foreign_keys(
+    format_version: int,
+    decoded: dict[str, list[dict[str, Any]]],
+) -> None:
+    """Validate every archive-owned database relationship before restore writes."""
+
+    archive_table_by_database_table = {
+        model.__table__.name: table_name for table_name, model in EXPORT_MODELS
+    }
+    for table_name, model in EXPORT_MODELS:
+        for column in model.__table__.columns:
+            for foreign_key in column.foreign_keys:
+                target_table = archive_table_by_database_table.get(
+                    foreign_key.column.table.name
+                )
+                if target_table is None:
+                    if (
+                        foreign_key.column.table.name == "users"
+                        and column.name == "user_id"
+                        and table_name in USER_SCOPED_TABLES
+                    ):
+                        # User ownership is rebound to the authenticated local user.
+                        continue
+                    raise ArchiveError(
+                        f"Archive {table_name}.{column.name} has an unsupported "
+                        "external relationship"
+                    )
+                if (
+                    format_version < 3
+                    and table_name == "applications"
+                    and column.name == "job_id"
+                ):
+                    # Versions 1 and 2 did not include the job tables. Their legacy
+                    # application link is deliberately cleared during restore.
+                    continue
+
+                target_values = {
+                    row.get(foreign_key.column.name) for row in decoded[target_table]
+                }
+                for row in decoded[table_name]:
+                    value = row.get(column.name)
+                    if value is None:
+                        continue
+                    try:
+                        available = value in target_values
+                    except TypeError as exc:
+                        raise ArchiveError(
+                            f"Archive {table_name}.{column.name} relationship is invalid"
+                        ) from exc
+                    if not available:
+                        raise ArchiveError(
+                            f"Archive {table_name}.{column.name} references a missing "
+                            f"{target_table}.{foreign_key.column.name}"
+                        )
+
+
 def _extract_application_projection_contract(
     format_version: int,
     rows: list[dict[str, Any]],
@@ -369,6 +425,7 @@ def _decode_payload(
             )
     preference_state = _decode_preference_state(manifest.format_version, tables)
     _validate_search_relationships(manifest.format_version, decoded)
+    _validate_portable_foreign_keys(manifest.format_version, decoded)
     projection_contract = _extract_application_projection_contract(
         manifest.format_version, decoded["applications"]
     )
