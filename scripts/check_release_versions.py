@@ -8,12 +8,18 @@ import json
 import os
 import re
 import tomllib
+from datetime import date
 from pathlib import Path
 from typing import Any, cast
 
 ROOT = Path(__file__).resolve().parents[1]
 STABLE_SEMANTIC_VERSION = re.compile(
     r"^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$"
+)
+CHANGELOG_RELEASE = re.compile(
+    r"^## \[(?P<version>(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*))\]"
+    r" - (?P<release_date>[0-9]{4}-[0-9]{2}-[0-9]{2})$",
+    re.MULTILINE,
 )
 
 
@@ -99,9 +105,49 @@ def validate_versions(versions: dict[str, str], tag: str | None = None) -> str:
     return version
 
 
+def changelog_release_date(version: str, root: Path = ROOT) -> str:
+    changelog = (root / "CHANGELOG.md").read_text(encoding="utf-8")
+    matches = [
+        match.group("release_date")
+        for match in CHANGELOG_RELEASE.finditer(changelog)
+        if match.group("version") == version
+    ]
+    if len(matches) != 1:
+        raise RuntimeError(
+            f"CHANGELOG.md must contain exactly one dated release heading for {version}"
+        )
+    release_date = matches[0]
+    try:
+        parsed = date.fromisoformat(release_date)
+    except ValueError as error:
+        raise RuntimeError(
+            f"CHANGELOG.md has an invalid release date for {version}: {release_date}"
+        ) from error
+    if parsed.isoformat() != release_date:
+        raise RuntimeError(
+            f"CHANGELOG.md has a non-canonical release date for {version}: {release_date}"
+        )
+    return release_date
+
+
+def validate_release_date(
+    version: str,
+    expected_release_date: str | None,
+    root: Path = ROOT,
+) -> str:
+    release_date = changelog_release_date(version, root)
+    if expected_release_date is not None and expected_release_date != release_date:
+        raise RuntimeError(
+            f"Release date {expected_release_date} does not match "
+            f"CHANGELOG.md date {release_date} for {version}"
+        )
+    return release_date
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--expected-tag")
+    parser.add_argument("--expected-release-date")
     arguments = parser.parse_args()
     ref_type = os.environ.get("GITHUB_REF_TYPE")
     tag = arguments.expected_tag or (
@@ -109,7 +155,11 @@ def main() -> int:
     )
     versions = release_versions()
     version = validate_versions(versions, tag)
-    print(f"RELEASE_VERSION={version} SOURCES={len(versions)}")
+    release_date = validate_release_date(version, arguments.expected_release_date)
+    print(
+        f"RELEASE_VERSION={version} RELEASE_DATE={release_date} "
+        f"SOURCES={len(versions)}"
+    )
     return 0
 
 
