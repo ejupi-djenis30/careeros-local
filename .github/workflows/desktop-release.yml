@@ -124,8 +124,16 @@ jobs:
       - name: Audit npm and create exact evidence
         working-directory: frontend
         run: |
+          set +e
           npm audit --audit-level=high --json \
             > "$RUNNER_TEMP/careeros-evidence/frontend-audit.json"
+          audit_status=$?
+          set -e
+          cp ../frontend-security-exceptions.json \
+            "$RUNNER_TEMP/careeros-evidence/frontend-security-exceptions.json"
+          python3 ../scripts/check_frontend_security_exceptions.py \
+            --audit "$RUNNER_TEMP/careeros-evidence/frontend-audit.json" \
+            --npm-audit-exit-code "$audit_status"
           npm sbom --sbom-format cyclonedx \
             > "$RUNNER_TEMP/careeros-evidence/frontend-sbom.cdx.json"
           node ../scripts/audit_frontend_licenses.mjs \

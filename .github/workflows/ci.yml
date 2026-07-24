@@ -109,7 +109,18 @@ jobs:
         run: npm run test:coverage
       - name: Audit dependencies
         working-directory: frontend
-        run: npm audit --audit-level=high
+        run: |
+          mkdir -p "$RUNNER_TEMP/careeros"
+          set +e
+          npm audit --audit-level=high --json \
+            > "$RUNNER_TEMP/careeros/frontend-audit.json"
+          audit_status=$?
+          set -e
+          cp ../frontend-security-exceptions.json \
+            "$RUNNER_TEMP/careeros/frontend-security-exceptions.json"
+          python3 ../scripts/check_frontend_security_exceptions.py \
+            --audit "$RUNNER_TEMP/careeros/frontend-audit.json" \
+            --npm-audit-exit-code "$audit_status"
       - name: Create CycloneDX SBOM
         run: |
           mkdir -p "$RUNNER_TEMP/careeros"
@@ -146,6 +157,8 @@ jobs:
           name: frontend-evidence
           path: |
             frontend/coverage
+            ${{ runner.temp }}/careeros/frontend-audit.json
+            ${{ runner.temp }}/careeros/frontend-security-exceptions.json
             ${{ runner.temp }}/careeros/frontend-sbom.cdx.json
             ${{ runner.temp }}/careeros/frontend-licenses.json
           if-no-files-found: ignore
