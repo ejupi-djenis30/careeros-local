@@ -15,7 +15,7 @@ let currentSearchStatuses = {
   2: { state: 'analyzing' },
 };
 
-vi.mock('react-router-dom', () => ({
+vi.mock('react-router', () => ({
   useNavigate: () => mockNavigate,
   useSearchParams: () => [new URLSearchParams(currentPid ? `pid=${currentPid}` : '')],
 }));

@@ -43,6 +43,9 @@ All notable changes to CareerOS Local are documented here. The format follows
 - Prevented an out-of-order search completion from replacing the latest durable success receipt.
 - Restored the database-managed `jobs.updated_at` default for installations created from the full
   migration history, so API and search-created rows no longer depend on an ORM-supplied timestamp.
+- Replaced the deprecated `react-router-dom` v7 wrapper with React Router 8.3, removing the
+  vulnerable RSC implementation tracked as `GHSA-qwww-vcr4-c8h2` even though CareerOS does not use
+  the affected unstable RSC APIs.
 
 ## [1.7.0] - 2026-07-26
 

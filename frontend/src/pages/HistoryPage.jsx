@@ -1,5 +1,5 @@
 import React from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router';
 import { History } from '../components/History';
 import { useToast } from '../context/ToastContext';
 import { SearchService } from '../services/search';

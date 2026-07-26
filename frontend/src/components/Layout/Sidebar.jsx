@@ -1,4 +1,4 @@
-import { NavLink } from "react-router-dom";
+import { NavLink } from "react-router";
 import { LocalModelStatus } from "../../features/local-model/LocalModelStatus";
 import { LanguageSwitcher } from "../../i18n/LanguageSwitcher";
 import { useI18n } from "../../i18n/useI18n";

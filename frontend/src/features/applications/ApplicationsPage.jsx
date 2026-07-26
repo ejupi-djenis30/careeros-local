@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useSearchParams } from "react-router";
 import { ApplicationService } from "../../services/applications";
 import { ResumeService } from "../../services/resumes";
 import { useToast } from "../../context/ToastContext";

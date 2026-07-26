@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { useLocation } from "react-router-dom";
+import { useLocation } from "react-router";
 import { Sidebar } from "../components/Layout/Sidebar";
 import { useAuth } from "../context/AuthContext";
 import { useI18n } from "../i18n/useI18n";

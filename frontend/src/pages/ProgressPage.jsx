@@ -1,5 +1,5 @@
 import React, { useEffect } from 'react';
-import { useSearchParams, useNavigate } from 'react-router-dom';
+import { useSearchParams, useNavigate } from 'react-router';
 import { SearchProgress } from '../components/SearchProgress';
 import { useSearchContext } from '../context/SearchContext';
 import { useToast } from '../context/ToastContext';

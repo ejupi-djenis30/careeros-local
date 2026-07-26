@@ -50,7 +50,8 @@ All seven authoritative version sources report `1.8.0`; the planned stable tag i
 - Python static checks: Ruff passes for backend, tests, migrations and scripts. Mypy passes for
   backend and scripts with the same missing-import policy used by CI.
 - Frontend: 354 Vitest checks and all 3 dependency-license checks pass. ESLint and the production
-  Vite build pass.
+  Vite build pass. The runtime dependency audit reports no known vulnerability after replacing the
+  deprecated `react-router-dom` wrapper with React Router 8.3.
 - Rust: formatting and Clippy with warnings denied pass. All 17 Rust tests pass.
 - Manual product path: a disposable, fully migrated database completed manual listing creation,
   Job Library rendering, prefilled application creation and the resulting tracked-state deep link.

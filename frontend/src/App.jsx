@@ -1,5 +1,5 @@
 import React, { Suspense, lazy } from "react";
-import { BrowserRouter, HashRouter, Navigate, Route, Routes } from "react-router-dom";
+import { BrowserRouter, HashRouter, Navigate, Route, Routes } from "react-router";
 import { WorkspaceShell } from "./app/WorkspaceShell";
 import { Login } from "./components/Login";
 import { AuthProvider, useAuth } from "./context/AuthContext";

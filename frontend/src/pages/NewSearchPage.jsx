@@ -1,5 +1,5 @@
 import React from "react";
-import { useNavigate, useLocation } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router";
 import { SearchForm } from "../components/SearchForm";
 import { SearchService } from "../services/search";
 import { useI18n } from "../i18n/useI18n";
