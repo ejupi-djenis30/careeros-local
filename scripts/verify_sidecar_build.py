@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import subprocess
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -22,6 +23,18 @@ FORBIDDEN_PACKAGE_NAMES = {
     "pymupdf",
     "supabase",
 }
+
+
+SOURCE_BUILT_CRYPTOGRAPHY_TARGETS = {
+    "aarch64-pc-windows-msvc",
+    "x86_64-apple-darwin",
+}
+OPENSSL_DYNAMIC_LIBRARY_PREFIXES = (
+    "libcrypto",
+    "libeay",
+    "libssl",
+    "ssleay",
+)
 
 
 def _is_forbidden_package_path(relative_path: Path) -> bool:
@@ -53,6 +66,67 @@ def _verify_runtime_tree(runtime_root: Path) -> None:
         )
 
 
+def _is_dynamic_openssl_dependency(dependency: str) -> bool:
+    basename = dependency.replace("\\", "/").rsplit("/", maxsplit=1)[-1].casefold()
+    return basename.startswith(OPENSSL_DYNAMIC_LIBRARY_PREFIXES)
+
+
+def _macos_dependencies(extension: Path) -> tuple[str, ...]:
+    completed = subprocess.run(
+        ["otool", "-L", str(extension)],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    return tuple(
+        line.strip().split(" (", maxsplit=1)[0]
+        for line in completed.stdout.splitlines()[1:]
+        if line.strip()
+    )
+
+
+def _windows_dependencies(extension: Path) -> tuple[str, ...]:
+    import pefile
+
+    image = pefile.PE(str(extension), fast_load=True)
+    try:
+        image.parse_data_directories(
+            directories=[pefile.DIRECTORY_ENTRY["IMAGE_DIRECTORY_ENTRY_IMPORT"]]
+        )
+        return tuple(
+            entry.dll.decode("ascii", errors="replace")
+            for entry in getattr(image, "DIRECTORY_ENTRY_IMPORT", ())
+        )
+    finally:
+        image.close()
+
+
+def _verify_cryptography_linkage(runtime_root: Path, expected_target: str) -> None:
+    if expected_target not in SOURCE_BUILT_CRYPTOGRAPHY_TARGETS:
+        return
+
+    bindings = runtime_root / "cryptography" / "hazmat" / "bindings"
+    extensions = sorted(path for path in bindings.glob("_rust*") if path.is_file())
+    if len(extensions) != 1:
+        raise RuntimeError(
+            f"Expected exactly one packaged cryptography Rust extension, found {len(extensions)}"
+        )
+
+    extension = extensions[0]
+    if expected_target == "x86_64-apple-darwin":
+        dependencies = _macos_dependencies(extension)
+    else:
+        dependencies = _windows_dependencies(extension)
+    dynamic_openssl = sorted(
+        dependency for dependency in dependencies if _is_dynamic_openssl_dependency(dependency)
+    )
+    if dynamic_openssl:
+        raise RuntimeError(
+            "Source-built cryptography must link OpenSSL statically; dynamic dependencies: "
+            + ", ".join(dynamic_openssl)
+        )
+
+
 def main() -> int:
     expected = os.environ["EXPECTED_TARGET"]
     payload = json.loads(MANIFEST.read_text(encoding="utf-8"))
@@ -67,6 +141,7 @@ def main() -> int:
     if not runtime_root.is_dir():
         raise RuntimeError("Prepared sidecar runtime tree is missing")
     _verify_runtime_tree(runtime_root)
+    _verify_cryptography_linkage(runtime_root, expected)
     github_environment = Path(os.environ["GITHUB_ENV"])
     with github_environment.open("a", encoding="utf-8", newline="\n") as destination:
         destination.write(f"CAREEROS_SIDECAR_BINARY={binary}\n")

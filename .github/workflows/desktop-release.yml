@@ -24,6 +24,7 @@ env:
   PYTHON_VERSION: "3.12.10"
   NODE_VERSION: "24.18.0"
   RUST_VERSION: "1.96.0"
+  OPENSSL_SOURCE_VERSION: "3.6.3"
   RELEASE_DATE: "2026-07-26"
 
 jobs:
@@ -204,13 +205,76 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf xdg-utils xvfb
-      - name: Install locked dependencies
+      - name: Configure OpenSSL for source-built macOS Intel wheels
+        if: runner.os == 'macOS' && matrix.target == 'x86_64-apple-darwin'
+        shell: bash
         run: |
-          python -m pip install --require-hashes -r requirements.lock
-          python -m pip install --require-hashes -r requirements-tooling.lock
-          npm ci --prefix frontend
-          cargo metadata --manifest-path frontend/src-tauri/Cargo.toml --locked --format-version 1 |
-            python -c "import json, sys; json.load(sys.stdin)"
+          set -euo pipefail
+          open_ssl_root="$(brew --prefix openssl@3)"
+          installed_version="$(brew list --versions openssl@3 | awk '{print $2}')"
+          if [[ "$installed_version" != "$OPENSSL_SOURCE_VERSION" ]]; then
+            echo "Expected OpenSSL $OPENSSL_SOURCE_VERSION, found $installed_version" >&2
+            exit 1
+          fi
+          for required_file in \
+            "$open_ssl_root/include/openssl/ssl.h" \
+            "$open_ssl_root/lib/libcrypto.a" \
+            "$open_ssl_root/lib/libssl.a"; do
+            if [[ ! -f "$required_file" ]]; then
+              echo "Required macOS Intel OpenSSL file is missing: $required_file" >&2
+              exit 1
+            fi
+          done
+          {
+            echo "OPENSSL_DIR=$open_ssl_root"
+            echo "OPENSSL_STATIC=1"
+            echo "PIP_NO_CACHE_DIR=1"
+          } >> "$GITHUB_ENV"
+      - name: Configure OpenSSL for source-built Windows ARM64 wheels
+        if: runner.os == 'Windows' && matrix.target == 'aarch64-pc-windows-msvc'
+        shell: pwsh
+        run: |
+          $openSslRoot = Join-Path $env:ProgramFiles "OpenSSL"
+          $openSslExecutable = Join-Path $openSslRoot "bin\openssl.exe"
+          $openSslInclude = Join-Path $openSslRoot "include"
+          $staticLibraryDirectory = Join-Path $env:RUNNER_TEMP "careeros-openssl-static"
+          $staticLibraries = [ordered]@{
+            "libcrypto.lib" = Join-Path $openSslRoot "lib\libcrypto_static.lib"
+            "libssl.lib" = Join-Path $openSslRoot "lib\libssl_static.lib"
+          }
+          $requiredFiles = @(
+            $openSslExecutable
+            (Join-Path $openSslInclude "openssl\ssl.h")
+          ) + @($staticLibraries.Values)
+          foreach ($requiredFile in $requiredFiles) {
+            if (-not (Test-Path -LiteralPath $requiredFile -PathType Leaf)) {
+              throw "Required Windows ARM64 OpenSSL file is missing: $requiredFile"
+            }
+          }
+          $installedVersion = (& $openSslExecutable version).Split(" ")[1]
+          if ($installedVersion -ne $env:OPENSSL_SOURCE_VERSION) {
+            throw "Expected OpenSSL $env:OPENSSL_SOURCE_VERSION, found $installedVersion"
+          }
+          New-Item -ItemType Directory -Path $staticLibraryDirectory -Force | Out-Null
+          foreach ($library in $staticLibraries.GetEnumerator()) {
+            Copy-Item -LiteralPath $library.Value `
+              -Destination (Join-Path $staticLibraryDirectory $library.Key)
+          }
+          "OPENSSL_INCLUDE_DIR=$openSslInclude" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "OPENSSL_LIB_DIR=$staticLibraryDirectory" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "OPENSSL_STATIC=1" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "PIP_NO_CACHE_DIR=1" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+      - name: Install locked Python production dependencies
+        run: python -m pip install --require-hashes -r requirements.lock
+      - name: Install locked Python packaging dependencies
+        run: python -m pip install --require-hashes -r requirements-tooling.lock
+      - name: Install locked frontend dependencies
+        run: npm ci --prefix frontend
+      - name: Verify locked Rust dependency graph
+        run: >-
+          cargo metadata --manifest-path frontend/src-tauri/Cargo.toml
+          --locked --format-version 1
+          | python -c "import json, sys; json.load(sys.stdin)"
       - name: Freeze and smoke-test local backend
         run: python scripts/build_backend_sidecar.py
       - name: Verify native sidecar architecture

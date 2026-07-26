@@ -3,6 +3,10 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
+
+from scripts import verify_sidecar_build
+
 ROOT = Path(__file__).resolve().parents[3]
 WORKFLOW = ROOT / ".github" / "workflows" / "desktop-release.yml"
 TAURI_CONFIG = ROOT / "frontend" / "src-tauri" / "tauri.conf.json"
@@ -43,20 +47,110 @@ def test_required_check_name_and_versioned_toolchains_are_stable() -> None:
 def test_native_build_forwards_locked_and_consumes_metadata_portably() -> None:
     text = WORKFLOW.read_text(encoding="utf-8")
 
-    cargo_metadata = (
-        "cargo metadata --manifest-path frontend/src-tauri/Cargo.toml "
-        "--locked --format-version 1 |"
-    )
-    assert text.count(cargo_metadata) == 2
+    assert text.count("cargo metadata --manifest-path frontend/src-tauri/Cargo.toml") == 2
+    assert text.count("--locked --format-version 1") == 2
     assert text.count('python -c "import json, sys; json.load(sys.stdin)"') == 2
     assert (
-        "args: --target ${{ matrix.target }} --bundles ${{ matrix.bundles }} "
-        "-- --locked"
+        "args: --target ${{ matrix.target }} --bundles ${{ matrix.bundles }} -- --locked"
     ) in text
     assert (
-        "args: --target ${{ matrix.target }} --bundles ${{ matrix.bundles }} "
-        "--locked"
+        "args: --target ${{ matrix.target }} --bundles ${{ matrix.bundles }} --locked"
     ) not in text
+
+
+def test_source_built_cryptography_uses_verified_static_openssl() -> None:
+    text = WORKFLOW.read_text(encoding="utf-8")
+
+    assert 'OPENSSL_SOURCE_VERSION: "3.6.3"' in text
+    assert "Configure OpenSSL for source-built macOS Intel wheels" in text
+    assert "matrix.target == 'x86_64-apple-darwin'" in text
+    assert 'open_ssl_root="$(brew --prefix openssl@3)"' in text
+    assert 'installed_version="$(brew list --versions openssl@3' in text
+    assert '"$open_ssl_root/include/openssl/ssl.h"' in text
+    assert '"$open_ssl_root/lib/libcrypto.a"' in text
+    assert '"$open_ssl_root/lib/libssl.a"' in text
+    assert 'echo "OPENSSL_DIR=$open_ssl_root"' in text
+
+    assert "Configure OpenSSL for source-built Windows ARM64 wheels" in text
+    assert "matrix.target == 'aarch64-pc-windows-msvc'" in text
+    assert 'Join-Path $env:ProgramFiles "OpenSSL"' in text
+    assert '"libcrypto.lib" = Join-Path $openSslRoot "lib\\libcrypto_static.lib"' in text
+    assert '"libssl.lib" = Join-Path $openSslRoot "lib\\libssl_static.lib"' in text
+    assert "Copy-Item -LiteralPath $library.Value" in text
+    assert '"OPENSSL_INCLUDE_DIR=$openSslInclude"' in text
+    assert '"OPENSSL_LIB_DIR=$staticLibraryDirectory"' in text
+    assert '"OPENSSL_DIR=$openSslRoot"' not in text
+    assert text.count("OPENSSL_STATIC=1") == 2
+    assert text.count("PIP_NO_CACHE_DIR=1") == 2
+
+
+@pytest.mark.parametrize(
+    ("dependency", "expected"),
+    (
+        ("@rpath/libssl.3.dylib", True),
+        ("C:\\OpenSSL\\bin\\libcrypto-3-arm64.dll", True),
+        ("LIBEAY32.dll", True),
+        ("ssleay32.dll", True),
+        ("/usr/lib/libSystem.B.dylib", False),
+        ("KERNEL32.dll", False),
+    ),
+)
+def test_dynamic_openssl_dependency_detection(dependency: str, expected: bool) -> None:
+    assert verify_sidecar_build._is_dynamic_openssl_dependency(dependency) is expected
+
+
+def test_source_build_linkage_gate_rejects_dynamic_openssl(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    extension = tmp_path / "cryptography" / "hazmat" / "bindings" / "_rust.abi3.so"
+    extension.parent.mkdir(parents=True)
+    extension.write_bytes(b"native-extension")
+    monkeypatch.setattr(
+        verify_sidecar_build,
+        "_macos_dependencies",
+        lambda _extension: (
+            "/usr/lib/libSystem.B.dylib",
+            "/usr/local/opt/openssl@3/lib/libssl.3.dylib",
+        ),
+    )
+
+    with pytest.raises(RuntimeError, match="must link OpenSSL statically"):
+        verify_sidecar_build._verify_cryptography_linkage(tmp_path, "x86_64-apple-darwin")
+
+
+def test_source_build_linkage_gate_accepts_self_contained_extension(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    extension = tmp_path / "cryptography" / "hazmat" / "bindings" / "_rust.abi3.so"
+    extension.parent.mkdir(parents=True)
+    extension.write_bytes(b"native-extension")
+    monkeypatch.setattr(
+        verify_sidecar_build,
+        "_macos_dependencies",
+        lambda _extension: ("/usr/lib/libSystem.B.dylib",),
+    )
+
+    verify_sidecar_build._verify_cryptography_linkage(tmp_path, "x86_64-apple-darwin")
+
+
+def test_native_dependency_installation_is_fail_fast_on_powershell() -> None:
+    text = WORKFLOW.read_text(encoding="utf-8")
+
+    assert "- name: Install locked dependencies\n" not in text
+    for name, command in (
+        (
+            "Install locked Python production dependencies",
+            "run: python -m pip install --require-hashes -r requirements.lock",
+        ),
+        (
+            "Install locked Python packaging dependencies",
+            "run: python -m pip install --require-hashes -r requirements-tooling.lock",
+        ),
+        ("Install locked frontend dependencies", "run: npm ci --prefix frontend"),
+        ("Verify locked Rust dependency graph", "cargo metadata --manifest-path"),
+    ):
+        assert f"- name: {name}" in text
+        assert command in text
 
 
 def test_tag_publications_share_one_group_without_cancelling_the_running_tag() -> None:
