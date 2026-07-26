@@ -29,11 +29,16 @@ from backend.automation.schemas import ALL_AUTOMATION_SCOPES
 
 
 def _emit(value: Any, *, stream: Any | None = None) -> None:
+    """Write a reviewed command result to the caller's terminal as JSON."""
     destination = stream or sys.stdout
     if hasattr(value, "model_dump"):
         value = value.model_dump(mode="json")
     elif isinstance(value, list) and value and hasattr(value[0], "model_dump"):
         value = [item.model_dump(mode="json") for item in value]
+    # This is the CLI's structured response channel, not application logging. All
+    # call sites return public or already-redacted data; bearer issuance has a
+    # separate one-time output path in _emit_authorized_grant.
+    # codeql[py/clear-text-logging-sensitive-data]
     destination.write(json.dumps(value, ensure_ascii=False, indent=2, sort_keys=True) + "\n")
     destination.flush()
 

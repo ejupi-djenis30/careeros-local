@@ -274,7 +274,10 @@ def parent_process_is_alive(process_id: int) -> bool:
 
         synchronize = 0x00100000
         wait_timeout = 0x00000102
-        kernel32 = ctypes.windll.kernel32
+        windll = getattr(ctypes, "windll", None)
+        if windll is None:
+            return False
+        kernel32 = windll.kernel32
         handle = kernel32.OpenProcess(synchronize, False, process_id)
         if not handle:
             return False
