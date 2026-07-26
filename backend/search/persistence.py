@@ -243,7 +243,7 @@ class PersistenceMixin:
     async def _save_single_job(
         self, listing, analysis, profile_dict, origin_coords, commit: bool = True
     ):
-        await self.search_persistence.save_single_job(
+        return await self.search_persistence.save_single_job(
             listing,
             analysis,
             profile_dict,
@@ -267,6 +267,7 @@ class PersistenceMixin:
             "errors": as_int("errors"),
             "provider_failures": as_int("provider_failures"),
             "provider_successes": as_int("provider_successes"),
+            "jobs_stale_before_save": as_int("jobs_stale_before_save"),
         }
 
     def _status_duplicate_metrics(self, profile_id: int) -> Dict[str, int]:
@@ -326,6 +327,12 @@ class PersistenceMixin:
         next_errors = self._status_metrics(profile_id)["errors"] + max(0, count)
         update_status(profile_id, errors=next_errors)
         return next_errors
+
+    def _increment_stale_before_save(self, profile_id: int, count: int = 1) -> int:
+        current = max(0, self._status_metrics(profile_id)["jobs_stale_before_save"])
+        next_value = min(2_147_483_647, current + max(0, count))
+        update_status(profile_id, jobs_stale_before_save=next_value)
+        return next_value
 
     def _load_profile_dedup_history(self, profile_id: int, user_id: Optional[int]) -> dict:
         """Pre-load profile job history sets for incremental deduplication in the producer."""

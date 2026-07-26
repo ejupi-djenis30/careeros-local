@@ -37,7 +37,7 @@ vi.mock('../context/ToastContext', () => ({
 
 vi.mock('../services/search', () => ({
   SearchService: {
-    getProfiles: (...args) => mockGetProfiles(...args),
+    getProfileSummaries: (...args) => mockGetProfiles(...args),
   },
 }));
 

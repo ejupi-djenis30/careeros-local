@@ -32,6 +32,7 @@ def test_jobs_routes_full():
         "size": 20,
         "pages": 0,
         "total_applied": 0,
+        "total_tracked": 0,
         "avg_score": 0,
     }
     app.dependency_overrides[job_service_dep] = lambda: mock_job_service
@@ -228,6 +229,8 @@ def test_run_search_background_wrapper():
         posted_within_days: int = 7
         max_distance: int = 50
         schedule_interval_hours: int = 24
+        profile_source = "uploaded_cv"
+        cv_content = "Experienced software engineer"
         force_regenerate_cv_summary = False
         force_regenerate_queries = False
 
@@ -242,6 +245,8 @@ def test_run_search_background_wrapper():
                 "posted_within_days": self.posted_within_days,
                 "max_distance": self.max_distance,
                 "schedule_interval_hours": self.schedule_interval_hours,
+                "profile_source": self.profile_source,
+                "cv_content": self.cv_content,
                 "force_regenerate_cv_summary": False,
                 "force_regenerate_queries": False,
             }
@@ -302,6 +307,8 @@ def test_run_search_background_wrapper_releases_reservation_when_session_creatio
         posted_within_days: int = 7
         max_distance: int = 50
         schedule_interval_hours: int = 24
+        profile_source = "uploaded_cv"
+        cv_content = "Experienced software engineer"
         force_regenerate_cv_summary = False
         force_regenerate_queries = False
 
@@ -316,6 +323,8 @@ def test_run_search_background_wrapper_releases_reservation_when_session_creatio
                 "posted_within_days": self.posted_within_days,
                 "max_distance": self.max_distance,
                 "schedule_interval_hours": self.schedule_interval_hours,
+                "profile_source": self.profile_source,
+                "cv_content": self.cv_content,
                 "force_regenerate_cv_summary": False,
                 "force_regenerate_queries": False,
             }

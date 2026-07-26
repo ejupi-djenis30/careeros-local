@@ -11,14 +11,14 @@ from sqlalchemy import create_engine, event
 from sqlalchemy.orm import sessionmaker
 
 from backend.applications.models import Application, ApplicationEvent
-from backend.applications.schemas import ApplicationEventCreate
+from backend.applications.schemas import ApplicationCreate, ApplicationEventCreate
 from backend.applications.service import (
     ApplicationConflictError,
     ApplicationService,
     ApplicationValidationError,
 )
 from backend.db.base import Base, configure_sqlite_connection
-from backend.models import User
+from backend.models import Job, ScrapedJob, SearchProfile, User
 
 
 @pytest.fixture
@@ -260,4 +260,95 @@ def test_stage_event_cas_has_one_winner(file_database_path):
             .all()
         )
         assert len(stage_events) == 1
+    engine.dispose()
+
+
+def test_logical_opportunity_create_race_has_one_winner(file_database_path):
+    engine = create_engine(
+        f"sqlite:///{file_database_path.as_posix()}",
+        connect_args={"check_same_thread": False},
+    )
+    event.listen(engine, "connect", configure_sqlite_connection)
+    Base.metadata.create_all(engine)
+    Session = sessionmaker(bind=engine, expire_on_commit=False)
+    with Session() as bootstrap:
+        user = User(username="logical-application-race", hashed_password="test-only")
+        bootstrap.add(user)
+        bootstrap.flush()
+        profiles = [
+            SearchProfile(user_id=user.id, name="Backend roles"),
+            SearchProfile(user_id=user.id, name="Platform roles"),
+        ]
+        scraped_job = ScrapedJob(
+            platform="race-test",
+            platform_job_id="shared-listing",
+            title="Platform Engineer",
+            company="Example Co",
+            external_url="https://example.test/jobs/shared-listing",
+        )
+        bootstrap.add_all([*profiles, scraped_job])
+        bootstrap.flush()
+        jobs = [
+            Job(
+                user_id=user.id,
+                search_profile_id=profile.id,
+                scraped_job_id=scraped_job.id,
+            )
+            for profile in profiles
+        ]
+        bootstrap.add_all(jobs)
+        bootstrap.commit()
+        user_id = user.id
+        scraped_job_id = scraped_job.id
+        job_ids = [job.id for job in jobs]
+
+    barrier = threading.Barrier(2)
+    outcomes: list[str] = []
+    outcomes_lock = threading.Lock()
+
+    def worker(job_id: int) -> None:
+        with Session() as session:
+            service = ApplicationService(session)
+            original_existing = service._existing_logical_application
+            check_count = 0
+
+            def synchronized_existing(check_user_id: int, check_scraped_job_id: int) -> bool:
+                nonlocal check_count
+                check_count += 1
+                if check_count == 1:
+                    barrier.wait(timeout=5)
+                    return False
+                return original_existing(check_user_id, check_scraped_job_id)
+
+            service._existing_logical_application = synchronized_existing  # type: ignore[method-assign]
+            try:
+                service.create(user_id, ApplicationCreate(job_id=job_id))
+            except ApplicationConflictError:
+                outcome = "conflict"
+            except Exception as exc:  # pragma: no cover - assertion reports the concrete failure.
+                outcome = type(exc).__name__
+            else:
+                outcome = "success"
+            with outcomes_lock:
+                outcomes.append(outcome)
+
+    threads = [threading.Thread(target=worker, args=(job_id,)) for job_id in job_ids]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join(timeout=10)
+        assert not thread.is_alive()
+
+    assert sorted(outcomes) == ["conflict", "success"]
+    with Session() as verification:
+        applications = (
+            verification.query(Application)
+            .filter(
+                Application.user_id == user_id,
+                Application.scraped_job_id == scraped_job_id,
+            )
+            .all()
+        )
+        assert len(applications) == 1
+        assert applications[0].job_id in job_ids
     engine.dispose()

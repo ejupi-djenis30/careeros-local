@@ -17,7 +17,6 @@ export const JobService = {
      * @param {number}  [filters.min_distance]
      * @param {number}  [filters.max_distance]
      * @param {boolean} [filters.worth_applying]
-     * @param {boolean} [filters.applied]
      * @param {number}  [filters.search_profile_id]
      * @param {string}  [filters.sort_by]      - created_at | affinity_score | distance_km | title
      * @param {string}  [filters.sort_order]   - asc | desc
@@ -34,10 +33,6 @@ export const JobService = {
         const res = await ApiClient.get(url, signal);
         // Backend returns { items, total, page, pages }
         return res;
-    },
-
-    async toggleApplied(jobId, applied) {
-        return ApiClient.patch(`/jobs/${jobId}`, { applied });
     },
 
     async dismiss(jobId, feedbackSignal) {

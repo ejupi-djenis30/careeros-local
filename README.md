@@ -40,6 +40,20 @@ without a model; opportunity matching and coaching require a ready, approved loc
   snapshots, a private daily action agenda, verifiable application dossiers and a nine-check
   preflight keep the workflow coherent.
 
+## A search workflow you can keep using
+
+1. Confirm the experience, skills and preferences that belong in the Career Vault.
+2. Start a search from that verified record, or deliberately switch to an uploaded CV.
+3. Review opportunities whose source, revision and local analysis are recorded instead of
+   silently replaced.
+4. Track a promising role once. CareerOS opens the same application timeline from then on, with
+   its next action, documents and history kept together.
+
+CareerOS does not infer that a listing has closed merely because one provider response omitted it.
+When the advert changes, the catalog records a new revision and discards any older analysis still
+in flight. Search receipts survive the shorter-lived progress log, so the workspace shows what
+actually completed rather than inventing onboarding progress.
+
 ## Product tour
 
 | Daily workspace | Career Vault |
@@ -67,8 +81,16 @@ the assets.
 - Application readiness is calculated without a model from owned local records, exposes weighted
   evidence and actions, and exports reproducible JSON or Markdown reports.
 - Search planning has a deterministic path based only on the role, strategy and preferences the
-  user entered. It never converts CV text or unconfirmed model-normalized fields into provider
-  queries. Listings found elsewhere can be imported into a private per-user namespace.
+  user entered. Career Vault is the default source for local matching, but only confirmed,
+  non-archived facts enter its bounded and contact-redacted snapshot. Provider queries still come
+  only from explicit search intent and preferences. Listings found elsewhere can be imported into
+  a private per-user namespace.
+- Provider observations update a revisioned catalog before per-profile deduplication. Analysis and
+  normalization results carry the revision they were built from and fail closed if a newer advert
+  arrives while local-model work is running.
+- Job cards resolve their application state in one user-scoped bulk read. Creating a timeline is
+  idempotent at both service and database levels, including duplicate provider rows and concurrent
+  requests.
 - Application tasks are append-only events with a narrow next-action projection and portable
   calendar reminders. Dossier ZIPs include versioned answers, ID-only requirement mappings, one
   deduplicated evidence catalog, verified resume files and a canonical SHA-256 manifest.
@@ -308,6 +330,7 @@ collectively to **CareerOS Local contributors**.
 - [Product specification](specs/001-desktop-career-agent/spec.md)
 - [Agent interface analysis](specs/001-desktop-career-agent/agent-interface-analysis.md)
 - [Agent interface convergence](specs/001-desktop-career-agent/agent-interface-convergence.md)
+- [v1.8.0 release preparation](specs/001-desktop-career-agent/release-evidence-v1.8.0.md)
 - [v1.7.0 release preparation](specs/001-desktop-career-agent/release-evidence-v1.7.0.md)
 - [v1.6.0 release preparation](specs/001-desktop-career-agent/release-evidence-v1.6.0.md)
 - [v1.5.0 release preparation](specs/001-desktop-career-agent/release-evidence-v1.5.0.md)

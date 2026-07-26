@@ -1,11 +1,15 @@
 import errno
+import json
 from copy import deepcopy
+from datetime import datetime, timezone
 
 import pytest
 
 from backend.career.completeness import analyze_profile, calculate_completeness_score
+from backend.career.models import CandidateProfile, CareerFact
 from backend.career.repository import CareerProfileRepository
 from backend.career.schemas import CareerProfileWrite
+from backend.career.service import CareerSearchSnapshotError, build_career_search_snapshot
 from backend.storage.atomic import StorageWriteError
 
 EXPERIENCE_ONE = "10000000-0000-4000-8000-000000000001"
@@ -181,3 +185,218 @@ def test_profile_disk_full_rolls_back_to_last_durable_revision(
     assert persisted is not None
     assert persisted.revision == current["revision"]
     assert persisted.headline == current["headline"]
+
+
+def test_career_search_snapshot_is_deterministic_bounded_and_private():
+    confirmed_skill = CareerFact(
+        id="20000000-0000-4000-8000-000000000001",
+        profile_id="30000000-0000-4000-8000-000000000001",
+        fact_type="skill",
+        position=0,
+        verification_status="confirmed",
+        payload={"name": "Python", "level": "advanced"},
+    )
+    confirmed_experience = CareerFact(
+        id="20000000-0000-4000-8000-000000000002",
+        profile_id="30000000-0000-4000-8000-000000000001",
+        fact_type="experience",
+        position=1,
+        verification_status="confirmed",
+        payload={
+            "role": "Platform Engineer",
+            "organization": "Example Systems",
+            "email": "private@example.test",
+            "contactEmail": "camel@example.test",
+            "phone": "+41 79 111 22 33",
+            "portfolioUrl": "https://private.example.test/profile",
+            "nationality": "Swiss",
+            "nationalité": "Suisse",
+            "description": (
+                "Contact private@example.test or +41 79 111 22 33. "
+                "Visit https://private.example.test/profile. "
+            )
+            + ("Reliable delivery. " * 2_000),
+        },
+    )
+    draft = CareerFact(
+        id="20000000-0000-4000-8000-000000000003",
+        profile_id="30000000-0000-4000-8000-000000000001",
+        fact_type="education",
+        position=2,
+        verification_status="draft",
+        payload={"institution": "Draft University", "qualification": "Draft"},
+    )
+    archived = CareerFact(
+        id="20000000-0000-4000-8000-000000000004",
+        profile_id="30000000-0000-4000-8000-000000000001",
+        fact_type="project",
+        position=3,
+        verification_status="confirmed",
+        archived_at=datetime.now(timezone.utc),
+        payload={"name": "Archived project", "description": "Do not include"},
+    )
+    reference = CareerFact(
+        id="20000000-0000-4000-8000-000000000005",
+        profile_id="30000000-0000-4000-8000-000000000001",
+        fact_type="reference",
+        position=4,
+        verification_status="confirmed",
+        payload={"name": "Private Person", "email": "reference@example.test"},
+    )
+    profile = CandidateProfile(
+        id="30000000-0000-4000-8000-000000000001",
+        user_id=7,
+        revision=4,
+        display_name="Private Name",
+        headline="Platform engineer · mira@example.test",
+        summary="Builds dependable systems. Nationality: Swiss",
+        preferences={
+            "target_roles": ["Staff Engineer"],
+            "preferred_work_modes": ["hybrid"],
+            "job_source_consents": {"job_room": True},
+            "contact_email": "prefs@example.test",
+        },
+        facts=[reference, archived, confirmed_experience, draft, confirmed_skill],
+    )
+
+    first = build_career_search_snapshot(profile)
+    second = build_career_search_snapshot(profile)
+    document = json.loads(first.text)
+
+    assert first == second
+    assert first.fact_ids == (confirmed_skill.id, confirmed_experience.id)
+    assert first.profile_revision == 4
+    assert first.sha256 == second.sha256
+    assert len(first.text) <= 32_000
+    assert document["included_fact_count"] == 2
+    assert [item["id"] for item in document["facts"]] == list(first.fact_ids)
+    assert document["preferences"] == {
+        "preferred_work_modes": ["hybrid"],
+        "target_roles": ["Staff Engineer"],
+    }
+    assert "Private Name" not in first.text
+    assert "private@example.test" not in first.text
+    assert "camel@example.test" not in first.text
+    assert "reference@example.test" not in first.text
+    assert "+41 79 111 22 33" not in first.text
+    assert "https://private.example.test/profile" not in first.text
+    assert "Swiss" not in first.text
+    assert "Suisse" not in first.text
+    assert "Draft University" not in first.text
+    assert "Archived project" not in first.text
+
+
+def test_career_search_snapshot_redacts_phone_formats_without_erasing_metrics():
+    description = (
+        "Reach me on 079 123 45 67; international 0041 79 123 45 67; "
+        "office (079) 123-45-67; dotted 079.123.45.67; "
+        "alternate +41 (0)79 / 123 45 67; US (415) 555-2671; "
+        "compact 0791234567. Tenure 2019-2024; "
+        "migration window 2026-07-26 12.30; European date 26.07.2026 12.30; "
+        "annual volume 1 000 000 000 requests; "
+        "ISO 9001 27001; processed 1234567890 records; availability 99.95 / 99.99%."
+    )
+    fact = CareerFact(
+        id="20000000-0000-4000-8000-000000000020",
+        profile_id="30000000-0000-4000-8000-000000000020",
+        fact_type="experience",
+        position=0,
+        verification_status="confirmed",
+        payload={"role": "Platform Engineer", "description": description},
+    )
+    profile = CandidateProfile(
+        id="30000000-0000-4000-8000-000000000020",
+        user_id=20,
+        revision=1,
+        headline="Platform Engineer",
+        summary="Seven years of hands-on delivery.",
+        facts=[fact],
+    )
+
+    snapshot = build_career_search_snapshot(profile)
+    sanitized = json.loads(snapshot.text)["facts"][0]["payload"]["description"]
+
+    for phone in (
+        "079 123 45 67",
+        "0041 79 123 45 67",
+        "(079) 123-45-67",
+        "079.123.45.67",
+        "+41 (0)79 / 123 45 67",
+        "(415) 555-2671",
+        "0791234567",
+    ):
+        assert phone not in sanitized
+    assert sanitized.count("[redacted-contact]") == 7
+    for metric in (
+        "2019-2024",
+        "2026-07-26 12.30",
+        "26.07.2026 12.30",
+        "1 000 000 000 requests",
+        "ISO 9001 27001",
+        "1234567890 records",
+        "99.95 / 99.99%",
+    ):
+        assert metric in sanitized
+
+
+def test_career_search_snapshot_caps_fact_count_and_complete_document_size():
+    profile_id = "30000000-0000-4000-8000-000000000003"
+    facts = [
+        CareerFact(
+            id=f"40000000-0000-4000-8000-{index:012d}",
+            profile_id=profile_id,
+            fact_type="project",
+            position=index,
+            verification_status="confirmed",
+            payload={
+                "name": f"Project {index}",
+                "description": "Evidence " * 300,
+            },
+        )
+        for index in range(200)
+    ]
+    profile = CandidateProfile(
+        id=profile_id,
+        user_id=9,
+        revision=1,
+        display_name="Private Name",
+        headline="Platform engineer",
+        summary="Builds local systems.",
+        preferences={},
+        facts=list(reversed(facts)),
+    )
+
+    snapshot = build_career_search_snapshot(profile)
+    document = json.loads(snapshot.text)
+
+    assert len(snapshot.text) <= 32_000
+    assert document["eligible_fact_count"] == 200
+    assert 0 < document["included_fact_count"] <= 128
+    assert len(document["facts"]) == document["included_fact_count"]
+    assert list(snapshot.fact_ids) == [fact.id for fact in facts[: len(snapshot.fact_ids)]]
+    assert [fact["id"] for fact in document["facts"]] == list(snapshot.fact_ids)
+
+
+def test_career_search_snapshot_requires_usable_confirmed_fact():
+    profile = CandidateProfile(
+        id="30000000-0000-4000-8000-000000000002",
+        user_id=8,
+        revision=1,
+        display_name="Private Name",
+        headline="",
+        summary="",
+        preferences={},
+        facts=[
+            CareerFact(
+                id="20000000-0000-4000-8000-000000000006",
+                profile_id="30000000-0000-4000-8000-000000000002",
+                fact_type="skill",
+                position=0,
+                verification_status="draft",
+                payload={"name": "Python", "level": "advanced"},
+            )
+        ],
+    )
+
+    with pytest.raises(CareerSearchSnapshotError, match="at least one confirmed"):
+        build_career_search_snapshot(profile)

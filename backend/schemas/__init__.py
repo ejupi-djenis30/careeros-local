@@ -29,6 +29,9 @@ from backend.schemas.profile import (
     SearchProfileCreate as SearchProfileCreate,
 )
 from backend.schemas.profile import (
+    SearchProfileOverview as SearchProfileOverview,
+)
+from backend.schemas.profile import (
     SearchProfileUpdate as SearchProfileUpdate,
 )
 from backend.schemas.search import CVUploadResponse as CVUploadResponse

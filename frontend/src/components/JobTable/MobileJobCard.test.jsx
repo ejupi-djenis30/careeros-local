@@ -24,7 +24,6 @@ describe('MobileJobCard', () => {
     };
 
     const mockHandlers = {
-        onToggleApplied: vi.fn(),
         onCopy: vi.fn()
     };
 
@@ -58,16 +57,34 @@ describe('MobileJobCard', () => {
         expect(screen.getByTitle('Top pick')).toBeInTheDocument();
     });
 
-    it('calls onToggleApplied when checkbox clicked', () => {
+    it('offers one route to track an untracked job', () => {
         render(<MobileJobCard job={mockJob} {...mockHandlers} />);
-        const checkbox = screen.getByRole('checkbox');
-        fireEvent.click(checkbox);
-        expect(mockHandlers.onToggleApplied).toHaveBeenCalledWith(mockJob);
+        expect(screen.queryByRole('checkbox')).not.toBeInTheDocument();
+        expect(screen.getByText('Not tracked')).toBeInTheDocument();
+        expect(screen.getByRole('link', { name: 'Track application' })).toHaveAttribute('href', '/applications?jobId=1');
     });
 
-    it('disables the applied switch while an update is pending', () => {
-        render(<MobileJobCard job={mockJob} isAppliedPending={true} {...mockHandlers} />);
-        expect(screen.getByRole('checkbox')).toBeDisabled();
+    it('opens an existing application and shows its stage', () => {
+        const trackedJob = {
+            ...mockJob,
+            application_id: '44444444-4444-4444-8444-444444444444',
+            application_stage: 'interview',
+        };
+        render(<MobileJobCard job={trackedJob} {...mockHandlers} />);
+
+        expect(screen.getByText('Interview')).toBeInTheDocument();
+        expect(screen.getByRole('link', { name: 'Open application' })).toHaveAttribute(
+            'href',
+            '/applications?applicationId=44444444-4444-4444-8444-444444444444',
+        );
+    });
+
+    it('keeps the legacy applied flag explicit without treating it as a pipeline record', () => {
+        render(<MobileJobCard job={{ ...mockJob, applied: true }} {...mockHandlers} />);
+
+        expect(screen.getByText('Applied · legacy')).toBeInTheDocument();
+        expect(screen.getByText(/Create a full application record/)).toBeInTheDocument();
+        expect(screen.getByRole('link', { name: 'Track application' })).toBeInTheDocument();
     });
 
     it('calls onCopy when copy button clicked', () => {
@@ -77,16 +94,16 @@ describe('MobileJobCard', () => {
         expect(mockHandlers.onCopy).toHaveBeenCalledWith(mockJob);
     });
 
-    it('renders Apply link with correct href', () => {
+    it('renders the external application page as a secondary action', () => {
         render(<MobileJobCard job={mockJob} {...mockHandlers} />);
-        const applyLink = screen.getByText('Apply');
+        const applyLink = screen.getByTitle('Open application page');
         expect(applyLink).toHaveAttribute('href', mockJob.application_url);
     });
 
     it('uses external_url if application_url is missing', () => {
         const jobNoApply = { ...mockJob, application_url: null };
         render(<MobileJobCard job={jobNoApply} {...mockHandlers} />);
-        const applyLink = screen.getByText('Apply');
+        const applyLink = screen.getByTitle('Open application page');
         expect(applyLink).toHaveAttribute('href', mockJob.external_url);
     });
 

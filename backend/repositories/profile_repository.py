@@ -2,11 +2,12 @@ import copy
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
 
-from sqlalchemy import and_, or_
+from sqlalchemy import and_, func, or_
 from sqlalchemy.orm import Session
 
 from backend.models import SearchProfile
 from backend.repositories.base import BaseRepository
+from backend.search.receipt import build_search_completion_summary
 
 SEARCH_LOCK_RESERVED = "reserved"
 SEARCH_LOCK_ACTIVE = "active"
@@ -52,6 +53,62 @@ class ProfileRepository(BaseRepository[SearchProfile]):
             .limit(limit)
             .all()
         )
+
+    def get_overview_projection(
+        self,
+        user_id: int,
+        *,
+        offset: int,
+        limit: int,
+    ) -> Dict[str, Any]:
+        """Return an ordered allowlist projection plus whole-vault receipt totals."""
+
+        owned = self.db.query(self.model).filter(self.model.user_id == user_id)
+        total_profiles = int(owned.with_entities(func.count(self.model.id)).scalar() or 0)
+        total_successful_runs = int(
+            owned.with_entities(func.coalesce(func.sum(self.model.search_run_count), 0)).scalar()
+            or 0
+        )
+
+        rows = (
+            owned.with_entities(
+                self.model.id,
+                self.model.name,
+                self.model.role_description,
+                self.model.location_filter,
+                self.model.schedule_enabled,
+                self.model.schedule_interval_hours,
+                self.model.advanced_preferences,
+                self.model.is_history,
+                self.model.created_at,
+            )
+            .order_by(self.model.created_at.desc(), self.model.id.desc())
+            .offset(offset)
+            .limit(limit)
+            .all()
+        )
+
+        latest_success = (
+            owned.filter(
+                self.model.last_search_state == "done",
+                self.model.search_run_count > 0,
+                self.model.last_search_completed_at.is_not(None),
+            )
+            .with_entities(
+                self.model.id,
+                self.model.last_search_started_at,
+                self.model.last_search_completed_at,
+                self.model.last_search_summary,
+            )
+            .order_by(self.model.last_search_completed_at.desc(), self.model.id.desc())
+            .first()
+        )
+        return {
+            "rows": rows,
+            "total_profiles": total_profiles,
+            "total_successful_runs": total_successful_runs,
+            "latest_success": latest_success,
+        }
 
     def get_scheduled_profiles(self, user_id: Optional[int] = None) -> List[SearchProfile]:
         query = self.db.query(self.model).filter(self.model.schedule_enabled.is_(True))
@@ -178,23 +235,47 @@ class ProfileRepository(BaseRepository[SearchProfile]):
         finished_at = _coerce_status_timestamp(payload.get("finished_at"))
 
         try:
-            updated = (
-                self.db.query(self.model)
-                .filter(self.model.id == profile_id)
-                .update(
-                    {
-                        self.model.search_status_state: state,
-                        self.model.search_status_payload: payload,
-                        self.model.search_status_started_at: started_at,
-                        self.model.search_status_updated_at: updated_at,
-                        self.model.search_status_finished_at: finished_at,
-                    },
-                    synchronize_session=False,
-                )
+            profile_query = self.db.query(self.model).filter(self.model.id == profile_id)
+            updated = profile_query.update(
+                {
+                    self.model.search_status_state: state,
+                    self.model.search_status_payload: payload,
+                    self.model.search_status_started_at: started_at,
+                    self.model.search_status_updated_at: updated_at,
+                    self.model.search_status_finished_at: finished_at,
+                },
+                synchronize_session=False,
             )
             if not updated:
                 self.db.rollback()
                 return False
+
+            completion_summary = build_search_completion_summary(payload)
+            if state == "done" and completion_summary is not None:
+                run_started_at = _coerce_status_timestamp(completion_summary["started_at"])
+                completed_at = _coerce_status_timestamp(completion_summary["finished_at"])
+                if run_started_at is not None and completed_at is not None:
+                    (
+                        profile_query.filter(
+                            or_(
+                                self.model.last_search_started_at.is_(None),
+                                self.model.last_search_started_at < run_started_at,
+                            )
+                        ).update(
+                            {
+                                self.model.last_search_started_at: run_started_at,
+                                self.model.last_search_completed_at: completed_at,
+                                self.model.last_search_state: "done",
+                                self.model.search_run_count: func.coalesce(
+                                    self.model.search_run_count, 0
+                                )
+                                + 1,
+                                self.model.last_search_summary: completion_summary,
+                            },
+                            synchronize_session=False,
+                        )
+                    )
+
             self.db.commit()
             self.db.expire_all()
             return True

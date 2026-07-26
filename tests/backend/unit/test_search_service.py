@@ -776,6 +776,58 @@ async def test_processing_consumer_updates_jobs_skipped_realtime(search_service)
 
 
 @pytest.mark.asyncio
+async def test_processing_consumer_counts_stale_catalog_analysis_as_nonfatal_skip(search_service):
+    job = MagicMock()
+    job_queue = asyncio.Queue()
+    await job_queue.put([job])
+    await job_queue.put(None)
+
+    with (
+        patch(
+            "backend.services.search_service.get_status",
+            return_value={
+                "state": "searching",
+                "errors": 0,
+                "jobs_stale_before_save": 0,
+            },
+        ),
+        patch("backend.services.search_service.update_status") as mock_update,
+        patch("backend.services.search_service.add_log") as mock_add_log,
+        patch.object(search_service, "_normalize_persisted_jobs", new=AsyncMock(return_value=0)),
+        patch.object(search_service, "_apply_structured_filters", return_value=[job]),
+        patch.object(
+            search_service,
+            "_run_analysis_batches",
+            new=AsyncMock(return_value=[(job, {})]),
+        ),
+        patch(
+            "backend.services.search_service.llm_service.is_analysis_circuit_open",
+            return_value=False,
+        ),
+    ):
+        search_service._save_single_job = AsyncMock(return_value="stale_catalog")
+        result = await search_service._processing_consumer(
+            1,
+            {"latitude": None, "longitude": None},
+            {},
+            job_queue,
+        )
+
+    assert result == (0, 0, [(job, {})], 0, 1, 0)
+    mock_update.assert_any_call(1, jobs_stale_before_save=1)
+    mock_update.assert_any_call(
+        1,
+        jobs_analyze_total=1,
+        jobs_analyzed=1,
+        jobs_new=0,
+        jobs_skipped=1,
+    )
+    assert any(
+        "newer provider revision" in call.args[1] for call in mock_add_log.call_args_list
+    )
+
+
+@pytest.mark.asyncio
 async def test_processing_consumer_fails_closed_when_analysis_circuit_is_open(search_service):
     job_a = MagicMock()
     job_b = MagicMock()

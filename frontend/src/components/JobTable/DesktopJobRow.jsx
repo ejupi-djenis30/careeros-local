@@ -3,8 +3,9 @@ import { ScoreBadge } from "./Badges";
 import { safeExternalUrl, safeMailto } from "../../lib/safeUrl";
 import { InternalLink } from "../InternalLink";
 import { useI18n } from "../../i18n/useI18n";
+import { getJobApplicationState } from "./applicationState";
 
-export const DesktopJobRow = memo(function DesktopJobRow({ job, isGlobalView, onToggleApplied, isAppliedPending = false, onCopy, onViewAnalysis, onOpenDismissDialog, onReactivate }) {
+export const DesktopJobRow = memo(function DesktopJobRow({ job, isGlobalView, onCopy, onViewAnalysis, onOpenDismissDialog, onReactivate }) {
     const { language, t } = useI18n();
     const locale = language === "it" ? "it-IT" : "en-GB";
     const applyUrl = safeExternalUrl(job.application_url) || safeExternalUrl(job.external_url);
@@ -13,6 +14,7 @@ export const DesktopJobRow = memo(function DesktopJobRow({ job, isGlobalView, on
     const mailtoUrl = safeMailto(job.application_email);
     const fmtDistance = job.distance_km != null ? parseFloat(Number(job.distance_km).toFixed(2)) : null;
     const hasVerifiedAnalysis = job.analysis_verified === true;
+    const applicationState = getJobApplicationState(job, t);
 
     return (
         <tr className="job-row border-bottom border-white-5 hover-elevation hover-all-200">
@@ -78,43 +80,42 @@ export const DesktopJobRow = memo(function DesktopJobRow({ job, isGlobalView, on
             )}
 
             <td className="border-0">
-                <div className="d-flex flex-column gap-1 align-items-start">
-                    <div className="form-check form-switch ms-1 mb-0">
-                        <input
-                            className="form-check-input cursor-pointer"
-                            type="checkbox"
-                            checked={job.applied}
-                            disabled={isAppliedPending}
-                            onChange={() => onToggleApplied(job)}
-                            title={isAppliedPending ? t("jobs.updatingApplied") : t("jobs.toggleApplied")}
-                        />
-                    </div>
-                    {job.applied_elsewhere && !job.applied && (
-                        <span
-                            className="badge d-flex align-items-center gap-1 badge-applied-other"
-                            title={t("jobs.appliedElsewhereTitle")}
-                        >
-                            <i className="bi bi-check2-circle"></i>
-                            {t("jobs.elsewhere")}
-                        </span>
+                <div className="job-application-summary">
+                    <span className={`job-application-state job-application-state--${applicationState.className}`}>
+                        <i className={`bi ${applicationState.tracked ? "bi-record-circle" : applicationState.legacy ? "bi-exclamation-circle" : "bi-circle"}`} aria-hidden="true"></i>
+                        {applicationState.label}
+                    </span>
+                    {applicationState.legacy && (
+                        <small>{t("jobs.applicationStage.legacyHint")}</small>
                     )}
                 </div>
             </td>
             <td className="pe-4 text-end border-0">
-                <div className="d-flex justify-content-end gap-2 text-nowrap align-items-center">
+                <div className="d-flex justify-content-end gap-2 text-nowrap align-items-center flex-wrap">
+                    <InternalLink
+                        to={applicationState.href}
+                        className="btn btn-sm btn-primary job-application-cta"
+                    >
+                        <i className={`bi ${applicationState.icon}`} aria-hidden="true"></i>
+                        <span>{applicationState.action}</span>
+                    </InternalLink>
                     {mailtoUrl && (
                         <a href={mailtoUrl} className="btn btn-sm btn-icon btn-outline-info border-white-10" title={t("jobs.emailTo", { email: job.application_email })}>
                             <i className="bi bi-envelope"></i>
                         </a>
                     )}
                     {applyUrl && (
-                        <a href={applyUrl} target="_blank" rel="noopener noreferrer" className="btn btn-sm btn-primary px-3 rounded-2 shadow-sm">
-                            {t("jobs.apply")}
+                        <a
+                            href={applyUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="btn btn-sm btn-icon btn-secondary"
+                            title={t("jobs.openApplicationSource")}
+                            aria-label={t("jobs.openApplicationSource")}
+                        >
+                            <i className="bi bi-box-arrow-up-right"></i>
                         </a>
                     )}
-                    <InternalLink to={`/applications?jobId=${encodeURIComponent(job.id)}`} className="btn btn-sm btn-secondary btn-icon" title={t("jobs.addApplication")}>
-                        <i className="bi bi-kanban"></i>
-                    </InternalLink>
                     <button onClick={() => onCopy(job)} className="btn btn-sm btn-secondary btn-icon" title={t("jobs.copyDetails")}>
                         <i className="bi bi-clipboard"></i>
                     </button>

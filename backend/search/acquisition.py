@@ -713,11 +713,44 @@ class AcquisitionMixin:
                             add_log(profile_id, f"  ↳ {p_name}: {len(items)} jobs")
 
                     total_found += len(found_jobs)
+                    if not found_jobs:
+                        return
+
+                    # Every provider observation refreshes the shared catalog before the
+                    # per-profile deduplication decision. This keeps scheduled searches
+                    # authoritative about what was actually seen without treating absence
+                    # from a later response as proof that an advert closed.
+                    try:
+                        await self._persist_scraped_job_catalog(profile_id, found_jobs)
+                    except Exception as persist_err:
+                        self._increment_status_errors(profile_id)
+                        logger.error(
+                            "Failed to persist job batch for profile %s: %s",
+                            profile_id,
+                            persist_err,
+                        )
+                        add_log(profile_id, f"Persistence error for streamed batch: {persist_err}")
+                        return
+
+                    persisted_observations = [
+                        job for job in found_jobs if getattr(job, "_catalog_persisted", False)
+                    ]
+                    failed_catalog_count = len(found_jobs) - len(persisted_observations)
+                    if failed_catalog_count:
+                        self._increment_status_errors(profile_id, failed_catalog_count)
+                        add_log(
+                            profile_id,
+                            "Skipped "
+                            f"{failed_catalog_count} job(s) because catalog persistence failed before analysis.",
+                        )
 
                     # ── Incremental dedup: cross-query (T1-T3) + profile history ──
-                    # All check+add operations are synchronous — no await between, so atomically safe.
+                    # A changed observation is deliberately allowed back into the analysis
+                    # pipeline, including when the provider emits a newer revision in the
+                    # same run. The stale revision will fail closed at save time.
                     new_unique: list = []
-                    for job in found_jobs:
+                    refreshed_observation_count = 0
+                    for job in persisted_observations:
                         key = listing_identity_key(job)
                         url = listing_url_token(job)
                         fuzzy = listing_fuzzy_key(job)
@@ -731,9 +764,15 @@ class AcquisitionMixin:
                             run_state=dedup_state,
                             history=profile_history,
                         )
-                        if duplicate_reason:
+                        content_changed = bool(getattr(job, "_catalog_content_changed", False))
+                        refreshes_known_job = (
+                            duplicate_reason in {"history", "runtime"} and content_changed
+                        )
+                        if duplicate_reason and not refreshes_known_job:
                             self._increment_duplicate_count(duplicate_counts, duplicate_reason)
                             continue
+                        if refreshes_known_job:
+                            refreshed_observation_count += 1
 
                         self._record_dedup_markers(
                             key=key,
@@ -755,37 +794,17 @@ class AcquisitionMixin:
                         jobs_unique=total_found - total_duplicates,
                     )
                     self._update_duplicate_breakdown_status(profile_id, duplicate_counts)
+                    if refreshed_observation_count:
+                        add_log(
+                            profile_id,
+                            "Reprocessing "
+                            f"{refreshed_observation_count} changed catalog observation(s).",
+                        )
 
                     if not new_unique:
                         return
 
-                    # ── Persist this query's unique batch to the shared catalog ──
-                    try:
-                        await self._persist_scraped_job_catalog(profile_id, new_unique)
-                    except Exception as persist_err:
-                        self._increment_status_errors(profile_id)
-                        logger.error(
-                            "Failed to persist job batch for profile %s: %s",
-                            profile_id,
-                            persist_err,
-                        )
-                        add_log(profile_id, f"Persistence error for streamed batch: {persist_err}")
-                        return
-
-                    persisted_batch = [
-                        job for job in new_unique if getattr(job, "_catalog_persisted", False)
-                    ]
-                    failed_catalog_count = len(new_unique) - len(persisted_batch)
-                    if failed_catalog_count:
-                        self._increment_status_errors(profile_id, failed_catalog_count)
-                        add_log(
-                            profile_id,
-                            "Skipped "
-                            f"{failed_catalog_count} job(s) because catalog persistence failed before analysis.",
-                        )
-
-                    if not persisted_batch:
-                        return
+                    persisted_batch = new_unique
 
                     # ── Set _applied_elsewhere flag (scraped_job_id is now assigned) ──
                     for job in persisted_batch:

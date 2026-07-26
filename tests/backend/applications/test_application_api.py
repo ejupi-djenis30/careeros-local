@@ -11,7 +11,7 @@ from sqlalchemy import update
 
 from backend.applications.models import Application, ApplicationEvent
 from backend.career.models import CandidateProfile, CareerFact
-from backend.models import Job, ScrapedJob, User
+from backend.models import Job, ScrapedJob, SearchProfile, User
 from backend.resumes.models import ResumeArtifact, ResumeDraft, ResumeVersion
 from backend.resumes.renderers.ats import render_ats_docx, render_ats_pdf
 from backend.resumes.storage import store_resume_artifact
@@ -54,6 +54,30 @@ def _job(db_session, test_user):
     db_session.commit()
     db_session.refresh(job)
     return job
+
+
+def _logical_job_duplicates(db_session, test_user):
+    first = _job(db_session, test_user)
+    profiles = [
+        SearchProfile(user_id=test_user.id, name="Search one", role_description="Engineer"),
+        SearchProfile(user_id=test_user.id, name="Search two", role_description="Engineer"),
+    ]
+    db_session.add_all(profiles)
+    db_session.flush()
+    first.search_profile_id = profiles[0].id
+    duplicate = Job(
+        user_id=test_user.id,
+        search_profile_id=profiles[1].id,
+        scraped_job_id=first.scraped_job_id,
+        affinity_score=75,
+        applied=False,
+        dismissed=False,
+    )
+    db_session.add(duplicate)
+    db_session.commit()
+    db_session.refresh(first)
+    db_session.refresh(duplicate)
+    return first, duplicate
 
 
 def _assert_application_projections(
@@ -246,6 +270,220 @@ def test_application_rejects_unowned_or_duplicate_job(client, auth_headers, db_s
     assert missing.status_code == 422
 
 
+def test_application_rejects_duplicate_logical_job_and_jobs_resolve_one_pipeline(
+    client, auth_headers, db_session, test_user
+):
+    first, duplicate = _logical_job_duplicates(db_session, test_user)
+    created = client.post(
+        "/api/v1/applications",
+        json={"job_id": first.id, "initial_stage": "saved"},
+        headers=auth_headers,
+    )
+    assert created.status_code == 201, created.text
+    application = created.json()
+
+    rejected = client.post(
+        "/api/v1/applications",
+        json={"job_id": duplicate.id, "initial_stage": "saved"},
+        headers=auth_headers,
+    )
+    assert rejected.status_code == 409
+    assert rejected.json()["detail"] == "An application already exists for this opportunity"
+
+    response = client.get("/api/v1/jobs/?page_size=100", headers=auth_headers)
+    assert response.status_code == 200, response.text
+    body = response.json()
+    jobs = {item["id"]: item for item in body["items"]}
+    assert body["total_tracked"] == 1
+    assert body["total_applied"] == 0
+    for job_id in (first.id, duplicate.id):
+        assert jobs[job_id]["application_id"] == application["id"]
+        assert jobs[job_id]["application_stage"] == "saved"
+        assert jobs[job_id]["applied"] is False
+
+    stored_application = db_session.get(Application, application["id"])
+    assert stored_application.scraped_job_id == duplicate.scraped_job_id
+
+    second_page = client.get(
+        "/api/v1/jobs/?page=2&page_size=1", headers=auth_headers
+    ).json()
+    assert second_page["total"] == 2
+    assert second_page["pages"] == 2
+    assert second_page["total_tracked"] == 1
+    assert second_page["items"][0]["application_id"] == application["id"]
+
+    first_id = first.id
+    db_session.delete(first)
+    db_session.commit()
+    db_session.expire_all()
+    assert db_session.get(Application, application["id"]).job_id is None
+
+    after_source_job_delete = client.get(
+        "/api/v1/jobs/?page_size=100", headers=auth_headers
+    )
+    assert after_source_job_delete.status_code == 200, after_source_job_delete.text
+    remaining = after_source_job_delete.json()
+    assert remaining["total_tracked"] == 1
+    assert {item["id"] for item in remaining["items"]} == {duplicate.id}
+    assert remaining["items"][0]["application_id"] == application["id"]
+    assert db_session.get(Job, first_id) is None
+
+
+def test_application_stage_monotonically_syncs_all_legacy_job_markers(
+    client, auth_headers, db_session, test_user
+):
+    first, duplicate = _logical_job_duplicates(db_session, test_user)
+    created = client.post(
+        "/api/v1/applications",
+        json={"job_id": first.id, "initial_stage": "preparing"},
+        headers=auth_headers,
+    )
+    assert created.status_code == 201, created.text
+    application_id = created.json()["id"]
+
+    before = client.get("/api/v1/jobs/?page_size=100", headers=auth_headers).json()
+    assert before["total_tracked"] == 1
+    assert before["total_applied"] == 0
+    assert {item["application_stage"] for item in before["items"]} == {"preparing"}
+    assert all(item["applied"] is False for item in before["items"])
+
+    applied = client.post(
+        f"/api/v1/applications/{application_id}/events",
+        json={"expected_revision": 1, "event_type": "stage", "stage": "applied"},
+        headers=auth_headers,
+    )
+    assert applied.status_code == 201, applied.text
+    withdrawn = client.post(
+        f"/api/v1/applications/{application_id}/events",
+        json={"expected_revision": 2, "event_type": "stage", "stage": "withdrawn"},
+        headers=auth_headers,
+    )
+    assert withdrawn.status_code == 201, withdrawn.text
+    archived = client.post(
+        f"/api/v1/applications/{application_id}/events",
+        json={"expected_revision": 3, "event_type": "stage", "stage": "archived"},
+        headers=auth_headers,
+    )
+    assert archived.status_code == 201, archived.text
+
+    legacy_clear = client.patch(
+        f"/api/v1/jobs/{duplicate.id}",
+        json={"applied": False},
+        headers=auth_headers,
+    )
+    assert legacy_clear.status_code == 200, legacy_clear.text
+    assert legacy_clear.json()["applied"] is True
+    assert legacy_clear.json()["application_id"] == application_id
+    assert legacy_clear.json()["application_stage"] == "archived"
+
+    db_session.expire_all()
+    stored = (
+        db_session.query(Job)
+        .filter(Job.id.in_([first.id, duplicate.id]))
+        .order_by(Job.id.asc())
+        .all()
+    )
+    assert [job.applied for job in stored] == [True, True]
+    after = client.get("/api/v1/jobs/?page_size=100", headers=auth_headers).json()
+    assert after["total_tracked"] == 1
+    assert after["total_applied"] == 2
+    assert {item["application_stage"] for item in after["items"]} == {"archived"}
+
+
+def test_withdrawing_before_applied_does_not_set_legacy_marker(
+    client, auth_headers, db_session, test_user
+):
+    job = _job(db_session, test_user)
+    created = client.post(
+        "/api/v1/applications",
+        json={"job_id": job.id, "initial_stage": "saved"},
+        headers=auth_headers,
+    )
+    application_id = created.json()["id"]
+    withdrawn = client.post(
+        f"/api/v1/applications/{application_id}/events",
+        json={"expected_revision": 1, "event_type": "stage", "stage": "withdrawn"},
+        headers=auth_headers,
+    )
+    assert withdrawn.status_code == 201, withdrawn.text
+
+    response = client.get("/api/v1/jobs/", headers=auth_headers)
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["total_tracked"] == 1
+    assert body["total_applied"] == 0
+    assert body["items"][0]["application_stage"] == "withdrawn"
+    assert body["items"][0]["applied"] is False
+
+
+def test_legacy_job_patch_is_deprecated_and_never_creates_application(
+    client, auth_headers, db_session, test_user
+):
+    job = _job(db_session, test_user)
+    patched = client.patch(
+        f"/api/v1/jobs/{job.id}",
+        json={"applied": True},
+        headers=auth_headers,
+    )
+    assert patched.status_code == 200, patched.text
+    assert patched.json()["applied"] is True
+    assert patched.json()["application_id"] is None
+    assert patched.json()["application_stage"] is None
+    assert db_session.query(Application).count() == 0
+
+    listing = client.get("/api/v1/jobs/", headers=auth_headers).json()
+    assert listing["total_applied"] == 1
+    assert listing["total_tracked"] == 0
+    assert listing["items"][0]["application_id"] is None
+    from backend.api.routes.jobs import router as jobs_router
+
+    legacy_route = next(
+        route
+        for route in jobs_router.routes
+        if getattr(route, "path", None) == "/{job_id}"
+        and "PATCH" in getattr(route, "methods", set())
+    )
+    assert legacy_route.deprecated is True
+
+
+def test_job_library_never_exposes_another_users_application(
+    client, auth_headers, db_session, test_user
+):
+    owned_job = _job(db_session, test_user)
+    created = client.post(
+        "/api/v1/applications",
+        json={"job_id": owned_job.id},
+        headers=auth_headers,
+    )
+    assert created.status_code == 201, created.text
+
+    other = User(username="job-library-other", hashed_password=get_password_hash("Otherpass1"))
+    db_session.add(other)
+    db_session.flush()
+    other_job = Job(
+        user_id=other.id,
+        scraped_job_id=owned_job.scraped_job_id,
+        applied=False,
+        dismissed=False,
+    )
+    db_session.add(other_job)
+    db_session.commit()
+    login = client.post(
+        "/api/v1/auth/login",
+        data={"username": "job-library-other", "password": "Otherpass1"},
+    )
+    other_headers = {"Authorization": f"Bearer {login.json()['access_token']}"}
+
+    response = client.get("/api/v1/jobs/?page_size=100", headers=other_headers)
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["total_tracked"] == 0
+    assert len(body["items"]) == 1
+    assert body["items"][0]["id"] == other_job.id
+    assert body["items"][0]["application_id"] is None
+    assert body["items"][0]["application_stage"] is None
+
+
 def test_application_accepts_a_safe_manual_job_snapshot(client, auth_headers, db_session):
     created = client.post(
         "/api/v1/applications",
@@ -282,6 +520,9 @@ def test_application_accepts_a_safe_manual_job_snapshot(client, auth_headers, db
         location="Bern",
     )
     assert listing["latest_event_at"] == stored.latest_event_at.isoformat().replace("+00:00", "Z")
+    jobs = client.get("/api/v1/jobs/", headers=auth_headers)
+    assert jobs.status_code == 200, jobs.text
+    assert jobs.json()["total_tracked"] == 0
 
 
 @pytest.mark.parametrize("url", ["javascript:alert(1)", "file:///private/cv.txt"])

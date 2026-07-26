@@ -39,6 +39,11 @@ class Application(Base, TimestampMixin):
     __tablename__ = "applications"
     __table_args__ = (
         UniqueConstraint("user_id", "job_id", name="uq_application_user_job"),
+        UniqueConstraint(
+            "user_id",
+            "scraped_job_id",
+            name="uq_application_user_scraped_job",
+        ),
         Index("ix_applications_user_updated_at", "user_id", "updated_at"),
         Index(
             "ix_applications_user_stage_next_action",
@@ -54,6 +59,12 @@ class Application(Base, TimestampMixin):
     )
     job_id: Mapped[int | None] = mapped_column(
         Integer, ForeignKey("jobs.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    scraped_job_id: Mapped[int | None] = mapped_column(
+        Integer,
+        ForeignKey("scraped_jobs.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
     )
     resume_version_id: Mapped[str | None] = mapped_column(
         String(36), ForeignKey("resume_versions.id", ondelete="SET NULL"), nullable=True

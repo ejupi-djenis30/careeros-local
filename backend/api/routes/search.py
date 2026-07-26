@@ -1,11 +1,14 @@
 import asyncio
+import hashlib
 import logging
 from datetime import datetime
+from typing import cast
 
 from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, Request, UploadFile
 from sqlalchemy.orm import Session
 
 from backend.api.deps import get_current_user_id, limiter, require_local_analysis_ready
+from backend.career.service import CareerProfileService, CareerSearchSnapshotError
 from backend.core.config import settings
 from backend.db.base import SessionLocal, get_db
 from backend.repositories.profile_repository import ProfileRepository
@@ -48,9 +51,12 @@ def job_sources(
     available = {"job_room", "swissdevjobs"}
     if AdeccoProvider is not None:
         available.add("adecco")
-    return public_job_source_catalog(
-        load_job_source_consents(db, user_id),
-        available=available,
+    return cast(
+        list[dict[str, object]],
+        public_job_source_catalog(
+            load_job_source_consents(db, user_id),
+            available=available,
+        ),
     )
 
 
@@ -107,12 +113,13 @@ async def start_search(
             ),
         )
 
-    # If it's a manual search from the form (no ID or explicit history flag)
-    # create a new History entry.
-    # Otherwise if it has an ID, use that (re-run).
-    # Sanitize profile_data: convert empty strings to None for numeric fields
-    # Exclude transient flags that don't map to DB columns
-    _TRANSIENT_FIELDS = {"force_regenerate_cv_summary", "force_regenerate_queries"}
+    # A campaign captures its candidate evidence once. Reruns deliberately keep the saved
+    # cv_content and source metadata, even if the Career Vault has changed in the meantime.
+    _TRANSIENT_FIELDS = {
+        "force_regenerate_cv_summary",
+        "force_regenerate_queries",
+        "profile_source",
+    }
     request_data = profile_request.model_dump(exclude_unset=True)
     preference_data = {k: request_data.get(k) for k in _PREFERENCE_FIELDS if k in request_data}
     profile_data = {
@@ -137,27 +144,52 @@ async def start_search(
         profile = profile_repo.get(profile_id)
         if not profile or profile.user_id != user_id:
             raise HTTPException(status_code=403, detail="Unauthorized profile access")
-        # Reserve the task slot BEFORE modifying the profile to avoid leaving
-        # the profile in an inconsistent state (is_stopped=False) if the slot
-        # is already taken by a concurrent run.
         reservation_token = reserve_task(profile.id, return_token=True, user_id=user_id)
         if not reservation_token:
             raise HTTPException(
                 status_code=409, detail="A search is already running for this profile"
             )
-        # Update existing if needed (e.g. if settings changed before re-run)
-        # Profile fields such as role, location, etc., are meant to be immutable.
-        # Just reset the stopped flag so it can run again.
         profile = profile_repo.update(profile, {"is_stopped": False})
     else:
-        # New manual search -> create history entry
+        profile_source = profile_request.profile_source
+        supplied_cv = str(profile_data.get("cv_content") or "")
+        if profile_source is None:
+            profile_source = "uploaded_cv" if supplied_cv.strip() else "career_vault"
+
+        source_metadata: dict[str, object]
+        if profile_source == "career_vault":
+            try:
+                snapshot = CareerProfileService(db).search_snapshot(user_id)
+            except CareerSearchSnapshotError as exc:
+                raise HTTPException(status_code=422, detail=str(exc)) from exc
+            profile_data["cv_content"] = snapshot.text
+            source_metadata = {
+                "profile_source": "career_vault",
+                "career_profile_id": snapshot.profile_id,
+                "career_profile_revision": snapshot.profile_revision,
+                "career_fact_ids": list(snapshot.fact_ids),
+                "source_snapshot_sha256": snapshot.sha256,
+            }
+        else:
+            if not supplied_cv.strip():
+                raise HTTPException(
+                    status_code=422,
+                    detail="Uploaded CV search requires non-empty cv_content.",
+                )
+            source_metadata = {
+                "profile_source": "uploaded_cv",
+                "source_snapshot_sha256": hashlib.sha256(
+                    supplied_cv.encode("utf-8")
+                ).hexdigest(),
+            }
+
         profile_data["user_id"] = user_id
         profile_data["is_history"] = True
-        # Keep advanced user preferences together for forward-compatible filtering
-        profile_data["advanced_preferences"] = {
+        advanced_preferences = {
             key: value for key, value in preference_data.items() if value is not None
-        } or None
-        # If it doesn't have a name, give it a timestamped one
+        }
+        advanced_preferences.update(source_metadata)
+        profile_data["advanced_preferences"] = advanced_preferences
         if not profile_data.get("name") or profile_data["name"] in [
             "",
             "Default Profile",
@@ -175,12 +207,9 @@ async def start_search(
                 status_code=409, detail="A search is already running for this profile"
             )
 
-    # Extract force-regeneration flags from the original request (not stored in DB)
     force_regen_cv = profile_request.force_regenerate_cv_summary
     force_regen_q = profile_request.force_regenerate_queries
 
-    # The FastAPI dependency session `db` is closed as soon as this HTTP route returns,
-    # so the background task needs its own fresh session to avoid DetachedInstanceError.
     async def run_search_background(
         _profile_id: int,
         _force_cv: bool,
@@ -201,10 +230,6 @@ async def start_search(
             release_task(_profile_id, _reservation_token)
             raise
         except Exception:
-            # Safety net: if run_search never called register_task (e.g. get_search_service
-            # raised), the reservation slot is still held. Release it so future searches
-            # for this profile are not permanently blocked.
-            # If register_task was already called, release_task is a no-op.
             release_task(_profile_id, _reservation_token)
             logger.exception("Background search failed unexpectedly for profile %d", _profile_id)
         finally:
@@ -223,7 +248,28 @@ async def start_search(
         release_task(profile.id, reservation_token)
         raise
 
-    return {"message": "Search started", "profile_id": profile.id}
+    stored_source = getattr(profile, "profile_source", None)
+    resolved_source = (
+        stored_source
+        if stored_source in {"career_vault", "uploaded_cv"}
+        else "uploaded_cv"
+    )
+    stored_sha256 = getattr(profile, "source_snapshot_sha256", None)
+    resolved_sha256 = (
+        stored_sha256
+        if isinstance(stored_sha256, str)
+        and len(stored_sha256) == 64
+        and all(character in "0123456789abcdef" for character in stored_sha256)
+        else hashlib.sha256(
+            str(getattr(profile, "cv_content", "") or "").encode("utf-8")
+        ).hexdigest()
+    )
+    return {
+        "message": "Search started",
+        "profile_id": profile.id,
+        "profile_source": resolved_source,
+        "source_snapshot_sha256": resolved_sha256,
+    }
 
 
 @router.post("/stop/{profile_id}", response_model=SearchStopResponse)

@@ -39,8 +39,6 @@ export function JobsPage() {
     setFilters,
     searchProfiles,
     fetchJobs,
-    toggleApplied,
-    isAppliedPending,
     dismissJob,
     reactivateJob,
     clearFilters,
@@ -50,7 +48,7 @@ export function JobsPage() {
   } = useJobs(logout);
 
   const totalJobs = pagination.total;
-  const appliedCount = pagination.total_applied;
+  const trackedCount = pagination.total_tracked ?? pagination.total_applied ?? 0;
   const avgScore = Math.round(pagination.avg_score || 0);
 
 
@@ -70,7 +68,7 @@ export function JobsPage() {
           <StatCard label={t("jobsPage.averageMatch")} value={`${avgScore.toLocaleString(locale)}%`} color="warning" icon="bi-pie-chart-fill" isLoading={isLoading} />
         </div>
         <div className="col-6 col-md-4">
-          <StatCard label={t("jobsPage.applied")} value={Number(appliedCount || 0).toLocaleString(locale)} color="success" icon="bi-send-check-fill" isLoading={isLoading} />
+          <StatCard label={t("jobsPage.tracked")} value={Number(trackedCount || 0).toLocaleString(locale)} color="success" icon="bi-kanban-fill" isLoading={isLoading} />
         </div>
       </div>
 
@@ -90,8 +88,6 @@ export function JobsPage() {
         <JobTable
             jobs={jobs}
             isGlobalView={!filters.search_profile_id}
-            onToggleApplied={toggleApplied}
-            isAppliedPending={isAppliedPending}
             onDismiss={dismissJob}
             onReactivate={filters.include_dismissed ? reactivateJob : undefined}
             pagination={pagination}

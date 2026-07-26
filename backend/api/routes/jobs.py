@@ -76,7 +76,15 @@ def create_job(
     return job_service.create_job(user_id, job_in)
 
 
-@router.patch("/{job_id}", response_model=JobResponse)
+@router.patch(
+    "/{job_id}",
+    response_model=JobResponse,
+    deprecated=True,
+    description=(
+        "Compatibility endpoint for legacy Job interaction flags. Updating `applied` does not "
+        "create an Application; use the Applications API for tracked pipeline state."
+    ),
+)
 def update_job(
     job_id: int,
     updates: JobUpdate,

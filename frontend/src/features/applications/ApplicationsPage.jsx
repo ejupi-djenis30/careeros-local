@@ -8,8 +8,8 @@ import { ApplicationAgenda } from "./ApplicationAgenda";
 import { ApplicationDetailDialog } from "./ApplicationDetailDialog";
 import { BOARD_STAGES, STAGES, getStageLabels } from "./applicationModel";
 
-function ApplicationCard({ application, onClick, locale, opening, expanded }) {
-    return <button type="button" className="application-card" onClick={onClick} disabled={opening} aria-busy={opening || undefined} aria-haspopup="dialog" aria-expanded={expanded}><strong>{application.title}</strong><span>{application.company}</span>{application.location && <small><i className="bi bi-geo-alt" /> {application.location}</small>}{application.next_action && <small className="application-card__next"><i className="bi bi-arrow-return-right" /> {application.next_action.title}</small>}<time dateTime={application.updated_at}>{new Date(application.updated_at).toLocaleDateString(locale)}</time></button>;
+function ApplicationCard({ application, onClick, locale, opening, expanded, buttonRef }) {
+    return <button ref={buttonRef} type="button" className="application-card" onClick={onClick} disabled={opening} aria-busy={opening || undefined} aria-haspopup="dialog" aria-expanded={expanded}><strong>{application.title}</strong><span>{application.company}</span>{application.location && <small><i className="bi bi-geo-alt" /> {application.location}</small>}{application.next_action && <small className="application-card__next"><i className="bi bi-arrow-return-right" /> {application.next_action.title}</small>}<time dateTime={application.updated_at}>{new Date(application.updated_at).toLocaleDateString(locale)}</time></button>;
 }
 
 const emptyForm = (jobId = "") => ({
@@ -20,6 +20,8 @@ const emptyForm = (jobId = "") => ({
 export function ApplicationsPage() {
     const { language, t } = useI18n();
     const [searchParams, setSearchParams] = useSearchParams();
+    const requestedApplicationId = (searchParams.get("applicationId") || "").trim();
+    const requestedJobId = (searchParams.get("jobId") || "").trim();
     const { showToast } = useToast();
     const [applications, setApplications] = useState([]);
     const [selected, setSelected] = useState(null);
@@ -29,15 +31,17 @@ export function ApplicationsPage() {
     const [loading, setLoading] = useState(true);
     const [creating, setCreating] = useState(false);
     const [error, setError] = useState("");
-    const [showCreate, setShowCreate] = useState(searchParams.has("jobId"));
+    const [showCreate, setShowCreate] = useState(Boolean(requestedJobId) && !requestedApplicationId);
     const [openingId, setOpeningId] = useState("");
     const [agendaRevision, setAgendaRevision] = useState(0);
-    const [form, setForm] = useState(emptyForm(searchParams.get("jobId") || ""));
+    const [form, setForm] = useState(emptyForm(requestedJobId));
     const applicationRequestRef = useRef({ controller: null, id: 0 });
     const detailRequestRef = useRef({ controller: null, id: 0 });
     const [detailOpener, setDetailOpener] = useState(null);
     const backgroundRef = useRef(null);
     const addApplicationRef = useRef(null);
+    const applicationCardRefs = useRef(new Map());
+    const deepLinkAttemptRef = useRef("");
     const stageLabels = getStageLabels(t);
     const locale = language === "it" ? "it-IT" : "en-GB";
 
@@ -63,7 +67,7 @@ export function ApplicationsPage() {
                     setLoading(false);
                 }
             });
-    }, []);
+    }, [setApplications, setError, setLoading]);
 
     useEffect(() => {
         void requestApplications();
@@ -100,7 +104,7 @@ export function ApplicationsPage() {
     const grouped = useMemo(() => Object.fromEntries(STAGES.map((stage) => [stage, applications.filter((item) => item.current_stage === stage)])), [applications]);
     const closed = grouped.rejected.length + grouped.withdrawn.length + grouped.archived.length;
 
-    const openApplication = async (id, opener) => {
+    const openApplication = useCallback(async (id, opener) => {
         const requestId = detailRequestRef.current.id + 1;
         detailRequestRef.current.controller?.abort();
         const controller = new AbortController();
@@ -120,6 +124,27 @@ export function ApplicationsPage() {
                 setOpeningId("");
             }
         }
+    }, [setDetailOpener, setError, setOpeningId, setSelected]);
+
+    useEffect(() => {
+        if (!requestedApplicationId) {
+            deepLinkAttemptRef.current = "";
+            return;
+        }
+        if (loading || deepLinkAttemptRef.current === requestedApplicationId) return;
+
+        deepLinkAttemptRef.current = requestedApplicationId;
+        const opener = applicationCardRefs.current.get(requestedApplicationId) ?? addApplicationRef.current;
+        void openApplication(requestedApplicationId, opener);
+    }, [loading, openApplication, requestedApplicationId]);
+
+    const closeApplication = () => {
+        setSelected(null);
+        if (!searchParams.has("applicationId")) return;
+
+        const nextParams = new URLSearchParams(searchParams);
+        nextParams.delete("applicationId");
+        setSearchParams(nextParams, { replace: true });
     };
 
     const create = async (event) => {
@@ -173,7 +198,7 @@ export function ApplicationsPage() {
             {resumeMetadataStatus === "error" && <div className="inline-alert inline-alert--danger" role="alert"><span>{t("applications.resumeMetadataError")}</span> <button type="button" className="button button--secondary" onClick={retryResumeMetadata}>{t("applications.resumeMetadataRetry")}</button></div>}
             {resumeMetadataStatus === "ready" && resumeVersions.length === 0 && <div className="inline-alert" role="status">{t("applications.resumeMetadataEmpty")}</div>}
             <ApplicationAgenda onOpen={openApplication} openingId={openingId} expandedId={selected?.id || ""} refreshKey={agendaRevision} />
-            {showCreate && <form className="surface-section create-application" onSubmit={create}>
+            {showCreate && !requestedApplicationId && <form className="surface-section create-application" onSubmit={create}>
                 <div className="section-heading"><div><span className="section-kicker">{t("applications.newSnapshot")}</span><h2>{t("applications.add")}</h2></div><button type="button" className="icon-button" onClick={() => setShowCreate(false)} aria-label={t("applications.close")}><i className="bi bi-x-lg" /></button></div>
                 <div className="form-grid form-grid--3">
                     <label className="field-stack"><span>{t("applications.jobId")} <small>({t("applications.optional")})</small></span><input className="form-control" type="number" min="1" value={form.job_id} onChange={(e) => setForm({ ...form, job_id: e.target.value })} /></label>
@@ -192,9 +217,9 @@ export function ApplicationsPage() {
                 <label className="field-stack"><span>{t("applications.initialNote")}</span><textarea className="form-control" rows="3" value={form.note} onChange={(e) => setForm({ ...form, note: e.target.value })} /></label>
                 <button className="button button--primary" disabled={creating}>{creating ? t("applications.creating") : t("applications.create")}</button>
             </form>}
-            {applications.length === 0 ? <div className="state-panel"><i className="bi bi-kanban" /><h2>{t("applications.emptyTitle")}</h2><p>{t("applications.emptyCopy")}</p><button className="button button--primary" onClick={() => setShowCreate(true)}>{t("applications.addFirst")}</button></div> : <div className="application-board">{BOARD_STAGES.map((stage) => <section key={stage} className="application-column"><header><span className={`stage-dot stage-dot--${stage}`} /><h2>{stageLabels[stage]}</h2><strong>{grouped[stage].length}</strong></header><div>{grouped[stage].map((application) => <ApplicationCard key={application.id} application={application} locale={locale} opening={openingId === application.id} expanded={selected?.id === application.id} onClick={(event) => openApplication(application.id, event.currentTarget)} />)}{grouped[stage].length === 0 && <p className="application-column__empty">{t("applications.emptyColumn")}</p>}</div></section>)}{closed > 0 && <section className="application-column application-column--closed"><header><span className="stage-dot" /><h2>{t("applications.closed")}</h2><strong>{closed}</strong></header><div>{[...grouped.rejected, ...grouped.withdrawn, ...grouped.archived].map((application) => <ApplicationCard key={application.id} application={application} locale={locale} opening={openingId === application.id} expanded={selected?.id === application.id} onClick={(event) => openApplication(application.id, event.currentTarget)} />)}</div></section>}</div>}
+            {applications.length === 0 ? <div className="state-panel"><i className="bi bi-kanban" /><h2>{t("applications.emptyTitle")}</h2><p>{t("applications.emptyCopy")}</p><button className="button button--primary" onClick={() => setShowCreate(true)}>{t("applications.addFirst")}</button></div> : <div className="application-board">{BOARD_STAGES.map((stage) => <section key={stage} className="application-column"><header><span className={`stage-dot stage-dot--${stage}`} /><h2>{stageLabels[stage]}</h2><strong>{grouped[stage].length}</strong></header><div>{grouped[stage].map((application) => <ApplicationCard key={application.id} application={application} locale={locale} opening={openingId === application.id} expanded={selected?.id === application.id} buttonRef={(node) => { if (node) applicationCardRefs.current.set(application.id, node); else applicationCardRefs.current.delete(application.id); }} onClick={(event) => openApplication(application.id, event.currentTarget)} />)}{grouped[stage].length === 0 && <p className="application-column__empty">{t("applications.emptyColumn")}</p>}</div></section>)}{closed > 0 && <section className="application-column application-column--closed"><header><span className="stage-dot" /><h2>{t("applications.closed")}</h2><strong>{closed}</strong></header><div>{[...grouped.rejected, ...grouped.withdrawn, ...grouped.archived].map((application) => <ApplicationCard key={application.id} application={application} locale={locale} opening={openingId === application.id} expanded={selected?.id === application.id} buttonRef={(node) => { if (node) applicationCardRefs.current.set(application.id, node); else applicationCardRefs.current.delete(application.id); }} onClick={(event) => openApplication(application.id, event.currentTarget)} />)}</div></section>}</div>}
             </div>
-            {selected && <ApplicationDetailDialog application={selected} resumeVersions={resumeVersions} resumeMetadataStatus={resumeMetadataStatus} onRetryResumeMetadata={retryResumeMetadata} onChanged={handleChanged} onClose={() => setSelected(null)} returnFocus={detailOpener} backgroundRef={backgroundRef} />}
+            {selected && <ApplicationDetailDialog application={selected} resumeVersions={resumeVersions} resumeMetadataStatus={resumeMetadataStatus} onRetryResumeMetadata={retryResumeMetadata} onChanged={handleChanged} onClose={closeApplication} returnFocus={detailOpener} backgroundRef={backgroundRef} />}
         </div>
     );
 }

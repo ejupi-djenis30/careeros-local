@@ -14,6 +14,7 @@ from backend.ai.match_evidence import (
 )
 from backend.ai.match_policy import DIMENSION_SCORE_FIELDS, materialize_match_citations
 from backend.ai.models import AIExecution
+from backend.models import Job
 from backend.repositories.job_repository import JobRepository
 from backend.repositories.profile_repository import ProfileRepository
 from backend.schemas import JobCreate, JobUpdate
@@ -178,6 +179,23 @@ class JobService:
         digest = hashlib.sha256("|".join(fingerprint_parts).encode("utf-8")).hexdigest()
         return f"manual-{digest[:24]}"
 
+    def _attach_application_links(
+        self, user_id: int, jobs: list[Job]
+    ) -> Dict[int, tuple[str, str]]:
+        links = self.repo.get_application_links_by_scraped_job_ids(
+            user_id,
+            [int(job.scraped_job_id) for job in jobs],
+        )
+        for job in jobs:
+            link = links.get(int(job.scraped_job_id))
+            job.application_id = link[0] if link else None
+            job.application_stage = link[1] if link else None
+        return links
+
+    def _with_application_link(self, user_id: int, job: Job) -> Job:
+        self._attach_application_links(user_id, [job])
+        return job
+
     def get_jobs_by_user(
         self, user_id: int, page: int, page_size: int, filters: Dict[str, Any]
     ) -> Dict[str, Any]:
@@ -199,6 +217,7 @@ class JobService:
                 filters.get("sort_order", "desc"),
             )
 
+        application_links = self._attach_application_links(user_id, filtered)
         trusted_scores = [
             float(item.affinity_score) for item in filtered if self._analysis_is_verified(item)
         ]
@@ -224,6 +243,7 @@ class JobService:
             "page": page,
             "pages": (total + page_size - 1) // page_size,
             "total_applied": total_applied,
+            "total_tracked": len(application_links),
             "avg_score": avg_score,
         }
 
@@ -292,7 +312,9 @@ class JobService:
             profile_id,
         )
         if existing_job is not None:
-            return self._mark_analysis_receipt(existing_job, user_id)
+            return self._with_application_link(
+                user_id, self._mark_analysis_receipt(existing_job, user_id)
+            )
 
         # Create the user-specific Job record
         job_data = {
@@ -302,7 +324,10 @@ class JobService:
             "search_profile_id": profile_id,
             "source_query": job_dict.get("source_query"),
         }
-        return self._mark_analysis_receipt(self.repo.create(job_data), user_id)
+        return self._with_application_link(
+            user_id,
+            self._mark_analysis_receipt(self.repo.create(job_data), user_id),
+        )
 
     def update_job(self, user_id: int, job_id: int, updates: JobUpdate):
         job = self.repo.get(job_id)
@@ -312,6 +337,13 @@ class JobService:
             raise HTTPException(status_code=403, detail="Not authorized")
 
         update_data = updates.model_dump(exclude_unset=True)
+        if update_data.get("applied") is False:
+            from backend.applications.service import ApplicationService
+
+            if ApplicationService(self.db).logical_opportunity_reached_applied(
+                user_id, int(job.scraped_job_id)
+            ):
+                update_data.pop("applied")
 
         # Auto-timestamp dismissed_at when dismissed flag is toggled
         if update_data.get("dismissed") is True and not job.dismissed:
@@ -327,7 +359,9 @@ class JobService:
 
             compute_and_save_preferences(user_id, self.repo.db)
 
-        return self._mark_analysis_receipt(result, user_id)
+        return self._with_application_link(
+            user_id, self._mark_analysis_receipt(result, user_id)
+        )
 
     def record_view(self, user_id: int, job_id: int):
         """Idempotently record the first time a user views a job's analysis."""
@@ -338,7 +372,9 @@ class JobService:
             raise HTTPException(status_code=403, detail="Not authorized")
         if job.viewed_at is None:
             self.repo.update(job, {"viewed_at": datetime.now(timezone.utc)})
-        return self._mark_analysis_receipt(job, user_id)
+        return self._with_application_link(
+            user_id, self._mark_analysis_receipt(job, user_id)
+        )
 
     def delete_job(self, user_id: int, job_id: int):
         """Soft-delete: mark dismissed instead of hard-deleting rows."""

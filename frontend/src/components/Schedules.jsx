@@ -23,7 +23,7 @@ export function Schedules() {
         const controller = new AbortController();
         requestControllerRef.current = controller;
 
-        return SearchService.getProfiles({ signal: controller.signal })
+        return SearchService.getProfileSummaries({ signal: controller.signal })
             .then((data) => {
                 if (controller.signal.aborted || requestId !== requestIdRef.current) return;
                 setProfiles(Array.isArray(data) ? data : []);

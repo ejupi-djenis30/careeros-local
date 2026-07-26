@@ -172,6 +172,8 @@ async def test_search_start_with_empty_fields_and_default_name():
         role_description = "dev"
         location_filter = "zurich"
         search_strategy = "broad"
+        profile_source = "uploaded_cv"
+        cv_content = "Experienced software engineer"
         force_regenerate_cv_summary = False
         force_regenerate_queries = False
 
@@ -181,6 +183,8 @@ async def test_search_start_with_empty_fields_and_default_name():
                 "role_description": self.role_description,
                 "location_filter": self.location_filter,
                 "search_strategy": self.search_strategy,
+                "profile_source": self.profile_source,
+                "cv_content": self.cv_content,
                 "max_queries": "",
                 "posted_within_days": "",
                 "max_distance": "",
