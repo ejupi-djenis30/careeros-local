@@ -38,8 +38,8 @@ def _emit(value: Any, *, stream: Any | None = None) -> None:
     # This is the CLI's structured response channel, not application logging. All
     # call sites return public or already-redacted data; bearer issuance has a
     # separate one-time output path in _emit_authorized_grant.
-    # codeql[py/clear-text-logging-sensitive-data]
-    destination.write(json.dumps(value, ensure_ascii=False, indent=2, sort_keys=True) + "\n")
+    serialized = json.dumps(value, ensure_ascii=False, indent=2, sort_keys=True)
+    destination.write(serialized + "\n")  # lgtm[py/clear-text-logging-sensitive-data]
     destination.flush()
 
 
