@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 
 from backend.ai.models import AIExecution
 from backend.applications.models import Application
+from backend.automation.models import AutomationGrant
 from backend.career.models import CandidateProfile, CareerAsset
 from backend.desktop.lifecycle import desktop_vault_lock
 from backend.inference.managed_runtime import erase_managed_runtime_installation
@@ -269,6 +270,9 @@ def delete_complete_vault(
                 "ai_executions": db.query(AIExecution)
                 .filter(AIExecution.user_id == validated_user_id)
                 .count(),
+                "automation_grants": db.query(AutomationGrant)
+                .filter(AutomationGrant.user_id == validated_user_id)
+                .count(),
                 "files": 0,
                 "model_files": 0,
                 "model_bytes": 0,
@@ -276,6 +280,9 @@ def delete_complete_vault(
             staged = _stage_files(paths, operation_id)
             counts["files"] = len(staged)
 
+            db.query(AutomationGrant).filter(
+                AutomationGrant.user_id == validated_user_id
+            ).delete(synchronize_session=False)
             db.query(AIExecution).filter(AIExecution.user_id == validated_user_id).delete(
                 synchronize_session=False
             )

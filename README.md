@@ -77,6 +77,12 @@ the assets.
   the model, and reports actions omitted by its seven-day horizon or compact row limit. Counts and
   rows share one SQL-statement snapshot; the renderer supplies the next browser-local midnight so
   today remains correct across daylight-saving transitions.
+- A source-installed `careeros` command gives Codex, Claude Code and shell scripts a narrow
+  read-only view of one explicitly authorized account. Its MCP server uses standard input/output
+  rather than a network listener, exposes only tools allowed by a revocable grant, and never
+  returns resume bodies, source documents, dedicated contact records, prompts, artifact bytes or
+  storage paths. User-authored labels, company names, locations and task titles can still contain
+  sensitive text, so grant only the scopes you are prepared to disclose to the connected agent.
 - Vault erasure sanitizes SQLite even when artifact cleanup needs a retry.
 - Local AI calls use explicit context, strict schemas, bounded repair and content-free audit
   metadata through a managed llama.cpp-compatible runtime.
@@ -94,11 +100,15 @@ flowchart LR
     API --> Vault["SQLite vault + local artifacts"]
     API --> AI["Required local analysis runtime"]
     API -. "explicit source consent" .-> Jobs["Public job providers"]
+    Agent["Codex / Claude Code"] -->|"MCP stdio + scoped grant"| Automation["Read-only automation facade"]
+    Automation --> Vault
 ```
 
 The local model receives only the context selected for a task. Job-source connectors are a
 separate, explicit network boundary used to retrieve public listings; they never become an
-inference fallback. See the [architecture](docs/architecture.md),
+inference fallback. CLI commands and MCP tool calls use the same exclusive lease as the desktop
+sidecar, so two processes never read or write the vault at the same instant. An idle MCP process
+does not reserve the lease. See the [architecture](docs/architecture.md),
 [privacy model](docs/privacy.md) and [security policy](SECURITY.md) for the complete trust model.
 
 ## Technology
@@ -174,6 +184,77 @@ For the native shell:
 npm --prefix frontend run tauri:dev
 ```
 
+## Use CareerOS from Codex or Claude Code
+
+The agent interface is available from a source checkout. It is not currently added to `PATH` by
+the desktop installer. Install the reviewed lock first, then register the local package without
+resolving a second dependency set:
+
+```powershell
+.venv\Scripts\python.exe -m pip install --require-hashes -r requirements-dev.lock
+.venv\Scripts\python.exe -m pip install --no-build-isolation --no-deps --editable .
+.\.venv\Scripts\Activate.ps1
+```
+
+Open the desktop app once to create the vault and account, then close it for authorization. Check
+the local setup and create a 30-day grant with only the reads the agent needs:
+
+```powershell
+careeros doctor
+careeros authorize --username <your-username> --label codex `
+  --scope system:read --scope applications:read
+```
+
+`authorize` asks for the CareerOS password in the terminal. The bearer token appears once; only
+its SHA-256 digest is stored in the vault. Put the token in the operating system's credential
+manager and expose it to the agent process as `CAREEROS_MCP_TOKEN`. Do not paste it into a checked-in
+configuration file:
+
+```powershell
+$env:CAREEROS_MCP_TOKEN = "<shown-once-token>"
+careeros mcp config --client codex
+careeros mcp config --client claude-code
+```
+
+The first command prints a block for the Codex `config.toml`; the second prints a Claude Code
+`.mcp.json` entry. Both start the same local server with the required
+`--acknowledge-agent-disclosure` flag. The flag matters: CareerOS itself makes no network request,
+but a connected agent may send the returned application or resume metadata to its own provider.
+The generated command is `careeros`, so start the client from the activated environment or replace
+that command in the generated entry with the absolute path to this environment's executable.
+
+At least one `--scope` is required. Repeat it only for the reads this agent should receive:
+
+```powershell
+careeros authorize --username <your-username> --label applications `
+  --scope system:read --scope applications:read --days 7
+```
+
+Available MCP tools are `get_status`, `get_local_model_status`, `get_career_summary`,
+`get_resume_catalog`, `list_applications`, `get_application_readiness` and
+`get_application_agenda`. The server registers only the tools permitted by the grant. It cannot
+edit the vault, search the web, run a free-form prompt, read arbitrary files or SQL, export
+documents, restore a backup, or delete data.
+
+The same grant works with JSON CLI commands: `status`, `model-status`, `career-summary`, `resumes`,
+`applications`, `readiness` and `agenda`. Run `careeros <command> --help` for the bounded paging,
+agenda and identifier arguments.
+
+After MCP starts, the desktop app may open while the server is idle. Each tool call reacquires the
+lease and revalidates the token, including its expiry and revocation state. A call made while the
+desktop owns the vault returns `vault_busy`; close the desktop and retry the call.
+
+List or revoke grants by authenticating with the CareerOS password:
+
+```powershell
+careeros grants list --username <your-username>
+careeros grants revoke --username <your-username> <grant-id>
+```
+
+Restoring a vault revokes its active automation grants, and complete vault erasure removes them.
+See the [agent-interface analysis](specs/001-desktop-career-agent/agent-interface-analysis.md),
+[architecture](docs/architecture.md) and [privacy model](docs/privacy.md) for the exact boundary.
+
 ## Reproduce the portfolio media
 
 The media pipeline starts an isolated database and services on free loopback ports, seeds
@@ -225,6 +306,9 @@ collectively to **CareerOS Local contributors**.
 - [Release process](docs/releasing.md)
 - [Devpost submission kit](docs/devpost.md)
 - [Product specification](specs/001-desktop-career-agent/spec.md)
+- [Agent interface analysis](specs/001-desktop-career-agent/agent-interface-analysis.md)
+- [Agent interface convergence](specs/001-desktop-career-agent/agent-interface-convergence.md)
+- [v1.7.0 release preparation](specs/001-desktop-career-agent/release-evidence-v1.7.0.md)
 - [v1.6.0 release preparation](specs/001-desktop-career-agent/release-evidence-v1.6.0.md)
 - [v1.5.0 release preparation](specs/001-desktop-career-agent/release-evidence-v1.5.0.md)
 - [v1.4.0 release preparation](specs/001-desktop-career-agent/release-evidence-v1.4.0.md)

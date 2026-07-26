@@ -14,6 +14,8 @@ from backend.ai.audit import fingerprint_output
 from backend.ai.contracts import CoachResult
 from backend.ai.models import AIExecution
 from backend.applications.models import Application, ApplicationEvent
+from backend.automation.grants import issue_grant
+from backend.automation.models import AutomationGrant
 from backend.career.coach_models import CoachConversation, CoachMessage
 from backend.career.models import CandidateProfile, CareerAsset
 from backend.core.config import settings
@@ -1195,6 +1197,77 @@ def test_export_delete_restore_round_trip(
         "source_generation_metadata": {"local": True},
     }
     assert payload_after == expected_payload
+
+
+def test_successful_restore_revokes_only_the_restored_users_active_automation_grants(
+    client, auth_headers, db_session, test_user, portable_data_dir
+):
+    profile = client.put(
+        "/api/v1/career-profile", json=_profile_payload(), headers=auth_headers
+    )
+    assert profile.status_code == 200, profile.text
+    exported = client.get("/api/v1/portability/export", headers=auth_headers)
+    assert exported.status_code == 200, exported.text
+
+    deleted = client.delete(
+        "/api/v1/career-profile",
+        headers={**auth_headers, "X-Confirm-Delete": "DELETE-MY-CAREER-VAULT"},
+    )
+    assert deleted.status_code == 204, deleted.text
+
+    other_user = User(username="restore-neighbor", hashed_password="not-used")
+    db_session.add(other_user)
+    db_session.commit()
+    db_session.refresh(other_user)
+    restored_user_first, _ = issue_grant(
+        db_session,
+        user_id=test_user.id,
+        label="codex-after-backup",
+        scopes=["system:read"],
+    )
+    restored_user_second, _ = issue_grant(
+        db_session,
+        user_id=test_user.id,
+        label="claude-after-backup",
+        scopes=["career:read"],
+    )
+    other_user_grant, _ = issue_grant(
+        db_session,
+        user_id=other_user.id,
+        label="other-users-agent",
+        scopes=["system:read"],
+    )
+
+    restored = client.post(
+        "/api/v1/portability/restore",
+        files={"file": ("backup.zip", exported.content, "application/zip")},
+        headers=auth_headers,
+    )
+
+    assert restored.status_code == 200, restored.text
+    db_session.expire_all()
+    restored_user_grants = (
+        db_session.query(AutomationGrant)
+        .filter(
+            AutomationGrant.id.in_([restored_user_first.id, restored_user_second.id])
+        )
+        .all()
+    )
+    assert len(restored_user_grants) == 2
+    assert all(grant.revoked_at is not None for grant in restored_user_grants)
+    assert (
+        db_session.query(AutomationGrant)
+        .filter(
+            AutomationGrant.user_id == test_user.id,
+            AutomationGrant.revoked_at.is_(None),
+        )
+        .count()
+        == 0
+    )
+    preserved = db_session.get(AutomationGrant, other_user_grant.id)
+    assert preserved is not None
+    assert preserved.user_id == other_user.id
+    assert preserved.revoked_at is None
 
 
 def test_v4_restore_preserves_but_hides_self_checksummed_forged_coach_advice(

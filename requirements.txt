@@ -31,3 +31,6 @@ python-docx==1.2.0
 
 python-dotenv==1.2.2
 slowapi==0.1.10
+
+# Official Model Context Protocol SDK for the local, stdio-only agent interface.
+mcp==1.28.1

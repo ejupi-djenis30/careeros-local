@@ -9,6 +9,11 @@ pytest-cov==7.1.0
 pytest-mock==3.15.1
 httpx2==2.7.0
 
+# Pinned editable-install backend. Use pip --no-build-isolation so this reviewed
+# version is used without fetching an implicit build environment.
+setuptools==83.0.0
+wheel==0.47.0
+
 ruff==0.15.22
 mypy==2.3.0
 types-reportlab==4.5.1.20260712

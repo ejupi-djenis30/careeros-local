@@ -279,7 +279,7 @@ def parent_process_is_alive(process_id: int) -> bool:
         if not handle:
             return False
         try:
-            return kernel32.WaitForSingleObject(handle, 0) == wait_timeout
+            return bool(kernel32.WaitForSingleObject(handle, 0) == wait_timeout)
         finally:
             kernel32.CloseHandle(handle)
     try:

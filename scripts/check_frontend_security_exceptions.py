@@ -88,7 +88,9 @@ def _object(value: Any, message: str) -> dict[str, Any]:
 
 def _load_json(path: Path) -> dict[str, Any]:
     try:
-        return _object(json.loads(path.read_text(encoding="utf-8")), f"{path} must contain a JSON object")
+        return _object(
+            json.loads(path.read_text(encoding="utf-8")), f"{path} must contain a JSON object"
+        )
     except (OSError, json.JSONDecodeError) as error:
         raise RuntimeError(f"Cannot read JSON from {path}: {error}") from error
 
@@ -124,8 +126,7 @@ def collect_advisories(audit: dict[str, Any]) -> dict[str, dict[str, str]]:
         severity: sum(
             1
             for details in vulnerabilities.values()
-            if isinstance(details, dict)
-            and str(details.get("severity", "")).lower() == severity
+            if isinstance(details, dict) and str(details.get("severity", "")).lower() == severity
         )
         for severity in SEVERITIES
     }
@@ -139,7 +140,9 @@ def collect_advisories(audit: dict[str, Any]) -> dict[str, dict[str, str]]:
     def resolve(package: str, seen: frozenset[str]) -> dict[str, dict[str, str]]:
         if package in seen:
             raise RuntimeError(f"npm audit contains a vulnerability cycle at {package}")
-        details = _object(vulnerabilities.get(package), f"npm audit references unknown package {package}")
+        details = _object(
+            vulnerabilities.get(package), f"npm audit references unknown package {package}"
+        )
         resolved: dict[str, dict[str, str]] = {}
         via_items = details.get("via")
         if not isinstance(via_items, list):
@@ -153,18 +156,11 @@ def collect_advisories(audit: dict[str, Any]) -> dict[str, dict[str, str]]:
             if severity not in SEVERITIES:
                 continue
             advisory = _advisory_id(via_object)
-            if (
-                via_object.get("name") != package
-                or via_object.get("dependency") != package
-            ):
-                raise RuntimeError(
-                    f"npm advisory {advisory} does not match dependency {package}"
-                )
+            if via_object.get("name") != package or via_object.get("dependency") != package:
+                raise RuntimeError(f"npm advisory {advisory} does not match dependency {package}")
             nodes = details.get("nodes")
             if not isinstance(nodes, list) or f"node_modules/{package}" not in nodes:
-                raise RuntimeError(
-                    f"npm advisory {advisory} does not identify its installed node"
-                )
+                raise RuntimeError(f"npm advisory {advisory} does not identify its installed node")
             record = {"dependency": package, "severity": severity}
             previous = resolved.get(advisory)
             if previous is not None and previous != record:
@@ -178,13 +174,17 @@ def collect_advisories(audit: dict[str, Any]) -> dict[str, dict[str, str]]:
         if str(details.get("severity", "")).lower() not in SEVERITIES:
             continue
         nodes = details.get("nodes")
-        if not isinstance(nodes, list) or not nodes or not all(
-            isinstance(node, str) for node in nodes
+        if (
+            not isinstance(nodes, list)
+            or not nodes
+            or not all(isinstance(node, str) for node in nodes)
         ):
             raise RuntimeError(f"npm audit vulnerability {package} has invalid nodes")
         resolved = resolve(package, frozenset())
         if not resolved:
-            raise RuntimeError(f"High-severity npm vulnerability {package} has no resolvable advisory")
+            raise RuntimeError(
+                f"High-severity npm vulnerability {package} has no resolvable advisory"
+            )
         for advisory, record in resolved.items():
             previous = records.get(advisory)
             if previous is not None and previous != record:
@@ -206,8 +206,12 @@ def _verify_guard(root: Path, exception: dict[str, Any]) -> None:
         raise RuntimeError(f"{exception['id']} declares an unknown guard: {guard}")
 
     package = _load_json(root / "frontend/package.json")
-    dependency_names = set(_object(package.get("dependencies"), "frontend dependencies must be an object"))
-    dependency_names.update(_object(package.get("devDependencies"), "frontend devDependencies must be an object"))
+    dependency_names = set(
+        _object(package.get("dependencies"), "frontend dependencies must be an object")
+    )
+    dependency_names.update(
+        _object(package.get("devDependencies"), "frontend devDependencies must be an object")
+    )
     forbidden_dependencies = sorted(
         name
         for name in dependency_names
@@ -283,9 +287,7 @@ def patched_version_available(package: str, version: str) -> bool:
             f"npm registry verification failed for {package}@{version}: {error.reason}"
         ) from error
     if metadata.get("name") != package or metadata.get("version") != version:
-        raise RuntimeError(
-            f"npm registry returned mismatched metadata for {package}@{version}"
-        )
+        raise RuntimeError(f"npm registry returned mismatched metadata for {package}@{version}")
     dist = _object(
         metadata.get("dist"),
         f"npm registry metadata has no distribution for {package}@{version}",
@@ -314,20 +316,16 @@ def patched_version_available(package: str, version: str) -> bool:
     try:
         with closing(urllib.request.urlopen(tarball_request, timeout=15)) as response:
             if response.status not in {200, 206} or not response.read(1):
-                raise RuntimeError(
-                    f"npm registry tarball is not readable for {package}@{version}"
-                )
+                raise RuntimeError(f"npm registry tarball is not readable for {package}@{version}")
     except urllib.error.HTTPError as error:
         if error.code == 404:
             return False
         raise RuntimeError(
-            f"npm registry tarball verification failed for {package}@{version}: "
-            f"HTTP {error.code}"
+            f"npm registry tarball verification failed for {package}@{version}: HTTP {error.code}"
         ) from error
     except urllib.error.URLError as error:
         raise RuntimeError(
-            f"npm registry tarball verification failed for {package}@{version}: "
-            f"{error.reason}"
+            f"npm registry tarball verification failed for {package}@{version}: {error.reason}"
         ) from error
     return True
 
@@ -358,7 +356,9 @@ def validate_policy(
         if set(exception) != REQUIRED_FIELDS:
             missing = sorted(REQUIRED_FIELDS.difference(exception))
             extra = sorted(set(exception).difference(REQUIRED_FIELDS))
-            raise RuntimeError(f"Frontend security exception {index} has missing={missing} extra={extra}")
+            raise RuntimeError(
+                f"Frontend security exception {index} has missing={missing} extra={extra}"
+            )
         identifier = str(exception["id"])
         advisory = str(exception["advisory"])
         if identifier in identifiers:
@@ -372,7 +372,9 @@ def validate_policy(
     if set(advisories) != set(exceptions):
         unknown = sorted(set(advisories).difference(exceptions))
         stale = sorted(set(exceptions).difference(advisories))
-        raise RuntimeError(f"Frontend audit exception coverage differs: unknown={unknown} stale={stale}")
+        raise RuntimeError(
+            f"Frontend audit exception coverage differs: unknown={unknown} stale={stale}"
+        )
 
     accepted: list[str] = []
     for advisory in sorted(advisories):
@@ -417,7 +419,9 @@ def validate_policy(
 def _run() -> None:
     args = parse_args()
     if args.npm_audit_exit_code not in {0, 1}:
-        raise RuntimeError(f"npm audit failed operationally with exit code {args.npm_audit_exit_code}")
+        raise RuntimeError(
+            f"npm audit failed operationally with exit code {args.npm_audit_exit_code}"
+        )
     audit = _load_json(args.audit)
     accepted = validate_policy(
         audit,

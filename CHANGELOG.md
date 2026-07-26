@@ -5,6 +5,35 @@ All notable changes to CareerOS Local are documented here. The format follows
 
 ## [Unreleased]
 
+## [1.7.0] - 2026-07-26
+
+### Added
+
+- Added a source-installed `careeros` CLI and a standard MCP stdio server for Codex, Claude Code
+  and other local clients.
+- Added seven bounded, typed read tools for product status, local-model readiness, Career Vault
+  completeness, resume metadata, applications, readiness checks and the application agenda.
+- Added password-authorized, account-bound grants with explicit scopes, expiry, one-time bearer
+  display, digest-only storage, listing and revocation.
+
+### Changed
+
+- MCP now releases the desktop lease while idle, then reacquires it and revalidates the grant for
+  every tool call. Revocation and expiry therefore take effect without restarting the server.
+- Agent commands use a pinned, hash-locked source-install path with CI smoke coverage for both
+  console entry points.
+- Authorization now requires at least one explicitly selected read scope instead of granting a
+  broad default.
+
+### Fixed
+
+- Configured the requested application-data directory before importing immutable settings or
+  database state, including when inherited environment variables point elsewhere.
+- Revoked active automation grants after a vault restore and removed them during complete vault
+  erasure while preserving grants that belong to other local accounts.
+- Redacted unexpected standalone MCP startup failures so bearer values, SQL diagnostics and local
+  paths cannot escape through a traceback.
+
 ## [1.6.0] - 2026-07-24
 
 ### Added
@@ -272,7 +301,8 @@ All notable changes to CareerOS Local are documented here. The format follows
   autosave/revision loop.
 - Removed the rate-limit error and incomplete pipeline from public screenshots.
 
-[Unreleased]: https://github.com/ejupi-djenis30/careeros-local/compare/v1.6.0...HEAD
+[Unreleased]: https://github.com/ejupi-djenis30/careeros-local/compare/v1.7.0...HEAD
+[1.7.0]: https://github.com/ejupi-djenis30/careeros-local/compare/v1.6.0...v1.7.0
 [1.6.0]: https://github.com/ejupi-djenis30/careeros-local/compare/v1.5.0...v1.6.0
 [1.5.0]: https://github.com/ejupi-djenis30/careeros-local/compare/v1.4.0...v1.5.0
 [1.4.0]: https://github.com/ejupi-djenis30/careeros-local/compare/v1.3.0...v1.4.0

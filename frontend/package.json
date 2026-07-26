@@ -1,7 +1,7 @@
 {
   "name": "careeros-local-desktop",
   "private": true,
-  "version": "1.6.0",
+  "version": "1.7.0",
   "description": "Open-source, local-first career utility for verified resumes, deterministic job search, and applications",
   "author": "Ejupi Labs",
   "contributors": [
@@ -71,6 +71,7 @@
     "vitest": "^4.0.18"
   },
   "overrides": {
+    "minimatch": "10.2.5",
     "postcss": "8.5.18"
   }
 }

@@ -11,6 +11,8 @@ flowchart LR
   DOMAIN --> DOSSIER["Append-only tasks + verifiable dossiers"]
   DOMAIN --> DB["SQLite Career Vault"]
   DOMAIN --> FILES["Atomic local assets"]
+  CLIENT["Codex / Claude Code / shell"] -->|"stdio + bearer grant"| AUTOMATION["Read-only automation facade"]
+  AUTOMATION --> DOMAIN
   API --> SEARCH["Search pipeline"]
   SEARCH --> AI["Strict local-AI orchestrator"]
   AI --> RETRIEVAL["Local evidence retrieval"]
@@ -19,6 +21,55 @@ flowchart LR
   SHELL --> API
   SHELL --> RUNTIME
 ```
+
+## Automation boundary
+
+`backend/automation` provides one least-privilege facade for both the `careeros` CLI and the MCP
+server. It does not call the loopback HTTP API or reuse the desktop session token. Instead, the
+process configures the existing vault from the operating-system application-data directory,
+verifies the Alembic head, acquires `desktop_instance_lease`, authenticates a bearer grant and
+opens a fresh SQLAlchemy session for each read.
+
+Only `authorize` may migrate an older vault, and it does so while the desktop app is closed.
+Ordinary CLI reads and MCP startup fail with `migration_required` rather than changing the schema.
+A CLI command holds the lease for its operation. MCP acquires it for bootstrap, releases it while
+idle, then reacquires it for each tool call. This keeps the established single-writer rule without
+forcing the desktop to remain closed for the life of an agent session.
+
+An automation grant belongs to exactly one CareerOS user. It stores a label, allowed scopes,
+expiry and revocation time alongside a SHA-256 digest of a randomly generated bearer token. The
+raw token is returned once at authorization and is never persisted. Authentication rejects
+missing, malformed, unknown, expired or revoked tokens before constructing the facade. A restore
+revokes existing grants; complete vault deletion removes them.
+
+The four scopes map to a fixed tool set:
+
+| Scope | MCP tools | Returned data |
+| --- | --- | --- |
+| `system:read` | `get_status`, `get_local_model_status` | Version, schema, enabled scopes/tools and content-free local-model readiness |
+| `career:read` | `get_career_summary` | Profile presence, revision, completeness, issue count and fact-family counts |
+| `resume:read` | `get_resume_catalog` | Bounded draft and published-version metadata |
+| `applications:read` | `list_applications`, `get_application_readiness`, `get_application_agenda` | Bounded application projections, deterministic preflight checks and follow-ups |
+
+The MCP process uses only standard input/output. It registers tools allowed by the authenticated
+scope set and marks them read-only, non-destructive, idempotent and closed-world. Those annotations
+help clients present the tools correctly; scope checks in the facade are the enforcement boundary.
+There is no socket listener and no mutation, document export, backup/restore, erasure, arbitrary
+file, SQL, free-form prompt or network-search tool.
+
+Tool DTOs deliberately omit resume and source-document bodies, dedicated contact records, prompts,
+artifact bytes, access tokens and local storage paths. User-authored labels, company names,
+locations and task titles remain visible within their authorized scope and may contain sensitive
+text. Lists and time windows have fixed upper bounds. The
+unauthenticated `doctor` setup command is separate from the tool facade and intentionally reports
+the resolved data directory so a local operator can diagnose configuration.
+
+MCP startup requires `--acknowledge-agent-disclosure` because the connected client controls what
+happens after a result leaves the process over stdio. CareerOS opens no provider connection, but
+Codex, Claude Code or another client may include returned private metadata in a remote request.
+Before every tool read, MCP obtains the vault lease and authenticates the bearer token again. An
+expired or revoked grant fails on the next call; a grant whose identity or scopes changed requires
+a new MCP session. If the desktop owns the lease, the tool returns `vault_busy`.
 
 ## Native boundary
 
