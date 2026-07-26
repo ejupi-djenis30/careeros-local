@@ -4,6 +4,7 @@ from typing import Any, Dict, List, Literal, Optional
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from backend.ai.attestation import is_persisted_match_payload_valid
+from backend.applications.schemas import ApplicationStage
 from backend.jobs.urls import normalize_job_url
 
 # ═══════════════════════════════════════
@@ -161,10 +162,26 @@ class JobResponse(JobBase):
     affinity_analysis: Optional[str] = None
     worth_applying: Optional[bool] = False
     distance_km: Optional[float] = None
-    applied: bool
+    applied: bool = Field(
+        description=(
+            "Legacy compatibility marker. Application pipeline state is authoritative for new flows."
+        )
+    )
     applied_elsewhere: bool = Field(
         default=False,
-        description="Derived response field. True when the same scraped job is marked applied in another profile for the same user.",
+        description=(
+            "Legacy compatibility marker. True when another duplicate Job row is marked applied; "
+            "use application_id and application_stage for pipeline state."
+        ),
+    )
+    application_id: str | None = Field(
+        default=None,
+        max_length=36,
+        description="Owned application linked to this logical opportunity, if one exists.",
+    )
+    application_stage: ApplicationStage | None = Field(
+        default=None,
+        description="Current stage of the owned application linked to this logical opportunity.",
     )
     viewed_at: Optional[datetime] = None
     dismissed: bool = False
@@ -191,6 +208,10 @@ class JobResponse(JobBase):
     analysis_verified: bool = False
     created_at: datetime
     updated_at: Optional[datetime] = None
+    first_seen_at: datetime
+    last_seen_at: datetime
+    last_changed_at: datetime
+    content_revision: int = Field(ge=1)
     raw_metadata: Optional[Dict[str, Any]] = None
     normalized_job: Optional[NormalizedJobData] = None
 
@@ -240,5 +261,12 @@ class JobPaginationResponse(BaseModel):
     total: int
     page: int
     pages: int
-    total_applied: int
+    total_applied: int = Field(
+        ge=0,
+        description="Legacy count of Job rows whose applied marker is true.",
+    )
+    total_tracked: int = Field(
+        ge=0,
+        description="Count of distinct logical opportunities linked to an owned application.",
+    )
     avg_score: float

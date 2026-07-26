@@ -30,7 +30,6 @@ describe('DesktopJobRow', () => {
     const defaultProps = {
         job: mockJob,
         isGlobalView: false,
-        onToggleApplied: vi.fn(),
         onCopy: vi.fn()
     };
 
@@ -105,7 +104,7 @@ describe('DesktopJobRow', () => {
         expect(onViewAnalysis).toHaveBeenCalledWith(mockJob);
     });
 
-    it('calls onToggleApplied when applied switch is clicked', () => {
+    it('offers one route to track an untracked job', () => {
         render(
             <table>
                 <tbody>
@@ -113,21 +112,44 @@ describe('DesktopJobRow', () => {
                 </tbody>
             </table>
         );
-        const switchInput = screen.getByRole('checkbox');
-        fireEvent.click(switchInput);
-        expect(defaultProps.onToggleApplied).toHaveBeenCalledWith(mockJob);
+        expect(screen.queryByRole('checkbox')).not.toBeInTheDocument();
+        expect(screen.getByText('Not tracked')).toBeInTheDocument();
+        expect(screen.getByRole('link', { name: 'Track application' })).toHaveAttribute('href', '/applications?jobId=1');
     });
 
-    it('disables the applied switch while an update is pending', () => {
+    it('opens the complete application record when the job is tracked', () => {
+        const trackedJob = {
+            ...mockJob,
+            application_id: '44444444-4444-4444-8444-444444444444',
+            application_stage: 'preparing',
+        };
         render(
             <table>
                 <tbody>
-                    <DesktopJobRow {...defaultProps} isAppliedPending={true} />
+                    <DesktopJobRow {...defaultProps} job={trackedJob} />
                 </tbody>
             </table>
         );
 
-        expect(screen.getByRole('checkbox')).toBeDisabled();
+        expect(screen.getByText('Preparing')).toBeInTheDocument();
+        expect(screen.getByRole('link', { name: 'Open application' })).toHaveAttribute(
+            'href',
+            '/applications?applicationId=44444444-4444-4444-8444-444444444444',
+        );
+    });
+
+    it('labels the old applied flag as legacy and still offers a full record', () => {
+        render(
+            <table>
+                <tbody>
+                    <DesktopJobRow {...defaultProps} job={{ ...mockJob, applied: true }} />
+                </tbody>
+            </table>
+        );
+
+        expect(screen.getByText('Applied · legacy')).toBeInTheDocument();
+        expect(screen.getByText(/Old job flag/)).toBeInTheDocument();
+        expect(screen.getByRole('link', { name: 'Track application' })).toHaveAttribute('href', '/applications?jobId=1');
     });
 
     it('renders top pick badge and workload when present', () => {

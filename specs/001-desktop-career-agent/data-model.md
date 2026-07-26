@@ -18,6 +18,76 @@ Aggregate over users, candidate profile, career facts, evidence sources, assets,
 applications, workflows, coach conversations, resume drafts, immutable versions and exports.
 Backup manifests include schema version, record counts and content hashes.
 
+### Provider Listing Observation
+
+The shared `ScrapedJob` catalog keeps provider content separate from private per-user decisions.
+Alongside the normalized listing fields it stores:
+
+| Field | Type | Rules |
+|------|------|-------|
+| `first_seen_at` | UTC timestamp | Set on first successful observation; never moves forward |
+| `last_seen_at` | UTC timestamp | Updated on every successful observation |
+| `last_changed_at` | UTC timestamp | Updated only when canonical listing content changes |
+| `content_revision` | integer | Starts at 1 and increments once per accepted content change |
+
+Canonical content consists of title, company, location, workload and description. Provider
+observations upsert this catalog row before private profile deduplication. A content change makes a
+previously seen opportunity eligible for normalization and local-model analysis again; existing
+analysis is trusted only when its stored input fingerprint still matches the current catalog
+content. Each queued observation carries the persisted catalog id, revision and fingerprint.
+User-scoped `Job` persistence rechecks that tuple immediately before mutation and skips stale or
+missing observations without a second catalog upsert. Local-model normalization captures the same
+tuple before inference, then reloads and locks the row before applying success or failure fields;
+output for an older tuple is discarded. Refreshing a catalog row never mutates `Job` decisions,
+`Application` workflow state or the immutable listing snapshot stored with an application.
+
+Absence is not an observation: a missing page result, provider error, truncated response or
+different query cannot close a listing. Existing rows migrate to revision 1 with all observation
+timestamps copied from `created_at`, deliberately making no statement about earlier history.
+
+### Search Completion Receipt
+
+`SearchProfile` retains a minimal receipt independently of the 24-hour polling payload:
+
+| Field | Type | Rules |
+|------|------|-------|
+| `last_search_started_at` | UTC timestamp nullable | Stable idempotency key for the last success |
+| `last_search_completed_at` | UTC timestamp nullable | Written only with a real `done` transition |
+| `last_search_state` | short string nullable | `done` only |
+| `search_run_count` | integer | Starts at 0; increases once per distinct successful run |
+| `last_search_summary` | JSON nullable | Fixed versioned schema, maximum 4096 serialized bytes |
+
+The summary contains only canonical UTC times, bounded duration, bounded aggregate counters and the
+aggregate provider state `not_contacted`, `succeeded`, `partial` or `failed`. Its builder uses a
+positive whitelist and never reads CVs, queries, listing descriptions, logs, errors or raw provider
+data. Runtime status and a new receipt commit together. Error, stop and cancellation updates touch
+only runtime status, and pruning runtime columns leaves the receipt unchanged.
+
+### Search Profile Overview Projection
+
+List and workspace-status surfaces read a separate authenticated projection instead of serializing
+`SearchProfile`. Items are ordered by `created_at DESC, id DESC`, use bounded page parameters and
+contain only id, display/search labels, schedule controls, selected filter preferences, history
+state and creation time. They never contain CV text, cached prompts or queries, profile snapshots,
+normalization payloads, raw advanced preferences or runtime locks.
+
+The response also contains an aggregate computed across every profile owned by the authenticated
+user, not merely the current page: profile count, successful-run count and the latest successful
+receipt's profile id, start/completion times, jobs-found count and bounded summary. Consumers that
+need full historical profile details continue to use the compatibility history endpoint.
+
+### Application Logical Opportunity
+
+`Application.scraped_job_id` is a nullable foreign key to the shared provider listing with
+`ON DELETE SET NULL`. A unique constraint on `(user_id, scraped_job_id)` permits one authoritative
+pipeline per user and listing, even when several private `Job` rows represent that listing across
+search profiles. Manual Applications keep this field `NULL`, so users can still track multiple
+opportunities entered by hand.
+
+The migration preserves conflicting legacy timelines. For each user and listing, it assigns the
+logical identity only to the most recently updated Application, using the lowest Application id as
+the deterministic tie-breaker, and leaves other historical timelines with `NULL`.
+
 ### Candidate Profile
 
 One per local user. Core fields include display identity, headline, summary, contact visibility,
@@ -177,3 +247,17 @@ content-free tables. Desktop startup performs a pre-upgrade SQLite backup when t
 differs from the packaged head, applies migrations once under the vault lock, and restores the
 backup if migration or readiness validation fails.
 
+A later revision adds the four provider-observation fields to `scraped_jobs`, backfills every
+existing row from `created_at` at revision 1, and indexes `last_seen_at`. The backfill is deliberately
+conservative: it preserves every listing while making no claim about observations or revisions that
+CareerOS could not have recorded before the migration.
+
+The following revision adds the five durable receipt fields to `search_profiles` and indexes the
+completion time. A profile is backfilled at count 1 only when its still-present polling state is
+`done` and carries coherent start/completion timestamps. Failed, cancelled, expired or ambiguous
+history remains null at count 0.
+
+The application-link revision adds the nullable logical-opportunity foreign key and its user-scoped
+unique constraint. The next revision restores the database-managed `jobs.updated_at` default that
+the earlier SQLite table rebuild had dropped. Its round-trip rebuild preserves data, indexes,
+foreign keys and uniqueness while allowing database-level inserts to omit the timestamp again.

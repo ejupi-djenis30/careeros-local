@@ -1,4 +1,10 @@
+import json
+from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock, patch
+
+from backend.models import SearchProfile, User
+from backend.repositories.profile_repository import ProfileRepository
+from backend.services.auth import get_password_hash
 
 
 class TestAdvancedProfilesAPI:
@@ -130,3 +136,210 @@ def test_profiles_crud_flow(client, auth_headers: dict):
     )
     assert response.status_code == 200
     assert response.json()["schedule_enabled"] is True
+
+
+def test_profile_receipt_is_read_only_and_user_scoped(client, auth_headers, db_session, test_user):
+    owner_profile = SearchProfile(user_id=test_user.id, name="Owner receipt")
+    other_user = User(
+        username="receipt_other_user",
+        hashed_password=get_password_hash("OtherPass123"),
+    )
+    db_session.add_all([owner_profile, other_user])
+    db_session.flush()
+    other_profile = SearchProfile(user_id=other_user.id, name="Other receipt")
+    db_session.add(other_profile)
+    db_session.commit()
+
+    started_at = datetime(2026, 7, 26, 8, 0, tzinfo=timezone.utc)
+    finished_at = started_at + timedelta(minutes=2)
+    repo = ProfileRepository(db_session)
+    for profile, jobs_found in ((owner_profile, 3), (other_profile, 99)):
+        assert repo.update_search_status(
+            profile.id,
+            {
+                "state": "done",
+                "started_at": started_at.isoformat(),
+                "finished_at": finished_at.isoformat(),
+                "updated_at": finished_at.isoformat(),
+                "jobs_found": jobs_found,
+                "provider_successes": 1,
+            },
+        )
+
+    owner_response = client.get("/api/v1/profiles/", headers=auth_headers)
+    assert owner_response.status_code == 200
+    owner_items = owner_response.json()
+    assert [item["id"] for item in owner_items] == [owner_profile.id]
+    assert owner_items[0]["last_search_state"] == "done"
+    assert owner_items[0]["search_run_count"] == 1
+    assert owner_items[0]["last_search_summary"]["counts"]["jobs_found"] == 3
+    assert "99" not in str(owner_items[0]["last_search_summary"])
+
+    login = client.post(
+        "/api/v1/auth/login",
+        data={"username": other_user.username, "password": "OtherPass123"},
+    )
+    assert login.status_code == 200
+    other_headers = {"Authorization": f"Bearer {login.json()['access_token']}"}
+    other_items = client.get("/api/v1/profiles/", headers=other_headers).json()
+    assert [item["id"] for item in other_items] == [other_profile.id]
+    assert other_items[0]["last_search_summary"]["counts"]["jobs_found"] == 99
+
+    attempted_write = client.post(
+        "/api/v1/profiles/",
+        json={
+            "name": "Cannot forge receipt",
+            "last_search_state": "done",
+            "search_run_count": 500,
+            "last_search_summary": {"private": "forged"},
+        },
+        headers=auth_headers,
+    )
+    assert attempted_write.status_code == 200
+    assert attempted_write.json()["last_search_state"] is None
+    assert attempted_write.json()["search_run_count"] == 0
+    assert attempted_write.json()["last_search_summary"] is None
+
+
+def test_profile_overview_is_ordered_paginated_lightweight_and_aggregates_all_profiles(
+    client,
+    auth_headers,
+    db_session,
+    test_user,
+):
+    base_time = datetime(2026, 7, 1, tzinfo=timezone.utc)
+    profiles = []
+    for index in range(105):
+        is_latest_success = index == 7
+        profiles.append(
+            SearchProfile(
+                user_id=test_user.id,
+                name=f"Profile {index:03}",
+                role_description=f"Role {index}",
+                location_filter="Zurich",
+                schedule_enabled=index % 2 == 0,
+                schedule_interval_hours=12,
+                is_history=index % 3 == 0,
+                advanced_preferences={
+                    "preferred_languages": ["en", "de"],
+                    "remote_only": True,
+                    "salary_min_chf": 120_000,
+                    "unlisted_large_value": "must-not-be-returned",
+                },
+                cv_content=f"PRIVATE_CV_{index}",
+                cached_cv_summary=f"PRIVATE_CACHE_{index}",
+                cached_queries={"private": f"QUERY_CACHE_{index}"},
+                cached_profile_snapshot=f"PRIVATE_SNAPSHOT_{index}",
+                profile_normalized_skills=[f"PRIVATE_NORMALIZED_{index}"],
+                created_at=base_time + timedelta(minutes=index),
+                search_run_count=3 if is_latest_success else 0,
+                last_search_state="done" if is_latest_success else None,
+                last_search_started_at=(
+                    base_time + timedelta(days=2) if is_latest_success else None
+                ),
+                last_search_completed_at=(
+                    base_time + timedelta(days=2, minutes=5)
+                    if is_latest_success
+                    else None
+                ),
+                last_search_summary=(
+                    {
+                        "schema_version": 1,
+                        "started_at": "2026-07-03T00:00:00+00:00",
+                        "finished_at": "2026-07-03T00:05:00+00:00",
+                        "duration_ms": 300_000,
+                        "counts": {"jobs_found": 17, "jobs_new": 4},
+                        "providers": {
+                            "status": "succeeded",
+                            "successful_requests": 2,
+                            "failed_requests": 0,
+                            "queries_without_provider": 0,
+                        },
+                        "private": "PRIVATE_RECEIPT_VALUE",
+                    }
+                    if is_latest_success
+                    else None
+                ),
+            )
+        )
+
+    other_user = User(
+        username="overview-other",
+        hashed_password=get_password_hash("Otherpass1"),
+    )
+    db_session.add(other_user)
+    db_session.flush()
+    db_session.add(
+        SearchProfile(
+            user_id=other_user.id,
+            name="FOREIGN_PROFILE",
+            created_at=base_time + timedelta(days=20),
+            search_run_count=90,
+            last_search_state="done",
+            last_search_started_at=base_time + timedelta(days=20),
+            last_search_completed_at=base_time + timedelta(days=20, minutes=1),
+            last_search_summary={"counts": {"jobs_found": 9999}},
+        )
+    )
+    db_session.add_all(profiles)
+    db_session.commit()
+
+    first = client.get(
+        "/api/v1/profiles/overview?page=1&page_size=20",
+        headers=auth_headers,
+    )
+    assert first.status_code == 200
+    payload = first.json()
+    assert payload["page"] == 1
+    assert payload["page_size"] == 20
+    assert payload["total_pages"] == 6
+    assert payload["aggregate"]["total_profiles"] == 105
+    assert payload["aggregate"]["total_successful_runs"] == 3
+    assert payload["aggregate"]["latest_successful_jobs_found"] == 17
+    assert payload["aggregate"]["latest_successful_completed_at"] is not None
+    assert len(payload["items"]) == 20
+    assert [item["name"] for item in payload["items"]] == [
+        f"Profile {index:03}" for index in range(104, 84, -1)
+    ]
+    assert payload["items"][0]["preferred_languages"] == ["en", "de"]
+    assert payload["items"][0]["remote_only"] is True
+    assert payload["items"][0]["salary_min_chf"] == 120_000
+
+    serialized = json.dumps(payload)
+    for forbidden in (
+        "cv_content",
+        "cached_cv_summary",
+        "cached_queries",
+        "cached_profile_snapshot",
+        "profile_normalized_skills",
+        "PRIVATE_",
+        "unlisted_large_value",
+        "FOREIGN_PROFILE",
+        "9999",
+    ):
+        assert forbidden not in serialized
+
+    final_page = client.get(
+        "/api/v1/profiles/overview?page=6&page_size=20",
+        headers=auth_headers,
+    )
+    assert final_page.status_code == 200
+    assert len(final_page.json()["items"]) == 5
+    assert final_page.json()["aggregate"]["total_profiles"] == 105
+
+
+def test_profile_overview_enforces_pagination_bounds(client, auth_headers):
+    assert (
+        client.get(
+            "/api/v1/profiles/overview?page=0&page_size=20",
+            headers=auth_headers,
+        ).status_code
+        == 422
+    )
+    assert (
+        client.get(
+            "/api/v1/profiles/overview?page=1&page_size=201",
+            headers=auth_headers,
+        ).status_code
+        == 422
+    )

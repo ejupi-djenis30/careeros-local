@@ -14,6 +14,23 @@ The daily application agenda is calculated locally from the authenticated user's
 next-action projections. It does not read task-event or dossier bodies, contact a calendar service,
 or invoke the local model.
 
+## Search profile snapshots
+
+A new search uses the Career Vault by default unless the request contains a non-empty uploaded CV.
+The app freezes a bounded local snapshot when the search history entry is created. That snapshot
+contains the profile headline, summary, relevant job preferences, and only confirmed,
+non-archived career facts. It excludes dedicated contact fields, birth date, nationality,
+references, links, draft facts, and archived facts. Contact and private-field patterns embedded in
+otherwise eligible prose are redacted. Telephone redaction covers bounded local and international
+forms with spaces, parentheses, dots, slashes or hyphens, including `00` international prefixes.
+Explicit guards preserve common years, date/time values, grouped counts and contextual metrics.
+
+The history entry stores the snapshot itself so a later rerun is reproducible. Its non-sensitive
+metadata records the source, Career Vault profile and revision, ordered included fact identifiers,
+and a SHA-256 digest. Editing the Career Vault does not silently alter an existing search. Start a
+new search to use the newer revision. Searches explicitly started from an uploaded CV retain that
+CV snapshot and the same digest-based reproducibility contract.
+
 ## CLI and agent access
 
 The source-installed `careeros` CLI and its MCP server use a separate, read-only automation
@@ -76,7 +93,9 @@ The exact confirmation phrase erases profile, resume, search, match, application
 coaching, learned-preference, and AI-audit data plus app-owned files. SQLite secure deletion, WAL
 checkpoints, and vacuuming reduce recoverable database remnants; user-scoped staged-file cleanup is
 retryable if an operating-system error interrupts it. Managed model/runtime files can be removed in
-the same operation. Backup files are not encrypted or authenticated by the application: checksums
+the same operation. A shared provider listing is removed only when neither a Job nor an Application
+owned by another user still references it; application-only tracking is therefore preserved across
+account erasure. Backup files are not encrypted or authenticated by the application: checksums
 detect accidental or malicious byte changes, but do not prove who created an archive. Store backups
 in an encrypted location if confidentiality is required.
 

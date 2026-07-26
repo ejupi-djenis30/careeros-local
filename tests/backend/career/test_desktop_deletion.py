@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 
 import backend.career.deletion as deletion
 from backend.ai.models import AIExecution
+from backend.applications.models import Application
 from backend.automation.grants import issue_grant
 from backend.automation.models import AutomationGrant
 from backend.career.deletion import _sanitize_sqlite_storage
@@ -257,6 +258,95 @@ def test_device_erasure_removes_legacy_search_data_and_preserves_shared_jobs(
     assert db_session.get(ScrapedJob, unrelated_scraped_job_id) is not None
     assert db_session.get(SearchProfile, other_profile_id) is not None
     assert db_session.query(Job).filter(Job.user_id == other_user.id).count() == 2
+
+
+def test_device_erasure_removes_application_only_scraped_job(
+    client, auth_headers, db_session, test_user, deletion_root
+):
+    listing = ScrapedJob(
+        platform="test",
+        platform_job_id="application-only-exclusive",
+        title="Application-only role",
+        company="Private employer",
+        external_url="https://example.test/application-only-exclusive",
+    )
+    db_session.add(listing)
+    db_session.flush()
+    application = Application(
+        user_id=test_user.id,
+        job_id=None,
+        scraped_job_id=listing.id,
+        current_stage="saved",
+        job_snapshot={"title": listing.title, "company": listing.company},
+        job_title=listing.title,
+        job_company=listing.company,
+    )
+    db_session.add(application)
+    db_session.commit()
+    listing_id = listing.id
+    application_id = application.id
+
+    erased = client.delete(
+        "/api/v1/portability/erase",
+        headers={**auth_headers, "X-Confirm-Erase": "ERASE-LOCAL-CAREER-DATA"},
+    )
+
+    assert erased.status_code == 200, erased.text
+    assert erased.json()["applications"] == 1
+    assert erased.json()["jobs"] == 0
+    assert erased.json()["scraped_jobs"] == 1
+    db_session.expire_all()
+    assert db_session.get(Application, application_id) is None
+    assert db_session.get(ScrapedJob, listing_id) is None
+
+
+def test_device_erasure_preserves_application_only_listing_used_by_another_user(
+    client, auth_headers, db_session, test_user, deletion_root
+):
+    other_user = User(username="application-only-owner", hashed_password="not-used")
+    listing = ScrapedJob(
+        platform="test",
+        platform_job_id="application-only-shared",
+        title="Shared application-only role",
+        company="Shared employer",
+        external_url="https://example.test/application-only-shared",
+    )
+    db_session.add_all([other_user, listing])
+    db_session.flush()
+    target_application = Application(
+        user_id=test_user.id,
+        scraped_job_id=listing.id,
+        current_stage="saved",
+        job_snapshot={"title": listing.title, "company": listing.company},
+        job_title=listing.title,
+        job_company=listing.company,
+    )
+    other_application = Application(
+        user_id=other_user.id,
+        scraped_job_id=listing.id,
+        current_stage="saved",
+        job_snapshot={"title": listing.title, "company": listing.company},
+        job_title=listing.title,
+        job_company=listing.company,
+    )
+    db_session.add_all([target_application, other_application])
+    db_session.commit()
+    listing_id = listing.id
+    target_application_id = target_application.id
+    other_application_id = other_application.id
+
+    erased = client.delete(
+        "/api/v1/portability/erase",
+        headers={**auth_headers, "X-Confirm-Erase": "ERASE-LOCAL-CAREER-DATA"},
+    )
+
+    assert erased.status_code == 200, erased.text
+    assert erased.json()["applications"] == 1
+    assert erased.json()["scraped_jobs"] == 0
+    db_session.expire_all()
+    assert db_session.get(Application, target_application_id) is None
+    assert db_session.get(Application, other_application_id) is not None
+    assert db_session.get(ScrapedJob, listing_id) is not None
 
 
 def test_device_erasure_sanitizes_sqlite_and_retries_staged_file_cleanup(

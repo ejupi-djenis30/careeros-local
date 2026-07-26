@@ -1,3 +1,5 @@
+from datetime import datetime
+
 from sqlalchemy import (
     JSON,
     Boolean,
@@ -10,8 +12,9 @@ from sqlalchemy import (
     String,
     Text,
 )
-from sqlalchemy.orm import relationship
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
+from backend.db.types import UTCDateTime
 from backend.models.base_model import BaseModel, TimestampMixin
 
 
@@ -56,6 +59,16 @@ class SearchProfile(BaseModel, TimestampMixin):
     search_status_started_at = Column(DateTime(timezone=True), nullable=True)
     search_status_updated_at = Column(DateTime(timezone=True), nullable=True)
     search_status_finished_at = Column(DateTime(timezone=True), nullable=True)
+
+    # Durable, privacy-safe receipt for the most recent successful search run.
+    # Runtime polling status may be pruned; these fields remain part of the vault.
+    last_search_started_at: Mapped[datetime | None] = mapped_column(UTCDateTime(), nullable=True)
+    last_search_completed_at: Mapped[datetime | None] = mapped_column(
+        UTCDateTime(), nullable=True, index=True
+    )
+    last_search_state = Column(String, nullable=True)
+    search_run_count = Column(Integer, nullable=False, default=0, server_default="0")
+    last_search_summary = Column(JSON, nullable=True)
 
     # Advanced / Extensible preferences
     advanced_preferences = Column(JSON, nullable=True)
@@ -165,3 +178,27 @@ class SearchProfile(BaseModel, TimestampMixin):
     @property
     def hard_max_distance_km(self):
         return self._advanced_pref("hard_max_distance_km")
+
+    @property
+    def profile_source(self):
+        explicit = self._advanced_pref("profile_source")
+        if isinstance(explicit, str) and explicit in {"career_vault", "uploaded_cv"}:
+            return explicit
+        return "uploaded_cv" if self.cv_content else None
+
+    @property
+    def career_profile_id(self):
+        return self._advanced_pref("career_profile_id")
+
+    @property
+    def career_profile_revision(self):
+        return self._advanced_pref("career_profile_revision")
+
+    @property
+    def career_fact_ids(self):
+        value = self._advanced_pref("career_fact_ids", [])
+        return list(value) if isinstance(value, list) else []
+
+    @property
+    def source_snapshot_sha256(self):
+        return self._advanced_pref("source_snapshot_sha256")

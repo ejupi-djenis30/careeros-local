@@ -1,3 +1,5 @@
+from datetime import datetime, timezone
+
 from sqlalchemy import (
     JSON,
     Boolean,
@@ -10,9 +12,11 @@ from sqlalchemy import (
     String,
     Text,
     UniqueConstraint,
+    func,
 )
-from sqlalchemy.orm import relationship
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
+from backend.db.types import UTCDateTime
 from backend.models.base_model import BaseModel, TimestampMixin
 
 
@@ -43,6 +47,29 @@ class ScrapedJob(BaseModel, TimestampMixin):
 
     workload = Column(String)
     publication_date = Column(DateTime(timezone=True))
+
+    # Observation metadata describes what CareerOS has actually seen. Absence from a
+    # later, partial provider response is deliberately not represented as closure.
+    first_seen_at: Mapped[datetime] = mapped_column(
+        UTCDateTime(),
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc),
+        server_default=func.now(),
+    )
+    last_seen_at: Mapped[datetime] = mapped_column(
+        UTCDateTime(),
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc),
+        server_default=func.now(),
+        index=True,
+    )
+    last_changed_at: Mapped[datetime] = mapped_column(
+        UTCDateTime(),
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc),
+        server_default=func.now(),
+    )
+    content_revision = Column(Integer, nullable=False, default=1, server_default="1")
 
     # For provider-specific details (JobRoom, SwissDevJobs, etc)
     raw_metadata = Column(JSON, nullable=True)
@@ -240,6 +267,24 @@ class Job(BaseModel, TimestampMixin):
 
     # Pass-through properties for Pydantic JobResponse serialization (from_attributes=True)
     @property
+    def application_id(self) -> str | None:
+        """Owned application id attached by JobService without lazy-loading."""
+        return getattr(self, "_application_id_transient", None)
+
+    @application_id.setter
+    def application_id(self, value: str | None) -> None:
+        self._application_id_transient = value
+
+    @property
+    def application_stage(self) -> str | None:
+        """Owned application stage attached by JobService without lazy-loading."""
+        return getattr(self, "_application_stage_transient", None)
+
+    @application_stage.setter
+    def application_stage(self, value: str | None) -> None:
+        self._application_stage_transient = value
+
+    @property
     def title(self):
         return self.scraped_job.title if self.scraped_job else None
 
@@ -278,6 +323,22 @@ class Job(BaseModel, TimestampMixin):
     @property
     def publication_date(self):
         return self.scraped_job.publication_date if self.scraped_job else None
+
+    @property
+    def first_seen_at(self):
+        return self.scraped_job.first_seen_at if self.scraped_job else None
+
+    @property
+    def last_seen_at(self):
+        return self.scraped_job.last_seen_at if self.scraped_job else None
+
+    @property
+    def last_changed_at(self):
+        return self.scraped_job.last_changed_at if self.scraped_job else None
+
+    @property
+    def content_revision(self):
+        return self.scraped_job.content_revision if self.scraped_job else None
 
     @property
     def platform(self):

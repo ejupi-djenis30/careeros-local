@@ -25,8 +25,22 @@ export function normalizePrefillProfile(prefill) {
         ...rest
     } = prefill;
 
+    const cvContent = String(rest.cv_content ?? "");
+    const profileSource = rest.profile_source === "uploaded_cv"
+        || (rest.profile_source == null && cvContent.trim())
+        ? "uploaded_cv"
+        : "career_vault";
+    const remoteOnly = Boolean(rest.remote_only);
+
     return {
         ...rest,
+        name: String(rest.name ?? ""),
+        profile_source: profileSource,
         role_description: mergeRoleDescription(rest.role_description, legacyStrategy),
+        location_filter: String(rest.location_filter ?? ""),
+        cv_content: cvContent,
+        workload_filter: String(rest.workload_filter ?? "80-100"),
+        contract_type: String(rest.contract_type ?? "any"),
+        max_distance: remoteOnly ? 0 : rest.max_distance,
     };
 }

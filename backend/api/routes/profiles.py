@@ -1,9 +1,15 @@
 from typing import List
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, Query, Request
 
 from backend.api.deps import get_current_user_id, limiter, profile_service_dep
-from backend.schemas import ScheduleToggle, SearchProfile, SearchProfileCreate, SearchProfileUpdate
+from backend.schemas import (
+    ScheduleToggle,
+    SearchProfile,
+    SearchProfileCreate,
+    SearchProfileOverview,
+    SearchProfileUpdate,
+)
 from backend.services.profile_service import ProfileService
 
 router = APIRouter()
@@ -17,6 +23,16 @@ def read_profiles(
     profile_service: ProfileService = Depends(profile_service_dep),
 ):
     return profile_service.get_profiles_by_user(user_id, skip=skip, limit=limit)
+
+
+@router.get("/overview", response_model=SearchProfileOverview)
+def read_profile_overview(
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=100, ge=1, le=200),
+    user_id: int = Depends(get_current_user_id),
+    profile_service: ProfileService = Depends(profile_service_dep),
+):
+    return profile_service.get_profile_overview(user_id, page=page, page_size=page_size)
 
 
 @router.post("/", response_model=SearchProfile)

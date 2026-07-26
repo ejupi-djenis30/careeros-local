@@ -1,4 +1,5 @@
 import asyncio
+from datetime import datetime, timezone
 from types import SimpleNamespace
 from unittest.mock import ANY, AsyncMock, MagicMock, patch
 from uuid import uuid4
@@ -359,6 +360,172 @@ async def test_search_and_produce_tracks_runtime_and_history_duplicate_breakdown
     mock_update.assert_any_call(
         1, jobs_duplicates_total=2, jobs_duplicates_runtime=1, jobs_duplicates_history=1
     )
+
+
+@pytest.mark.asyncio
+async def test_search_and_produce_refreshes_changed_history_before_profile_dedup(mock_service):
+    profile = SimpleNamespace(
+        location_filter="",
+        posted_within_days=7,
+        max_distance=50,
+        workload_filter="",
+        latitude=None,
+        longitude=None,
+        contract_type="",
+    )
+    search = {"query": "dev", "domain": "it", "type": "keyword", "language": "en"}
+    provider = MagicMock()
+    provider.throttle_delay = 0.0
+    provider.capabilities = SimpleNamespace(max_page_size=50)
+    changed_history_job = SimpleNamespace(
+        source="job_room",
+        id="100",
+        external_url="https://example.com/jobs/100?utm_source=refresh",
+        title="Software Engineer",
+        company=SimpleNamespace(name="Acme"),
+    )
+    provider.search = AsyncMock(
+        return_value=SimpleNamespace(
+            items=[changed_history_job],
+            total_pages=1,
+            total_count=1,
+        )
+    )
+    mock_service.providers = {"job_room": provider}
+    job_queue = asyncio.Queue()
+    persisted_ids: list[str] = []
+
+    async def refresh_catalog(profile_id, jobs):
+        del profile_id
+        persisted_ids.extend(str(job.id) for job in jobs)
+        for job in jobs:
+            job._catalog_persisted = True
+            job._scraped_job_id = 42
+            job._normalized_job_data = {}
+            job._catalog_content_changed = True
+            job._catalog_content_revision = 2
+        return 0, len(jobs)
+
+    with (
+        patch("backend.services.search_service.get_status", return_value={"state": "searching"}),
+        patch("backend.services.search_service.route_provider_names", return_value=["job_room"]),
+        patch("backend.services.search_service.build_search_request", return_value=MagicMock()),
+        patch.object(mock_service, "_persist_scraped_job_catalog", new=refresh_catalog),
+        patch("backend.services.search_service.update_status"),
+        patch("backend.services.search_service.add_log") as mock_log,
+    ):
+        total_found, total_duplicates = await mock_service._search_and_produce(
+            1,
+            profile,
+            [search],
+            {"job_room": MagicMock()},
+            job_queue,
+            {
+                "existing_keys": {"job_room:100"},
+                "existing_urls": {"example.com/jobs/100"},
+                "existing_fuzzy_keys": set(),
+                "existing_fuzzy_keys_strong": set(),
+                "applied_scraped_ids": set(),
+            },
+        )
+
+    queued_batch = await job_queue.get()
+    sentinel = await job_queue.get()
+    assert persisted_ids == ["100"]
+    assert [job.id for job in queued_batch] == ["100"]
+    assert queued_batch[0]._catalog_content_revision == 2
+    assert sentinel is None
+    assert total_found == 1
+    assert total_duplicates == 0
+    assert any(
+        "Reprocessing 1 changed catalog observation" in str(call.args[1])
+        for call in mock_log.call_args_list
+    )
+
+
+@pytest.mark.asyncio
+async def test_search_and_produce_queues_newer_runtime_revision_for_its_own_analysis(
+    mock_service,
+):
+    profile = SimpleNamespace(
+        location_filter="",
+        posted_within_days=7,
+        max_distance=50,
+        workload_filter="",
+        latitude=None,
+        longitude=None,
+        contract_type="",
+    )
+    search = {"query": "dev", "domain": "it", "type": "keyword", "language": "en"}
+    provider = MagicMock()
+    provider.throttle_delay = 0.0
+    provider.capabilities = SimpleNamespace(max_page_size=50)
+    first = SimpleNamespace(
+        source="job_room",
+        id="100",
+        external_url="https://example.com/jobs/100",
+        title="Software Engineer",
+        company=SimpleNamespace(name="Acme"),
+    )
+    newer = SimpleNamespace(
+        source="job_room",
+        id="100",
+        external_url="https://example.com/jobs/100",
+        title="Senior Software Engineer",
+        company=SimpleNamespace(name="Acme"),
+    )
+    provider.search = AsyncMock(
+        return_value=SimpleNamespace(
+            items=[first, newer],
+            total_pages=1,
+            total_count=2,
+        )
+    )
+    mock_service.providers = {"job_room": provider}
+    job_queue = asyncio.Queue()
+
+    async def persist_revisions(_profile_id, jobs):
+        for revision, job in enumerate(jobs, start=1):
+            job._catalog_persisted = True
+            job._scraped_job_id = 42
+            job._normalized_job_data = {}
+            job._catalog_content_changed = revision > 1
+            job._catalog_content_revision = revision
+            job._catalog_content_fingerprint = str(revision) * 64
+        return 1, 1
+
+    with (
+        patch("backend.services.search_service.get_status", return_value={"state": "searching"}),
+        patch("backend.services.search_service.route_provider_names", return_value=["job_room"]),
+        patch("backend.services.search_service.build_search_request", return_value=MagicMock()),
+        patch.object(
+            mock_service,
+            "_persist_scraped_job_catalog",
+            new=persist_revisions,
+        ),
+        patch("backend.services.search_service.update_status"),
+        patch("backend.services.search_service.add_log"),
+    ):
+        total_found, total_duplicates = await mock_service._search_and_produce(
+            1,
+            profile,
+            [search],
+            {"job_room": MagicMock()},
+            job_queue,
+            {
+                "existing_keys": set(),
+                "existing_urls": set(),
+                "existing_fuzzy_keys": set(),
+                "existing_fuzzy_keys_strong": set(),
+                "applied_scraped_ids": set(),
+            },
+        )
+
+    queued_batch = await job_queue.get()
+    assert await job_queue.get() is None
+    assert total_found == 2
+    assert total_duplicates == 0
+    assert [job._catalog_content_revision for job in queued_batch] == [1, 2]
 
 
 async def test_analyze_and_save_success(mock_service):
@@ -923,12 +1090,15 @@ async def test_normalize_persisted_jobs_upgrades_bootstrap_rows(mock_service_wit
     scraped_job.location = "Zurich"
     scraped_job.workload = "80-100%"
     scraped_job.description = "Python role"
+    scraped_job.content_revision = 1
+    scraped_job.content_fingerprint = "a" * 64
     scraped_job.normalization_status = "provider_bootstrap"
     scraped_job.normalized_metadata = {}
     scraped_job.normalized_job_data = {"status": "normalized", "domain": "it"}
 
     mock_session = mock_service_with_real_repos.job_repo.db
     mock_session.query.return_value.filter.return_value.all.return_value = [scraped_job]
+    mock_session.get.side_effect = lambda _model, _key, **_kwargs: scraped_job
 
     with patch(
         "backend.services.search_service.llm_service.normalize_job_batch",
@@ -962,6 +1132,88 @@ async def test_normalize_persisted_jobs_upgrades_bootstrap_rows(mock_service_wit
     assert upgraded == 1
     assert scraped_job.normalization_status == "normalized"
     assert scraped_job.normalized_domain == "it"
+    mock_session.commit.assert_called_once()
+
+
+async def test_normalize_persisted_jobs_discards_result_when_revision_changes_during_await(
+    mock_service_with_real_repos,
+):
+    listing = SimpleNamespace(
+        source="job_room",
+        id="race-1",
+        _catalog_persisted=True,
+        _scraped_job_id=880,
+        _catalog_content_revision=1,
+        _catalog_content_fingerprint="a" * 64,
+    )
+    revision_a = SimpleNamespace(
+        id=880,
+        platform="job_room",
+        platform_job_id="race-1",
+        title="Backend Engineer",
+        company="ACME",
+        location="Zurich",
+        workload="80-100%",
+        description="Revision A description",
+        compact_description="Revision A description",
+        content_revision=1,
+        content_fingerprint="a" * 64,
+        normalization_status="provider_bootstrap",
+        normalized_metadata={},
+        normalized_job_data={"status": "provider_bootstrap"},
+    )
+    revision_b = SimpleNamespace(
+        id=880,
+        platform="job_room",
+        platform_job_id="race-1",
+        title="Principal Backend Engineer",
+        company="ACME",
+        location="Zurich",
+        workload="80-100%",
+        description="Revision B description",
+        compact_description="Revision B description",
+        content_revision=2,
+        content_fingerprint="b" * 64,
+        normalization_status="provider_bootstrap",
+        normalized_metadata={"revision": 2},
+        normalized_domain="revision-b-bootstrap",
+        normalized_job_data={"status": "provider_bootstrap", "domain": "revision-b-bootstrap"},
+    )
+    current_record = {"value": revision_a}
+    mock_session = mock_service_with_real_repos.job_repo.db
+    mock_session.query.return_value.filter.return_value.all.return_value = [revision_a]
+    mock_session.get.side_effect = (
+        lambda _model, _key, **_kwargs: current_record["value"]
+    )
+
+    async def replace_catalog_revision(_chunk):
+        current_record["value"] = revision_b
+        return [
+            {
+                "title": "Backend Engineer",
+                "role_family": "Backend Engineer",
+                "domain": "stale-revision-a-output",
+                "confidence": 0.99,
+            }
+        ]
+
+    with patch(
+        "backend.services.search_service.llm_service.normalize_job_batch",
+        side_effect=replace_catalog_revision,
+    ):
+        upgraded = await mock_service_with_real_repos._normalize_persisted_jobs(
+            1,
+            [listing],
+        )
+
+    assert upgraded == 0
+    assert revision_a.normalization_status == "provider_bootstrap"
+    assert revision_b.normalization_status == "provider_bootstrap"
+    assert revision_b.normalized_domain == "revision-b-bootstrap"
+    assert revision_b.normalized_metadata == {"revision": 2}
+    assert not hasattr(listing, "_normalized_job_data")
+    assert mock_session.get.call_args.kwargs["populate_existing"] is True
+    assert mock_session.get.call_args.kwargs["with_for_update"] is True
     mock_session.commit.assert_called_once()
 
 
@@ -1676,33 +1928,42 @@ def test_upsert_scraped_job_creates_new_when_not_exists():
     db.add.assert_called_once()
     savepoint_mock.commit.assert_called_once()
     savepoint_mock.rollback.assert_not_called()
+    assert sj.first_seen_at == sj.last_seen_at == sj.last_changed_at
+    assert sj.content_revision == 1
+    assert listing._catalog_content_changed is False
+    assert listing._catalog_content_revision == 1
 
 
 def test_upsert_scraped_job_recovers_from_integrity_error():
-    """
-    Concurrent insert race: flush raises IntegrityError.
-    The savepoint must be rolled back and the existing record re-fetched
-    without losing the outer transaction.
-    """
+    """A concurrent insert winner is re-fetched and refreshed by this observation."""
     from sqlalchemy.exc import IntegrityError as SaIntegrityError
 
     service = _make_mock_service_with_real_upsert()
     db = service.db
+    first_seen = datetime(2026, 7, 1, 8, 30, tzinfo=timezone.utc)
 
-    # First call: no existing record (race not yet detected)
     existing_sj = MagicMock()
     existing_sj.id = 99
+    existing_sj.title = "Concurrent placeholder"
+    existing_sj.company = "Acme"
+    existing_sj.description = "stale"
+    existing_sj.location = "Zurich"
+    existing_sj.workload = "80-100"
+    existing_sj.content_fingerprint = "concurrent-fingerprint"
+    existing_sj.content_revision = 1
+    existing_sj.first_seen_at = first_seen
+    existing_sj.last_seen_at = first_seen
+    existing_sj.last_changed_at = first_seen
     existing_sj.normalization_status = "normalized"
+    existing_sj.normalized_metadata = {}
     db.query.return_value.filter.return_value.first.side_effect = [
-        None,  # initial check → no record
-        existing_sj,  # re-fetch after IntegrityError
+        None,
+        existing_sj,
     ]
 
-    # Savepoint raises IntegrityError on commit
     savepoint_mock = MagicMock()
     savepoint_mock.commit.side_effect = SaIntegrityError("UNIQUE constraint failed", None, None)
     db.begin_nested.return_value = savepoint_mock
-
     listing = _make_listing()
 
     with (
@@ -1721,12 +1982,17 @@ def test_upsert_scraped_job_recovers_from_integrity_error():
     ):
         sj, created = service._upsert_scraped_job(listing)
 
-    # created must be False — we recovered the existing record
     assert created is False
-    # Savepoint was rolled back (not committed successfully)
     savepoint_mock.rollback.assert_called_once()
-    # The re-fetched record is returned
     assert sj is existing_sj
+    assert sj.title == "Developer"
+    assert sj.description == "desc"
+    assert sj.first_seen_at == first_seen
+    assert sj.last_seen_at > first_seen
+    assert sj.last_changed_at == sj.last_seen_at
+    assert sj.content_revision == 2
+    assert listing._catalog_conflict_recovered is True
+    assert listing._catalog_content_changed is True
 
 
 def test_upsert_scraped_job_updates_existing_record():
@@ -2112,11 +2378,14 @@ async def test_normalize_persisted_jobs_marks_failed_when_batch_returns_empty(
     scraped_job.location = "Zurich"
     scraped_job.workload = "100%"
     scraped_job.description = "Pack and ship."
+    scraped_job.content_revision = 1
+    scraped_job.content_fingerprint = "c" * 64
     scraped_job.normalization_status = "provider_bootstrap"
     scraped_job.normalized_metadata = None
 
     mock_session = mock_service_with_real_repos.job_repo.db
     mock_session.query.return_value.filter.return_value.all.return_value = [scraped_job]
+    mock_session.get.side_effect = lambda _model, _key, **_kwargs: scraped_job
 
     with patch(
         "backend.services.search_service.llm_service.normalize_job_batch",
@@ -2145,6 +2414,8 @@ async def test_normalize_persisted_jobs_splits_batches_by_prompt_budget(
     scraped_one.location = "Zurich"
     scraped_one.workload = "100%"
     scraped_one.description = "Required forklift license. " + ("detail " * 120)
+    scraped_one.content_revision = 1
+    scraped_one.content_fingerprint = "d" * 64
     scraped_one.normalization_status = "provider_bootstrap"
     scraped_one.normalized_metadata = None
     scraped_one.normalized_job_data = {}
@@ -2156,6 +2427,8 @@ async def test_normalize_persisted_jobs_splits_batches_by_prompt_budget(
     scraped_two.location = "Bern"
     scraped_two.workload = "100%"
     scraped_two.description = "Required hygiene training. " + ("detail " * 120)
+    scraped_two.content_revision = 1
+    scraped_two.content_fingerprint = "e" * 64
     scraped_two.normalization_status = "provider_bootstrap"
     scraped_two.normalized_metadata = None
     scraped_two.normalized_job_data = {}
@@ -2165,6 +2438,10 @@ async def test_normalize_persisted_jobs_splits_batches_by_prompt_budget(
         scraped_one,
         scraped_two,
     ]
+    records_by_id = {101: scraped_one, 102: scraped_two}
+    mock_session.get.side_effect = (
+        lambda _model, key, **_kwargs: records_by_id.get(key)
+    )
 
     captured_chunks = []
 

@@ -11,9 +11,10 @@ describe('SearchService', () => {
 
   it('start sends POST to /search/start with profile body', async () => {
     const mockPost = vi.spyOn(ApiClient, 'post').mockResolvedValue({ task_id: 'abc' });
-    const profile = { id: 1, name: 'Dev search' };
+    const profile = { id: 1, name: 'Dev search', profile_source: 'career_vault' };
     await SearchService.start(profile);
     expect(mockPost).toHaveBeenCalledWith('/search/start', profile, { suppressGlobalError: true });
+    expect(mockPost.mock.calls[0][1]).not.toHaveProperty('cv_content');
   });
 
   // ── getStatus ──────────────────────────────────────────────────────────────
@@ -31,23 +32,99 @@ describe('SearchService', () => {
     const mockGet = vi.spyOn(ApiClient, 'get').mockResolvedValue([]);
     const ctrl = new AbortController();
     await SearchService.getAllStatuses(ctrl.signal);
-    expect(mockGet).toHaveBeenCalledWith('/search/status/all', ctrl.signal);
+    expect(mockGet).toHaveBeenCalledWith('/search/status/all', ctrl.signal, {});
   });
 
   it('getAllStatuses works without a signal', async () => {
     const mockGet = vi.spyOn(ApiClient, 'get').mockResolvedValue([]);
     await SearchService.getAllStatuses();
-    expect(mockGet).toHaveBeenCalledWith('/search/status/all', undefined);
+    expect(mockGet).toHaveBeenCalledWith('/search/status/all', undefined, {});
+  });
+
+  it('getAllStatuses can suppress global errors for dashboard checks', async () => {
+    const mockGet = vi.spyOn(ApiClient, 'get').mockResolvedValue({});
+    const ctrl = new AbortController();
+    await SearchService.getAllStatuses(ctrl.signal, { suppressGlobalError: true });
+    expect(mockGet).toHaveBeenCalledWith('/search/status/all', ctrl.signal, { suppressGlobalError: true });
   });
 
   // ── getProfiles ────────────────────────────────────────────────────────────
 
   it('getProfiles fetches profiles list with cancellable request options', async () => {
-    const mockGet = vi.spyOn(ApiClient, 'get').mockResolvedValue([{ id: 1 }]);
+    const receipt = {
+      id: 1,
+      last_search_state: 'done',
+      search_run_count: 2,
+      last_search_completed_at: '2026-07-26T10:00:00Z',
+      last_search_summary: { counts: { jobs_found: 6 } },
+    };
+    const mockGet = vi.spyOn(ApiClient, 'get').mockResolvedValue([receipt]);
     const controller = new AbortController();
     const profiles = await SearchService.getProfiles({ signal: controller.signal });
     expect(mockGet).toHaveBeenCalledWith('/profiles/', undefined, { signal: controller.signal });
     expect(profiles[0].id).toBe(1);
+    expect(profiles[0]).toMatchObject(receipt);
+  });
+
+  it('getProfileOverview requests an explicit bounded page', async () => {
+    const mockGet = vi.spyOn(ApiClient, 'get').mockResolvedValue({
+      items: [],
+      page: 2,
+      page_size: 50,
+      total_pages: 0,
+      aggregate: { total_profiles: 0, total_successful_runs: 0 },
+    });
+    const controller = new AbortController();
+
+    await SearchService.getProfileOverview({
+      page: 2,
+      pageSize: 50,
+      signal: controller.signal,
+      suppressGlobalError: true,
+    });
+
+    expect(mockGet).toHaveBeenCalledWith(
+      '/profiles/overview?page=2&page_size=50',
+      undefined,
+      { signal: controller.signal, suppressGlobalError: true },
+    );
+  });
+
+  it('getProfileSummaries follows every reported page without loading full profiles', async () => {
+    const mockGet = vi.spyOn(ApiClient, 'get')
+      .mockResolvedValueOnce({
+        items: [{ id: 3 }, { id: 2 }],
+        page: 1,
+        page_size: 200,
+        total_pages: 2,
+        aggregate: { total_profiles: 3, total_successful_runs: 0 },
+      })
+      .mockResolvedValueOnce({
+        items: [{ id: 1 }],
+        page: 2,
+        page_size: 200,
+        total_pages: 2,
+        aggregate: { total_profiles: 3, total_successful_runs: 0 },
+      });
+    const controller = new AbortController();
+
+    const summaries = await SearchService.getProfileSummaries({
+      signal: controller.signal,
+    });
+
+    expect(summaries).toEqual([{ id: 3 }, { id: 2 }, { id: 1 }]);
+    expect(mockGet).toHaveBeenNthCalledWith(
+      1,
+      '/profiles/overview?page=1&page_size=200',
+      undefined,
+      { signal: controller.signal },
+    );
+    expect(mockGet).toHaveBeenNthCalledWith(
+      2,
+      '/profiles/overview?page=2&page_size=200',
+      undefined,
+      { signal: controller.signal },
+    );
   });
 
   // ── uploadCV ──────────────────────────────────────────────────────────────

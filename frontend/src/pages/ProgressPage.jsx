@@ -20,7 +20,7 @@ export function ProgressPage() {
   const [profilesError, setProfilesError] = React.useState(null);
 
   useEffect(() => {
-    SearchService.getProfiles()
+    SearchService.getProfileSummaries()
       .then(res => {
         const mapping = {};
         (res || []).forEach(p => {

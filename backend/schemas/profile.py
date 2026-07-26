@@ -1,6 +1,6 @@
 import re
 from datetime import datetime
-from typing import Any, List, Optional
+from typing import Any, List, Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
@@ -212,6 +212,7 @@ class SearchProfileUpdate(BaseModel):
 
 class StartSearchRequest(SearchProfileBase):
     id: Optional[int] = None
+    profile_source: Literal["career_vault", "uploaded_cv"] | None = None
     # Feature 3: separate force-regeneration flags
     force_regenerate_cv_summary: bool = False
     force_regenerate_queries: bool = False
@@ -223,11 +224,24 @@ class SearchProfile(SearchProfileBase):
     id: int
     last_scheduled_run: Optional[datetime] = None
 
+    # Durable read-only receipt for the latest successful search run.
+    last_search_started_at: datetime | None = None
+    last_search_completed_at: datetime | None = None
+    last_search_state: Literal["done"] | None = None
+    search_run_count: int = Field(default=0, ge=0)
+    last_search_summary: dict[str, Any] | None = None
+
     # Caching layer (Feature 3)
     cached_cv_summary: Optional[str] = None
     cached_queries: Optional[Any] = None  # JSON object
 
     created_at: datetime
+
+    profile_source: Literal["career_vault", "uploaded_cv"] | None = None
+    career_profile_id: str | None = None
+    career_profile_revision: int | None = None
+    career_fact_ids: list[str] = Field(default_factory=list)
+    source_snapshot_sha256: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
 
     # V2 profile normalization fields
     profile_normalization_status: Optional[str] = None
@@ -257,6 +271,42 @@ class SearchProfile(SearchProfileBase):
     profile_search_intent_seniority_max: Optional[str] = None
     profile_search_intent_dealbreakers: Optional[Any] = None
     profile_search_intent_flexibility: Optional[Any] = None
+
+
+class SearchProfileOverviewItem(BaseModel):
+    """Small, allowlisted projection used by list and status surfaces."""
+
+    id: int
+    name: str = ""
+    role_description: str | None = None
+    location_filter: str | None = None
+    schedule_enabled: bool = False
+    schedule_interval_hours: int = 24
+    preferred_languages: list[str] = Field(default_factory=list)
+    remote_only: bool = False
+    salary_min_chf: int | None = None
+    is_history: bool = False
+    created_at: datetime
+
+
+class SearchProfileOverviewAggregate(BaseModel):
+    """Aggregate over every profile owned by the authenticated user."""
+
+    total_profiles: int = Field(ge=0)
+    total_successful_runs: int = Field(ge=0)
+    latest_successful_profile_id: int | None = None
+    latest_successful_started_at: datetime | None = None
+    latest_successful_completed_at: datetime | None = None
+    latest_successful_jobs_found: int | None = Field(default=None, ge=0)
+    latest_successful_summary: dict[str, Any] | None = None
+
+
+class SearchProfileOverview(BaseModel):
+    items: list[SearchProfileOverviewItem]
+    page: int = Field(ge=1)
+    page_size: int = Field(ge=1, le=200)
+    total_pages: int = Field(ge=0)
+    aggregate: SearchProfileOverviewAggregate
 
 
 class ScheduleToggle(BaseModel):

@@ -541,6 +541,58 @@ fails with `vault_busy` instead of opening another connection.
   no-egress stdio server from the separate privacy policy of the connected client and provider.
 - **FR-066**: Users MUST be able to list and revoke their grants after another password check.
   Restore MUST revoke active automation grants and complete vault erasure MUST delete them.
+- **FR-067**: Every successful provider observation MUST refresh the canonical listing before
+  per-profile deduplication. Listings MUST retain first-seen, last-seen, last-content-change and
+  monotonic content-revision metadata. Identical observations MUST advance only last-seen time;
+  canonical content changes MUST advance the revision, invalidate prior analysis through its input
+  fingerprint and make the listing eligible for fresh local analysis without changing user
+  decisions, applications or immutable application snapshots.
+- **FR-068**: CareerOS MUST NOT infer that a listing is closed from its absence in a provider page,
+  a failed or partial provider response, or a search with different criteria. Migration of existing
+  listings MUST use a conservative revision-1 backfill and MUST NOT manufacture historical
+  observations or content-change events.
+- **FR-069**: Completing a search with terminal state `done` MUST atomically persist a durable,
+  idempotent receipt on the owned search profile. The receipt MUST retain UTC start and completion
+  times, the fixed state `done`, a monotonic successful-run count, and a bounded fixed-shape summary
+  containing only aggregate counters, duration and aggregate provider outcome.
+- **FR-070**: Failed, stopped and cancelled searches MUST NOT clear the latest successful receipt or
+  increment its run count. Runtime-status pruning MUST leave the receipt intact. The summary MUST
+  exclude CV content, query text, listing text, logs, error/provider bodies and credentials; profile
+  create/update requests MUST NOT be able to write receipt fields. Portable restore MUST preserve
+  valid receipts while canonicalizing away unknown JSON keys.
+- **FR-071**: Every Job response MUST expose the current user's Application identifier and stage
+  for the same logical opportunity, resolving duplicate Job rows through `scraped_job_id` without
+  exposing another user's Application. Paginated Job responses MUST count distinct tracked logical
+  opportunities independently of page size and without per-row queries.
+- **FR-072**: A user MUST have at most one Application per Job-backed logical opportunity.
+  Application creation MUST reject a duplicate reached through another search profile. Crossing
+  the applied milestone MUST monotonically synchronize every duplicate Job's legacy applied marker;
+  saved or preparing alone MUST NOT set it, and later withdrawal or archival MUST NOT clear it. The
+  database MUST enforce uniqueness on the user and shared scraped-listing identity, including
+  concurrent creation attempts. Migration and portable restore MUST preserve conflicting legacy
+  timelines while assigning the unique logical identity only to the deterministically most recently
+  updated timeline.
+- **FR-073**: The legacy Job interaction PATCH MUST remain compatible and be documented as
+  deprecated. Changing its applied marker MUST NOT implicitly create an Application, and it MUST
+  NOT clear a marker backed by an Application timeline that has crossed the applied milestone.
+- **FR-074**: Profile selectors and workspace setup status MUST use an authenticated, ordered,
+  explicitly paginated allowlist projection rather than full search-profile records. The projection
+  MUST exclude CV text, caches and normalized candidate payloads. Its aggregate MUST cover every
+  profile owned by the user, independently of page size, and expose total profiles, total successful
+  runs and the latest successful receipt date and jobs-found count without exposing another user.
+- **FR-075**: An analyzed provider observation MUST be saved only while its captured catalog
+  identifier, content revision and content fingerprint still match the canonical listing. A newer
+  or missing observation MUST cause a nonfatal, bounded and observable skip without rewriting the
+  catalog or persisting stale analysis; the newer revision MUST remain eligible for its own analysis.
+  The same revision binding MUST apply across asynchronous local-model normalization: stale success
+  or failure output MUST neither overwrite normalized fields nor change normalization status.
+- **FR-076**: Career Vault search snapshots MUST redact bounded local and international telephone
+  candidates embedded in otherwise eligible prose, including common whitespace, parenthesis, dot,
+  slash and hyphen formats. Redaction MUST retain explicit guards for common years, date/time values,
+  grouped counts and contextual metrics.
+- **FR-077**: Complete vault erasure MUST derive user-referenced shared listings from both Job and
+  Application logical-opportunity links. It MUST delete a listing only when no Job or Application
+  owned by another user still references it.
 
 ### Key Entities
 
@@ -638,6 +690,20 @@ fails with `vault_busy` instead of opening another connection.
   through an official in-memory and real stdio MCP client, exact scope filtering, cross-user
   isolation, token digest storage, expiry and revocation, bounded outputs, stdout protocol purity,
   explicit disclosure acknowledgement and exclusive-lease failure while the desktop is active.
+- **SC-022**: Listing-observation acceptance tests prove that unchanged repeats advance only
+  last-seen time; changed repeats advance one revision and require fresh verified analysis; and
+  refreshes preserve profile decisions, application state and immutable application snapshots.
+  Migration tests prove a non-null conservative backfill, while missing, failed and partial source
+  results never produce an inferred closure.
+- **SC-023**: Search-receipt acceptance tests prove exactly one count increment for an idempotently
+  repeated `done` update, monotonic increments across later successful retries, no receipt mutation
+  after error/cancellation, survival after polling-state pruning beyond 24 hours, user isolation,
+  fixed JSON bounds with no private search content, conservative migration and portable round-trip.
+- **SC-024**: Profile-overview acceptance tests cover more than 100 owned profiles, deterministic
+  pagination, whole-vault receipt aggregation, cross-user isolation and the absence of CV, cache and
+  normalized fields. Catalog race tests prove A→B→save(A) skips without rewriting, A→A saves,
+  missing catalog rows skip, and the same current revision can be saved for two owned profiles.
+  A deterministic model-await interleaving proves normalization output for A cannot mutate B.
 
 ## Assumptions
 

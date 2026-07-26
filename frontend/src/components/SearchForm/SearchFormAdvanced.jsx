@@ -3,169 +3,118 @@ import { useI18n } from "../../i18n/useI18n";
 
 const SCHEDULE_PRESETS = [6, 12, 24];
 
-export function SearchFormAdvanced({ profile, handleChange, setProfile, existingNames = [] }) {
+export function SearchFormAdvanced({ profile, handleChange, setProfile, existingNames = [], errors = {} }) {
     const { language, t } = useI18n();
     const locale = language === "it" ? "it-IT" : "en-GB";
-    // A profile is considered "existing" (re-run) when it has a non-null id
     const isRerun = profile.id != null;
     const nameIsDuplicate = profile.name.trim() && existingNames.includes(profile.name.trim().toLowerCase());
 
     return (
-        <div className="col-xl-3 col-lg-12 d-flex flex-column gap-3">
-            <div className="p-3 bg-white-5 rounded-3 border border-white-5">
-                <div className="form-check form-switch d-flex align-items-center justify-content-between ps-0 mb-3">
-                    <div>
-                        <label className="form-check-label fw-bold text-white small mb-0" htmlFor="scheduleSwitch">{t("searchForm.automatic")}</label>
-                        <div className="x-small text-secondary opacity-75">{t("searchForm.automaticCopy")}</div>
-                    </div>
-                    <input
-                        className="form-check-input ms-2"
-                        type="checkbox"
-                        id="scheduleSwitch"
-                        checked={profile.schedule_enabled}
-                        onChange={(e) => setProfile(prev => ({ ...prev, schedule_enabled: e.target.checked }))}
-                        style={{cursor: 'pointer'}}
-                    />
+        <section className="search-advanced-panel" aria-labelledby="search-automation-title">
+            <div className="search-advanced-panel__heading">
+                <span className="search-advanced-panel__icon" aria-hidden="true"><i className="bi bi-gear" /></span>
+                <div>
+                    <p className="search-section-label">{t("searchForm.automation.eyebrow")}</p>
+                    <h4 id="search-automation-title">{t("searchForm.automation.title")}</h4>
                 </div>
-
-                {profile.schedule_enabled && (
-                    <div className="border-top border-white-10 pt-3 opacity-animation">
-                        <div className="d-flex align-items-center justify-content-between gap-3 mb-2">
-                            <span className="x-small text-secondary fw-bold text-uppercase">{t("searchForm.intervalHours")}</span>
-                            <input
-                                type="number"
-                                name="schedule_interval_hours"
-                                value={profile.schedule_interval_hours}
-                                onChange={handleChange}
-                                min="1"
-                                step="1"
-                                className="form-control form-control-sm bg-black-20 border-white-10 text-white"
-                                style={{ maxWidth: 120 }}
-                            />
-                        </div>
-                        <div className="btn-group btn-group-sm" role="group">
-                            {SCHEDULE_PRESETS.map(h => (
-                                <button
-                                    key={h}
-                                    type="button"
-                                    onClick={() => setProfile(prev => ({ ...prev, schedule_interval_hours: h }))}
-                                    className={"btn " + (profile.schedule_interval_hours == h ? 'btn-light text-dark fw-bold' : 'btn-outline-secondary')}
-                                >
-                                    {h.toLocaleString(locale)} h
-                                </button>
-                            ))}
-                        </div>
-                        <div className="x-small text-secondary mt-2 opacity-60">
-                            {t("searchForm.intervalHelp")}
-                        </div>
-                    </div>
-                )}
             </div>
 
-            <div>
-                <label className="form-label text-white small fw-bold text-uppercase x-small mb-2">{t("searchForm.searchTitle")}</label>
+            <div className="search-switch-row">
+                <div>
+                    <label htmlFor="search-schedule">{t("searchForm.automatic")}</label>
+                    <p id="search-schedule-help">{t("searchForm.automaticCopy")}</p>
+                </div>
                 <input
+                    className="form-check-input"
+                    type="checkbox"
+                    role="switch"
+                    id="search-schedule"
+                    checked={profile.schedule_enabled}
+                    onChange={(event) => setProfile(prev => ({ ...prev, schedule_enabled: event.target.checked }))}
+                    aria-describedby="search-schedule-help"
+                />
+            </div>
+
+            {profile.schedule_enabled && (
+                <div className="search-field search-schedule-settings">
+                    <label htmlFor="search-schedule-interval" className="search-field__label">{t("searchForm.intervalHours")}</label>
+                    <input
+                        id="search-schedule-interval"
+                        type="number"
+                        name="schedule_interval_hours"
+                        value={profile.schedule_interval_hours}
+                        onChange={handleChange}
+                        min="1"
+                        step="1"
+                        className={`form-control form-control-sm bg-black-20 border-white-10 text-white ${errors.schedule_interval_hours ? "is-invalid" : ""}`}
+                        aria-invalid={Boolean(errors.schedule_interval_hours) || undefined}
+                        aria-describedby={["search-schedule-help-text", errors.schedule_interval_hours && "search-schedule-error"].filter(Boolean).join(" ")}
+                    />
+                    <div className="search-presets" aria-label={t("searchForm.intervalPresets")}>
+                        {SCHEDULE_PRESETS.map(hours => (
+                            <button key={hours} type="button" onClick={() => setProfile(prev => ({ ...prev, schedule_interval_hours: hours }))} className={`search-preset ${profile.schedule_interval_hours == hours ? "is-active" : ""}`}>
+                                {hours.toLocaleString(locale)} h
+                            </button>
+                        ))}
+                    </div>
+                    <p id="search-schedule-help-text" className="search-field__help">{t("searchForm.intervalHelp")}</p>
+                    {errors.schedule_interval_hours && <p id="search-schedule-error" className="field-error" role="alert">{errors.schedule_interval_hours}</p>}
+                </div>
+            )}
+
+            <div className="search-field">
+                <label htmlFor="search-name" className="search-field__label">{t("searchForm.searchTitle")}</label>
+                <input
+                    id="search-name"
                     type="text"
                     name="name"
                     value={profile.name}
                     onChange={handleChange}
                     placeholder={t("searchForm.searchTitlePlaceholder")}
-                    className={"form-control form-control-sm bg-black-20 border-white-10 text-white " + (nameIsDuplicate ? 'border-danger' : '')}
+                    className={`form-control form-control-sm bg-black-20 border-white-10 text-white ${nameIsDuplicate || errors.name ? "is-invalid" : ""}`}
+                    aria-invalid={Boolean(nameIsDuplicate || errors.name) || undefined}
+                    aria-describedby={nameIsDuplicate || errors.name ? "search-name-error" : "search-name-help"}
                 />
-                {nameIsDuplicate ? (
-                    <div className="x-small text-danger mt-1">{t("searchForm.nameExists")}</div>
+                {nameIsDuplicate || errors.name ? (
+                    <p id="search-name-error" className="field-error" role="alert">{errors.name || t("searchForm.nameExists")}</p>
                 ) : (
-                    <div className="x-small text-secondary mt-1 opacity-75">{t("searchForm.autoName")}</div>
+                    <p id="search-name-help" className="search-field__help">{t("searchForm.autoName")}</p>
                 )}
             </div>
 
-            {/* Query Controls */}
-            <div className="p-3 bg-white-5 rounded-3 border border-white-5">
-                <div className="x-small text-secondary fw-bold text-uppercase mb-3">{t("searchForm.queryGeneration")}</div>
-
-                <div className="row g-2 mb-2">
-                    <div className="col-12">
-                        <label className="form-label text-white x-small fw-semibold mb-1">{t("searchForm.maxQueries")}</label>
-                        <input
-                            type="number"
-                            name="max_queries"
-                            value={profile.max_queries}
-                            onChange={handleChange}
-                            placeholder={t("searchForm.noLimit")}
-                            min="0"
-                            className="form-control form-control-sm bg-black-20 border-white-10 text-white"
-                        />
+            <div className="search-query-controls">
+                <p className="search-section-label">{t("searchForm.queryGeneration")}</p>
+                <div className="search-field">
+                    <label htmlFor="search-max-queries" className="search-field__label">{t("searchForm.maxQueries")}</label>
+                    <input id="search-max-queries" type="number" name="max_queries" value={profile.max_queries} onChange={handleChange} placeholder={t("searchForm.noLimit")} min="0" className="form-control form-control-sm bg-black-20 border-white-10 text-white" />
+                </div>
+                <div className="search-advanced-grid search-advanced-grid--2">
+                    <div className="search-field">
+                        <label htmlFor="search-occupation-queries" className="search-field__label">{t("searchForm.occupations")}</label>
+                        <input id="search-occupation-queries" type="number" name="max_occupation_queries" value={profile.max_occupation_queries} onChange={handleChange} placeholder={t("searchForm.aiDecides")} min="0" className="form-control form-control-sm bg-black-20 border-white-10 text-white" />
+                    </div>
+                    <div className="search-field">
+                        <label htmlFor="search-keyword-queries" className="search-field__label">{t("searchForm.keywords")}</label>
+                        <input id="search-keyword-queries" type="number" name="max_keyword_queries" value={profile.max_keyword_queries} onChange={handleChange} placeholder={t("searchForm.aiDecides")} min="0" className="form-control form-control-sm bg-black-20 border-white-10 text-white" />
                     </div>
                 </div>
-
-                <div className="row g-2">
-                    <div className="col-6">
-                        <label className="form-label text-secondary x-small mb-1">
-                            <i className="bi bi-briefcase-fill me-1 opacity-50"></i>{t("searchForm.occupations")}
-                        </label>
-                        <input
-                            type="number"
-                            name="max_occupation_queries"
-                            value={profile.max_occupation_queries}
-                            onChange={handleChange}
-                            placeholder={t("searchForm.aiDecides")}
-                            min="0"
-                            className="form-control form-control-sm bg-black-20 border-white-10 text-white"
-                        />
-                    </div>
-                    <div className="col-6">
-                        <label className="form-label text-secondary x-small mb-1">
-                            <i className="bi bi-key-fill me-1 opacity-50"></i>{t("searchForm.keywords")}
-                        </label>
-                        <input
-                            type="number"
-                            name="max_keyword_queries"
-                            value={profile.max_keyword_queries}
-                            onChange={handleChange}
-                            placeholder={t("searchForm.aiDecides")}
-                            min="0"
-                            className="form-control form-control-sm bg-black-20 border-white-10 text-white"
-                        />
-                    </div>
-                </div>
-                <div className="x-small text-secondary mt-2 opacity-60">
-                    {t("searchForm.queryHelp")}
-                </div>
+                <p className="search-field__help">{t("searchForm.queryHelp")}</p>
             </div>
 
-            {/* Feature 3: Force Regeneration Buttons (only on re-run) */}
             {isRerun && (
-                <div className="p-3 bg-warning bg-opacity-10 rounded-3 border border-warning border-opacity-20">
-                    <div className="x-small text-warning fw-bold text-uppercase mb-2">
-                        <i className="bi bi-lightning-charge-fill me-1"></i>{t("searchForm.rerunOptions")}
-                    </div>
-                    <div className="row g-2">
-                        <div className="col-12 col-sm-6 col-lg-12 col-xl-6">
-                        <button
-                            type="button"
-                            onClick={() => setProfile(prev => ({ ...prev, force_regenerate_cv_summary: !prev.force_regenerate_cv_summary }))}
-                            className={"btn btn-sm w-100 d-flex align-items-center justify-content-center gap-2 " + (profile.force_regenerate_cv_summary ? 'btn-warning text-dark fw-bold' : 'btn-outline-secondary')}
-                        >
-                            <i className={"bi " + (profile.force_regenerate_cv_summary ? 'bi-check-circle-fill' : 'bi-arrow-clockwise')}></i>
-                            {t("searchForm.refreshSummary")}
+                <div className="search-rerun-options">
+                    <p className="search-section-label">{t("searchForm.rerunOptions")}</p>
+                    <div className="search-advanced-grid search-advanced-grid--2">
+                        <button type="button" aria-pressed={profile.force_regenerate_cv_summary} onClick={() => setProfile(prev => ({ ...prev, force_regenerate_cv_summary: !prev.force_regenerate_cv_summary }))} className={`button button--secondary button--small ${profile.force_regenerate_cv_summary ? "is-active" : ""}`}>
+                            <i className="bi bi-arrow-clockwise" aria-hidden="true" />{t("searchForm.refreshSummary")}
                         </button>
-                        </div>
-                        <div className="col-12 col-sm-6 col-lg-12 col-xl-6">
-                        <button
-                            type="button"
-                            onClick={() => setProfile(prev => ({ ...prev, force_regenerate_queries: !prev.force_regenerate_queries }))}
-                            className={"btn btn-sm w-100 d-flex align-items-center justify-content-center gap-2 " + (profile.force_regenerate_queries ? 'btn-warning text-dark fw-bold' : 'btn-outline-secondary')}
-                        >
-                            <i className={"bi " + (profile.force_regenerate_queries ? 'bi-check-circle-fill' : 'bi-arrow-clockwise')}></i>
-                            {t("searchForm.refreshQueries")}
+                        <button type="button" aria-pressed={profile.force_regenerate_queries} onClick={() => setProfile(prev => ({ ...prev, force_regenerate_queries: !prev.force_regenerate_queries }))} className={`button button--secondary button--small ${profile.force_regenerate_queries ? "is-active" : ""}`}>
+                            <i className="bi bi-arrow-clockwise" aria-hidden="true" />{t("searchForm.refreshQueries")}
                         </button>
-                        </div>
                     </div>
-                    <div className="x-small text-warning opacity-75 mt-2">
-                        {t("searchForm.cacheHelp")}
-                    </div>
+                    <p className="search-field__help">{t("searchForm.cacheHelp")}</p>
                 </div>
             )}
-        </div>
+        </section>
     );
 }

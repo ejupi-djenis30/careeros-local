@@ -231,6 +231,17 @@ def delete_complete_vault(
                 .distinct()
                 .all()
             }
+            scraped_job_ids.update(
+                scraped_job_id
+                for (scraped_job_id,) in db.query(Application.scraped_job_id)
+                .filter(
+                    Application.user_id == validated_user_id,
+                    Application.scraped_job_id.is_not(None),
+                )
+                .distinct()
+                .all()
+                if scraped_job_id is not None
+            )
             exclusive_scraped_job_ids = (
                 [
                     scraped_job_id
@@ -240,6 +251,10 @@ def delete_complete_vault(
                         ~exists().where(
                             Job.scraped_job_id == ScrapedJob.id,
                             Job.user_id != validated_user_id,
+                        ),
+                        ~exists().where(
+                            Application.scraped_job_id == ScrapedJob.id,
+                            Application.user_id != validated_user_id,
                         ),
                     )
                     .all()

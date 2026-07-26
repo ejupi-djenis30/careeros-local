@@ -7,7 +7,7 @@ import { JobService } from "../services/jobs";
 import { useToast } from "../context/ToastContext";
 import { useI18n } from "../i18n/useI18n";
 
-export function JobTable({ jobs, isGlobalView, onToggleApplied, isAppliedPending = () => false, onDismiss, onReactivate, pagination, onPageChange, isLoading = false }) {
+export function JobTable({ jobs, isGlobalView, onDismiss, onReactivate, pagination, onPageChange, isLoading = false }) {
     const [selectedJobForAnalysis, setSelectedJobForAnalysis] = useState(null);
     const [selectedJobForDismiss, setSelectedJobForDismiss] = useState(null);
     const { showToast } = useToast();
@@ -79,7 +79,9 @@ export function JobTable({ jobs, isGlobalView, onToggleApplied, isAppliedPending
             raw_metadata: job.raw_metadata,
             normalized_job: job.normalized_job,
             // User state
-            applied: job.applied,
+            application_id: job.application_id,
+            application_stage: job.application_stage,
+            legacy_applied_flag: job.applied === true ? true : undefined,
             dismissed: job.dismissed,
             feedback_signal: job.feedback_signal,
         };
@@ -123,8 +125,6 @@ export function JobTable({ jobs, isGlobalView, onToggleApplied, isAppliedPending
                         key={job.id}
                         job={job}
                         isGlobalView={isGlobalView}
-                        onToggleApplied={onToggleApplied}
-                        isAppliedPending={isAppliedPending(job.id)}
                         onCopy={handleCopy}
                         onViewAnalysis={handleViewAnalysis}
                         onOpenDismissDialog={onDismiss ? handleOpenDismissDialog : undefined}
@@ -138,15 +138,15 @@ export function JobTable({ jobs, isGlobalView, onToggleApplied, isAppliedPending
                 <table className="table table-hover align-middle mb-0 table-separate">
                     <thead className="sticky-top bg-dark z-10">
                         <tr>
-                            <th className="ps-4 py-3 bg-black-50 text-secondary text-uppercase x-small tracking-wider border-bottom border-white-10 col-w-30">{t("jobs.titleColumn")}</th>
-                            <th className="py-3 bg-black-50 text-secondary text-uppercase x-small tracking-wider border-bottom border-white-10 col-w-25">{t("jobs.companyLocationColumn")}</th>
+                            <th className={`ps-4 py-3 bg-black-50 text-secondary text-uppercase x-small tracking-wider border-bottom border-white-10 ${isGlobalView ? "col-w-30" : "col-w-25"}`}>{t("jobs.titleColumn")}</th>
+                            <th className="py-3 bg-black-50 text-secondary text-uppercase x-small tracking-wider border-bottom border-white-10 col-w-20">{t("jobs.companyLocationColumn")}</th>
                             {!isGlobalView && (
                                 <>
                                     <th className="py-3 bg-black-50 text-secondary text-uppercase x-small tracking-wider border-bottom border-white-10 col-w-20">{t("jobs.matchDetailsColumn")}</th>
                                 </>
                             )}
-                            <th className="py-3 bg-black-50 text-secondary text-uppercase x-small tracking-wider border-bottom border-white-10 col-w-8">{t("jobs.appliedColumn")}</th>
-                            <th className={`pe-4 py-3 bg-black-50 text-end text-secondary text-uppercase x-small tracking-wider border-bottom border-white-10 ${isGlobalView ? 'col-w-42' : 'col-w-12'}`}>{t("jobs.actionsColumn")}</th>
+                            <th className="py-3 bg-black-50 text-secondary text-uppercase x-small tracking-wider border-bottom border-white-10 col-w-15">{t("jobs.applicationColumn")}</th>
+                            <th className={`pe-4 py-3 bg-black-50 text-end text-secondary text-uppercase x-small tracking-wider border-bottom border-white-10 ${isGlobalView ? "col-w-35" : "col-w-20"}`}>{t("jobs.actionsColumn")}</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -155,8 +155,6 @@ export function JobTable({ jobs, isGlobalView, onToggleApplied, isAppliedPending
                                 key={job.id}
                                 job={job}
                                 isGlobalView={isGlobalView}
-                                onToggleApplied={onToggleApplied}
-                                isAppliedPending={isAppliedPending(job.id)}
                                 onCopy={handleCopy}
                                 onViewAnalysis={handleViewAnalysis}
                                 onOpenDismissDialog={onDismiss ? handleOpenDismissDialog : undefined}

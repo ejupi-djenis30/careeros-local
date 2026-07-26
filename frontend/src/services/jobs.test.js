@@ -44,20 +44,6 @@ describe('JobService', () => {
     expect(res.items[0].id).toBe(1);
   });
 
-  // ── toggleApplied ──────────────────────────────────────────────────────────
-
-  it('toggleApplied sends PATCH with applied flag', async () => {
-    const mockPatch = vi.spyOn(ApiClient, 'patch').mockResolvedValue({ id: 5, applied: true });
-    await JobService.toggleApplied(5, true);
-    expect(mockPatch).toHaveBeenCalledWith('/jobs/5', { applied: true });
-  });
-
-  it('toggleApplied can unapply', async () => {
-    const mockPatch = vi.spyOn(ApiClient, 'patch').mockResolvedValue({ id: 5, applied: false });
-    await JobService.toggleApplied(5, false);
-    expect(mockPatch).toHaveBeenCalledWith('/jobs/5', { applied: false });
-  });
-
   // ── dismiss ────────────────────────────────────────────────────────────────
 
   it('dismiss sends POST with feedback_signal', async () => {

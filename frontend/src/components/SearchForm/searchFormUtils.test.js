@@ -101,5 +101,42 @@ describe('searchFormUtils', () => {
       expect(result.id).toBe(5);
       expect(result.name).toBe('Simple');
     });
+
+    it('infers uploaded_cv for legacy searches that still contain CV text', () => {
+      const result = normalizePrefillProfile({ cv_content: 'legacy CV' });
+      expect(result.profile_source).toBe('uploaded_cv');
+    });
+
+    it('defaults searches without CV text to the Career Vault', () => {
+      const result = normalizePrefillProfile({ role_description: 'Engineer' });
+      expect(result.profile_source).toBe('career_vault');
+    });
+
+    it('normalizes remote searches to a zero distance', () => {
+      const result = normalizePrefillProfile({ remote_only: true, max_distance: 120 });
+      expect(result.max_distance).toBe(0);
+    });
+
+    it('normalizes nullable history fields before they reach controlled inputs or validation', () => {
+      const result = normalizePrefillProfile({
+        name: null,
+        role_description: null,
+        location_filter: null,
+        cv_content: null,
+        search_strategy: null,
+        workload_filter: null,
+        contract_type: null,
+      });
+
+      expect(result).toMatchObject({
+        name: '',
+        role_description: '',
+        location_filter: '',
+        cv_content: '',
+        workload_filter: '80-100',
+        contract_type: 'any',
+      });
+      expect(result).not.toHaveProperty('search_strategy');
+    });
   });
 });
