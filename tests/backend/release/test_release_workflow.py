@@ -74,8 +74,9 @@ def test_source_built_cryptography_uses_verified_static_openssl() -> None:
     assert "Configure OpenSSL for source-built Windows ARM64 wheels" in text
     assert "matrix.target == 'aarch64-pc-windows-msvc'" in text
     assert 'Join-Path $env:ProgramFiles "OpenSSL"' in text
-    assert '"libcrypto.lib" = Join-Path $openSslRoot "lib\\libcrypto_static.lib"' in text
-    assert '"libssl.lib" = Join-Path $openSslRoot "lib\\libssl_static.lib"' in text
+    assert ('$openSslStaticLibraryRoot = Join-Path $openSslRoot "lib\\VC\\arm64\\MD"') in text
+    assert ('"libcrypto.lib" = Join-Path $openSslStaticLibraryRoot "libcrypto_static.lib"') in text
+    assert ('"libssl.lib" = Join-Path $openSslStaticLibraryRoot "libssl_static.lib"') in text
     assert "Copy-Item -LiteralPath $library.Value" in text
     assert '"OPENSSL_INCLUDE_DIR=$openSslInclude"' in text
     assert '"OPENSSL_LIB_DIR=$staticLibraryDirectory"' in text

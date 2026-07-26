@@ -237,10 +237,11 @@ jobs:
           $openSslRoot = Join-Path $env:ProgramFiles "OpenSSL"
           $openSslExecutable = Join-Path $openSslRoot "bin\openssl.exe"
           $openSslInclude = Join-Path $openSslRoot "include"
+          $openSslStaticLibraryRoot = Join-Path $openSslRoot "lib\VC\arm64\MD"
           $staticLibraryDirectory = Join-Path $env:RUNNER_TEMP "careeros-openssl-static"
           $staticLibraries = [ordered]@{
-            "libcrypto.lib" = Join-Path $openSslRoot "lib\libcrypto_static.lib"
-            "libssl.lib" = Join-Path $openSslRoot "lib\libssl_static.lib"
+            "libcrypto.lib" = Join-Path $openSslStaticLibraryRoot "libcrypto_static.lib"
+            "libssl.lib" = Join-Path $openSslStaticLibraryRoot "libssl_static.lib"
           }
           $requiredFiles = @(
             $openSslExecutable
