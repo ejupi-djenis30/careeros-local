@@ -1,6 +1,10 @@
+[build-system]
+requires = ["setuptools==83.0.0", "wheel==0.47.0"]
+build-backend = "setuptools.build_meta"
+
 [project]
 name = "careeros-local"
-version = "1.6.0"
+version = "1.7.0"
 description = "Open-source, local-first career utility for resumes, deterministic job search, and application tracking"
 readme = "README.md"
 authors = [
@@ -12,11 +16,17 @@ requires-python = ">=3.12,<3.14"
 keywords = ["career", "local-first", "privacy", "tauri", "fastapi", "react"]
 classifiers = [
     "Development Status :: 4 - Beta",
-    "License :: OSI Approved :: MIT License",
     "Operating System :: Microsoft :: Windows",
     "Programming Language :: Python :: 3.12",
     "Topic :: Office/Business",
 ]
+
+[project.scripts]
+careeros = "backend.automation.cli:main"
+careeros-mcp = "backend.automation.mcp_server:main"
+
+[tool.setuptools.packages.find]
+include = ["backend*", "desktop*"]
 
 [tool.pytest.ini_options]
 addopts = ["--import-mode=importlib"]

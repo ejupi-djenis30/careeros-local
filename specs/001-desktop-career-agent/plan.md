@@ -24,6 +24,10 @@ attests all public assets and binds publication to a verified annotated tag thro
 idempotent GitHub Release state machine. Application Readiness adds a bounded deterministic
 domain service that joins only owned local records, emits inspectable checks and exposes
 canonical JSON/Markdown exports without introducing persistence or migration work.
+The source-installed automation interface adds a second entry point for fixed local reads: a
+human JSON CLI and an MCP stdio server share one scoped facade. Revocable user-bound grants,
+exclusive vault leasing, typed result limits and explicit agent-disclosure acknowledgement keep
+that interface narrower than the desktop API.
 
 ## Technical Context
 
@@ -31,7 +35,8 @@ canonical JSON/Markdown exports without introducing persistence or migration wor
 on Node 24.18.0 LTS
 
 **Primary Dependencies**: Tauri 2.11, React 19, Vite 7, FastAPI 0.139, SQLAlchemy 2,
-Alembic 1.18, Pydantic 2.13, PyInstaller 6.21, llama.cpp server b9637
+Alembic 1.18, Pydantic 2.13, MCP Python SDK 1.28.1, PyInstaller 6.21,
+llama.cpp server b9637
 
 **Presentation**: dependency-free React message catalogue with English as the clean-install
 default and Italian as an on-device, user-selected alternative; no locale service or egress
@@ -46,8 +51,9 @@ offline AI golden-set evaluator
 **Target Platform**: Windows x64/arm64, macOS x64/arm64 and Linux x64/arm64 desktop; browser and Docker
 remain contributor-only development modes
 
-**Project Type**: Cross-platform desktop application with a local Python service sidecar
-and a managed native model-runtime child process required for AI analysis
+**Project Type**: Cross-platform desktop application with a local Python service sidecar,
+a source-installed read-only CLI/MCP entry point, and a managed native model-runtime child
+process required for AI analysis
 
 **Performance Goals**: warm local API reads p95 below 200 ms for a 10,000-record vault;
 desktop shell interactive within 5 seconds after sidecar readiness; compact-model structured
@@ -55,8 +61,9 @@ task median below 45 seconds on reference CPU; canvas interactions at 60 fps for
 application readiness calculation below 100 ms for one application with 300 selected facts
 
 **Constraints**: no remote inference or API keys; zero hidden startup egress; installer does
-not bundle the 1.83 GB model; all service/model endpoints loopback-only; one active vault
-writer; no user-content logging; release builds are native per operating system
+not bundle the 1.83 GB model; all service/model endpoints loopback-only; MCP uses stdio only;
+one active vault writer; no user-content logging; automation tools are read-only, scoped and
+bounded; release builds are native per operating system
 
 **Scale/Scope**: one user and one vault per installation; up to 250,000 imported records,
 20,000 archive members, 100 resume blocks, 50 resume versions per draft, and five AI task
@@ -86,6 +93,9 @@ families in the first evaluation suite
 - **PASS — Private daily agenda**: the new daily-work read model uses only owned scalar
   projections, bounded time-window inputs and explicit omission counts; it neither replays event
   payloads nor invokes local or remote inference.
+- **PASS — Agent least privilege**: the CLI and MCP server authenticate an expiring user-bound
+  grant, acquire the desktop lease for each read, expose only fixed bounded results, open no
+  listener and require acknowledgement before results can pass to an external agent client.
 
 ### Post-design gate
 
@@ -117,6 +127,8 @@ families in the first evaluation suite
 
 ```text
 specs/001-desktop-career-agent/
+├── agent-interface-analysis.md
+├── agent-interface-convergence.md
 ├── checklists/requirements.md
 ├── contracts/
 │   ├── ai-contracts.schema.json
@@ -134,6 +146,14 @@ specs/001-desktop-career-agent/
 
 ```text
 backend/
+├── automation/
+│   ├── cli.py
+│   ├── facade.py
+│   ├── grants.py
+│   ├── mcp_server.py
+│   ├── models.py
+│   ├── runtime.py
+│   └── schemas.py
 ├── ai/
 │   ├── contracts.py
 │   ├── evaluation.py
@@ -184,6 +204,7 @@ scripts/
 tests/
 ├── ai/fixtures/
 ├── backend/ai/
+├── backend/automation/
 ├── backend/desktop/
 ├── desktop/
 └── frontend/
@@ -199,6 +220,13 @@ facades until consumers are migrated, then shrink below the constitutional guide
 The presentation layer keeps language state separate from domain data. Navigation, the
 workspace shell and demo-facing components resolve copy through `frontend/src/i18n/`; the
 selected language is a local interface preference and never changes stored career facts.
+
+The agent interface is not another transport over the desktop API. `backend/automation` configures
+the existing vault before database imports, acquires the same process lease for each access,
+authenticates a stored grant digest and maps domain services into fixed DTOs. The CLI serializes
+those DTOs as JSON. The MCP entry point registers only the allowed tools and writes protocol
+messages over stdio. Neither entry point accepts a desktop session token, arbitrary query or raw
+file path.
 
 ## Delivery Phases
 
@@ -387,6 +415,32 @@ downloads are labelled as prepared downloads because a web renderer cannot inspe
 filesystem destination. Tests cover historical/current success, adversarial archives, zero mutation,
 populated-vault inspection, final-byte verification, rollback faults, service behavior and keyboard
 accessibility.
+
+### Phase M — Scoped CLI and MCP reads
+
+Add one migration for expiring, revocable automation grants. Authorization requires the CareerOS
+username and an interactive password, binds the grant to that user and returns the random bearer
+token once while persisting only its SHA-256 digest. Four fixed scopes cover system/model status,
+Career Vault counts, resume metadata and application projections.
+
+Bootstrap the source-installed command before normal database imports. It resolves the native
+application-data directory, verifies the installation secret and Alembic head, and holds
+`desktop_instance_lease` for each command. MCP uses it during bootstrap and reacquires it for every
+tool call while releasing it between calls. Each tool read also revalidates the grant. Only
+authorization may apply a pending migration; normal reads fail closed. This prevents an agent and
+the desktop sidecar from accessing the vault concurrently without keeping the desktop closed while
+MCP is idle.
+
+Map existing domain services through a focused read-only facade. DTOs exclude raw resume and
+source-document bodies, contact fields, prompts, artifact bytes, tokens and storage paths, while
+list sizes and agenda horizons remain bounded. Publish the same reads as JSON CLI commands and as
+scope-filtered MCP stdio tools. Require `--acknowledge-agent-disclosure` before serving MCP because
+the external client, not CareerOS, decides whether results are sent to a remote provider.
+
+Cover digest-only token storage, expiry, revocation, wrong-user access, scope enforcement,
+zero-mutation reads, output bounds, official in-memory MCP negotiation and a real stdio subprocess.
+Portability tests prove restore revokes active grants; deletion tests prove complete erasure
+removes them.
 
 ## Complexity Tracking
 

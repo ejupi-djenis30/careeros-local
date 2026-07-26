@@ -9,6 +9,8 @@ from sqlalchemy.orm import Session
 
 import backend.career.deletion as deletion
 from backend.ai.models import AIExecution
+from backend.automation.grants import issue_grant
+from backend.automation.models import AutomationGrant
 from backend.career.deletion import _sanitize_sqlite_storage
 from backend.career.models import CareerAsset
 from backend.core.config import settings
@@ -96,6 +98,53 @@ def test_device_erasure_removes_owned_data_but_preserves_unrelated_files(
     assert not (deletion_root / asset_path).exists()
     assert all(not path.exists() for path in owned_files)
     assert all(path.read_bytes() == b"keep" for path in unrelated)
+
+
+def test_device_erasure_reports_and_removes_only_owned_automation_grants(
+    client, auth_headers, db_session, test_user, deletion_root
+):
+    other_user = User(username="other-automation-user", hashed_password="not-used")
+    db_session.add(other_user)
+    db_session.commit()
+    db_session.refresh(other_user)
+
+    owned_first, _ = issue_grant(
+        db_session,
+        user_id=test_user.id,
+        label="codex",
+        scopes=["system:read"],
+    )
+    owned_second, _ = issue_grant(
+        db_session,
+        user_id=test_user.id,
+        label="claude-code",
+        scopes=["career:read"],
+    )
+    preserved, _ = issue_grant(
+        db_session,
+        user_id=other_user.id,
+        label="other-agent",
+        scopes=["system:read"],
+    )
+
+    erased = client.delete(
+        "/api/v1/portability/erase",
+        headers={**auth_headers, "X-Confirm-Erase": "ERASE-LOCAL-CAREER-DATA"},
+    )
+
+    assert erased.status_code == 200, erased.text
+    assert erased.json()["automation_grants"] == 2
+    db_session.expire_all()
+    assert (
+        db_session.query(AutomationGrant)
+        .filter(AutomationGrant.id.in_([owned_first.id, owned_second.id]))
+        .count()
+        == 0
+    )
+    other_grant = db_session.get(AutomationGrant, preserved.id)
+    assert other_grant is not None
+    assert other_grant.user_id == other_user.id
+    assert other_grant.revoked_at is None
 
 
 def test_device_erasure_removes_legacy_search_data_and_preserves_shared_jobs(

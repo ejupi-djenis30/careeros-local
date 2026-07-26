@@ -2,6 +2,7 @@
 
 from backend.ai import models as ai_models
 from backend.applications import models as application_models
+from backend.automation import models as automation_models
 from backend.career import coach_models as coach_models
 from backend.career import models as career_models
 from backend.models import job as job_models
@@ -13,6 +14,7 @@ from backend.workflows import models as workflow_models
 __all__ = [
     "ai_models",
     "application_models",
+    "automation_models",
     "career_models",
     "coach_models",
     "job_models",

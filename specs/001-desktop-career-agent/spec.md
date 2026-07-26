@@ -273,6 +273,52 @@ keyboard access from each agenda row to the owned application dialog.
    inspected, **Then** functional text meets WCAG AA contrast, visible labels/descriptions are
    programmatically associated, and row content does not overlap or create horizontal scrolling.
 
+---
+
+### User Story 10 - Read CareerOS safely from a coding agent (Priority: P2)
+
+A person can let Codex, Claude Code or a shell script inspect a limited part of one CareerOS
+account without exposing the whole vault or creating a second writer. The person chooses the
+scope and lifetime, receives one revocable bearer token, and must acknowledge that the connected
+agent may pass returned metadata to its own provider.
+
+**Why this priority**: Application follow-up and career planning often happen while working in a
+terminal. A dedicated read boundary is safer and more predictable than giving an agent the vault
+file, a desktop session token, arbitrary filesystem access or a generic database command.
+
+**Independent Test**: Create two local users and grants with different scope sets. Connect through
+the official MCP client over a real stdio subprocess, list and call the visible tools, and verify
+scope enforcement, user isolation, bounded typed results, stdout protocol purity, token redaction,
+revocation and expiry. Keep the desktop process open for a second run and verify that automation
+fails with `vault_busy` instead of opening another connection.
+
+**Acceptance Scenarios**:
+
+1. **Given** an existing local account and a closed desktop app, **When** the user runs
+   `careeros authorize`, authenticates interactively and selects a lifetime and at least one
+   explicit scope, **Then**
+   CareerOS returns a random bearer token once and persists only its SHA-256 digest, account
+   binding, label, scopes, expiry and revocation state.
+2. **Given** a grant with only `applications:read`, **When** an MCP session starts, **Then** only
+   the three application tools are registered and a direct attempt to use another facade read
+   fails with `scope_denied`.
+3. **Given** a valid grant, **When** the CLI or MCP tools inspect CareerOS, **Then** results are
+   bounded typed projections and contain no resume body, source-document content, contact field,
+   prompt, artifact byte, bearer token or local storage path.
+4. **Given** CareerOS Local is already running, **When** a CLI command or MCP tool call tries to
+   read the vault, **Then** it fails with `vault_busy`. **Given** an idle MCP server, **When** the
+   desktop opens, **Then** it may own the vault until it closes; MCP reacquires the lease before
+   the next read and never becomes a concurrent writer.
+5. **Given** a missing, expired, revoked, malformed or foreign token, **When** a read is attempted,
+   **Then** no facade is created and the process returns a stable content-free authorization error.
+6. **Given** the disclosure flag is absent, **When** the MCP server is started, **Then** it refuses
+   to run and explains that a connected agent may transmit tool results to its provider.
+7. **Given** a valid scoped grant, **When** the user lists or revokes it, **Then** CareerOS requires
+   the account password again and never prints the bearer token.
+8. **Given** a vault restore or complete erasure, **When** the operation commits, **Then** active
+   automation grants are revoked or removed so a token from the previous vault state cannot be
+   reused.
+
 ### Edge Cases
 
 - Disk space becomes insufficient during model acquisition, migration, backup or export.
@@ -297,6 +343,10 @@ keyboard access from each agenda row to the owned application dialog.
 - A resume artifact database row outlives a deleted file, points through a path escape or no longer
   matches its immutable digest or declared byte length.
 - The application preparation editor adds focusable controls after the surrounding drawer opens.
+- An automation grant expires during an MCP session or is revoked before the next tool call.
+- The desktop app and an automation process race to acquire the same vault lease.
+- A developer starts a read command against a vault whose schema is behind the current Alembic head.
+- A connected agent provider has different retention or training terms from CareerOS itself.
 
 ## Requirements *(mandatory)*
 
@@ -470,6 +520,27 @@ keyboard access from each agenda row to the owned application dialog.
 - **FR-060**: Backup copy MUST state that the current portable ZIP is neither encrypted nor
   authenticated and that imported AI analysis or coaching output requires fresh local-model
   validation. Restore MUST remain a separate explicit action and MUST still require an empty vault.
+- **FR-061**: A source-installed command MUST expose fixed CareerOS read operations to a human CLI
+  and an MCP server over standard input/output. MCP MUST open no network listener, initiate no
+  provider request and expose no generic prompt, SQL, filesystem, mutation, export, restore,
+  erasure or job-search operation.
+- **FR-062**: Automation authorization MUST require an interactive CareerOS password check and
+  create a grant for exactly one local user with a bounded lifetime and an explicit subset of
+  `system:read`, `career:read`, `resume:read` and `applications:read`. The bearer token MUST be
+  returned once; only a cryptographic digest and non-secret grant metadata may be persisted.
+- **FR-063**: Every CLI data read, MCP bootstrap and MCP tool call MUST hold the existing exclusive
+  desktop vault lease for that operation. MCP MUST release the lease while idle, then reacquire it
+  and revalidate the grant before every tool read. Ordinary reads MUST reject an outdated schema
+  without migration; only explicit authorization may migrate while the desktop is closed.
+- **FR-064**: MCP MUST register only the tools allowed by the authenticated grant. Every tool
+  result MUST use a bounded typed contract and omit raw resumes, source documents, contact data,
+  prompts, artifact bytes, tokens and local storage paths. Scope checks in the service MUST remain
+  authoritative even if client-side tool annotations are ignored.
+- **FR-065**: MCP startup MUST require an explicit acknowledgement that a connected agent may
+  transmit returned metadata outside the device. Documentation MUST distinguish CareerOS's
+  no-egress stdio server from the separate privacy policy of the connected client and provider.
+- **FR-066**: Users MUST be able to list and revoke their grants after another password check.
+  Restore MUST revoke active automation grants and complete vault erasure MUST delete them.
 
 ### Key Entities
 
@@ -499,6 +570,8 @@ keyboard access from each agenda row to the owned application dialog.
   evidence coverage, confidence, timing and failure classification.
 - **Evaluation Suite**: A versioned set of synthetic or licensed cases, expected outcomes,
   metrics and reproducible run results.
+- **Automation Grant**: A revocable, expiring authorization bound to one local user, represented
+  at rest by a bearer-token digest, label, fixed scope set and lifecycle timestamps.
 
 ## Success Criteria *(mandatory)*
 
@@ -561,6 +634,10 @@ keyboard access from each agenda row to the owned application dialog.
   and surfaces a verified result only when the final destination digest matches exactly. Frontend
   tests prove distinct verify and restore controls, English/Italian copy and keyboard-accessible
   summaries.
+- **SC-021**: Automation acceptance tests prove typed read-only tool discovery and invocation
+  through an official in-memory and real stdio MCP client, exact scope filtering, cross-user
+  isolation, token digest storage, expiry and revocation, bounded outputs, stdout protocol purity,
+  explicit disclosure acknowledgement and exclusive-lease failure while the desktop is active.
 
 ## Assumptions
 
@@ -577,3 +654,7 @@ keyboard access from each agenda row to the owned application dialog.
 - Code signing and notarization are release requirements when publisher credentials are
   available; development artifacts must identify their unsigned status honestly.
 - Raw imported source files remain local and can be excluded independently from portable backups.
+- The CLI/MCP interface is installed from a source checkout with the reviewed dependency lock;
+  native desktop installers do not add it to the operating system's command path.
+- CareerOS controls data only until it writes an MCP result to the connected client's stdio
+  channel. The client and its provider remain separate trust boundaries.

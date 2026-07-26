@@ -14,6 +14,43 @@ The daily application agenda is calculated locally from the authenticated user's
 next-action projections. It does not read task-event or dossier bodies, contact a calendar service,
 or invoke the local model.
 
+## CLI and agent access
+
+The source-installed `careeros` CLI and its MCP server use a separate, read-only automation
+boundary. A user must first authenticate with their CareerOS password and issue a grant for one
+local account. A grant has a label, an expiry and one or more of these scopes:
+`system:read`, `career:read`, `resume:read`, and `applications:read`. The bearer token is displayed
+only when the grant is created. CareerOS stores its SHA-256 digest, not the original token. Grants
+can be listed and revoked only after another password check.
+
+The MCP server communicates over the parent process's standard input and output. It does not open
+an HTTP port, connect to a model provider or start a job search. Its tools expose bounded
+projections:
+
+- product, schema and local-model readiness;
+- Career Vault completeness and fact counts without fact prose or dedicated contact fields;
+- resume draft/version metadata without document bodies or artifact bytes;
+- application summaries, deterministic readiness checks and a bounded next-action agenda.
+
+The tools do not accept arbitrary paths, files, SQL or prompts. They do not expose source
+documents, resume text, dedicated contact records, local storage paths, access tokens or model
+prompts. User-authored labels, resume names, company names, locations and task titles can still
+contain personal or sensitive text; authorizing their scope allows the connected agent to receive
+those values. There are no create, update, delete, restore, export or network-search tools.
+
+This boundary does not make an external agent private. An agent can include MCP results in a
+request to its own provider. Starting the server therefore requires the explicit
+`--acknowledge-agent-disclosure` flag. Issue the smallest useful scope set and short lifetime,
+protect `CAREEROS_MCP_TOKEN` with the operating system's credential facilities, and revoke the
+grant after use. Never store the bearer token in a repository or paste it into a prompt.
+
+Each CLI command and MCP tool call uses the same exclusive vault lease as the desktop sidecar.
+MCP releases it after bootstrap and after every call, so an idle server does not keep the desktop
+closed. Before each tool read, it reacquires the lease and revalidates the token, expiry, revocation
+state and original grant identity. A call made while CareerOS Local owns the vault returns
+`vault_busy`; it does not become a second writer. Restore revokes all active automation grants for
+the restored account, and complete vault erasure deletes the grant records.
+
 ## Model context
 
 The local model does not automatically receive the complete vault. Each task selects a bounded evidence set. Retrieved source text is treated as untrusted data, and generated claims must cite selected local identifiers. Execution audits store fingerprints, counts, validation codes, timing, and model identity—not prompts or generated text.

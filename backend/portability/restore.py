@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
-from datetime import date, datetime
+from datetime import UTC, date, datetime
 from types import SimpleNamespace
 from typing import Any, cast
 
@@ -16,6 +16,7 @@ from backend.applications.service import (
     ApplicationValidationError,
 )
 from backend.applications.snapshots import sanitize_application_snapshot
+from backend.automation.models import AutomationGrant
 from backend.career.models import CandidateProfile
 from backend.core.config import settings
 from backend.db.types import UTCDateTime, aware_utc
@@ -813,6 +814,13 @@ def _restore_transaction(
             db.flush()
         _rebuild_application_projections(db, user_id, application_projection_contract)
         _restore_preference_state(db, user_id, preference_state)
+        db.query(AutomationGrant).filter(
+            AutomationGrant.user_id == user_id,
+            AutomationGrant.revoked_at.is_(None),
+        ).update(
+            {AutomationGrant.revoked_at: datetime.now(UTC)},
+            synchronize_session=False,
+        )
         db.flush()
         db.commit()
     except (IntegrityError, StatementError) as exc:

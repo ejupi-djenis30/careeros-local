@@ -273,17 +273,18 @@ T047 model-manager UI tests
 
 ## Task validation
 
-- Total tasks: 115.
+- Task identifiers remain sequential through T156.
 - User Story 1: 14 tasks (T015–T028).
 - User Story 2: 6 tasks (T029–T034).
 - User Story 3: 7 tasks (T035–T041).
-- User Story 4: 17 tasks (T042–T058).
+- User Story 4: 25 tasks (T042–T058 and T124–T131).
 - User Story 5: 6 tasks (T059–T064).
 - User Story 6: 10 tasks (T106–T115).
-- Setup/Foundation/Polish/Convergence: 37 tasks.
-- Convergence: 11 tasks (T077–T087).
-- Post-audit release hardening: 7 tasks (T088–T094).
-- Immutable v1.1 release contract: 10 tasks (T095–T104).
+- User Story 7: 8 tasks (T116–T123).
+- User Story 8: 12 tasks (T132–T143).
+- User Story 9: 6 tasks (T144–T149).
+- User Story 10: 7 tasks (T150–T156).
+- Setup, foundation, polish, convergence and release work: 55 tasks.
 - Every task uses the required checkbox, sequential ID, appropriate story label and exact path.
 - Suggested MVP scope: Setup + Foundation + User Story 1.
 
@@ -450,3 +451,32 @@ keeping inspection content-free and restore explicitly separate.
   and covered by frontend/platform fault tests with the minimum filesystem permissions
 - [x] T149 [US9] Update owner documentation, run proportional gates and record backup-assurance
   analysis/convergence with exact evidence
+
+## Phase 17: User Story 10 — Scoped CLI and MCP reads
+
+**Goal**: Let a local user inspect bounded CareerOS state from a shell or coding agent without
+sharing the vault, creating a second writer or exposing mutation tools.
+
+**Independent Test**: Issue grants for two users and different scopes, negotiate through the
+official MCP client in memory and over stdio, call every visible tool, and verify scope filtering,
+typed bounded results, zero mutation, token redaction, expiry/revocation and exclusive-lease
+failure while the desktop is active.
+
+- [x] T150 [US10] Amend the specification and plan for source-installed CLI/MCP access, fixed read
+  scopes, explicit agent disclosure, bounded DTOs and the existing exclusive vault lease
+- [x] T151 [US10] Add the user-bound automation grant model, digest-only token persistence,
+  expiry/revocation service and Alembic migration in `backend/automation/`,
+  `backend/model_registry.py` and `alembic/versions/`
+- [x] T152 [US10] Add cwd-independent vault bootstrap, current-schema checks, authorization-only
+  migration and per-read `desktop_instance_lease` ownership with grant revalidation in
+  `backend/automation/runtime.py` and `backend/automation/mcp_server.py`
+- [x] T153 [US10] Add the scoped read facade, JSON CLI entry point, MCP stdio server and
+  Codex/Claude Code configuration output in `backend/automation/` and `pyproject.toml`
+- [x] T154 [US10] Revoke active grants during restore and remove grant rows during complete vault
+  erasure in `backend/portability/restore.py` and `backend/career/deletion.py`
+- [x] T155 [US10] Cover token lifecycle, cross-user isolation, scope enforcement, zero mutation,
+  output bounds, disclosure, client configuration and official MCP negotiation in
+  `tests/backend/automation/`
+- [x] T156 [US10] Update owner, privacy, architecture and development guidance and record
+  cross-artifact analysis/convergence in `README.md`, `docs/` and
+  `specs/001-desktop-career-agent/`

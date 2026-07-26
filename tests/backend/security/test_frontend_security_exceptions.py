@@ -63,13 +63,17 @@ def test_current_frontend_exceptions_are_exact_guarded_and_time_bounded():
     assert accepted == ["GHSA-qwww-vcr4-c8h2"]
 
 
-def test_postcss_is_patched_and_the_exception_manifest_is_release_evidence():
+def test_vulnerable_frontend_transitives_are_patched_and_manifest_is_release_evidence():
     lock = json.loads((ROOT / "frontend/package-lock.json").read_text(encoding="utf-8"))
     package = json.loads((ROOT / "frontend/package.json").read_text(encoding="utf-8"))
 
     assert lock["packages"]["node_modules/postcss"]["version"] == "8.5.18"
     assert lock["packages"]["node_modules/postcss"]["dev"] is True
     assert package["overrides"]["postcss"] == "8.5.18"
+    assert lock["packages"]["node_modules/minimatch"]["version"] == "10.2.5"
+    assert lock["packages"]["node_modules/brace-expansion"]["version"] == "5.0.8"
+    assert lock["packages"]["node_modules/brace-expansion"]["dev"] is True
+    assert package["overrides"]["minimatch"] == "10.2.5"
     assert "frontend-security-exceptions.json" in EVIDENCE_FILES
 
 

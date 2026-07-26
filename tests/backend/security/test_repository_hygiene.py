@@ -11,6 +11,8 @@ PRUNED_DIRECTORIES = {
     ".mypy_cache",
     ".pytest_cache",
     ".ruff_cache",
+    ".serena",
+    ".test-tmp",
     ".venv",
     "coverage",
     "binaries",
@@ -267,6 +269,15 @@ def test_pull_request_gates_smoke_test_tooling_and_frontend_runtime():
         "grep --quiet",
     ):
         assert command in ci
+
+
+def test_shared_python_locks_keep_windows_only_mcp_dependency_guarded():
+    marker = 'pywin32==312 ; sys_platform == "win32" \\'
+
+    for filename in ("requirements.lock", "requirements-dev.lock"):
+        lock = (ROOT / filename).read_text(encoding="utf-8")
+        assert marker in lock
+        assert "\npywin32==312 \\" not in lock
 
 
 def test_legacy_service_facades_stay_thin():
