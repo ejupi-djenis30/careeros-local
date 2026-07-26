@@ -4,7 +4,7 @@ import json
 import logging
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Any, Awaitable, Callable, Dict, List, Sequence, cast
+from typing import Any, Awaitable, Callable, Dict, List, Literal, Sequence, cast
 
 from sqlalchemy.orm import Session
 
@@ -47,6 +47,7 @@ BootstrapNormalizedJobData = Callable[..., Dict[str, Any]]
 ExtractListingText = Callable[[Any], str]
 ParseListingPublicationDate = Callable[[Any, str, str], Any]
 ReportRefinedAnalysisProgress = Callable[[int, str], None]
+SaveSingleJobOutcome = Literal["saved", "stale_catalog"]
 
 
 @dataclass(frozen=True)
@@ -55,6 +56,13 @@ class CatalogPersistenceResult:
     updated: int = 0
     failed: int = 0
     conflict_recoveries: int = 0
+
+
+@dataclass(frozen=True)
+class CatalogNormalizationCapture:
+    scraped_job_id: int
+    content_revision: int
+    content_fingerprint: str
 
 
 class SearchPipelinePersistence:
@@ -67,6 +75,148 @@ class SearchPipelinePersistence:
     def __init__(self, db: Session, job_repo: JobRepository):
         self.db = db
         self.job_repo = job_repo
+
+    @staticmethod
+    def _positive_catalog_revision(value: Any) -> int | None:
+        if isinstance(value, bool) or not isinstance(value, int) or value < 1:
+            return None
+        return value
+
+    @staticmethod
+    def _positive_catalog_id(value: Any) -> int | None:
+        if isinstance(value, bool) or not isinstance(value, int) or value < 1:
+            return None
+        return value
+
+    @classmethod
+    def _captured_catalog_record_matches(
+        cls,
+        listing: Any,
+        record: ScrapedJob | None,
+        *,
+        platform: str,
+        platform_id: str,
+    ) -> bool:
+        if record is None:
+            return False
+
+        captured_id = cls._positive_catalog_id(getattr(listing, "_scraped_job_id", None))
+        captured_revision = cls._positive_catalog_revision(
+            getattr(listing, "_catalog_content_revision", None)
+        )
+        captured_fingerprint = getattr(listing, "_catalog_content_fingerprint", None)
+        if (
+            captured_id is None
+            or captured_revision is None
+            or not isinstance(captured_fingerprint, str)
+            or not captured_fingerprint.strip()
+        ):
+            return False
+
+        record_revision = cls._positive_catalog_revision(
+            getattr(record, "content_revision", None)
+        )
+        record_fingerprint = getattr(record, "content_fingerprint", None)
+        return (
+            record.id == captured_id
+            and str(record.platform or "").strip() == platform
+            and str(record.platform_job_id or "").strip() == platform_id
+            and record_revision == captured_revision
+            and isinstance(record_fingerprint, str)
+            and record_fingerprint == captured_fingerprint
+        )
+
+    def _load_captured_catalog_record(
+        self,
+        listing: Any,
+        *,
+        platform: str,
+        platform_id: str,
+        for_update: bool = False,
+    ) -> ScrapedJob | None:
+        captured_id = self._positive_catalog_id(getattr(listing, "_scraped_job_id", None))
+        if captured_id is None:
+            return None
+
+        record = self.db.get(
+            ScrapedJob,
+            captured_id,
+            populate_existing=True,
+            with_for_update=for_update,
+        )
+        if not self._captured_catalog_record_matches(
+            listing,
+            record,
+            platform=platform,
+            platform_id=platform_id,
+        ):
+            return None
+        return record
+
+    @classmethod
+    def _capture_catalog_normalization(
+        cls,
+        record: ScrapedJob,
+    ) -> CatalogNormalizationCapture | None:
+        scraped_job_id = cls._positive_catalog_id(getattr(record, "id", None))
+        content_revision = cls._positive_catalog_revision(
+            getattr(record, "content_revision", None)
+        )
+        content_fingerprint = getattr(record, "content_fingerprint", None)
+        if (
+            scraped_job_id is None
+            or content_revision is None
+            or not isinstance(content_fingerprint, str)
+            or not content_fingerprint.strip()
+        ):
+            return None
+        return CatalogNormalizationCapture(
+            scraped_job_id=scraped_job_id,
+            content_revision=content_revision,
+            content_fingerprint=content_fingerprint,
+        )
+
+    def _load_captured_normalization_record(
+        self,
+        capture: CatalogNormalizationCapture,
+    ) -> ScrapedJob | None:
+        record = self.db.get(
+            ScrapedJob,
+            capture.scraped_job_id,
+            populate_existing=True,
+            with_for_update=True,
+        )
+        if record is None:
+            return None
+        record_revision = self._positive_catalog_revision(
+            getattr(record, "content_revision", None)
+        )
+        record_fingerprint = getattr(record, "content_fingerprint", None)
+        if (
+            record.id != capture.scraped_job_id
+            or record_revision != capture.content_revision
+            or not isinstance(record_fingerprint, str)
+            or record_fingerprint != capture.content_fingerprint
+        ):
+            return None
+        return record
+
+    @classmethod
+    def _listing_matches_catalog_record(cls, listing: Any, record: ScrapedJob) -> bool:
+        if getattr(listing, "_catalog_persisted", False) is not True:
+            return cls._positive_catalog_id(getattr(listing, "_scraped_job_id", None)) == record.id
+        platform = str(
+            getattr(listing, "source", None) or getattr(listing, "platform", "unknown")
+        ).strip()
+        platform_id = str(
+            getattr(listing, "id", "") or getattr(listing, "platform_job_id", "")
+        ).strip()
+        return cls._captured_catalog_record_matches(
+            listing,
+            record,
+            platform=platform,
+            platform_id=platform_id,
+        )
 
     @staticmethod
     def _estimate_normalize_candidate_chars(candidate: Dict[str, Any]) -> int:
@@ -163,6 +313,7 @@ class SearchPipelinePersistence:
         if not platform_id:
             raise ValueError("A provider job identifier is required")
 
+        observed_at = datetime.now(timezone.utc)
         existing_sj = self.job_repo.get_scraped_job_by_platform_and_id(platform, platform_id)
 
         desc_text = extract_listing_description_text_fn(listing)
@@ -173,8 +324,9 @@ class SearchPipelinePersistence:
             getattr(settings, "SEARCH_COMPACT_DESCRIPTION_CACHE_MAX_CHARS", 1400) or 1400
         )
         compact_description = compact_prompt_text(desc_text or "", compact_description_limit)
+        clean_title = clean_html_tags(getattr(listing, "title", "Unknown"))
         content_fingerprint = build_scraped_job_content_fingerprint(
-            title=clean_html_tags(getattr(listing, "title", "Unknown")),
+            title=clean_title,
             company=company_name,
             location=location_str,
             workload=workload_str,
@@ -195,26 +347,33 @@ class SearchPipelinePersistence:
         )
         application_url = normalize_job_url(application_url, required=False)
         raw_metadata = self._listing_raw_metadata(listing)
-        clean_title = clean_html_tags(getattr(listing, "title", "Unknown"))
+        refresh_fields = {
+            "title": clean_title,
+            "company": company_name,
+            "description": clean_html_tags(desc_text) if desc_text else None,
+            "location": location_str or None,
+            "external_url": external_url,
+            "application_url": application_url,
+            "application_email": application_email,
+            "workload": workload_str or None,
+            "publication_date": pub_date,
+            "raw_metadata": raw_metadata,
+            "content_fingerprint": content_fingerprint,
+            "compact_description": compact_description or None,
+        }
 
         created = False
         recovered_catalog_conflict = False
+        content_changed = False
         if not existing_sj:
             new_sj = ScrapedJob(
                 platform=platform,
                 platform_job_id=platform_id,
-                title=clean_title,
-                company=company_name,
-                description=clean_html_tags(desc_text) if desc_text else None,
-                location=location_str,
-                external_url=external_url,
-                application_url=application_url,
-                application_email=application_email,
-                workload=workload_str or None,
-                publication_date=pub_date,
-                raw_metadata=raw_metadata,
-                content_fingerprint=content_fingerprint,
-                compact_description=compact_description or None,
+                first_seen_at=observed_at,
+                last_seen_at=observed_at,
+                last_changed_at=observed_at,
+                content_revision=1,
+                **refresh_fields,
                 **normalized_bootstrap,
             )
             created_ok = self.job_repo.create_scraped_job_nested(new_sj)
@@ -226,39 +385,53 @@ class SearchPipelinePersistence:
                 existing_sj = self.job_repo.get_scraped_job_by_platform_and_id(
                     platform, platform_id
                 )
-        else:
+
+        if existing_sj is None:
+            raise RuntimeError("Scraped job upsert did not return a persisted catalog record")
+
+        if not created:
             stored_fingerprint = getattr(existing_sj, "content_fingerprint", None)
             if not isinstance(stored_fingerprint, str) or not stored_fingerprint.strip():
                 stored_fingerprint = None
             content_changed = bool(stored_fingerprint and stored_fingerprint != content_fingerprint)
-            refresh_fields = {
-                "title": clean_title,
-                "company": company_name,
-                "description": clean_html_tags(desc_text) if desc_text else None,
-                "location": location_str or None,
-                "external_url": external_url,
-                "application_url": application_url,
-                "application_email": application_email,
-                "workload": workload_str or None,
-                "publication_date": pub_date,
-                "raw_metadata": raw_metadata,
-                "content_fingerprint": content_fingerprint,
-                "compact_description": compact_description or None,
-            }
             if stored_fingerprint is None:
                 content_changed = any(
                     getattr(existing_sj, field, None) != value
                     for field, value in refresh_fields.items()
                     if field in {"title", "company", "description", "location", "workload"}
                 )
+
+            first_seen_at = getattr(existing_sj, "first_seen_at", None)
+            if not isinstance(first_seen_at, datetime):
+                created_at = getattr(existing_sj, "created_at", None)
+                existing_sj.first_seen_at = (
+                    created_at if isinstance(created_at, datetime) else observed_at
+                )
+            existing_sj.last_seen_at = observed_at
+
+            stored_revision = getattr(existing_sj, "content_revision", 1)
+            if (
+                isinstance(stored_revision, bool)
+                or not isinstance(stored_revision, int)
+                or stored_revision < 1
+            ):
+                stored_revision = 1
+            existing_sj.content_revision = stored_revision
+
+            last_changed_at = getattr(existing_sj, "last_changed_at", None)
+            if not isinstance(last_changed_at, datetime):
+                existing_sj.last_changed_at = existing_sj.first_seen_at
+
             for field, value in refresh_fields.items():
                 setattr(existing_sj, field, value)
             if content_changed:
+                existing_sj.content_revision = stored_revision + 1
+                existing_sj.last_changed_at = observed_at
                 self._clear_normalization(existing_sj)
                 for field, value in normalized_bootstrap.items():
                     setattr(existing_sj, field, value)
                 metadata = dict(cast(Dict[str, Any] | None, existing_sj.normalized_metadata) or {})
-                metadata["content_changed_at"] = datetime.now(timezone.utc).isoformat()
+                metadata["content_changed_at"] = observed_at.isoformat()
                 existing_sj.normalized_metadata = metadata
             else:
                 for field, value in normalized_bootstrap.items():
@@ -267,22 +440,21 @@ class SearchPipelinePersistence:
             if not existing_sj.normalization_status:
                 existing_sj.normalization_status = "provider_bootstrap"
 
-        if existing_sj is None:
-            raise RuntimeError("Scraped job upsert did not return a persisted catalog record")
-
         setattr(listing, "_scraped_job_id", existing_sj.id)
         setattr(
             listing,
             "_normalized_job_data",
-            {}
-            if "content_changed" in locals() and content_changed
-            else existing_sj.normalized_job_data,
+            {} if content_changed else existing_sj.normalized_job_data,
         )
         setattr(
             listing,
             "_compact_description",
             compact_description or getattr(existing_sj, "compact_description", None),
         )
+        setattr(listing, "_catalog_content_changed", content_changed)
+        setattr(listing, "_catalog_content_revision", existing_sj.content_revision)
+        setattr(listing, "_catalog_content_fingerprint", existing_sj.content_fingerprint)
+        setattr(listing, "_catalog_observed_at", observed_at)
         setattr(listing, "_catalog_conflict_recovered", recovered_catalog_conflict)
         setattr(listing, "_catalog_persisted", True)
         setattr(listing, "_catalog_persist_error", None)
@@ -304,6 +476,10 @@ class SearchPipelinePersistence:
         for listing in jobs:
             setattr(listing, "_catalog_persisted", False)
             setattr(listing, "_catalog_persist_error", None)
+            setattr(listing, "_catalog_content_changed", False)
+            setattr(listing, "_catalog_content_revision", None)
+            setattr(listing, "_catalog_content_fingerprint", None)
+            setattr(listing, "_catalog_observed_at", None)
 
         try:
             for listing in jobs:
@@ -347,7 +523,9 @@ class SearchPipelinePersistence:
             return 0
 
         candidates: List[Dict[str, Any]] = []
-        candidate_records: List[ScrapedJob] = []
+        candidate_captures: List[CatalogNormalizationCapture] = []
+        confirmed_records_by_id: Dict[int, ScrapedJob] = {}
+        queued_scraped_ids: set[int] = set()
 
         all_scraped_ids = [getattr(listing, "_scraped_job_id", None) for listing in jobs]
         all_scraped_ids = [sid for sid in all_scraped_ids if sid is not None]
@@ -364,9 +542,21 @@ class SearchPipelinePersistence:
             if not scraped_job:
                 continue
             if scraped_job.normalization_status not in {None, "", "pending", "provider_bootstrap"}:
-                setattr(listing, "_normalized_job_data", scraped_job.normalized_job_data)
+                if self._listing_matches_catalog_record(listing, scraped_job):
+                    setattr(listing, "_normalized_job_data", scraped_job.normalized_job_data)
+                    confirmed_records_by_id[scraped_job.id] = scraped_job
+                continue
+            if scraped_job.id in queued_scraped_ids:
                 continue
 
+            capture = self._capture_catalog_normalization(scraped_job)
+            if capture is None:
+                logger.warning(
+                    "[NORMALIZE] Skipped catalog row with incomplete revision identity "
+                    "for profile %s",
+                    profile_id,
+                )
+                continue
             compact_description = getattr(scraped_job, "compact_description", None)
             if not isinstance(compact_description, str) or not compact_description.strip():
                 compact_description = scraped_job.description
@@ -380,7 +570,8 @@ class SearchPipelinePersistence:
                     "description": compact_description,
                 }
             )
-            candidate_records.append(scraped_job)
+            candidate_captures.append(capture)
+            queued_scraped_ids.add(capture.scraped_job_id)
 
         if not candidates:
             return 0
@@ -412,12 +603,26 @@ class SearchPipelinePersistence:
                 normalized_rows.extend([{} for _ in chunk])
 
         upgraded = 0
-        for scraped_job, normalized in zip(candidate_records, normalized_rows):
+        stale_skipped = 0
+        for capture, normalized in zip(candidate_captures, normalized_rows):
+            scraped_job = self._load_captured_normalization_record(capture)
+            if scraped_job is None:
+                stale_skipped += 1
+                continue
+            if scraped_job.normalization_status not in {
+                None,
+                "",
+                "pending",
+                "provider_bootstrap",
+            }:
+                confirmed_records_by_id[scraped_job.id] = scraped_job
+                continue
             if not normalized:
                 scraped_job.normalization_status = "failed"
                 fail_meta = dict(cast(Dict[str, Any] | None, scraped_job.normalized_metadata) or {})
                 fail_meta["normalization_failed_at"] = datetime.now(timezone.utc).isoformat()
                 scraped_job.normalized_metadata = fail_meta
+                confirmed_records_by_id[scraped_job.id] = scraped_job
                 continue
             scraped_job.normalization_status = "normalized"
             scraped_job.normalized_at = datetime.now(timezone.utc)
@@ -462,6 +667,14 @@ class SearchPipelinePersistence:
                     pass
 
             upgraded += 1
+            confirmed_records_by_id[scraped_job.id] = scraped_job
+
+        if stale_skipped:
+            logger.info(
+                "[NORMALIZE] Discarded %d stale catalog normalization result(s) for profile %s",
+                stale_skipped,
+                profile_id,
+            )
 
         self.db.commit()
 
@@ -469,8 +682,8 @@ class SearchPipelinePersistence:
             scraped_job_id = getattr(listing, "_scraped_job_id", None)
             if not scraped_job_id:
                 continue
-            scraped_job = scraped_jobs_by_id.get(scraped_job_id)
-            if scraped_job:
+            scraped_job = confirmed_records_by_id.get(scraped_job_id)
+            if scraped_job and self._listing_matches_catalog_record(listing, scraped_job):
                 setattr(listing, "_normalized_job_data", scraped_job.normalized_job_data)
 
         return upgraded
@@ -485,10 +698,30 @@ class SearchPipelinePersistence:
         upsert_scraped_job: UpsertScrapedJob,
         geocode_location_fn: GeocodeLocation,
         commit: bool = True,
-    ) -> None:
-        platform = getattr(listing, "source", None) or getattr(listing, "platform", "unknown")
-        platform_id = str(getattr(listing, "id", "") or getattr(listing, "platform_job_id", ""))
-        existing_sj, _ = upsert_scraped_job(listing)
+    ) -> SaveSingleJobOutcome:
+        platform = str(
+            getattr(listing, "source", None) or getattr(listing, "platform", "unknown")
+        ).strip()
+        platform_id = str(
+            getattr(listing, "id", "") or getattr(listing, "platform_job_id", "")
+        ).strip()
+        catalog_was_persisted = getattr(listing, "_catalog_persisted", False) is True
+        if catalog_was_persisted:
+            existing_sj = self._load_captured_catalog_record(
+                listing,
+                platform=platform,
+                platform_id=platform_id,
+            )
+            if existing_sj is None:
+                logger.info(
+                    "Skipped stale analyzed observation before persistence for profile %s",
+                    profile_dict.get("id"),
+                )
+                return "stale_catalog"
+        else:
+            # Compatibility path for callers that predate catalog-first acquisition.
+            existing_sj, _ = upsert_scraped_job(listing)
+
         validated_at = datetime.now(timezone.utc)
         attested_analysis = {**analysis, "analysis_validated_at": validated_at}
         execution_id = str(analysis.get("analysis_execution_id") or "").strip()
@@ -564,6 +797,24 @@ class SearchPipelinePersistence:
                     origin_coords[0], origin_coords[1], coords.lat, coords.lon
                 )
 
+        if catalog_was_persisted:
+            # Re-read and lock immediately before mutating the user-scoped result. Any
+            # await above may have allowed a newer provider observation to replace this
+            # listing revision. The newer observation owns its own analysis run.
+            current_sj = self._load_captured_catalog_record(
+                listing,
+                platform=platform,
+                platform_id=platform_id,
+                for_update=True,
+            )
+            if current_sj is None:
+                logger.info(
+                    "Skipped stale analyzed observation after asynchronous work for profile %s",
+                    profile_dict.get("id"),
+                )
+                return "stale_catalog"
+            existing_sj = current_sj
+
         analysis_fields = {
             "source_query": (
                 str(source_query).strip()[:1000]
@@ -634,6 +885,7 @@ class SearchPipelinePersistence:
                     exc,
                 )
                 raise
+        return "saved"
 
     def apply_refined_analysis_updates(
         self,

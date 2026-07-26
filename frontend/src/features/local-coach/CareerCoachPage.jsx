@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link } from "react-router";
 import { ApiError } from "../../lib/client";
 import { CareerService } from "../../services/career";
 import { CoachService } from "../../services/coach";

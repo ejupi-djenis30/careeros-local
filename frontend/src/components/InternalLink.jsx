@@ -1,4 +1,4 @@
-import { Link, useInRouterContext } from "react-router-dom";
+import { Link, useInRouterContext } from "react-router";
 
 export function InternalLink({ to, children, ...props }) {
     const hasRouter = useInRouterContext();
@@ -6,4 +6,3 @@ export function InternalLink({ to, children, ...props }) {
         ? <Link to={to} {...props}>{children}</Link>
         : <a href={to} {...props}>{children}</a>;
 }
-

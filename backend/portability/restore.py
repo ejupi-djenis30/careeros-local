@@ -38,6 +38,10 @@ from backend.portability.manifest import (
     sha256,
 )
 from backend.portability.schemas import ArchiveManifest, RestoreResponse
+from backend.search.receipt import (
+    SEARCH_RECEIPT_MAX_COUNTER,
+    normalize_search_completion_summary,
+)
 from backend.storage.atomic import atomic_write, resolve_data_path
 from backend.workflows.models import WorkflowRun
 
@@ -170,6 +174,41 @@ def _decode_row(model: type[Any], row: dict[str, Any]) -> dict[str, Any]:
     return decoded
 
 
+def _normalize_search_receipt_row(row: dict[str, Any]) -> None:
+    state = row.get("last_search_state")
+    summary = row.get("last_search_summary")
+    run_count = row.get("search_run_count", 0)
+    started_at = row.get("last_search_started_at")
+    completed_at = row.get("last_search_completed_at")
+
+    has_receipt = any(
+        value is not None for value in (state, summary, started_at, completed_at)
+    ) or run_count not in (None, 0)
+    if not has_receipt:
+        return
+    if (
+        state != "done"
+        or isinstance(run_count, bool)
+        or not isinstance(run_count, int)
+        or not 1 <= run_count <= SEARCH_RECEIPT_MAX_COUNTER
+        or not isinstance(started_at, datetime)
+        or not isinstance(completed_at, datetime)
+    ):
+        raise ArchiveError("Archive search completion receipt is invalid")
+
+    normalized = normalize_search_completion_summary(summary)
+    if normalized is None:
+        raise ArchiveError("Archive search completion summary is invalid")
+    summary_started_at = datetime.fromisoformat(normalized["started_at"])
+    summary_completed_at = datetime.fromisoformat(normalized["finished_at"])
+    if (
+        aware_utc(started_at) != aware_utc(summary_started_at)
+        or aware_utc(completed_at) != aware_utc(summary_completed_at)
+    ):
+        raise ArchiveError("Archive search completion receipt timestamps do not match")
+    row["last_search_summary"] = normalized
+
+
 def _assert_ids_available(db: Session, model: type[Any], rows: list[dict[str, Any]]) -> None:
     ids = [str(row["id"]) for row in rows if row.get("id")]
     for start in range(0, len(ids), 400):
@@ -245,17 +284,35 @@ def _validate_search_relationships(
         if key in listing_keys:
             raise ArchiveError("Archive contains duplicate scraped listing identities")
         listing_keys.add(key)
+    job_scraped_job_ids: dict[int, int] = {}
     for row in decoded["jobs"]:
+        job_id = row.get("id")
         profile_id = row.get("search_profile_id")
         scraped_job_id = row.get("scraped_job_id")
         if profile_id is not None and profile_id not in profile_ids:
             raise ArchiveError("Archive job references a missing search profile")
         if scraped_job_id not in scraped_job_ids:
             raise ArchiveError("Archive job references a missing scraped listing")
+        if isinstance(job_id, int) and isinstance(scraped_job_id, int):
+            job_scraped_job_ids[job_id] = scraped_job_id
+
+    claimed_logical_ids: set[int] = set()
     for row in decoded["applications"]:
         job_id = row.get("job_id")
         if job_id is not None and job_id not in job_ids:
             raise ArchiveError("Archive application references a missing job")
+        if format_version < 5:
+            continue
+        scraped_job_id = row.get("scraped_job_id")
+        if scraped_job_id is None:
+            continue
+        if scraped_job_id not in scraped_job_ids:
+            raise ArchiveError("Archive application references a missing scraped listing")
+        if job_id is not None and job_scraped_job_ids.get(job_id) != scraped_job_id:
+            raise ArchiveError("Archive application logical opportunity does not match its job")
+        if scraped_job_id in claimed_logical_ids:
+            raise ArchiveError("Archive contains duplicate application logical opportunities")
+        claimed_logical_ids.add(scraped_job_id)
 
 
 def _validate_portable_foreign_keys(
@@ -397,6 +454,8 @@ def _decode_payload(
         _assert_unique_archive_ids(table_name, decoded[table_name])
         if enforce_destination_ids and table_name not in REMAPPABLE_TABLES:
             _assert_ids_available(db, model, decoded[table_name])
+    for row in decoded["search_profiles"]:
+        _normalize_search_receipt_row(row)
     for row in decoded["jobs"]:
         _quarantine_unverified_analysis(
             row,
@@ -543,16 +602,21 @@ def _prepare_row(
     *,
     format_version: int,
     job_id_map: dict[int, int],
+    application_logical_identity_map: dict[object, int | None],
 ) -> None:
     if table_name in USER_SCOPED_TABLES:
         row["user_id"] = user_id
     if table_name == "applications":
+        archived_application_id = row["id"]
         archived_job_id = row.get("job_id")
         row["job_id"] = (
             job_id_map[archived_job_id]
             if format_version >= 3 and archived_job_id is not None
             else None
         )
+        row["scraped_job_id"] = application_logical_identity_map[
+            archived_application_id
+        ]
     if table_name == "workflow_runs":
         row["lease_owner"] = None
         row["lease_expires_at"] = None
@@ -575,7 +639,16 @@ def _add_remappable_row(db: Session, model: type[Any], row: dict[str, Any]) -> A
 
 
 def _shared_listing_content(record: ScrapedJob | dict[str, Any]) -> dict[str, Any]:
-    ignored = {"id", "created_at", "updated_at", *SCRAPED_JOB_PRIVATE_FIELDS}
+    ignored = {
+        "id",
+        "created_at",
+        "updated_at",
+        "first_seen_at",
+        "last_seen_at",
+        "last_changed_at",
+        "content_revision",
+        *SCRAPED_JOB_PRIVATE_FIELDS,
+    }
     return {
         column.name: _json_value(
             record.get(column.name) if isinstance(record, dict) else getattr(record, column.name)
@@ -589,7 +662,7 @@ def _restore_search_records(
     db: Session,
     user_id: int,
     decoded: dict[str, list[dict[str, Any]]],
-) -> dict[int, int]:
+) -> tuple[dict[int, int], dict[int, int], dict[int, int]]:
     profile_id_map: dict[int, int] = {}
     for row in decoded["search_profiles"]:
         prepared = dict(row)
@@ -622,6 +695,7 @@ def _restore_search_records(
         scraped_job_id_map[archived_id] = restored.id
 
     job_id_map: dict[int, int] = {}
+    job_scraped_job_id_map: dict[int, int] = {}
     for row in decoded["jobs"]:
         prepared = dict(row)
         archived_id = prepared["id"]
@@ -630,10 +704,53 @@ def _restore_search_records(
         prepared["search_profile_id"] = (
             profile_id_map[profile_id] if profile_id is not None else None
         )
-        prepared["scraped_job_id"] = scraped_job_id_map[prepared["scraped_job_id"]]
+        restored_scraped_job_id = scraped_job_id_map[prepared["scraped_job_id"]]
+        prepared["scraped_job_id"] = restored_scraped_job_id
         restored = _add_remappable_row(db, Job, prepared)
         job_id_map[archived_id] = restored.id
-    return job_id_map
+        job_scraped_job_id_map[archived_id] = restored_scraped_job_id
+    return job_id_map, job_scraped_job_id_map, scraped_job_id_map
+
+
+def _application_logical_identity_map(
+    decoded: dict[str, list[dict[str, Any]]],
+    *,
+    job_scraped_job_id_map: dict[int, int],
+    scraped_job_id_map: dict[int, int],
+) -> dict[object, int | None]:
+    """Choose one portable application timeline per restored logical opportunity."""
+
+    applications = decoded["applications"]
+    logical_id_by_application: dict[object, int | None] = {
+        row["id"]: None for row in applications
+    }
+    grouped: dict[int, list[dict[str, Any]]] = {}
+    for row in applications:
+        archived_scraped_job_id = row.get("scraped_job_id")
+        logical_id: int | None
+        if archived_scraped_job_id is not None:
+            logical_id = scraped_job_id_map[archived_scraped_job_id]
+        else:
+            archived_job_id = row.get("job_id")
+            logical_id = (
+                job_scraped_job_id_map.get(archived_job_id)
+                if archived_job_id is not None
+                else None
+            )
+        if logical_id is not None:
+            grouped.setdefault(logical_id, []).append(row)
+
+    minimum_timestamp = datetime.min.replace(tzinfo=UTC)
+    for logical_id, rows in grouped.items():
+        # Preserve all legacy timelines. Stable sorting chooses the lowest id when
+        # timestamps tie, while only the most recently updated row owns the unique key.
+        rows.sort(key=lambda row: str(row["id"]))
+        rows.sort(
+            key=lambda row: aware_utc(row.get("updated_at")) or minimum_timestamp,
+            reverse=True,
+        )
+        logical_id_by_application[rows[0]["id"]] = logical_id
+    return logical_id_by_application
 
 
 def _restore_preference_state(
@@ -798,7 +915,16 @@ def _restore_transaction(
                 ) from exc
             if created:
                 created_paths.append(relative_path)
-        job_id_map = _restore_search_records(db, user_id, decoded)
+        (
+            job_id_map,
+            job_scraped_job_id_map,
+            scraped_job_id_map,
+        ) = _restore_search_records(db, user_id, decoded)
+        application_logical_identity_map = _application_logical_identity_map(
+            decoded,
+            job_scraped_job_id_map=job_scraped_job_id_map,
+            scraped_job_id_map=scraped_job_id_map,
+        )
         for table_name, model in EXPORT_MODELS:
             if table_name in REMAPPABLE_TABLES:
                 continue
@@ -809,6 +935,7 @@ def _restore_transaction(
                     user_id,
                     format_version=format_version,
                     job_id_map=job_id_map,
+                    application_logical_identity_map=application_logical_identity_map,
                 )
                 db.add(model(**row))
             db.flush()

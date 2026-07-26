@@ -10,6 +10,7 @@ const showToast = vi.fn();
 vi.mock("../services/search", () => ({
     SearchService: {
         getProfiles: vi.fn(),
+        getProfileSummaries: vi.fn(),
         toggleSchedule: vi.fn(),
     },
 }));
@@ -22,6 +23,7 @@ describe("profile list request lifecycle", () => {
     beforeEach(() => {
         vi.clearAllMocks();
         SearchService.getProfiles.mockImplementation(() => new Promise(() => {}));
+        SearchService.getProfileSummaries.mockImplementation(() => new Promise(() => {}));
     });
 
     it("aborts the history request on unmount", async () => {
@@ -37,8 +39,8 @@ describe("profile list request lifecycle", () => {
 
     it("aborts the schedules request on unmount", async () => {
         const { unmount } = render(<Schedules />);
-        await waitFor(() => expect(SearchService.getProfiles).toHaveBeenCalledTimes(1));
-        const [{ signal }] = SearchService.getProfiles.mock.calls[0];
+        await waitFor(() => expect(SearchService.getProfileSummaries).toHaveBeenCalledTimes(1));
+        const [{ signal }] = SearchService.getProfileSummaries.mock.calls[0];
 
         unmount();
 
@@ -60,7 +62,7 @@ describe("profile list request lifecycle", () => {
     });
 
     it("only renders enabled schedules after a successful request", async () => {
-        SearchService.getProfiles.mockResolvedValueOnce([
+        SearchService.getProfileSummaries.mockResolvedValueOnce([
             { id: 1, schedule_enabled: false },
             { id: 2, schedule_enabled: true },
         ]);

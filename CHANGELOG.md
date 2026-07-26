@@ -5,6 +5,48 @@ All notable changes to CareerOS Local are documented here. The format follows
 
 ## [Unreleased]
 
+## [1.8.0] - 2026-07-26
+
+### Added
+
+- Added a guided job-search workspace that starts from confirmed Career Vault facts, keeps CV
+  upload as an explicit alternative and puts infrequent search controls behind a compact advanced
+  section.
+- Added durable, privacy-bounded search receipts so the home workspace can show real progress
+  after runtime status has expired.
+- Added first-seen, last-seen and content-revision metadata for job listings, including safe
+  re-analysis when a provider changes an advert.
+- Added direct Job Library links into the application pipeline, with one logical timeline per
+  opportunity and application state visible in both desktop and mobile result cards.
+
+### Changed
+
+- The home workspace now guides a new user through Career Vault, local-model readiness, the first
+  completed search and the first tracked application using only persisted product state.
+- Lightweight profile screens use a paginated allowlist projection instead of transferring CV
+  text, generated queries, snapshots or normalized payloads.
+- Portable backups now use archive format v5 while remaining able to inspect and restore formats
+  v1 through v4.
+- Job and application ownership is resolved in bulk without N+1 queries, and legacy applied
+  markers remain monotonic once an application has crossed an applied milestone.
+
+### Fixed
+
+- Prevented an older listing analysis or normalization result from overwriting a newer provider
+  revision after asynchronous local-model work.
+- Prevented local and international phone numbers from entering Career Vault-derived search
+  snapshots while retaining years and ordinary numeric metrics.
+- Enforced one application per user and logical opportunity at the database boundary, including
+  concurrent creation attempts.
+- Preserved or removed shared job-catalog rows correctly when a profile or complete vault is
+  erased, including applications whose original Job row no longer exists.
+- Prevented an out-of-order search completion from replacing the latest durable success receipt.
+- Restored the database-managed `jobs.updated_at` default for installations created from the full
+  migration history, so API and search-created rows no longer depend on an ORM-supplied timestamp.
+- Replaced the deprecated `react-router-dom` v7 wrapper with React Router 8.3, removing the
+  vulnerable RSC implementation tracked as `GHSA-qwww-vcr4-c8h2` even though CareerOS does not use
+  the affected unstable RSC APIs.
+
 ## [1.7.0] - 2026-07-26
 
 ### Added
@@ -301,7 +343,8 @@ All notable changes to CareerOS Local are documented here. The format follows
   autosave/revision loop.
 - Removed the rate-limit error and incomplete pipeline from public screenshots.
 
-[Unreleased]: https://github.com/ejupi-djenis30/careeros-local/compare/v1.7.0...HEAD
+[Unreleased]: https://github.com/ejupi-djenis30/careeros-local/compare/v1.8.0...HEAD
+[1.8.0]: https://github.com/ejupi-djenis30/careeros-local/compare/v1.7.0...v1.8.0
 [1.7.0]: https://github.com/ejupi-djenis30/careeros-local/compare/v1.6.0...v1.7.0
 [1.6.0]: https://github.com/ejupi-djenis30/careeros-local/compare/v1.5.0...v1.6.0
 [1.5.0]: https://github.com/ejupi-djenis30/careeros-local/compare/v1.4.0...v1.5.0

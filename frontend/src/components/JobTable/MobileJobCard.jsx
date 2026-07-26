@@ -3,8 +3,9 @@ import { ScoreBadge } from "./Badges";
 import { safeExternalUrl, safeMailto } from "../../lib/safeUrl";
 import { InternalLink } from "../InternalLink";
 import { useI18n } from "../../i18n/useI18n";
+import { getJobApplicationState } from "./applicationState";
 
-export const MobileJobCard = memo(function MobileJobCard({ job, isGlobalView, onToggleApplied, isAppliedPending = false, onCopy, onViewAnalysis, onOpenDismissDialog, onReactivate }) {
+export const MobileJobCard = memo(function MobileJobCard({ job, isGlobalView, onCopy, onViewAnalysis, onOpenDismissDialog, onReactivate }) {
     const { language, t } = useI18n();
     const locale = language === "it" ? "it-IT" : "en-GB";
     const applyUrl = safeExternalUrl(job.application_url) || safeExternalUrl(job.external_url);
@@ -13,9 +14,10 @@ export const MobileJobCard = memo(function MobileJobCard({ job, isGlobalView, on
     const mailtoUrl = safeMailto(job.application_email);
     const fmtDistance = job.distance_km != null ? parseFloat(Number(job.distance_km).toFixed(2)) : null;
     const hasVerifiedAnalysis = job.analysis_verified === true;
+    const applicationState = getJobApplicationState(job, t);
 
     return (
-        <div className="glass-panel p-3 mb-3 border border-white-5 hover-elevation hover-transform">
+        <div className="glass-panel job-card p-3 mb-3 border border-white-5 hover-elevation hover-transform">
             <div className="d-flex justify-content-between align-items-start mb-3">
                 <div className="flex-grow-1 min-w-0 me-2">
                     <h6 className="text-white mb-1 fw-bold text-truncate">{job.title}</h6>
@@ -56,16 +58,39 @@ export const MobileJobCard = memo(function MobileJobCard({ job, isGlobalView, on
                 {job.workload != null && <div className="text-info fw-bold">{job.workload}%</div>}
             </div>
 
-            <div className="d-flex justify-content-between align-items-center pt-3 border-top border-white-10">
-                <div className="d-flex gap-2">
+            <div className="job-card__application pt-3 border-top border-white-10">
+                <div className="job-application-summary">
+                    <span className={`job-application-state job-application-state--${applicationState.className}`}>
+                        <i className={`bi ${applicationState.tracked ? "bi-record-circle" : applicationState.legacy ? "bi-exclamation-circle" : "bi-circle"}`} aria-hidden="true"></i>
+                        {applicationState.label}
+                    </span>
+                    {applicationState.legacy && (
+                        <small>{t("jobs.applicationStage.legacyHint")}</small>
+                    )}
+                </div>
+                <InternalLink
+                    to={applicationState.href}
+                    className="btn btn-sm btn-primary job-application-cta"
+                >
+                    <i className={`bi ${applicationState.icon}`} aria-hidden="true"></i>
+                    <span>{applicationState.action}</span>
+                </InternalLink>
+            </div>
+
+            <div className="job-card__secondary-actions">
+                <div className="d-flex flex-wrap gap-2">
                     {applyUrl && (
-                        <a href={applyUrl} target="_blank" rel="noopener noreferrer" className="btn btn-sm btn-primary px-3 rounded-2 fw-bold">
-                            {t("jobs.apply")}
+                        <a
+                            href={applyUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="btn btn-sm btn-secondary rounded-circle btn-icon"
+                            title={t("jobs.openApplicationSource")}
+                            aria-label={t("jobs.openApplicationSource")}
+                        >
+                            <i className="bi bi-box-arrow-up-right text-08"></i>
                         </a>
                     )}
-                    <InternalLink to={`/applications?jobId=${encodeURIComponent(job.id)}`} className="btn btn-sm btn-secondary rounded-circle btn-icon" title={t("jobs.addApplication")}>
-                        <i className="bi bi-kanban text-08"></i>
-                    </InternalLink>
                     <button onClick={() => onCopy(job)} className="btn btn-sm btn-secondary rounded-circle btn-icon" title={t("jobs.copyInfo")}>
                         <i className="bi bi-clipboard text-08"></i>
                     </button>
@@ -96,28 +121,6 @@ export const MobileJobCard = memo(function MobileJobCard({ job, isGlobalView, on
                         >
                             <i className="bi bi-x-circle text-08"></i>
                         </button>
-                    )}
-                </div>
-
-                <div className="d-flex flex-column align-items-end gap-1">
-                    <div className="form-check form-switch m-0">
-                        <input
-                            className="form-check-input ms-0 toggle-sm"
-                            type="checkbox"
-                            checked={job.applied}
-                            disabled={isAppliedPending}
-                            onChange={() => onToggleApplied(job)}
-                            title={isAppliedPending ? t("jobs.updatingApplied") : t("jobs.toggleApplied")}
-                        />
-                    </div>
-                    {job.applied_elsewhere && !job.applied && (
-                        <span
-                            className="d-flex align-items-center gap-1 text-06 text-warn-custom"
-                            title={t("jobs.appliedElsewhereTitle")}
-                        >
-                            <i className="bi bi-check2-circle"></i>
-                            {t("jobs.elsewhereLower")}
-                        </span>
                     )}
                 </div>
             </div>

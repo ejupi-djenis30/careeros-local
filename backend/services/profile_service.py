@@ -1,3 +1,4 @@
+import math
 from typing import Any, Dict
 
 from fastapi import HTTPException
@@ -5,6 +6,7 @@ from sqlalchemy.orm import Session
 
 from backend.repositories.profile_repository import ProfileRepository
 from backend.schemas import ScheduleToggle, SearchProfileCreate, SearchProfileUpdate
+from backend.search.receipt import normalize_search_completion_summary
 
 _PREFERENCE_FIELDS = {
     "preferred_languages",
@@ -92,6 +94,84 @@ class ProfileService:
 
     def get_profiles_by_user(self, user_id: int, skip: int = 0, limit: int = 100):
         return self.repo.get_by_user(user_id, skip=skip, limit=limit)
+
+    def get_profile_overview(self, user_id: int, *, page: int, page_size: int):
+        projection = self.repo.get_overview_projection(
+            user_id,
+            offset=(page - 1) * page_size,
+            limit=page_size,
+        )
+        items = []
+        for row in projection["rows"]:
+            preferences = (
+                row.advanced_preferences if isinstance(row.advanced_preferences, dict) else {}
+            )
+            preferred_languages = _coerce_preference_value(
+                "preferred_languages",
+                preferences.get("preferred_languages"),
+            )
+            remote_only = _coerce_preference_value(
+                "remote_only",
+                preferences.get("remote_only"),
+            )
+            salary_min_chf = _coerce_preference_value(
+                "salary_min_chf",
+                preferences.get("salary_min_chf"),
+            )
+            items.append(
+                {
+                    "id": row.id,
+                    "name": str(row.name or ""),
+                    "role_description": row.role_description,
+                    "location_filter": row.location_filter,
+                    "schedule_enabled": bool(row.schedule_enabled),
+                    "schedule_interval_hours": int(row.schedule_interval_hours or 24),
+                    "preferred_languages": preferred_languages or [],
+                    "remote_only": bool(remote_only),
+                    "salary_min_chf": salary_min_chf,
+                    "is_history": bool(row.is_history),
+                    "created_at": row.created_at,
+                }
+            )
+
+        latest = projection["latest_success"]
+        latest_summary = normalize_search_completion_summary(
+            latest.last_search_summary if latest is not None else None
+        )
+        latest_counts = (
+            latest_summary.get("counts")
+            if isinstance(latest_summary, dict)
+            and isinstance(latest_summary.get("counts"), dict)
+            else {}
+        )
+        latest_jobs_found = latest_counts.get("jobs_found")
+        if (
+            isinstance(latest_jobs_found, bool)
+            or not isinstance(latest_jobs_found, int)
+            or latest_jobs_found < 0
+        ):
+            latest_jobs_found = None
+
+        total_profiles = projection["total_profiles"]
+        return {
+            "items": items,
+            "page": page,
+            "page_size": page_size,
+            "total_pages": math.ceil(total_profiles / page_size) if total_profiles else 0,
+            "aggregate": {
+                "total_profiles": total_profiles,
+                "total_successful_runs": projection["total_successful_runs"],
+                "latest_successful_profile_id": latest.id if latest is not None else None,
+                "latest_successful_started_at": (
+                    latest.last_search_started_at if latest is not None else None
+                ),
+                "latest_successful_completed_at": (
+                    latest.last_search_completed_at if latest is not None else None
+                ),
+                "latest_successful_jobs_found": latest_jobs_found,
+                "latest_successful_summary": latest_summary,
+            },
+        }
 
     def create_profile(self, user_id: int, profile_in: SearchProfileCreate):
         data = profile_in.model_dump()

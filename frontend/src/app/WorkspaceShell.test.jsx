@@ -5,7 +5,7 @@ import { describe, expect, it, vi } from "vitest";
 import { WorkspaceShell } from "./WorkspaceShell";
 import { renderWithItalian as render } from "../test/renderWithI18n";
 
-vi.mock("react-router-dom", () => ({ useLocation: () => ({ pathname: "/" }) }));
+vi.mock("react-router", () => ({ useLocation: () => ({ pathname: "/" }) }));
 vi.mock("../context/AuthContext", () => ({
     useAuth: () => ({ user: "mira", logout: vi.fn() }),
 }));

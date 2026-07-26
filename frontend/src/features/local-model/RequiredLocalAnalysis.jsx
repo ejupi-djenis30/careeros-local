@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link } from "react-router";
 
 import { CAREEROS_MARK_URL } from "../../app/brand";
 import { useI18n } from "../../i18n/useI18n";

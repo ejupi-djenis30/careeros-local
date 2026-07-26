@@ -1,20 +1,28 @@
 import { useLocationInput } from "../hooks/useLocationInput";
 import { useI18n } from "../i18n/useI18n";
 
-export function LocationInput({ location, onLocationChange }) {
+export function LocationInput({
+    location,
+    onLocationChange,
+    id = "location-search",
+    invalid = false,
+    ariaDescribedBy,
+}) {
     const { t } = useI18n();
     const { query, setQuery, isLoading, handleCurrentLocation } = useLocationInput(location, onLocationChange);
     return (
         <div className="position-relative">
             <input
                 type="text"
-                id="location-search"
+                id={id}
                 name="location-search"
-                className="form-control bg-black-20 border-white-10 text-white"
+                className={`form-control bg-black-20 border-white-10 text-white ${invalid ? "is-invalid" : ""}`}
                 placeholder={t("profile.locationPlaceholder")}
                 value={query}
                 onChange={(event) => setQuery(event.target.value)}
                 autoComplete="address-level2"
+                aria-invalid={invalid || undefined}
+                aria-describedby={ariaDescribedBy}
                 style={{ paddingRight: "3rem" }}
             />
             <button

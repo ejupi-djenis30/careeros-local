@@ -1,6 +1,6 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { MemoryRouter } from "react-router-dom";
+import { MemoryRouter } from "react-router";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { application } from "../../test/fixtures";
 import { assertAccessible } from "../../test/accessibility";
@@ -78,6 +78,26 @@ describe("ApplicationsPage", () => {
         await user.keyboard("{Escape}");
         await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
         expect(screen.getByRole("button", { name: "Aggiungi candidatura" })).toHaveFocus();
+    });
+
+    it("opens a deep-linked application record and restores focus to its card", async () => {
+        const user = userEvent.setup();
+        const applicationId = "44444444-4444-4444-8444-444444444444";
+        list.mockResolvedValue([summary(applicationId, "Backend Engineer")]);
+
+        render(<MemoryRouter initialEntries={[`/applications?applicationId=${applicationId}`]}><ApplicationsPage /></MemoryRouter>);
+
+        const trigger = await screen.findByRole("button", { name: /Backend Engineer/i });
+        const dialog = await screen.findByRole("dialog", { name: "Backend Engineer" });
+        expect(get).toHaveBeenCalledWith(applicationId, expect.objectContaining({ signal: expect.any(AbortSignal) }));
+        expect(screen.queryByRole("button", { name: "Crea candidatura" })).not.toBeInTheDocument();
+        await assertAccessible(dialog);
+
+        await user.keyboard("{Escape}");
+
+        await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+        expect(trigger).toHaveFocus();
+        expect(get).toHaveBeenCalledTimes(1);
     });
 
     it("creates a manual snapshot when no discovered job id exists", async () => {

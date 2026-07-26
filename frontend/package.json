@@ -1,7 +1,7 @@
 {
   "name": "careeros-local-desktop",
   "private": true,
-  "version": "1.7.0",
+  "version": "1.8.0",
   "description": "Open-source, local-first career utility for verified resumes, deterministic job search, and applications",
   "author": "Ejupi Labs",
   "contributors": [
@@ -48,7 +48,7 @@
     "bootstrap-icons": "^1.13.1",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
-    "react-router-dom": "^7.13.0"
+    "react-router": "^8.3.0"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.5",

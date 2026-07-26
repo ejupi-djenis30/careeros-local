@@ -39,7 +39,7 @@ describe('JobTable', () => {
     });
 
     it('renders the empty state when no jobs are provided', () => {
-        render(<JobTable jobs={[]} isGlobalView={false} onToggleApplied={vi.fn()} pagination={{}} onPageChange={vi.fn()} />);
+        render(<JobTable jobs={[]} isGlobalView={false} pagination={{}} onPageChange={vi.fn()} />);
 
         expect(screen.getByText("No jobs found")).toBeInTheDocument();
         expect(screen.getByText("Adjust the filters or start a new search.")).toBeInTheDocument();
@@ -57,13 +57,14 @@ describe('JobTable', () => {
             total: 1
         };
 
-        render(<JobTable jobs={mockJobs} isGlobalView={false} onToggleApplied={vi.fn()} pagination={mockPagination} onPageChange={vi.fn()} />);
+        render(<JobTable jobs={mockJobs} isGlobalView={false} pagination={mockPagination} onPageChange={vi.fn()} />);
 
         expect(screen.getByText('Job title')).toBeInTheDocument();
         expect(screen.getByText('Company and location')).toBeInTheDocument();
         expect(screen.getByText('Match details')).toBeInTheDocument();
-        expect(screen.getByText('Applied')).toBeInTheDocument();
+        expect(screen.getByText('Application')).toBeInTheDocument();
         expect(screen.getByText('Actions')).toBeInTheDocument();
+        expect(screen.queryByRole('checkbox')).not.toBeInTheDocument();
     });
 
     it('renders pagination links when pagination prop is present', () => {
@@ -74,7 +75,7 @@ describe('JobTable', () => {
             total: 50
         };
 
-        render(<JobTable jobs={mockJobs} isGlobalView={false} onToggleApplied={vi.fn()} pagination={mockPagination} onPageChange={vi.fn()} />);
+        render(<JobTable jobs={mockJobs} isGlobalView={false} pagination={mockPagination} onPageChange={vi.fn()} />);
 
         expect(screen.getByText('2')).toBeInTheDocument();
         // Match the pagination separator specifically

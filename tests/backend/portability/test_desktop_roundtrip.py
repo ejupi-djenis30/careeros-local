@@ -61,6 +61,26 @@ def _convert_to_version(data: bytes, version: int) -> bytes:
     with zipfile.ZipFile(BytesIO(data), "r") as source:
         files = {name: source.read(name) for name in source.namelist()}
     payload = json.loads(files["payload.json"])
+    if version < 5:
+        for row in payload["tables"].get("applications", []):
+            row.pop("scraped_job_id", None)
+        for row in payload["tables"].get("scraped_jobs", []):
+            for field in (
+                "first_seen_at",
+                "last_seen_at",
+                "last_changed_at",
+                "content_revision",
+            ):
+                row.pop(field, None)
+        for row in payload["tables"].get("search_profiles", []):
+            for field in (
+                "last_search_started_at",
+                "last_search_completed_at",
+                "last_search_state",
+                "search_run_count",
+                "last_search_summary",
+            ):
+                row.pop(field, None)
     removed_tables = []
     if version < 3:
         removed_tables.extend(["search_profiles", "scraped_jobs", "jobs", "preference_signals"])
@@ -122,7 +142,7 @@ def _with_profile_created_at(data: bytes, timestamp: str) -> bytes:
     return output.getvalue()
 
 
-def test_v4_archive_restores_ai_audit_and_v3_v2_v1_remain_compatible(
+def test_v5_archive_restores_ai_audit_and_v4_v3_v2_v1_remain_compatible(
     client, auth_headers, db_session, test_user, desktop_data_dir
 ):
     _create_profile(client, auth_headers)
@@ -146,7 +166,7 @@ def test_v4_archive_restores_ai_audit_and_v3_v2_v1_remain_compatible(
     assert exported.status_code == 200, exported.text
     with zipfile.ZipFile(BytesIO(exported.content)) as archive:
         manifest = json.loads(archive.read("manifest.json"))
-    assert manifest["format_version"] == 4
+    assert manifest["format_version"] == 5
     assert manifest["record_counts"]["ai_executions"] == 1
     assert manifest["record_counts"]["preference_signals"] == 1
 
@@ -159,6 +179,16 @@ def test_v4_archive_restores_ai_audit_and_v3_v2_v1_remain_compatible(
     assert restored.status_code == 200, restored.text
     db_session.expire_all()
     assert db_session.query(AIExecution).filter(AIExecution.user_id == test_user.id).count() == 1
+
+    _delete_profile(client, auth_headers)
+    v4_data = _convert_to_version(exported.content, 4)
+    restored_v4 = client.post(
+        "/api/v1/portability/restore",
+        files={"file": ("v4.zip", v4_data, "application/zip")},
+        headers=auth_headers,
+    )
+    assert restored_v4.status_code == 200, restored_v4.text
+    assert restored_v4.json()["format_version"] == 4
 
     _delete_profile(client, auth_headers)
     v3_data = _convert_to_version(exported.content, 3)
@@ -193,7 +223,7 @@ def test_v4_archive_restores_ai_audit_and_v3_v2_v1_remain_compatible(
     assert restored_v1.json()["restored_records"]["ai_executions"] == 0
 
 
-@pytest.mark.parametrize("format_version", [1, 2, 3, 4])
+@pytest.mark.parametrize("format_version", [1, 2, 3, 4, 5])
 @pytest.mark.parametrize(
     "archived_timestamp",
     ["2026-07-22T12:15:00+02:00", "2026-07-22T10:15:00"],
@@ -215,7 +245,7 @@ def test_archive_versions_normalize_legacy_timestamps_to_aware_utc(
 
     archive = (
         exported.content
-        if format_version == 4
+        if format_version == 5
         else _convert_to_version(exported.content, format_version)
     )
     archive = _with_profile_created_at(archive, archived_timestamp)

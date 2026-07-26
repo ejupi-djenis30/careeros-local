@@ -673,9 +673,24 @@ class FinalizationMixin:
             batch_skipped = 0
             for listing, analysis in batch_pairs:
                 try:
-                    await self._save_single_job(
+                    save_outcome = await self._save_single_job(
                         listing, analysis, profile_dict, origin_coords, commit=True
                     )
+                    if save_outcome == "stale_catalog":
+                        stale_count = self._increment_stale_before_save(profile_id)
+                        logger.info(
+                            "Discarded stale catalog analysis for profile %s; total=%s",
+                            profile_id,
+                            stale_count,
+                        )
+                        if stale_count <= 3 or stale_count in {10, 25, 50, 100}:
+                            add_log(
+                                profile_id,
+                                "Skipped an analyzed listing because a newer provider "
+                                "revision arrived before it could be saved.",
+                            )
+                        batch_skipped += 1
+                        continue
                     batch_saved += 1
                 except Exception as save_exc:
                     self._increment_status_errors(profile_id)

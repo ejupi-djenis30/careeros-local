@@ -177,23 +177,104 @@ local matching inputs and cannot become provider queries. A limit of zero is an 
 signal; only `NULL` selects a default. Legacy service imports are module aliases only and contain
 no orchestration logic.
 
+Search history also owns an immutable candidate-input snapshot. For a new campaign, source
+resolution is deterministic: an explicit `profile_source` wins; otherwise non-empty `cv_content`
+selects `uploaded_cv`, and an empty value selects `career_vault`. The Career Vault path serializes a
+bounded, canonical JSON document from headline, summary, allowlisted preferences, and confirmed,
+non-archived facts after private-field filtering. The existing `cv_content` column stores this
+matching snapshot. `advanced_preferences` stores only non-sensitive reproducibility metadata:
+source, Career Vault profile identifier and revision, ordered fact identifiers, and snapshot
+SHA-256.
+
+Rerunning an existing history identifier never rebuilds or replaces its candidate snapshot, even
+when the Career Vault has changed. A new history entry is required to adopt a new Vault revision.
+This reuses the current schema and requires no migration. The snapshot remains a local matching
+input; provider planning continues to receive only the explicit role, strategy, and job
+preferences.
+
 Manual imports are private captures, not provider catalog records. Their platform identifier is a
 stable server-side fingerprint of the authenticated user namespace and listing identity; supplied
 manual ids are discarded and same-user retries return the existing relationship. This behavior was
 added with the still-unreleased importer, so there are no released legacy manual rows to rewrite and
 no historical data migration is required.
 
+Provider observations update the shared listing catalog before per-profile and per-run
+deduplication. Each listing records when CareerOS first saw it, when it most recently saw it, when
+its canonical content last changed, and a monotonic content revision. Repeated identical
+observations advance only `last_seen_at`; a change to title, company, location, workload or
+description advances the revision and `last_changed_at`. A changed listing already present in one
+profile's history may therefore re-enter the local normalization and analysis pipeline. The prior
+analysis immediately fails its input-fingerprint check and remains hidden until a fresh validated
+local-model result replaces it. User decisions, application state and immutable application
+snapshots are not rewritten by catalog refreshes.
+
+This is an observation log, not a source-of-truth feed. CareerOS never marks an opportunity closed
+because it is absent from a page, a provider request fails, a source returns a partial result, or a
+later search uses different criteria. Closure requires explicit source evidence or a user action.
+The migration initializes existing listings at revision 1 and uses their creation time for all
+three observation timestamps. That conservative backfill makes no claim about observations or
+content changes that happened before this feature existed.
+
+Each search profile also keeps a durable receipt for its latest successful run. The final `done`
+status and receipt are written to the same database transaction. A stable run start timestamp makes
+that write idempotent, while `search_run_count` increases once for each distinct successful run.
+Failed, stopped and cancelled runs may replace the short-lived polling status but cannot erase or
+increment the last successful receipt. Pruning terminal polling state after 24 hours clears only the
+runtime status columns.
+
+The receipt has a fixed schema and size ceiling. It contains UTC start/completion times, a bounded
+duration, bounded aggregate counters and an aggregate provider outcome. It never reads or stores CV
+content, generated queries, current query text, listing text, logs, error bodies, provider payloads
+or provider credentials. Profile responses expose the receipt read-only. Portable archives preserve
+valid receipts, canonicalize the fixed JSON shape on restore and discard unknown nested keys. The
+migration backfills one receipt only when a still-present terminal `done` status has coherent start
+and completion timestamps; every other profile starts at count zero with no invented success.
+
+## Job library and application pipeline
+
+The Job library and Application pipeline share one user-scoped logical opportunity identity:
+`scraped_job_id`. `Application.scraped_job_id` stores that identity independently of the particular
+search result row, with a database uniqueness constraint on `(user_id, scraped_job_id)`. A listing
+may have several `Job` rows because it appeared in several search profiles, but those rows resolve
+to the same owned Application. The list service collects the filtered opportunity identifiers
+first, resolves all Application links with one bulk query, and then attaches `application_id` and
+`application_stage` to each response. The query filters both the Job and Application owner, so a
+shared catalog listing cannot expose another local account's pipeline.
+
+Application creation checks every duplicate Job row for the same user and rejects a second
+Application for the logical opportunity. Manual Applications have no Job identity and remain valid
+standalone pipeline entries; they do not contribute to Job-library `total_tracked`. The count is the
+number of distinct filtered logical opportunities with an Application, not the number of duplicate
+Job rows.
+
+The migration backfills the logical identity without deleting history. If an older vault contains
+several Applications reached through duplicate Job rows, only the deterministically most recently
+updated timeline receives `scraped_job_id`; the remaining timelines stay available with a `NULL`
+logical identity. Portable export includes a referenced listing even after its original Job row is
+gone. Restore remaps the listing identity and applies the same conservative canonicalization before
+the uniqueness constraint is evaluated.
+
+The Application timeline is authoritative. Reaching `applied`, `screening`, `interview`, `offer`,
+`accepted`, or `rejected` sets the legacy `applied` marker on every duplicate Job row in the same
+transaction. A direct `saved` or `preparing` state does not. Withdrawal or archival preserves the
+marker only when the timeline previously crossed the applied milestone. The legacy Job PATCH
+remains available and is marked deprecated for compatibility; it updates interaction flags only
+and never creates an Application.
+
 ## Backup and erasure
 
-Archive format v4 adds accepted local-analysis receipts, per-row output fingerprints, and exact
+Archive format v4 added accepted local-analysis receipts, per-row output fingerprints, and exact
 candidate/job input bindings to the search, application, coaching, and AI-audit data covered by
-earlier versions. Versions 1–3 remain readable. Because portable ZIP checksums prove integrity but
-not the identity of the system that produced an analysis, restored analysis from every unsigned
-archive version is quarantined losslessly and hidden until CareerOS re-runs it with the current
-local contract. Historical application rows still rebuild their projections from immutable
-snapshots and event streams; partial or inconsistent projections are rejected transactionally.
-Export runs against one database snapshot and excludes in-flight search state and user-specific
-query data from shared listing records.
+earlier versions. Format v5 adds shared-listing observation metadata, durable search completion
+receipts, and the Application logical-opportunity identity. Versions 1–4 remain readable; a v5
+export identifies itself as v5 so a v4 decoder rejects it instead of interpreting a changed row
+shape as v4. Because portable ZIP checksums prove integrity but not the identity of the system that
+produced an analysis, restored analysis from every unsigned archive version is quarantined
+losslessly and hidden until CareerOS re-runs it with the current local contract. Historical
+application rows still rebuild their projections from immutable snapshots and event streams;
+partial or inconsistent projections are rejected transactionally. Export runs against one database
+snapshot and excludes in-flight search state and user-specific query data from shared listing
+records.
 
 The authenticated inspection route runs the same bounded member, row, relationship, projection,
 file-binding and path-containment preflight under the vault lock without writing a row or file.

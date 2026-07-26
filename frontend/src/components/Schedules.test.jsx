@@ -9,7 +9,7 @@ import { ToastProvider } from "../context/ToastContext";
 
 vi.mock("../services/search", () => ({
     SearchService: {
-        getProfiles: vi.fn(),
+        getProfileSummaries: vi.fn(),
         toggleSchedule: vi.fn(),
     },
 }));
@@ -17,7 +17,7 @@ vi.mock("../services/search", () => ({
 describe("Schedules localization lifecycle", () => {
     beforeEach(() => {
         window.localStorage.clear();
-        SearchService.getProfiles.mockRejectedValue(new Error("offline"));
+        SearchService.getProfileSummaries.mockRejectedValue(new Error("offline"));
         vi.spyOn(console, "error").mockImplementation(() => {});
     });
 
@@ -35,12 +35,12 @@ describe("Schedules localization lifecycle", () => {
 
         expect(await screen.findByText("Failed to load schedules.")).toBeInTheDocument();
         expect(screen.getByText("Failed to load schedules. Please refresh.")).toBeInTheDocument();
-        expect(SearchService.getProfiles).toHaveBeenCalledTimes(1);
+        expect(SearchService.getProfileSummaries).toHaveBeenCalledTimes(1);
 
         fireEvent.click(screen.getByRole("button", { name: "Italian" }));
 
         expect(await screen.findByText("Impossibile caricare le pianificazioni.")).toBeInTheDocument();
         expect(screen.getByText("Impossibile caricare le pianificazioni. Aggiorna la pagina.")).toBeInTheDocument();
-        await waitFor(() => expect(SearchService.getProfiles).toHaveBeenCalledTimes(1));
+        await waitFor(() => expect(SearchService.getProfileSummaries).toHaveBeenCalledTimes(1));
     });
 });

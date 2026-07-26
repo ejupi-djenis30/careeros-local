@@ -5,6 +5,8 @@ from datetime import datetime, timezone
 from typing import Any, Literal, cast
 
 from pydantic import ValidationError
+from sqlalchemy import or_
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from backend.applications.exports import (
@@ -55,6 +57,12 @@ TRANSITIONS = {
     "withdrawn": {"archived"},
     "archived": set(),
 }
+
+
+APPLICATION_MILESTONE_STAGES = frozenset(
+    {"applied", "screening", "interview", "offer", "accepted", "rejected"}
+)
+_APPLICATION_TERMINAL_STAGES = frozenset({"withdrawn", "archived"})
 
 
 class ApplicationNotFoundError(LookupError):
@@ -325,6 +333,92 @@ class ApplicationService:
             quarantine_reason="manual_snapshot_has_no_model_analysis",
         )
 
+    def _existing_logical_application(self, user_id: int, scraped_job_id: int) -> bool:
+        return (
+            self.db.query(Application.id)
+            .outerjoin(Job, Application.job_id == Job.id)
+            .filter(
+                Application.user_id == user_id,
+                or_(
+                    Application.scraped_job_id == scraped_job_id,
+                    Job.scraped_job_id == scraped_job_id,
+                ),
+            )
+            .first()
+            is not None
+        )
+
+    def logical_opportunity_reached_applied(
+        self, user_id: int, scraped_job_id: int
+    ) -> bool:
+        """Return whether an owned application ever crossed the applied milestone."""
+        return (
+            self.db.query(Application.id)
+            .outerjoin(Job, Application.job_id == Job.id)
+            .filter(
+                Application.user_id == user_id,
+                or_(
+                    Application.scraped_job_id == scraped_job_id,
+                    Job.scraped_job_id == scraped_job_id,
+                ),
+                or_(
+                    Application.current_stage.in_(APPLICATION_MILESTONE_STAGES),
+                    Application.events.any(
+                        ApplicationEvent.stage.in_(APPLICATION_MILESTONE_STAGES)
+                    ),
+                ),
+            )
+            .first()
+            is not None
+        )
+
+    def _application_reached_applied(self, application: Application, stage: str) -> bool:
+        if stage in APPLICATION_MILESTONE_STAGES:
+            return True
+        if stage not in _APPLICATION_TERMINAL_STAGES:
+            return False
+        return (
+            self.db.query(ApplicationEvent.id)
+            .filter(
+                ApplicationEvent.application_id == application.id,
+                ApplicationEvent.stage.in_(APPLICATION_MILESTONE_STAGES),
+            )
+            .first()
+            is not None
+        )
+
+    def _sync_legacy_applied_markers(
+        self,
+        user_id: int,
+        application: Application,
+        stage: str,
+        *,
+        job: Job | None = None,
+    ) -> None:
+        """Monotonically project the application milestone onto every duplicate Job row."""
+        if not self._application_reached_applied(application, stage):
+            return
+        scraped_job_id = application.scraped_job_id
+        if scraped_job_id is None and job is not None:
+            scraped_job_id = cast(int, job.scraped_job_id)
+        if scraped_job_id is None and application.job_id is not None:
+            scraped_job_id = (
+                self.db.query(Job.scraped_job_id)
+                .filter(Job.id == application.job_id, Job.user_id == user_id)
+                .scalar()
+            )
+        if scraped_job_id is None:
+            return
+        (
+            self.db.query(Job)
+            .filter(
+                Job.user_id == user_id,
+                Job.scraped_job_id == scraped_job_id,
+                Job.applied.is_not(True),
+            )
+            .update({Job.applied: True}, synchronize_session=False)
+        )
+
     def create(self, user_id: int, data: ApplicationCreate) -> ApplicationResponse:
         job = None
         if data.job_id is not None:
@@ -333,14 +427,13 @@ class ApplicationService:
                 raise ApplicationValidationError("Job not found")
         resume_version_id = str(data.resume_version_id) if data.resume_version_id else None
         self._resume_version(user_id, resume_version_id)
+        scraped_job_id = int(job.scraped_job_id) if job is not None else None
         if job is not None:
-            existing = (
-                self.db.query(Application)
-                .filter(Application.user_id == user_id, Application.job_id == job.id)
-                .first()
-            )
-            if existing is not None:
-                raise ApplicationConflictError("An application already exists for this job")
+            assert scraped_job_id is not None
+            if self._existing_logical_application(user_id, scraped_job_id):
+                raise ApplicationConflictError(
+                    "An application already exists for this opportunity"
+                )
             from backend.services.job_service import JobService
 
             JobService(self.db)._mark_analysis_receipt(job, user_id)
@@ -353,6 +446,7 @@ class ApplicationService:
         application = Application(
             user_id=user_id,
             job_id=job.id if job is not None else None,
+            scraped_job_id=scraped_job_id,
             resume_version_id=resume_version_id,
             revision=1,
             current_stage=data.initial_stage,
@@ -365,19 +459,35 @@ class ApplicationService:
             latest_event_at=now,
         )
         self.db.add(application)
-        self.db.flush()
-        self.db.add(
-            ApplicationEvent(
-                application_id=application.id,
-                event_type="stage",
-                stage=data.initial_stage,
-                occurred_at=now,
-                note=data.note,
-                payload={"initial": True},
-                created_at=now,
+        try:
+            self.db.flush()
+            self.db.add(
+                ApplicationEvent(
+                    application_id=application.id,
+                    event_type="stage",
+                    stage=data.initial_stage,
+                    occurred_at=now,
+                    note=data.note,
+                    payload={"initial": True},
+                    created_at=now,
+                )
             )
-        )
-        self.db.commit()
+            self._sync_legacy_applied_markers(
+                user_id,
+                application,
+                data.initial_stage,
+                job=job,
+            )
+            self.db.commit()
+        except IntegrityError:
+            self.db.rollback()
+            if scraped_job_id is not None and self._existing_logical_application(
+                user_id, scraped_job_id
+            ):
+                raise ApplicationConflictError(
+                    "An application already exists for this opportunity"
+                ) from None
+            raise
         self.db.expire_all()
         return self._response(self._application(user_id, application.id))
 
@@ -422,6 +532,7 @@ class ApplicationService:
             created_at=now,
         )
         self.db.add(event)
+        self._sync_legacy_applied_markers(user_id, application, next_stage)
         self.db.commit()
         self.db.expire_all()
         return self._response(self._application(user_id, application_id))

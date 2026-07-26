@@ -18,6 +18,19 @@ from scripts.check_frontend_security_exceptions import (
 from scripts.release_contract import EVIDENCE_FILES
 
 
+def clean_audit_payload() -> dict:
+    return {
+        "auditReportVersion": 2,
+        "vulnerabilities": {},
+        "metadata": {
+            "vulnerabilities": {
+                "high": 0,
+                "critical": 0,
+            }
+        },
+    }
+
+
 def audit_payload() -> dict:
     return {
         "auditReportVersion": 2,
@@ -53,27 +66,33 @@ def manifest() -> dict:
     return json.loads((ROOT / "frontend-security-exceptions.json").read_text(encoding="utf-8"))
 
 
-def test_current_frontend_exceptions_are_exact_guarded_and_time_bounded():
+def test_current_frontend_exceptions_are_empty_after_router_upgrade():
     accepted = validate_policy(
-        audit_payload(),
+        clean_audit_payload(),
         manifest(),
-        today=date(2026, 7, 24),
+        today=date(2026, 7, 26),
         registry_checker=lambda _package, _version: False,
     )
-    assert accepted == ["GHSA-qwww-vcr4-c8h2"]
+    assert accepted == []
 
 
 def test_vulnerable_frontend_transitives_are_patched_and_manifest_is_release_evidence():
     lock = json.loads((ROOT / "frontend/package-lock.json").read_text(encoding="utf-8"))
     package = json.loads((ROOT / "frontend/package.json").read_text(encoding="utf-8"))
+    packages = lock["packages"]
+    dependencies = package["dependencies"]
 
-    assert lock["packages"]["node_modules/postcss"]["version"] == "8.5.18"
-    assert lock["packages"]["node_modules/postcss"]["dev"] is True
+    assert packages["node_modules/postcss"]["version"] == "8.5.18"
+    assert packages["node_modules/postcss"]["dev"] is True
     assert package["overrides"]["postcss"] == "8.5.18"
-    assert lock["packages"]["node_modules/minimatch"]["version"] == "10.2.5"
-    assert lock["packages"]["node_modules/brace-expansion"]["version"] == "5.0.8"
-    assert lock["packages"]["node_modules/brace-expansion"]["dev"] is True
+    assert packages["node_modules/minimatch"]["version"] == "10.2.5"
+    assert packages["node_modules/brace-expansion"]["version"] == "5.0.8"
+    assert packages["node_modules/brace-expansion"]["dev"] is True
     assert package["overrides"]["minimatch"] == "10.2.5"
+    assert packages["node_modules/react-router"]["version"] == "8.3.0"
+    assert "node_modules/react-router-dom" not in packages
+    assert dependencies["react-router"] == "^8.3.0"
+    assert "react-router-dom" not in dependencies
     assert "frontend-security-exceptions.json" in EVIDENCE_FILES
 
 
@@ -90,8 +109,8 @@ def test_ci_and_release_preserve_full_audit_before_enforcing_the_policy():
         assert "--npm-audit-exit-code" in workflow
 
 
-def test_unknown_stale_expired_and_patched_advisories_fail_closed():
-    payload = audit_payload()
+def test_unknown_and_unreviewed_frontend_advisories_fail_closed():
+    payload = clean_audit_payload()
     payload["vulnerabilities"]["unknown"] = {
         "severity": "critical",
         "nodes": ["node_modules/unknown"],
@@ -109,24 +128,18 @@ def test_unknown_stale_expired_and_patched_advisories_fail_closed():
         validate_policy(
             payload,
             manifest(),
-            today=date(2026, 7, 24),
+            today=date(2026, 7, 26),
             registry_checker=lambda _package, _version: False,
         )
 
-    with pytest.raises(RuntimeError, match="expired on 2026-07-31"):
+    unreviewed_manifest = manifest()
+    unreviewed_manifest["exceptions"] = [{"id": "CE-UNREVIEWED"}]
+    with pytest.raises(RuntimeError, match="match the reviewed exception set"):
         validate_policy(
-            audit_payload(),
-            manifest(),
-            today=date(2026, 7, 31),
+            clean_audit_payload(),
+            unreviewed_manifest,
+            today=date(2026, 7, 26),
             registry_checker=lambda _package, _version: False,
-        )
-
-    with pytest.raises(RuntimeError, match="is now available"):
-        validate_policy(
-            audit_payload(),
-            manifest(),
-            today=date(2026, 7, 24),
-            registry_checker=lambda package, _version: package == "react-router-dom",
         )
 
 
@@ -141,7 +154,7 @@ def test_audit_chains_resolve_to_the_originating_advisory():
 
 
 def test_postcss_exception_cannot_be_reintroduced():
-    payload = audit_payload()
+    payload = clean_audit_payload()
     payload["vulnerabilities"]["postcss"] = {
         "severity": "high",
         "nodes": ["node_modules/postcss"],
@@ -154,12 +167,12 @@ def test_postcss_exception_cannot_be_reintroduced():
             }
         ],
     }
-    payload["metadata"]["vulnerabilities"]["high"] = 3
+    payload["metadata"]["vulnerabilities"]["high"] = 1
     with pytest.raises(RuntimeError, match="unknown=.*GHSA-r28c-9q8g-f849"):
         validate_policy(
             payload,
             manifest(),
-            today=date(2026, 7, 24),
+            today=date(2026, 7, 26),
             registry_checker=lambda _package, _version: False,
         )
 
@@ -172,18 +185,6 @@ def test_rsc_guard_rejects_server_component_markers(tmp_path: Path):
         json.dumps({"dependencies": {}, "devDependencies": {}}),
         encoding="utf-8",
     )
-    (project / "frontend/package-lock.json").write_text(
-        json.dumps(
-            {
-                "packages": {
-                    "node_modules/react-router": {
-                        "version": "7.18.1",
-                    }
-                }
-            }
-        ),
-        encoding="utf-8",
-    )
     (source / "main.jsx").write_text(
         "import { createRoot } from 'react-dom/client';\ncreateRoot(root).render(app);\n",
         encoding="utf-8",
@@ -193,12 +194,12 @@ def test_rsc_guard_rejects_server_component_markers(tmp_path: Path):
         encoding="utf-8",
     )
     with pytest.raises(RuntimeError, match="RSC guard failed"):
-        validate_policy(
-            audit_payload(),
-            manifest(),
-            root=project,
-            today=date(2026, 7, 24),
-            registry_checker=lambda _package, _version: False,
+        policy._verify_guard(
+            project,
+            {
+                "id": "CE-TEST",
+                "guard": "client-no-rsc",
+            },
         )
 
 

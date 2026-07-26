@@ -18,6 +18,7 @@ const DEFAULT_PAGINATION = {
   page: 1,
   pages: 1,
   total: 0,
+  total_tracked: null,
   total_applied: 0,
   avg_score: 0
 };
@@ -37,7 +38,6 @@ export function useJobs(logout) {
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [fetchError, setFetchError] = useState(null);
-  const [pendingAppliedJobIds, setPendingAppliedJobIds] = useState([]);
   const filters = filtersState;
 
   const setPagination = useCallback((next) => {
@@ -78,6 +78,7 @@ export function useJobs(logout) {
           page: response?.page ?? prev.page,
           pages: response?.pages ?? 1,
           total: response?.total ?? 0,
+          total_tracked: response?.total_tracked ?? null,
           total_applied: response?.total_applied ?? 0,
           avg_score: response?.avg_score ?? 0
         }));
@@ -118,7 +119,7 @@ export function useJobs(logout) {
     profilesRequestRef.current = { controller, id: requestId };
 
     return Promise.resolve()
-      .then(() => SearchService.getProfiles({ signal: controller.signal }))
+      .then(() => SearchService.getProfileSummaries({ signal: controller.signal }))
       .then((profiles) => {
         if (controller.signal.aborted || profilesRequestRef.current.id !== requestId) return;
         setSearchProfiles(Array.isArray(profiles) ? profiles : []);
@@ -186,30 +187,6 @@ export function useJobs(logout) {
     return () => document.removeEventListener("visibilitychange", handleVisibilityChange);
   }, [requestJobs]);
 
-  const toggleApplied = async (job) => {
-    const jobId = String(job.id);
-    if (pendingAppliedJobIds.includes(jobId)) {
-      return;
-    }
-
-    setPendingAppliedJobIds(prev => (prev.includes(jobId) ? prev : [...prev, jobId]));
-    try {
-      const updated = await JobService.toggleApplied(job.id, !job.applied);
-      setJobs(prev => prev.map(j => j.id === job.id ? { ...j, ...updated } : j));
-    } catch (error) {
-      if (error.message === "UNAUTHORIZED" && logout) { logout(); return; }
-      console.error("Failed to update job", error);
-      showToast(error.message ? { message: error.message } : { messageKey: 'jobs.error.update' });
-    } finally {
-      setPendingAppliedJobIds(prev => prev.filter(id => id !== jobId));
-    }
-  };
-
-  const isAppliedPending = useCallback(
-    (jobId) => pendingAppliedJobIds.includes(String(jobId)),
-    [pendingAppliedJobIds]
-  );
-
   const clearFilters = () => {
     setFilters(DEFAULT_FILTERS);
   };
@@ -270,8 +247,6 @@ export function useJobs(logout) {
     setFilters,
     searchProfiles,
     fetchJobs,
-    toggleApplied,
-    isAppliedPending,
     dismissJob,
     reactivateJob,
     clearFilters,

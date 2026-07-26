@@ -1,4 +1,5 @@
 from datetime import datetime, timezone
+from types import SimpleNamespace
 
 import pytest
 
@@ -12,7 +13,10 @@ from backend.ai.match_policy import derive_match_outcome, derive_match_presentat
 from backend.ai.matching import _materialize_match_citations
 from backend.ai.models import AIExecution
 from backend.models import Job, ScrapedJob, SearchProfile, User
+from backend.repositories.job_repository import JobRepository
 from backend.services.auth import get_password_hash
+from backend.services.search.persistence import SearchPipelinePersistence
+from backend.services.search.prompt_compaction import build_scraped_job_content_fingerprint
 
 
 def _make_scraped_job(
@@ -669,3 +673,110 @@ def test_jobs_response_includes_normalized_job_data(client, auth_headers, db_ses
     assert item["normalized_job"]["status"] == "normalized"
     assert item["normalized_job"]["domain"] == "transport"
     assert item["normalized_job"]["required_languages"] == [{"code": "de", "level": "B1"}]
+
+
+def test_changed_listing_invalidates_old_analysis_and_preserves_user_state(
+    client,
+    auth_headers,
+    db_session,
+    test_user,
+):
+    profile = SearchProfile(
+        user_id=test_user.id,
+        name="Changed listing",
+        cv_content="Python engineer",
+        role_description="Backend engineer",
+        search_strategy="Python",
+    )
+    db_session.add(profile)
+    db_session.flush()
+    scraped = _make_scraped_job(
+        db_session,
+        "changed-1",
+        "Backend Engineer",
+        "Example AG",
+        "https://example.test/jobs/changed-1",
+    )
+    scraped.description = "Build Python APIs."
+    scraped.location = "Zurich"
+    scraped.workload = "80-100%"
+    scraped.content_fingerprint = build_scraped_job_content_fingerprint(
+        title=scraped.title,
+        company=scraped.company,
+        location=scraped.location,
+        workload=scraped.workload,
+        description=scraped.description,
+    )
+    job = _make_receipt_verified_job(db_session, test_user, profile, scraped)
+    job.applied = True
+    job.dismissed = True
+    job.feedback_signal = "already_applied"
+    db_session.commit()
+
+    application_response = client.post(
+        "/api/v1/applications",
+        headers=auth_headers,
+        json={"job_id": job.id, "initial_stage": "applied"},
+    )
+    assert application_response.status_code == 201
+    application = application_response.json()
+    assert application["job_snapshot"]["description"] == "Build Python APIs."
+
+    before = client.get(
+        "/api/v1/jobs/?include_dismissed=true",
+        headers=auth_headers,
+    )
+    assert before.status_code == 200
+    before_item = next(item for item in before.json()["items"] if item["id"] == job.id)
+    assert before_item["analysis_verified"] is True
+    assert before_item["content_revision"] == 1
+
+    listing = SimpleNamespace(
+        source="test",
+        id="changed-1",
+        title="Backend Engineer",
+        external_url="https://example.test/jobs/changed-1",
+        application=None,
+        raw_data={"source_revision": 2},
+    )
+    persistence = SearchPipelinePersistence(db_session, JobRepository(db_session))
+    refreshed, created = persistence.upsert_scraped_job(
+        listing,
+        bootstrap_normalized_job_data_fn=lambda *_args, **_kwargs: {
+            "normalization_status": "provider_bootstrap"
+        },
+        extract_listing_description_text_fn=lambda _listing: "Build Python and Go services.",
+        extract_company_name_fn=lambda _listing: "Example AG",
+        extract_listing_location_string_fn=lambda _listing: "Zurich",
+        extract_listing_workload_string_fn=lambda _listing: "80-100%",
+        parse_listing_publication_date_fn=lambda *_args: None,
+    )
+    db_session.commit()
+
+    assert created is False
+    assert refreshed.content_revision == 2
+    assert listing._catalog_content_changed is True
+    db_session.refresh(job)
+    assert job.applied is True
+    assert job.dismissed is True
+    assert job.feedback_signal == "already_applied"
+
+    after = client.get(
+        "/api/v1/jobs/?include_dismissed=true",
+        headers=auth_headers,
+    )
+    assert after.status_code == 200
+    after_item = next(item for item in after.json()["items"] if item["id"] == job.id)
+    assert after_item["analysis_verified"] is False
+    assert after_item["affinity_score"] is None
+    assert after_item["content_revision"] == 2
+    assert after_item["first_seen_at"] == before_item["first_seen_at"]
+    assert after_item["last_seen_at"] != before_item["last_seen_at"]
+    assert after_item["last_changed_at"] == after_item["last_seen_at"]
+
+    preserved_application = client.get(
+        f"/api/v1/applications/{application['id']}",
+        headers=auth_headers,
+    )
+    assert preserved_application.status_code == 200
+    assert preserved_application.json()["job_snapshot"]["description"] == "Build Python APIs."

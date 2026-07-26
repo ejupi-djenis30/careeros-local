@@ -11,7 +11,6 @@ const { mockShowToast } = vi.hoisted(() => ({ mockShowToast: vi.fn() }));
 vi.mock('../services/jobs', () => ({
   JobService: {
     getAll: vi.fn(),
-    toggleApplied: vi.fn(),
   }
 }));
 
@@ -24,7 +23,7 @@ vi.mock('../context/SearchContext', () => ({
 
 vi.mock('../services/search', () => ({
   SearchService: {
-    getProfiles: vi.fn(),
+    getProfileSummaries: vi.fn(),
   }
 }));
 
@@ -34,8 +33,8 @@ vi.mock('../context/ToastContext', () => ({
 
 describe('useJobs', () => {
   const mockJobs = [
-    { id: 1, title: 'Job 1', applied: false },
-    { id: 2, title: 'Job 2', applied: true },
+    { id: 1, title: 'Job 1', application_id: null },
+    { id: 2, title: 'Job 2', application_id: 'application-2', application_stage: 'applied' },
   ];
 
   const mockPagination = {
@@ -43,6 +42,7 @@ describe('useJobs', () => {
     total: 2,
     pages: 1,
     page: 1,
+    total_tracked: 1,
     total_applied: 1,
     avg_score: 80
   };
@@ -54,7 +54,7 @@ describe('useJobs', () => {
     mockActiveProfileIds = [];
     mockStatusHeartbeat = 0;
     JobService.getAll.mockResolvedValue(mockPagination);
-    SearchService.getProfiles.mockResolvedValue(mockProfiles);
+    SearchService.getProfileSummaries.mockResolvedValue(mockProfiles);
   });
 
   it('fetches jobs and profiles on mount', async () => {
@@ -67,54 +67,26 @@ describe('useJobs', () => {
     });
   });
 
-  it('toggles applied status correctly', async () => {
+  it('keeps the tracked application total returned by the backend', async () => {
     const { result } = renderHook(() => useJobs());
 
     await waitFor(() => expect(result.current.isLoading).toBe(false));
 
-    const updatedJob = { ...mockJobs[0], applied: true };
-    JobService.toggleApplied.mockResolvedValue(updatedJob);
-
-    await act(async () => {
-      await result.current.toggleApplied(mockJobs[0]);
-    });
-
-    expect(result.current.jobs[0].applied).toBe(true);
-    expect(JobService.toggleApplied).toHaveBeenCalledWith(1, true);
+    expect(result.current.pagination.total_tracked).toBe(1);
   });
 
-  it('prevents overlapping applied toggles for the same job', async () => {
+  it('keeps a null tracked total so older responses can use the applied fallback', async () => {
+    JobService.getAll.mockResolvedValue({
+      ...mockPagination,
+      total_tracked: undefined,
+      total_applied: 2,
+    });
     const { result } = renderHook(() => useJobs());
+
     await waitFor(() => expect(result.current.isLoading).toBe(false));
 
-    let resolveToggle;
-    JobService.toggleApplied.mockReturnValue(
-      new Promise((resolve) => {
-        resolveToggle = resolve;
-      })
-    );
-
-    let firstCall;
-    await act(async () => {
-      firstCall = result.current.toggleApplied(mockJobs[0]);
-      await Promise.resolve();
-    });
-
-    expect(result.current.isAppliedPending(1)).toBe(true);
-
-    await act(async () => {
-      await result.current.toggleApplied(mockJobs[0]);
-    });
-
-    expect(JobService.toggleApplied).toHaveBeenCalledTimes(1);
-
-    await act(async () => {
-      resolveToggle({ ...mockJobs[0], applied: true });
-      await firstCall;
-    });
-
-    expect(result.current.isAppliedPending(1)).toBe(false);
-    expect(result.current.jobs[0].applied).toBe(true);
+    expect(result.current.pagination.total_tracked).toBeNull();
+    expect(result.current.pagination.total_applied).toBe(2);
   });
 
   it('clears filters to default values', async () => {
@@ -184,51 +156,9 @@ describe('useJobs', () => {
     });
   });
 
-  it('calls logout on UNAUTHORIZED error in toggleApplied', async () => {
-    const logout = vi.fn();
-    const { result } = renderHook(() => useJobs(logout));
-    await waitFor(() => expect(result.current.isLoading).toBe(false));
-
-    JobService.toggleApplied.mockRejectedValue(new Error('UNAUTHORIZED'));
-
-    await act(async () => {
-      await result.current.toggleApplied({ id: 1 });
-    });
-
-    expect(logout).toHaveBeenCalled();
-  });
-
-  it('logs error on generic toggleApplied failure', async () => {
+  it('logs error on profile summary failure', async () => {
     const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
-    const { result } = renderHook(() => useJobs());
-    await waitFor(() => expect(result.current.isLoading).toBe(false));
-
-    JobService.toggleApplied.mockRejectedValue(new Error('FAIL'));
-
-    await act(async () => {
-      await result.current.toggleApplied({ id: 1 });
-    });
-
-    expect(consoleSpy).toHaveBeenCalledWith('Failed to update job', expect.any(Error));
-    consoleSpy.mockRestore();
-  });
-
-  it('clears pending applied state after a failed update', async () => {
-    const { result } = renderHook(() => useJobs());
-    await waitFor(() => expect(result.current.isLoading).toBe(false));
-
-    JobService.toggleApplied.mockRejectedValue(new Error('FAIL'));
-
-    await act(async () => {
-      await result.current.toggleApplied(mockJobs[0]);
-    });
-
-    expect(result.current.isAppliedPending(1)).toBe(false);
-  });
-
-  it('logs error on getProfiles failure', async () => {
-    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
-    SearchService.getProfiles.mockRejectedValue(new Error('PROFILE ERROR'));
+    SearchService.getProfileSummaries.mockRejectedValue(new Error('PROFILE ERROR'));
 
     renderHook(() => useJobs());
 
@@ -304,15 +234,15 @@ describe('useJobs', () => {
 
   it('aborts job and profile requests on unmount', async () => {
     JobService.getAll.mockImplementationOnce(() => new Promise(() => {}));
-    SearchService.getProfiles.mockImplementationOnce(() => new Promise(() => {}));
+    SearchService.getProfileSummaries.mockImplementationOnce(() => new Promise(() => {}));
     const { unmount } = renderHook(() => useJobs());
 
     await waitFor(() => {
       expect(JobService.getAll).toHaveBeenCalledTimes(1);
-      expect(SearchService.getProfiles).toHaveBeenCalledTimes(1);
+      expect(SearchService.getProfileSummaries).toHaveBeenCalledTimes(1);
     });
     const jobsSignal = JobService.getAll.mock.calls[0][1];
-    const [{ signal: profilesSignal }] = SearchService.getProfiles.mock.calls[0];
+    const [{ signal: profilesSignal }] = SearchService.getProfileSummaries.mock.calls[0];
 
     unmount();
 

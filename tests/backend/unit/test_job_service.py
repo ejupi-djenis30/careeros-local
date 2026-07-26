@@ -12,6 +12,7 @@ from backend.services.job_service import JobService
 def mock_repo():
     repo = MagicMock()
     repo.get_applied_scraped_job_ids.return_value = set()
+    repo.get_application_links_by_scraped_job_ids.return_value = {}
     repo.get_job_by_user_scraped_profile.return_value = None
     return repo
 
@@ -35,6 +36,9 @@ def test_get_jobs_by_user(job_service, mock_repo):
 
     mock_repo.get_trust_candidates_by_user.return_value = [job1, job2]
     mock_repo.get_applied_scraped_job_ids.return_value = {101}  # job1 applied elsewhere
+    mock_repo.get_application_links_by_scraped_job_ids.return_value = {
+        101: ("application-1", "saved")
+    }
 
     result = job_service.get_jobs_by_user(
         1, page=1, page_size=10, filters={"sort_by": "created_at"}
@@ -44,8 +48,14 @@ def test_get_jobs_by_user(job_service, mock_repo):
     assert len(result["items"]) == 2
     assert result["items"][0].applied_elsewhere is True
     assert result["items"][1].applied_elsewhere is False
+    assert result["items"][0].application_id == "application-1"
+    assert result["items"][0].application_stage == "saved"
+    assert result["items"][1].application_id is None
+    assert result["items"][1].application_stage is None
     assert result["total_applied"] == 1
+    assert result["total_tracked"] == 1
     mock_repo.get_trust_candidates_by_user.assert_called_once()
+    mock_repo.get_application_links_by_scraped_job_ids.assert_called_once_with(1, [101, 102])
     mock_repo.get_applied_scraped_job_ids.assert_called_once_with(1)
 
 

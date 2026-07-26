@@ -31,24 +31,7 @@ REQUIRED_FIELDS = {
     "expires",
     "reason",
 }
-EXPECTED_EXCEPTIONS = (
-    {
-        "id": "CE-NPM-2026-002",
-        "advisory": "GHSA-qwww-vcr4-c8h2",
-        "dependency": "react-router",
-        "version": "7.18.1",
-        "package_lock": "frontend/package-lock.json",
-        "guard": "client-no-rsc",
-        "scope": "Client-side DOM routing without React Server Components",
-        "patched_package": "react-router-dom",
-        "patched_version": "8.3.0",
-        "expires": "2026-07-31",
-        "reason": (
-            "The advisory affects unstable RSC APIs that CareerOS does not import, and the "
-            "patched npm package is not yet published."
-        ),
-    },
-)
+EXPECTED_EXCEPTIONS: tuple[dict[str, str], ...] = ()
 RSC_MARKERS = (
     "react-router/rsc",
     "@vitejs/plugin-rsc",
@@ -341,12 +324,11 @@ def validate_policy(
     if manifest.get("schema_version") != 1:
         raise RuntimeError("Frontend security exception schema version must be 1")
     raw_exceptions = manifest.get("exceptions")
-    if not isinstance(raw_exceptions, list) or not raw_exceptions:
-        raise RuntimeError("Frontend security exception manifest must contain exceptions")
+    if not isinstance(raw_exceptions, list):
+        raise RuntimeError("Frontend security exception manifest must contain an exceptions list")
     if raw_exceptions != list(EXPECTED_EXCEPTIONS):
         raise RuntimeError(
-            "Frontend security exception manifest must contain only the reviewed "
-            "React Router exception"
+            "Frontend security exception manifest must match the reviewed exception set"
         )
 
     exceptions: dict[str, dict[str, Any]] = {}
@@ -432,10 +414,13 @@ def _run() -> None:
         raise RuntimeError("npm audit reported covered vulnerabilities without a failing exit code")
     if not accepted and args.npm_audit_exit_code != 0:
         raise RuntimeError("npm audit failed without a covered high-severity advisory")
-    print(
-        "Frontend npm exceptions accepted until patched packages are published: "
-        + ", ".join(accepted)
-    )
+    if accepted:
+        print(
+            "Frontend npm exceptions accepted until patched packages are published: "
+            + ", ".join(accepted)
+        )
+    else:
+        print("Frontend npm audit passed with no high or critical exceptions")
 
 
 def main() -> int:

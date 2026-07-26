@@ -4,6 +4,7 @@ from sqlalchemy import asc, case, desc, func
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from backend.applications.models import Application
 from backend.models import Job, ScrapedJob
 from backend.repositories.base import BaseRepository
 
@@ -60,6 +61,54 @@ class JobRepository(BaseRepository[Job]):
             .all()
         )
         return {row[0] for row in rows}
+
+    def get_application_links_by_scraped_job_ids(
+        self, user_id: int, scraped_job_ids: Sequence[int]
+    ) -> Dict[int, Tuple[str, str]]:
+        """Resolve one owned application per logical opportunity in a single query.
+
+        New Applications carry the shared listing id directly. The outer Job join remains a
+        read-compatible fallback for vaults that have not yet been migrated. If legacy data has
+        several timelines, the most recently updated owned Application wins deterministically.
+        """
+        identifier_set = {int(identifier) for identifier in scraped_job_ids}
+        if not identifier_set:
+            return {}
+        logical_id = func.coalesce(
+            Application.scraped_job_id,
+            self.model.scraped_job_id,
+        ).label("logical_scraped_job_id")
+        rows = (
+            self.db.query(
+                logical_id,
+                Application.id,
+                Application.current_stage,
+            )
+            .select_from(Application)
+            .outerjoin(
+                self.model,
+                (Application.job_id == self.model.id) & (self.model.user_id == user_id),
+            )
+            .filter(Application.user_id == user_id)
+            .order_by(
+                logical_id.asc(),
+                Application.updated_at.desc(),
+                Application.id.asc(),
+            )
+            .all()
+        )
+        links: Dict[int, Tuple[str, str]] = {}
+        for scraped_job_id, application_id, current_stage in rows:
+            if scraped_job_id is None:
+                continue
+            resolved_id = int(scraped_job_id)
+            if resolved_id not in identifier_set:
+                continue
+            links.setdefault(
+                resolved_id,
+                (str(application_id), str(current_stage)),
+            )
+        return links
 
     def get_scraped_job_by_platform_and_id(
         self, platform: str, platform_job_id: str

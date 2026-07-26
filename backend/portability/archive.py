@@ -197,13 +197,18 @@ def _queries(db: Session, user_id: int) -> dict[str, list[Any]]:
     )
     search_profiles = db.query(SearchProfile).filter(SearchProfile.user_id == user_id).all()
     jobs = db.query(Job).filter(Job.user_id == user_id).all()
-    scraped_job_ids = {job.scraped_job_id for job in jobs}
+    applications = db.query(Application).filter(Application.user_id == user_id).all()
+    scraped_job_ids: set[int] = {int(job.scraped_job_id) for job in jobs}
+    scraped_job_ids.update(
+        int(application.scraped_job_id)
+        for application in applications
+        if application.scraped_job_id is not None
+    )
     scraped_jobs = (
         db.query(ScrapedJob).filter(ScrapedJob.id.in_(scraped_job_ids)).all()
         if scraped_job_ids
         else []
     )
-    applications = db.query(Application).filter(Application.user_id == user_id).all()
     application_events = (
         db.query(ApplicationEvent)
         .join(Application, ApplicationEvent.application_id == Application.id)
