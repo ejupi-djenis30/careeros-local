@@ -16,7 +16,7 @@ wheel==0.47.0
 
 ruff==0.16.0
 mypy==2.3.0
-types-reportlab==4.5.1.20260712
+types-reportlab==4.5.1.20260728
 pre-commit==4.6.1
 
 pip-audit==2.10.1
