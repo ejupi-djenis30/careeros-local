@@ -82,6 +82,8 @@ def _convert_to_version(data: bytes, version: int) -> bytes:
             ):
                 row.pop(field, None)
     removed_tables = []
+    if version < 6:
+        removed_tables.append("application_dossier_drafts")
     if version < 3:
         removed_tables.extend(["search_profiles", "scraped_jobs", "jobs", "preference_signals"])
     elif version == 3:
@@ -142,7 +144,7 @@ def _with_profile_created_at(data: bytes, timestamp: str) -> bytes:
     return output.getvalue()
 
 
-def test_v5_archive_restores_ai_audit_and_v4_v3_v2_v1_remain_compatible(
+def test_v6_archive_restores_ai_audit_and_v5_v4_v3_v2_v1_remain_compatible(
     client, auth_headers, db_session, test_user, desktop_data_dir
 ):
     _create_profile(client, auth_headers)
@@ -166,7 +168,7 @@ def test_v5_archive_restores_ai_audit_and_v4_v3_v2_v1_remain_compatible(
     assert exported.status_code == 200, exported.text
     with zipfile.ZipFile(BytesIO(exported.content)) as archive:
         manifest = json.loads(archive.read("manifest.json"))
-    assert manifest["format_version"] == 5
+    assert manifest["format_version"] == 6
     assert manifest["record_counts"]["ai_executions"] == 1
     assert manifest["record_counts"]["preference_signals"] == 1
 
@@ -179,6 +181,16 @@ def test_v5_archive_restores_ai_audit_and_v4_v3_v2_v1_remain_compatible(
     assert restored.status_code == 200, restored.text
     db_session.expire_all()
     assert db_session.query(AIExecution).filter(AIExecution.user_id == test_user.id).count() == 1
+
+    _delete_profile(client, auth_headers)
+    v5_data = _convert_to_version(exported.content, 5)
+    restored_v5 = client.post(
+        "/api/v1/portability/restore",
+        files={"file": ("v5.zip", v5_data, "application/zip")},
+        headers=auth_headers,
+    )
+    assert restored_v5.status_code == 200, restored_v5.text
+    assert restored_v5.json()["format_version"] == 5
 
     _delete_profile(client, auth_headers)
     v4_data = _convert_to_version(exported.content, 4)
@@ -223,7 +235,7 @@ def test_v5_archive_restores_ai_audit_and_v4_v3_v2_v1_remain_compatible(
     assert restored_v1.json()["restored_records"]["ai_executions"] == 0
 
 
-@pytest.mark.parametrize("format_version", [1, 2, 3, 4, 5])
+@pytest.mark.parametrize("format_version", [1, 2, 3, 4, 5, 6])
 @pytest.mark.parametrize(
     "archived_timestamp",
     ["2026-07-22T12:15:00+02:00", "2026-07-22T10:15:00"],
@@ -245,7 +257,7 @@ def test_archive_versions_normalize_legacy_timestamps_to_aware_utc(
 
     archive = (
         exported.content
-        if format_version == 5
+        if format_version == 6
         else _convert_to_version(exported.content, format_version)
     )
     archive = _with_profile_created_at(archive, archived_timestamp)

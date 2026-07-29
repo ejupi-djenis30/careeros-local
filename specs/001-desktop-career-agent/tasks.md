@@ -273,14 +273,14 @@ T047 model-manager UI tests
 
 ## Task validation
 
-- Task identifiers remain sequential through T156.
+- Task identifiers remain sequential through T163.
 - User Story 1: 14 tasks (T015–T028).
 - User Story 2: 6 tasks (T029–T034).
 - User Story 3: 7 tasks (T035–T041).
 - User Story 4: 25 tasks (T042–T058 and T124–T131).
 - User Story 5: 6 tasks (T059–T064).
 - User Story 6: 10 tasks (T106–T115).
-- User Story 7: 8 tasks (T116–T123).
+- User Story 7: 15 tasks (T116–T123 and T157–T163).
 - User Story 8: 12 tasks (T132–T143).
 - User Story 9: 6 tasks (T144–T149).
 - User Story 10: 7 tasks (T150–T156).
@@ -480,3 +480,27 @@ failure while the desktop is active.
 - [x] T156 [US10] Update owner, privacy, architecture and development guidance and record
   cross-artifact analysis/convergence in `README.md`, `docs/` and
   `specs/001-desktop-career-agent/`
+
+## Phase 18: User Story 7 — Durable application dossier drafts
+
+**Goal**: Preserve incomplete dossier work in the private vault without weakening immutable
+publication, cross-user isolation, backup validation or historical archive compatibility.
+
+**Independent Test**: Create, reload, race, rebase and delete a multi-row draft; fail publication
+after bundle preflight; round-trip format v6; inspect malformed draft rows; restore v1-v5; and
+downgrade/upgrade the migration while verifying that no failed operation clears visible input.
+
+- [x] T157 [US7] Amend specification, plan, tasks and OpenAPI for bounded private drafts,
+  compare-and-swap writes, exact publication and format-v6 portability
+- [x] T158 [US7] Add the one-to-one draft model, Alembic migration, bounded schemas and
+  authenticated no-store CRUD routes in `backend/applications/` and `backend/api/routes/`
+- [x] T159 [US7] Add debounced SQLite-backed autosave, restore, retry, conflict, discard and exact
+  publish behavior with bilingual accessible states in `frontend/src/`
+- [x] T160 [US7] Require unique nonblank stable row identities and consume a matching saved draft
+  only in the immutable publication transaction
+- [x] T161 [US7] Advance portable archives to v6, validate complete draft rows before writes,
+  preserve v1-v5 compatibility and include draft cascade/erasure accounting
+- [x] T162 [US7] Cover ownership, compare-and-swap, rebase, atomic failure, schema bounds,
+  migration constraints, archive adversaries, round-trip, UI persistence and accessibility
+- [x] T163 [US7] Run every release gate and record exact analysis and convergence evidence in
+  `dossier-drafts-analysis.md` and `dossier-drafts-convergence.md`

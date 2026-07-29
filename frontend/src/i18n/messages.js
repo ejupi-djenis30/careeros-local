@@ -1801,6 +1801,19 @@ Object.assign(MESSAGES.en, {
     "dossier.evidenceReconciled": "The linked resume changed. {count} unavailable evidence reference(s) were removed; your written requirements were kept.",
     "dossier.limits": "Up to 25 requirements, 10 evidence facts per requirement, 25 answers and 50 checklist items. The cover letter is limited to 30,000 characters.",
     "dossier.evidenceLimit": "Choose up to {count} confirmed facts for this requirement.",
+    "dossier.workspace": "Dossier draft workspace",
+    "dossier.draftLoading": "Loading the private draft from this device…",
+    "dossier.draftEmpty": "Draft ready. Changes will be saved on this device.",
+    "dossier.draftUnsaved": "Changes waiting to be saved…",
+    "dossier.draftSaving": "Saving the private draft on this device…",
+    "dossier.draftSaved": "Draft saved on this device.",
+    "dossier.draftSaveError": "The draft could not be saved. Nothing in the form was cleared.",
+    "dossier.draftLoadError": "The saved draft could not be loaded. Retry before editing.",
+    "dossier.draftConflict": "This draft changed elsewhere. Your current form is still intact.",
+    "dossier.retryDraftLoad": "Retry draft load",
+    "dossier.retryDraftSave": "Retry save",
+    "dossier.keepLocalDraft": "Keep this draft",
+    "dossier.discardDraft": "Discard saved draft",
 });
 
 Object.assign(MESSAGES.it, {
@@ -1882,6 +1895,19 @@ Object.assign(MESSAGES.it, {
     "dossier.evidenceReconciled": "Il CV collegato è cambiato. Sono stati rimossi {count} riferimenti non più disponibili; i requisiti scritti sono rimasti invariati.",
     "dossier.limits": "Fino a 25 requisiti, 10 evidenze per requisito, 25 risposte e 50 voci checklist. La lettera è limitata a 30.000 caratteri.",
     "dossier.evidenceLimit": "Scegli fino a {count} fatti confermati per questo requisito.",
+    "dossier.workspace": "Area di lavoro della bozza dossier",
+    "dossier.draftLoading": "Caricamento della bozza privata da questo dispositivo…",
+    "dossier.draftEmpty": "Bozza pronta. Le modifiche verranno salvate su questo dispositivo.",
+    "dossier.draftUnsaved": "Modifiche in attesa di salvataggio…",
+    "dossier.draftSaving": "Salvataggio della bozza privata su questo dispositivo…",
+    "dossier.draftSaved": "Bozza salvata su questo dispositivo.",
+    "dossier.draftSaveError": "Non è stato possibile salvare la bozza. Il modulo è rimasto invariato.",
+    "dossier.draftLoadError": "Non è stato possibile caricare la bozza salvata. Riprova prima di modificare.",
+    "dossier.draftConflict": "La bozza è cambiata altrove. Il modulo attuale è rimasto intatto.",
+    "dossier.retryDraftLoad": "Riprova il caricamento",
+    "dossier.retryDraftSave": "Riprova il salvataggio",
+    "dossier.keepLocalDraft": "Mantieni questa bozza",
+    "dossier.discardDraft": "Elimina la bozza salvata",
 });
 
 Object.assign(MESSAGES.it, {

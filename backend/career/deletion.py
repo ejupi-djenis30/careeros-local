@@ -8,7 +8,7 @@ from sqlalchemy import exists, text
 from sqlalchemy.orm import Session
 
 from backend.ai.models import AIExecution
-from backend.applications.models import Application
+from backend.applications.models import Application, ApplicationDossierDraft
 from backend.automation.models import AutomationGrant
 from backend.career.models import CandidateProfile, CareerAsset
 from backend.desktop.lifecycle import desktop_vault_lock
@@ -277,6 +277,13 @@ def delete_complete_vault(
                     )
                 ),
                 "applications": db.query(Application)
+                .filter(Application.user_id == validated_user_id)
+                .count(),
+                "dossier_drafts": db.query(ApplicationDossierDraft)
+                .join(
+                    Application,
+                    ApplicationDossierDraft.application_id == Application.id,
+                )
                 .filter(Application.user_id == validated_user_id)
                 .count(),
                 "workflows": db.query(WorkflowRun)

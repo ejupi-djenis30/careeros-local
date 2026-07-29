@@ -341,10 +341,134 @@ class DossierRequirementEvidence(BaseModel):
         return values
 
 
+class DossierDraftAnswer(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    client_id: str = Field(min_length=1, max_length=100)
+    question: str = Field(default="", max_length=1000)
+    answer: str = Field(default="", max_length=20_000)
+
+    @field_validator("client_id")
+    @classmethod
+    def normalize_client_id(cls, value: str) -> str:
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("client_id must not be blank")
+        return normalized
+
+
+class DossierDraftChecklistItem(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    client_id: str = Field(min_length=1, max_length=100)
+    label: str = Field(default="", max_length=500)
+    completed: bool = False
+
+    @field_validator("client_id")
+    @classmethod
+    def normalize_client_id(cls, value: str) -> str:
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("client_id must not be blank")
+        return normalized
+
+
+class DossierDraftRequirementEvidence(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    client_id: str = Field(min_length=1, max_length=100)
+    requirement: str = Field(default="", max_length=2000)
+    evidence_fact_ids: list[UUID] = Field(default_factory=list, max_length=10)
+
+    @field_validator("evidence_fact_ids")
+    @classmethod
+    def unique_evidence(cls, values: list[UUID]) -> list[UUID]:
+        if len(set(values)) != len(values):
+            raise ValueError("Evidence fact ids must be unique per requirement")
+        return values
+
+    @field_validator("client_id")
+    @classmethod
+    def normalize_client_id(cls, value: str) -> str:
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("client_id must not be blank")
+        return normalized
+
+
+class ApplicationDossierDraftContent(BaseModel):
+    """Incomplete, user-authored dossier state suitable for durable autosave."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    cover_letter: str | None = Field(default=None, max_length=30_000)
+    answers: list[DossierDraftAnswer] = Field(default_factory=list, max_length=25)
+    checklist: list[DossierDraftChecklistItem] = Field(default_factory=list, max_length=50)
+    requirement_matrix: list[DossierDraftRequirementEvidence] = Field(
+        min_length=1,
+        max_length=25,
+    )
+
+    @model_validator(mode="after")
+    def bound_aggregate_size(self):
+        for name, rows in (
+            ("answer", self.answers),
+            ("checklist", self.checklist),
+            ("requirement", self.requirement_matrix),
+        ):
+            client_ids = [row.client_id for row in rows]
+            if len(client_ids) != len(set(client_ids)):
+                raise ValueError(f"dossier draft {name} client ids must be unique")
+        evidence_ids = [
+            fact_id for row in self.requirement_matrix for fact_id in row.evidence_fact_ids
+        ]
+        if len(evidence_ids) > MAX_DOSSIER_EVIDENCE_LINKS:
+            raise ValueError(
+                f"dossier draft cannot contain more than "
+                f"{MAX_DOSSIER_EVIDENCE_LINKS} evidence links"
+            )
+        if len(set(evidence_ids)) > MAX_DOSSIER_UNIQUE_FACTS:
+            raise ValueError(
+                f"dossier draft cannot reference more than "
+                f"{MAX_DOSSIER_UNIQUE_FACTS} unique facts"
+            )
+        encoded = json.dumps(
+            self.model_dump(mode="json"),
+            ensure_ascii=False,
+            allow_nan=False,
+            separators=(",", ":"),
+        ).encode("utf-8")
+        if len(encoded) > MAX_DOSSIER_INPUT_BYTES:
+            raise ValueError(f"dossier draft input exceeds {MAX_DOSSIER_INPUT_BYTES} bytes")
+        return self
+
+
+class ApplicationDossierDraftPut(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    expected_revision: int | None = Field(default=None, ge=1)
+    expected_application_revision: int = Field(ge=1)
+    resume_version_id: UUID
+    content: ApplicationDossierDraftContent
+
+
+class ApplicationDossierDraftResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    application_id: str
+    resume_version_id: str
+    application_revision: int = Field(ge=1)
+    revision: int = Field(ge=1)
+    content: ApplicationDossierDraftContent
+    created_at: datetime
+    updated_at: datetime
+
+
 class ApplicationDossierCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     expected_revision: int = Field(ge=1)
+    expected_draft_revision: int | None = Field(default=None, ge=1)
     cover_letter: str | None = Field(default=None, max_length=30_000)
     answers: list[DossierAnswer] = Field(default_factory=list, max_length=25)
     checklist: list[DossierChecklistItem] = Field(default_factory=list, max_length=50)

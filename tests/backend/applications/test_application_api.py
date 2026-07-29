@@ -5,11 +5,19 @@ import zipfile
 from datetime import datetime, timezone
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from types import SimpleNamespace
 
 import pytest
 from sqlalchemy import update
 
-from backend.applications.models import Application, ApplicationEvent
+from backend.applications.exports import DossierSizeError
+from backend.applications.models import (
+    Application,
+    ApplicationDossierDraft,
+    ApplicationEvent,
+)
+from backend.applications.schemas import ApplicationDossierCreate
+from backend.applications.service import ApplicationConflictError, ApplicationService
 from backend.career.models import CandidateProfile, CareerFact
 from backend.models import Job, ScrapedJob, SearchProfile, User
 from backend.resumes.models import ResumeArtifact, ResumeDraft, ResumeVersion
@@ -1630,3 +1638,513 @@ def test_dossier_schema_caps_aggregate_evidence_links(client, auth_headers):
         headers=auth_headers,
     )
     assert response.status_code == 422
+
+
+def _dossier_draft_body(
+    *,
+    application_revision: int,
+    resume_version_id: str,
+    evidence_fact_id: str,
+    expected_revision: int | None = None,
+) -> dict:
+    return {
+        "expected_revision": expected_revision,
+        "expected_application_revision": application_revision,
+        "resume_version_id": resume_version_id,
+        "content": {
+            "cover_letter": "I build dependable local systems.",
+            "answers": [
+                {
+                    "client_id": "answer-1",
+                    "question": "Why this role?",
+                    "answer": "The work matches the systems I have shipped.",
+                }
+            ],
+            "checklist": [
+                {
+                    "client_id": "check-1",
+                    "label": "References checked",
+                    "completed": True,
+                }
+            ],
+            "requirement_matrix": [
+                {
+                    "client_id": "requirement-1",
+                    "requirement": "Build reliable Python services",
+                    "evidence_fact_ids": [evidence_fact_id],
+                }
+            ],
+        },
+    }
+
+
+@pytest.mark.parametrize(
+    "collection",
+    ["answers", "checklist", "requirement_matrix"],
+)
+def test_dossier_draft_rejects_duplicate_stable_row_ids(
+    client,
+    auth_headers,
+    db_session,
+    test_user,
+    readiness_storage,
+    collection,
+):
+    version_id = _complete_application_pack(db_session, test_user)
+    application_id = _ready_application(client, auth_headers, version_id)
+    version = db_session.get(ResumeVersion, version_id)
+    body = _dossier_draft_body(
+        application_revision=1,
+        resume_version_id=version_id,
+        evidence_fact_id=str(version.selected_fact_ids[0]),
+    )
+    body["content"][collection].append(dict(body["content"][collection][0]))
+
+    response = client.put(
+        f"/api/v1/applications/{application_id}/dossier-draft",
+        json=body,
+        headers=auth_headers,
+    )
+
+    assert response.status_code == 422, response.text
+
+
+def test_dossier_draft_rejects_blank_stable_row_ids(
+    client,
+    auth_headers,
+    db_session,
+    test_user,
+    readiness_storage,
+):
+    version_id = _complete_application_pack(db_session, test_user)
+    application_id = _ready_application(client, auth_headers, version_id)
+    version = db_session.get(ResumeVersion, version_id)
+    body = _dossier_draft_body(
+        application_revision=1,
+        resume_version_id=version_id,
+        evidence_fact_id=str(version.selected_fact_ids[0]),
+    )
+    body["content"]["requirement_matrix"][0]["client_id"] = "   "
+
+    response = client.put(
+        f"/api/v1/applications/{application_id}/dossier-draft",
+        json=body,
+        headers=auth_headers,
+    )
+
+    assert response.status_code == 422, response.text
+
+
+def test_dossier_draft_crud_is_durable_owned_and_compare_and_swap_safe(
+    client,
+    auth_headers,
+    db_session,
+    test_user,
+    readiness_storage,
+):
+    version_id = _complete_application_pack(db_session, test_user)
+    application_id = _ready_application(client, auth_headers, version_id)
+    version = db_session.get(ResumeVersion, version_id)
+    evidence_id = str(version.selected_fact_ids[0])
+    endpoint = f"/api/v1/applications/{application_id}/dossier-draft"
+
+    assert client.get(endpoint).status_code == 401
+    empty = client.get(endpoint, headers=auth_headers)
+    assert empty.status_code == 200, empty.text
+    assert empty.json() is None
+    assert empty.headers["cache-control"] == "private, no-store"
+
+    created = client.put(
+        endpoint,
+        json=_dossier_draft_body(
+            application_revision=1,
+            resume_version_id=version_id,
+            evidence_fact_id=evidence_id,
+        ),
+        headers=auth_headers,
+    )
+    assert created.status_code == 200, created.text
+    assert created.headers["cache-control"] == "private, no-store"
+    first = created.json()
+    assert first["application_id"] == application_id
+    assert first["application_revision"] == 1
+    assert first["revision"] == 1
+    assert first["content"]["answers"][0]["question"] == "Why this role?"
+
+    persisted = client.get(endpoint, headers=auth_headers)
+    assert persisted.status_code == 200, persisted.text
+    assert persisted.json() == first
+
+    stale = client.put(
+        endpoint,
+        json=_dossier_draft_body(
+            application_revision=1,
+            resume_version_id=version_id,
+            evidence_fact_id=evidence_id,
+        ),
+        headers=auth_headers,
+    )
+    assert stale.status_code == 409
+    assert client.get(endpoint, headers=auth_headers).json()["revision"] == 1
+
+    updated_body = _dossier_draft_body(
+        application_revision=1,
+        resume_version_id=version_id,
+        evidence_fact_id=evidence_id,
+        expected_revision=1,
+    )
+    updated_body["content"]["cover_letter"] = "A revised, still local draft."
+    updated = client.put(endpoint, json=updated_body, headers=auth_headers)
+    assert updated.status_code == 200, updated.text
+    assert updated.json()["revision"] == 2
+    assert updated.json()["content"]["cover_letter"] == "A revised, still local draft."
+
+    other_user = User(
+        username="other-draft-owner",
+        hashed_password=get_password_hash("Otherpass1"),
+    )
+    db_session.add(other_user)
+    db_session.commit()
+    login = client.post(
+        "/api/v1/auth/login",
+        data={"username": "other-draft-owner", "password": "Otherpass1"},
+    )
+    other_headers = {"Authorization": f"Bearer {login.json()['access_token']}"}
+    assert client.get(endpoint, headers=other_headers).status_code == 404
+
+    assert (
+        client.delete(
+            f"{endpoint}?expected_revision=1",
+            headers=auth_headers,
+        ).status_code
+        == 409
+    )
+    deleted = client.delete(
+        f"{endpoint}?expected_revision=2",
+        headers=auth_headers,
+    )
+    assert deleted.status_code == 204, deleted.text
+    assert deleted.headers["cache-control"] == "private, no-store"
+    assert client.get(endpoint, headers=auth_headers).json() is None
+
+
+def test_dossier_draft_rolls_back_if_application_changes_after_the_write_starts(
+    client,
+    auth_headers,
+    db_session,
+    test_user,
+    readiness_storage,
+    monkeypatch,
+):
+    version_id = _complete_application_pack(db_session, test_user)
+    application_id = _ready_application(client, auth_headers, version_id)
+    version = db_session.get(ResumeVersion, version_id)
+    evidence_id = str(version.selected_fact_ids[0])
+    endpoint = f"/api/v1/applications/{application_id}/dossier-draft"
+    ensure_binding = ApplicationService._ensure_current_dossier_draft_binding
+
+    def interleave_application_change(
+        service,
+        user_id,
+        bound_application_id,
+        application_revision,
+        resume_version_id,
+    ):
+        service.db.query(Application).filter(
+            Application.id == bound_application_id,
+            Application.user_id == user_id,
+        ).update(
+            {Application.revision: application_revision + 1},
+            synchronize_session=False,
+        )
+        ensure_binding(
+            service,
+            user_id,
+            bound_application_id,
+            application_revision,
+            resume_version_id,
+        )
+
+    monkeypatch.setattr(
+        ApplicationService,
+        "_ensure_current_dossier_draft_binding",
+        interleave_application_change,
+    )
+
+    response = client.put(
+        endpoint,
+        json=_dossier_draft_body(
+            application_revision=1,
+            resume_version_id=version_id,
+            evidence_fact_id=evidence_id,
+        ),
+        headers=auth_headers,
+    )
+
+    assert response.status_code == 409, response.text
+    assert client.get(endpoint, headers=auth_headers).json() is None
+    db_session.expire_all()
+    assert db_session.get(Application, application_id).revision == 1
+
+
+def test_publishing_atomically_consumes_the_exact_saved_dossier_draft(
+    client,
+    auth_headers,
+    db_session,
+    test_user,
+    readiness_storage,
+):
+    version_id = _complete_application_pack(db_session, test_user)
+    application_id = _ready_application(client, auth_headers, version_id)
+    version = db_session.get(ResumeVersion, version_id)
+    evidence_id = str(version.selected_fact_ids[0])
+    endpoint = f"/api/v1/applications/{application_id}/dossier-draft"
+    draft_body = _dossier_draft_body(
+        application_revision=1,
+        resume_version_id=version_id,
+        evidence_fact_id=evidence_id,
+    )
+    saved = client.put(endpoint, json=draft_body, headers=auth_headers)
+    assert saved.status_code == 200, saved.text
+
+    published = client.post(
+        f"/api/v1/applications/{application_id}/dossiers",
+        json={
+            "expected_revision": 1,
+            "expected_draft_revision": saved.json()["revision"],
+            "cover_letter": "I build dependable local systems.",
+            "answers": [
+                {
+                    "question": "Why this role?",
+                    "answer": "The work matches the systems I have shipped.",
+                }
+            ],
+            "checklist": [{"label": "References checked", "completed": True}],
+            "requirement_matrix": [
+                {
+                    "requirement": "Build reliable Python services",
+                    "evidence_fact_ids": [evidence_id],
+                }
+            ],
+        },
+        headers=auth_headers,
+    )
+    assert published.status_code == 201, published.text
+    assert published.json()["events"][-1]["event_type"] == "dossier_published"
+    assert client.get(endpoint, headers=auth_headers).json() is None
+    assert (
+        db_session.query(ApplicationDossierDraft)
+        .filter(ApplicationDossierDraft.application_id == application_id)
+        .count()
+        == 0
+    )
+
+
+def test_publishing_rolls_back_when_the_exact_draft_cannot_be_consumed(
+    client,
+    auth_headers,
+    db_session,
+    test_user,
+    readiness_storage,
+    monkeypatch,
+):
+    version_id = _complete_application_pack(db_session, test_user)
+    application_id = _ready_application(client, auth_headers, version_id)
+    version = db_session.get(ResumeVersion, version_id)
+    evidence_id = str(version.selected_fact_ids[0])
+    endpoint = f"/api/v1/applications/{application_id}/dossier-draft"
+    saved = client.put(
+        endpoint,
+        json=_dossier_draft_body(
+            application_revision=1,
+            resume_version_id=version_id,
+            evidence_fact_id=evidence_id,
+        ),
+        headers=auth_headers,
+    )
+    assert saved.status_code == 200, saved.text
+    data = ApplicationDossierCreate.model_validate(
+        {
+            "expected_revision": 1,
+            "expected_draft_revision": 1,
+            "cover_letter": "I build dependable local systems.",
+            "answers": [
+                {
+                    "question": "Why this role?",
+                    "answer": "The work matches the systems I have shipped.",
+                }
+            ],
+            "checklist": [{"label": "References checked", "completed": True}],
+            "requirement_matrix": [
+                {
+                    "requirement": "Build reliable Python services",
+                    "evidence_fact_ids": [evidence_id],
+                }
+            ],
+        }
+    )
+    execute = db_session.execute
+
+    def lose_exact_draft_consume(statement, *args, **kwargs):
+        if (
+            statement.__class__.__name__ == "Delete"
+            and getattr(getattr(statement, "table", None), "name", None)
+            == "application_dossier_drafts"
+        ):
+            return SimpleNamespace(rowcount=0)
+        return execute(statement, *args, **kwargs)
+
+    monkeypatch.setattr(db_session, "execute", lose_exact_draft_consume)
+
+    with pytest.raises(ApplicationConflictError, match="changed in another editor"):
+        ApplicationService(db_session).publish_dossier(
+            test_user.id,
+            application_id,
+            data,
+        )
+
+    db_session.expire_all()
+    assert db_session.get(Application, application_id).revision == 1
+    assert (
+        db_session.query(ApplicationDossierDraft)
+        .filter(ApplicationDossierDraft.application_id == application_id)
+        .count()
+        == 1
+    )
+    assert (
+        db_session.query(ApplicationEvent)
+        .filter(
+            ApplicationEvent.application_id == application_id,
+            ApplicationEvent.event_type == "dossier_published",
+        )
+        .count()
+        == 0
+    )
+
+
+def test_dossier_draft_requires_an_explicit_rebase_after_application_changes(
+    client,
+    auth_headers,
+    db_session,
+    test_user,
+    readiness_storage,
+):
+    version_id = _complete_application_pack(db_session, test_user)
+    application_id = _ready_application(client, auth_headers, version_id)
+    version = db_session.get(ResumeVersion, version_id)
+    evidence_id = str(version.selected_fact_ids[0])
+    endpoint = f"/api/v1/applications/{application_id}/dossier-draft"
+    created = client.put(
+        endpoint,
+        json=_dossier_draft_body(
+            application_revision=1,
+            resume_version_id=version_id,
+            evidence_fact_id=evidence_id,
+        ),
+        headers=auth_headers,
+    )
+    assert created.status_code == 200, created.text
+
+    changed = client.post(
+        f"/api/v1/applications/{application_id}/events",
+        json={
+            "expected_revision": 1,
+            "event_type": "note",
+            "note": "The hiring contact replied.",
+        },
+        headers=auth_headers,
+    )
+    assert changed.status_code == 201, changed.text
+    assert changed.json()["revision"] == 2
+
+    stale = client.put(
+        endpoint,
+        json=_dossier_draft_body(
+            application_revision=1,
+            resume_version_id=version_id,
+            evidence_fact_id=evidence_id,
+            expected_revision=1,
+        ),
+        headers=auth_headers,
+    )
+    assert stale.status_code == 409
+    unchanged = client.get(endpoint, headers=auth_headers).json()
+    assert unchanged["revision"] == 1
+    assert unchanged["application_revision"] == 1
+
+    rebased = client.put(
+        endpoint,
+        json=_dossier_draft_body(
+            application_revision=2,
+            resume_version_id=version_id,
+            evidence_fact_id=evidence_id,
+            expected_revision=1,
+        ),
+        headers=auth_headers,
+    )
+    assert rebased.status_code == 200, rebased.text
+    assert rebased.json()["revision"] == 2
+    assert rebased.json()["application_revision"] == 2
+
+
+def test_failed_dossier_publication_preserves_the_saved_draft(
+    client,
+    auth_headers,
+    db_session,
+    test_user,
+    readiness_storage,
+    monkeypatch,
+):
+    version_id = _complete_application_pack(db_session, test_user)
+    application_id = _ready_application(client, auth_headers, version_id)
+    version = db_session.get(ResumeVersion, version_id)
+    evidence_id = str(version.selected_fact_ids[0])
+    endpoint = f"/api/v1/applications/{application_id}/dossier-draft"
+    saved = client.put(
+        endpoint,
+        json=_dossier_draft_body(
+            application_revision=1,
+            resume_version_id=version_id,
+            evidence_fact_id=evidence_id,
+        ),
+        headers=auth_headers,
+    )
+    assert saved.status_code == 200, saved.text
+
+    def fail_bundle(**_kwargs):
+        raise DossierSizeError("simulated local bundle failure")
+
+    monkeypatch.setattr("backend.applications.service.build_dossier_bundle", fail_bundle)
+    failed = client.post(
+        f"/api/v1/applications/{application_id}/dossiers",
+        json={
+            "expected_revision": 1,
+            "expected_draft_revision": 1,
+            "cover_letter": "I build dependable local systems.",
+            "answers": [
+                {
+                    "question": "Why this role?",
+                    "answer": "The work matches the systems I have shipped.",
+                }
+            ],
+            "checklist": [{"label": "References checked", "completed": True}],
+            "requirement_matrix": [
+                {
+                    "requirement": "Build reliable Python services",
+                    "evidence_fact_ids": [evidence_id],
+                }
+            ],
+        },
+        headers=auth_headers,
+    )
+    assert failed.status_code == 422, failed.text
+    assert client.get(endpoint, headers=auth_headers).json()["revision"] == 1
+    assert (
+        db_session.query(ApplicationEvent)
+        .filter(
+            ApplicationEvent.application_id == application_id,
+            ApplicationEvent.event_type == "dossier_published",
+        )
+        .count()
+        == 0
+    )

@@ -74,6 +74,12 @@ First link a published resume and clear readiness blockers. Under **Application 
    the limits shown in the interface;
 4. publish a new dossier version.
 
+CareerOS autosaves the working draft into the local SQLite vault and shows whether it is waiting,
+saving, saved or blocked by an error. It does not use browser storage. A failed save or publish
+leaves every field in the form intact. If two editors change the same draft, CareerOS refuses the
+stale write and lets you deliberately keep the visible local version. Publishing first saves the
+current form, then records the immutable dossier and removes the working draft in one transaction.
+
 Each publication is immutable. Downloaded ZIPs contain the selected resume files, cover letter,
 answers, checklist, requirement-to-evidence matrix, one deduplicated evidence catalog, application
 record and `manifest.json`. The

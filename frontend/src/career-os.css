@@ -2505,6 +2505,16 @@ summary:focus-visible {
 .task-priority--high { color: #ffd88a; }
 .application-task-form, .dossier-form { display: flex; flex-direction: column; gap: 0.75rem; padding-top: 0.85rem; border-top: 1px solid var(--cos-border); }
 .application-task-form > .button, .dossier-form > .button { width: 100%; }
+.dossier-form__workspace { display: flex; min-width: 0; flex-direction: column; gap: 0.75rem; margin: 0; padding: 0; border: 0; }
+.dossier-form__workspace > .button { width: 100%; }
+.dossier-form__workspace:disabled { opacity: 0.72; }
+.dossier-save-status { display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; margin: 0 0 0.85rem; padding: 0.62rem 0.72rem; border: 1px solid var(--cos-border); border-radius: var(--cos-radius-sm); background: rgba(7, 10, 8, 0.28); color: var(--cos-muted); font-size: 0.6rem; }
+.dossier-save-status > span { display: inline-flex; align-items: center; gap: 0.42rem; min-width: 0; }
+.dossier-save-status > div { display: flex; align-items: center; justify-content: flex-end; gap: 0.3rem; }
+.dossier-save-status .button { min-height: 30px; padding: 0.3rem 0.5rem; font-size: 0.55rem; }
+.dossier-save-status--saved { border-color: rgba(117, 223, 165, 0.2); color: var(--cos-success); }
+.dossier-save-status--unsaved, .dossier-save-status--saving { color: var(--cos-warning); }
+.dossier-save-status--save-error, .dossier-save-status--load-error, .dossier-save-status--conflict { border-color: rgba(255, 140, 135, 0.23); background: rgba(255, 140, 135, 0.05); color: var(--cos-danger); }
 .dossier-versions code { width: fit-content; color: var(--cos-faint); font-size: 0.54rem; }
 .dossier-evidence { display: grid; gap: 0.38rem; margin: 0; padding: 0.75rem; border: 1px solid var(--cos-border); border-radius: var(--cos-radius); }
 .dossier-evidence legend { float: none; width: auto; margin: 0; padding: 0 0.2rem; color: var(--cos-muted); font-size: 0.62rem; }
@@ -3175,6 +3185,9 @@ summary:focus-visible {
   .dossier-checkline { grid-template-columns: 1fr; }
   .dossier-builder__heading { align-items: stretch; flex-direction: column; }
   .dossier-builder__heading .button { width: 100%; }
+  .dossier-save-status { align-items: stretch; flex-direction: column; }
+  .dossier-save-status > div { justify-content: stretch; }
+  .dossier-save-status .button { flex: 1 1 auto; }
   .dossier-row.dossier-checkline { grid-template-columns: 1fr; }
   .preparation-resume-help { align-items: flex-start; flex-direction: column; }
   .coach-context__facts { grid-template-columns: 1fr; }

@@ -5,6 +5,20 @@ All notable changes to CareerOS Local are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- Application dossiers now autosave one private, revisioned working draft per application in the
+  local SQLite vault. Save failures and edit conflicts keep the current form intact, and users can
+  retry, keep their local version or discard the saved draft explicitly.
+
+### Changed
+
+- Publishing from the dossier workspace now consumes the exact saved draft atomically: the working
+  copy is removed only in the transaction that records the immutable dossier version successfully.
+  Existing API clients may still publish directly when no working draft exists.
+- Portable backups now use archive format v6 so dossier drafts survive device migration, while
+  formats v1 through v5 remain inspectable and restorable.
+
 ## [1.8.0] - 2026-07-26
 
 ### Added

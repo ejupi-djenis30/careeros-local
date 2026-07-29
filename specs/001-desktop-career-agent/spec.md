@@ -231,6 +231,10 @@ only board reads and lossless payloads.
    published, **Then** every complete row is preserved, partial question-answer pairs produce a
    visible error, evidence ids are valid UUIDs, fact snapshots are deduplicated in a bounded catalog,
    archive/event sizes are preflighted, and add/remove controls have accessible names.
+7. **Given** an incomplete dossier in progress, **When** the user edits, closes, reopens, encounters
+   a failed save or races another editor, **Then** one bounded private draft is restored from the
+   local vault, stable row identities remain unique, stale writes fail without clearing the form,
+   and workspace publication consumes only the exact saved revision in the event transaction.
 
 ---
 
@@ -593,6 +597,21 @@ fails with `vault_busy` instead of opening another connection.
 - **FR-077**: Complete vault erasure MUST derive user-referenced shared listings from both Job and
   Application logical-opportunity links. It MUST delete a listing only when no Job or Application
   owned by another user still references it.
+- **FR-078**: Each owned Application MAY have one mutable working dossier draft in the local SQLite
+  vault. Draft schemas MUST reject unknown fields, bound every list, string, evidence reference and
+  aggregate payload, permit incomplete rows for autosave, and require a nonblank stable client id
+  that is unique within each row collection. Browser storage MUST NOT hold the draft.
+- **FR-079**: Draft create, update and delete operations MUST be authenticated, user-scoped and
+  compare-and-swap revisioned. Saves MUST bind to the exact current Application revision and owned
+  linked Resume Version. A stale application, resume or draft MUST fail without changing the saved
+  row or visible form. Workspace publication MUST first save the current form, verify the exact
+  draft projection, and remove that draft only in the transaction that records the immutable
+  dossier event. The no-draft publication path MAY remain available to existing API clients.
+- **FR-080**: Portable archive format v6 MUST include working dossier drafts. Inspection and restore
+  MUST reject missing required fields, invalid revisions, malformed content, duplicate per-
+  application rows and broken relationships before writes. Formats v1 through v5 MUST remain
+  inspectable and restorable with an empty draft table. Application deletion and complete vault
+  erasure MUST remove the associated draft through a database-enforced cascade.
 
 ### Key Entities
 
@@ -612,6 +631,8 @@ fails with `vault_busy` instead of opening another connection.
   contacts, notes and related document versions.
 - **Application Readiness Report**: A derived, versioned preflight record containing inspectable
   checks, weighted score, status, source revisions and a canonical content fingerprint.
+- **Application Dossier Draft**: One private mutable working copy bound to an Application revision
+  and Resume Version, with stable row identities and its own compare-and-swap revision.
 - **Resume Document**: A user-owned resume with target, template category, evidence map,
   canvas state and a history of immutable versions.
 - **Resume Version**: A snapshot of content, layout, provenance, validation results, exports
@@ -704,6 +725,10 @@ fails with `vault_busy` instead of opening another connection.
   normalized fields. Catalog race tests prove A→B→save(A) skips without rewriting, A→A saves,
   missing catalog rows skip, and the same current revision can be saved for two owned profiles.
   A deterministic model-await interleaving proves normalization output for A cannot mutate B.
+- **SC-025**: Dossier-draft acceptance tests prove durable reload, bounded and uniquely keyed rows,
+  cross-user isolation, one compare-and-swap winner, explicit rebase after Application or Resume
+  changes, form preservation after save/publication failure, exact atomic publication, v6 portable
+  round-trip, adversarial preflight rejection, v1-v5 compatibility and migration downgrade/upgrade.
 
 ## Assumptions
 

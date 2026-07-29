@@ -1,8 +1,8 @@
 openapi: 3.1.0
 info:
   title: CareerOS Local Desktop Additions
-  version: 1.1.2
-  description: New local model management and evaluation interfaces for feature 001.
+  version: 1.2.0
+  description: Local model, application workflow and recovery interfaces for feature 001.
 servers:
   - url: http://127.0.0.1:{port}/api/v1
     variables:
@@ -41,6 +41,9 @@ paths:
     post:
       operationId: verifyLocalAnalysisReadiness
       description: Runs one content-free schema-constrained probe through the configured local model.
+      security:
+        - desktopSession: []
+          userAccessToken: []
       responses:
         "200":
           description: Stable local-analysis readiness diagnostics; the response contains no prompt or model output.
@@ -52,6 +55,9 @@ paths:
     get:
       operationId: getApplicationAgenda
       description: Builds a deterministic private queue from owned scalar application projections.
+      security:
+        - desktopSession: []
+          userAccessToken: []
       parameters:
         - name: local_day_end
           in: query
@@ -77,6 +83,9 @@ paths:
   /local-model/install:
     post:
       operationId: installLocalModel
+      security:
+        - desktopSession: []
+          userAccessToken: []
       requestBody:
         required: true
         content:
@@ -100,23 +109,35 @@ paths:
   /local-model/cancel:
     post:
       operationId: cancelLocalModelInstall
+      security:
+        - desktopSession: []
+          userAccessToken: []
       responses:
         "202": { description: Cancellation requested and partial files scheduled for removal. }
   /local-model/restart:
     post:
       operationId: restartLocalModel
+      security:
+        - desktopSession: []
+          userAccessToken: []
       responses:
         "202": { description: A bounded local runtime restart was requested. }
         "409": { description: No verified model is installed. }
   /ai-evaluations:
     get:
       operationId: listLocalModelEvaluations
+      security:
+        - desktopSession: []
+          userAccessToken: []
       responses:
         "200":
           description: Content-free aggregate evaluation history.
   /ai-evaluations/run:
     post:
       operationId: runLocalModelEvaluation
+      security:
+        - desktopSession: []
+          userAccessToken: []
       requestBody:
         required: true
         content:
@@ -133,6 +154,9 @@ paths:
   /applications/{application_id}/readiness:
     get:
       operationId: getApplicationReadiness
+      security:
+        - desktopSession: []
+          userAccessToken: []
       parameters:
         - name: application_id
           in: path
@@ -148,6 +172,9 @@ paths:
   /applications/{application_id}/readiness/export:
     get:
       operationId: exportApplicationReadiness
+      security:
+        - desktopSession: []
+          userAccessToken: []
       parameters:
         - name: application_id
           in: path
@@ -174,6 +201,9 @@ paths:
   /applications/{application_id}/preparation:
     patch:
       operationId: updateApplicationPreparation
+      security:
+        - desktopSession: []
+          userAccessToken: []
       parameters:
         - name: application_id
           in: path
@@ -189,6 +219,101 @@ paths:
         "404": { description: The application does not belong to the current user. }
         "409": { description: The expected revision is stale. }
         "422": { description: A URL, email, resume link or update payload is invalid. }
+  /applications/{application_id}/dossier-draft:
+    parameters:
+      - name: application_id
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    get:
+      operationId: getApplicationDossierDraft
+      security:
+        - desktopSession: []
+          userAccessToken: []
+      responses:
+        "200":
+          description: The owned SQLite-backed working draft, or null when no draft exists.
+          headers:
+            Cache-Control:
+              schema: { const: "private, no-store" }
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - { $ref: "#/components/schemas/ApplicationDossierDraftResponse" }
+                  - { type: "null" }
+        "401": { description: The local user session is not authenticated. }
+        "404": { description: The application does not belong to the current user. }
+    put:
+      operationId: putApplicationDossierDraft
+      description: Creates or compare-and-swap updates one bounded working draft.
+      security:
+        - desktopSession: []
+          userAccessToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ApplicationDossierDraftPut" }
+      responses:
+        "200":
+          description: The stored draft with its next compare-and-swap revision.
+          headers:
+            Cache-Control:
+              schema: { const: "private, no-store" }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApplicationDossierDraftResponse" }
+        "401": { description: The local user session is not authenticated. }
+        "404": { description: The application does not belong to the current user. }
+        "409":
+          description: The application, linked resume or working draft revision is stale.
+        "422": { description: The bounded draft payload is invalid. }
+    delete:
+      operationId: deleteApplicationDossierDraft
+      security:
+        - desktopSession: []
+          userAccessToken: []
+      parameters:
+        - name: expected_revision
+          in: query
+          required: true
+          schema: { type: integer, minimum: 1 }
+      responses:
+        "204": { description: The exact saved draft revision was deleted. }
+        "401": { description: The local user session is not authenticated. }
+        "404": { description: The application or draft does not exist for the current user. }
+        "409": { description: The working draft revision is stale. }
+        "422": { description: The expected revision is invalid. }
+  /applications/{application_id}/dossiers:
+    post:
+      operationId: publishApplicationDossier
+      description: >
+        Publishes directly when no working draft exists. If a draft exists, the request must name
+        and exactly match its current revision; that row is consumed in the immutable event
+        transaction.
+      security:
+        - desktopSession: []
+          userAccessToken: []
+      parameters:
+        - name: application_id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ApplicationDossierCreate" }
+      responses:
+        "201":
+          description: The immutable dossier event and updated application revision.
+        "401": { description: The local user session is not authenticated. }
+        "404": { description: The application does not belong to the current user. }
+        "409":
+          description: The application or saved draft changed before publication.
+        "422":
+          description: Readiness, evidence, content or bounded artifact validation failed.
 components:
   securitySchemes:
     desktopSession:
@@ -196,6 +321,11 @@ components:
       in: header
       name: X-CareerOS-Session
       description: Per-launch secret supplied by the native shell; disabled in explicit browser development.
+    userAccessToken:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Authenticated local CareerOS user access token.
   schemas:
     LocalModelStatus:
       type: object
@@ -333,6 +463,132 @@ components:
         application_url: { type: [string, "null"], maxLength: 2048 }
         application_email: { type: [string, "null"], maxLength: 320 }
         resume_version_id: { type: [string, "null"], maxLength: 36 }
+    DossierDraftAnswer:
+      type: object
+      additionalProperties: false
+      required: [client_id]
+      properties:
+        client_id: { type: string, minLength: 1, maxLength: 100 }
+        question: { type: string, maxLength: 1000, default: "" }
+        answer: { type: string, maxLength: 20000, default: "" }
+    DossierDraftChecklistItem:
+      type: object
+      additionalProperties: false
+      required: [client_id]
+      properties:
+        client_id: { type: string, minLength: 1, maxLength: 100 }
+        label: { type: string, maxLength: 500, default: "" }
+        completed: { type: boolean, default: false }
+    DossierDraftRequirementEvidence:
+      type: object
+      additionalProperties: false
+      required: [client_id]
+      properties:
+        client_id: { type: string, minLength: 1, maxLength: 100 }
+        requirement: { type: string, maxLength: 2000, default: "" }
+        evidence_fact_ids:
+          type: array
+          maxItems: 10
+          uniqueItems: true
+          items: { type: string, format: uuid }
+    ApplicationDossierDraftContent:
+      type: object
+      additionalProperties: false
+      required: [requirement_matrix]
+      description: Incomplete draft rows are allowed; client_id values are unique per collection.
+      properties:
+        cover_letter: { type: [string, "null"], maxLength: 30000 }
+        answers:
+          type: array
+          maxItems: 25
+          items: { $ref: "#/components/schemas/DossierDraftAnswer" }
+        checklist:
+          type: array
+          maxItems: 50
+          items: { $ref: "#/components/schemas/DossierDraftChecklistItem" }
+        requirement_matrix:
+          type: array
+          minItems: 1
+          maxItems: 25
+          items: { $ref: "#/components/schemas/DossierDraftRequirementEvidence" }
+    ApplicationDossierDraftPut:
+      type: object
+      additionalProperties: false
+      required:
+        - expected_application_revision
+        - resume_version_id
+        - content
+      properties:
+        expected_revision: { type: [integer, "null"], minimum: 1 }
+        expected_application_revision: { type: integer, minimum: 1 }
+        resume_version_id: { type: string, format: uuid }
+        content: { $ref: "#/components/schemas/ApplicationDossierDraftContent" }
+    ApplicationDossierDraftResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - application_id
+        - resume_version_id
+        - application_revision
+        - revision
+        - content
+        - created_at
+        - updated_at
+      properties:
+        application_id: { type: string, format: uuid }
+        resume_version_id: { type: string, format: uuid }
+        application_revision: { type: integer, minimum: 1 }
+        revision: { type: integer, minimum: 1 }
+        content: { $ref: "#/components/schemas/ApplicationDossierDraftContent" }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+    DossierAnswer:
+      type: object
+      additionalProperties: false
+      required: [question, answer]
+      properties:
+        question: { type: string, minLength: 1, maxLength: 1000 }
+        answer: { type: string, minLength: 1, maxLength: 20000 }
+    DossierChecklistItem:
+      type: object
+      additionalProperties: false
+      required: [label]
+      properties:
+        label: { type: string, minLength: 1, maxLength: 500 }
+        completed: { type: boolean, default: false }
+    DossierRequirementEvidence:
+      type: object
+      additionalProperties: false
+      required: [requirement, evidence_fact_ids]
+      properties:
+        requirement: { type: string, minLength: 1, maxLength: 2000 }
+        evidence_fact_ids:
+          type: array
+          minItems: 1
+          maxItems: 10
+          uniqueItems: true
+          items: { type: string, format: uuid }
+    ApplicationDossierCreate:
+      type: object
+      additionalProperties: false
+      required: [expected_revision, requirement_matrix]
+      properties:
+        expected_revision: { type: integer, minimum: 1 }
+        expected_draft_revision: { type: [integer, "null"], minimum: 1 }
+        cover_letter: { type: [string, "null"], maxLength: 30000 }
+        answers:
+          type: array
+          maxItems: 25
+          items: { $ref: "#/components/schemas/DossierAnswer" }
+        checklist:
+          type: array
+          maxItems: 50
+          items: { $ref: "#/components/schemas/DossierChecklistItem" }
+        requirement_matrix:
+          type: array
+          minItems: 1
+          maxItems: 25
+          items: { $ref: "#/components/schemas/DossierRequirementEvidence" }
     ApplicationReadinessReport:
       type: object
       additionalProperties: false

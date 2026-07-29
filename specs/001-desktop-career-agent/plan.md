@@ -442,6 +442,31 @@ zero-mutation reads, output bounds, official in-memory MCP negotiation and a rea
 Portability tests prove restore revokes active grants; deletion tests prove complete erasure
 removes them.
 
+### Phase N — Durable application dossier drafts
+
+Add one `application_dossier_drafts` row per Application, separate from immutable timeline events.
+The row binds an owned linked Resume Version and the Application revision at which it was saved,
+while its own monotonic revision supplies compare-and-swap create, update and delete semantics.
+Draft Pydantic contracts retain incomplete rows for autosave but forbid unknown fields, blank or
+duplicate stable client ids, oversized strings, excessive row/evidence counts and oversized
+aggregate JSON.
+
+Expose authenticated GET, rate-limited PUT and rate-limited DELETE routes. Reads are private and
+non-cacheable; every write first resolves the owned Application and Resume Version. The dossier
+workspace loads before editing, debounces writes into SQLite, never uses browser storage and keeps
+all visible fields through transport, validation and conflict failures. An explicit conflict action
+rebases the visible copy onto the latest saved draft revision. Publication from the workspace waits
+for the current save, compares the publishable projection to that exact revision and deletes the
+draft only in the same commit that advances the Application and records its immutable event. The
+existing no-draft API publication path remains available for compatibility.
+
+Advance portable archives to format v6 by adding the draft table after its Application and Resume
+dependencies. Preflight validates required identifiers and timestamps, one row per Application,
+monotonic revisions, bounded content and every database relationship before any destination write.
+Historical v1-v5 archives decode an empty draft table. Migration tests inspect constraints and
+exercise downgrade/upgrade; round-trip, malformed-archive, cross-user, CAS, publication-failure,
+autosave and accessibility tests cover the full boundary.
+
 ## Complexity Tracking
 
 | Violation | Why Needed During Migration | Required Resolution |

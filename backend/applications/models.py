@@ -6,6 +6,7 @@ from typing import Any, Literal
 
 from sqlalchemy import (
     JSON,
+    CheckConstraint,
     ForeignKey,
     Index,
     Integer,
@@ -113,6 +114,59 @@ class Application(Base, TimestampMixin):
         cascade="all, delete-orphan",
         order_by="ApplicationEvent.occurred_at, ApplicationEvent.created_at",
         lazy="selectin",
+    )
+    dossier_draft: Mapped[ApplicationDossierDraft | None] = relationship(
+        "ApplicationDossierDraft",
+        back_populates="application",
+        cascade="all, delete-orphan",
+        uselist=False,
+        lazy="selectin",
+    )
+
+
+class ApplicationDossierDraft(Base, TimestampMixin):
+    """Mutable, revisioned workspace for one application's next dossier.
+
+    Published dossiers remain immutable timeline events. Keeping the working
+    copy in a separate one-to-one row lets autosave use compare-and-swap
+    without advancing or rewriting the application timeline.
+    """
+
+    __tablename__ = "application_dossier_drafts"
+    __table_args__ = (
+        UniqueConstraint(
+            "application_id",
+            name="uq_application_dossier_draft_application",
+        ),
+        CheckConstraint(
+            "application_revision >= 1",
+            name="ck_dossier_draft_application_revision",
+        ),
+        CheckConstraint(
+            "revision >= 1",
+            name="ck_dossier_draft_revision",
+        ),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    application_id: Mapped[str] = mapped_column(
+        String(36),
+        ForeignKey("applications.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    resume_version_id: Mapped[str] = mapped_column(
+        String(36),
+        ForeignKey("resume_versions.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    application_revision: Mapped[int] = mapped_column(Integer, nullable=False)
+    revision: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    content: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
+
+    application: Mapped[Application] = relationship(
+        "Application",
+        back_populates="dossier_draft",
     )
 
 

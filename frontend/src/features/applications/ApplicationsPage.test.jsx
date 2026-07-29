@@ -17,7 +17,7 @@ const addEvent = vi.fn();
 const resumeList = vi.fn();
 const resumeGet = vi.fn();
 
-vi.mock("../../services/applications", () => ({ ApplicationService: { list: (...args) => list(...args), agenda: (...args) => agenda(...args), get: (...args) => get(...args), create: (...args) => create(...args), readiness: (...args) => readiness(...args), downloadReadiness: vi.fn(), updatePreparation: vi.fn(), addEvent: (...args) => addEvent(...args) } }));
+vi.mock("../../services/applications", () => ({ ApplicationService: { list: (...args) => list(...args), agenda: (...args) => agenda(...args), get: (...args) => get(...args), create: (...args) => create(...args), readiness: (...args) => readiness(...args), downloadReadiness: vi.fn(), updatePreparation: vi.fn(), addEvent: (...args) => addEvent(...args), getDossierDraft: vi.fn().mockResolvedValue(null) } }));
 vi.mock("../../services/resumes", () => ({ ResumeService: { list: (...args) => resumeList(...args), get: (...args) => resumeGet(...args) } }));
 vi.mock("../../context/ToastContext", () => ({ useToast: () => ({ showToast }) }));
 

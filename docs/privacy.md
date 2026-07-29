@@ -4,7 +4,7 @@ CareerOS Local is designed to minimize disclosure of highly sensitive career dat
 
 ## Stored locally
 
-The app may store identity and contact data, work and education history, skills, languages, achievements, goals, preferences, source documents, profile photos, resume drafts and publications, job snapshots, application tasks and dossier versions, coach conversations, and redacted AI execution metadata. Model binaries and partial downloads are stored in separate app-managed directories.
+The app may store identity and contact data, work and education history, skills, languages, achievements, goals, preferences, source documents, profile photos, resume drafts and publications, job snapshots, application tasks, working dossier drafts and dossier versions, coach conversations, and redacted AI execution metadata. Dossier drafts are stored in the local SQLite vault rather than browser storage and are removed with their application or a complete-vault erasure. Model binaries and partial downloads are stored in separate app-managed directories.
 
 ## Not collected
 

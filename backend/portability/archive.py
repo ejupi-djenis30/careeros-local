@@ -9,7 +9,11 @@ from typing import Any
 from sqlalchemy.orm import Session
 
 from backend.ai.models import AIExecution
-from backend.applications.models import Application, ApplicationEvent
+from backend.applications.models import (
+    Application,
+    ApplicationDossierDraft,
+    ApplicationEvent,
+)
 from backend.applications.snapshots import sanitize_application_snapshot
 from backend.career.coach_models import CoachConversation, CoachMessage
 from backend.career.models import (
@@ -61,6 +65,7 @@ EXPORT_MODELS: list[tuple[str, type[Any]]] = [
     ("scraped_jobs", ScrapedJob),
     ("jobs", Job),
     ("applications", Application),
+    ("application_dossier_drafts", ApplicationDossierDraft),
     ("application_events", ApplicationEvent),
     ("coach_conversations", CoachConversation),
     ("coach_messages", CoachMessage),
@@ -217,6 +222,17 @@ def _queries(db: Session, user_id: int) -> dict[str, list[Any]]:
         if applications
         else []
     )
+    application_dossier_drafts = (
+        db.query(ApplicationDossierDraft)
+        .join(
+            Application,
+            ApplicationDossierDraft.application_id == Application.id,
+        )
+        .filter(Application.user_id == user_id)
+        .all()
+        if applications
+        else []
+    )
     conversations = (
         db.query(CoachConversation).filter(CoachConversation.profile_id == profile_id).all()
         if profile_id
@@ -245,6 +261,7 @@ def _queries(db: Session, user_id: int) -> dict[str, list[Any]]:
         "scraped_jobs": scraped_jobs,
         "jobs": jobs,
         "applications": applications,
+        "application_dossier_drafts": application_dossier_drafts,
         "application_events": application_events,
         "coach_conversations": conversations,
         "coach_messages": messages,
