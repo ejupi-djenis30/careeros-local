@@ -2,6 +2,7 @@ import re
 import struct
 import zlib
 from dataclasses import replace
+from datetime import datetime, timezone
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
@@ -17,8 +18,9 @@ from scripts.validate_portfolio_site import (
     _validate_svg_asset,
     validate,
     validate_editorial_assets,
+    validate_pages_discovery,
+    validate_pages_workflow,
     validate_responsive_screenshots,
-    validate_robots,
 )
 
 
@@ -139,10 +141,81 @@ def test_portfolio_delivers_responsive_modern_screenshots():
 
 
 def test_portfolio_crawler_policy_is_explicit_and_valid():
-    assert validate_robots() == []
+    assert validate_pages_discovery(
+        now=datetime(2026, 7, 29, tzinfo=timezone.utc)
+    ) == []
     assert (ROOT / "docs" / "robots.txt").read_text(encoding="utf-8") == (
-        "User-agent: *\nAllow: /\n"
+        "User-agent: *\n"
+        "Allow: /careeros-local/\n"
+        "Sitemap: https://ejupi-djenis30.github.io/careeros-local/sitemap.xml\n"
     )
+    assert (ROOT / "docs" / "sitemap.xml").read_text(encoding="utf-8") == (
+        '<?xml version="1.0" encoding="UTF-8"?>\n'
+        '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n'
+        "  <url>\n"
+        "    <loc>https://ejupi-djenis30.github.io/careeros-local/</loc>\n"
+        "  </url>\n"
+        "</urlset>\n"
+    )
+
+
+def test_pages_workflow_preserves_hidden_security_metadata():
+    assert validate_pages_workflow() == []
+    workflow = (ROOT / ".github" / "workflows" / "pages.yml").read_text(
+        encoding="utf-8"
+    )
+
+    assert "path: docs" in workflow
+    assert "include-hidden-files: true" in workflow
+
+
+def _copy_pages_discovery_fixture(tmp_path: Path) -> Path:
+    site_root = tmp_path / "site"
+    security_directory = site_root / ".well-known"
+    security_directory.mkdir(parents=True)
+    for relative_path in (
+        ".nojekyll",
+        "robots.txt",
+        "sitemap.xml",
+        ".well-known/security.txt",
+    ):
+        source = ROOT / "docs" / relative_path
+        target = site_root / relative_path
+        target.write_bytes(source.read_bytes())
+    return site_root
+
+
+def test_pages_discovery_rejects_a_missing_nojekyll_marker(tmp_path: Path):
+    site_root = _copy_pages_discovery_fixture(tmp_path)
+    (site_root / ".nojekyll").unlink()
+
+    assert "missing regular .nojekyll marker" in validate_pages_discovery(
+        site_root,
+        now=datetime(2026, 7, 29, tzinfo=timezone.utc),
+    )
+
+
+def test_pages_discovery_rejects_public_email_and_expired_metadata(tmp_path: Path):
+    site_root = _copy_pages_discovery_fixture(tmp_path)
+    security = site_root / ".well-known" / "security.txt"
+    security.write_text(
+        security.read_text(encoding="utf-8")
+        .replace(
+            "https://github.com/ejupi-djenis30/careeros-local/security/advisories/new",
+            "mailto:security@example.test",
+        )
+        .replace("2027-07-31T23:59:59Z", "2026-07-28T23:59:59Z"),
+        encoding="utf-8",
+    )
+
+    errors = validate_pages_discovery(
+        site_root,
+        now=datetime(2026, 7, 29, tzinfo=timezone.utc),
+    )
+
+    assert "security.txt must use private vulnerability reporting, not email" in errors
+    assert "security.txt must not expose an email address" in errors
+    assert "security.txt expiration must remain in the future" in errors
 
 
 def test_portfolio_keeps_one_real_product_demo():

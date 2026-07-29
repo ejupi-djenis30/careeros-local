@@ -8,6 +8,7 @@ import re
 import struct
 import zlib
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from html.parser import HTMLParser
 from pathlib import Path
 from urllib.parse import unquote, urlparse
@@ -28,6 +29,8 @@ RESPONSIVE_SCREENSHOTS = (
     "careeros-applications",
 )
 RESPONSIVE_WIDTHS = (480, 560, 640, 720, 960, 1600)
+SITE_URL = "https://ejupi-djenis30.github.io/careeros-local/"
+PAGES_WORKFLOW = ROOT / ".github" / "workflows" / "pages.yml"
 
 
 @dataclass(frozen=True)
@@ -524,9 +527,113 @@ def validate_robots(site_root: Path = SITE_ROOT) -> list[str]:
         policy = path.read_text(encoding="utf-8")
     except UnicodeDecodeError:
         return ["robots.txt must be UTF-8"]
-    if policy.replace("\r\n", "\n") != "User-agent: *\nAllow: /\n":
-        return ["robots.txt must explicitly allow all crawlers"]
+    expected = (
+        "User-agent: *\n"
+        "Allow: /careeros-local/\n"
+        f"Sitemap: {SITE_URL}sitemap.xml\n"
+    )
+    if policy.replace("\r\n", "\n") != expected:
+        return ["robots.txt must retain the project Pages scope and canonical sitemap"]
     return []
+
+
+def validate_pages_discovery(
+    site_root: Path = SITE_ROOT,
+    *,
+    now: datetime | None = None,
+) -> list[str]:
+    """Validate the exact project-Page crawler and vulnerability-reporting contract."""
+
+    errors = validate_robots(site_root)
+    marker = site_root / ".nojekyll"
+    if not marker.is_file() or marker.is_symlink():
+        errors.append("missing regular .nojekyll marker")
+    elif marker.stat().st_size > 128:
+        errors.append(".nojekyll must remain a small marker file")
+
+    sitemap = site_root / "sitemap.xml"
+    expected_sitemap = (
+        '<?xml version="1.0" encoding="UTF-8"?>\n'
+        '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n'
+        "  <url>\n"
+        f"    <loc>{SITE_URL}</loc>\n"
+        "  </url>\n"
+        "</urlset>\n"
+    )
+    if not sitemap.is_file():
+        errors.append("missing sitemap.xml")
+    else:
+        try:
+            sitemap_source = sitemap.read_text(encoding="utf-8").replace("\r\n", "\n")
+        except UnicodeDecodeError:
+            errors.append("sitemap.xml must be UTF-8")
+        else:
+            if sitemap_source != expected_sitemap:
+                errors.append("sitemap.xml must expose exactly the canonical project Page")
+
+    security = site_root / ".well-known" / "security.txt"
+    if not security.is_file():
+        errors.append("missing .well-known/security.txt")
+        return errors
+    try:
+        security_source = security.read_text(encoding="utf-8").replace("\r\n", "\n")
+    except UnicodeDecodeError:
+        errors.append("security.txt must be UTF-8")
+        return errors
+
+    lines = security_source.splitlines()
+    expected_lines = {
+        0: "Contact: https://github.com/ejupi-djenis30/careeros-local/security/advisories/new",
+        2: "Preferred-Languages: en",
+        3: f"Canonical: {SITE_URL}.well-known/security.txt",
+        4: "Policy: https://github.com/ejupi-djenis30/careeros-local/security/policy",
+    }
+    if len(lines) != 5:
+        errors.append("security.txt must contain exactly the five reviewed fields")
+    for position, expected_line in expected_lines.items():
+        if len(lines) <= position or lines[position] != expected_line:
+            errors.append(f"security.txt is missing its canonical {expected_line.split(':', 1)[0]} field")
+    if re.search(r"^Contact:\s*mailto:", security_source, re.IGNORECASE | re.MULTILINE):
+        errors.append("security.txt must use private vulnerability reporting, not email")
+    if re.search(r"@[A-Za-z0-9.-]+", security_source):
+        errors.append("security.txt must not expose an email address")
+
+    expiration_source = lines[1].removeprefix("Expires: ") if len(lines) > 1 else ""
+    try:
+        expiration = datetime.strptime(
+            expiration_source,
+            "%Y-%m-%dT%H:%M:%SZ",
+        ).replace(tzinfo=timezone.utc)
+    except ValueError:
+        errors.append("security.txt must declare a canonical UTC expiration")
+    else:
+        reference_time = now or datetime.now(timezone.utc)
+        if reference_time.tzinfo is None:
+            reference_time = reference_time.replace(tzinfo=timezone.utc)
+        if expiration <= reference_time:
+            errors.append("security.txt expiration must remain in the future")
+
+    return errors
+
+
+def validate_pages_workflow(workflow_path: Path = PAGES_WORKFLOW) -> list[str]:
+    """Ensure the Pages archive preserves the hidden RFC 9116 document."""
+
+    if not workflow_path.is_file():
+        return ["missing GitHub Pages workflow"]
+    try:
+        workflow = workflow_path.read_text(encoding="utf-8").replace("\r\n", "\n")
+    except UnicodeDecodeError:
+        return ["GitHub Pages workflow must be UTF-8"]
+
+    errors: list[str] = []
+    if "uses: actions/upload-pages-artifact@" not in workflow:
+        errors.append("GitHub Pages workflow must use the Pages artifact action")
+    if "          path: docs\n" not in workflow:
+        errors.append("GitHub Pages workflow must publish docs")
+    if "          include-hidden-files: true\n" not in workflow:
+        errors.append("GitHub Pages workflow must publish hidden well-known files")
+    return errors
 
 
 def validate() -> list[str]:
@@ -540,7 +647,8 @@ def validate() -> list[str]:
 
     errors.extend(validate_editorial_assets())
     errors.extend(validate_responsive_screenshots(parser))
-    errors.extend(validate_robots())
+    errors.extend(validate_pages_discovery())
+    errors.extend(validate_pages_workflow())
 
     if parser.h1_count != 1:
         errors.append(f"expected exactly one h1, found {parser.h1_count}")

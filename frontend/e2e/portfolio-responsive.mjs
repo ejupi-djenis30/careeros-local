@@ -48,6 +48,7 @@ const contentTypes = new Map([
   [".txt", "text/plain; charset=utf-8"],
   [".webm", "video/webm"],
   [".webp", "image/webp"],
+  [".xml", "application/xml; charset=utf-8"],
 ]);
 
 function resolveRequestPath(requestUrl) {
@@ -184,8 +185,32 @@ try {
   assert.equal(robotsResponse.status(), 200, "robots.txt must be published");
   assert.equal(
     await robotsResponse.text(),
-    "User-agent: *\nAllow: /\n",
+    "User-agent: *\n" +
+      "Allow: /careeros-local/\n" +
+      "Sitemap: https://ejupi-djenis30.github.io/careeros-local/sitemap.xml\n",
     "robots.txt must expose the intended crawler policy",
+  );
+
+  const sitemapResponse = await page.request.get(`${baseUrl}sitemap.xml`);
+  assert.equal(sitemapResponse.status(), 200, "sitemap.xml must be published");
+  assert.match(
+    await sitemapResponse.text(),
+    /<loc>https:\/\/ejupi-djenis30\.github\.io\/careeros-local\/<\/loc>/,
+    "sitemap.xml must expose the canonical project Page",
+  );
+
+  const securityResponse = await page.request.get(`${baseUrl}.well-known/security.txt`);
+  assert.equal(securityResponse.status(), 200, "security.txt must be published");
+  const securityPolicy = await securityResponse.text();
+  assert.match(
+    securityPolicy,
+    /^Contact: https:\/\/github\.com\/ejupi-djenis30\/careeros-local\/security\/advisories\/new$/m,
+    "security.txt must use private vulnerability reporting",
+  );
+  assert.doesNotMatch(
+    securityPolicy,
+    /mailto:|@[A-Za-z0-9.-]+/,
+    "security.txt must not expose an email address",
   );
 
   for (const width of widths) {
