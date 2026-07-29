@@ -1,2 +1,3 @@
 User-agent: *
-Allow: /
+Allow: /careeros-local/
+Sitemap: https://ejupi-djenis30.github.io/careeros-local/sitemap.xml
