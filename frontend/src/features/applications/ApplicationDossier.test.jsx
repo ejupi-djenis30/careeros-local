@@ -12,6 +12,44 @@ const getDossierDraft = vi.fn();
 const saveDossierDraft = vi.fn();
 const deleteDossierDraft = vi.fn();
 const getProfile = vi.fn();
+const storedDrafts = [];
+
+function publishableContent(content) {
+    const trimmed = (value) => value.trim();
+    return {
+        cover_letter: trimmed(content.cover_letter || "") || null,
+        answers: content.answers
+            .filter((row) => trimmed(row.question) && trimmed(row.answer))
+            .map((row) => ({
+                question: trimmed(row.question),
+                answer: trimmed(row.answer),
+            })),
+        checklist: content.checklist
+            .filter((row) => trimmed(row.label))
+            .map((row) => ({
+                label: trimmed(row.label),
+                completed: row.completed,
+            })),
+        requirement_matrix: content.requirement_matrix.map((row) => ({
+            requirement: trimmed(row.requirement),
+            evidence_fact_ids: row.evidence_fact_ids,
+        })),
+    };
+}
+
+function expectPublishedSavedRevision(expectedContent) {
+    const [, published] = publishDossier.mock.calls.at(-1);
+    expect(published).toEqual({
+        expected_revision: 1,
+        expected_draft_revision: expect.any(Number),
+        ...expectedContent,
+    });
+    const saved = storedDrafts.find(
+        (draft) => draft.revision === published.expected_draft_revision,
+    );
+    expect(saved).toBeDefined();
+    expect(publishableContent(saved.content)).toEqual(expectedContent);
+}
 
 vi.mock("../../services/applications", () => ({ ApplicationService: {
     publishDossier: (...args) => publishDossier(...args),
@@ -27,17 +65,22 @@ vi.mock("../../services/career", () => ({ CareerService: {
 describe("ApplicationDossier", () => {
     beforeEach(() => {
         vi.clearAllMocks();
+        storedDrafts.length = 0;
         getProfile.mockResolvedValue(careerProfile());
         getDossierDraft.mockResolvedValue(null);
-        saveDossierDraft.mockImplementation((_id, data) => Promise.resolve({
-            application_id: application().id,
-            resume_version_id: data.resume_version_id,
-            application_revision: data.expected_application_revision,
-            revision: (data.expected_revision || 0) + 1,
-            content: data.content,
-            created_at: "2026-07-29T12:00:00Z",
-            updated_at: "2026-07-29T12:00:00Z",
-        }));
+        saveDossierDraft.mockImplementation((_id, data) => {
+            const stored = {
+                application_id: application().id,
+                resume_version_id: data.resume_version_id,
+                application_revision: data.expected_application_revision,
+                revision: (data.expected_revision || 0) + 1,
+                content: data.content,
+                created_at: "2026-07-29T12:00:00Z",
+                updated_at: "2026-07-29T12:00:00Z",
+            };
+            storedDrafts.push(stored);
+            return Promise.resolve(stored);
+        });
         deleteDossierDraft.mockResolvedValue(null);
         publishDossier.mockResolvedValue(application({ revision: 2 }));
     });
@@ -59,14 +102,14 @@ describe("ApplicationDossier", () => {
         await user.type(screen.getByLabelText("Lettera di presentazione"), "I build local systems.");
         await user.click(screen.getByRole("button", { name: "Pubblica versione dossier" }));
 
-        await waitFor(() => expect(publishDossier).toHaveBeenCalledWith(application().id, {
-            expected_revision: 1,
-            expected_draft_revision: 1,
+        await waitFor(() => expect(publishDossier).toHaveBeenCalledTimes(1));
+        expect(publishDossier.mock.calls.at(-1)[0]).toBe(application().id);
+        expectPublishedSavedRevision({
             cover_letter: "I build local systems.",
             answers: [],
             checklist: [],
             requirement_matrix: [{ requirement: "Build Python services", evidence_fact_ids: [fact.id] }],
-        }));
+        });
         expect(onChanged).toHaveBeenCalledTimes(1);
     });
 
@@ -115,9 +158,9 @@ describe("ApplicationDossier", () => {
         });
         await user.click(screen.getByRole("button", { name: "Pubblica versione dossier" }));
 
-        await waitFor(() => expect(publishDossier).toHaveBeenCalledWith(application().id, {
-            expected_revision: 1,
-            expected_draft_revision: 1,
+        await waitFor(() => expect(publishDossier).toHaveBeenCalledTimes(1));
+        expect(publishDossier.mock.calls.at(-1)[0]).toBe(application().id);
+        expectPublishedSavedRevision({
             cover_letter: null,
             answers: [
                 { question: "Why this role?", answer: "The scope matches my work." },
@@ -131,7 +174,7 @@ describe("ApplicationDossier", () => {
                 { requirement: "Build Python services", evidence_fact_ids: [fact.id] },
                 { requirement: "Operate local systems", evidence_fact_ids: [fact.id] },
             ],
-        }));
+        });
     });
 
     it("reports a partial question and keeps every draft field intact", async () => {
