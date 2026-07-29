@@ -93,9 +93,16 @@ function GuidanceChecklist({ milestones, applications, onRetry }) {
                             <p>{item.copy}</p>
                         </div>
                         {item.to && item.state !== "complete" && (
-                            item.anchor
-                                ? <a className="button button--secondary button--small" href={item.to}>{item.action}<i className="bi bi-arrow-down" aria-hidden="true" /></a>
-                                : <Link className="button button--secondary button--small" to={item.to}>{item.action}<i className="bi bi-arrow-right" aria-hidden="true" /></Link>
+                            <div className="home-checklist__actions">
+                                {item.anchor
+                                    ? <a className="button button--secondary button--small" href={item.to}>{item.action}<i className="bi bi-arrow-down" aria-hidden="true" /></a>
+                                    : <Link className="button button--secondary button--small" to={item.to}>{item.action}<i className="bi bi-arrow-right" aria-hidden="true" /></Link>}
+                                {item.secondaryTo && (
+                                    <Link className="home-checklist__secondary" to={item.secondaryTo}>
+                                        {item.secondaryAction}
+                                    </Link>
+                                )}
+                            </div>
                         )}
                         {item.state === "unavailable" && (
                             <button type="button" className="button button--secondary button--small" onClick={item.onRetry || onRetry}>
@@ -164,7 +171,16 @@ export function WorkspaceHomePage() {
     const vaultMilestone = (() => {
         if (sources.profile.state === "loading") return { key: "vault", state: "loading", title: t("home.setup.vaultChecking"), copy: t("home.setup.checkingCopy") };
         if (sources.profile.state === "unavailable") return { key: "vault", state: "unavailable", title: t("home.setup.vaultUnavailable"), copy: t("home.setup.unavailableCopy") };
-        if (sources.profile.state === "missing" || confirmedFacts.length === 0) return { key: "vault", state: "pending", title: t("home.setup.vaultPending"), copy: t("home.setup.vaultPendingCopy"), to: "/profile", action: t("home.setup.vaultAction") };
+        if (sources.profile.state === "missing" || confirmedFacts.length === 0) return {
+            key: "vault",
+            state: "pending",
+            title: t("home.setup.vaultPending"),
+            copy: t("home.setup.vaultPendingCopy"),
+            to: "/profile?start=import",
+            action: t("home.setup.vaultImportAction"),
+            secondaryTo: "/profile",
+            secondaryAction: t("home.setup.vaultManualAction"),
+        };
         return { key: "vault", state: "complete", title: t("home.setup.vaultComplete"), copy: t("home.setup.vaultCompleteCopy", { count: confirmedFacts.length }) };
     })();
 

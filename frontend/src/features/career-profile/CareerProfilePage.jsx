@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useLocation } from "react-router";
 import { ApiError } from "../../lib/client";
 import { CareerService } from "../../services/career";
 import { ResumeService } from "../../services/resumes";
@@ -16,7 +17,9 @@ export function CareerProfilePage() {
     const { user } = useAuth();
     const { showToast } = useToast();
     const { t } = useI18n();
+    const location = useLocation();
     const [profile, setProfile] = useState(null);
+    const [profileOrigin, setProfileOrigin] = useState("unknown");
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
     const [dirty, setDirty] = useState(false);
@@ -57,10 +60,10 @@ export function CareerProfilePage() {
             .catch(() => []);
         const profileRequest = Promise.resolve()
             .then(() => CareerService.getProfile(requestOptions))
-            .then((response) => ({ profile: profileResponseToDraft(response) }))
+            .then((response) => ({ profile: profileResponseToDraft(response), origin: "existing" }))
             .catch((loadError) => {
                 if (loadError instanceof ApiError && loadError.status === 404) {
-                    return { profile: emptyProfile(user) };
+                    return { profile: emptyProfile(user), origin: "missing" };
                 }
                 return { error: loadError };
             });
@@ -72,6 +75,7 @@ export function CareerProfilePage() {
                     setError(profileResult.error.message);
                 } else {
                     setProfile(profileResult.profile);
+                    setProfileOrigin(profileResult.origin);
                     setError("");
                     setConflict(false);
                     setDirty(false);
@@ -137,27 +141,71 @@ export function CareerProfilePage() {
         return additions.length;
     };
 
+    const persistProfile = async (successMessageKey) => {
+        const response = await CareerService.saveProfile(profileDraftToWrite(profile));
+        setProfile(profileResponseToDraft(response));
+        setDirty(false);
+        window.dispatchEvent(new Event("careeros:profile-updated"));
+        if (successMessageKey) showToast({ messageKey: successMessageKey }, "success");
+        return response;
+    };
+
+    const recordSaveError = (saveError) => {
+        if (saveError instanceof ApiError && saveError.status === 409) setConflict(true);
+        setError(saveError.message);
+    };
+
     const save = async (event) => {
         event.preventDefault();
         setSaving(true);
         setError("");
         setConflict(false);
         try {
-            const response = await CareerService.saveProfile(profileDraftToWrite(profile));
-            setProfile(profileResponseToDraft(response));
-            setDirty(false);
-            window.dispatchEvent(new Event("careeros:profile-updated"));
-            showToast({ messageKey: "profile.savedToast" }, "success");
+            await persistProfile("profile.savedToast");
         } catch (saveError) {
-            if (saveError instanceof ApiError && saveError.status === 409) setConflict(true);
-            setError(saveError.message);
+            recordSaveError(saveError);
         } finally {
             setSaving(false);
         }
     };
 
+    const prepareSourceImport = async () => {
+        if (profile.expected_revision !== 0) return;
+        setSaving(true);
+        setError("");
+        setConflict(false);
+        try {
+            await persistProfile("source.vaultCreatedToast");
+        } catch (saveError) {
+            recordSaveError(saveError);
+            return false;
+        } finally {
+            setSaving(false);
+        }
+    };
+
+    const reviewImportedFacts = () => {
+        window.requestAnimationFrame(() => {
+            const heading = document.getElementById("facts-title");
+            heading?.scrollIntoView?.({ behavior: "smooth", block: "start" });
+            heading?.focus({ preventScroll: true });
+        });
+    };
+
     if (loading) return <div className="page-loader" role="status"><span className="spinner-border" /><span>{t("profile.loading")}</span></div>;
     if (!profile) return <div className="state-panel state-panel--danger"><h2>{t("profile.unavailable")}</h2><p>{error}</p><button className="button button--secondary" onClick={load}>{t("profile.retry")}</button></div>;
+
+    const sourceFirst = new URLSearchParams(location.search).get("start") === "import";
+    const sourceImporter = (
+        <SourceImporter
+            firstRun={sourceFirst && profileOrigin === "missing"}
+            sectionNumber={sourceFirst ? null : "04"}
+            onAcceptCandidates={acceptSourceCandidates}
+            onPrepareImport={prepareSourceImport}
+            onReviewAccepted={reviewImportedFacts}
+        />
+    );
+    const factsEditor = <FactsEditor key={`facts-${profile.expected_revision}`} facts={profile.facts} analysis={profile.analysis} onChange={(facts) => update({ ...profile, facts })} />;
 
     return (
         <form className="profile-workspace" onSubmit={save}>
@@ -175,11 +223,13 @@ export function CareerProfilePage() {
 
             <div className="profile-editor">
                 {error && <div className={`inline-alert ${conflict ? "inline-alert--warning" : "inline-alert--danger"}`} role="alert"><div><strong>{conflict ? t("profile.otherSession") : t("profile.saveFailed")}</strong><span>{error}</span></div>{conflict && <button type="button" className="button button--secondary" onClick={load}>{t("profile.reload")}</button>}</div>}
+                {sourceFirst && sourceImporter}
                 <IdentityEditor profile={profile} onChange={update} />
+                {sourceFirst && factsEditor}
                 <GoalsEditor goals={profile.goals} facts={profile.facts} resumeVersions={resumeVersions} onChange={(goals) => update({ ...profile, goals })} />
                 <PreferencesEditor preferences={profile.preferences} jobSources={jobSources} onChange={(preferences) => update({ ...profile, preferences })} />
-                <FactsEditor key={`facts-${profile.expected_revision}`} facts={profile.facts} analysis={profile.analysis} onChange={(facts) => update({ ...profile, facts })} />
-                <SourceImporter onAcceptCandidates={acceptSourceCandidates} />
+                {!sourceFirst && factsEditor}
+                {!sourceFirst && sourceImporter}
             </div>
 
             <div className="save-dock" aria-live="polite">

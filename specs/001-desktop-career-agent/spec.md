@@ -65,6 +65,10 @@ relationships and progress data remain intact.
    evidence against the goal.
 4. **Given** conflicting or impossible dates, **When** the profile is saved, **Then** the
    application highlights the conflict and preserves the draft for correction.
+5. **Given** a new local account and an existing CV, **When** the user chooses the CV-first
+   setup path, **Then** CareerOS creates the minimum local Vault record before importing the
+   document, keeps every extracted candidate unconfirmed, and takes the user to an explicit
+   review step without requiring a model or developer tool.
 
 ---
 
@@ -612,6 +616,12 @@ fails with `vault_busy` instead of opening another connection.
   application rows and broken relationships before writes. Formats v1 through v5 MUST remain
   inspectable and restorable with an empty draft table. Application deletion and complete vault
   erasure MUST remove the associated draft through a database-enforced cascade.
+- **FR-081**: First-use guidance MUST offer an existing-CV path and a manual-entry path without
+  implying completion. When no Career Profile exists, an explicit source import MUST first persist
+  the current minimum profile through the normal revisioned write, then upload the document through
+  the existing bounded local source endpoint. A failed profile write MUST start no upload; a failed
+  upload MAY leave the truthful empty profile in place but MUST preserve the selected file for retry.
+  Accepted candidates MUST remain `imported` until the user reviews and explicitly confirms them.
 
 ### Key Entities
 
@@ -729,6 +739,11 @@ fails with `vault_busy` instead of opening another connection.
   cross-user isolation, one compare-and-swap winner, explicit rebase after Application or Resume
   changes, form preservation after save/publication failure, exact atomic publication, v6 portable
   round-trip, adversarial preflight rejection, v1-v5 compatibility and migration downgrade/upgrade.
+- **SC-026**: First-use UI tests prove that a new account can select a supported CV before a profile
+  exists, that the profile write completes before the source upload starts, that write failure
+  starts no upload, that upload failure keeps the file selectable for retry, and that accepted
+  candidates remain unconfirmed with a keyboard-operable route to review them. Existing profiles
+  import without an unnecessary profile write, and the complete path makes no model call.
 
 ## Assumptions
 

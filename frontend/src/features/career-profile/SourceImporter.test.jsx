@@ -44,12 +44,15 @@ describe("SourceImporter", () => {
     it("previews local text and requires explicit candidate acceptance", async () => {
         const user = userEvent.setup();
         const accept = vi.fn(() => 1);
-        render(<SourceImporter onAcceptCandidates={accept} />);
+        const prepare = vi.fn();
+        const review = vi.fn();
+        render(<SourceImporter onAcceptCandidates={accept} onPrepareImport={prepare} onReviewAccepted={review} />);
 
         await user.upload(screen.getByLabelText("Documento sorgente"), new File(["career"], "career.txt", { type: "text/plain" }));
         await user.click(screen.getByRole("button", { name: "Importa localmente" }));
 
         expect(await screen.findByText("Candidati da revisionare")).toBeInTheDocument();
+        expect(prepare.mock.invocationCallOrder[0]).toBeLessThan(CareerService.uploadSource.mock.invocationCallOrder[0]);
         await user.click(screen.getByText("Anteprima del testo estratto"));
         expect(screen.getAllByText(/Competenze: Python/)).toHaveLength(2);
         expect(accept).not.toHaveBeenCalled();
@@ -59,5 +62,41 @@ describe("SourceImporter", () => {
 
         expect(accept).toHaveBeenCalledWith(imported, [imported.candidates[0]]);
         expect(screen.getByRole("status")).toHaveTextContent("1 fatto aggiunto");
+        await user.click(screen.getByRole("button", { name: "Controlla i fatti importati" }));
+        expect(review).toHaveBeenCalledTimes(1);
+    });
+
+    it("keeps the selected file available when preparation fails, then retries explicitly", async () => {
+        const user = userEvent.setup();
+        const prepare = vi.fn()
+            .mockRejectedValueOnce(new Error("Career Vault could not be saved"))
+            .mockResolvedValueOnce();
+        render(<SourceImporter firstRun onPrepareImport={prepare} />);
+
+        const file = new File(["career"], "career.txt", { type: "text/plain" });
+        await user.upload(screen.getByLabelText("Documento sorgente"), file);
+        await user.click(screen.getByRole("button", { name: "Importa localmente" }));
+
+        expect(await screen.findByRole("alert")).toHaveTextContent("Career Vault could not be saved");
+        expect(CareerService.uploadSource).not.toHaveBeenCalled();
+        expect(screen.getByText("career.txt")).toBeInTheDocument();
+
+        await user.click(screen.getByRole("button", { name: "Importa localmente" }));
+        expect(await screen.findByText("Candidati da revisionare")).toBeInTheDocument();
+        expect(prepare).toHaveBeenCalledTimes(2);
+        expect(CareerService.uploadSource).toHaveBeenCalledWith(file);
+    });
+
+    it("keeps the selected file available when the local upload fails", async () => {
+        const user = userEvent.setup();
+        CareerService.uploadSource.mockRejectedValueOnce(new Error("Local document import failed"));
+        render(<SourceImporter />);
+
+        await user.upload(screen.getByLabelText("Documento sorgente"), new File(["career"], "career.txt", { type: "text/plain" }));
+        await user.click(screen.getByRole("button", { name: "Importa localmente" }));
+
+        expect(await screen.findByRole("alert")).toHaveTextContent("Local document import failed");
+        expect(screen.getByText("career.txt")).toBeInTheDocument();
+        expect(screen.getByRole("button", { name: "Importa localmente" })).toBeEnabled();
     });
 });

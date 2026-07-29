@@ -1199,6 +1199,26 @@ summary:focus-visible {
 .home-checklist__status.is-unknown { background: rgba(243, 197, 104, 0.07); color: var(--cos-warning); }
 .home-checklist__item > .button { justify-self: end; white-space: nowrap; }
 
+.home-checklist__actions {
+  display: flex;
+  align-items: center;
+  justify-self: end;
+  gap: 0.65rem;
+}
+
+.home-checklist__secondary {
+  color: var(--cos-muted);
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-decoration-color: var(--cos-border-strong);
+  text-underline-offset: 0.2rem;
+  white-space: nowrap;
+}
+
+.home-checklist__secondary:hover {
+  color: var(--cos-text);
+}
+
 .home-guidance--complete {
   display: grid;
   align-items: center;
@@ -1862,6 +1882,32 @@ summary:focus-visible {
 .file-picker input,
 .photo-upload input { position: absolute; width: 1px; height: 1px; opacity: 0; }
 
+.source-first-run {
+  border-color: rgba(185, 242, 124, 0.24);
+  background:
+    linear-gradient(135deg, rgba(185, 242, 124, 0.045), transparent 48%),
+    var(--cos-surface);
+}
+
+.source-first-run__notice {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.55rem;
+  margin: -0.15rem 0 1rem;
+  padding: 0.7rem 0.75rem;
+  border: 1px solid rgba(185, 242, 124, 0.16);
+  border-radius: var(--cos-radius-sm);
+  background: rgba(185, 242, 124, 0.035);
+  color: var(--cos-muted);
+  font-size: 0.7rem;
+  line-height: 1.5;
+}
+
+.source-first-run__notice i {
+  margin-top: 0.1rem;
+  color: var(--cos-accent);
+}
+
 .source-result {
   display: flex;
   align-items: center;
@@ -1887,7 +1933,17 @@ summary:focus-visible {
 .source-candidate > span { display: grid; min-width: 0; gap: 0.2rem; }
 .source-candidate small { color: var(--cos-faint); font-family: ui-monospace, monospace; }
 .source-candidate em { overflow: hidden; color: var(--cos-muted); font-size: 0.7rem; font-style: normal; text-overflow: ellipsis; white-space: nowrap; }
-.source-accepted { color: var(--cos-success) !important; }
+.source-candidates > .source-accepted {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.65rem 0.75rem;
+  border: 1px solid rgba(117, 223, 165, 0.18);
+  border-radius: var(--cos-radius-sm);
+  background: rgba(117, 223, 165, 0.045);
+}
+.source-accepted p { margin: 0; color: var(--cos-success); font-size: 0.7rem; }
 .version-comparison { display: grid; gap: 0.3rem; padding: 0.75rem; border: 1px solid var(--cos-border-strong); border-radius: var(--cos-radius-sm); background: rgba(185, 242, 124, 0.05); color: var(--cos-muted); font-size: 0.72rem; }
 
 .save-dock {
@@ -3121,6 +3177,7 @@ summary:focus-visible {
   .home-guidance__heading { align-items: flex-start; flex-direction: column; }
   .home-checklist__item { align-items: start; grid-template-columns: auto minmax(0, 1fr); }
   .home-checklist__item > .button { grid-column: 2; justify-self: start; }
+  .home-checklist__actions { grid-column: 2; justify-self: start; }
   .home-guidance--complete { grid-template-columns: auto minmax(0, 1fr); }
   .home-guidance--complete > .button { grid-column: 2; justify-self: start; }
   .workspace-header { align-items: center; gap: 0.85rem 0.65rem; padding: 1rem; }
@@ -3210,8 +3267,18 @@ summary:focus-visible {
   .profile-source-card__status { align-items: flex-start; flex-wrap: wrap; }
   .profile-source-card__meta { width: 100%; margin-left: 0; }
   .profile-source-card__status .button { margin-left: 0; }
+  .source-candidates > .source-accepted { align-items: stretch; flex-direction: column; }
+  .source-accepted .button { width: 100%; }
   .home-checklist__body > div { align-items: flex-start; flex-direction: column; gap: 0.3rem; }
   .home-checklist__item > .button { width: 100%; grid-column: 1 / -1; }
+  .home-checklist__actions {
+    width: 100%;
+    align-items: stretch;
+    flex-direction: column;
+    grid-column: 1 / -1;
+  }
+  .home-checklist__actions .button { width: 100%; }
+  .home-checklist__secondary { align-self: center; }
   .home-guidance--complete { align-items: start; grid-template-columns: auto minmax(0, 1fr); }
   .home-guidance--complete > .button { width: 100%; grid-column: 1 / -1; }
   .home-source-unavailable { align-items: stretch; flex-direction: column; }

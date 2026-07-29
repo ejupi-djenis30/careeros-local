@@ -166,6 +166,18 @@ The app keeps its vault in the operating system's private application-data direc
 the app does not silently erase that data. If you want a clean removal, export anything you need,
 use the in-app vault erasure flow, and then uninstall the package.
 
+### Get to a first useful result
+
+Create a local account, then choose **Start from a CV** on the Today page. You can select a TXT,
+Markdown, PDF or DOCX file before filling out the long profile form. CareerOS creates the minimum
+local Vault record, reads the document on this device and shows candidate facts for review. It does
+not confirm them for you: accept only accurate candidates, choose **Review imported facts**, mark
+the facts you have checked as confirmed, and save the Career Vault.
+
+Install the listed local model from the same Today page when you are ready to match opportunities.
+Model acquisition requires the displayed license consent and is separate from the CV import. Before
+the first provider search, enable only the job sources you want under Career Vault preferences.
+
 ## Run locally
 
 Requirements: Python 3.12, Node.js 24 LTS, npm and Git. Native desktop development additionally
@@ -328,6 +340,8 @@ collectively to **CareerOS Local contributors**.
 - [Release process](docs/releasing.md)
 - [Devpost submission kit](docs/devpost.md)
 - [Product specification](specs/001-desktop-career-agent/spec.md)
+- [CV-first first-use analysis](specs/001-desktop-career-agent/cv-first-analysis.md)
+- [CV-first first-use convergence](specs/001-desktop-career-agent/cv-first-convergence.md)
 - [Agent interface analysis](specs/001-desktop-career-agent/agent-interface-analysis.md)
 - [Agent interface convergence](specs/001-desktop-career-agent/agent-interface-convergence.md)
 - [v1.8.0 release preparation](specs/001-desktop-career-agent/release-evidence-v1.8.0.md)

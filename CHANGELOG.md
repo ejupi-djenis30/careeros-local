@@ -7,6 +7,9 @@ All notable changes to CareerOS Local are documented here. The format follows
 
 ### Added
 
+- First-time users can now start the Career Vault from an existing CV. CareerOS creates the
+  minimum local profile before the bounded source import, keeps extracted candidates unconfirmed
+  and provides a direct keyboard-operable review step.
 - Application dossiers now autosave one private, revisioned working draft per application in the
   local SQLite vault. Save failures and edit conflicts keep the current form intact, and users can
   retry, keep their local version or discard the saved draft explicitly.

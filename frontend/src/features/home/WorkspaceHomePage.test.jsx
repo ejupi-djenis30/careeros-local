@@ -105,9 +105,10 @@ describe("WorkspaceHomePage progressive setup", () => {
     it("shows four precise first-use actions backed by empty API state", async () => {
         renderHome();
 
-        expect(await screen.findByRole("heading", { name: "Confirm your career facts" })).toBeInTheDocument();
+        expect(await screen.findByRole("heading", { name: "Start your Career Vault" })).toBeInTheDocument();
         expect(screen.getAllByRole("listitem")).toHaveLength(4);
-        expect(screen.getByRole("link", { name: /Complete Career Vault/i })).toHaveAttribute("href", "/profile");
+        expect(screen.getByRole("link", { name: /Start from a CV/i })).toHaveAttribute("href", "/profile?start=import");
+        expect(screen.getByRole("link", { name: /Enter facts manually/i })).toHaveAttribute("href", "/profile");
         expect(screen.getByRole("link", { name: /Set up model/i })).toHaveAttribute("href", "#home-model-setup");
         expect(screen.getByRole("link", { name: /Start first search/i })).toHaveAttribute("href", "/new");
         expect(screen.getByRole("link", { name: /Open application pipeline/i })).toHaveAttribute("href", "/applications");
@@ -208,7 +209,7 @@ describe("WorkspaceHomePage progressive setup", () => {
 
         await user.click((await screen.findAllByRole("button", { name: /Check again/i }))[0]);
         await waitFor(() => expect(mocks.getProfile).toHaveBeenCalledTimes(2));
-        expect(await screen.findByRole("heading", { name: "Confirm your career facts" })).toBeInTheDocument();
+        expect(await screen.findByRole("heading", { name: "Start your Career Vault" })).toBeInTheDocument();
         await assertAccessible(container);
     });
 });

@@ -19,7 +19,7 @@ export function FactsEditor({ facts, analysis, onChange }) {
     return (
         <section className="surface-section" aria-labelledby="facts-title">
             <div className="section-heading section-heading--wrap">
-                <div><span className="section-kicker">{t("facts.kicker")}</span><h2 id="facts-title">{t("facts.title")} <span>{facts.length}</span></h2></div>
+                <div><span className="section-kicker">{t("facts.kicker")}</span><h2 id="facts-title" tabIndex="-1">{t("facts.title")} <span>{facts.length}</span></h2></div>
                 <div className="button-cluster">
                     <select className="form-select form-select-sm" value={newType} onChange={(e) => setNewType(e.target.value)} aria-label={t("facts.addType")}>{FACT_TYPES.map(([value]) => <option key={value} value={value}>{t(`fact.type.${value}`)}</option>)}</select>
                     <button type="button" className="button button--secondary" onClick={add}><i className="bi bi-plus-lg" /> {t("facts.add")}</button>

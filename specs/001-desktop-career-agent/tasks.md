@@ -504,3 +504,26 @@ downgrade/upgrade the migration while verifying that no failed operation clears 
   migration constraints, archive adversaries, round-trip, UI persistence and accessibility
 - [x] T163 [US7] Run every release gate and record exact analysis and convergence evidence in
   `dossier-drafts-analysis.md` and `dossier-drafts-convergence.md`
+
+## Phase 19: User Story 2 — CV-first first result
+
+**Goal**: Let a non-developer start from an existing CV on a new account without first discovering
+and completing an unrelated manual save, while preserving explicit fact review and local-only
+source handling.
+
+**Independent Test**: Open a new account whose profile GET returns 404, choose a supported source
+document from the Home CV-first action, and verify the minimum revisioned profile write finishes
+before the source upload. Accept one candidate, verify it is still `imported`, move focus to its
+review section, confirm it manually and save. Repeat with profile-write and upload failures and
+prove the file remains available for retry and no model API is called.
+
+- [x] T164 [US2] Amend specification, plan and tasks for explicit CV-first bootstrap ordering,
+  retry preservation, unconfirmed candidates and keyboard-operable review
+- [x] T165 [US2] Add the Home CV-first/manual choice and make first-use source import persist the
+  minimum profile before the existing bounded local upload
+- [x] T166 [US2] Preserve the selected file across failures, expose explicit candidate review and
+  add accurate English/Italian local-only first-use copy
+- [x] T167 [US2] Cover operation ordering, no-upload failure, retry state, existing profiles,
+  imported status, focus and accessibility in focused frontend tests
+- [x] T168 [US2] Update first-use owner documentation, run proportional gates and record exact
+  analysis/convergence evidence

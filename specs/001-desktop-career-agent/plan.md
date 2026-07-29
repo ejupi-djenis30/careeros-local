@@ -467,6 +467,29 @@ Historical v1-v5 archives decode an empty draft table. Migration tests inspect c
 exercise downgrade/upgrade; round-trip, malformed-archive, cross-user, CAS, publication-failure,
 autosave and accessibility tests cover the full boundary.
 
+### Phase O — CV-first first result
+
+Keep source storage and candidate extraction on the existing authenticated Career Vault boundary.
+Do not make the source endpoint create profiles implicitly: the profile's revision contract and the
+document endpoint remain separate, observable operations. The profile workspace instead recognizes
+that its initial GET returned `404`. When the user explicitly imports a source, it first writes the
+current minimum profile through `PUT /career-profile`; only a successful response may release the
+selected file to `POST /career-profile/sources`. This preserves the existing path-containment,
+archive-size, extraction and provenance controls without inventing a second bootstrap contract.
+
+Make the CV-first route visible from the verified Home setup checklist alongside manual entry.
+For a missing profile, keep the source importer before the long-form editors for the lifetime of
+that page so the component and selected file are not remounted after the bootstrap write. Explain
+that extraction is deterministic and local, retain the file after profile or upload failure for an
+explicit retry, and keep accepted candidates in the existing `imported` state. After acceptance,
+provide a keyboard-operable action that focuses the facts review heading; confirmation and the final
+Vault save remain explicit user actions.
+
+No schema, model, runtime, provider, telemetry or new network boundary is required. Frontend tests
+cover call ordering, failure containment, retry state, existing-profile behavior, imported status,
+focus and bilingual copy. The constitution remains unchanged: this slice strengthens Principles I,
+III, V and VIII and does not alter any local-AI or source-consent gate.
+
 ## Complexity Tracking
 
 | Violation | Why Needed During Migration | Required Resolution |
