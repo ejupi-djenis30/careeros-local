@@ -6,6 +6,19 @@ without a model. Opportunity matching and coaching require a ready
 local model. The app checks the runtime, selected model, and structured-output contract before it
 opens those workflows. The interface is available in English and Italian.
 
+## Start from an existing CV
+
+After creating the local account, open **Today** and choose **Start from a CV**. This route puts the
+source importer before the full profile editor. On a new account, choosing **Import locally** first
+saves the minimum Career Vault record through the normal revision check, then sends the selected
+file to the local sidecar. If that save or import fails, the file remains selected so you can retry;
+CareerOS does not pretend the step finished.
+
+TXT, Markdown, PDF and DOCX documents are read on the device. Extracted candidates stay linked to
+the source document and enter the editor as **Imported**, never **Confirmed**. Select only accurate
+candidates, choose **Review imported facts**, inspect their fields and provenance, change the status
+only for facts you have checked, then save the Career Vault. This path does not use the model.
+
 ## Prepare local analysis
 
 The desktop app manages its default llama.cpp-compatible runtime and verifies the selected model

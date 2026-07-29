@@ -6,7 +6,13 @@ function candidateLabel(candidate) {
     return candidate.payload?.name || candidate.payload?.title || candidate.fact_type;
 }
 
-export function SourceImporter({ onAcceptCandidates = () => 0 }) {
+export function SourceImporter({
+    firstRun = false,
+    sectionNumber = "04",
+    onAcceptCandidates = () => 0,
+    onPrepareImport = async () => {},
+    onReviewAccepted,
+}) {
     const { t } = useI18n();
     const [file, setFile] = useState(null);
     const [result, setResult] = useState(null);
@@ -20,6 +26,8 @@ export function SourceImporter({ onAcceptCandidates = () => 0 }) {
         setLoading(true);
         setError("");
         try {
+            const prepared = await onPrepareImport();
+            if (prepared === false) return;
             const imported = await CareerService.uploadSource(file);
             setResult(imported);
             setSelected(new Set());
@@ -49,9 +57,10 @@ export function SourceImporter({ onAcceptCandidates = () => 0 }) {
     };
 
     return (
-        <section className="surface-section" aria-labelledby="sources-title">
-            <div className="section-heading"><div><span className="section-kicker">{t("source.kicker")}</span><h2 id="sources-title">{t("source.title")}</h2></div><span className="section-number">04</span></div>
+        <section id="source-import" className={`surface-section ${firstRun ? "source-first-run" : ""}`} aria-labelledby="sources-title">
+            <div className="section-heading"><div><span className="section-kicker">{t(firstRun ? "source.firstRunKicker" : "source.kicker")}</span><h2 id="sources-title" tabIndex="-1">{t(firstRun ? "source.firstRunTitle" : "source.title")}</h2></div>{sectionNumber && <span className="section-number">{sectionNumber}</span>}</div>
             <p className="section-intro">{t("source.copy")}</p>
+            {firstRun && <p className="source-first-run__notice"><i className="bi bi-shield-check" aria-hidden="true" />{t("source.firstRunCopy")}</p>}
             <div className="upload-row">
                 <label className="file-picker"><i className="bi bi-file-earmark-arrow-up" aria-hidden="true" /><span>{file ? file.name : t("source.choose")}</span><input aria-label={t("source.file")} type="file" accept=".txt,.md,.pdf,.docx,text/plain,text/markdown,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document" onChange={(event) => { setFile(event.target.files?.[0] || null); setResult(null); setAcceptedCount(0); }} /></label>
                 <button type="button" className="button button--secondary" disabled={!file || loading} onClick={upload}>{loading ? t("source.importing") : t("source.import")}</button>
@@ -70,7 +79,12 @@ export function SourceImporter({ onAcceptCandidates = () => 0 }) {
                             </label>
                         ))}
                         {(result.candidates || []).length > 0 && <button type="button" className="button button--primary" disabled={selected.size === 0} onClick={accept}>{t("source.accept", { count: selected.size })}</button>}
-                        {acceptedCount > 0 && <p className="source-accepted" role="status">{t(acceptedCount === 1 ? "source.acceptedOne" : "source.acceptedMany", { count: acceptedCount })}</p>}
+                        {acceptedCount > 0 && (
+                            <div className="source-accepted">
+                                <p role="status">{t(acceptedCount === 1 ? "source.acceptedOne" : "source.acceptedMany", { count: acceptedCount })}</p>
+                                {onReviewAccepted && <button type="button" className="button button--secondary button--small" onClick={onReviewAccepted}>{t("source.reviewAccepted")}<i className="bi bi-arrow-right" aria-hidden="true" /></button>}
+                            </div>
+                        )}
                     </div>
                 </div>
             )}

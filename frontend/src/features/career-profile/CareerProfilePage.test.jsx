@@ -1,8 +1,10 @@
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { MemoryRouter } from "react-router";
+import { ApiError } from "../../lib/client";
 import { careerProfile, EXPERIENCE_ID } from "../../test/fixtures";
-import { renderWithItalian as render } from "../../test/renderWithI18n";
+import { renderWithItalian } from "../../test/renderWithI18n";
 import { assertAccessible } from "../../test/accessibility";
 import { CareerProfilePage } from "./CareerProfilePage";
 
@@ -11,11 +13,32 @@ const saveProfile = vi.fn();
 const getJobSources = vi.fn();
 const listResumeVersions = vi.fn();
 const showToast = vi.fn();
+const uploadSource = vi.fn();
 
-vi.mock("../../services/career", () => ({ CareerService: { getProfile: (...args) => getProfile(...args), getJobSources: (...args) => getJobSources(...args), saveProfile: (...args) => saveProfile(...args), uploadSource: vi.fn() } }));
+vi.mock("../../services/career", () => ({ CareerService: { getProfile: (...args) => getProfile(...args), getJobSources: (...args) => getJobSources(...args), saveProfile: (...args) => saveProfile(...args), uploadSource: (...args) => uploadSource(...args) } }));
 vi.mock("../../services/resumes", () => ({ ResumeService: { listVersions: (...args) => listResumeVersions(...args) } }));
 vi.mock("../../context/AuthContext", () => ({ useAuth: () => ({ user: "mira" }) }));
 vi.mock("../../context/ToastContext", () => ({ useToast: () => ({ showToast }) }));
+
+function render(ui, { route = "/profile", ...options } = {}) {
+    return renderWithItalian(<MemoryRouter initialEntries={[route]}>{ui}</MemoryRouter>, options);
+}
+
+const importedSource = {
+    id: "source-1",
+    original_name: "career.txt",
+    extracted_characters: 20,
+    sha256: "a".repeat(64),
+    text_preview: "Competenze: Python",
+    candidates: [{
+        candidate_id: "b".repeat(64),
+        fact_type: "skill",
+        payload: { name: "Python", level: "working" },
+        source_locator: "paragraph:1:skill:1",
+        confidence: 0.82,
+        excerpt: "Competenze: Python",
+    }],
+};
 
 describe("CareerProfilePage", () => {
     beforeEach(() => {
@@ -28,7 +51,70 @@ describe("CareerProfilePage", () => {
         listResumeVersions.mockResolvedValue([
             { id: "resume-version-1", draft_id: "resume-1", draft_title: "CV Staff", semantic_version: "1.0.0", published_at: "2026-07-01T10:00:00Z" },
         ]);
+        uploadSource.mockResolvedValue(importedSource);
         saveProfile.mockImplementation(async (payload) => careerProfile({ revision: payload.expected_revision + 1, headline: payload.headline }));
+    });
+
+    it("bootstraps a new local Vault before the first CV import and keeps facts unconfirmed", async () => {
+        const user = userEvent.setup();
+        getProfile.mockRejectedValueOnce(new ApiError("Career profile not initialized", { status: 404 }));
+        saveProfile.mockResolvedValueOnce(careerProfile({
+            revision: 1,
+            display_name: "mira",
+            headline: "",
+            summary: "",
+            facts: [],
+            goals: [],
+            analysis: null,
+        }));
+
+        const { container } = render(<CareerProfilePage />, { route: "/profile?start=import" });
+        expect(await screen.findByRole("heading", { name: "Parti dal CV che hai già" })).toBeInTheDocument();
+
+        await user.upload(screen.getByLabelText("Documento sorgente"), new File(["career"], "career.txt", { type: "text/plain" }));
+        await user.click(screen.getByRole("button", { name: "Importa localmente" }));
+        expect(await screen.findByText("Candidati da revisionare")).toBeInTheDocument();
+
+        expect(saveProfile).toHaveBeenCalledWith(expect.objectContaining({
+            expected_revision: 0,
+            display_name: "mira",
+            facts: [],
+        }));
+        expect(saveProfile.mock.invocationCallOrder[0]).toBeLessThan(uploadSource.mock.invocationCallOrder[0]);
+
+        await user.click(screen.getByRole("checkbox", { name: /Python/ }));
+        await user.click(screen.getByRole("button", { name: "Accetta 1 candidati selezionati" }));
+        expect(screen.getByRole("combobox", { name: "Stato" })).toHaveValue("imported");
+
+        await user.click(screen.getByRole("button", { name: "Controlla i fatti importati" }));
+        await waitFor(() => expect(screen.getByRole("heading", { name: /Fatti professionali/ })).toHaveFocus());
+        await assertAccessible(container);
+    });
+
+    it("does not upload a CV when the initial profile write fails", async () => {
+        const user = userEvent.setup();
+        getProfile.mockRejectedValueOnce(new ApiError("Career profile not initialized", { status: 404 }));
+        saveProfile.mockRejectedValueOnce(new ApiError("Local storage is full", { status: 507 }));
+
+        render(<CareerProfilePage />, { route: "/profile?start=import" });
+        await user.upload(await screen.findByLabelText("Documento sorgente"), new File(["career"], "career.txt", { type: "text/plain" }));
+        await user.click(screen.getByRole("button", { name: "Importa localmente" }));
+
+        expect(await screen.findByText("Local storage is full")).toBeInTheDocument();
+        expect(uploadSource).not.toHaveBeenCalled();
+        expect(screen.getByText("career.txt")).toBeInTheDocument();
+    });
+
+    it("imports directly when the Career Vault already exists", async () => {
+        const user = userEvent.setup();
+        render(<CareerProfilePage />, { route: "/profile?start=import" });
+
+        await user.upload(await screen.findByLabelText("Documento sorgente"), new File(["career"], "career.txt", { type: "text/plain" }));
+        await user.click(screen.getByRole("button", { name: "Importa localmente" }));
+
+        await screen.findByText("Candidati da revisionare");
+        expect(saveProfile).not.toHaveBeenCalled();
+        expect(uploadSource).toHaveBeenCalledTimes(1);
     });
 
     it("saves an explicit optimistic revision and the edited profile", async () => {
