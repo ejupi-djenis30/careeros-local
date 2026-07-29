@@ -13,7 +13,11 @@ import pytest
 from backend.ai.audit import fingerprint_output
 from backend.ai.contracts import CoachResult
 from backend.ai.models import AIExecution
-from backend.applications.models import Application, ApplicationEvent
+from backend.applications.models import (
+    Application,
+    ApplicationDossierDraft,
+    ApplicationEvent,
+)
 from backend.automation.grants import issue_grant
 from backend.automation.models import AutomationGrant
 from backend.career.coach_models import CoachConversation, CoachMessage
@@ -55,20 +59,20 @@ def _profile_payload():
     }
 
 
-def test_v5_archive_version_is_outside_the_frozen_v4_decoder_contract():
-    frozen_v4_supported_versions = frozenset({1, 2, 3, 4})
+def test_v6_archive_version_is_outside_the_frozen_v5_decoder_contract():
+    frozen_v5_supported_versions = frozenset({1, 2, 3, 4, 5})
 
-    def decode_with_frozen_v4_contract(format_version: int) -> int:
-        if format_version not in frozen_v4_supported_versions:
+    def decode_with_frozen_v5_contract(format_version: int) -> int:
+        if format_version not in frozen_v5_supported_versions:
             raise ValueError(
-                f"Archive version {format_version} is not supported by the v4 decoder"
+                f"Archive version {format_version} is not supported by the v5 decoder"
             )
         return format_version
 
-    assert CURRENT_ARCHIVE_VERSION == 5
-    assert SUPPORTED_ARCHIVE_VERSIONS == frozenset({1, 2, 3, 4, 5})
-    with pytest.raises(ValueError, match="Archive version 5 is not supported"):
-        decode_with_frozen_v4_contract(CURRENT_ARCHIVE_VERSION)
+    assert CURRENT_ARCHIVE_VERSION == 6
+    assert SUPPORTED_ARCHIVE_VERSIONS == frozenset({1, 2, 3, 4, 5, 6})
+    with pytest.raises(ValueError, match="Archive version 6 is not supported"):
+        decode_with_frozen_v5_contract(CURRENT_ARCHIVE_VERSION)
 
 
 @pytest.fixture
@@ -188,6 +192,34 @@ def _seed_related_records(db, user_id: int, profile_id: str, fact_id: str) -> st
     db.flush()
     db.add(application)
     db.flush()
+    db.add(
+        ApplicationDossierDraft(
+            application_id=application_id,
+            resume_version_id=version_id,
+            application_revision=1,
+            revision=2,
+            content={
+                "cover_letter": "A private, durable application draft.",
+                "answers": [
+                    {
+                        "client_id": "answer-portable",
+                        "question": "Why this role?",
+                        "answer": "It matches verified local systems work.",
+                    }
+                ],
+                "checklist": [],
+                "requirement_matrix": [
+                    {
+                        "client_id": "requirement-portable",
+                        "requirement": "Build dependable Python services",
+                        "evidence_fact_ids": [fact_id],
+                    }
+                ],
+            },
+            created_at=now,
+            updated_at=now,
+        )
+    )
     db.add(event)
     db.add(conversation)
     db.flush()
@@ -382,6 +414,28 @@ def _rewrite_career_asset_profile(archive_data: bytes, profile_id: str) -> bytes
     return output.getvalue()
 
 
+def _remove_dossier_draft_field(archive_data: bytes, field: str) -> bytes:
+    with zipfile.ZipFile(BytesIO(archive_data), "r") as source:
+        files = {name: source.read(name) for name in source.namelist()}
+    payload = json.loads(files["payload.json"])
+    payload["tables"]["application_dossier_drafts"][0].pop(field)
+    files["payload.json"] = json.dumps(
+        payload, ensure_ascii=False, separators=(",", ":"), sort_keys=True
+    ).encode("utf-8")
+    manifest = json.loads(files["manifest.json"])
+    payload_entry = next(entry for entry in manifest["entries"] if entry["path"] == "payload.json")
+    payload_entry["byte_size"] = len(files["payload.json"])
+    payload_entry["sha256"] = hashlib.sha256(files["payload.json"]).hexdigest()
+    files["manifest.json"] = json.dumps(
+        manifest, ensure_ascii=False, separators=(",", ":"), sort_keys=True
+    ).encode("utf-8")
+    output = BytesIO()
+    with zipfile.ZipFile(output, "w", zipfile.ZIP_DEFLATED) as target:
+        for name, content in files.items():
+            target.writestr(name, content)
+    return output.getvalue()
+
+
 APPLICATION_PROJECTION_FIELDS = {
     "job_title",
     "job_company",
@@ -397,7 +451,7 @@ APPLICATION_PROJECTION_FIELDS = {
 def _rewrite_application_projection_fixture(
     archive_data: bytes,
     *,
-    format_version: int = 5,
+    format_version: int = 6,
     remove_projections: bool = False,
     projection_overrides: dict | None = None,
 ) -> bytes:
@@ -433,6 +487,8 @@ def _rewrite_application_projection_fixture(
                 row.pop(field, None)
 
     removed_tables: list[str] = []
+    if format_version < 6:
+        removed_tables.append("application_dossier_drafts")
     if format_version < 3:
         removed_tables.extend(["search_profiles", "scraped_jobs", "jobs", "preference_signals"])
     if format_version < 2:
@@ -475,6 +531,7 @@ def _rewrite_legacy_v3_private_and_runtime_fields(archive_data: bytes, source_qu
     with zipfile.ZipFile(BytesIO(archive_data), "r") as source:
         files = {name: source.read(name) for name in source.namelist()}
     payload = json.loads(files["payload.json"])
+    payload["tables"].pop("application_dossier_drafts")
     for row in payload["tables"]["jobs"]:
         for field in (
             "source_query",
@@ -503,6 +560,7 @@ def _rewrite_legacy_v3_private_and_runtime_fields(archive_data: bytes, source_qu
     ).encode("utf-8")
     manifest = json.loads(files["manifest.json"])
     manifest["format_version"] = 3
+    manifest["record_counts"].pop("application_dossier_drafts")
     payload_entry = next(entry for entry in manifest["entries"] if entry["path"] == "payload.json")
     payload_entry["byte_size"] = len(files["payload.json"])
     payload_entry["sha256"] = hashlib.sha256(files["payload.json"]).hexdigest()
@@ -520,6 +578,7 @@ def _rewrite_legacy_v3_heuristic_match(archive_data: bytes) -> bytes:
     with zipfile.ZipFile(BytesIO(archive_data), "r") as source:
         files = {name: source.read(name) for name in source.namelist()}
     payload = json.loads(files["payload.json"])
+    payload["tables"].pop("application_dossier_drafts")
     for field in (
         "analysis_provenance",
         "analysis_model_id",
@@ -557,6 +616,7 @@ def _rewrite_legacy_v3_heuristic_match(archive_data: bytes) -> bytes:
     ).encode("utf-8")
     manifest = json.loads(files["manifest.json"])
     manifest["format_version"] = 3
+    manifest["record_counts"].pop("application_dossier_drafts")
     payload_entry = next(entry for entry in manifest["entries"] if entry["path"] == "payload.json")
     payload_entry["byte_size"] = len(files["payload.json"])
     payload_entry["sha256"] = hashlib.sha256(files["payload.json"]).hexdigest()
@@ -771,7 +831,7 @@ def _seed_portable_application_via_api(client, auth_headers) -> tuple[dict, dict
     return task_response.json(), task_response.json()["tasks"][0]
 
 
-@pytest.mark.parametrize("format_version", [1, 2, 3, 4])
+@pytest.mark.parametrize("format_version", [1, 2, 3, 4, 5])
 def test_historical_archive_rebuilds_application_projections_after_events(
     client,
     auth_headers,
@@ -815,7 +875,7 @@ def test_historical_archive_rebuilds_application_projections_after_events(
     assert stored.next_action_priority == "high"
 
 
-@pytest.mark.parametrize("format_version", [1, 2, 3, 4])
+@pytest.mark.parametrize("format_version", [1, 2, 3, 4, 5])
 def test_historical_archive_inspection_is_non_mutating_with_a_populated_vault(
     client,
     auth_headers,
@@ -864,7 +924,7 @@ def test_historical_archive_inspection_is_non_mutating_with_a_populated_vault(
     assert db_session.get(Application, application["id"]) is not None
 
 
-def test_modern_v5_archive_rejects_inconsistent_application_projections(
+def test_modern_v6_archive_rejects_inconsistent_application_projections(
     client, auth_headers, db_session, test_user, portable_data_dir
 ):
     application, _task = _seed_portable_application_via_api(client, auth_headers)
@@ -886,7 +946,7 @@ def test_modern_v5_archive_rejects_inconsistent_application_projections(
     before_revision = db_session.get(Application, application["id"]).revision
     inspected = client.post(
         "/api/v1/portability/inspect",
-        files={"file": ("inconsistent-v5.zip", inconsistent, "application/zip")},
+        files={"file": ("inconsistent-v6.zip", inconsistent, "application/zip")},
         headers=auth_headers,
     )
     assert inspected.status_code == 422, inspected.text
@@ -907,7 +967,7 @@ def test_modern_v5_archive_rejects_inconsistent_application_projections(
 
     restored = client.post(
         "/api/v1/portability/restore",
-        files={"file": ("inconsistent-v5.zip", inconsistent, "application/zip")},
+        files={"file": ("inconsistent-v6.zip", inconsistent, "application/zip")},
         headers=auth_headers,
     )
 
@@ -1117,6 +1177,50 @@ def test_inspection_rejects_an_orphaned_archive_file_relationship(
     assert db_session.query(CareerAsset).count() == 0
 
 
+@pytest.mark.parametrize("missing_field", ["resume_version_id", "created_at", "updated_at"])
+def test_inspection_rejects_incomplete_dossier_draft_rows_without_mutation(
+    client,
+    auth_headers,
+    db_session,
+    test_user,
+    portable_data_dir,
+    missing_field,
+):
+    profile_response = client.put(
+        "/api/v1/career-profile",
+        json=_profile_payload(),
+        headers=auth_headers,
+    )
+    assert profile_response.status_code == 200, profile_response.text
+    profile = profile_response.json()
+    _seed_related_records(
+        db_session,
+        test_user.id,
+        profile["id"],
+        profile["facts"][0]["id"],
+    )
+    exported = client.get("/api/v1/portability/export", headers=auth_headers)
+    assert exported.status_code == 200, exported.text
+    malformed = _remove_dossier_draft_field(exported.content, missing_field)
+    before_drafts = db_session.query(ApplicationDossierDraft).count()
+
+    inspected = client.post(
+        "/api/v1/portability/inspect",
+        files={"file": ("incomplete-draft.zip", malformed, "application/zip")},
+        headers=auth_headers,
+    )
+
+    assert inspected.status_code == 422, inspected.text
+    assert inspected.json() == {
+        "detail": {
+            "code": "archive_invalid",
+            "message": "Backup verification failed.",
+        }
+    }
+    db_session.expire_all()
+    assert db_session.query(ApplicationDossierDraft).count() == before_drafts
+
+
 @pytest.mark.parametrize("mutator", [_tamper_payload, _add_unsafe_member])
 def test_inspection_rejects_adversarial_archives_with_stable_content_free_error(
     client,
@@ -1222,6 +1326,7 @@ def test_export_delete_restore_round_trip(
     db_session.expire_all()
     assert db_session.query(CandidateProfile).count() == 0
     assert db_session.query(Application).count() == 0
+    assert db_session.query(ApplicationDossierDraft).count() == 0
     assert db_session.query(WorkflowRun).count() == 0
     assert not resolve_data_path(source_path).exists()
     assert not resolve_data_path(artifact_path).exists()
@@ -1243,11 +1348,17 @@ def test_export_delete_restore_round_trip(
     assert restore_body["restored_files"] == 2
     assert restore_body["restored_records"]["career_facts"] == 1
     assert restore_body["restored_records"]["applications"] == 1
+    assert restore_body["restored_records"]["application_dossier_drafts"] == 1
     assert resolve_data_path(source_path).read_bytes() == source_data
     assert resolve_data_path(artifact_path).read_bytes().startswith(b"%PDF")
     loaded = client.get("/api/v1/career-profile", headers=auth_headers)
     assert loaded.status_code == 200
     assert loaded.json()["facts"][0]["payload"]["name"] == "Python"
+    restored_draft = db_session.query(ApplicationDossierDraft).one()
+    assert restored_draft.revision == 2
+    assert restored_draft.content["cover_letter"] == (
+        "A private, durable application draft."
+    )
 
     exported_again = client.get("/api/v1/portability/export", headers=auth_headers)
     assert exported_again.status_code == 200
@@ -1264,7 +1375,7 @@ def test_export_delete_restore_round_trip(
     } == {key: value for key, value in expected_message.items() if key != "generation_metadata"}
     assert restored_message["generation_metadata"] == {
         "provenance": "quarantined",
-        "quarantine_reason": "unsigned_v5_coach_output_requires_revalidation",
+        "quarantine_reason": "unsigned_v6_coach_output_requires_revalidation",
         "source_generation_metadata": {"local": True},
     }
     assert payload_after == expected_payload
@@ -1341,7 +1452,7 @@ def test_successful_restore_revokes_only_the_restored_users_active_automation_gr
     assert preserved.revoked_at is None
 
 
-def test_v5_restore_preserves_but_hides_self_checksummed_forged_coach_advice(
+def test_v6_restore_preserves_but_hides_self_checksummed_forged_coach_advice(
     client, auth_headers, db_session, test_user, portable_data_dir
 ):
     profile = client.put(
@@ -1359,7 +1470,7 @@ def test_v5_restore_preserves_but_hides_self_checksummed_forged_coach_advice(
     assert deleted.status_code == 204, deleted.text
     restored = client.post(
         "/api/v1/portability/restore",
-        files={"file": ("forged-v5.zip", forged, "application/zip")},
+        files={"file": ("forged-v6.zip", forged, "application/zip")},
         headers=auth_headers,
     )
 
@@ -1370,7 +1481,7 @@ def test_v5_restore_preserves_but_hides_self_checksummed_forged_coach_advice(
     assert assistant.content == "Forged authoritative executive advice."
     assert assistant.generation_metadata == {
         "provenance": "quarantined",
-        "quarantine_reason": "unsigned_v5_coach_output_requires_revalidation",
+        "quarantine_reason": "unsigned_v6_coach_output_requires_revalidation",
         "source_generation_metadata": {
             "provenance": "local_model_validated",
             "contract_version": "1.0.0",
@@ -1386,7 +1497,7 @@ def test_v5_restore_preserves_but_hides_self_checksummed_forged_coach_advice(
     assert detail.json()["messages"] == []
 
 
-def test_v5_verified_coach_round_trip_preserves_record_but_requires_revalidation(
+def test_v6_verified_coach_round_trip_preserves_record_but_requires_revalidation(
     client, auth_headers, db_session, test_user, portable_data_dir
 ):
     profile = client.put(
@@ -1415,7 +1526,7 @@ def test_v5_verified_coach_round_trip_preserves_record_but_requires_revalidation
     assert deleted.status_code == 204, deleted.text
     restored = client.post(
         "/api/v1/portability/restore",
-        files={"file": ("verified-v5.zip", exported.content, "application/zip")},
+        files={"file": ("verified-v6.zip", exported.content, "application/zip")},
         headers=auth_headers,
     )
     assert restored.status_code == 200, restored.text
@@ -1428,7 +1539,7 @@ def test_v5_verified_coach_round_trip_preserves_record_but_requires_revalidation
     assert assistant.model_id == "ollama-local/verified-coach"
     assert assistant.generation_metadata["provenance"] == "quarantined"
     assert assistant.generation_metadata["quarantine_reason"] == (
-        "unsigned_v5_coach_output_requires_revalidation"
+        "unsigned_v6_coach_output_requires_revalidation"
     )
     source_metadata = assistant.generation_metadata["source_generation_metadata"]
     assert source_metadata["execution_id"] == execution_id
@@ -1452,7 +1563,7 @@ def test_v5_verified_coach_round_trip_preserves_record_but_requires_revalidation
     assert archived_assistant["generation_metadata"]["provenance"] == "quarantined"
 
 
-def test_v5_round_trip_remaps_search_ids_and_preserves_application_job(
+def test_v6_round_trip_remaps_search_ids_and_preserves_application_job(
     client, auth_headers, db_session, test_user, portable_data_dir
 ):
     created = client.put("/api/v1/career-profile", json=_profile_payload(), headers=auth_headers)
@@ -1466,7 +1577,7 @@ def test_v5_round_trip_remaps_search_ids_and_preserves_application_job(
     with zipfile.ZipFile(BytesIO(exported.content)) as archive:
         manifest = json.loads(archive.read("manifest.json"))
         payload = json.loads(archive.read("payload.json"))
-    assert manifest["format_version"] == 5
+    assert manifest["format_version"] == 6
     expected_search_counts = {
         "search_profiles": 1,
         "scraped_jobs": 1,
@@ -1571,7 +1682,7 @@ def test_v5_round_trip_remaps_search_ids_and_preserves_application_job(
         "analysis": None,
         "worth_applying": None,
         "receipt_verified": False,
-        "quarantine_reason": "unsigned_v5_application_match_requires_revalidation",
+        "quarantine_reason": "unsigned_v6_application_match_requires_revalidation",
     }
     assert "affinity_analysis" not in restored_application.job_snapshot
     assert all(getattr(restored_profile, field) is None for field in runtime_fields)
@@ -1586,7 +1697,7 @@ def test_v5_round_trip_remaps_search_ids_and_preserves_application_job(
     assert owner.preference_updated_at is not None
 
 
-def test_legacy_v4_search_archive_restores_into_v5_schema(
+def test_legacy_v4_search_archive_restores_into_v6_schema(
     client, auth_headers, db_session, test_user, portable_data_dir
 ):
     created = client.put("/api/v1/career-profile", json=_profile_payload(), headers=auth_headers)
@@ -1636,7 +1747,7 @@ def test_legacy_v4_search_archive_restores_into_v5_schema(
     assert restored_job.scraped_job.content_revision == 1
 
 
-def test_v5_round_trip_preserves_jobless_application_logical_identity(
+def test_v6_round_trip_preserves_jobless_application_logical_identity(
     client, auth_headers, db_session, test_user, portable_data_dir
 ):
     created = client.put("/api/v1/career-profile", json=_profile_payload(), headers=auth_headers)
@@ -1682,7 +1793,7 @@ def test_v5_round_trip_preserves_jobless_application_logical_identity(
     assert restored_scraped_job.title == "Local Backend Engineer"
 
 
-def test_damaged_v5_relationship_leaves_search_vault_and_preferences_unchanged(
+def test_damaged_v6_relationship_leaves_search_vault_and_preferences_unchanged(
     client, auth_headers, db_session, test_user, portable_data_dir
 ):
     created = client.put("/api/v1/career-profile", json=_profile_payload(), headers=auth_headers)
@@ -1772,7 +1883,7 @@ def test_legacy_v3_restore_quarantines_unverified_match_analysis(
     assert "Legacy" not in json.dumps(application.job_snapshot)
 
 
-def test_v5_restore_rejects_preexisting_preference_signals_without_mutation(
+def test_v6_restore_rejects_preexisting_preference_signals_without_mutation(
     client, auth_headers, db_session, test_user, portable_data_dir
 ):
     created = client.put("/api/v1/career-profile", json=_profile_payload(), headers=auth_headers)
@@ -1810,7 +1921,7 @@ def test_v5_restore_rejects_preexisting_preference_signals_without_mutation(
     assert db_session.get(User, test_user.id).preference_signals == sentinel
 
 
-def test_v5_restore_rejects_unsafe_existing_shared_listing(
+def test_v6_restore_rejects_unsafe_existing_shared_listing(
     client,
     auth_headers,
     db_session,
@@ -1872,7 +1983,7 @@ def test_v5_restore_rejects_unsafe_existing_shared_listing(
     )
 
 
-def test_v5_restore_reuses_only_identical_public_shared_listing(
+def test_v6_restore_reuses_only_identical_public_shared_listing(
     client, auth_headers, db_session, test_user, portable_data_dir
 ):
     created = client.put("/api/v1/career-profile", json=_profile_payload(), headers=auth_headers)

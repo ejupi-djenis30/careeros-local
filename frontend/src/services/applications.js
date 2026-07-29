@@ -33,6 +33,27 @@ export const ApplicationService = {
     downloadTaskCalendar(id) {
         return ApiClient.download(`/applications/${encodeURIComponent(id)}/tasks/calendar.ics`);
     },
+    getDossierDraft(id, options = {}) {
+        return ApiClient.get(
+            `/applications/${encodeURIComponent(id)}/dossier-draft`,
+            options.signal,
+            { ...options, suppressGlobalError: true },
+        );
+    },
+    saveDossierDraft(id, data, options = {}) {
+        return ApiClient.put(
+            `/applications/${encodeURIComponent(id)}/dossier-draft`,
+            data,
+            { ...options, suppressGlobalError: true },
+        );
+    },
+    deleteDossierDraft(id, expectedRevision) {
+        const query = new URLSearchParams({ expected_revision: String(expectedRevision) });
+        return ApiClient.delete(
+            `/applications/${encodeURIComponent(id)}/dossier-draft?${query}`,
+            { suppressGlobalError: true },
+        );
+    },
     publishDossier(id, data) {
         return ApiClient.post(`/applications/${encodeURIComponent(id)}/dossiers`, data);
     },

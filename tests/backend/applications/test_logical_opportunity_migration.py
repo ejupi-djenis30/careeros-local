@@ -260,7 +260,7 @@ def test_logical_opportunity_migration_backfills_and_round_trips(
 
     command.upgrade(config, "head")
     script = ScriptDirectory.from_config(config)
-    assert script.get_heads() == ["d6e7f8a9b0c1"]
+    assert script.get_heads() == ["e7f8a9b0c1d2"]
 
     round_trip_metadata = sa.MetaData()
     round_trip_applications = sa.Table(
@@ -282,4 +282,47 @@ def test_logical_opportunity_migration_backfills_and_round_trips(
     assert round_trip_ids[_OTHER_USER_APPLICATION_ID] == 301
     assert round_trip_ids[_SECOND_MANUAL_APPLICATION_ID] is None
     assert len(round_trip_ids) == 6
+
+    dossier_inspector = sa.inspect(engine)
+    assert "application_dossier_drafts" in dossier_inspector.get_table_names()
+    dossier_columns = {
+        column["name"]: column
+        for column in dossier_inspector.get_columns("application_dossier_drafts")
+    }
+    assert set(dossier_columns) == {
+        "id",
+        "application_id",
+        "resume_version_id",
+        "application_revision",
+        "revision",
+        "content",
+        "created_at",
+        "updated_at",
+    }
+    assert all(not column["nullable"] for column in dossier_columns.values())
+    assert {
+        constraint["name"]: tuple(constraint["column_names"])
+        for constraint in dossier_inspector.get_unique_constraints(
+            "application_dossier_drafts"
+        )
+    }["uq_application_dossier_draft_application"] == ("application_id",)
+    dossier_foreign_keys = {
+        tuple(foreign_key["constrained_columns"]): foreign_key
+        for foreign_key in dossier_inspector.get_foreign_keys(
+            "application_dossier_drafts"
+        )
+    }
+    assert dossier_foreign_keys[("application_id",)]["referred_table"] == "applications"
+    assert dossier_foreign_keys[("application_id",)].get("options", {}).get("ondelete") == (
+        "CASCADE"
+    )
+    assert dossier_foreign_keys[("resume_version_id",)]["referred_table"] == "resume_versions"
+    assert dossier_foreign_keys[("resume_version_id",)].get("options", {}).get("ondelete") == (
+        "CASCADE"
+    )
+
+    command.downgrade(config, "d6e7f8a9b0c1")
+    assert "application_dossier_drafts" not in sa.inspect(engine).get_table_names()
+    command.upgrade(config, "head")
+    assert "application_dossier_drafts" in sa.inspect(engine).get_table_names()
     engine.dispose()

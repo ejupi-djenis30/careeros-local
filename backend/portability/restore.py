@@ -11,6 +11,7 @@ from sqlalchemy.exc import IntegrityError, StatementError
 from sqlalchemy.orm import Session
 
 from backend.applications.models import Application
+from backend.applications.schemas import ApplicationDossierDraftContent
 from backend.applications.service import (
     ApplicationService,
     ApplicationValidationError,
@@ -371,6 +372,59 @@ def _validate_portable_foreign_keys(
                         )
 
 
+def _validate_application_dossier_drafts(
+    decoded: dict[str, list[dict[str, Any]]],
+) -> None:
+    application_revisions = {
+        str(row["id"]): row.get("revision")
+        for row in decoded["applications"]
+    }
+    claimed_applications: set[str] = set()
+    for row in decoded["application_dossier_drafts"]:
+        required_ids = {
+            field: row.get(field)
+            for field in ("id", "application_id", "resume_version_id")
+        }
+        if any(
+            not isinstance(value, str) or not value.strip()
+            for value in required_ids.values()
+        ):
+            raise ArchiveError("Archive dossier draft relationship is invalid")
+        application_id = cast(str, required_ids["application_id"])
+        if application_id in claimed_applications:
+            raise ArchiveError("Archive contains duplicate dossier drafts for one application")
+        claimed_applications.add(application_id)
+        draft_revision = row.get("revision")
+        application_revision = row.get("application_revision")
+        current_application_revision = application_revisions.get(application_id)
+        created_at = row.get("created_at")
+        updated_at = row.get("updated_at")
+        if (
+            isinstance(draft_revision, bool)
+            or not isinstance(draft_revision, int)
+            or draft_revision < 1
+            or isinstance(application_revision, bool)
+            or not isinstance(application_revision, int)
+            or application_revision < 1
+            or isinstance(current_application_revision, bool)
+            or not isinstance(current_application_revision, int)
+            or application_revision > current_application_revision
+        ):
+            raise ArchiveError("Archive dossier draft revision is invalid")
+        if (
+            not isinstance(created_at, datetime)
+            or not isinstance(updated_at, datetime)
+            or cast(datetime, aware_utc(created_at)) > cast(datetime, aware_utc(updated_at))
+        ):
+            raise ArchiveError("Archive dossier draft timestamp is invalid")
+        try:
+            row["content"] = ApplicationDossierDraftContent.model_validate(
+                row.get("content")
+            ).model_dump(mode="json")
+        except (TypeError, ValueError) as exc:
+            raise ArchiveError("Archive dossier draft content is invalid") from exc
+
+
 def _extract_application_projection_contract(
     format_version: int,
     rows: list[dict[str, Any]],
@@ -486,6 +540,7 @@ def _decode_payload(
     preference_state = _decode_preference_state(manifest.format_version, tables)
     _validate_search_relationships(manifest.format_version, decoded)
     _validate_portable_foreign_keys(manifest.format_version, decoded)
+    _validate_application_dossier_drafts(decoded)
     projection_contract = _extract_application_projection_contract(
         manifest.format_version, decoded["applications"]
     )

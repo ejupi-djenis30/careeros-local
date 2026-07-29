@@ -13,6 +13,8 @@ from backend.applications.schemas import (
     ApplicationAgendaResponse,
     ApplicationCreate,
     ApplicationDossierCreate,
+    ApplicationDossierDraftPut,
+    ApplicationDossierDraftResponse,
     ApplicationEventCreate,
     ApplicationPreparationUpdate,
     ApplicationReadinessReport,
@@ -243,6 +245,69 @@ def export_application_task_calendar(
             "X-Content-Type-Options": "nosniff",
         },
     )
+
+
+@router.get(
+    "/{application_id}/dossier-draft",
+    response_model=ApplicationDossierDraftResponse | None,
+)
+def get_application_dossier_draft(
+    application_id: UUID,
+    response: Response,
+    user_id: int = Depends(get_current_user_id),
+    db: Session = Depends(get_db),
+) -> ApplicationDossierDraftResponse | None:
+    response.headers["Cache-Control"] = "private, no-store"
+    try:
+        return ApplicationService(db).get_dossier_draft(user_id, str(application_id))
+    except ApplicationNotFoundError as exc:
+        raise _http_error(exc) from exc
+
+
+@router.put(
+    "/{application_id}/dossier-draft",
+    response_model=ApplicationDossierDraftResponse,
+)
+@limiter.limit("120/minute")
+def put_application_dossier_draft(
+    request: Request,
+    application_id: UUID,
+    data: ApplicationDossierDraftPut,
+    response: Response,
+    user_id: int = Depends(get_current_user_id),
+    db: Session = Depends(get_db),
+) -> ApplicationDossierDraftResponse:
+    response.headers["Cache-Control"] = "private, no-store"
+    try:
+        return ApplicationService(db).put_dossier_draft(
+            user_id,
+            str(application_id),
+            data,
+        )
+    except (ApplicationNotFoundError, ApplicationConflictError, ApplicationValidationError) as exc:
+        db.rollback()
+        raise _http_error(exc) from exc
+
+
+@router.delete("/{application_id}/dossier-draft", status_code=204)
+@limiter.limit("30/minute")
+def delete_application_dossier_draft(
+    request: Request,
+    application_id: UUID,
+    expected_revision: int = Query(..., ge=1),
+    user_id: int = Depends(get_current_user_id),
+    db: Session = Depends(get_db),
+) -> Response:
+    try:
+        ApplicationService(db).delete_dossier_draft(
+            user_id,
+            str(application_id),
+            expected_revision,
+        )
+    except (ApplicationNotFoundError, ApplicationConflictError) as exc:
+        db.rollback()
+        raise _http_error(exc) from exc
+    return Response(status_code=204, headers={"Cache-Control": "private, no-store"})
 
 
 @router.post("/{application_id}/dossiers", response_model=ApplicationResponse, status_code=201)

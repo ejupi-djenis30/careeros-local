@@ -162,6 +162,26 @@ Purpose: content-free audit and quality telemetry for a local AI task.
 No foreign key points to a specific fact because vault deletion/archival must not require
 rewriting audit rows. Evidence count and canonical fingerprints are sufficient for diagnostics.
 
+### ApplicationDossierDraft
+
+Purpose: one mutable, private working copy for an Application before immutable dossier publication.
+
+| Field | Type | Rules |
+|------|------|-------|
+| `id` | UUID | Primary key |
+| `application_id` | UUID | Required, unique, cascade delete with Application |
+| `resume_version_id` | UUID | Required owned Resume Version; cascade delete |
+| `application_revision` | integer | Positive revision against which the draft was saved |
+| `revision` | integer | Positive monotonic compare-and-swap revision |
+| `content` | JSON object | Strict bounded `ApplicationDossierDraftContent` |
+| `created_at` | timestamp | UTC |
+| `updated_at` | timestamp | UTC and not earlier than creation in portable archives |
+
+Content retains stable, unique client ids for requirement, answer and checklist rows so incomplete
+autosave state can round-trip without relying on array position. Evidence references remain UUIDs
+inside bounded JSON because facts may be removed or a linked Resume may change before the user
+rebases; publication accepts only confirmed facts present in the currently linked Resume snapshot.
+
 ### AIEvaluationRun
 
 Purpose: aggregate evidence that a model profile satisfies release thresholds.

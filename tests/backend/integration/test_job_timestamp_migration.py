@@ -12,6 +12,7 @@ from backend.core.config import settings
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 PREVIOUS_HEAD = "c5d6e7f8a9b0"
 TIMESTAMP_DEFAULT_REVISION = "d6e7f8a9b0c1"
+CURRENT_HEAD = "e7f8a9b0c1d2"
 
 
 def _alembic_config(database_url: str) -> Config:
@@ -179,7 +180,7 @@ def test_job_timestamp_default_migration_supports_database_managed_inserts(
 
     command.upgrade(config, "head")
     script = ScriptDirectory.from_config(config)
-    assert script.get_heads() == [TIMESTAMP_DEFAULT_REVISION]
+    assert script.get_heads() == [CURRENT_HEAD]
 
     round_trip_metadata = sa.MetaData()
     round_trip_jobs = sa.Table("jobs", round_trip_metadata, autoload_with=engine)

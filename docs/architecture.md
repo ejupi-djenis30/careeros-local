@@ -133,6 +133,15 @@ byte-stable local ZIP containing the verified resume artifacts and canonical JSO
 canonical manifest hashes every entry; both the manifest and response body expose SHA-256 headers.
 Readiness remains a preflight completeness measure and is never presented as a hiring prediction.
 
+The mutable working copy lives separately in `application_dossier_drafts`, with one row per
+application and its own compare-and-swap revision. Autosave never advances the application
+timeline. A save binds the draft to the owned application and resume version, and an atomic
+conditional update prevents a stale editor from overwriting newer content. Publishing from the
+workspace verifies that the submitted content is the publishable projection of that exact draft
+revision, then adds the immutable event and deletes the draft in the same commit. Direct API
+publication remains compatible only when no working draft exists. Archive format v6 includes these
+rows; restore validates required fields, content, revisions and relationships before writing.
+
 ## Local AI
 
 Inference follows a narrow pipeline:
@@ -266,9 +275,10 @@ and never creates an Application.
 Archive format v4 added accepted local-analysis receipts, per-row output fingerprints, and exact
 candidate/job input bindings to the search, application, coaching, and AI-audit data covered by
 earlier versions. Format v5 adds shared-listing observation metadata, durable search completion
-receipts, and the Application logical-opportunity identity. Versions 1–4 remain readable; a v5
-export identifies itself as v5 so a v4 decoder rejects it instead of interpreting a changed row
-shape as v4. Because portable ZIP checksums prove integrity but not the identity of the system that
+receipts, and the Application logical-opportunity identity. Format v6 adds mutable application
+dossier drafts. Versions 1–5 remain readable; each export identifies its current format so an older
+decoder rejects it instead of interpreting a changed row shape as an earlier version. Because
+portable ZIP checksums prove integrity but not the identity of the system that
 produced an analysis, restored analysis from every unsigned archive version is quarantined
 losslessly and hidden until CareerOS re-runs it with the current local contract. Historical
 application rows still rebuild their projections from immutable snapshots and event streams;
