@@ -3,7 +3,9 @@
 ## Scope
 
 This review aligns User Story 10, FR-061 through FR-066 and SC-021 with the implemented CLI/MCP
-boundary, tests and owner documentation.
+boundary, tests and owner documentation. The later desktop management extension is converged
+separately in
+[`agent-access-center-convergence.md`](agent-access-center-convergence.md).
 
 ## Requirement mapping
 

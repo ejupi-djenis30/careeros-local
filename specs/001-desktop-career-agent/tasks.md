@@ -527,3 +527,28 @@ prove the file remains available for retry and no model API is called.
   imported status, focus and accessibility in focused frontend tests
 - [x] T168 [US2] Update first-use owner documentation, run proportional gates and record exact
   analysis/convergence evidence
+
+## Phase 20: User Story 10 — Desktop Agent Access center
+
+**Goal**: Let a desktop user issue, inspect and revoke the existing scoped read grants without
+handling the vault directly or weakening the source-installed CLI/MCP boundary.
+
+**Independent Test**: Sign in as each of two users, create differently scoped grants after password
+re-authentication, verify one-time non-cacheable bearer delivery and metadata-only listing, then
+revoke one grant. Exercise copy/dismiss/unmount behavior in the renderer and prove no bearer enters
+browser storage, logs, later API responses or the other account.
+
+- [x] T169 [US10] Amend constitution, specification, plan and tasks for password-confirmed desktop
+  grant management, one-time non-cacheable secrets and transient renderer handling
+- [x] T170 [US10] Add bounded create/list/revoke API contracts and authenticated per-account
+  reauthentication protection that preserves emergency revocation, reuses
+  `backend/automation/grants.py` and never persists bearers
+- [x] T171 [US10] Add a lazy Agent Access workspace page, navigation, English/Italian copy,
+  transient token handling, explicit copy, lifecycle status and source-install guidance
+- [x] T172 [US10] Cover password verification, cross-user isolation, outermost no-store headers,
+  active-grant visibility, emergency revocation, token non-reappearance, idempotent revocation,
+  cleanup, focus restoration, keyboard access and failure preservation in focused tests
+- [x] T173 [US10] Update README, privacy and daily-driver guidance and record exact cross-artifact
+  analysis/convergence in `specs/001-desktop-career-agent/`
+- [x] T174 [US10] Run proportional Python/React/security gates, repository hygiene and diff checks;
+  record only commands actually executed

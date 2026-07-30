@@ -37,6 +37,44 @@ def test_grant_persists_only_digest_and_binds_principal(db_session, test_user) -
     assert principal.scopes == {"system:read", "applications:read"}
 
 
+def test_grant_labels_support_natural_unicode_names(db_session, test_user) -> None:
+    view, _token = issue_grant(
+        db_session,
+        user_id=test_user.id,
+        label="  Claude Code – Zürich · Djenis’s Mac  ",
+        scopes=("system:read",),
+    )
+
+    assert view.label == "Claude Code – Zürich · Djenis’s Mac"
+
+
+@pytest.mark.parametrize(
+    "label",
+    [
+        "",
+        "   ",
+        "hidden\u200bseparator",
+        "line\nbreak",
+        "line\u2028separator",
+        "paragraph\u2029separator",
+        "x" * 121,
+    ],
+)
+def test_grant_labels_reject_empty_control_or_oversized_values(
+    db_session,
+    test_user,
+    label,
+) -> None:
+    with pytest.raises(AutomationGrantError, match="printable characters") as raised:
+        issue_grant(
+            db_session,
+            user_id=test_user.id,
+            label=label,
+            scopes=("system:read",),
+        )
+    assert raised.value.code == "invalid_label"
+
+
 @pytest.mark.parametrize(
     ("token", "code"),
     [

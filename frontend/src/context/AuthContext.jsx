@@ -1,7 +1,17 @@
 /* eslint-disable react-refresh/only-export-components */
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, {
+    createContext,
+    useCallback,
+    useContext,
+    useEffect,
+    useRef,
+    useState,
+} from 'react';
 import { AuthService } from '../services/auth';
-import { CAREEROS_UNAUTHORIZED_EVENT } from '../lib/events';
+import {
+    CAREEROS_BEFORE_LOGOUT_EVENT,
+    CAREEROS_UNAUTHORIZED_EVENT,
+} from '../lib/events';
 import { useI18n } from '../i18n/useI18n';
 
 const AuthContext = createContext(null);
@@ -22,36 +32,73 @@ export function AuthProvider({ children }) {
     const { t } = useI18n();
     const [user, setUser] = useState(null);
     const [loading, setLoading] = useState(true);
+    const [loggingOut, setLoggingOut] = useState(false);
+    const logoutPromiseRef = useRef(null);
 
-    const logout = async () => {
-        await AuthService.logout();
-        setUser(null);
-    };
+    const logout = useCallback((options = {}) => {
+        if (logoutPromiseRef.current) return logoutPromiseRef.current;
+        const force = options?.force === true;
+        const operation = (async () => {
+            const waiters = [];
+            const event = new CustomEvent(CAREEROS_BEFORE_LOGOUT_EVENT, {
+                cancelable: true,
+                detail: {
+                    force,
+                    waitUntil(waiter) {
+                        waiters.push(Promise.resolve(waiter));
+                    },
+                },
+            });
+            const allowed = window.dispatchEvent(event);
+            if (!allowed && !force) return false;
+
+            setLoggingOut(true);
+            setUser(null);
+            try {
+                await Promise.allSettled(waiters);
+                await AuthService.logout();
+                return true;
+            } finally {
+                setLoggingOut(false);
+            }
+        })();
+        const trackedOperation = operation.finally(() => {
+            if (logoutPromiseRef.current === trackedOperation) {
+                logoutPromiseRef.current = null;
+            }
+        });
+        logoutPromiseRef.current = trackedOperation;
+        return trackedOperation;
+    }, []);
 
     useEffect(() => {
+        let active = true;
         const initAuth = async () => {
             try {
                 const res = await AuthService.refresh();
-                if (res && res.username) {
+                if (active && res && res.username) {
                     setUser(res.username);
                 }
             } catch {
-                // No active session
+                if (active) setUser(null);
             } finally {
-                setLoading(false);
+                if (active) setLoading(false);
             }
         };
 
         const handleUnauthorized = () => {
             console.warn("Session expired or unauthorized. Logging out.");
-            logout();
+            logout({ force: true });
         };
 
         window.addEventListener(CAREEROS_UNAUTHORIZED_EVENT, handleUnauthorized);
         initAuth();
 
-        return () => window.removeEventListener(CAREEROS_UNAUTHORIZED_EVENT, handleUnauthorized);
-    }, []);
+        return () => {
+            active = false;
+            window.removeEventListener(CAREEROS_UNAUTHORIZED_EVENT, handleUnauthorized);
+        };
+    }, [logout]);
 
     const login = async (username, password) => {
         const res = requireAccessToken(
@@ -73,7 +120,7 @@ export function AuthProvider({ children }) {
         return res;
     };
 
-    if (loading) {
+    if (loading || loggingOut) {
         return (
             <div className="min-vh-100 d-flex align-items-center justify-content-center" style={{ background: 'var(--bg-body)' }}>
                 <div className="text-center">

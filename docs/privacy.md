@@ -34,11 +34,16 @@ CV snapshot and the same digest-based reproducibility contract.
 ## CLI and agent access
 
 The source-installed `careeros` CLI and its MCP server use a separate, read-only automation
-boundary. A user must first authenticate with their CareerOS password and issue a grant for one
-local account. A grant has a label, an expiry and one or more of these scopes:
+boundary. A signed-in user can issue and revoke grants from the desktop **Agent access** page after
+re-entering the current CareerOS password. The CLI provides the same authorization path for
+terminal workflows. A grant belongs to one local account and has a label, an expiry and one or more
+of these scopes:
 `system:read`, `career:read`, `resume:read`, and `applications:read`. The bearer token is displayed
-only when the grant is created. CareerOS stores its SHA-256 digest, not the original token. Grants
-can be listed and revoked only after another password check.
+only when the grant is created. The response is marked `no-store`, the renderer keeps the bearer
+only in the current component, and copying requires an explicit button press. Dismissal or
+navigation removes the visible bearer; it never enters browser storage. CareerOS stores its
+SHA-256 digest, not the original token. The authenticated page lists only owned grant metadata.
+Creating or revoking a grant requires another password check.
 
 The MCP server communicates over the parent process's standard input and output. It does not open
 an HTTP port, connect to a model provider or start a job search. Its tools expose bounded
@@ -60,6 +65,14 @@ request to its own provider. Starting the server therefore requires the explicit
 `--acknowledge-agent-disclosure` flag. Issue the smallest useful scope set and short lifetime,
 protect `CAREEROS_MCP_TOKEN` with the operating system's credential facilities, and revoke the
 grant after use. Never store the bearer token in a repository or paste it into a prompt.
+
+Grant management uses the authenticated loopback desktop API, but the desktop access token is
+never accepted as an MCP credential. The management API returns no resume, application or Career
+Vault content. It tracks failed password checks per account and can pause new grant creation after
+repeated failures. Once locked, the revoke route stops inspecting passwords and lets the already
+authenticated desktop session perform only an owned-grant revocation. It cannot issue access,
+inspect another account's grants or clear the lockout. Stable errors and later list responses
+contain no bearer or password.
 
 Each CLI command and MCP tool call uses the same exclusive vault lease as the desktop sidecar.
 MCP releases it after bootstrap and after every call, so an idle server does not keep the desktop

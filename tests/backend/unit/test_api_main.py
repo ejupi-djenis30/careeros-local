@@ -1,5 +1,6 @@
 from unittest.mock import MagicMock, patch
 
+from fastapi import HTTPException
 from fastapi.testclient import TestClient
 
 from backend.core.exceptions import CoreException
@@ -140,6 +141,23 @@ def raise_generic_exception():
     raise Exception("Test generic exception")
 
 
+@app.get("/api/v1/automation/grants/test-generic-exception")
+def raise_private_generic_exception():
+    raise Exception("Private test exception")
+
+
+@app.get("/test-http-exception-headers")
+def raise_http_exception_with_headers():
+    raise HTTPException(
+        status_code=403,
+        detail="Denied",
+        headers={
+            "Cache-Control": "no-store, max-age=0",
+            "WWW-Authenticate": "Bearer",
+        },
+    )
+
+
 def test_core_exception_handler():
     response = client.get("/test-core-exception")
     assert response.status_code == 400
@@ -150,6 +168,24 @@ def test_generic_exception_handler():
     response = client.get("/test-generic-exception")
     assert response.status_code == 500
     assert response.json()["detail"] == "Internal Server Error"
+
+
+def test_private_generic_exception_handler_forces_no_store_headers():
+    response = client.get("/api/v1/automation/grants/test-generic-exception")
+
+    assert response.status_code == 500
+    assert response.json()["detail"] == "Internal Server Error"
+    assert response.headers["cache-control"] == "no-store, max-age=0"
+    assert response.headers["pragma"] == "no-cache"
+
+
+def test_http_exception_handler_preserves_security_headers():
+    response = client.get("/test-http-exception-headers")
+
+    assert response.status_code == 403
+    assert response.json() == {"detail": "Denied"}
+    assert response.headers["cache-control"] == "no-store, max-age=0"
+    assert response.headers["www-authenticate"] == "Bearer"
 
 
 def test_lifespan():

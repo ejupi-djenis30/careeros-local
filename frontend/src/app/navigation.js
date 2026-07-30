@@ -8,6 +8,7 @@ export function getNavigation(t) {
                 { to: "/resumes", label: t("nav.resumes"), icon: "bi-file-earmark-person" },
                 { to: "/applications", label: t("nav.applications"), icon: "bi-kanban" },
                 { to: "/coach", label: t("nav.coach"), icon: "bi-chat-square-text" },
+                { to: "/agent-access", label: t("nav.agentAccess"), icon: "bi-terminal" },
             ],
         },
         {
@@ -30,6 +31,7 @@ export function getPageContext(pathname, t) {
         "/resumes": "resumes",
         "/applications": "applications",
         "/coach": "coach",
+        "/agent-access": "agentAccess",
         "/jobs": "jobs",
         "/search": "search",
         "/progress": "progress",

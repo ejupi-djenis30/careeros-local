@@ -2,6 +2,9 @@
 
 <!--
 Sync impact report
+- Amendment: desktop grant management may return an external-agent bearer only after
+  current-account password verification, through a non-cacheable one-time response that the
+  renderer never persists automatically.
 - Amendment: daily-work counts and rows must share one database snapshot, and local-day
   classification must use an explicit DST-correct boundary supplied by the local renderer.
 - Amendment: the daily application agenda must be derived from authenticated user-scoped
@@ -9,9 +12,9 @@ Sync impact report
 - Amendment: every workflow presented as AI analysis now requires a ready, validated local model
   and fails closed instead of substituting heuristic output; owned records and deterministic
   preflight/export workflows remain available without inference.
-- Version: 1.1.2 (hardens coherent snapshots and DST-correct daily-work boundaries).
+- Version: 1.1.4 (hardens desktop automation-grant issuance and one-time secret handling).
 - Ratified: 2026-07-17.
-- Last amended: 2026-07-23.
+- Last amended: 2026-07-30.
 - Principles: desktop ownership, local intelligence, grounded career truth, durable vault,
   bounded architecture, measurable delivery, secure distribution, accessible documents.
 - Dependent artifacts: plan, specification, task and checklist templates reviewed.
@@ -123,6 +126,13 @@ Rationale: production-grade is a verified state, not a label.
 Logs MUST exclude profile bodies, prompts, tokens, document text and contact details. The
 desktop shell MUST enforce a restrictive content security policy, disable arbitrary navigation,
 validate IPC messages and avoid renderer privileges. Core workflows MUST be keyboard accessible.
+Creating an external-agent grant from the authenticated desktop MUST require current-account
+password verification. Repeated failures MUST be isolated to that account and MAY pause new
+issuance, but a correct current password MUST remain able to revoke an existing grant. The bearer
+MAY appear only in the explicit non-cacheable issuance response, MUST be shown as a one-time
+secret, and MUST NOT be written to logs, browser storage, application storage or the clipboard
+without a direct user action. Grant lists expose only owned non-secret metadata and MUST keep
+every active grant visible and revocable.
 Modal workflows MUST identify themselves to assistive technology, contain keyboard focus while
 open, make obscured content inert, close with Escape where safe, and return focus to their opener.
 ATS resumes MUST be text-extractable and photo-free; visual templates MUST remain readable
@@ -141,6 +151,8 @@ Rationale: private data and career documents deserve secure, inclusive defaults.
   product readiness check.
 - A failed model call never degrades into an unlabeled heuristic match or completed AI result.
 - A generated career claim without evidence is rejected before it reaches the user.
+- External-agent access remains read-only and scoped; desktop grant management never turns the
+  desktop session token into an MCP credential or stores the one-time bearer for convenience.
 - The default installer starts on a clean supported OS without developer tooling.
 - The desktop app must recover cleanly from a crashed local model or backend process.
 - Release artifacts must be signed where credentials are available; unsigned development
@@ -167,4 +179,4 @@ minor; clarification without changed obligations is patch. Every plan MUST perfo
 check before research and again before release. Exceptions require owner approval, an expiry date
 and a tracked remediation task; there are no implicit exceptions.
 
-**Version**: 1.1.3 | **Ratified**: 2026-07-17 | **Last amended**: 2026-07-24
+**Version**: 1.1.4 | **Ratified**: 2026-07-17 | **Last amended**: 2026-07-30

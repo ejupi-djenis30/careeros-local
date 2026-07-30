@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: CareerOS Local Desktop Additions
-  version: 1.2.0
+  version: 1.2.1
   description: Local model, application workflow and recovery interfaces for feature 001.
 servers:
   - url: http://127.0.0.1:{port}/api/v1
@@ -11,6 +11,208 @@ servers:
 security:
   - desktopSession: []
 paths:
+  /automation/grants:
+    get:
+      operationId: listAutomationGrants
+      description: Lists every active owned grant followed by up to 100 recent expired or revoked grants.
+      security:
+        - desktopSession: []
+          userAccessToken: []
+      responses:
+        "200":
+          description: Grant metadata only. Issued bearer tokens are never recoverable from this response.
+          headers:
+            Cache-Control: { schema: { const: "no-store, max-age=0" } }
+            Pragma: { schema: { const: no-cache } }
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/AutomationGrant" }
+        "401":
+          description: The local user session is not authenticated.
+          headers:
+            Cache-Control: { $ref: "#/components/headers/PrivateCacheControl" }
+            Pragma: { $ref: "#/components/headers/PrivatePragma" }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PrivateErrorResponse" }
+        "403":
+          description: Desktop session authorization failed.
+          headers:
+            Cache-Control: { $ref: "#/components/headers/PrivateCacheControl" }
+            Pragma: { $ref: "#/components/headers/PrivatePragma" }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PrivateErrorResponse" }
+        "500":
+          description: The local access register could not be read.
+          headers:
+            Cache-Control: { $ref: "#/components/headers/PrivateCacheControl" }
+            Pragma: { $ref: "#/components/headers/PrivatePragma" }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PrivateErrorResponse" }
+    post:
+      operationId: createAutomationGrant
+      description: Re-authenticates the local user and returns a read-only bearer token exactly once.
+      security:
+        - desktopSession: []
+          userAccessToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AutomationGrantIssue" }
+      responses:
+        "201":
+          description: The grant metadata and its one-time bearer token.
+          headers:
+            Cache-Control: { schema: { const: "no-store, max-age=0" } }
+            Pragma: { schema: { const: no-cache } }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AutomationGrantIssued" }
+        "401":
+          description: The local user session is not authenticated.
+          headers:
+            Cache-Control: { $ref: "#/components/headers/PrivateCacheControl" }
+            Pragma: { $ref: "#/components/headers/PrivatePragma" }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PrivateErrorResponse" }
+        "403":
+          description: The current CareerOS password did not match (`authentication_failed`), or desktop session authorization failed.
+          headers:
+            Cache-Control: { $ref: "#/components/headers/PrivateCacheControl" }
+            Pragma: { $ref: "#/components/headers/PrivatePragma" }
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - { $ref: "#/components/schemas/AutomationErrorResponse" }
+                  - { $ref: "#/components/schemas/PrivateErrorResponse" }
+        "409":
+          description: The account already has the maximum number of active grants (`active_grant_limit`).
+          headers:
+            Cache-Control: { $ref: "#/components/headers/PrivateCacheControl" }
+            Pragma: { $ref: "#/components/headers/PrivatePragma" }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AutomationErrorResponse" }
+        "422":
+          description: A label, scope or lifetime bound is invalid.
+          headers:
+            Cache-Control: { $ref: "#/components/headers/PrivateCacheControl" }
+            Pragma: { $ref: "#/components/headers/PrivatePragma" }
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - { $ref: "#/components/schemas/AutomationErrorResponse" }
+                  - { $ref: "#/components/schemas/ValidationErrorResponse" }
+        "429":
+          description: Repeated failed password checks temporarily locked grant creation for this account.
+          headers:
+            Cache-Control: { $ref: "#/components/headers/PrivateCacheControl" }
+            Pragma: { $ref: "#/components/headers/PrivatePragma" }
+            Retry-After: { $ref: "#/components/headers/RetryAfter" }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AutomationErrorResponse" }
+        "500":
+          description: Grant creation failed unexpectedly.
+          headers:
+            Cache-Control: { $ref: "#/components/headers/PrivateCacheControl" }
+            Pragma: { $ref: "#/components/headers/PrivatePragma" }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PrivateErrorResponse" }
+  /automation/grants/{grant_id}/revoke:
+    post:
+      operationId: revokeAutomationGrant
+      description: Re-authenticates the owner and idempotently revokes one grant.
+      security:
+        - desktopSession: []
+          userAccessToken: []
+      parameters:
+        - name: grant_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [password]
+              properties:
+                password: { type: string, format: password, writeOnly: true }
+      responses:
+        "200":
+          description: Revoked grant metadata. Repeating the request returns the same revoked grant.
+          headers:
+            Cache-Control: { schema: { const: "no-store, max-age=0" } }
+            Pragma: { schema: { const: no-cache } }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AutomationGrant" }
+        "401":
+          description: The local user session is not authenticated.
+          headers:
+            Cache-Control: { $ref: "#/components/headers/PrivateCacheControl" }
+            Pragma: { $ref: "#/components/headers/PrivatePragma" }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PrivateErrorResponse" }
+        "403":
+          description: The current CareerOS password did not match (`authentication_failed`), or desktop session authorization failed.
+          headers:
+            Cache-Control: { $ref: "#/components/headers/PrivateCacheControl" }
+            Pragma: { $ref: "#/components/headers/PrivatePragma" }
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - { $ref: "#/components/schemas/AutomationErrorResponse" }
+                  - { $ref: "#/components/schemas/PrivateErrorResponse" }
+        "404":
+          description: The grant does not belong to this account (`grant_not_found`).
+          headers:
+            Cache-Control: { $ref: "#/components/headers/PrivateCacheControl" }
+            Pragma: { $ref: "#/components/headers/PrivatePragma" }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AutomationErrorResponse" }
+        "422":
+          description: The grant identifier or password payload is invalid.
+          headers:
+            Cache-Control: { $ref: "#/components/headers/PrivateCacheControl" }
+            Pragma: { $ref: "#/components/headers/PrivatePragma" }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ValidationErrorResponse" }
+        "429":
+          description: This failed password check activated issuance lockout. While locked, the authenticated desktop session may revoke an owned grant without inspecting any submitted password.
+          headers:
+            Cache-Control: { $ref: "#/components/headers/PrivateCacheControl" }
+            Pragma: { $ref: "#/components/headers/PrivatePragma" }
+            Retry-After: { $ref: "#/components/headers/RetryAfter" }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AutomationErrorResponse" }
+        "500":
+          description: Revocation failed unexpectedly.
+          headers:
+            Cache-Control: { $ref: "#/components/headers/PrivateCacheControl" }
+            Pragma: { $ref: "#/components/headers/PrivatePragma" }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PrivateErrorResponse" }
   /local-model/status:
     get:
       operationId: getLocalModelStatus
@@ -326,7 +528,126 @@ components:
       scheme: bearer
       bearerFormat: JWT
       description: Authenticated local CareerOS user access token.
+  headers:
+    PrivateCacheControl:
+      description: Prevents storage of account access and error responses.
+      schema: { type: string, const: "no-store, max-age=0" }
+    PrivatePragma:
+      description: Compatibility directive for clients with legacy HTTP caches.
+      schema: { type: string, const: no-cache }
+    RetryAfter:
+      description: Whole seconds before grant creation may retry for this account.
+      schema: { type: integer, minimum: 1 }
   schemas:
+    PrivateErrorResponse:
+      type: object
+      additionalProperties: false
+      required: [detail]
+      properties:
+        detail: { type: string }
+    AutomationErrorDetail:
+      type: object
+      additionalProperties: false
+      required: [code, message]
+      properties:
+        code:
+          type: string
+          enum:
+            - authentication_failed
+            - reauthentication_locked
+            - active_grant_limit
+            - grant_not_found
+            - invalid_label
+            - invalid_scopes
+            - invalid_lifetime
+        message: { type: string }
+    AutomationErrorResponse:
+      type: object
+      additionalProperties: false
+      required: [detail]
+      properties:
+        detail: { $ref: "#/components/schemas/AutomationErrorDetail" }
+    ValidationIssue:
+      type: object
+      additionalProperties: false
+      required: [type, loc, msg]
+      properties:
+        type: { type: string }
+        loc:
+          type: array
+          items: { type: [string, integer] }
+        msg:
+          type: string
+          description: A schema-authored validation message; raw request input and context are omitted.
+    ValidationErrorResponse:
+      type: object
+      additionalProperties: false
+      required: [detail, message]
+      properties:
+        detail:
+          type: array
+          items: { $ref: "#/components/schemas/ValidationIssue" }
+        message: { const: "Validation Error" }
+    AutomationScope:
+      type: string
+      enum:
+        - system:read
+        - career:read
+        - resume:read
+        - applications:read
+    AutomationGrant:
+      type: object
+      additionalProperties: false
+      required: [id, label, scopes, expires_at, revoked_at, created_at]
+      properties:
+        id: { type: string, format: uuid }
+        label:
+          type: string
+          minLength: 1
+          maxLength: 120
+          description: A normalized printable Unicode client label without control or invisible format characters.
+        scopes:
+          type: array
+          minItems: 1
+          maxItems: 4
+          uniqueItems: true
+          items: { $ref: "#/components/schemas/AutomationScope" }
+        expires_at: { type: string, format: date-time }
+        revoked_at: { type: [string, "null"], format: date-time }
+        created_at: { type: string, format: date-time }
+    AutomationGrantIssue:
+      type: object
+      additionalProperties: false
+      required: [label, scopes, password]
+      properties:
+        label:
+          type: string
+          minLength: 1
+          maxLength: 120
+          description: A printable Unicode client label; leading and trailing whitespace are removed.
+        scopes:
+          type: array
+          minItems: 1
+          maxItems: 4
+          uniqueItems: true
+          items: { $ref: "#/components/schemas/AutomationScope" }
+        lifetime_days: { type: integer, minimum: 1, maximum: 365, default: 30 }
+        password: { type: string, format: password, writeOnly: true }
+    AutomationGrantIssued:
+      type: object
+      additionalProperties: false
+      required: [grant, token, token_environment_variable, warning]
+      properties:
+        grant: { $ref: "#/components/schemas/AutomationGrant" }
+        token:
+          type: string
+          minLength: 50
+          maxLength: 96
+          readOnly: true
+          description: Returned once. CareerOS persists only its SHA-256 digest.
+        token_environment_variable: { const: CAREEROS_MCP_TOKEN }
+        warning:
+          const: This token is shown once. Store it in your OS credential manager and never commit it.
     LocalModelStatus:
       type: object
       additionalProperties: false

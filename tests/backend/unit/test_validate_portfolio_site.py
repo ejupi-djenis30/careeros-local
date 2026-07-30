@@ -251,6 +251,31 @@ def test_portfolio_declares_strict_browser_policies():
     assert "'unsafe-eval'" not in policy
 
 
+def test_portfolio_declares_complete_large_social_card_metadata():
+    html = (ROOT / "docs" / "index.html").read_text(encoding="utf-8")
+
+    assert '<meta name="twitter:card" content="summary_large_image" />' in html
+    assert 'name="twitter:title"' in html
+    assert 'name="twitter:description"' in html
+    assert 'name="twitter:image"' in html
+    assert 'name="twitter:image:alt"' in html
+
+
+def test_portfolio_has_a_safe_project_scoped_not_found_page():
+    path = ROOT / "docs" / "404.html"
+    html = path.read_text(encoding="utf-8")
+    parser = _parse(html)
+
+    assert parser.h1_count == 1
+    assert parser.main_count == 1
+    assert parser.referrer_policies == ["no-referrer"]
+    assert parser.csp_policies and "script-src 'none'" in parser.csp_policies[0]
+    assert '<meta name="robots" content="noindex, follow" />' in html
+    assert 'href="/careeros-local/"' in html
+    assert 'href="/careeros-local/site/styles.css"' in html
+    assert 'src="/careeros-local/site/careeros-mark.svg"' in html
+
+
 def test_source_link_accessible_name_starts_with_visible_label():
     html = (ROOT / "docs" / "index.html").read_text(encoding="utf-8")
 

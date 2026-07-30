@@ -47,3 +47,52 @@ def test_spec_kit_contract_has_unique_operation_ids_and_no_remote_ai_surface():
 
     assert len(operation_ids) == len(set(operation_ids))
     assert all(name not in serialized for name in ("openai", "gemini", "anthropic", "groq"))
+
+
+def test_agent_access_runtime_and_static_contract_document_both_auth_boundaries():
+    runtime = app.openapi()
+    static = yaml.safe_load(
+        (
+            PROJECT_ROOT
+            / "specs"
+            / "001-desktop-career-agent"
+            / "contracts"
+            / "openapi.yaml"
+        ).read_text(encoding="utf-8")
+    )
+    operations = (
+        ("/automation/grants", "get"),
+        ("/automation/grants", "post"),
+        ("/automation/grants/{grant_id}/revoke", "post"),
+    )
+
+    assert runtime["components"]["securitySchemes"]["desktopSession"] == {
+        "type": "apiKey",
+        "description": (
+            "Per-launch native-shell secret. The middleware enforces it in desktop mode; "
+            "explicit browser development disables that boundary."
+        ),
+        "in": "header",
+        "name": "X-CareerOS-Session",
+    }
+    for path, method in operations:
+        runtime_operation = runtime["paths"][f"{settings.API_V1_STR}{path}"][method]
+        static_operation = static["paths"][path][method]
+        assert runtime_operation["security"] == [
+            {"desktopSession": [], "OAuth2PasswordBearer": []}
+        ]
+        assert static_operation["security"] == [
+            {"desktopSession": [], "userAccessToken": []}
+        ]
+        assert "403" in runtime_operation["responses"]
+        assert "403" in static_operation["responses"]
+
+    for path, method in operations[1:]:
+        runtime_schema = runtime["paths"][f"{settings.API_V1_STR}{path}"][method][
+            "responses"
+        ]["403"]["content"]["application/json"]["schema"]
+        static_schema = static["paths"][path][method]["responses"]["403"]["content"][
+            "application/json"
+        ]["schema"]
+        assert len(runtime_schema["anyOf"]) == 2
+        assert len(static_schema["oneOf"]) == 2

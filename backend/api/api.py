@@ -4,6 +4,7 @@ from backend.api.routes import (
     ai_evaluations,
     applications,
     auth,
+    automation,
     career_coach,
     career_profile,
     jobs,
@@ -22,6 +23,7 @@ api_router.include_router(
     prefix="/ai-evaluations",
     tags=["ai-evaluations"],
 )
+api_router.include_router(automation.router, prefix="/automation/grants", tags=["automation"])
 api_router.include_router(auth.router, prefix="/auth", tags=["auth"])
 api_router.include_router(applications.router, prefix="/applications", tags=["applications"])
 api_router.include_router(jobs.router, prefix="/jobs", tags=["jobs"])

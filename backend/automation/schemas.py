@@ -2,16 +2,26 @@
 
 from __future__ import annotations
 
+import unicodedata
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, SecretStr, field_validator
 
 AutomationScope = Literal[
     "system:read",
     "career:read",
     "resume:read",
     "applications:read",
+]
+AutomationErrorCode = Literal[
+    "authentication_failed",
+    "reauthentication_locked",
+    "active_grant_limit",
+    "grant_not_found",
+    "invalid_label",
+    "invalid_scopes",
+    "invalid_lifetime",
 ]
 ALL_AUTOMATION_SCOPES: tuple[AutomationScope, ...] = (
     "system:read",
@@ -21,8 +31,37 @@ ALL_AUTOMATION_SCOPES: tuple[AutomationScope, ...] = (
 )
 
 
+def normalize_grant_label(value: str) -> str:
+    """Normalize a human label and reject invisible or control characters."""
+    normalized = unicodedata.normalize("NFC", value).strip()
+    if not 1 <= len(normalized) <= 120 or any(
+        (
+            unicodedata.category(character).startswith("C")
+            or unicodedata.category(character) in {"Zl", "Zp"}
+        )
+        for character in normalized
+    ):
+        raise ValueError(
+            "Grant labels must contain 1 to 120 printable characters"
+        )
+    return normalized
+
+
 class AutomationDTO(BaseModel):
     model_config = ConfigDict(extra="forbid")
+
+
+class PrivateErrorResponse(AutomationDTO):
+    detail: str
+
+
+class AutomationErrorDetail(AutomationDTO):
+    code: AutomationErrorCode
+    message: str
+
+
+class AutomationErrorResponse(AutomationDTO):
+    detail: AutomationErrorDetail
 
 
 class GrantView(AutomationDTO):
@@ -32,6 +71,40 @@ class GrantView(AutomationDTO):
     expires_at: datetime
     revoked_at: datetime | None
     created_at: datetime
+
+
+class GrantIssueRequest(AutomationDTO):
+    label: str = Field(min_length=1, max_length=120)
+    scopes: list[AutomationScope] = Field(min_length=1, max_length=4)
+    lifetime_days: int = Field(default=30, ge=1, le=365)
+    password: SecretStr
+
+    @field_validator("label")
+    @classmethod
+    def label_must_be_printable(cls, value: str) -> str:
+        return normalize_grant_label(value)
+
+    @field_validator("scopes")
+    @classmethod
+    def scopes_must_be_unique(
+        cls, value: list[AutomationScope]
+    ) -> list[AutomationScope]:
+        if len(value) != len(set(value)):
+            raise ValueError("Automation scopes must be unique")
+        return value
+
+
+class GrantRevokeRequest(AutomationDTO):
+    password: SecretStr
+
+
+class GrantIssuedView(AutomationDTO):
+    grant: GrantView
+    token: str = Field(min_length=50, max_length=96)
+    token_environment_variable: Literal["CAREEROS_MCP_TOKEN"] = "CAREEROS_MCP_TOKEN"
+    warning: Literal[
+        "This token is shown once. Store it in your OS credential manager and never commit it."
+    ] = "This token is shown once. Store it in your OS credential manager and never commit it."
 
 
 class SystemStatusView(AutomationDTO):

@@ -1,5 +1,12 @@
 import React, { Suspense, lazy } from "react";
-import { BrowserRouter, HashRouter, Navigate, Route, Routes } from "react-router";
+import {
+    createBrowserRouter,
+    createHashRouter,
+    Navigate,
+    Route,
+    RouterProvider,
+    Routes,
+} from "react-router";
 import { WorkspaceShell } from "./app/WorkspaceShell";
 import { Login } from "./components/Login";
 import { AuthProvider, useAuth } from "./context/AuthContext";
@@ -10,6 +17,7 @@ import { useI18n } from "./i18n/useI18n";
 import { RequiredLocalAnalysis } from "./features/local-model/RequiredLocalAnalysis";
 
 const ApplicationsPage = lazy(() => import("./features/applications/ApplicationsPage").then((module) => ({ default: module.ApplicationsPage })));
+const AgentAccessPage = lazy(() => import("./features/agent-access/AgentAccessPage").then((module) => ({ default: module.AgentAccessPage })));
 const CareerProfilePage = lazy(() => import("./features/career-profile/CareerProfilePage").then((module) => ({ default: module.CareerProfilePage })));
 const WorkspaceHomePage = lazy(() => import("./features/home/WorkspaceHomePage").then((module) => ({ default: module.WorkspaceHomePage })));
 const CareerCoachPage = lazy(() => import("./features/local-coach/CareerCoachPage").then((module) => ({ default: module.CareerCoachPage })));
@@ -63,6 +71,7 @@ function AuthenticatedApp() {
                             <Route path="/profile" element={<CareerProfilePage />} />
                             <Route path="/resumes" element={<ResumeStudioPage />} />
                             <Route path="/applications" element={<ApplicationsPage />} />
+                            <Route path="/agent-access" element={<AgentAccessPage />} />
                             <Route path="/coach" element={<RequiredLocalAnalysis><CareerCoachPage /></RequiredLocalAnalysis>} />
                             <Route path="/jobs" element={<JobsPage />} />
                             <Route path="/search" element={<RequiredLocalAnalysis><NewSearchPage /></RequiredLocalAnalysis>} />
@@ -79,15 +88,24 @@ function AuthenticatedApp() {
     );
 }
 
-export default function App() {
-    const Router = isDesktopShell() ? HashRouter : BrowserRouter;
+function AppProviders() {
     return (
-        <Router>
-            <AuthProvider>
-                <ToastProvider>
-                    <AuthenticatedApp />
-                </ToastProvider>
-            </AuthProvider>
-        </Router>
+        <AuthProvider>
+            <ToastProvider>
+                <AuthenticatedApp />
+            </ToastProvider>
+        </AuthProvider>
     );
+}
+
+const createRouter = isDesktopShell() ? createHashRouter : createBrowserRouter;
+const applicationRouter = createRouter([
+    {
+        path: "*",
+        element: <AppProviders />,
+    },
+]);
+
+export default function App() {
+    return <RouterProvider router={applicationRouter} />;
 }

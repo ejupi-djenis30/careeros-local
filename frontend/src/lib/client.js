@@ -2,6 +2,9 @@ import { CAREEROS_API_ERROR_EVENT, CAREEROS_UNAUTHORIZED_EVENT } from "./events"
 
 const DEFAULT_API_BASE = "/api/v1";
 const LOOPBACK_HOSTS = new Set(["localhost", "127.0.0.1", "[::1]", "::1"]);
+const SESSION_INVALIDATED_REASON = "session-invalidated";
+const CALLER_ABORTED_REASON = "caller-aborted";
+const REQUEST_TIMEOUT_REASON = "request-timeout";
 
 function validateApiBase(candidate) {
     const value = (candidate || DEFAULT_API_BASE).trim().replace(/\/$/, "");
@@ -42,8 +45,7 @@ export function configureApiRuntime({ apiBaseUrl, sessionToken }) {
 
 export function resetApiRuntime() {
     apiRuntime = Object.freeze({ apiBase: INITIAL_API_BASE, sessionToken: null });
-    ApiClient.accessToken = null;
-    ApiClient._refreshPromise = null;
+    ApiClient.invalidateSession();
 }
 
 export class ApiError extends Error {
@@ -58,7 +60,9 @@ export class ApiError extends Error {
 export class ApiClient {
     static accessToken = null;
     static _refreshPromise = null;
-    static _suppressUnauthorized = false;
+    static _refreshController = null;
+    static _sessionEpoch = 0;
+    static _activeControllers = new Set();
 
     static _dispatchApiError(message) {
         window.dispatchEvent(new CustomEvent(CAREEROS_API_ERROR_EVENT, { detail: { message } }));
@@ -77,7 +81,30 @@ export class ApiClient {
     }
 
     static setToken(token) {
-        this.accessToken = token || null;
+        if (!token) {
+            this.invalidateSession();
+            return;
+        }
+        this.accessToken = token;
+    }
+
+    static invalidateSession() {
+        this._sessionEpoch += 1;
+        this.accessToken = null;
+        this._refreshController?.abort(SESSION_INVALIDATED_REASON);
+        this._refreshController = null;
+        this._refreshPromise = null;
+        for (const controller of this._activeControllers) {
+            controller.abort(SESSION_INVALIDATED_REASON);
+        }
+    }
+
+    static getSessionEpoch() {
+        return this._sessionEpoch;
+    }
+
+    static isSessionEpoch(epoch) {
+        return epoch === this._sessionEpoch;
     }
 
     static getToken() {
@@ -92,39 +119,62 @@ export class ApiClient {
         return headers;
     }
 
-    static async _handleUnauthorized(originalUrl, originalConfig) {
+    static async _handleUnauthorized(originalUrl, originalConfig, requestEpoch) {
+        if (!this.isSessionEpoch(requestEpoch) || originalConfig.signal?.aborted) {
+            return null;
+        }
         if (!this._refreshPromise) {
+            const refreshEpoch = this._sessionEpoch;
+            const refreshController = new AbortController();
+            this._refreshController = refreshController;
             this._refreshPromise = (async () => {
                 const response = await fetch(`${getApiBase()}/auth/refresh`, {
                     method: "POST",
                     credentials: "include",
                     headers: this.getHeaders({ json: false }),
+                    signal: refreshController.signal,
                 });
                 if (!response.ok) return null;
                 const data = await response.json();
                 if (!data.access_token) return null;
-                this.setToken(data.access_token);
+                if (!this.isSessionEpoch(refreshEpoch) || refreshController.signal.aborted) {
+                    return null;
+                }
+                this.accessToken = data.access_token;
                 return data.access_token;
             })();
         }
 
+        const refreshPromise = this._refreshPromise;
         let refreshedToken = null;
         try {
-            refreshedToken = await this._refreshPromise;
+            refreshedToken = await refreshPromise;
         } catch {
             refreshedToken = null;
         } finally {
-            this._refreshPromise = null;
+            if (this._refreshPromise === refreshPromise) {
+                this._refreshPromise = null;
+                this._refreshController = null;
+            }
         }
 
-        if (refreshedToken) {
+        if (
+            refreshedToken &&
+            this.isSessionEpoch(requestEpoch) &&
+            !originalConfig.signal?.aborted
+        ) {
             return fetch(originalUrl, {
                 ...originalConfig,
                 headers: { ...originalConfig.headers, Authorization: `Bearer ${refreshedToken}` },
             });
         }
 
-        window.dispatchEvent(new Event(CAREEROS_UNAUTHORIZED_EVENT));
+        if (
+            this.isSessionEpoch(requestEpoch)
+            && !originalConfig.signal?.aborted
+        ) {
+            window.dispatchEvent(new Event(CAREEROS_UNAUTHORIZED_EVENT));
+        }
         return null;
     }
 
@@ -149,17 +199,23 @@ export class ApiClient {
         const url = `${getApiBase()}${endpoint}`;
         const isFormData = typeof FormData !== "undefined" && options.body instanceof FormData;
         const controller = new AbortController();
+        const requestEpoch = this._sessionEpoch;
+        this._activeControllers.add(controller);
         const timeoutMs = options.timeoutMs ?? 30_000;
-        const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+        const timeoutId = setTimeout(
+            () => controller.abort(REQUEST_TIMEOUT_REASON),
+            timeoutMs,
+        );
         const callerSignal = options.signal;
-        const abortFromCaller = () => controller.abort();
+        const abortFromCaller = () => controller.abort(CALLER_ABORTED_REASON);
         callerSignal?.addEventListener("abort", abortFromCaller, { once: true });
-        if (callerSignal?.aborted) controller.abort();
+        if (callerSignal?.aborted) controller.abort(CALLER_ABORTED_REASON);
 
         const {
             signal: _ignoredSignal,
             timeoutMs: _ignoredTimeout,
             suppressGlobalError = false,
+            suppressUnauthorizedRefresh = false,
             responseType = "json",
             ...fetchOptions
         } = options;
@@ -175,31 +231,53 @@ export class ApiClient {
 
         try {
             let response = await fetch(url, config);
-            if (response.status === 401) {
-                if (this._suppressUnauthorized) {
-                    throw new ApiError("UNAUTHORIZED", { status: 401 });
-                }
-                response = await this._handleUnauthorized(url, config);
+            if (response.status === 401 && !suppressUnauthorizedRefresh) {
+                response = await this._handleUnauthorized(url, config, requestEpoch);
                 if (!response) throw new ApiError("UNAUTHORIZED", { status: 401 });
             }
 
             if (!response.ok) {
                 const details = await this._parseError(response);
+                if (!this.isSessionEpoch(requestEpoch)) {
+                    throw new ApiError("SESSION_CHANGED", { status: 0 });
+                }
                 const message = this._extractErrorMessage(details, `Request failed (${response.status})`);
                 if (!suppressGlobalError) this._dispatchApiError(message);
                 throw new ApiError(message, { status: response.status, details });
             }
 
-            if (response.status === 204) return null;
+            if (response.status === 204) {
+                if (!this.isSessionEpoch(requestEpoch)) {
+                    throw new ApiError("SESSION_CHANGED", { status: 0 });
+                }
+                return null;
+            }
             if (responseType === "blob") {
-                return {
+                const result = {
                     blob: await response.blob(),
                     filename: this._filenameFromResponse(response),
                     sha256: response.headers.get("X-Content-SHA256"),
                 };
+                if (!this.isSessionEpoch(requestEpoch)) {
+                    throw new ApiError("SESSION_CHANGED", { status: 0 });
+                }
+                return result;
             }
-            return response.json();
+            const result = await response.json();
+            if (!this.isSessionEpoch(requestEpoch)) {
+                throw new ApiError("SESSION_CHANGED", { status: 0 });
+            }
+            return result;
         } catch (error) {
+            if (controller.signal.aborted) {
+                if (controller.signal.reason === SESSION_INVALIDATED_REASON) {
+                    throw new ApiError("SESSION_CHANGED", { status: 0 });
+                }
+                if (controller.signal.reason === CALLER_ABORTED_REASON) {
+                    throw new DOMException("The request was cancelled", "AbortError");
+                }
+                throw new ApiError("The local service did not respond in time", { status: 0 });
+            }
             if (error?.name === "AbortError") {
                 throw new ApiError("The local service did not respond in time", { status: 0 });
             }
@@ -207,6 +285,7 @@ export class ApiClient {
         } finally {
             clearTimeout(timeoutId);
             callerSignal?.removeEventListener("abort", abortFromCaller);
+            this._activeControllers.delete(controller);
         }
     }
 
@@ -246,13 +325,14 @@ export class ApiClient {
         return this.request(endpoint, { method: "DELETE", ...options });
     }
 
-    static postForm(endpoint, body) {
+    static postForm(endpoint, body, options = {}) {
         const formData = new URLSearchParams();
         Object.entries(body).forEach(([key, value]) => formData.append(key, value));
         return this.request(endpoint, {
             method: "POST",
             headers: { "Content-Type": "application/x-www-form-urlencoded" },
             body: formData,
+            ...options,
         });
     }
 

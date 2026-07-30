@@ -3,20 +3,28 @@
 from __future__ import annotations
 
 import hashlib
-import re
 import secrets
+import threading
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import cast
 
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from backend.automation.models import AutomationGrant
-from backend.automation.schemas import ALL_AUTOMATION_SCOPES, AutomationScope, GrantView
+from backend.automation.schemas import (
+    ALL_AUTOMATION_SCOPES,
+    AutomationScope,
+    GrantView,
+    normalize_grant_label,
+)
 
 TOKEN_ENVIRONMENT_VARIABLE = "CAREEROS_MCP_TOKEN"
 TOKEN_PREFIX = "_".join(("careeros", "mcp", "v1", ""))
-_LABEL_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9 ._-]{0,119}$")
+MAX_ACTIVE_GRANTS_PER_USER = 32
+RECENT_GRANT_HISTORY_LIMIT = 100
+_ISSUE_LOCK = threading.Lock()
 
 
 class AutomationGrantError(RuntimeError):
@@ -57,30 +65,49 @@ def issue_grant(
     scopes: list[str] | tuple[str, ...],
     lifetime: timedelta = timedelta(days=30),
 ) -> tuple[GrantView, str]:
-    normalized_label = label.strip()
-    if not _LABEL_PATTERN.fullmatch(normalized_label):
+    try:
+        normalized_label = normalize_grant_label(label)
+    except ValueError as exc:
         raise AutomationGrantError(
             "invalid_label",
-            "Grant labels may use letters, numbers, spaces, dots, dashes and underscores",
-        )
+            "Grant labels must contain 1 to 120 printable characters",
+        ) from exc
     if lifetime < timedelta(minutes=5) or lifetime > timedelta(days=365):
         raise AutomationGrantError(
             "invalid_lifetime", "Grant lifetime must be 5 minutes to 365 days"
         )
     normalized_scopes = normalize_scopes(scopes)
-    token = f"{TOKEN_PREFIX}{secrets.token_urlsafe(32)}"
     now = datetime.now(UTC)
-    grant = AutomationGrant(
-        user_id=user_id,
-        label=normalized_label,
-        token_digest=_digest(token),
-        scopes=list(normalized_scopes),
-        expires_at=now + lifetime,
-        revoked_at=None,
-    )
-    db.add(grant)
-    db.commit()
-    db.refresh(grant)
+    with _ISSUE_LOCK:
+        active_count = (
+            db.query(AutomationGrant)
+            .filter(
+                AutomationGrant.user_id == user_id,
+                AutomationGrant.revoked_at.is_(None),
+                AutomationGrant.expires_at > now,
+            )
+            .count()
+        )
+        if active_count >= MAX_ACTIVE_GRANTS_PER_USER:
+            raise AutomationGrantError(
+                "active_grant_limit",
+                (
+                    f"An account may have at most {MAX_ACTIVE_GRANTS_PER_USER} active grants; "
+                    "revoke one before creating another"
+                ),
+            )
+        token = f"{TOKEN_PREFIX}{secrets.token_urlsafe(32)}"
+        grant = AutomationGrant(
+            user_id=user_id,
+            label=normalized_label,
+            token_digest=_digest(token),
+            scopes=list(normalized_scopes),
+            expires_at=now + lifetime,
+            revoked_at=None,
+        )
+        db.add(grant)
+        db.commit()
+        db.refresh(grant)
     return grant_view(grant), token
 
 
@@ -109,13 +136,31 @@ def authenticate_grant(db: Session, token: str) -> AutomationPrincipal:
 
 
 def list_grants(db: Session, *, user_id: int) -> list[GrantView]:
-    rows = (
+    now = datetime.now(UTC)
+    active_rows = (
         db.query(AutomationGrant)
-        .filter(AutomationGrant.user_id == user_id)
+        .filter(
+            AutomationGrant.user_id == user_id,
+            AutomationGrant.revoked_at.is_(None),
+            AutomationGrant.expires_at > now,
+        )
         .order_by(AutomationGrant.created_at.desc(), AutomationGrant.id.asc())
-        .limit(100)
         .all()
     )
+    history_rows = (
+        db.query(AutomationGrant)
+        .filter(
+            AutomationGrant.user_id == user_id,
+            or_(
+                AutomationGrant.revoked_at.is_not(None),
+                AutomationGrant.expires_at <= now,
+            ),
+        )
+        .order_by(AutomationGrant.created_at.desc(), AutomationGrant.id.asc())
+        .limit(RECENT_GRANT_HISTORY_LIMIT)
+        .all()
+    )
+    rows = (*active_rows, *history_rows)
     return [grant_view(item) for item in rows]
 
 
