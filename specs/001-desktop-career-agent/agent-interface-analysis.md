@@ -4,8 +4,10 @@
 
 CareerOS needs to work from a terminal and from coding agents without turning the Career Vault
 into a general-purpose data source. This review covers the source-installed `careeros` command,
-the MCP stdio server and their shared read facade. It does not change the desktop API, add remote
-inference or make the native installer provide a system command.
+the MCP stdio server and their shared read facade. The later authenticated desktop management
+surface is reviewed in
+[`agent-access-center-analysis.md`](agent-access-center-analysis.md). Neither slice adds remote
+inference or makes the native installer provide a system command.
 
 ## Existing boundaries to preserve
 
@@ -29,11 +31,11 @@ secret, points SQLAlchemy at the vault, checks the Alembic revision and acquires
 instance lease. A CLI command holds it for that operation. MCP holds it during bootstrap, releases
 it while idle and reacquires it before every tool call.
 
-Authorization is a separate interactive step. The user supplies a CareerOS username and enters the
-password through the terminal prompt. A grant binds one user id to a label, expiry and fixed scope
-set. CareerOS generates a high-entropy bearer token, returns it once and stores only its SHA-256
-digest. Listing or revoking grants requires the account password again. Restore revokes active
-grants; complete erasure deletes grant rows.
+Authorization is a separate interactive step. The CLI asks for the CareerOS username and password.
+The authenticated desktop can instead use the current account id and requires the password again
+for create and revoke. A grant binds one user id to a label, expiry and fixed scope set. CareerOS
+generates a high-entropy bearer token, returns it once and stores only its SHA-256 digest. Restore
+revokes active grants; complete erasure deletes grant rows.
 
 The initial scope set is deliberately small:
 

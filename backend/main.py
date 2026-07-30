@@ -18,6 +18,11 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from backend.api.api import api_router
 from backend.api.deps import limiter
+from backend.api.middleware import (
+    PRIVATE_NO_STORE_HEADERS,
+    PrivatePathNoStoreMiddleware,
+    is_private_path,
+)
 from backend.core.config import settings
 from backend.core.exceptions import CoreException
 from backend.core.logging import configure_logging
@@ -27,6 +32,7 @@ from backend.desktop.settings import DesktopRuntimeSettings
 configure_logging(settings.LOG_LEVEL)
 logger = logging.getLogger(__name__)
 desktop_runtime = DesktopRuntimeSettings.from_environment()
+PRIVATE_AUTOMATION_PREFIX = f"{settings.API_V1_STR}/automation/grants"
 
 
 # ─── Lifespan ───
@@ -145,6 +151,12 @@ if desktop_runtime.enabled:
         token=desktop_runtime.session_token,
     )
 
+# This must be registered last so it wraps TrustedHost and DesktopSession early exits.
+app.add_middleware(
+    PrivatePathNoStoreMiddleware,
+    path_prefix=PRIVATE_AUTOMATION_PREFIX,
+)
+
 
 # ─── Exception Handlers ───
 def _cors_headers_for(request) -> dict:
@@ -162,12 +174,44 @@ def _cors_headers_for(request) -> dict:
     return {}
 
 
+def _exception_headers_for(request, extra: dict | None = None) -> dict:
+    """Preserve CORS/explicit headers and force private responses to be non-cacheable."""
+    headers = {
+        **_cors_headers_for(request),
+        **(extra or {}),
+    }
+    if is_private_path(
+        request.url.path,
+        path_prefix=PRIVATE_AUTOMATION_PREFIX,
+    ):
+        headers.update(PRIVATE_NO_STORE_HEADERS)
+    return headers
+
+
+def _public_validation_errors(errors: list[dict]) -> list[dict]:
+    """Keep useful validation detail without serializing raw inputs or contexts."""
+    public_errors = []
+    for item in errors:
+        error_type = str(item.get("type", "value_error"))
+        location = list(item.get("loc", ()))
+        if error_type == "extra_forbidden" and location:
+            location[-1] = "field"
+        public_errors.append(
+            {
+                "type": error_type,
+                "loc": location,
+                "msg": str(item.get("msg", "Invalid request value")),
+            }
+        )
+    return public_errors
+
+
 @app.exception_handler(StarletteHTTPException)
 async def http_exception_handler(request, exc):
     return JSONResponse(
         status_code=exc.status_code,
         content={"detail": exc.detail},
-        headers=_cors_headers_for(request),
+        headers=_exception_headers_for(request, exc.headers),
     )
 
 
@@ -176,6 +220,7 @@ async def validation_exception_handler(request, exc):
     from fastapi.encoders import jsonable_encoder
 
     errors = exc.errors()
+    public_errors = _public_validation_errors(errors)
     safe_types = sorted({str(item.get("type", "unknown")) for item in errors})
     logger.warning(
         "request_validation_failed path=%s count=%d types=%s",
@@ -185,8 +230,11 @@ async def validation_exception_handler(request, exc):
     )
     return JSONResponse(
         status_code=422,
-        content={"detail": jsonable_encoder(exc.errors()), "message": "Validation Error"},
-        headers=_cors_headers_for(request),
+        content={
+            "detail": jsonable_encoder(public_errors),
+            "message": "Validation Error",
+        },
+        headers=_exception_headers_for(request),
     )
 
 
@@ -195,7 +243,7 @@ async def core_exception_handler(request, exc):
     return JSONResponse(
         status_code=400,
         content={"detail": str(exc), "message": "Application Error"},
-        headers=_cors_headers_for(request),
+        headers=_exception_headers_for(request),
     )
 
 
@@ -211,7 +259,7 @@ async def generic_exception_handler(request, exc):
     return JSONResponse(
         status_code=500,
         content={"detail": "Internal Server Error"},
-        headers=_cors_headers_for(request),
+        headers=_exception_headers_for(request),
     )
 
 

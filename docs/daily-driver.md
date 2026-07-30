@@ -122,6 +122,25 @@ summary, then choose **Restore verified backup**. Imported AI output remains qua
 passes the installed local model's current validation contract. Portable ZIPs are not encrypted or
 authenticated, so keep them in an encrypted location you control.
 
+## Connect a coding agent
+
+Install the source package as described in the main README, then open **Agent access** from the
+Career workspace. Give the client a recognizable label, leave only the scopes it needs, choose a
+short expiry and enter your current CareerOS password. System status is selected first because it
+contains no career content. Resume and application scopes disclose useful private metadata, so
+enable them deliberately.
+
+CareerOS shows the bearer once. Copy it only when you are ready to save it in the operating
+system's credential manager, then dismiss the panel. The page cannot recover it later. Its Codex
+and Claude Code snippets contain no credential; the client process receives the saved value
+through `CAREEROS_MCP_TOKEN`.
+
+Close CareerOS before asking the agent to read the Vault. The MCP server opens no network listener
+and cannot edit data, but the connected client may send selected results to its own provider.
+Review that provider's policy before connecting it. Return to **Agent access** to inspect expiry or
+revoke a grant after use; revocation asks for the password again. If repeated failed checks pause
+new grants, a correct password still revokes an existing grant immediately.
+
 ## Private by default
 
 - Search-provider calls disclose only the parameters required for that explicit search.

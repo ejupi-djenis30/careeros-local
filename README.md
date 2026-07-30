@@ -230,8 +230,20 @@ resolving a second dependency set:
 .\.venv\Scripts\Activate.ps1
 ```
 
-Open the desktop app once to create the vault and account, then close it for authorization. Check
-the local setup and create a 30-day grant with only the reads the agent needs:
+Open the desktop app, sign in and choose **Agent access** in the Career workspace. Name the client,
+select only the reads it needs, choose an expiry and confirm with your current CareerOS password.
+The new bearer appears once. CareerOS keeps only its SHA-256 digest, so save the bearer in the
+operating system's credential manager before dismissing the panel. The page never copies it
+automatically or writes it to browser storage.
+
+The same page shows active, expired and revoked grants, supports password-confirmed revocation and
+provides token-free Codex and Claude Code setup snippets. Close the desktop app before the agent
+makes a tool call. CareerOS gives the desktop and agent the same exclusive vault lease rather than
+letting two processes read it at once. Repeated failed password checks pause new grant creation for
+that account, but the correct password can always revoke an existing grant immediately.
+
+The terminal flow remains available for scripts and recovery. Close the desktop, check the local
+setup and create a 30-day grant with only the reads the agent needs:
 
 ```powershell
 careeros doctor
@@ -239,10 +251,9 @@ careeros authorize --username <your-username> --label codex `
   --scope system:read --scope applications:read
 ```
 
-`authorize` asks for the CareerOS password in the terminal. The bearer token appears once; only
-its SHA-256 digest is stored in the vault. Put the token in the operating system's credential
-manager and expose it to the agent process as `CAREEROS_MCP_TOKEN`. Do not paste it into a checked-in
-configuration file:
+`authorize` asks for the CareerOS password in the terminal and follows the same one-time token
+contract as the desktop. Expose the saved bearer to the agent process as
+`CAREEROS_MCP_TOKEN`. Do not paste it into a checked-in configuration file:
 
 ```powershell
 $env:CAREEROS_MCP_TOKEN = "<shown-once-token>"
@@ -251,7 +262,7 @@ careeros mcp config --client claude-code
 ```
 
 The first command prints a block for the Codex `config.toml`; the second prints a Claude Code
-`.mcp.json` entry. Both start the same local server with the required
+configuration. Both start the same local server with the required
 `--acknowledge-agent-disclosure` flag. The flag matters: CareerOS itself makes no network request,
 but a connected agent may send the returned application or resume metadata to its own provider.
 The generated command is `careeros`, so start the client from the activated environment or replace
@@ -276,7 +287,9 @@ agenda and identifier arguments.
 
 After MCP starts, the desktop app may open while the server is idle. Each tool call reacquires the
 lease and revalidates the token, including its expiry and revocation state. A call made while the
-desktop owns the vault returns `vault_busy`; close the desktop and retry the call.
+desktop owns the vault returns `vault_busy`; close the desktop and retry the call. The Agent access
+page therefore manages grants while the desktop is open, while the external read happens only
+after the desktop releases the vault.
 
 List or revoke grants by authenticating with the CareerOS password:
 

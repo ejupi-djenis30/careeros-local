@@ -4,6 +4,8 @@ import { MESSAGES, SUPPORTED_LANGUAGES } from "./messages";
 import { createTranslator } from "./runtime";
 
 const SHARED_COPY_KEYS = new Set([
+    "agentAccess.client.claude",
+    "agentAccess.client.codex",
     "canvas.zoom",
     "data.privacy",
     "fact.type.link",

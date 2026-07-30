@@ -442,6 +442,25 @@ zero-mutation reads, output bounds, official in-memory MCP negotiation and a rea
 Portability tests prove restore revokes active grants; deletion tests prove complete erasure
 removes them.
 
+Add an Agent Access center to the authenticated desktop without widening the MCP transport. A
+focused FastAPI router reuses the grant service and current user id, re-verifies the account
+password for create and revoke, bounds failed checks per account, returns every response as
+non-cacheable, and exposes only `GrantView` metadata from list/revoke. Repeated failures may lock
+new issuance, but a correct password always clears that state and can revoke an exposed grant.
+The service caps new active grants and lists every active row plus bounded recent history. The
+create response is the one exception: it returns the new bearer once and never persists or logs
+it. The desktop access token remains an API credential only and is never accepted by the CLI or
+MCP server.
+
+Load the Agent Access page lazily from the existing workspace shell. Keep the one-time bearer in
+component state only, clear it on dismissal and unmount, and copy it only from an explicit button.
+The page explains each fixed read scope, the exclusive vault lease, the external client/provider
+boundary and the current source-install requirement. It lists owned grants with active, expired
+and revoked states, supports password-confirmed revocation, and prints token-free Codex and Claude
+Code configuration templates. Backend tests cover password verification, ownership, no-store
+headers, token non-reappearance and rate-safe errors; frontend tests cover service calls, cleanup,
+copy intent, failure preservation, navigation and keyboard semantics.
+
 ### Phase N — Durable application dossier drafts
 
 Add one `application_dossier_drafts` row per Application, separate from immutable timeline events.

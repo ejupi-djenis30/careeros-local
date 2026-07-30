@@ -326,6 +326,14 @@ fails with `vault_busy` instead of opening another connection.
 8. **Given** a vault restore or complete erasure, **When** the operation commits, **Then** active
    automation grants are revoked or removed so a token from the previous vault state cannot be
    reused.
+9. **Given** an authenticated desktop user, **When** they create a grant from Agent Access,
+   re-enter the current password, select at least one scope and choose a bounded lifetime,
+   **Then** the local API returns the bearer once with `Cache-Control: no-store`, the interface
+   labels it as a one-time secret, and later grant lists contain metadata only.
+10. **Given** a visible one-time bearer, **When** the user copies it explicitly, dismisses it,
+    signs out or leaves Agent Access, **Then** CareerOS performs no automatic clipboard or browser-
+    storage write and removes the bearer from renderer state. Listing remains usable if issuance
+    fails, and revoking an owned active grant requires the current password again.
 
 ### Edge Cases
 
@@ -622,6 +630,22 @@ fails with `vault_busy` instead of opening another connection.
   the existing bounded local source endpoint. A failed profile write MUST start no upload; a failed
   upload MAY leave the truthful empty profile in place but MUST preserve the selected file for retry.
   Accepted candidates MUST remain `imported` until the user reviews and explicitly confirms them.
+- **FR-082**: The authenticated local API MUST expose only owned automation-grant metadata plus
+  explicit create and revoke operations. Create and revoke MUST re-verify the current account
+  password, enforce bounded labels, lifetimes, fixed read scopes and active-grant count, and set
+  `Cache-Control: no-store`. Repeated password failures MUST be bounded per account. They MAY
+  temporarily pause issuance but MUST NOT prevent a correct password from revoking an existing
+  grant. Listing MUST return every active owned grant plus bounded recent history. Creation MAY
+  return the bearer only in that successful response; listing and revocation MUST never return or
+  reconstruct it.
+- **FR-083**: Agent Access MUST explain the desktop-vault lease and external-client disclosure,
+  present fixed scopes in plain language, identify active, expired and revoked grants, and make
+  one-time token copying and dismissal keyboard accessible. The renderer MUST keep a returned
+  bearer only in transient component state, clear it on dismissal, sign-out and unmount, never
+  write it to browser storage, and never copy it without an explicit user action. Setup copy MUST
+  state truthfully that the `careeros` command is source-installed. One-time token appearance MUST
+  be announced without reading the bearer, receive programmatic focus and restore focus to the
+  issuance control after dismissal.
 
 ### Key Entities
 
@@ -744,6 +768,11 @@ fails with `vault_busy` instead of opening another connection.
   starts no upload, that upload failure keeps the file selectable for retry, and that accepted
   candidates remain unconfirmed with a keyboard-operable route to review them. Existing profiles
   import without an unnecessary profile write, and the complete path makes no model call.
+- **SC-027**: Agent Access acceptance tests prove password re-authentication, cross-user grant
+  isolation, exact scope/lifetime bounds, no-store issuance, one-time bearer output, metadata-only
+  listing, idempotent revocation and stable content-free errors. Frontend tests prove explicit-only
+  clipboard use, bearer cleanup on dismissal and unmount, keyboard operation, honest source-install
+  guidance and usable grant listing after mutation failures.
 
 ## Assumptions
 
