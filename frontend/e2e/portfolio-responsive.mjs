@@ -9,7 +9,7 @@ import { chromium } from "playwright";
 
 const siteRoot = resolve(fileURLToPath(new URL("../../docs/", import.meta.url)));
 const mountPath = "/careeros-local";
-const widths = [320, 375, 720, 721, 1020, 1021, 1180, 1240, 1256, 1270, 1271, 1280, 1425, 1600];
+const widths = [320, 375, 390, 720, 721, 1020, 1021, 1180, 1240, 1256, 1270, 1271, 1280, 1425, 1600];
 const measuredSelectors = [
   ".nav.container",
   ".brand",
@@ -34,6 +34,14 @@ const measuredSelectors = [
   ".quality-bar",
   ".cta-card",
   ".footer-grid",
+];
+const mobileTouchSelectors = [
+  ".brand",
+  ".nav-cta",
+  ".text-link",
+  ".quality-bar > a",
+  ".footer-links a",
+  ".footer-meta a",
 ];
 
 const contentTypes = new Map([
@@ -222,9 +230,9 @@ try {
         ),
     );
 
-    const report = await page.evaluate((selectors) => {
+    const report = await page.evaluate(({ measured, touch }) => {
       const viewportWidth = document.documentElement.clientWidth;
-      const boxes = selectors.flatMap((selector) => {
+      const boxes = measured.flatMap((selector) => {
         const elements = Array.from(document.querySelectorAll(selector));
         if (elements.length === 0) return [{ selector, index: 0, missing: true }];
         return elements.map((element, index) => {
@@ -241,14 +249,27 @@ try {
         });
       });
       const privacy = document.querySelector(".privacy-float")?.getBoundingClientRect();
+      const touchTargets = touch
+        .flatMap((selector) =>
+          Array.from(document.querySelectorAll(selector)).map((element, index) => {
+            const bounds = element.getBoundingClientRect();
+            return {
+              selector,
+              index,
+              width: bounds.width,
+              height: bounds.height,
+            };
+          }),
+        );
       return {
         viewportWidth,
         documentWidth: document.documentElement.scrollWidth,
         bodyWidth: document.body.scrollWidth,
         boxes,
+        touchTargets,
         privacyRightGap: privacy ? viewportWidth - privacy.right : null,
       };
-    }, measuredSelectors);
+    }, { measured: measuredSelectors, touch: mobileTouchSelectors });
 
     assert.equal(
       report.documentWidth,
@@ -276,6 +297,21 @@ try {
       report.privacyRightGap >= 16,
       `${width}px: privacy badge needs a 16px viewport gutter (received ${report.privacyRightGap})`,
     );
+
+    if (width <= 720) {
+      assert(report.touchTargets.length > 0, `${width}px: mobile touch targets must be present`);
+      for (const target of report.touchTargets) {
+        const label = `${target.selector}[${target.index}]`;
+        assert(
+          target.width >= 44,
+          `${width}px: ${label} must be at least 44px wide (received ${target.width})`,
+        );
+        assert(
+          target.height >= 44,
+          `${width}px: ${label} must be at least 44px tall (received ${target.height})`,
+        );
+      }
+    }
   }
 
   const mobilePage = await browser.newPage({ viewport: { width: 375, height: 900 } });

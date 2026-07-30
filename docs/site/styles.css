@@ -122,6 +122,7 @@ a {
   align-items: center;
   justify-self: start;
   gap: 11px;
+  min-height: 44px;
   color: var(--lime);
 }
 
@@ -168,7 +169,7 @@ a {
   align-items: center;
   justify-self: end;
   gap: 8px;
-  min-height: 40px;
+  min-height: 44px;
   padding: 8px 15px;
   border: 1px solid var(--line-strong);
   border-radius: 11px;
@@ -1035,6 +1036,7 @@ h2 {
   display: inline-flex;
   align-items: center;
   gap: 8px;
+  min-height: 44px;
   border-bottom: 1px solid var(--line-strong);
   color: var(--ink);
   font-size: 0.84rem;
@@ -1425,6 +1427,9 @@ h2 {
 }
 
 .quality-bar > a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
   color: var(--muted-strong);
   font-size: 0.76rem;
   font-weight: 700;
@@ -1527,6 +1532,14 @@ h2 {
   gap: 20px;
   color: var(--muted);
   font-size: 0.73rem;
+}
+
+.footer-links a,
+.footer-meta a {
+  display: inline-flex;
+  align-items: center;
+  min-width: 44px;
+  min-height: 44px;
 }
 
 .footer-meta {
@@ -1638,7 +1651,7 @@ h2 {
   }
 
   .nav-cta {
-    min-height: 38px;
+    min-height: 44px;
     padding-inline: 12px;
   }
 
