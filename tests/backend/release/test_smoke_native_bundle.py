@@ -116,6 +116,58 @@ def test_macos_always_detaches_when_mounted_package_smoke_fails(
     assert commands[-1] == ["hdiutil", "detach", str(smoke / "dmg-mount")]
 
 
+def test_macos_retries_a_busy_dmg_before_forcing_detach(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    mount_point = tmp_path / "dmg-mount"
+    commands: list[list[str]] = []
+    delays: list[int] = []
+    return_codes = iter([16, 16, 16, 16, 0])
+
+    def fake_run(command: list[str], **_: Any) -> subprocess.CompletedProcess[str]:
+        commands.append(command)
+        return subprocess.CompletedProcess(command, next(return_codes))
+
+    monkeypatch.setattr(smoke_native_bundle.subprocess, "run", fake_run)
+    monkeypatch.setattr(smoke_native_bundle.time, "sleep", delays.append)
+
+    smoke_native_bundle._detach_mounted_dmg(mount_point)
+
+    assert commands[:-1] == [
+        ["hdiutil", "detach", str(mount_point)],
+        ["hdiutil", "detach", str(mount_point)],
+        ["hdiutil", "detach", str(mount_point)],
+        ["hdiutil", "detach", str(mount_point)],
+    ]
+    assert commands[-1] == ["hdiutil", "detach", "-force", str(mount_point)]
+    assert delays == [1, 2, 4]
+
+
+def test_macos_stops_retrying_after_a_transient_busy_detach(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    mount_point = tmp_path / "dmg-mount"
+    commands: list[list[str]] = []
+    delays: list[int] = []
+    return_codes = iter([16, 16, 0])
+
+    def fake_run(command: list[str], **_: Any) -> subprocess.CompletedProcess[str]:
+        commands.append(command)
+        return subprocess.CompletedProcess(command, next(return_codes))
+
+    monkeypatch.setattr(smoke_native_bundle.subprocess, "run", fake_run)
+    monkeypatch.setattr(smoke_native_bundle.time, "sleep", delays.append)
+
+    smoke_native_bundle._detach_mounted_dmg(mount_point)
+
+    assert commands == [
+        ["hdiutil", "detach", str(mount_point)],
+        ["hdiutil", "detach", str(mount_point)],
+        ["hdiutil", "detach", str(mount_point)],
+    ]
+    assert delays == [1, 2]
+
+
 def test_linux_verifies_licenses_in_extracted_appimage_and_deb(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

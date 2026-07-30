@@ -8,6 +8,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import time
 from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
@@ -17,6 +18,7 @@ from scripts.license_contract import find_packaged_license
 ROOT = Path(__file__).resolve().parents[1]
 SMOKE_READY_MARKER = ".careeros-desktop-ready-v1"
 SMOKE_READY_PAYLOAD = "backend-ready+frontend-committed\n"
+DMG_DETACH_RETRY_DELAYS = (1, 2, 4)
 
 
 def _single(paths: list[Path], label: str) -> Path:
@@ -109,6 +111,28 @@ def _require_project_license(package_root: Path, label: str) -> Path:
     return path
 
 
+def _detach_mounted_dmg(mount_point: Path) -> None:
+    command = ["hdiutil", "detach", str(mount_point)]
+    for delay in (*DMG_DETACH_RETRY_DELAYS, None):
+        completed = subprocess.run(
+            command,
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=120,
+        )
+        if completed.returncode == 0:
+            return
+        if delay is not None:
+            time.sleep(delay)
+
+    subprocess.run(
+        ["hdiutil", "detach", "-force", str(mount_point)],
+        check=True,
+        timeout=120,
+    )
+
+
 @contextmanager
 def _mounted_read_only_dmg(dmg: Path, mount_point: Path) -> Iterator[Path]:
     subprocess.run(
@@ -134,11 +158,7 @@ def _mounted_read_only_dmg(dmg: Path, mount_point: Path) -> Iterator[Path]:
     try:
         yield mount_point
     finally:
-        subprocess.run(
-            ["hdiutil", "detach", str(mount_point)],
-            check=True,
-            timeout=120,
-        )
+        _detach_mounted_dmg(mount_point)
 
 
 def _macos(bundle_root: Path, smoke_root: Path) -> int:
