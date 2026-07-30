@@ -1,11 +1,17 @@
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 
 import pytest
 
 from scripts import verify_sidecar_build
+from scripts.check_release_versions import (
+    changelog_release_date,
+    release_versions,
+    validate_versions,
+)
 
 ROOT = Path(__file__).resolve().parents[3]
 WORKFLOW = ROOT / ".github" / "workflows" / "desktop-release.yml"
@@ -13,6 +19,19 @@ TAURI_CONFIG = ROOT / "frontend" / "src-tauri" / "tauri.conf.json"
 WINDOWS_SMOKE = ROOT / "scripts" / "smoke_windows_installer.ps1"
 NATIVE_SMOKE = ROOT / "scripts" / "smoke_native_bundle.py"
 NATIVE_TARGETS = ROOT / ".github" / "native-targets.json"
+
+
+def test_release_workflow_date_matches_the_current_changelog_release() -> None:
+    text = WORKFLOW.read_text(encoding="utf-8")
+    match = re.search(
+        r'^  RELEASE_DATE: "(?P<date>[0-9]{4}-[0-9]{2}-[0-9]{2})"$',
+        text,
+        re.MULTILINE,
+    )
+
+    assert match is not None
+    version = validate_versions(release_versions(ROOT))
+    assert match.group("date") == changelog_release_date(version, ROOT)
 
 
 def test_required_check_name_and_versioned_toolchains_are_stable() -> None:

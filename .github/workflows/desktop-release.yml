@@ -25,7 +25,7 @@ env:
   NODE_VERSION: "24.18.0"
   RUST_VERSION: "1.96.0"
   OPENSSL_SOURCE_VERSION: "3.6.3"
-  RELEASE_DATE: "2026-07-26"
+  RELEASE_DATE: "2026-07-30"
 
 jobs:
   supply-chain:

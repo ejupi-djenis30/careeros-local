@@ -25,7 +25,6 @@ exact saved draft in the same transaction.
 | Documentation | Architecture, privacy, daily-driver, changelog and Spec Kit artifacts state the same guarantees and limits | Converged |
 | Quality gates | Backend, frontend, Rust, static analysis, OpenAPI parsing, migration and diff gates passed locally | Converged locally |
 
-Release publication still requires integration of the three dependency-only commits currently on
-`origin/main`, protected-branch CI, packaged smoke evidence and the existing signed release workflow
-on the exact merged commit. Portable ZIP confidentiality and authorship remain explicit
-out-of-scope guarantees.
+Release publication still requires protected-branch CI, packaged smoke evidence and the existing
+signed release workflow on the exact integrated commit. Portable ZIP confidentiality and authorship
+remain explicit out-of-scope guarantees.

@@ -44,6 +44,7 @@ APPROVED_MARKDOWN = {
     Path("docs/demo.md"),
     Path("docs/devpost.md"),
     Path("docs/privacy.md"),
+    Path("docs/release-evidence-v1.9.0.md"),
     Path("docs/releasing.md"),
 }
 APPROVED_MARKDOWN_ROOTS = {

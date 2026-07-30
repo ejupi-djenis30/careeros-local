@@ -361,6 +361,7 @@ collectively to **CareerOS Local contributors**.
 - [CV-first first-use convergence](specs/001-desktop-career-agent/cv-first-convergence.md)
 - [Agent interface analysis](specs/001-desktop-career-agent/agent-interface-analysis.md)
 - [Agent interface convergence](specs/001-desktop-career-agent/agent-interface-convergence.md)
+- [v1.9.0 release preparation evidence](docs/release-evidence-v1.9.0.md)
 - [v1.8.0 release preparation](specs/001-desktop-career-agent/release-evidence-v1.8.0.md)
 - [v1.7.0 release preparation](specs/001-desktop-career-agent/release-evidence-v1.7.0.md)
 - [v1.6.0 release preparation](specs/001-desktop-career-agent/release-evidence-v1.6.0.md)
