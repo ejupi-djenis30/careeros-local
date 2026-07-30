@@ -1,7 +1,12 @@
 from __future__ import annotations
 
+import hashlib
 import json
+import os
 import re
+import shutil
+import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -234,11 +239,13 @@ def test_only_tag_push_job_can_attest_or_publish() -> None:
 
 def test_release_contract_is_collision_safe_and_never_clobbers() -> None:
     text = WORKFLOW.read_text(encoding="utf-8")
+    native = text[text.index("  native:") : text.index("  assemble-release:")]
 
     assert "scripts.release_candidate stage" in text
+    assert "scripts.release_candidate stage-agent" in text
     assert "scripts.release_candidate assemble" in text
     assert "scripts.release_candidate verify" in text
-    assert text.index("python -m scripts.smoke_native_bundle") < text.index(
+    assert native.index("python -m scripts.smoke_native_bundle") < native.index(
         "scripts.release_candidate stage"
     )
     assert "merge-multiple: true" not in text
@@ -246,10 +253,129 @@ def test_release_contract_is_collision_safe_and_never_clobbers() -> None:
     assert "gh release create" not in text
     assert "gh release upload" not in text
     assert "subject-checksums: release-assets/SHA256SUMS" in text
-    assert text.count("sbom-path:") == 3
+    assert text.count("sbom-path:") == 4
     assert "https://cyclonedx.org/bom" in text
     assert "scripts.verify_sbom_attestations" in text
     assert "--deny-self-hosted-runners" in text
+
+
+def test_agent_release_wheel_is_built_once_then_smoked_without_rebuilding() -> None:
+    text = WORKFLOW.read_text(encoding="utf-8")
+    agent_build = text[text.index("  agent-build:") : text.index("  agent-smoke:")]
+    agent_smoke = text[text.index("  agent-smoke:") : text.index("  native:")]
+    assemble = text[text.index("  assemble-release:") : text.index("  attest-publish:")]
+
+    assert text.count("python -m pip wheel") == 1
+    assert "--no-build-isolation" in agent_build
+    assert "--no-deps" in agent_build
+    assert "requirements-tooling.lock" in agent_build
+    assert (
+        'source_date_epoch="$(git show -s --format=%ct "${GITHUB_SHA}^{commit}")"'
+    ) in agent_build
+    assert 'export SOURCE_DATE_EPOCH="$source_date_epoch"' in agent_build
+    assert "name: agent-release-candidate" in agent_build
+    assert "scripts.release_candidate stage-agent" in agent_build
+    assert "--build-wheel" not in agent_smoke
+    assert "name: agent-release-candidate" in agent_smoke
+    assert "needs.agent-build.outputs.wheel-name" in agent_smoke
+    assert "--requirements-lock agent-candidate/requirements.lock" in agent_smoke
+    for runner in ("ubuntu-24.04", "windows-2025", "macos-15"):
+        assert runner in agent_smoke
+    assert agent_smoke.count('python: "3.12"') == 3
+    assert agent_smoke.count('python: "3.13"') == 3
+
+    assert "needs: [supply-chain, agent-build, agent-smoke, native]" in assemble
+    assert "name: agent-release-candidate" in assemble
+    assert "--agent-root release-staging/agent" in assemble
+    assert "--agent-checksums release-attestation/agent-subjects.sha256" in assemble
+
+
+def test_release_contract_jobs_install_the_locked_parser_dependencies() -> None:
+    text = WORKFLOW.read_text(encoding="utf-8")
+    assemble = text[text.index("  assemble-release:") : text.index("  attest-publish:")]
+    publisher = text[text.index("  attest-publish:") :]
+    install = "python -m pip install --require-hashes --requirement requirements-tooling.lock"
+
+    assert install in assemble
+    assert install in publisher
+    assert publisher.index("scripts.verify_release_source") < publisher.index(install)
+    assert publisher.index(install) < publisher.index("scripts.release_candidate verify")
+
+
+def test_agent_wheel_digest_is_stable_across_source_mtimes(tmp_path: Path) -> None:
+    source_date_epoch = "1700000000"
+    source_paths = ("backend", "desktop")
+    project_files = ("LICENSE", "README.md", "pyproject.toml")
+
+    def build_with_mtime(label: str, mtime: int) -> str:
+        source_root = tmp_path / f"source-{label}"
+        wheel_root = tmp_path / f"wheel-{label}"
+        source_root.mkdir()
+        wheel_root.mkdir()
+
+        for relative in source_paths:
+            shutil.copytree(
+                ROOT / relative,
+                source_root / relative,
+                ignore=shutil.ignore_patterns("__pycache__", "*.pyc"),
+            )
+        for relative in project_files:
+            shutil.copy2(ROOT / relative, source_root / relative)
+        for path in sorted(source_root.rglob("*"), reverse=True):
+            os.utime(path, (mtime, mtime))
+
+        environment = os.environ.copy()
+        environment.update(
+            {
+                "PIP_DISABLE_PIP_VERSION_CHECK": "1",
+                "PIP_NO_CACHE_DIR": "1",
+                "PIP_NO_INDEX": "1",
+                "SOURCE_DATE_EPOCH": source_date_epoch,
+            }
+        )
+        result = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "pip",
+                "wheel",
+                "--no-build-isolation",
+                "--no-deps",
+                "--no-index",
+                "--wheel-dir",
+                str(wheel_root),
+                str(source_root),
+            ],
+            check=False,
+            cwd=tmp_path,
+            env=environment,
+            capture_output=True,
+            text=True,
+        )
+        assert result.returncode == 0, result.stdout + result.stderr
+        wheels = list(wheel_root.glob("*.whl"))
+        assert len(wheels) == 1
+        return hashlib.sha256(wheels[0].read_bytes()).hexdigest()
+
+    earlier_digest = build_with_mtime("earlier", 946684800)
+    later_digest = build_with_mtime("later", 1893456000)
+
+    assert earlier_digest == later_digest
+
+
+def test_agent_wheel_receives_provenance_and_the_backend_sbom_only() -> None:
+    text = WORKFLOW.read_text(encoding="utf-8")
+    publisher = text[text.index("  attest-publish:") :]
+
+    assert "python -m scripts.finalize_backend_sbom" in text
+    assert "name: agent-subject-checksums" in publisher
+    assert "subject-checksums: release-attestation/agent-subjects.sha256" in publisher
+    assert publisher.count("subject-checksums: release-attestation/agent-subjects.sha256") == 1
+    assert (
+        "sbom-path: release-assets/careeros-backend-"
+        "${{ steps.release-version.outputs.value }}.cdx.json"
+    ) in publisher
+    assert "done < release-attestation/agent-subjects.sha256" in publisher
 
 
 def test_canonical_project_license_is_bundled_and_checked_in_every_native_path() -> None:

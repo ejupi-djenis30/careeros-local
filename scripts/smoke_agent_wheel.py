@@ -209,12 +209,25 @@ def _verify_installed(arguments: argparse.Namespace) -> int:
 
 
 def _smoke_wheel(arguments: argparse.Namespace) -> int:
+    project_root_text = str(PROJECT_ROOT)
+    sys.path.insert(0, project_root_text)
+    try:
+        from scripts.agent_distribution import validate_agent_wheel
+        from scripts.check_release_versions import release_versions, validate_versions
+    finally:
+        sys.path.remove(project_root_text)
+
     wheel = Path(arguments.wheel).resolve()
     requirements_lock = Path(arguments.requirements_lock).resolve()
     if not wheel.is_file() or wheel.suffix != ".whl":
         raise ValueError("--wheel must reference one built wheel")
     if not requirements_lock.is_file():
         raise ValueError("--requirements-lock must reference the production lock")
+    validate_agent_wheel(
+        wheel,
+        version=validate_versions(release_versions(PROJECT_ROOT)),
+        project_root=PROJECT_ROOT,
+    )
 
     with _temporary_work_root("careeros-agent-wheel-") as work_root:
         venv_root = work_root / "venv"

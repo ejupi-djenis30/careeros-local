@@ -352,6 +352,7 @@ def main() -> int:
         source_commit=arguments.commit,
         release_date=arguments.release_date,
         license_path=ROOT / "LICENSE",
+        project_root=ROOT,
     )
     api = GitHubApi(token=os.environ.get("GITHUB_TOKEN", ""))
     verify_source_policy(api, repo=arguments.repo, tag=tag, source_commit=arguments.commit)

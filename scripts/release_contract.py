@@ -13,6 +13,15 @@ from datetime import date
 from pathlib import Path
 from typing import Any
 
+from scripts.agent_distribution import (
+    AGENT_CANDIDATE_MANIFEST,
+    AGENT_REQUIREMENTS_LOCK,
+    agent_public_names,
+    canonical_agent_wheel_name,
+    validate_agent_candidate,
+    validate_agent_wheel,
+)
+from scripts.finalize_backend_sbom import validate_backend_sbom
 from scripts.license_contract import (
     LICENSE_NAME,
     approved_license_record,
@@ -35,7 +44,7 @@ from scripts.release_assets import (
     validate_target_candidate,
 )
 
-RELEASE_SCHEMA_VERSION = 2
+RELEASE_SCHEMA_VERSION = 3
 RELEASE_MANIFEST = "release-manifest.json"
 GLOBAL_CHECKSUMS = "SHA256SUMS"
 EVIDENCE_ARCHIVE = "supply-chain-evidence.tar.gz"
@@ -206,6 +215,7 @@ def expected_public_names(version: str) -> list[str]:
         names.extend(canonical_package_name(version, spec, package) for package in spec.packages)
         names.append(target_checksum_name(target))
     names.extend(sbom_asset_names(version).values())
+    names.extend(agent_public_names(version))
     names.extend((LICENSE_NAME, EVIDENCE_ARCHIVE, RELEASE_MANIFEST, GLOBAL_CHECKSUMS))
     reject_casefold_collisions(names)
     return sorted(names, key=str.casefold)
@@ -244,16 +254,57 @@ def validate_native_subject_checksums(
     return parsed
 
 
+def validate_agent_subject_checksums(
+    path: Path, *, wheel_record: dict[str, Any]
+) -> list[dict[str, str]]:
+    parsed = parse_checksum_text(path.read_text(encoding="utf-8"))
+    expected = [
+        {
+            "sha256": str(wheel_record["sha256"]),
+            "name": str(wheel_record["name"]),
+        }
+    ]
+    if parsed != expected:
+        raise RuntimeError("Agent subject checksums do not match the release candidate")
+    return parsed
+
+
+def _agent_candidate(
+    agent_root: Path,
+    *,
+    version: str,
+    source_commit: str,
+    project_root: Path,
+) -> tuple[Path, dict[str, Any]]:
+    manifests = sorted(agent_root.rglob(AGENT_CANDIDATE_MANIFEST))
+    if len(manifests) != 1:
+        raise RuntimeError(
+            f"Expected one Agent Access candidate manifest, found {len(manifests)}"
+        )
+    source = manifests[0].parent
+    candidate = validate_agent_candidate(
+        source,
+        version=version,
+        source_commit=source_commit,
+        project_root=project_root,
+        source_requirements_lock=project_root / AGENT_REQUIREMENTS_LOCK,
+    )
+    return source, candidate
+
+
 def assemble_release_bundle(
     *,
     native_root: Path,
+    agent_root: Path,
     evidence_root: Path,
     output: Path,
     native_checksums: Path,
+    agent_checksums: Path,
     version: str,
     source_commit: str,
     release_date: str,
     license_path: Path,
+    project_root: Path,
 ) -> dict[str, Any]:
     version = validate_stable_version(version)
     source_commit = validate_source_commit(source_commit)
@@ -261,6 +312,12 @@ def assemble_release_bundle(
     approved_license_record(license_path)
     _ensure_empty_directory(output)
     candidates = _native_candidates(native_root, version, source_commit)
+    agent_source, agent_candidate = _agent_candidate(
+        agent_root,
+        version=version,
+        source_commit=source_commit,
+        project_root=project_root,
+    )
     targets: list[dict[str, Any]] = []
     native_records: list[dict[str, Any]] = []
     for candidate in candidates:
@@ -284,6 +341,29 @@ def assemble_release_bundle(
                 "checksum": file_record(output / checksum_name),
             }
         )
+    wheel_name = canonical_agent_wheel_name(version)
+    shutil.copy2(agent_source / wheel_name, output / wheel_name)
+    shutil.copy2(
+        agent_source / AGENT_REQUIREMENTS_LOCK,
+        output / AGENT_REQUIREMENTS_LOCK,
+    )
+    wheel_record = validate_agent_wheel(
+        output / wheel_name,
+        version=version,
+        project_root=project_root,
+    )
+    lock_record = file_record(
+        output / AGENT_REQUIREMENTS_LOCK,
+        artifact_type="python-requirements-lock",
+    )
+    if wheel_record != agent_candidate["wheel"]:
+        raise RuntimeError("Published Agent wheel differs from the smoke-tested candidate")
+    if lock_record != agent_candidate["requirementsLock"]:
+        raise RuntimeError("Published requirements.lock differs from the smoke-tested candidate")
+    agent_access = {
+        "wheel": wheel_record,
+        "requirementsLock": lock_record,
+    }
     license_record = write_public_license(license_path, output / LICENSE_NAME)
     evidence_records = create_deterministic_evidence_archive(evidence_root, output / EVIDENCE_ARCHIVE)
     sboms: dict[str, dict[str, Any]] = {}
@@ -291,6 +371,11 @@ def assemble_release_bundle(
         source_name = f"{component}-sbom.cdx.json"
         shutil.copy2(evidence_root / source_name, output / public_name)
         sboms[component] = file_record(output / public_name)
+    validate_backend_sbom(
+        _json_file(output / sbom_asset_names(version)["backend"]),
+        version=version,
+        requirements_lock=output / AGENT_REQUIREMENTS_LOCK,
+    )
     manifest = {
         "schemaVersion": RELEASE_SCHEMA_VERSION,
         "project": PROJECT,
@@ -301,6 +386,7 @@ def assemble_release_bundle(
         "signedPackages": False,
         "license": license_record,
         "targets": targets,
+        "agentAccess": agent_access,
         "sboms": sboms,
         "evidenceArchive": file_record(output / EVIDENCE_ARCHIVE),
         "evidenceFiles": evidence_records,
@@ -313,12 +399,18 @@ def assemble_release_bundle(
     native_checksums.parent.mkdir(parents=True, exist_ok=True)
     native_checksums.write_text(checksum_text(native_records), encoding="utf-8")
     validate_native_subject_checksums(native_checksums, records=native_records)
+    if agent_checksums.exists() or agent_checksums.is_symlink():
+        raise RuntimeError("Agent subject checksum output must not already exist")
+    agent_checksums.parent.mkdir(parents=True, exist_ok=True)
+    agent_checksums.write_text(checksum_text([wheel_record]), encoding="utf-8")
+    validate_agent_subject_checksums(agent_checksums, wheel_record=wheel_record)
     validate_release_bundle(
         output,
         version=version,
         source_commit=source_commit,
         release_date=release_date,
         license_path=license_path,
+        project_root=project_root,
     )
     return manifest
 
@@ -330,6 +422,7 @@ def validate_release_bundle(
     source_commit: str,
     release_date: str,
     license_path: Path,
+    project_root: Path,
 ) -> dict[str, Any]:
     version = validate_stable_version(version)
     source_commit = validate_source_commit(source_commit)
@@ -391,6 +484,27 @@ def validate_release_bundle(
         if target_lines != sorted(expected_lines, key=lambda record: str(record["name"]).casefold()):
             raise RuntimeError(f"Target checksum inventory is incorrect for {target}")
     reject_casefold_collisions(native_names)
+    wheel_record = validate_agent_wheel(
+        directory / canonical_agent_wheel_name(version),
+        version=version,
+        project_root=project_root,
+    )
+    lock_record = file_record(
+        directory / AGENT_REQUIREMENTS_LOCK,
+        artifact_type="python-requirements-lock",
+    )
+    source_lock_record = file_record(
+        project_root / AGENT_REQUIREMENTS_LOCK,
+        artifact_type="python-requirements-lock",
+    )
+    if lock_record["sha256"] != source_lock_record["sha256"]:
+        raise RuntimeError("Published requirements.lock differs from the tagged source")
+    expected_agent_access = {
+        "wheel": wheel_record,
+        "requirementsLock": lock_record,
+    }
+    if manifest.get("agentAccess") != expected_agent_access:
+        raise RuntimeError("Release manifest Agent Access records do not match published bytes")
     sboms = manifest.get("sboms")
     if not isinstance(sboms, dict):
         raise RuntimeError("Release manifest is missing SBOM records")
@@ -398,6 +512,11 @@ def validate_release_bundle(
         _validate_cyclonedx(directory / name)
         if sboms.get(component) != file_record(directory / name):
             raise RuntimeError(f"Release manifest SBOM record is incorrect for {component}")
+    validate_backend_sbom(
+        _json_file(directory / sbom_asset_names(version)["backend"]),
+        version=version,
+        requirements_lock=directory / AGENT_REQUIREMENTS_LOCK,
+    )
     evidence_records = _archive_records(directory / EVIDENCE_ARCHIVE)
     if manifest.get("evidenceFiles") != evidence_records:
         raise RuntimeError("Release manifest evidence members do not match the deterministic archive")
