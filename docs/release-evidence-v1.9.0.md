@@ -1,10 +1,16 @@
-# CareerOS Local v1.9.0 release preparation evidence
+# CareerOS Local v1.9.0 release evidence
 
 Date prepared: 2026-07-30
+Date publication verified: 2026-07-30
 
-Status: candidate metadata and dependency locks are prepared, but v1.9.0 is not tagged or
-published. Protected-branch CI and a complete read-only six-target native rehearsal remain
-mandatory on the exact merged commit.
+Status: published. The preparation record below was completed by a six-target rehearsal and a
+tag-triggered build on final `main` commit
+[`d1c1bdde076af0bea096c772684c1d9b47c14ed6`](https://github.com/ejupi-djenis30/careeros-local/commit/d1c1bdde076af0bea096c772684c1d9b47c14ed6),
+tree `98184c36233450be7eba0313e6a11da395984bfd`. The annotated tag object
+`0ee6d6f478e1100710130b722230d97be60b260b` has a verified SSH signature and points directly to
+that commit. GitHub reports the
+[`v1.9.0` release](https://github.com/ejupi-djenis30/careeros-local/releases/tag/v1.9.0)
+as final and immutable with 23 assets.
 
 ## Candidate basis
 
@@ -116,10 +122,12 @@ the final commit.
 - Native packages remain unsigned community builds until platform code-signing identities are
   configured.
 
-## Publication gates
+## Publication outcome
 
-1. Merge the reviewed preparation through protected `main` with every required check green.
-2. Run the read-only native rehearsal for all six supported targets on the exact merge commit.
-3. Review the 23-asset candidate, checksums, SBOMs and native lifecycle results.
-4. Create the verified annotated `v1.9.0` tag with the authorized signing identity.
-5. Let the tag workflow rebuild, attest, verify and publish the immutable release.
+The complete read-only rehearsal
+[30535650848](https://github.com/ejupi-djenis30/careeros-local/actions/runs/30535650848)
+and tag workflow
+[30537432746](https://github.com/ejupi-djenis30/careeros-local/actions/runs/30537432746)
+both completed successfully on the final commit. The tag workflow rebuilt all supported native
+targets, verified the 23-asset candidate and its checksums and SBOMs, created the required
+attestations, then published the immutable release.
