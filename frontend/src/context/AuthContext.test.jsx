@@ -2,6 +2,7 @@ import React from 'react';
 import { render, screen, waitFor, act } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { AuthProvider, useAuth } from './AuthContext';
+import { CAREEROS_BEFORE_LOGOUT_EVENT } from '../lib/events';
 
 // ─── Mock AuthService ────────────────────────────────────────────────────────
 
@@ -72,6 +73,18 @@ function LogoutButton() {
   return <button onClick={logout}>Logout</button>;
 }
 
+function ForcedLogoutBarrier({ waiter }) {
+  React.useEffect(() => {
+    const holdLogout = (event) => {
+      event.preventDefault();
+      event.detail?.waitUntil(waiter);
+    };
+    window.addEventListener(CAREEROS_BEFORE_LOGOUT_EVENT, holdLogout);
+    return () => window.removeEventListener(CAREEROS_BEFORE_LOGOUT_EVENT, holdLogout);
+  }, [waiter]);
+  return null;
+}
+
 async function renderAndWait(children) {
   let result;
   await act(async () => {
@@ -123,6 +136,33 @@ describe('AuthContext', () => {
     await renderAndWait(<Consumer />);
 
     expect(screen.getByTestId('user').textContent).toBe('null');
+  });
+
+  it('ignores a stale initialization result during StrictMode effect replay', async () => {
+    let resolveFirstRefresh;
+    let resolveSecondRefresh;
+    mockRefresh
+      .mockImplementationOnce(() => new Promise((resolve) => {
+        resolveFirstRefresh = resolve;
+      }))
+      .mockImplementationOnce(() => new Promise((resolve) => {
+        resolveSecondRefresh = resolve;
+      }));
+
+    render(
+      <React.StrictMode>
+        <AuthProvider><Consumer /></AuthProvider>
+      </React.StrictMode>,
+    );
+    await waitFor(() => expect(mockRefresh).toHaveBeenCalledTimes(2));
+
+    await act(async () => resolveSecondRefresh(null));
+    expect(screen.getByTestId('user').textContent).toBe('null');
+    expect(screen.getByTestId('logged-in').textContent).toBe('false');
+
+    await act(async () => resolveFirstRefresh({ username: 'stale-user' }));
+    expect(screen.getByTestId('user').textContent).toBe('null');
+    expect(screen.getByTestId('logged-in').textContent).toBe('false');
   });
 
   it('login sets user and returns response', async () => {
@@ -198,6 +238,43 @@ describe('AuthContext', () => {
     expect(screen.getByTestId('user').textContent).toBe('null');
   });
 
+  it('does not expose login controls until the server logout has finished', async () => {
+    mockRefresh.mockResolvedValue({ username: 'alice' });
+    let resolveLogout;
+    mockLogout.mockReturnValue(new Promise((resolve) => {
+      resolveLogout = resolve;
+    }));
+
+    await renderAndWait(<><Consumer /><LoginButton /><LogoutButton /></>);
+    await act(async () => {
+      screen.getByRole('button', { name: 'Logout' }).click();
+    });
+
+    expect(screen.getByRole('status')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Login' })).toBeNull();
+    expect(screen.queryByTestId('user')).toBeNull();
+    expect(mockLogout).toHaveBeenCalledTimes(1);
+
+    await act(async () => resolveLogout());
+    expect(screen.getByTestId('user').textContent).toBe('null');
+    expect(screen.getByRole('button', { name: 'Login' })).toBeTruthy();
+  });
+
+  it('lets an in-flight sensitive operation cancel a normal logout', async () => {
+    mockRefresh.mockResolvedValue({ username: 'alice' });
+    const preventLogout = event => event.preventDefault();
+    window.addEventListener('careeros:before-logout', preventLogout);
+
+    await renderAndWait(<><Consumer /><LogoutButton /></>);
+    await act(async () => {
+      screen.getByRole('button').click();
+    });
+
+    expect(mockLogout).not.toHaveBeenCalled();
+    expect(screen.getByTestId('user').textContent).toBe('alice');
+    window.removeEventListener('careeros:before-logout', preventLogout);
+  });
+
   it('handles the CareerOS unauthorized event by calling logout', async () => {
     mockRefresh.mockResolvedValue({ username: 'alice' });
 
@@ -212,6 +289,31 @@ describe('AuthContext', () => {
       expect(screen.getByTestId('user').textContent).toBe('null');
     });
     expect(mockLogout).toHaveBeenCalled();
+  });
+
+  it('waits for forced-logout cleanup before invalidating the server session', async () => {
+    mockRefresh.mockResolvedValue({ username: 'alice' });
+    let releaseCleanup;
+    const cleanup = new Promise((resolve) => {
+      releaseCleanup = resolve;
+    });
+
+    await renderAndWait(
+      <>
+        <Consumer />
+        <ForcedLogoutBarrier waiter={cleanup} />
+      </>,
+    );
+    await act(async () => {
+      window.dispatchEvent(new Event('careeros:unauthorized'));
+    });
+
+    expect(screen.getByRole('status')).toBeTruthy();
+    expect(mockLogout).not.toHaveBeenCalled();
+
+    await act(async () => releaseCleanup());
+    await waitFor(() => expect(mockLogout).toHaveBeenCalledTimes(1));
+    expect(screen.getByTestId('user').textContent).toBe('null');
   });
 
   it('useAuth throws when used outside AuthProvider', () => {

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 
-export function CopyButton({ value, label, copiedLabel, onResult }) {
+export function CopyButton({ value, label, copiedLabel, onResult, fallbackRef }) {
     const [copied, setCopied] = useState(false);
     const resetTimer = useRef(null);
 
@@ -9,8 +9,14 @@ export function CopyButton({ value, label, copiedLabel, onResult }) {
     }, []);
 
     const copy = async () => {
-        if (!navigator.clipboard?.writeText) {
+        const showManualFallback = () => {
+            const target = fallbackRef?.current;
+            target?.focus();
+            target?.select?.();
             onResult(false);
+        };
+        if (!navigator.clipboard?.writeText) {
+            showManualFallback();
             return;
         }
         try {
@@ -23,7 +29,7 @@ export function CopyButton({ value, label, copiedLabel, onResult }) {
                 setCopied(false);
             }, 1800);
         } catch {
-            onResult(false);
+            showManualFallback();
         }
     };
 

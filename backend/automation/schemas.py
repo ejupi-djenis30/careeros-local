@@ -14,6 +14,15 @@ AutomationScope = Literal[
     "resume:read",
     "applications:read",
 ]
+AutomationErrorCode = Literal[
+    "authentication_failed",
+    "reauthentication_locked",
+    "active_grant_limit",
+    "grant_not_found",
+    "invalid_label",
+    "invalid_scopes",
+    "invalid_lifetime",
+]
 ALL_AUTOMATION_SCOPES: tuple[AutomationScope, ...] = (
     "system:read",
     "career:read",
@@ -40,6 +49,19 @@ def normalize_grant_label(value: str) -> str:
 
 class AutomationDTO(BaseModel):
     model_config = ConfigDict(extra="forbid")
+
+
+class PrivateErrorResponse(AutomationDTO):
+    detail: str
+
+
+class AutomationErrorDetail(AutomationDTO):
+    code: AutomationErrorCode
+    message: str
+
+
+class AutomationErrorResponse(AutomationDTO):
+    detail: AutomationErrorDetail
 
 
 class GrantView(AutomationDTO):

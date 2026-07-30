@@ -1,5 +1,12 @@
 import React, { Suspense, lazy } from "react";
-import { BrowserRouter, HashRouter, Navigate, Route, Routes } from "react-router";
+import {
+    createBrowserRouter,
+    createHashRouter,
+    Navigate,
+    Route,
+    RouterProvider,
+    Routes,
+} from "react-router";
 import { WorkspaceShell } from "./app/WorkspaceShell";
 import { Login } from "./components/Login";
 import { AuthProvider, useAuth } from "./context/AuthContext";
@@ -81,15 +88,24 @@ function AuthenticatedApp() {
     );
 }
 
-export default function App() {
-    const Router = isDesktopShell() ? HashRouter : BrowserRouter;
+function AppProviders() {
     return (
-        <Router>
-            <AuthProvider>
-                <ToastProvider>
-                    <AuthenticatedApp />
-                </ToastProvider>
-            </AuthProvider>
-        </Router>
+        <AuthProvider>
+            <ToastProvider>
+                <AuthenticatedApp />
+            </ToastProvider>
+        </AuthProvider>
     );
+}
+
+const createRouter = isDesktopShell() ? createHashRouter : createBrowserRouter;
+const applicationRouter = createRouter([
+    {
+        path: "*",
+        element: <AppProviders />,
+    },
+]);
+
+export default function App() {
+    return <RouterProvider router={applicationRouter} />;
 }

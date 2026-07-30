@@ -3757,16 +3757,25 @@ summary:focus-visible {
 
 .agent-token {
   display: block;
+  width: 100%;
   margin: 1rem 0;
   padding: 0.95rem;
+  resize: none;
   overflow-wrap: anywhere;
   border: 1px solid rgba(243, 197, 104, 0.18);
   border-radius: var(--cos-radius-sm);
   background: rgba(5, 7, 6, 0.62);
   color: #f8dfa4;
+  font-family: var(--cos-font-mono);
   font-size: 0.68rem;
   line-height: 1.65;
   user-select: all;
+}
+
+.agent-token:focus-visible {
+  border-color: var(--cos-accent);
+  outline: 2px solid color-mix(in srgb, var(--cos-accent) 42%, transparent);
+  outline-offset: 2px;
 }
 
 .agent-token-panel__actions {

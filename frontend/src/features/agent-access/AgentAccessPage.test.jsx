@@ -1,9 +1,12 @@
-import { screen, waitFor } from "@testing-library/react";
+import { StrictMode } from "react";
+import { act, fireEvent, screen, waitFor } from "@testing-library/react";
+import { createMemoryRouter, Link, RouterProvider } from "react-router";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { CAREEROS_BEFORE_LOGOUT_EVENT } from "../../lib/events";
 import { assertAccessible } from "../../test/accessibility";
-import { renderWithI18n as render } from "../../test/renderWithI18n";
+import { renderWithI18n } from "../../test/renderWithI18n";
 import { AutomationService } from "../../services/automation";
 import { AgentAccessPage } from "./AgentAccessPage";
 
@@ -26,6 +29,26 @@ const grant = {
 
 const token = "obviously-fake-one-time-token";
 
+function renderPage(
+    element = <AgentAccessPage />,
+    {
+        initialEntries = ["/agent-access"],
+        initialIndex,
+    } = {},
+) {
+    const router = createMemoryRouter(
+        [
+            { path: "/agent-access", element },
+            { path: "/profile", element: <p>Profile route</p> },
+        ],
+        { initialEntries, initialIndex },
+    );
+    return {
+        ...renderWithI18n(<RouterProvider router={router} />),
+        router,
+    };
+}
+
 describe("AgentAccessPage", () => {
     beforeEach(() => {
         vi.clearAllMocks();
@@ -45,7 +68,7 @@ describe("AgentAccessPage", () => {
             token,
             token_environment_variable: "CAREEROS_MCP_TOKEN",
         });
-        const { container } = render(<AgentAccessPage />);
+        const { container } = renderPage();
         await screen.findByText("No grants issued");
 
         await user.type(screen.getByLabelText("Client label"), "Personal Codex");
@@ -69,7 +92,7 @@ describe("AgentAccessPage", () => {
             lifetime_days: 30,
             password: "CurrentPassword1",
         });
-        expect(screen.getByLabelText("New agent token")).toHaveTextContent(token);
+        expect(screen.getByLabelText("New agent token")).toHaveValue(token);
         expect(clipboardWrite).not.toHaveBeenCalled();
         expect(storageWrite).not.toHaveBeenCalled();
         expect(screen.getByLabelText(/Current CareerOS password/)).toHaveValue("");
@@ -92,7 +115,7 @@ describe("AgentAccessPage", () => {
             ...grant,
             revoked_at: "2026-07-30T00:10:00Z",
         });
-        const { container } = render(<AgentAccessPage />);
+        const { container } = renderPage();
         await screen.findByText("Personal Codex");
 
         await user.click(screen.getByRole("button", { name: "Revoke access" }));
@@ -137,7 +160,7 @@ describe("AgentAccessPage", () => {
         AutomationService.revokeGrant.mockImplementation(() => new Promise((resolve) => {
             resolveRevocation = resolve;
         }));
-        render(<AgentAccessPage />);
+        renderPage();
         await screen.findByText("Personal Codex");
 
         const openers = screen.getAllByRole("button", { name: "Revoke access" });
@@ -159,13 +182,77 @@ describe("AgentAccessPage", () => {
         expect(screen.getByRole("button", { name: "Revoke access" })).toBeEnabled();
     });
 
+    it("announces an ordinary revocation if the user dismisses the token while it is pending", async () => {
+        const user = userEvent.setup();
+        let resolveRevocation;
+        AutomationService.issueGrant.mockResolvedValue({
+            grant,
+            token,
+            token_environment_variable: "CAREEROS_MCP_TOKEN",
+        });
+        AutomationService.revokeGrant.mockImplementation(() => new Promise((resolve) => {
+            resolveRevocation = resolve;
+        }));
+        renderPage();
+        await screen.findByText("No grants issued");
+
+        await user.type(screen.getByLabelText("Client label"), grant.label);
+        await user.type(screen.getByLabelText(/Current CareerOS password/), "CurrentPassword1");
+        await user.click(screen.getByRole("button", { name: "Create grant" }));
+        await screen.findByLabelText("New agent token");
+        await user.click(screen.getByRole("button", { name: "Revoke access" }));
+        await user.type(
+            screen.getByLabelText("Enter your current password to revoke this grant"),
+            "CurrentPassword1",
+        );
+        await user.click(screen.getByRole("button", { name: "Confirm revocation" }));
+        await user.click(screen.getByRole("button", { name: "I saved it securely" }));
+
+        await act(async () => {
+            resolveRevocation({
+                ...grant,
+                revoked_at: "2026-07-30T00:10:00Z",
+            });
+        });
+
+        expect(await screen.findByText("Access for Personal Codex was revoked."))
+            .toHaveAttribute("role", "status");
+        expect(screen.queryByText(/unsaved token was discarded/)).not.toBeInTheDocument();
+    });
+
+    it("keeps issuance single-flight across synchronous duplicate submissions", async () => {
+        const user = userEvent.setup();
+        let resolveIssuance;
+        AutomationService.issueGrant.mockImplementation(() => new Promise((resolve) => {
+            resolveIssuance = resolve;
+        }));
+        renderPage();
+        await screen.findByText("No grants issued");
+
+        await user.type(screen.getByLabelText("Client label"), "Single flight");
+        await user.type(screen.getByLabelText(/Current CareerOS password/), "CurrentPassword1");
+        const form = screen.getByRole("button", { name: "Create grant" }).closest("form");
+        fireEvent.submit(form);
+        fireEvent.submit(form);
+
+        expect(AutomationService.issueGrant).toHaveBeenCalledTimes(1);
+        await act(async () => {
+            resolveIssuance({
+                grant,
+                token,
+                token_environment_variable: "CAREEROS_MCP_TOKEN",
+            });
+        });
+        expect(await screen.findByLabelText("New agent token")).toHaveValue(token);
+    });
+
     it("preserves non-secret choices after failed re-authentication and clears the password", async () => {
         const user = userEvent.setup();
         AutomationService.issueGrant.mockRejectedValue({
             message: "Current CareerOS password verification failed",
             details: { detail: { code: "authentication_failed" } },
         });
-        render(<AgentAccessPage />);
+        renderPage();
         await screen.findByText("No grants issued");
 
         await user.type(screen.getByLabelText("Client label"), "Claude review");
@@ -189,22 +276,236 @@ describe("AgentAccessPage", () => {
             token,
             token_environment_variable: "CAREEROS_MCP_TOKEN",
         });
-        const { unmount } = render(<AgentAccessPage />);
+        const { unmount } = renderPage();
         await screen.findByText("No grants issued");
 
         await user.type(screen.getByLabelText("Client label"), "Temporary agent");
         await user.type(screen.getByLabelText(/Current CareerOS password/), "CurrentPassword1");
         await user.click(screen.getByRole("button", { name: "Create grant" }));
-        await screen.findByText(token);
+        await waitFor(() => expect(screen.getByLabelText("New agent token")).toHaveValue(token));
         unmount();
 
-        expect(screen.queryByText(token)).not.toBeInTheDocument();
+        expect(screen.queryByLabelText("New agent token")).not.toBeInTheDocument();
         expect(storageWrite).not.toHaveBeenCalled();
         storageWrite.mockRestore();
     });
 
+    it("keeps a completed issuance visible through the StrictMode effect replay", async () => {
+        const user = userEvent.setup();
+        AutomationService.issueGrant.mockResolvedValue({
+            grant,
+            token,
+            token_environment_variable: "CAREEROS_MCP_TOKEN",
+        });
+        renderPage(<StrictMode><AgentAccessPage /></StrictMode>);
+        await screen.findByText("No grants issued");
+
+        await user.type(screen.getByLabelText("Client label"), "Strict mode agent");
+        await user.type(screen.getByLabelText(/Current CareerOS password/), "CurrentPassword1");
+        await user.click(screen.getByRole("button", { name: "Create grant" }));
+
+        expect(await screen.findByLabelText("New agent token")).toHaveValue(token);
+        expect(AutomationService.issueGrant).toHaveBeenCalledTimes(1);
+        expect(AutomationService.revokeGrant).not.toHaveBeenCalled();
+    });
+
+    it("revokes a grant that finishes after the page is forcibly unmounted", async () => {
+        const user = userEvent.setup();
+        let resolveIssuance;
+        AutomationService.issueGrant.mockImplementation(() => new Promise((resolve) => {
+            resolveIssuance = resolve;
+        }));
+        AutomationService.revokeGrant.mockResolvedValue({
+            ...grant,
+            revoked_at: "2026-07-30T00:10:00Z",
+        });
+        const { unmount } = renderPage();
+        await screen.findByText("No grants issued");
+
+        await user.type(screen.getByLabelText("Client label"), "Late agent");
+        await user.type(screen.getByLabelText(/Current CareerOS password/), "CurrentPassword1");
+        await user.click(screen.getByRole("button", { name: "Create grant" }));
+        unmount();
+        await act(async () => {
+            resolveIssuance({
+                grant,
+                token,
+                token_environment_variable: "CAREEROS_MCP_TOKEN",
+            });
+        });
+
+        await waitFor(() => expect(AutomationService.revokeGrant).toHaveBeenCalledWith(
+            grant.id,
+            "CurrentPassword1",
+        ));
+        expect(screen.queryByLabelText("New agent token")).not.toBeInTheDocument();
+    });
+
+    it("waits for compensating revocation before a forced logout may continue", async () => {
+        const user = userEvent.setup();
+        let resolveIssuance;
+        AutomationService.issueGrant.mockImplementation(() => new Promise((resolve) => {
+            resolveIssuance = resolve;
+        }));
+        AutomationService.revokeGrant.mockResolvedValue({
+            ...grant,
+            revoked_at: "2026-07-30T00:10:00Z",
+        });
+        renderPage();
+        await screen.findByText("No grants issued");
+
+        await user.type(screen.getByLabelText("Client label"), "Forced logout agent");
+        await user.type(screen.getByLabelText(/Current CareerOS password/), "CurrentPassword1");
+        await user.click(screen.getByRole("button", { name: "Create grant" }));
+
+        const waiters = [];
+        const logoutEvent = new CustomEvent(CAREEROS_BEFORE_LOGOUT_EVENT, {
+            cancelable: true,
+            detail: {
+                force: true,
+                waitUntil(waiter) {
+                    waiters.push(waiter);
+                },
+            },
+        });
+        expect(window.dispatchEvent(logoutEvent)).toBe(false);
+        expect(waiters).toHaveLength(1);
+
+        await act(async () => {
+            resolveIssuance({
+                grant,
+                token,
+                token_environment_variable: "CAREEROS_MCP_TOKEN",
+            });
+            await Promise.all(waiters);
+        });
+
+        expect(AutomationService.revokeGrant).toHaveBeenCalledWith(
+            grant.id,
+            "CurrentPassword1",
+        );
+        expect(screen.queryByLabelText("New agent token")).not.toBeInTheDocument();
+    });
+
+    it("blocks normal navigation and logout while one-time token issuance is pending", async () => {
+        const user = userEvent.setup();
+        const closeMobileMenu = vi.fn();
+        AutomationService.issueGrant.mockImplementation(() => new Promise(() => {}));
+        const { router } = renderPage(
+            <div>
+                <a href="#agent-access-content">Skip to Agent access</a>
+                <Link to="/profile" onClick={closeMobileMenu}>Router profile link</Link>
+                <a href="/profile">Leave Agent access</a>
+                <div id="agent-access-content">
+                    <AgentAccessPage />
+                </div>
+            </div>,
+            {
+                initialEntries: ["/profile", "/agent-access"],
+                initialIndex: 1,
+            },
+        );
+        await screen.findByText("No grants issued");
+
+        await user.type(screen.getByLabelText("Client label"), "Pending agent");
+        await user.type(screen.getByLabelText(/Current CareerOS password/), "CurrentPassword1");
+        await user.click(screen.getByRole("button", { name: "Create grant" }));
+
+        const logoutEvent = new Event("careeros:before-logout", { cancelable: true });
+        expect(window.dispatchEvent(logoutEvent)).toBe(false);
+        expect(logoutEvent.defaultPrevented).toBe(true);
+        await act(async () => {
+            await router.navigate("/profile");
+        });
+        await waitFor(() => expect(router.state.location.pathname).toBe("/agent-access"));
+        await act(async () => {
+            await router.navigate(-1);
+        });
+        await waitFor(() => expect(router.state.location.pathname).toBe("/agent-access"));
+        await user.click(screen.getByRole("link", { name: "Router profile link" }));
+        expect(closeMobileMenu).toHaveBeenCalledTimes(1);
+        await waitFor(() => expect(router.state.location.pathname).toBe("/agent-access"));
+        await user.click(screen.getByRole("link", { name: "Skip to Agent access" }));
+        expect(router.state.location.pathname).toBe("/agent-access");
+        await user.click(screen.getByRole("link", { name: "Leave Agent access" }));
+        expect(screen.getByRole("alert")).toHaveTextContent(
+            "CareerOS is finishing this grant.",
+        );
+
+        const unloadEvent = new Event("beforeunload", { cancelable: true });
+        expect(window.dispatchEvent(unloadEvent)).toBe(false);
+        expect(unloadEvent.defaultPrevented).toBe(true);
+    });
+
+    it.each([
+        ["is unavailable", undefined],
+        ["rejects the write", { writeText: vi.fn().mockRejectedValue(new Error("denied")) }],
+    ])("focuses and selects the token when clipboard access %s", async (_case, clipboard) => {
+        const user = userEvent.setup();
+        Object.defineProperty(navigator, "clipboard", {
+            configurable: true,
+            value: clipboard,
+        });
+        AutomationService.issueGrant.mockResolvedValue({
+            grant,
+            token,
+            token_environment_variable: "CAREEROS_MCP_TOKEN",
+        });
+        renderPage();
+        await screen.findByText("No grants issued");
+
+        await user.type(screen.getByLabelText("Client label"), "Manual copy");
+        await user.type(screen.getByLabelText(/Current CareerOS password/), "CurrentPassword1");
+        await user.click(screen.getByRole("button", { name: "Create grant" }));
+        const tokenField = await screen.findByLabelText("New agent token");
+        await user.click(screen.getByRole("button", { name: "Copy token" }));
+
+        await waitFor(() => expect(tokenField).toHaveFocus());
+        expect(tokenField.selectionStart).toBe(0);
+        expect(tokenField.selectionEnd).toBe(token.length);
+        expect(screen.getByText(
+            "Clipboard access is unavailable. Select and copy the text manually.",
+        )).toHaveAttribute("role", "status");
+    });
+
+    it("discards the displayed bearer when its grant is revoked", async () => {
+        const user = userEvent.setup();
+        AutomationService.issueGrant.mockResolvedValue({
+            grant,
+            token,
+            token_environment_variable: "CAREEROS_MCP_TOKEN",
+        });
+        AutomationService.revokeGrant.mockResolvedValue({
+            ...grant,
+            revoked_at: "2026-07-30T00:10:00Z",
+        });
+        renderPage();
+        await screen.findByText("No grants issued");
+
+        await user.type(screen.getByLabelText("Client label"), grant.label);
+        await user.type(screen.getByLabelText(/Current CareerOS password/), "CurrentPassword1");
+        await user.click(screen.getByRole("button", { name: "Create grant" }));
+        expect(await screen.findByLabelText("New agent token")).toHaveValue(token);
+        await user.click(screen.getByRole("button", { name: "Revoke access" }));
+        await user.type(
+            screen.getByLabelText("Enter your current password to revoke this grant"),
+            "CurrentPassword1",
+        );
+        await user.click(screen.getByRole("button", { name: "Confirm revocation" }));
+
+        expect(await screen.findByText("Revoked")).toHaveFocus();
+        expect(screen.queryByLabelText("New agent token")).not.toBeInTheDocument();
+        expect(screen.queryByRole("button", { name: "Copy token" })).not.toBeInTheDocument();
+        expect(screen.getByRole("status")).toHaveTextContent(
+            "its unsaved token was discarded",
+        );
+        expect(screen.getByRole("button", { name: "Create grant" })).not.toHaveFocus();
+    });
+
     it("keeps token-free client snippets and passes the accessibility gate", async () => {
-        const { container } = render(<main><h1>Agent access test</h1><AgentAccessPage /></main>);
+        const { container } = renderPage(
+            <main><h1>Agent access test</h1><AgentAccessPage /></main>,
+        );
         await screen.findByText("No grants issued");
 
         expect(screen.getByText("[mcp_servers.careeros]", { exact: false })).not.toHaveTextContent(token);
@@ -215,7 +516,7 @@ describe("AgentAccessPage", () => {
 
     it("does not report zero active grants when the register is unavailable", async () => {
         AutomationService.listGrants.mockRejectedValue(new Error("Database unavailable"));
-        const { container } = render(<AgentAccessPage />);
+        const { container } = renderPage();
 
         expect(await screen.findByRole("alert")).toHaveTextContent("Database unavailable");
         const unavailable = screen.getByLabelText("Agent grant count unavailable");
@@ -231,7 +532,7 @@ describe("AgentAccessPage", () => {
         AutomationService.listGrants.mockImplementation(() => new Promise((resolve) => {
             resolveRegister = resolve;
         }));
-        render(<AgentAccessPage />);
+        renderPage();
 
         expect(screen.getByRole("button", { name: "Create grant" })).toBeDisabled();
         expect(screen.getByLabelText("Client label")).toBeDisabled();

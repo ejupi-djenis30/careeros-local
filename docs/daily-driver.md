@@ -133,13 +133,16 @@ enable them deliberately.
 CareerOS shows the bearer once. Copy it only when you are ready to save it in the operating
 system's credential manager, then dismiss the panel. The page cannot recover it later. Its Codex
 and Claude Code snippets contain no credential; the client process receives the saved value
-through `CAREEROS_MCP_TOKEN`.
+through `CAREEROS_MCP_TOKEN`. CareerOS keeps you on this page while issuance is unresolved. If the
+session must end, it waits for the response and revokes any completed grant before signing out.
 
 Close CareerOS before asking the agent to read the Vault. The MCP server opens no network listener
 and cannot edit data, but the connected client may send selected results to its own provider.
 Review that provider's policy before connecting it. Return to **Agent access** to inspect expiry or
 revoke a grant after use; revocation asks for the password again. If repeated failed checks pause
-new grants, a correct password still revokes an existing grant immediately.
+new grants, CareerOS stops checking revoke passwords for the lockout window. The signed-in desktop
+session may still revoke a grant owned by that account, but it cannot create another one until the
+window ends.
 
 ## Private by default
 

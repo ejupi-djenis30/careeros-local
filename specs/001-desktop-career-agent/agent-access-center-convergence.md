@@ -11,10 +11,10 @@ boundary.
 | Requirement | Implementation | Verification |
 | --- | --- | --- |
 | Authenticated list/create/revoke | Focused automation API router using the existing grant service | Backend API and OpenAPI contract tests |
-| Current-password confirmation | Constant-work check plus serialized per-account failed-reauthentication guard | Correct, incorrect, parallel, lockout and emergency-revoke cases |
+| Current-password confirmation | Constant-work check plus serialized per-account failed-reauthentication guard and reduction-only lockout path | Correct, incorrect, parallel, password-oracle and emergency-revoke cases |
 | Complete lifecycle register | Active-grant cap plus all-active/recent-history listing | More-than-100-history and active revocation cases |
 | One-time non-cacheable bearer | Digest-only service plus path-wide no-store middleware and outer exception headers | Token persistence, early-response, validation and 500 assertions |
-| Transient renderer handling | Lazy Agent Access page and focused state controller | Explicit clipboard, focus, dismissal, unmount, storage and axe tests |
+| Transient renderer handling | Lazy Agent Access page, focused state controller and compensating late-response revocation | Explicit clipboard, manual fallback, focus, dismissal, pending navigation, unmount, storage and axe tests |
 | Least-privilege scope choice | Fixed bilingual scope picker starting at `system:read` | Component interaction and schema-bound tests |
 | Lifecycle and revocation | Active, expired and revoked rows with password-confirmed mutation | Service, UI and idempotent backend tests |
 | Honest client setup | Token-free Codex and Claude Code examples | UI assertions and source-install documentation |
@@ -25,8 +25,9 @@ boundary.
 - The OpenAPI paths, FastAPI router and frontend service use the same three endpoint shapes.
 - Pydantic request bounds match the four fixed scopes and 1-to-365-day UI choices.
 - Route output models never serialize the persisted token digest.
-- Failed checks for one account do not consume a shared loopback-IP limit, and a correct password
-  can revoke access while issuance is locked. Parallel checks for one account are serialized.
+- Failed checks for one account do not consume a shared loopback-IP limit. Once issuance is
+  locked, the desktop route performs no more password checks and can only revoke an owned grant.
+  Parallel checks and revocations for one account are serialized.
 - Every active grant remains visible even when more than 100 inactive records exist.
 - The private-path middleware wraps Trusted Host and desktop-session early exits; the outer
   exception path applies the same policy to unexpected 500 responses.
@@ -38,6 +39,11 @@ boundary.
   order or hiding security disclosure.
 - Loading and failure states never claim that zero grants exist, and creation cannot race an
   unfinished registry read.
+- Normal navigation and sign-out wait for pending issuance. Forced sign-out marks that issuance
+  abandoned and waits for its compensating revocation before invalidating the server session. A
+  forced unmount cannot display a late bearer and still attempts the same cleanup.
+- A failed Clipboard API call focuses and selects the read-only token field, and revoking a newly
+  issued grant removes its still-visible bearer.
 - The existing terminal flow remains documented as a fallback, not a competing source of truth.
 - Restore and erasure behavior remain owned by the original automation grant persistence path.
 
@@ -52,11 +58,11 @@ The integrated feature branch completed these release gates:
 
 | Gate | Command | Result |
 | --- | --- | --- |
-| Backend regression and branch coverage | `python -m pytest tests/backend -q --tb=short --cov=backend --cov-branch --cov-fail-under=80 --cov-report=term:skip-covered --cov-report=xml` | 1,525 passed, 4 skipped; 81.40% branch coverage |
+| Backend regression and branch coverage | `python -m pytest tests/backend -q --tb=short --cov=backend --cov-branch --cov-fail-under=80 --cov-report=term:skip-covered --cov-report=xml` | 1,529 passed, 4 skipped; 81.42% branch coverage |
 | Agent Access backend contracts | `python -m pytest tests/backend/automation tests/backend/unit/test_api_main.py tests/backend/unit/test_private_path_middleware.py -q --tb=short` | 85 passed |
 | Python lint | `python -m ruff check backend tests/backend alembic/versions scripts` | Passed |
 | Python type check | `python -m mypy backend scripts --ignore-missing-imports --no-error-summary` | Passed |
-| Frontend regression and coverage | `npm run test:coverage` | 70 files and 377 tests passed; 78.64% statements, 70.60% branches, 69.25% functions and 83.44% lines |
+| Frontend regression and coverage | `npm run test:coverage` | 70 files and 396 tests passed; 79.28% statements, 71.08% branches, 69.69% functions and 83.98% lines |
 | Frontend production licenses | `npm run test:licenses` | 3 checks passed |
 | Frontend lint | `npm run lint` | Passed |
 | Frontend production build | `npm run build` | Passed |

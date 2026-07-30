@@ -25,16 +25,17 @@ The focused `/api/v1/automation/grants` router exposes three operations:
 | --- | --- | --- |
 | List | Current desktop account | Every active owned `GrantView` plus 100 recent inactive rows |
 | Create | Current account plus current password | One `GrantView` and one bearer shown once |
-| Revoke | Current account plus current password | The owned revoked `GrantView` |
+| Revoke | Current account plus current password before lockout; authenticated desktop ownership during lockout | The owned revoked `GrantView` |
 
 Failed password checks are tracked in memory per account, rather than by the shared loopback
 address. Five failures within 15 minutes pause new issuance for 15 minutes. Revocation still
-verifies every submitted password during that interval, so a correct password can always revoke a
-compromised grant and clears the failure state. Password verification is serialized per account,
-so parallel requests cannot fan out expensive checks or pass a stale pre-lockout decision. Grant
-creation refuses a thirty-third active grant. Listing returns all active grants before adding at
-most 100 recent expired or revoked rows, so an active bearer cannot disappear from the management
-surface.
+verifies the submitted password until that threshold is reached. Once locked, the route does not
+inspect another password or mutate the failed-check state. The authenticated desktop session may
+only revoke an owned grant, so it can remove exposed authority without creating a password oracle
+or clearing the issuance lock. Password checks and revocations are serialized per account, so
+parallel requests cannot fan out expensive checks or pass a stale lockout decision. Grant creation
+refuses a thirty-third active grant. Listing returns all active grants before adding at most 100
+recent expired or revoked rows, so an active bearer cannot disappear from the management surface.
 
 An outer ASGI middleware marks every response below this path
 `Cache-Control: no-store, max-age=0` and `Pragma: no-cache`, including authentication, validation,
@@ -59,13 +60,21 @@ The one-time bearer exists only in component state and an in-memory ref:
 1. creation does not call the Clipboard API;
 2. the user must choose **Copy token**;
 3. dismissal clears both state and the ref;
-4. route unmount clears the ref and destroys the component state;
-5. no storage API, query string, URL, log or configuration snippet receives the bearer.
+4. normal links and sign-out wait while issuance is unresolved;
+5. forced sign-out marks the pending result abandoned, waits for its compensating revocation and
+   only then invalidates the authenticated server session;
+6. if the page is forcibly unmounted and the response still arrives, the controller immediately
+   attempts to revoke that new grant with the already submitted confirmation;
+7. route unmount clears the ref and destroys the component state;
+8. no storage API, query string, URL, log or configuration snippet receives the bearer.
 
 Creation moves focus to the one-time panel and announces only that the grant is ready, never the
-bearer. Dismissal returns focus to the issuance button. Revocation is an inline, keyboard-operable
+bearer. A clipboard failure focuses and selects the read-only token field for manual copying.
+Dismissal returns focus to the issuance button. Revocation is an inline, keyboard-operable
 confirmation that asks for the password again; cancelling returns focus to that grant's revoke
-button. Successful revocation moves focus to the new revoked status and announces the result.
+button. Successful revocation moves focus to the new revoked status and announces the result. If
+the revoked grant owns the still-visible one-time token, CareerOS clears that token before the
+announcement.
 Only one revocation can be in flight. A failed create or revoke keeps the non-secret form context
 visible, clears the password and reports a bounded error. Creation stays disabled until the access
 register loads successfully; while its state is unknown, the metric shows unavailable rather than
@@ -91,10 +100,11 @@ required.
 | Browser or intermediary caching | Path-wide no-store middleware plus response contracts |
 | Cross-user listing or revocation | User id is taken from the authenticated account and included in every query |
 | Password or bearer in diagnostics | `SecretStr`, content-free errors, logging redaction and tests |
-| Parallel password fan-out or blocked emergency revoke | Per-account serialized guard; correct-password revocation bypasses the issuance lock |
+| Parallel password fan-out or blocked emergency revoke | Per-account serialized guard; locked sessions inspect no more passwords and may only revoke owned grants |
 | Active grant hidden by recent history | Active-grant cap plus a list contract that always returns every active row |
 | False zero while the register is unavailable | Unknown-state metric and disabled issuance until a successful list |
 | Silent clipboard disclosure | Clipboard call exists only behind an explicit button |
+| Grant finishes after route exit | Normal exits are blocked while pending; a late result triggers best-effort owned revocation |
 | Broad default access | Initial selection contains only content-free `system:read` |
 | Concurrent desktop and agent reads | Existing exclusive lease returns `vault_busy` |
 | Configuration committed with a token | Displayed snippets contain only the environment-variable name |

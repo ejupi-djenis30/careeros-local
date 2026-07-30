@@ -5,7 +5,6 @@ describe('ApiClient — extended coverage', () => {
   beforeEach(() => {
     ApiClient.setToken(null);
     ApiClient._refreshPromise = null;
-    ApiClient._suppressUnauthorized = false;
   });
 
   afterEach(() => {

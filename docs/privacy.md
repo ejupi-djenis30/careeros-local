@@ -69,8 +69,10 @@ grant after use. Never store the bearer token in a repository or paste it into a
 Grant management uses the authenticated loopback desktop API, but the desktop access token is
 never accepted as an MCP credential. The management API returns no resume, application or Career
 Vault content. It tracks failed password checks per account and can pause new grant creation after
-repeated failures; a correct password can still revoke an existing grant immediately. Stable
-errors and later list responses contain no bearer or password.
+repeated failures. Once locked, the revoke route stops inspecting passwords and lets the already
+authenticated desktop session perform only an owned-grant revocation. It cannot issue access,
+inspect another account's grants or clear the lockout. Stable errors and later list responses
+contain no bearer or password.
 
 Each CLI command and MCP tool call uses the same exclusive vault lease as the desktop sidecar.
 MCP releases it after bootstrap and after every call, so an idle server does not keep the desktop

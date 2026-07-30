@@ -4,6 +4,7 @@ import { CopyButton } from "./AgentAccessShared";
 
 export function AgentAccessTokenPanel({ issued, onCopyResult, onDismiss, t }) {
     const titleRef = useRef(null);
+    const tokenRef = useRef(null);
 
     useEffect(() => {
         if (issued) titleRef.current?.focus();
@@ -26,13 +27,23 @@ export function AgentAccessTokenPanel({ issued, onCopyResult, onDismiss, t }) {
                 </div>
                 <i className="bi bi-eye-slash" aria-hidden="true" />
             </div>
-            <code className="agent-token" aria-label={t("agentAccess.tokenLabel")}>{issued.token}</code>
+            <textarea
+                ref={tokenRef}
+                className="agent-token"
+                aria-label={t("agentAccess.tokenLabel")}
+                value={issued.token}
+                readOnly
+                rows="3"
+                spellCheck="false"
+                onFocus={(event) => event.currentTarget.select()}
+            />
             <div className="agent-token-panel__actions">
                 <CopyButton
                     value={issued.token}
                     label={t("agentAccess.copyToken")}
                     copiedLabel={t("agentAccess.copied")}
                     onResult={onCopyResult}
+                    fallbackRef={tokenRef}
                 />
                 <button
                     type="button"

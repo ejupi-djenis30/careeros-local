@@ -33,7 +33,10 @@ class DesktopSessionMiddleware:
             response = JSONResponse(
                 status_code=403,
                 content={"detail": "Desktop session authorization failed"},
-                headers={"Cache-Control": "no-store"},
+                headers={
+                    "Cache-Control": "no-store, max-age=0",
+                    "Pragma": "no-cache",
+                },
             )
             await response(scope, receive, send)
             return

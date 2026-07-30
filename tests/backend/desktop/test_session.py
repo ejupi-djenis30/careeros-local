@@ -19,10 +19,18 @@ def _client(token: str = "t" * 43) -> TestClient:
 
 def test_desktop_session_rejects_missing_and_wrong_tokens() -> None:
     with _client() as client:
-        assert client.get("/private").status_code == 403
-        assert client.get(
+        missing = client.get("/private")
+        wrong = client.get(
             "/private", headers={"X-CareerOS-Session": "x" * 43}
-        ).status_code == 403
+        )
+
+        for response in (missing, wrong):
+            assert response.status_code == 403
+            assert response.json() == {
+                "detail": "Desktop session authorization failed"
+            }
+            assert response.headers["cache-control"] == "no-store, max-age=0"
+            assert response.headers["pragma"] == "no-cache"
 
 
 def test_desktop_session_accepts_exact_token_and_preflight() -> None:

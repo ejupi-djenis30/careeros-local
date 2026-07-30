@@ -446,7 +446,8 @@ Add an Agent Access center to the authenticated desktop without widening the MCP
 focused FastAPI router reuses the grant service and current user id, re-verifies the account
 password for create and revoke, bounds failed checks per account, returns every response as
 non-cacheable, and exposes only `GrantView` metadata from list/revoke. Repeated failures may lock
-new issuance, but a correct password always clears that state and can revoke an exposed grant.
+new issuance. During that window, the route does not inspect more revoke passwords or clear the
+lock; the authenticated desktop session may only revoke an owned grant.
 The service caps new active grants and lists every active row plus bounded recent history. The
 create response is the one exception: it returns the new bearer once and never persists or logs
 it. The desktop access token remains an API credential only and is never accepted by the CLI or
@@ -454,6 +455,9 @@ MCP server.
 
 Load the Agent Access page lazily from the existing workspace shell. Keep the one-time bearer in
 component state only, clear it on dismissal and unmount, and copy it only from an explicit button.
+Wait on ordinary navigation and sign-out while issuance is unresolved; if a forced unmount still
+receives a successful result, immediately attempt a compensating revocation. A forced sign-out
+must wait for that cleanup before invalidating the authenticated server session.
 The page explains each fixed read scope, the exclusive vault lease, the external client/provider
 boundary and the current source-install requirement. It lists owned grants with active, expired
 and revoked states, supports password-confirmed revocation, and prints token-free Codex and Claude

@@ -5,6 +5,9 @@ import { errorMessage, grantState } from "./agentAccessModel";
 
 export function useAgentAccessController(t) {
     const tokenRef = useRef(null);
+    const issuedRef = useRef(null);
+    const mountedRef = useRef(true);
+    const pendingIssuanceRef = useRef(null);
     const [grants, setGrants] = useState([]);
     const [loading, setLoading] = useState(true);
     const [loadError, setLoadError] = useState("");
@@ -15,6 +18,7 @@ export function useAgentAccessController(t) {
     const [password, setPassword] = useState("");
     const [creating, setCreating] = useState(false);
     const [issued, setIssued] = useState(null);
+    const [issuedRemovalReason, setIssuedRemovalReason] = useState("");
     const [createMessage, setCreateMessage] = useState("");
     const [revokingId, setRevokingId] = useState("");
     const [revokePassword, setRevokePassword] = useState("");
@@ -43,8 +47,16 @@ export function useAgentAccessController(t) {
         };
     }, [refreshRevision, t]);
 
-    useEffect(() => () => {
-        tokenRef.current = null;
+    useEffect(() => {
+        mountedRef.current = true;
+        return () => {
+            mountedRef.current = false;
+            tokenRef.current = null;
+            issuedRef.current = null;
+            if (pendingIssuanceRef.current) {
+                pendingIssuanceRef.current.abandoned = true;
+            }
+        };
     }, []);
 
     useEffect(() => {
@@ -67,17 +79,48 @@ export function useAgentAccessController(t) {
 
     const issueGrant = async (event) => {
         event.preventDefault();
-        if (issued || loading || loadError || scopes.length === 0) return;
+        if (
+            pendingIssuanceRef.current
+            || creating
+            || issued
+            || loading
+            || loadError
+            || scopes.length === 0
+        ) return;
+        const submittedPassword = password;
+        let resolveSettlement;
+        const issuance = {
+            abandoned: false,
+            settled: new Promise((resolve) => {
+                resolveSettlement = resolve;
+            }),
+        };
+        pendingIssuanceRef.current = issuance;
         setCreating(true);
         setCreateMessage("");
+        setIssuedRemovalReason("");
         try {
             const result = await AutomationService.issueGrant({
                 label: label.trim(),
                 scopes,
                 lifetime_days: Number(lifetimeDays),
-                password,
+                password: submittedPassword,
             });
+            if (!mountedRef.current || issuance.abandoned) {
+                tokenRef.current = null;
+                try {
+                    await AutomationService.revokeGrant(
+                        result.grant.id,
+                        submittedPassword,
+                    );
+                } catch {
+                    // The authenticated session is the last safe place to retry;
+                    // the grant remains visible in the register if cleanup fails.
+                }
+                return;
+            }
             tokenRef.current = result.token;
+            issuedRef.current = result;
             setIssued(result);
             setGrants((current) => [
                 result.grant,
@@ -87,15 +130,25 @@ export function useAgentAccessController(t) {
             setScopes(["system:read"]);
             setLifetimeDays("30");
         } catch (error) {
-            setCreateMessage(errorMessage(error, t, "agentAccess.error.issue"));
+            if (mountedRef.current) {
+                setCreateMessage(errorMessage(error, t, "agentAccess.error.issue"));
+            }
         } finally {
-            setPassword("");
-            setCreating(false);
+            if (pendingIssuanceRef.current === issuance) {
+                pendingIssuanceRef.current = null;
+            }
+            if (mountedRef.current) {
+                setPassword("");
+                setCreating(false);
+            }
+            resolveSettlement();
         }
     };
 
     const dismissToken = () => {
         tokenRef.current = null;
+        issuedRef.current = null;
+        setIssuedRemovalReason("dismissed");
         setIssued(null);
         setCopyMessage("");
     };
@@ -123,10 +176,23 @@ export function useAgentAccessController(t) {
             setGrants((current) => current.map((grant) => (
                 grant.id === result.id ? result : grant
             )));
+            const discardedIssuedToken = issuedRef.current?.grant.id === result.id;
+            if (discardedIssuedToken) {
+                tokenRef.current = null;
+                issuedRef.current = null;
+                setIssuedRemovalReason("revoked");
+                setIssued(null);
+                setCopyMessage("");
+            }
             cancelRevoke();
-            setRevokeAnnouncement(t("agentAccess.revokedAnnouncement", {
+            setRevokeAnnouncement(t(
+                discardedIssuedToken
+                    ? "agentAccess.revokedIssuedAnnouncement"
+                    : "agentAccess.revokedAnnouncement",
+                {
                 label: result.label,
-            }));
+                },
+            ));
         } catch (error) {
             setRevokeMessage(errorMessage(error, t, "agentAccess.error.revoke"));
         } finally {
@@ -145,6 +211,17 @@ export function useAgentAccessController(t) {
         setRefreshRevision((value) => value + 1);
     };
 
+    const reportPendingNavigation = () => {
+        setCreateMessage(t("agentAccess.pendingNavigation"));
+    };
+
+    const abandonPendingIssuance = () => {
+        const pending = pendingIssuanceRef.current;
+        if (!pending) return Promise.resolve();
+        pending.abandoned = true;
+        return pending.settled;
+    };
+
     return {
         state: {
             activeCount,
@@ -153,6 +230,7 @@ export function useAgentAccessController(t) {
             creating,
             grants,
             issued,
+            issuedRemovalReason,
             label,
             lifetimeDays,
             loadError,
@@ -167,11 +245,13 @@ export function useAgentAccessController(t) {
             scopes,
         },
         actions: {
+            abandonPendingIssuance,
             beginRevoke,
             cancelRevoke,
             dismissToken,
             issueGrant,
             reportCopy,
+            reportPendingNavigation,
             retryLoad,
             revokeGrant,
             setLabel,

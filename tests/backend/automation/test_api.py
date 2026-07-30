@@ -183,7 +183,6 @@ def test_parallel_failed_reauthentication_is_serialized_and_stops_at_lockout(
                 object(),
                 user_id=77,
                 password="incorrect-password",
-                allow_during_lockout=False,
             )
         except HTTPException as exc:
             return exc.status_code
@@ -201,54 +200,110 @@ def test_parallel_failed_reauthentication_is_serialized_and_stops_at_lockout(
             object(),
             user_id=77,
             password="correct-password",
-            allow_during_lockout=False,
         )
     assert locked.value.status_code == 429
     assert verification_calls == 5
 
 
-def test_correct_password_can_always_revoke_during_creation_lockout(
+def test_locked_account_uses_session_only_revocation_without_password_oracle(
+    monkeypatch,
     client,
     auth_headers,
     db_session,
     test_user,
 ) -> None:
-    grant = AutomationGrant(
-        user_id=test_user.id,
-        label="Emergency revocation",
-        token_digest="e" * 64,
+    other = User(
+        username="other-emergency-revoke-user",
+        hashed_password=get_password_hash("Otherpass1"),
+    )
+    db_session.add(other)
+    db_session.flush()
+    grants = [
+        AutomationGrant(
+            user_id=test_user.id,
+            label=f"Emergency revocation {index}",
+            token_digest=f"{index + 10:064x}",
+            scopes=["system:read"],
+            expires_at=datetime.now(UTC) + timedelta(days=30),
+        )
+        for index in range(2)
+    ]
+    foreign = AutomationGrant(
+        user_id=other.id,
+        label="Foreign emergency revocation",
+        token_digest="f" * 64,
         scopes=["system:read"],
         expires_at=datetime.now(UTC) + timedelta(days=30),
     )
-    db_session.add(grant)
+    db_session.add_all([*grants, foreign])
     db_session.commit()
 
-    wrong_attempts = [
-        client.post(
-            f"{ENDPOINT}/{grant.id}/revoke",
-            headers=auth_headers,
-            json={"password": "incorrect-password"},
-        )
-        for _ in range(8)
-    ]
-    assert wrong_attempts[-1].status_code == 429
+    original_verify_password = automation_routes.verify_password
+    verification_calls = 0
 
-    revoked = client.post(
-        f"{ENDPOINT}/{grant.id}/revoke",
+    def counted_verify_password(password: str, hashed_password: str) -> bool:
+        nonlocal verification_calls
+        verification_calls += 1
+        return original_verify_password(password, hashed_password)
+
+    monkeypatch.setattr(
+        automation_routes,
+        "verify_password",
+        counted_verify_password,
+    )
+    failures = [
+        client.post(
+            ENDPOINT,
+            headers=auth_headers,
+            json=_payload(password="incorrect-password"),
+        )
+        for _ in range(5)
+    ]
+    assert [response.status_code for response in failures] == [403, 403, 403, 403, 429]
+    assert verification_calls == 5
+    initial_retry_after = int(failures[-1].headers["retry-after"])
+
+    revoked_with_wrong_password = client.post(
+        f"{ENDPOINT}/{grants[0].id}/revoke",
+        headers=auth_headers,
+        json={"password": "still-incorrect"},
+    )
+    revoked_with_correct_password = client.post(
+        f"{ENDPOINT}/{grants[1].id}/revoke",
         headers=auth_headers,
         json={"password": "Globalpass1"},
     )
-
-    assert revoked.status_code == 200
-    assert revoked.json()["revoked_at"] is not None
-    assert revoked.headers["cache-control"] == "no-store, max-age=0"
-
-    created_after_emergency_revoke = client.post(
+    repeated = client.post(
+        f"{ENDPOINT}/{grants[0].id}/revoke",
+        headers=auth_headers,
+        json={"password": "another-ignored-value"},
+    )
+    foreign_response = client.post(
+        f"{ENDPOINT}/{foreign.id}/revoke",
+        headers=auth_headers,
+        json={"password": "Globalpass1"},
+    )
+    unknown_response = client.post(
+        f"{ENDPOINT}/{uuid.uuid4()}/revoke",
+        headers=auth_headers,
+        json={"password": "still-incorrect"},
+    )
+    still_locked = client.post(
         ENDPOINT,
         headers=auth_headers,
-        json=_payload(label="Post-revocation agent"),
+        json=_payload(label="Post-revocation agent", password="Globalpass1"),
     )
-    assert created_after_emergency_revoke.status_code == 201
+
+    assert revoked_with_wrong_password.status_code == 200
+    assert revoked_with_correct_password.status_code == 200
+    assert repeated.status_code == 200
+    assert revoked_with_wrong_password.json()["revoked_at"] is not None
+    assert revoked_with_correct_password.json()["revoked_at"] is not None
+    assert foreign_response.status_code == 404
+    assert unknown_response.status_code == 404
+    assert still_locked.status_code == 429
+    assert int(still_locked.headers["retry-after"]) <= initial_retry_after
+    assert verification_calls == 5
 
 
 @pytest.mark.parametrize(

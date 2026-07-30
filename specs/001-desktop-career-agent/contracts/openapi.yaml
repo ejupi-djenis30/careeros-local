@@ -37,6 +37,14 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/PrivateErrorResponse" }
+        "403":
+          description: Desktop session authorization failed.
+          headers:
+            Cache-Control: { $ref: "#/components/headers/PrivateCacheControl" }
+            Pragma: { $ref: "#/components/headers/PrivatePragma" }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PrivateErrorResponse" }
         "500":
           description: The local access register could not be read.
           headers:
@@ -74,13 +82,16 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/PrivateErrorResponse" }
         "403":
-          description: The current CareerOS password did not match (`authentication_failed`).
+          description: The current CareerOS password did not match (`authentication_failed`), or desktop session authorization failed.
           headers:
             Cache-Control: { $ref: "#/components/headers/PrivateCacheControl" }
             Pragma: { $ref: "#/components/headers/PrivatePragma" }
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/AutomationErrorResponse" }
+              schema:
+                oneOf:
+                  - { $ref: "#/components/schemas/AutomationErrorResponse" }
+                  - { $ref: "#/components/schemas/PrivateErrorResponse" }
         "409":
           description: The account already has the maximum number of active grants (`active_grant_limit`).
           headers:
@@ -159,13 +170,16 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/PrivateErrorResponse" }
         "403":
-          description: The current CareerOS password did not match (`authentication_failed`).
+          description: The current CareerOS password did not match (`authentication_failed`), or desktop session authorization failed.
           headers:
             Cache-Control: { $ref: "#/components/headers/PrivateCacheControl" }
             Pragma: { $ref: "#/components/headers/PrivatePragma" }
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/AutomationErrorResponse" }
+              schema:
+                oneOf:
+                  - { $ref: "#/components/schemas/AutomationErrorResponse" }
+                  - { $ref: "#/components/schemas/PrivateErrorResponse" }
         "404":
           description: The grant does not belong to this account (`grant_not_found`).
           headers:
@@ -183,7 +197,7 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/ValidationErrorResponse" }
         "429":
-          description: The submitted password failed after repeated checks. A correct password may still revoke the grant.
+          description: This failed password check activated issuance lockout. While locked, the authenticated desktop session may revoke an owned grant without inspecting any submitted password.
           headers:
             Cache-Control: { $ref: "#/components/headers/PrivateCacheControl" }
             Pragma: { $ref: "#/components/headers/PrivatePragma" }

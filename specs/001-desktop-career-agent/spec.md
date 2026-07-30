@@ -556,6 +556,8 @@ fails with `vault_busy` instead of opening another connection.
   transmit returned metadata outside the device. Documentation MUST distinguish CareerOS's
   no-egress stdio server from the separate privacy policy of the connected client and provider.
 - **FR-066**: Users MUST be able to list and revoke their grants after another password check.
+  If the desktop management route is already in an issuance lockout, it MUST NOT inspect further
+  passwords and MAY only revoke a grant owned by the authenticated account.
   Restore MUST revoke active automation grants and complete vault erasure MUST delete them.
 - **FR-067**: Every successful provider observation MUST refresh the canonical listing before
   per-profile deduplication. Listings MUST retain first-seen, last-seen, last-content-change and
@@ -632,9 +634,10 @@ fails with `vault_busy` instead of opening another connection.
   Accepted candidates MUST remain `imported` until the user reviews and explicitly confirms them.
 - **FR-082**: The authenticated local API MUST expose only owned automation-grant metadata plus
   explicit create and revoke operations. Create and revoke MUST re-verify the current account
-  password, enforce bounded labels, lifetimes, fixed read scopes and active-grant count, and set
-  `Cache-Control: no-store`. Repeated password failures MUST be bounded per account. They MAY
-  temporarily pause issuance but MUST NOT prevent a correct password from revoking an existing
+  password before lockout, enforce bounded labels, lifetimes, fixed read scopes and active-grant
+  count, and set `Cache-Control: no-store`. Repeated password failures MUST be bounded per account.
+  They MAY temporarily pause issuance. While locked, a revoke request MUST NOT inspect its password
+  or mutate the failed-check state; the authenticated desktop session MAY only revoke an owned
   grant. Listing MUST return every active owned grant plus bounded recent history. Creation MAY
   return the bearer only in that successful response; listing and revocation MUST never return or
   reconstruct it.
@@ -645,7 +648,11 @@ fails with `vault_busy` instead of opening another connection.
   write it to browser storage, and never copy it without an explicit user action. Setup copy MUST
   state truthfully that the `careeros` command is source-installed. One-time token appearance MUST
   be announced without reading the bearer, receive programmatic focus and restore focus to the
-  issuance control after dismissal.
+  issuance control after dismissal. Ordinary navigation and sign-out MUST wait for unresolved
+  issuance. If a successful result arrives after forced unmount, the client MUST attempt to revoke
+  that grant without displaying or storing its bearer. Forced sign-out MUST wait for this
+  compensating cleanup before invalidating the authenticated server session. Clipboard failure
+  MUST focus and select a keyboard-accessible read-only token field.
 
 ### Key Entities
 

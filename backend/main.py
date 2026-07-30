@@ -11,6 +11,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
+from fastapi.openapi.utils import get_openapi
 from fastapi.responses import JSONResponse
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
@@ -334,6 +335,37 @@ def _check_migration_status() -> str:
 
 # ─── Routes ───
 app.include_router(api_router, prefix=settings.API_V1_STR)
+
+
+def _openapi_schema() -> dict:
+    """Describe the two desktop authentication factors as one AND requirement."""
+    if app.openapi_schema is not None:
+        return app.openapi_schema
+    schema = get_openapi(
+        title=app.title,
+        version=app.version,
+        openapi_version=app.openapi_version,
+        description=app.description,
+        routes=app.routes,
+    )
+    automation_paths = (
+        f"{settings.API_V1_STR}/automation/grants",
+        f"{settings.API_V1_STR}/automation/grants/{{grant_id}}/revoke",
+    )
+    for path in automation_paths:
+        for operation in schema["paths"].get(path, {}).values():
+            if isinstance(operation, dict) and "responses" in operation:
+                operation["security"] = [
+                    {
+                        "desktopSession": [],
+                        "OAuth2PasswordBearer": [],
+                    }
+                ]
+    app.openapi_schema = schema
+    return schema
+
+
+setattr(app, "openapi", _openapi_schema)
 
 
 @app.get(f"{settings.API_V1_STR}/health")

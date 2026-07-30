@@ -234,13 +234,17 @@ Open the desktop app, sign in and choose **Agent access** in the Career workspac
 select only the reads it needs, choose an expiry and confirm with your current CareerOS password.
 The new bearer appears once. CareerOS keeps only its SHA-256 digest, so save the bearer in the
 operating system's credential manager before dismissing the panel. The page never copies it
-automatically or writes it to browser storage.
+automatically or writes it to browser storage. While a bearer is being issued, CareerOS keeps you
+on that page. If the session must end, it waits for the response and revokes any completed grant
+before signing out.
 
 The same page shows active, expired and revoked grants, supports password-confirmed revocation and
 provides token-free Codex and Claude Code setup snippets. Close the desktop app before the agent
 makes a tool call. CareerOS gives the desktop and agent the same exclusive vault lease rather than
 letting two processes read it at once. Repeated failed password checks pause new grant creation for
-that account, but the correct password can always revoke an existing grant immediately.
+that account. During that lockout, CareerOS does not inspect any password submitted to the revoke
+route: the already authenticated desktop session may only reduce its own authority by revoking an
+owned grant. New issuance stays locked until the timer expires.
 
 The terminal flow remains available for scripts and recovery. Close the desktop, check the local
 setup and create a 30-day grant with only the reads the agent needs:
