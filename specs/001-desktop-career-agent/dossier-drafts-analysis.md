@@ -83,6 +83,6 @@ authorship or confidentiality. Publication and restore remain bounded by the loc
 transactional preflight and platform filesystem guarantees described in the architecture and
 privacy documentation.
 
-The review branch is three dependency-only commits behind `origin/main`; integrating those upstream
-updates is separate from the dossier-draft behavior and should happen before release validation on
-the exact merged commit.
+Dependency updates remain separate from the dossier-draft behavior. Release validation must run on
+the exact integrated candidate, including its current dependency locks, rather than relying on an
+earlier feature-branch snapshot.

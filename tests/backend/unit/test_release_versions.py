@@ -15,9 +15,9 @@ ROOT = Path(__file__).resolve().parents[3]
 def test_repository_release_versions_are_consistent() -> None:
     versions = release_versions(ROOT)
 
-    assert validate_versions(versions) == "1.8.0"
-    assert changelog_release_date("1.8.0", ROOT) == "2026-07-26"
-    assert validate_release_date("1.8.0", "2026-07-26", ROOT) == "2026-07-26"
+    assert validate_versions(versions) == "1.9.0"
+    assert changelog_release_date("1.9.0", ROOT) == "2026-07-30"
+    assert validate_release_date("1.9.0", "2026-07-30", ROOT) == "2026-07-30"
     assert len(versions) == 7
 
 

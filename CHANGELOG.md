@@ -5,6 +5,8 @@ All notable changes to CareerOS Local are documented here. The format follows
 
 ## [Unreleased]
 
+## [1.9.0] - 2026-07-30
+
 ### Added
 
 - First-time users can now start the Career Vault from an existing CV. CareerOS creates the
@@ -13,6 +15,9 @@ All notable changes to CareerOS Local are documented here. The format follows
 - Application dossiers now autosave one private, revisioned working draft per application in the
   local SQLite vault. Save failures and edit conflicts keep the current form intact, and users can
   retry, keep their local version or discard the saved draft explicitly.
+- Added an authenticated Agent Access center for issuing, reviewing and revoking scoped CLI and
+  MCP grants from the desktop. Bearers are shown once, never copied automatically and remain
+  separate from the desktop session.
 
 ### Changed
 
@@ -21,6 +26,22 @@ All notable changes to CareerOS Local are documented here. The format follows
   Existing API clients may still publish directly when no working draft exists.
 - Portable backups now use archive format v6 so dossier drafts survive device migration, while
   formats v1 through v5 remain inspectable and restorable.
+- The project Page now includes a branded 404 route, a repository-scoped crawler policy, one
+  canonical sitemap, explicit no-Jekyll publishing and an RFC 9116 security contact that routes
+  private reports through GitHub Security Advisories.
+- Updated the reviewed direct Python dependencies to FastAPI 0.140.7, greenlet 3.5.4, httpx2
+  2.9.1, Ruff 0.16.0, pre-commit 4.6.1 and types-reportlab 4.5.1.20260728, then regenerated the
+  hash-locked application and development graphs with Python 3.12 and pip-tools 7.6.0.
+- Updated the Page and responsive-browser checks to Playwright 1.62.0.
+
+### Fixed
+
+- Password reauthentication for Agent Access is serialized per account, limits repeated issuance
+  attempts and still permits an authenticated user to revoke an owned grant during lockout.
+- Agent Access now clears or compensating-revokes a one-time bearer when issuance finishes after
+  sign-out, navigation or an unmount, and every management response is explicitly non-cacheable.
+- Dossier saves re-check the application and resume binding after acquiring the SQLite writer
+  transaction. Publication conditionally consumes only the exact draft revision that was reviewed.
 
 ## [1.8.0] - 2026-07-26
 
@@ -360,7 +381,8 @@ All notable changes to CareerOS Local are documented here. The format follows
   autosave/revision loop.
 - Removed the rate-limit error and incomplete pipeline from public screenshots.
 
-[Unreleased]: https://github.com/ejupi-djenis30/careeros-local/compare/v1.8.0...HEAD
+[Unreleased]: https://github.com/ejupi-djenis30/careeros-local/compare/v1.9.0...HEAD
+[1.9.0]: https://github.com/ejupi-djenis30/careeros-local/compare/v1.8.0...v1.9.0
 [1.8.0]: https://github.com/ejupi-djenis30/careeros-local/compare/v1.7.0...v1.8.0
 [1.7.0]: https://github.com/ejupi-djenis30/careeros-local/compare/v1.6.0...v1.7.0
 [1.6.0]: https://github.com/ejupi-djenis30/careeros-local/compare/v1.5.0...v1.6.0
