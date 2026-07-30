@@ -25,16 +25,19 @@ flowchart LR
 ## Automation boundary
 
 `backend/automation` provides one least-privilege facade for both the `careeros` CLI and the MCP
-server. It does not call the loopback HTTP API or reuse the desktop session token. Instead, the
-process configures the existing vault from the operating-system application-data directory,
-verifies the Alembic head, acquires `desktop_instance_lease`, authenticates a bearer grant and
-opens a fresh SQLAlchemy session for each read.
+server. It does not call the desktop sidecar's loopback HTTP API or reuse the desktop session
+token. Instead, the process configures the existing vault from the operating-system
+application-data directory, verifies the Alembic head, acquires `desktop_instance_lease`,
+authenticates a bearer grant and opens a fresh SQLAlchemy session for each read. The read engine
+opens the SQLite file with URI `mode=ro`, applies `PRAGMA query_only=ON` and verifies that pragma on
+every connection before exposing the session.
 
 Only `authorize` may migrate an older vault, and it does so while the desktop app is closed.
 Ordinary CLI reads and MCP startup fail with `migration_required` rather than changing the schema.
 A CLI command holds the lease for its operation. MCP acquires it for bootstrap, releases it while
 idle, then reacquires it for each tool call. This keeps the established single-writer rule without
-forcing the desktop to remain closed for the life of an agent session.
+forcing the desktop to remain closed for the life of an agent session. Grant authorization and
+revocation use a separate, password-confirmed write path; MCP exposes neither operation.
 
 An automation grant belongs to exactly one CareerOS user. It stores a label, allowed scopes,
 expiry and revocation time alongside a SHA-256 digest of a randomly generated bearer token. The
@@ -65,11 +68,14 @@ unauthenticated `doctor` setup command is separate from the tool facade and inte
 the resolved data directory so a local operator can diagnose configuration.
 
 MCP startup requires `--acknowledge-agent-disclosure` because the connected client controls what
-happens after a result leaves the process over stdio. CareerOS opens no provider connection, but
-Codex, Claude Code or another client may include returned private metadata in a remote request.
-Before every tool read, MCP obtains the vault lease and authenticates the bearer token again. An
-expired or revoked grant fails on the next call; a grant whose identity or scopes changed requires
-a new MCP session. If the desktop owns the lease, the tool returns `vault_busy`.
+happens after a result leaves the process over stdio. Ordinary vault reads make no outbound or
+cloud request. `get_local_model_status` may make a content-free HTTP readiness probe only to the
+configured, allowlisted local-runtime endpoint. This is loopback by default; container deployments
+may explicitly allow a single-label runtime alias. The probe sends no Vault content or prompt.
+Codex, Claude Code or another client may still include returned private metadata in a remote
+request. Before every tool read, MCP obtains the vault lease and authenticates the bearer token
+again. An expired or revoked grant fails on the next call; a grant whose identity or scopes changed
+requires a new MCP session. If the desktop owns the lease, the tool returns `vault_busy`.
 
 ## Native boundary
 

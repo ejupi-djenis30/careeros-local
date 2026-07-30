@@ -124,9 +124,13 @@ authenticated, so keep them in an encrypted location you control.
 
 ## Connect a coding agent
 
-Install the source package as described in the main README, then open **Agent access** from the
-Career workspace. Give the client a recognizable label, leave only the scopes it needs, choose a
-short expiry and enter your current CareerOS password. System status is selected first because it
+Install a CareerOS wheel into a dedicated Python environment as described in the
+[main README](../README.md#use-careeros-from-codex-or-claude-code). The wheel is separate from the
+desktop installers; do not assume it is a GitHub Release asset unless that release lists both the
+wheel and its reviewed `requirements.lock`. Install the lock with `--require-hashes`, then install
+the wheel with `--no-deps`, exactly as shown in the README. Open **Agent access** from the Career
+workspace, give the client a recognizable label, leave only the scopes it needs, choose a short
+expiry and enter your current CareerOS password. System status is selected first because it
 contains no career content. Resume and application scopes disclose useful private metadata, so
 enable them deliberately.
 
@@ -136,13 +140,15 @@ and Claude Code snippets contain no credential; the client process receives the 
 through `CAREEROS_MCP_TOKEN`. CareerOS keeps you on this page while issuance is unresolved. If the
 session must end, it waits for the response and revokes any completed grant before signing out.
 
-Close CareerOS before asking the agent to read the Vault. The MCP server opens no network listener
-and cannot edit data, but the connected client may send selected results to its own provider.
-Review that provider's policy before connecting it. Return to **Agent access** to inspect expiry or
-revoke a grant after use; revocation asks for the password again. If repeated failed checks pause
-new grants, CareerOS stops checking revoke passwords for the lockout window. The signed-in desktop
-session may still revoke a grant owned by that account, but it cannot create another one until the
-window ends.
+Close CareerOS before asking the agent to read the Vault. The MCP server opens no network listener,
+cannot edit data and makes no outbound or cloud request for ordinary vault reads. Model status may
+make a content-free HTTP readiness probe to the configured, allowlisted local-runtime endpoint.
+This is loopback by default; container deployments may explicitly allow a single-label runtime
+alias. The connected client may still send selected results to its own provider, so review that
+provider's policy before connecting it. Return to **Agent access** to inspect expiry or revoke a
+grant after use; revocation asks for the password again. If repeated failed checks pause new grants,
+CareerOS stops checking revoke passwords for the lockout window. The signed-in desktop session may
+still revoke a grant owned by that account, but it cannot create another one until the window ends.
 
 ## Private by default
 

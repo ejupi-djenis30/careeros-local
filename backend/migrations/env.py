@@ -5,16 +5,15 @@ Reads DATABASE_URL from environment and uses the application's
 SQLAlchemy Base metadata for auto-generating migrations.
 """
 
-import os
 import sys
 from logging.config import fileConfig
-
-from sqlalchemy import engine_from_config, pool
+from pathlib import Path
 
 from alembic import context
+from sqlalchemy import engine_from_config, pool
 
-# Add project root to path so we can import backend modules
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+# Keep direct `alembic` development commands importable from outside the checkout.
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from dotenv import load_dotenv
 

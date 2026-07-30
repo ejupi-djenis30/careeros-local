@@ -4,9 +4,9 @@ from tempfile import TemporaryDirectory
 
 import pytest
 import sqlalchemy as sa
+from alembic import command
 from alembic.config import Config
 
-from alembic import command
 from backend.core.config import settings
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
@@ -14,7 +14,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[3]
 
 def _alembic_config(database_url: str) -> Config:
     config = Config(str(PROJECT_ROOT / "alembic.ini"))
-    config.set_main_option("script_location", str(PROJECT_ROOT / "alembic"))
+    config.set_main_option("script_location", str(PROJECT_ROOT / "backend" / "migrations"))
     config.set_main_option("sqlalchemy.url", database_url)
     return config
 

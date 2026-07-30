@@ -312,9 +312,11 @@ def _expected_migration_heads() -> frozenset[str]:
     from alembic.config import Config
     from alembic.script import ScriptDirectory
 
-    repository_root = Path(__file__).resolve().parents[1]
-    config = Config(str(repository_root / "alembic.ini"))
-    config.set_main_option("script_location", str(repository_root / "alembic"))
+    from backend.migrations.resources import migration_resource_directory
+
+    migration_root = migration_resource_directory()
+    config = Config(str(migration_root / "alembic.ini"))
+    config.set_main_option("script_location", str(migration_root))
     return frozenset(ScriptDirectory.from_config(config).get_heads())
 
 

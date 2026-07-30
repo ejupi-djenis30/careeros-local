@@ -97,11 +97,65 @@ def _revision_state(database_path: Path) -> tuple[set[str], set[str]]:
     from desktop.backend_main import database_revision_state
 
     try:
-        return cast(tuple[set[str], set[str]], database_revision_state(database_path))
+        return cast(
+            tuple[set[str], set[str]],
+            database_revision_state(database_path, read_only=True),
+        )
     except Exception as exc:
         raise AutomationRuntimeError(
             "schema_unavailable", "CareerOS could not inspect the vault schema"
         ) from exc
+
+
+def _read_only_session_bundle(database_path: Path) -> tuple[Any, Any]:
+    """Build a SQLite read capability that cannot mutate the vault."""
+    import sqlite3
+
+    from sqlalchemy import create_engine, event
+    from sqlalchemy.orm import sessionmaker
+    from sqlalchemy.pool import NullPool
+
+    from backend.core.config import settings
+
+    database_uri = f"{database_path.resolve(strict=True).as_uri()}?mode=ro"
+
+    def open_database():
+        return sqlite3.connect(
+            database_uri,
+            uri=True,
+            check_same_thread=False,
+        )
+
+    read_only_engine = create_engine(
+        "sqlite://",
+        creator=open_database,
+        poolclass=NullPool,
+    )
+
+    def configure_read_only_connection(dbapi_connection, _connection_record) -> None:
+        cursor = dbapi_connection.cursor()
+        try:
+            cursor.execute("PRAGMA query_only=ON")
+            cursor.execute("PRAGMA foreign_keys=ON")
+            cursor.execute(f"PRAGMA busy_timeout={int(settings.SQLITE_BUSY_TIMEOUT_MS)}")
+            cursor.execute("PRAGMA query_only")
+            state = cursor.fetchone()
+            if state is None or int(state[0]) != 1:
+                raise AutomationRuntimeError(
+                    "read_only_unavailable",
+                    "CareerOS could not enforce read-only vault access",
+                )
+        finally:
+            cursor.close()
+
+    event.listen(read_only_engine, "connect", configure_read_only_connection)
+    factory = sessionmaker(
+        autocommit=False,
+        autoflush=False,
+        expire_on_commit=False,
+        bind=read_only_engine,
+    )
+    return factory, read_only_engine
 
 
 @contextmanager
@@ -109,6 +163,7 @@ def automation_runtime(
     data_dir_value: str | Path | None,
     *,
     migrate: bool = False,
+    write_access: bool = False,
 ) -> Iterator[RuntimeContext]:
     data_dir = resolve_data_dir(data_dir_value)
     database_path = _configure_environment(data_dir)
@@ -134,17 +189,24 @@ def automation_runtime(
                     "migration_required",
                     "CareerOS schema is not current; run `careeros authorize` while the desktop app is closed",
                 )
-            from backend.db.base import SessionLocal, engine
+
+            if write_access:
+                from backend.db.base import SessionLocal, engine
+
+                session_factory = SessionLocal
+                runtime_engine = engine
+            else:
+                session_factory, runtime_engine = _read_only_session_bundle(database_path)
 
             try:
                 yield RuntimeContext(
                     data_dir=data_dir,
                     database_path=database_path,
                     database_revision=next(iter(current)),
-                    session_factory=SessionLocal,
+                    session_factory=session_factory,
                 )
             finally:
-                engine.dispose()
+                runtime_engine.dispose()
     except DesktopInstanceAlreadyRunning as exc:
         raise AutomationRuntimeError(
             "vault_busy", "Close CareerOS Local before starting the CLI or MCP server"

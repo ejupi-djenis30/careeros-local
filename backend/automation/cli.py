@@ -90,7 +90,7 @@ def _facade(runtime: Any) -> Any:
 
 def _authorize(arguments: argparse.Namespace) -> None:
     scopes = arguments.scope
-    with automation_runtime(arguments.data_dir, migrate=True) as runtime:
+    with automation_runtime(arguments.data_dir, migrate=True, write_access=True) as runtime:
         with runtime.session_factory() as db:
             user = _account(db, arguments.username)
             grant, token = issue_grant(
@@ -112,7 +112,7 @@ def _list_grants(arguments: argparse.Namespace) -> None:
 
 
 def _revoke_grant(arguments: argparse.Namespace) -> None:
-    with automation_runtime(arguments.data_dir, migrate=False) as runtime:
+    with automation_runtime(arguments.data_dir, migrate=False, write_access=True) as runtime:
         with runtime.session_factory() as db:
             user = _account(db, arguments.username)
             grant = revoke_grant(db, user_id=user.id, grant_id=arguments.grant_id)

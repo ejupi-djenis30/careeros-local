@@ -103,8 +103,9 @@ def test_authorize_authenticates_account_and_binds_requested_scope(
     db_session, test_user, monkeypatch, capsys
 ) -> None:
     @contextlib.contextmanager
-    def test_runtime(_data_dir, *, migrate):
+    def test_runtime(_data_dir, *, migrate, write_access):
         assert migrate is True
+        assert write_access is True
         yield SimpleNamespace(session_factory=session_factory)
 
     def session_factory():
@@ -255,6 +256,101 @@ def test_runtime_fails_closed_when_settings_were_preloaded(tmp_path: Path) -> No
     assert completed.returncode == 0, completed.stderr
     assert completed.stdout.strip() == "runtime_already_initialized"
     assert str(data_dir) not in completed.stderr
+
+
+def test_runtime_read_session_is_enforced_by_sqlite(tmp_path: Path) -> None:
+    project_root = Path(__file__).resolve().parents[3]
+    data_dir = tmp_path / "careeros-data"
+    _create_real_vault(project_root, data_dir)
+    probe = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            (
+                "import json,sys; "
+                "from pathlib import Path; "
+                "from sqlalchemy import text; "
+                "from sqlalchemy.exc import OperationalError; "
+                "from backend.automation.runtime import automation_runtime; "
+                "blocked=False; "
+                "\nwith automation_runtime(Path(sys.argv[1])) as runtime:"
+                "\n with runtime.session_factory() as db:"
+                "\n  query_only=int(db.execute(text('PRAGMA query_only')).scalar_one())"
+                "\n  try:"
+                "\n   db.execute(text(\"UPDATE users SET username='write-should-fail' "
+                "WHERE username='mcp-smoke'\")); db.commit()"
+                "\n  except OperationalError:"
+                "\n   db.rollback(); blocked=True"
+                "\nprint(json.dumps({'query_only':query_only,'write_blocked':blocked}))"
+                "\nraise SystemExit(0 if blocked else 3)"
+            ),
+            str(data_dir),
+        ],
+        cwd=project_root,
+        env=_subprocess_environment(data_dir),
+        capture_output=True,
+        text=True,
+        timeout=30,
+        check=False,
+    )
+
+    assert probe.returncode == 0, probe.stderr
+    assert json.loads(probe.stdout) == {
+        "query_only": 1,
+        "write_blocked": True,
+    }
+    with sqlite3.connect(data_dir / "vault" / "careeros.db") as database:
+        assert database.execute(
+            "SELECT username FROM users WHERE username = 'mcp-smoke'"
+        ).fetchone() == ("mcp-smoke",)
+
+
+def test_revision_inspection_is_enforced_by_sqlite(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    project_root = Path(__file__).resolve().parents[3]
+    data_dir = tmp_path / "careeros-data"
+    _create_real_vault(project_root, data_dir)
+    database_path = data_dir / "vault" / "careeros.db"
+
+    import sqlalchemy
+    from sqlalchemy import event
+
+    from desktop.backend_main import database_revision_state
+
+    real_create_engine = sqlalchemy.create_engine
+    observed_connections: list[dict[str, int | bool]] = []
+
+    def create_checked_engine(*args, **kwargs):
+        engine = real_create_engine(*args, **kwargs)
+
+        @event.listens_for(engine, "connect")
+        def verify_read_only_revision_connection(dbapi_connection, _connection_record) -> None:
+            query_only = int(dbapi_connection.execute("PRAGMA query_only").fetchone()[0])
+            write_blocked = False
+            try:
+                dbapi_connection.execute(
+                    "UPDATE users SET username='revision-write-should-fail' "
+                    "WHERE username='mcp-smoke'"
+                )
+                dbapi_connection.commit()
+            except sqlite3.OperationalError:
+                dbapi_connection.rollback()
+                write_blocked = True
+            observed_connections.append(
+                {"query_only": query_only, "write_blocked": write_blocked}
+            )
+            if query_only != 1 or not write_blocked:
+                raise AssertionError("revision inspection received a write-capable connection")
+
+        return engine
+
+    monkeypatch.setattr(sqlalchemy, "create_engine", create_checked_engine)
+    current, expected = database_revision_state(database_path, read_only=True)
+
+    assert current == expected
+    assert observed_connections == [{"query_only": 1, "write_blocked": True}]
 
 
 @pytest.mark.parametrize("bootstrap_environment", ["absent", "conflicting"])

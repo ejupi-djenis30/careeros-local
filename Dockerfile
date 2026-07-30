@@ -23,7 +23,6 @@ RUN groupadd --gid 10001 careernos \
 COPY requirements.lock ./
 RUN python -m pip install --no-cache-dir --require-hashes --requirement requirements.lock
 
-COPY alembic ./alembic
 COPY alembic.ini ./
 COPY backend ./backend
 COPY docker/backend-entrypoint.sh /usr/local/bin/careeros-entrypoint
