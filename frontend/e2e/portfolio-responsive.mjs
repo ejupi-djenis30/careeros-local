@@ -23,6 +23,7 @@ const measuredSelectors = [
   ".feature-card",
   ".feature-copy",
   ".readiness-console",
+  ".agent-console",
   ".container.demo-grid",
   ".demo-copy",
   ".video-shell",
@@ -249,6 +250,15 @@ try {
         });
       });
       const privacy = document.querySelector(".privacy-float")?.getBoundingClientRect();
+      const agentRegions = [".agent-console", ".agent-flow", ".agent-tools"].map((selector) => {
+        const element = document.querySelector(selector);
+        return {
+          selector,
+          present: Boolean(element),
+          clientWidth: element?.clientWidth ?? 0,
+          scrollWidth: element?.scrollWidth ?? 0,
+        };
+      });
       const touchTargets = touch
         .flatMap((selector) =>
           Array.from(document.querySelectorAll(selector)).map((element, index) => {
@@ -266,6 +276,7 @@ try {
         documentWidth: document.documentElement.scrollWidth,
         bodyWidth: document.body.scrollWidth,
         boxes,
+        agentRegions,
         touchTargets,
         privacyRightGap: privacy ? viewportWidth - privacy.right : null,
       };
@@ -290,6 +301,14 @@ try {
       assert(
         box.right <= report.viewportWidth + 1,
         `${width}px: ${label} crosses the right viewport edge (${box.right} > ${report.viewportWidth})`,
+      );
+    }
+
+    for (const region of report.agentRegions) {
+      assert.equal(region.present, true, `${width}px: missing ${region.selector}`);
+      assert(
+        region.scrollWidth <= region.clientWidth + 1,
+        `${width}px: ${region.selector} must contain its content (${region.scrollWidth} > ${region.clientWidth})`,
       );
     }
 

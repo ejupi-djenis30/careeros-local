@@ -238,6 +238,23 @@ def test_portfolio_presents_the_bounded_daily_action_agenda():
     assert "BOUNDED SQL · NO MODEL" in html
 
 
+def test_portfolio_presents_scoped_read_only_agent_access():
+    html = (ROOT / "docs" / "index.html").read_text(encoding="utf-8")
+
+    assert 'id="agent-access"' in html
+    assert "MCP stdio / JSON CLI" in html
+    assert "Seven bounded bearer reads, registered only when their scopes are granted" in html
+    assert "The desktop app and every agent call share one exclusive vault lease" in html
+    assert "desktop installers do\n                  not add it to your PATH" in html
+    assert "Set up Agent Access from source" in html
+    assert "BEARER SURFACE / 7 READS" in html
+    assert "NO WRITES · EXPIRES · REVOCABLE" in html
+    assert (
+        'href="https://github.com/ejupi-djenis30/careeros-local'
+        '#use-careeros-from-codex-or-claude-code"'
+    ) in html
+
+
 def test_portfolio_declares_strict_browser_policies():
     parser = _parse((ROOT / "docs" / "index.html").read_text(encoding="utf-8"))
 

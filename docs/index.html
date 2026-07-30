@@ -6,11 +6,11 @@
     <meta name="referrer" content="no-referrer" />
     <meta
       http-equiv="Content-Security-Policy"
-      content="default-src 'none'; base-uri 'none'; connect-src 'none'; font-src 'self'; form-action 'none'; frame-src 'none'; img-src 'self' data:; media-src 'self'; object-src 'none'; script-src 'sha256-bKJwMZIaFdqROWpGBIjGHdiPpfWHFjw4AlsSeYWgNao='; style-src 'self'; worker-src 'none'"
+      content="default-src 'none'; base-uri 'none'; connect-src 'none'; font-src 'self'; form-action 'none'; frame-src 'none'; img-src 'self' data:; media-src 'self'; object-src 'none'; script-src 'sha256-SnNCElYdd9KX//zPbZWC9XAcaeLXSKWo+SmzfLiYPTc='; style-src 'self'; worker-src 'none'"
     />
     <meta
       name="description"
-      content="CareerOS Local keeps a verified career record on your computer and turns it into resumes, job matches, and a practical application pipeline."
+      content="CareerOS Local keeps a verified career record and required language model on your computer, then exposes bounded read-only CLI and MCP tools for approved agents."
     />
     <meta name="author" content="CareerOS Local contributors" />
     <meta name="contributor" content="CareerOS Local contributors" />
@@ -20,7 +20,7 @@
     <meta property="og:title" content="CareerOS Local — Local-first career utility" />
     <meta
       property="og:description"
-      content="Build resumes, compare job opportunities, and track applications without sending your career history to a cloud model."
+      content="Build resumes, compare job opportunities, track applications, and let approved agents inspect the workflow without sending your career history to a cloud model."
     />
     <meta
       property="og:image"
@@ -71,7 +71,7 @@
         "@type": "SoftwareApplication",
         "name": "CareerOS Local",
         "applicationCategory": "BusinessApplication",
-        "description": "An open-source, local-first career utility for verified resumes, deterministic job search, and application tracking.",
+        "description": "An open-source, local-first career utility for verified resumes, on-device analysis, deterministic job search, application tracking, and bounded read-only agent access.",
         "codeRepository": "https://github.com/ejupi-djenis30/careeros-local",
         "license": "https://opensource.org/license/mit",
         "offers": {
@@ -94,6 +94,7 @@
 
         <div class="nav-links">
           <a href="#product">Product</a>
+          <a href="#agent-access">Agent access</a>
           <a href="#privacy">Privacy</a>
           <a href="#engineering">Engineering</a>
         </div>
@@ -123,8 +124,8 @@
               <span>next move.</span>
             </h1>
             <p class="hero-lead">
-              Keep one verified record of your experience. Use it to build resumes, compare
-              job opportunities, and track applications without sending that record to a cloud model.
+              Keep one verified record of your experience. A required language model runs on
+              your device to compare roles, explain gaps and rank evidence, with no cloud-AI fallback.
             </p>
             <div class="hero-actions">
               <a class="button button-primary" href="https://github.com/ejupi-djenis30/careeros-local/releases/latest">
@@ -141,7 +142,7 @@
             <ul class="hero-proof" aria-label="Product principles">
               <li>
                 <svg aria-hidden="true" viewBox="0 0 20 20"><path d="m4 10 4 4 8-9" /></svg>
-                No cloud AI
+                Required local AI
               </li>
               <li>
                 <svg aria-hidden="true" viewBox="0 0 20 20"><path d="m4 10 4 4 8-9" /></svg>
@@ -500,6 +501,76 @@
                 <div class="readiness-console__footer">
                   <span>JSON · MARKDOWN</span>
                   <span>SHA-256 / CANONICAL BYTES</span>
+                </div>
+              </div>
+            </article>
+
+            <article
+              class="feature-card feature-card-wide feature-card-agent"
+              id="agent-access"
+            >
+              <div class="feature-copy">
+                <span class="feature-number" aria-hidden="true">06</span>
+                <p class="card-kicker">Agent Access</p>
+                <h3>Let an agent inspect the workflow, not take over the vault.</h3>
+                <p>
+                  Agent Access currently runs from a source checkout; the desktop installers do
+                  not add it to your PATH. Once installed locally, create a scoped, expiring grant
+                  for Codex, Claude Code or a script. The bearer-authenticated agent surface offers
+                  only approved reads, with no free-form prompt, arbitrary file access or raw SQL.
+                </p>
+                <ul class="readiness-proof-list" aria-label="Agent Access guarantees">
+                  <li>One shown-once token, stored by CareerOS only as a SHA-256 digest</li>
+                  <li>Seven bounded bearer reads, registered only when their scopes are granted</li>
+                  <li>The desktop app and every agent call share one exclusive vault lease</li>
+                </ul>
+                <a
+                  class="text-link agent-docs-link"
+                  href="https://github.com/ejupi-djenis30/careeros-local#use-careeros-from-codex-or-claude-code"
+                >
+                  Set up Agent Access from source
+                  <span aria-hidden="true">↗</span>
+                </a>
+              </div>
+
+              <div class="agent-console" aria-hidden="true">
+                <div class="readiness-console__header">
+                  <span>CAREEROS / AGENT ACCESS</span>
+                  <span>READ ONLY</span>
+                </div>
+                <div class="agent-flow">
+                  <div class="agent-flow__node">
+                    <span>CLIENT</span>
+                    <strong>Codex / Claude Code</strong>
+                  </div>
+                  <span class="agent-flow__arrow">→</span>
+                  <div class="agent-flow__node agent-flow__node--active">
+                    <span>PROTOCOL</span>
+                    <strong>MCP stdio / JSON CLI</strong>
+                  </div>
+                  <span class="agent-flow__arrow">→</span>
+                  <div class="agent-flow__node">
+                    <span>AUTHORITY</span>
+                    <strong>Scoped grant</strong>
+                  </div>
+                  <span class="agent-flow__arrow">→</span>
+                  <div class="agent-flow__node">
+                    <span>BOUNDARY</span>
+                    <strong>Local vault lease</strong>
+                  </div>
+                </div>
+                <div class="agent-tools">
+                  <span>STATUS</span>
+                  <span>MODEL</span>
+                  <span>CAREER</span>
+                  <span>RESUMES</span>
+                  <span>APPLICATIONS</span>
+                  <span>READINESS</span>
+                  <span>AGENDA</span>
+                </div>
+                <div class="readiness-console__footer">
+                  <span>BEARER SURFACE / 7 READS</span>
+                  <span>NO WRITES · EXPIRES · REVOCABLE</span>
                 </div>
               </div>
             </article>
