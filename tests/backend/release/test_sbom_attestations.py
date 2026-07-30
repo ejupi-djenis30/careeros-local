@@ -32,7 +32,7 @@ def _write_contract(tmp_path: Path) -> tuple[Path, list[Path]]:
     return verification, sboms
 
 
-def test_exact_three_verified_sboms_are_required(tmp_path: Path) -> None:
+def test_exact_verified_sboms_are_required(tmp_path: Path) -> None:
     verification, sboms = _write_contract(tmp_path)
 
     require_exact_sboms(verification, sboms)
@@ -42,6 +42,29 @@ def test_exact_three_verified_sboms_are_required(tmp_path: Path) -> None:
     sboms[0].write_text(json.dumps(replacement), encoding="utf-8")
     with pytest.raises(RuntimeError, match="differ"):
         require_exact_sboms(verification, sboms)
+
+
+def test_one_agent_sbom_is_supported_but_zero_is_rejected(tmp_path: Path) -> None:
+    verification, sboms = _write_contract(tmp_path)
+    verification.write_text(
+        json.dumps(
+            [
+                {
+                    "verificationResult": {
+                        "statement": {
+                            "predicateType": CYCLONEDX_PREDICATE,
+                            "predicate": json.loads(sboms[0].read_text(encoding="utf-8")),
+                        }
+                    }
+                }
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    require_exact_sboms(verification, [sboms[0]])
+    with pytest.raises(RuntimeError, match="At least one"):
+        require_exact_sboms(verification, [])
 
 
 def test_empty_or_wrong_predicate_verification_fails_closed(tmp_path: Path) -> None:

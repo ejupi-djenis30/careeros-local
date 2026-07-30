@@ -4,12 +4,17 @@ from pathlib import Path
 
 import pytest
 
+from scripts.agent_distribution import (
+    AGENT_REQUIREMENTS_LOCK,
+    canonical_agent_wheel_name,
+)
 from scripts.check_release_versions import ROOT
 from scripts.license_contract import APPROVED_LICENSE_SHA256
 from scripts.release_contract import (
     EVIDENCE_ARCHIVE,
     assemble_release_bundle,
     expected_public_names,
+    validate_agent_subject_checksums,
     validate_evidence_directory,
     validate_native_subject_checksums,
     validate_release_bundle,
@@ -19,6 +24,7 @@ from tests.backend.release.helpers import (
     COMMIT,
     RELEASE_DATE,
     VERSION,
+    write_agent_candidate,
     write_evidence,
     write_native_candidates,
     write_release_bundle,
@@ -26,21 +32,31 @@ from tests.backend.release.helpers import (
 
 
 def test_bundle_has_exact_global_inventory_and_valid_native_subjects(tmp_path: Path) -> None:
-    bundle, native_checksums = write_release_bundle(tmp_path, ROOT / "LICENSE")
+    bundle, native_checksums, agent_checksums = write_release_bundle(
+        tmp_path, ROOT / "LICENSE"
+    )
 
     assert sorted((path.name for path in bundle.iterdir()), key=str.casefold) == expected_public_names(
         VERSION
     )
-    assert len(expected_public_names(VERSION)) == 23
+    assert len(expected_public_names(VERSION)) == 25
     manifest = validate_release_bundle(
         bundle,
         version=VERSION,
         source_commit=COMMIT,
         release_date=RELEASE_DATE,
         license_path=ROOT / "LICENSE",
+        project_root=ROOT,
     )
+    assert manifest["schemaVersion"] == 3
     native_records = [record for target in manifest["targets"] for record in target["artifacts"]]
     validate_native_subject_checksums(native_checksums, records=native_records)
+    assert manifest["agentAccess"]["wheel"]["name"] == canonical_agent_wheel_name(VERSION)
+    assert manifest["agentAccess"]["requirementsLock"]["name"] == AGENT_REQUIREMENTS_LOCK
+    validate_agent_subject_checksums(
+        agent_checksums,
+        wheel_record=manifest["agentAccess"]["wheel"],
+    )
 
 
 def test_non_mit_text_named_license_is_rejected(tmp_path: Path) -> None:
@@ -58,13 +74,14 @@ def test_approved_license_binding_is_stable_across_checkout_newlines(tmp_path: P
     checkout_license.parent.mkdir()
     checkout_license.write_bytes(canonical.replace(b"\n", b"\r\n"))
 
-    bundle, _ = write_release_bundle(tmp_path / "case", checkout_license)
+    bundle, _, _ = write_release_bundle(tmp_path / "case", checkout_license)
     manifest = validate_release_bundle(
         bundle,
         version=VERSION,
         source_commit=COMMIT,
         release_date=RELEASE_DATE,
         license_path=checkout_license,
+        project_root=ROOT,
     )
 
     assert manifest["license"] == {
@@ -78,7 +95,7 @@ def test_approved_license_binding_is_stable_across_checkout_newlines(tmp_path: P
 
 
 def test_public_license_is_required_and_tampering_fails_closed(tmp_path: Path) -> None:
-    bundle, _ = write_release_bundle(tmp_path, ROOT / "LICENSE")
+    bundle, _, _ = write_release_bundle(tmp_path, ROOT / "LICENSE")
     public_license = bundle / "LICENSE"
     public_license.unlink()
 
@@ -89,6 +106,7 @@ def test_public_license_is_required_and_tampering_fails_closed(tmp_path: Path) -
             source_commit=COMMIT,
             release_date=RELEASE_DATE,
             license_path=ROOT / "LICENSE",
+            project_root=ROOT,
         )
 
     public_license.write_bytes(b"tampered license\n")
@@ -99,19 +117,23 @@ def test_public_license_is_required_and_tampering_fails_closed(tmp_path: Path) -
             source_commit=COMMIT,
             release_date=RELEASE_DATE,
             license_path=ROOT / "LICENSE",
+            project_root=ROOT,
         )
 
 
 def _assemble_candidates(tmp_path: Path, native: Path) -> None:
     assemble_release_bundle(
         native_root=native,
+        agent_root=write_agent_candidate(tmp_path),
         evidence_root=write_evidence(tmp_path / "evidence"),
         output=tmp_path / "release",
         native_checksums=tmp_path / "attestation" / "native-subjects.sha256",
+        agent_checksums=tmp_path / "attestation" / "agent-subjects.sha256",
         version=VERSION,
         source_commit=COMMIT,
         release_date=RELEASE_DATE,
         license_path=ROOT / "LICENSE",
+        project_root=ROOT,
     )
 
 
@@ -136,7 +158,7 @@ def test_extra_native_target_fails_closed(tmp_path: Path) -> None:
 
 
 def test_bundle_rejects_tampering_and_unexpected_files(tmp_path: Path) -> None:
-    bundle, _ = write_release_bundle(tmp_path, ROOT / "LICENSE")
+    bundle, _, _ = write_release_bundle(tmp_path, ROOT / "LICENSE")
     package = next(path for path in bundle.iterdir() if path.suffix == ".exe")
     package.write_bytes(b"tampered")
 
@@ -147,6 +169,7 @@ def test_bundle_rejects_tampering_and_unexpected_files(tmp_path: Path) -> None:
             source_commit=COMMIT,
             release_date=RELEASE_DATE,
             license_path=ROOT / "LICENSE",
+            project_root=ROOT,
         )
 
     (bundle / "unexpected.txt").write_text("no", encoding="utf-8")
@@ -157,15 +180,16 @@ def test_bundle_rejects_tampering_and_unexpected_files(tmp_path: Path) -> None:
             source_commit=COMMIT,
             release_date=RELEASE_DATE,
             license_path=ROOT / "LICENSE",
+            project_root=ROOT,
         )
 
 
 def test_evidence_archive_is_safe_and_bound_to_public_sboms(tmp_path: Path) -> None:
-    bundle, _ = write_release_bundle(tmp_path, ROOT / "LICENSE")
+    bundle, _, _ = write_release_bundle(tmp_path, ROOT / "LICENSE")
     archive = bundle / EVIDENCE_ARCHIVE
     first = archive.read_bytes()
 
-    bundle_two, _ = write_release_bundle(tmp_path / "second", ROOT / "LICENSE")
+    bundle_two, _, _ = write_release_bundle(tmp_path / "second", ROOT / "LICENSE")
     assert first == (bundle_two / EVIDENCE_ARCHIVE).read_bytes()
 
     public_sbom = bundle / f"careeros-backend-{VERSION}.cdx.json"
@@ -177,6 +201,7 @@ def test_evidence_archive_is_safe_and_bound_to_public_sboms(tmp_path: Path) -> N
             source_commit=COMMIT,
             release_date=RELEASE_DATE,
             license_path=ROOT / "LICENSE",
+            project_root=ROOT,
         )
 
 

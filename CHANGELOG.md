@@ -5,6 +5,33 @@ All notable changes to CareerOS Local are documented here. The format follows
 
 ## [Unreleased]
 
+## [1.10.0] - 2026-07-30
+
+### Added
+
+- Agent Access is now available as an installable Python wheel for Python 3.12 and 3.13, with
+  `careeros` and `careeros-mcp` entry points that do not depend on a source checkout.
+- Added clean-environment wheel smoke coverage on Linux, macOS and Windows for package resources,
+  migrations, CLI startup and the MCP initialization and tool-discovery handshake.
+
+### Changed
+
+- The GitHub release candidate now carries the Agent Access wheel and its exact hash-locked
+  `requirements.lock` alongside the desktop artifacts, with both files covered by the release
+  manifest, global checksums and GitHub provenance.
+- Alembic configuration, templates and the complete historical migration chain now live inside the
+  backend package so desktop, source and wheel installations use the same canonical resources.
+- Agent Access installation resolves the reviewed dependency graph from `requirements.lock` before
+  installing the wheel with dependency resolution disabled.
+
+### Fixed
+
+- CLI and MCP reads now open the vault through SQLite's read-only URI mode and enforce
+  `PRAGMA query_only=ON` on every automation connection. Grant authorization and revocation remain
+  isolated in a separate write-capable session.
+- Installed Agent Access commands now find their model catalogue, taxonomy, AI fixtures and
+  migration resources without relying on paths from a development checkout.
+
 ## [1.9.0] - 2026-07-30
 
 ### Added
@@ -381,7 +408,8 @@ All notable changes to CareerOS Local are documented here. The format follows
   autosave/revision loop.
 - Removed the rate-limit error and incomplete pipeline from public screenshots.
 
-[Unreleased]: https://github.com/ejupi-djenis30/careeros-local/compare/v1.9.0...HEAD
+[Unreleased]: https://github.com/ejupi-djenis30/careeros-local/compare/v1.10.0...HEAD
+[1.10.0]: https://github.com/ejupi-djenis30/careeros-local/compare/v1.9.0...v1.10.0
 [1.9.0]: https://github.com/ejupi-djenis30/careeros-local/compare/v1.8.0...v1.9.0
 [1.8.0]: https://github.com/ejupi-djenis30/careeros-local/compare/v1.7.0...v1.8.0
 [1.7.0]: https://github.com/ejupi-djenis30/careeros-local/compare/v1.6.0...v1.7.0

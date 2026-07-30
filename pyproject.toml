@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "careeros-local"
-version = "1.9.0"
+version = "1.10.0"
 description = "Open-source, local-first career utility for resumes, deterministic job search, and application tracking"
 readme = "README.md"
 authors = [

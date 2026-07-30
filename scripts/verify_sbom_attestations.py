@@ -36,8 +36,8 @@ def verified_predicates(path: Path) -> list[dict[str, Any]]:
 
 
 def require_exact_sboms(verification_json: Path, sbom_paths: list[Path]) -> None:
-    if len(sbom_paths) != 3:
-        raise RuntimeError("Exactly three component SBOMs are required")
+    if not sbom_paths:
+        raise RuntimeError("At least one component SBOM is required")
     expected = {_canonical(json.loads(path.read_text(encoding="utf-8"))) for path in sbom_paths}
     if len(expected) != len(sbom_paths):
         raise RuntimeError("Component SBOMs must be distinct")
@@ -52,7 +52,7 @@ def main() -> int:
     parser.add_argument("--sbom", required=True, type=Path, action="append")
     arguments = parser.parse_args()
     require_exact_sboms(arguments.verification_json, arguments.sbom)
-    print("SBOM_ATTESTATIONS_OK count=3")
+    print(f"SBOM_ATTESTATIONS_OK count={len(arguments.sbom)}")
     return 0
 
 

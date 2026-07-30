@@ -24,14 +24,16 @@ Run the metadata and release-contract tests locally:
 
 ## Read-only rehearsal
 
-Run **Desktop packages** from `main`. You may supply the planned tag, such as `v1.6.0`, in
+Run **Desktop packages** from `main`. You may supply the planned tag, such as `v1.10.0`, in
 `expected_tag`. The workflow builds six native targets on versioned GitHub-hosted runners,
 smoke-tests each package, normalizes installer names, and assembles one exact candidate.
 
-The candidate contains 23 public assets:
+The candidate contains 25 public assets:
 
 - 10 native installers with portable, no-space names;
 - six target-specific SHA-256 files whose filenames exactly match their downloads;
+- the installable Agent Access wheel `careeros_local-1.10.0-py3-none-any.whl` and the exact
+  hash-locked `requirements.lock` used to install its dependency graph;
 - three CycloneDX SBOMs;
 - one deterministic supply-chain evidence archive;
 - the canonical LF `LICENSE`, downloadable as a first-class asset and byte-identical to the
@@ -46,14 +48,20 @@ every resulting payload must expose the approved project `LICENSE` bytes at the 
 resource root. Missing, changed, duplicate case-variant, symlink-alias, or dependency-only license
 files stop the run before staging.
 
+The Agent Access candidate is built once on the pinned release toolchain. Its wheel filename,
+metadata, Python range, dependency declarations, entry points, MIT license, package resources,
+migration history and internal `RECORD` hashes are validated before upload. The same wheel and
+`requirements.lock` bytes are then installed and smoke-tested on Linux, macOS and Windows with
+Python 3.12 and 3.13; the matrix never rebuilds the candidate.
+
 Each packaged app must also complete an authenticated readiness handshake across the Python
 sidecar, Tauri command bridge and a committed React tree. The app writes fresh, run-scoped evidence
 only after that contract succeeds; the package harness removes stale evidence before every launch
 and verifies the exact payload afterwards. A blank, stalled or prematurely closed WebView therefore
 fails the package smoke instead of being mistaken for a working application.
 
-No artifact from a rehearsal is a release. Review the retained `verified-release-assets` and
-`native-subject-checksums` workflow artifacts before proceeding.
+No artifact from a rehearsal is a release. Review the retained `verified-release-assets`,
+`native-subject-checksums` and `agent-subject-checksums` workflow artifacts before proceeding.
 
 ## Tag and publication
 
@@ -64,9 +72,10 @@ must equal the candidate source and remain contained in the repository's current
 The tag workflow re-runs every build and check. Its final job then:
 
 1. verifies the tag and default-branch policy before requesting attestations;
-2. re-hashes the exact 23-file candidate;
-3. creates SLSA provenance for all 23 assets;
-4. binds each of the three CycloneDX SBOMs to all 10 native installers;
+2. re-hashes the exact 25-file candidate;
+3. creates SLSA provenance for all 25 assets;
+4. binds each of the three CycloneDX SBOMs to all 10 native installers and the rooted backend SBOM
+   to the Agent Access wheel;
 5. verifies every attestation against the tag commit, tag ref, workflow identity, GitHub OIDC
    issuer, and GitHub-hosted runner policy;
 6. creates or resumes one contract-bound draft without deleting or overwriting remote assets;
@@ -88,7 +97,7 @@ write-free no-op.
 ## Download verification
 
 The global checksum command requires one directory containing the complete published set:
-`SHA256SUMS` plus all other 22 assets. On GNU/Linux or in Git Bash, run:
+`SHA256SUMS` plus all other 24 assets. On GNU/Linux or in Git Bash, run:
 
 ```bash
 sha256sum --check SHA256SUMS
@@ -98,17 +107,20 @@ If you downloaded only one Windows installer and `SHA256SUMS`, compare that exac
 PowerShell's native `Get-FileHash` before verifying provenance:
 
 ```powershell
-$asset = "CareerOS-Local_1.6.0_windows-x64-setup.exe"
+$asset = "CareerOS-Local_1.10.0_windows-x64-setup.exe"
 $entry = @(Get-Content .\SHA256SUMS | Where-Object { ($_ -split '\s+', 2)[1] -eq $asset })
 if ($entry.Count -ne 1) { throw "Expected exactly one checksum entry for $asset" }
 $expected = ($entry[0] -split '\s+', 2)[0]
 $actual = (Get-FileHash -Algorithm SHA256 -LiteralPath $asset).Hash
 if ($actual -ne $expected) { throw "SHA-256 mismatch for $asset" }
 
-gh attestation verify .\CareerOS-Local_1.6.0_windows-x64-setup.exe `
+gh attestation verify .\CareerOS-Local_1.10.0_windows-x64-setup.exe `
   --repo ejupi-djenis30/careeros-local `
-  --source-ref refs/tags/v1.6.0
+  --source-ref refs/tags/v1.10.0
 ```
 
-The packages remain unsigned community builds until platform signature checks are configured and
-recorded. Do not describe them as signed merely because GitHub provenance verifies successfully.
+The native installers remain unsigned community builds until platform signature checks are
+configured and recorded. The Python wheel likewise has no platform code signature. GitHub
+provenance binds exact artifact bytes to the repository workflow and source ref; it is not
+Authenticode signing, Apple code signing, notarization, or a maintainer signature. Do not describe
+an artifact as signed merely because its GitHub provenance verifies successfully.
