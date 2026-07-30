@@ -33,11 +33,11 @@ CV snapshot and the same digest-based reproducibility contract.
 
 ## CLI and agent access
 
-The source-installed `careeros` CLI and its MCP server use a separate, read-only automation
-boundary. A signed-in user can issue and revoke grants from the desktop **Agent access** page after
-re-entering the current CareerOS password. The CLI provides the same authorization path for
-terminal workflows. A grant belongs to one local account and has a label, an expiry and one or more
-of these scopes:
+The separately installed `careeros` CLI and its MCP server use a distinct, read-only automation
+boundary. The Python wheel is separate from the desktop installer. A signed-in user can issue and
+revoke grants from the desktop **Agent access** page after re-entering the current CareerOS
+password. The CLI provides the same authorization path for terminal workflows. A grant belongs to
+one local account and has a label, an expiry and one or more of these scopes:
 `system:read`, `career:read`, `resume:read`, and `applications:read`. The bearer token is displayed
 only when the grant is created. The response is marked `no-store`, the renderer keeps the bearer
 only in the current component, and copying requires an explicit button press. Dismissal or
@@ -45,9 +45,18 @@ navigation removes the visible bearer; it never enters browser storage. CareerOS
 SHA-256 digest, not the original token. The authenticated page lists only owned grant metadata.
 Creating or revoking a grant requires another password check.
 
-The MCP server communicates over the parent process's standard input and output. It does not open
-an HTTP port, connect to a model provider or start a job search. Its tools expose bounded
-projections:
+Automation reads open the SQLite vault with URI `mode=ro` and verify
+`PRAGMA query_only=ON` on every new connection. Grant authorization and revocation use a separate,
+password-confirmed write path; neither operation is available through the MCP tool surface.
+
+The MCP server communicates over the parent process's standard input and output and opens no
+network listener. Vault, resume, application and agenda reads generate no outbound or cloud
+traffic. The `get_local_model_status` tool is the narrow exception to a purely file-and-database
+read: it may make a content-free HTTP readiness probe to the configured, allowlisted local-runtime
+endpoint. That endpoint is loopback by default; container deployments may explicitly allow a
+single-label runtime alias such as `ollama` or `host.docker.internal`. The probe contains no Career
+Vault data or prompt, does not contact a cloud-model provider and does not start a job search. The
+tools expose bounded projections:
 
 - product, schema and local-model readiness;
 - Career Vault completeness and fact counts without fact prose or dedicated contact fields;
@@ -64,7 +73,8 @@ This boundary does not make an external agent private. An agent can include MCP 
 request to its own provider. Starting the server therefore requires the explicit
 `--acknowledge-agent-disclosure` flag. Issue the smallest useful scope set and short lifetime,
 protect `CAREEROS_MCP_TOKEN` with the operating system's credential facilities, and revoke the
-grant after use. Never store the bearer token in a repository or paste it into a prompt.
+grant after use. Never store the bearer token in a repository, MCP configuration, project `.env`
+or shell startup file, and never paste it into a prompt.
 
 Grant management uses the authenticated loopback desktop API, but the desktop access token is
 never accepted as an MCP credential. The management API returns no resume, application or Career

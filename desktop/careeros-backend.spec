@@ -28,12 +28,11 @@ def collect_project_files(source_root, destination_root):
 
 
 datas = [
-    (str(PROJECT_ROOT / "alembic.ini"), "."),
     (str(PROJECT_ROOT / "backend" / "inference" / "model_catalog.json"), "backend/inference"),
     (str(PROJECT_ROOT / "backend" / "inference" / "model_catalog.sha256"), "backend/inference"),
     (str(PROJECT_ROOT / "backend" / "ai" / "fixtures"), "backend/ai/fixtures"),
 ]
-datas += collect_project_files(PROJECT_ROOT / "alembic", "alembic")
+datas += collect_project_files(PROJECT_ROOT / "backend" / "migrations", "backend/migrations")
 datas += collect_project_files(PROJECT_ROOT / "backend" / "data", "backend/data")
 for package in ("alembic", "docx", "reportlab"):
     datas += collect_data_files(package)

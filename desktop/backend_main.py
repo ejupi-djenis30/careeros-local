@@ -13,7 +13,6 @@ import os
 import secrets
 import shutil
 import sqlite3
-import sys
 import threading
 import time
 from contextlib import closing
@@ -59,10 +58,10 @@ def parse_args(argv: Sequence[str] | None = None) -> DesktopArguments:
 
 
 def resource_root() -> Path:
-    frozen_root = getattr(sys, "_MEIPASS", None)
-    if frozen_root:
-        return Path(frozen_root).resolve()
-    return Path(__file__).resolve().parents[1]
+    """Return the packaged migration directory for source, wheel, and frozen runs."""
+    from backend.migrations.resources import migration_resource_directory
+
+    return migration_resource_directory()
 
 
 def _write_installation_secret(path: Path) -> str:
@@ -153,21 +152,48 @@ def _alembic_config(database_path: Path):
 
     root = resource_root()
     configuration = Config(str(root / "alembic.ini"))
-    configuration.set_main_option("script_location", str(root / "alembic"))
+    configuration.set_main_option("script_location", str(root))
     configuration.set_main_option("sqlalchemy.url", f"sqlite:///{database_path.as_posix()}")
     return configuration
 
 
-def database_revision_state(database_path: Path) -> tuple[set[str], set[str]]:
+def database_revision_state(
+    database_path: Path,
+    *,
+    read_only: bool = False,
+) -> tuple[set[str], set[str]]:
     from alembic.migration import MigrationContext
     from alembic.script import ScriptDirectory
     from sqlalchemy import create_engine
+    from sqlalchemy.pool import NullPool
 
     configuration = _alembic_config(database_path)
     expected = set(ScriptDirectory.from_config(configuration).get_heads())
     if not database_path.exists() or database_path.stat().st_size == 0:
         return set(), expected
-    engine = create_engine(f"sqlite:///{database_path.as_posix()}")
+
+    if read_only:
+        database_uri = f"{database_path.resolve(strict=True).as_uri()}?mode=ro"
+
+        def open_read_only_database():
+            connection = sqlite3.connect(database_uri, uri=True)
+            try:
+                connection.execute("PRAGMA query_only=ON")
+                state = connection.execute("PRAGMA query_only").fetchone()
+                if state is None or int(state[0]) != 1:
+                    raise RuntimeError("SQLite did not enable read-only revision inspection")
+                return connection
+            except Exception:
+                connection.close()
+                raise
+
+        engine = create_engine(
+            "sqlite://",
+            creator=open_read_only_database,
+            poolclass=NullPool,
+        )
+    else:
+        engine = create_engine(f"sqlite:///{database_path.as_posix()}")
     try:
         with engine.connect() as connection:
             current = set(MigrationContext.configure(connection).get_current_heads())

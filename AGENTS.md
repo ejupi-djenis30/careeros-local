@@ -43,7 +43,7 @@ Keep new production modules focused. A compatibility facade must remain under 30
 Run checks proportional to the change, then run all gates before release:
 
 ```text
-ruff check backend tests/backend alembic/versions
+ruff check backend tests/backend
 mypy backend --ignore-missing-imports --no-error-summary
 pytest tests/backend -q
 npm test; npm run lint; npm run build

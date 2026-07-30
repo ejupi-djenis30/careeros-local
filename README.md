@@ -99,7 +99,7 @@ the assets.
   the model, and reports actions omitted by its seven-day horizon or compact row limit. Counts and
   rows share one SQL-statement snapshot; the renderer supplies the next browser-local midnight so
   today remains correct across daylight-saving transitions.
-- A source-installed `careeros` command gives Codex, Claude Code and shell scripts a narrow
+- A separately installed `careeros` command gives Codex, Claude Code and shell scripts a narrow
   read-only view of one explicitly authorized account. Its MCP server uses standard input/output
   rather than a network listener, exposes only tools allowed by a revocable grant, and never
   returns resume bodies, source documents, dedicated contact records, prompts, artifact bytes or
@@ -220,15 +220,89 @@ npm --prefix frontend run tauri:dev
 
 ## Use CareerOS from Codex or Claude Code
 
-The agent interface is available from a source checkout. It is not currently added to `PATH` by
-the desktop installer. Install the reviewed lock first, then register the local package without
-resolving a second dependency set:
+Agent Access is packaged as a Python wheel, separately from the desktop app. The desktop
+installers do not add `careeros` to `PATH`. Do not assume a wheel is attached to a GitHub Release:
+look for explicitly listed `careeros_local-*.whl` and `requirements.lock` assets and verify both
+like any other release download. If either asset is absent, build the wheel from the exact reviewed
+tag or commit you intend to run and keep that checkout's `requirements.lock` beside it.
 
 ```powershell
-.venv\Scripts\python.exe -m pip install --require-hashes -r requirements-dev.lock
-.venv\Scripts\python.exe -m pip install --no-build-isolation --no-deps --editable .
-.\.venv\Scripts\Activate.ps1
+# From a reviewed CareerOS checkout, with Python 3.12 or 3.13:
+py -3.12 -m venv .wheel-build
+.\.wheel-build\Scripts\python.exe -m pip install --require-hashes -r requirements-dev.lock
+.\.wheel-build\Scripts\python.exe -m pip wheel --no-build-isolation --no-deps `
+  --wheel-dir dist .
 ```
+
+```bash
+# From a reviewed CareerOS checkout, with Python 3.12 or 3.13:
+python3.12 -m venv .wheel-build
+.wheel-build/bin/python -m pip install --require-hashes -r requirements-dev.lock
+.wheel-build/bin/python -m pip wheel --no-build-isolation --no-deps \
+  --wheel-dir dist .
+```
+
+Install the resulting wheel into a dedicated environment. Keeping its executable path explicit
+means Codex or Claude Code can start it without relying on an activated development checkout.
+
+### Windows
+
+```powershell
+$agentHome = Join-Path $env:LOCALAPPDATA "CareerOS\agent-cli"
+py -3.12 -m venv $agentHome
+$agentPython = Join-Path $agentHome "Scripts\python.exe"
+$wheel = Get-ChildItem .\dist\careeros_local-*.whl |
+  Sort-Object LastWriteTime -Descending |
+  Select-Object -First 1
+if (-not $wheel) { throw "CareerOS wheel not found" }
+$requirementsLock = (Resolve-Path .\requirements.lock).Path
+& $agentPython -m pip install --require-hashes --requirement $requirementsLock
+& $agentPython -m pip install --no-deps $wheel.FullName
+$careeros = Join-Path $agentHome "Scripts\careeros.exe"
+& $careeros --help
+& $careeros doctor
+```
+
+### macOS
+
+```bash
+agent_home="$HOME/Library/Application Support/CareerOS/agent-cli"
+python3.12 -m venv "$agent_home"
+requirements_lock="/absolute/path/to/requirements.lock"
+wheel="/absolute/path/to/careeros_local-<version>-py3-none-any.whl"
+"$agent_home/bin/python" -m pip install --require-hashes --requirement "$requirements_lock"
+"$agent_home/bin/python" -m pip install --no-deps "$wheel"
+careeros_cli="$agent_home/bin/careeros"
+"$careeros_cli" --help
+"$careeros_cli" doctor
+```
+
+### Linux
+
+```bash
+agent_home="${XDG_DATA_HOME:-$HOME/.local/share}/careeros-agent-cli"
+python3.12 -m venv "$agent_home"
+requirements_lock="/absolute/path/to/requirements.lock"
+wheel="/absolute/path/to/careeros_local-<version>-py3-none-any.whl"
+"$agent_home/bin/python" -m pip install --require-hashes --requirement "$requirements_lock"
+"$agent_home/bin/python" -m pip install --no-deps "$wheel"
+careeros_cli="$agent_home/bin/careeros"
+"$careeros_cli" --help
+"$careeros_cli" doctor
+```
+
+`doctor` prints JSON and does not create or change a vault. By default the command inspects the
+same native application-data directory as the desktop app:
+
+| Platform | Default CareerOS data directory |
+| --- | --- |
+| Windows | `%APPDATA%\local.careeros.desktop` |
+| macOS | `~/Library/Application Support/local.careeros.desktop` |
+| Linux | `$XDG_DATA_HOME/local.careeros.desktop` when set; otherwise `~/.local/share/local.careeros.desktop` |
+
+Pass an absolute `--data-dir` before the subcommand only when the desktop was deliberately started
+with a different location. If `doctor` reports `vault_not_found`, open the desktop app once with the
+same operating-system account and check the path before proceeding.
 
 Open the desktop app, sign in and choose **Agent access** in the Career workspace. Name the client,
 select only the reads it needs, choose an expiry and confirm with your current CareerOS password.
@@ -250,32 +324,75 @@ The terminal flow remains available for scripts and recovery. Close the desktop,
 setup and create a 30-day grant with only the reads the agent needs:
 
 ```powershell
-careeros doctor
-careeros authorize --username <your-username> --label codex `
+& $careeros doctor
+& $careeros authorize --username <your-username> --label codex `
+  --scope system:read --scope applications:read
+```
+
+```bash
+"$careeros_cli" doctor
+"$careeros_cli" authorize --username <your-username> --label codex \
   --scope system:read --scope applications:read
 ```
 
 `authorize` asks for the CareerOS password in the terminal and follows the same one-time token
 contract as the desktop. Expose the saved bearer to the agent process as
-`CAREEROS_MCP_TOKEN`. Do not paste it into a checked-in configuration file:
+`CAREEROS_MCP_TOKEN`. Retrieve it from the operating system's credential manager when starting the
+client. Do not put the value in `config.toml`, `.mcp.json`, a project `.env`, a shell startup file,
+a prompt or a commit. These placeholders show only which process environment must receive it:
 
 ```powershell
-$env:CAREEROS_MCP_TOKEN = "<shown-once-token>"
-careeros mcp config --client codex
-careeros mcp config --client claude-code
+$env:CAREEROS_MCP_TOKEN = "<retrieve from your credential manager>"
+& $careeros mcp config --client codex
 ```
 
-The first command prints a block for the Codex `config.toml`; the second prints a Claude Code
-configuration. Both start the same local server with the required
-`--acknowledge-agent-disclosure` flag. The flag matters: CareerOS itself makes no network request,
-but a connected agent may send the returned application or resume metadata to its own provider.
-The generated command is `careeros`, so start the client from the activated environment or replace
-that command in the generated entry with the absolute path to this environment's executable.
+```bash
+export CAREEROS_MCP_TOKEN="<retrieve from your credential manager>"
+"$careeros_cli" mcp config --client codex
+```
+
+The command prints a table for the Codex user configuration at `~/.codex/config.toml`. It includes
+the resolved absolute CareerOS data directory and asks Codex to pass
+`CAREEROS_MCP_TOKEN` from its own environment. If the dedicated environment is not on `PATH`,
+replace `command = "careeros"` with the absolute executable above. In Windows TOML, write that
+path with forward slashes or escaped backslashes.
+
+Register the same stdio server with Claude Code from a shell that already has
+`CAREEROS_MCP_TOKEN`:
+
+```powershell
+claude mcp add --scope user careeros -- "$careeros" mcp serve `
+  --acknowledge-agent-disclosure
+```
+
+```bash
+claude mcp add --scope user careeros -- "$careeros_cli" mcp serve \
+  --acknowledge-agent-disclosure
+```
+
+Add `--data-dir "<absolute CareerOS data directory>"` immediately after the executable if you do
+not use the native default. User scope keeps the server registration out of a project repository;
+it does not store the token. Restart Codex or Claude Code after injecting a new token so the MCP
+child inherits it.
+
+The acknowledgement flag matters. The stdio server opens no network listener, and ordinary vault
+reads generate no outbound or cloud traffic. `model-status` and the MCP
+`get_local_model_status` tool may make a content-free HTTP readiness probe to the configured,
+allowlisted local-runtime endpoint. That endpoint is loopback by default; a container deployment
+may explicitly allow a single-label runtime alias such as `ollama` or `host.docker.internal`. The
+probe sends no Career Vault content and does not contact a cloud-model provider. The connected
+agent is a separate trust boundary and may send returned application, resume or career metadata to
+its own provider.
 
 At least one `--scope` is required. Repeat it only for the reads this agent should receive:
 
 ```powershell
-careeros authorize --username <your-username> --label applications `
+& $careeros authorize --username <your-username> --label applications `
+  --scope system:read --scope applications:read --days 7
+```
+
+```bash
+"$careeros_cli" authorize --username <your-username> --label applications \
   --scope system:read --scope applications:read --days 7
 ```
 
@@ -283,7 +400,9 @@ Available MCP tools are `get_status`, `get_local_model_status`, `get_career_summ
 `get_resume_catalog`, `list_applications`, `get_application_readiness` and
 `get_application_agenda`. The server registers only the tools permitted by the grant. It cannot
 edit the vault, search the web, run a free-form prompt, read arbitrary files or SQL, export
-documents, restore a backup, or delete data.
+documents, restore a backup, or delete data. Its read path opens the SQLite vault with URI
+`mode=ro` and verifies `PRAGMA query_only=ON` on every connection. Authorization and revocation use
+a separate, password-confirmed write path that is not exposed as an MCP tool.
 
 The same grant works with JSON CLI commands: `status`, `model-status`, `career-summary`, `resumes`,
 `applications`, `readiness` and `agenda`. Run `careeros <command> --help` for the bounded paging,
@@ -298,8 +417,13 @@ after the desktop releases the vault.
 List or revoke grants by authenticating with the CareerOS password:
 
 ```powershell
-careeros grants list --username <your-username>
-careeros grants revoke --username <your-username> <grant-id>
+& $careeros grants list --username <your-username>
+& $careeros grants revoke --username <your-username> <grant-id>
+```
+
+```bash
+"$careeros_cli" grants list --username <your-username>
+"$careeros_cli" grants revoke --username <your-username> <grant-id>
 ```
 
 Restoring a vault revokes its active automation grants, and complete vault erasure removes them.
@@ -322,7 +446,7 @@ screenshots under `docs/assets/`. Full details are in the [demo recording guide]
 ## Verify
 
 ```powershell
-.venv\Scripts\python.exe -m ruff check backend tests/backend alembic/versions scripts
+.venv\Scripts\python.exe -m ruff check backend tests/backend scripts
 .venv\Scripts\python.exe -m mypy backend scripts --ignore-missing-imports --no-error-summary
 .venv\Scripts\python.exe -m pytest tests/backend -q --cov=backend --cov-branch --cov-fail-under=80
 npm --prefix frontend run test:coverage

@@ -11,7 +11,8 @@ from alembic.operations import Operations
 def test_ai_audit_migration_upgrades_and_downgrades_cleanly(monkeypatch) -> None:
     revision_path = (
         Path(__file__).resolve().parents[3]
-        / "alembic"
+        / "backend"
+        / "migrations"
         / "versions"
         / "b8c9d0e1f2a3_add_local_ai_audit.py"
     )
