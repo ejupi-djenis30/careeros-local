@@ -1,6 +1,7 @@
 import errno
 import hashlib
 import os
+import stat
 import subprocess
 import time
 from concurrent.futures import ThreadPoolExecutor
@@ -72,6 +73,71 @@ def test_concurrent_identical_writes_publish_once_without_replacement(monkeypatc
         assert sum(created for _path, created in results) == 1
         assert resolve_data_path("assets/aa/shared.bin").read_bytes() == b"same bytes"
         assert list(data_dir.rglob(".write-*")) == []
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX hard-link ctime contract")
+def test_winner_validation_allows_private_hard_link_cleanup_during_read(
+    monkeypatch,
+    tmp_path,
+):
+    payload = b"immutable content-addressed bytes"
+    destination = tmp_path / "published.bin"
+    private_alias = tmp_path / ".write-published-private"
+    destination.write_bytes(payload)
+    os.link(destination, private_alias)
+    initial = destination.stat()
+    assert initial.st_nlink == 2
+
+    original_read = atomic.os.read
+    cleaned = False
+
+    def read_after_cleanup(descriptor, maximum_size):
+        nonlocal cleaned
+        if not cleaned:
+            private_alias.unlink()
+            cleaned = True
+        return original_read(descriptor, maximum_size)
+
+    monkeypatch.setattr(atomic.os, "read", read_after_cleanup)
+
+    assert atomic._read_regular_file_exact(destination, len(payload)) == payload
+    final = destination.stat()
+    assert cleaned is True
+    assert final.st_nlink == 1
+    assert final.st_mtime_ns == initial.st_mtime_ns
+    assert final.st_ctime_ns != initial.st_ctime_ns
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX ctime contract")
+def test_recovery_read_rejects_ctime_change_during_read(monkeypatch, tmp_path):
+    payload = b"single-link recovery metadata"
+    destination = tmp_path / "journal.json"
+    destination.write_bytes(payload)
+    initial = destination.stat()
+    changed_mode = initial.st_mode ^ stat.S_IXUSR
+
+    original_read = atomic.os.read
+    changed = False
+
+    def read_after_metadata_change(descriptor, maximum_size):
+        nonlocal changed
+        if not changed:
+            destination.chmod(changed_mode)
+            changed = True
+        return original_read(descriptor, maximum_size)
+
+    monkeypatch.setattr(atomic.os, "read", read_after_metadata_change)
+
+    with pytest.raises(ValueError, match="changed while it was being read"):
+        read_stable_bounded_file(
+            destination,
+            maximum_size=len(payload),
+            expected_size=len(payload),
+        )
+    final = destination.stat()
+    assert changed is True
+    assert final.st_mtime_ns == initial.st_mtime_ns
+    assert final.st_ctime_ns != initial.st_ctime_ns
 
 
 @pytest.mark.skipif(atomic.os.name != "nt", reason="Win32 extended path alias")
