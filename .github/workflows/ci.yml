@@ -68,11 +68,6 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - name: Configure ephemeral career vault
-        run: |
-          mkdir -p "$RUNNER_TEMP/careeros/ci-data"
-          echo "DATABASE_URL=sqlite:///$RUNNER_TEMP/careeros/ci-data/ci.db" >> "$GITHUB_ENV"
-          echo "DATA_DIR=$RUNNER_TEMP/careeros/ci-data" >> "$GITHUB_ENV"
       - name: Set up Python
         uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
         with:
@@ -106,7 +101,11 @@ jobs:
         run: >-
           mypy backend scripts --ignore-missing-imports --no-error-summary
       - name: Validate migration round-trip
+        env:
+          DATABASE_URL: sqlite:///${{ runner.temp }}/careeros/ci-data/ci.db
+          DATA_DIR: ${{ runner.temp }}/careeros/ci-data
         run: |
+          mkdir -p "$DATA_DIR"
           alembic upgrade head
           alembic downgrade -1
           alembic upgrade head
