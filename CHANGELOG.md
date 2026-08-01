@@ -16,8 +16,12 @@ All notable changes to CareerOS Local are documented here. The format follows
 
 ### Changed
 
-- The 1.11 release line is published as v1.11.1. The signed v1.11.0 source tag remains immutable,
-  but its publication was stopped before a GitHub Release or any public release asset was created.
+- v1.11.1 is the first published 1.11 distribution and carries every addition, change and fix
+  recorded in the v1.11.0 candidate section, including restart-durable vault and migration
+  recovery, bounded private-file journals, hardened local runtimes, content-free diagnostics,
+  accessibility coverage and the schema-4 26-asset release contract.
+- The signed v1.11.0 source tag remains immutable, but its publication was stopped before a GitHub
+  Release or any public release asset was created.
 
 ## [1.11.0] - 2026-08-01
 
