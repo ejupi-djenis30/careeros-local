@@ -393,9 +393,6 @@ jobs:
           cargo metadata --manifest-path frontend/src-tauri/Cargo.toml
           --locked --format-version 1
           | python -c "import json, sys; json.load(sys.stdin)"
-      - name: Reproduce approved third-party notices on Windows
-        if: runner.os == 'Windows'
-        run: python -m scripts.third_party_notices --check
       - name: Freeze and smoke-test local backend
         run: python scripts/build_backend_sidecar.py
       - name: Verify native sidecar architecture

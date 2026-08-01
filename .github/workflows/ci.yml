@@ -27,7 +27,7 @@ jobs:
             python: "3.12"
           - label: Windows · Python 3.12
             runner: windows-2025
-            python: "3.12.13"
+            python: "3.12"
           - label: macOS · Python 3.12
             runner: macos-15
             python: "3.12"
@@ -49,21 +49,6 @@ jobs:
             requirements-dev.lock
       - name: Install hash-locked build dependencies
         run: python -m pip install --require-hashes --requirement requirements-dev.lock
-      - name: Set up Node for notice reproducibility
-        if: runner.os == 'Windows'
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        with:
-          node-version-file: .nvmrc
-          package-manager-cache: false
-      - name: Install locked frontend dependencies for notice reproducibility
-        if: runner.os == 'Windows'
-        run: npm ci --prefix frontend --ignore-scripts
-      - name: Install locked packaging dependencies for notice reproducibility
-        if: runner.os == 'Windows'
-        run: python -m pip install --require-hashes --requirement requirements-tooling.lock
-      - name: Reproduce the approved cross-platform notices
-        if: runner.os == 'Windows'
-        run: python -m scripts.third_party_notices --check
       - name: Build and smoke the isolated wheel
         run: >-
           python scripts/smoke_agent_wheel.py

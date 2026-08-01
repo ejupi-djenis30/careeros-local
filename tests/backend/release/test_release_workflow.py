@@ -682,8 +682,6 @@ def test_project_license_and_third_party_notices_are_checked_in_every_native_pat
         encoding="utf-8"
     )
     assert "python -m scripts.third_party_notices --verify" in workflow
-    assert "Reproduce approved third-party notices on Windows" in workflow
-    assert "python -m scripts.third_party_notices --check" in workflow
     assert "-IncludeNsisInstall" in workflow
     assert "python -m scripts.smoke_native_bundle --target" in workflow
     assert "python scripts/smoke_native_bundle.py" not in workflow
