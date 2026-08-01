@@ -4,6 +4,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from backend.models import User
+from backend.models.user import VAULT_STATE_READY
 from backend.providers.circuit_breaker import CircuitOpenError
 from backend.services.search_service import SearchService, get_compatible_providers
 
@@ -75,7 +77,11 @@ def mock_profile_repo():
 
 @pytest.fixture
 def mock_db():
-    return MagicMock()
+    db = MagicMock()
+    db.get.side_effect = lambda model, _key: (
+        SimpleNamespace(vault_lifecycle_state=VAULT_STATE_READY) if model is User else None
+    )
+    return db
 
 
 @pytest.fixture
@@ -822,9 +828,7 @@ async def test_processing_consumer_counts_stale_catalog_analysis_as_nonfatal_ski
         jobs_new=0,
         jobs_skipped=1,
     )
-    assert any(
-        "newer provider revision" in call.args[1] for call in mock_add_log.call_args_list
-    )
+    assert any("newer provider revision" in call.args[1] for call in mock_add_log.call_args_list)
 
 
 @pytest.mark.asyncio
@@ -868,9 +872,7 @@ async def test_processing_consumer_fails_closed_when_analysis_circuit_is_open(se
         jobs_new=0,
         jobs_skipped=2,
     )
-    assert any(
-        "no result will be saved" in call.args[1] for call in mock_add_log.call_args_list
-    )
+    assert any("were not saved" in call.args[1] for call in mock_add_log.call_args_list)
 
 
 @pytest.mark.asyncio
@@ -932,14 +934,16 @@ async def test_run_analysis_batches_splits_batches_by_prompt_budget(search_servi
                 "worth_applying": True,
                 "analysis_structured": {
                     "recommendation": "consider",
-                    "evidence_citations": [{
-                        "type": "skill",
-                        "assessment": "strength",
-                        "job_evidence_id": "job:0",
-                        "candidate_evidence_id": "candidate:profile",
-                        "job_evidence": "Required: Python",
-                        "candidate_evidence": "Python experience",
-                    }],
+                    "evidence_citations": [
+                        {
+                            "type": "skill",
+                            "assessment": "strength",
+                            "job_evidence_id": "job:0",
+                            "candidate_evidence_id": "candidate:profile",
+                            "job_evidence": "Required: Python",
+                            "candidate_evidence": "Python experience",
+                        }
+                    ],
                 },
                 "analysis_provenance": "local_model_validated",
                 "analysis_model_id": "llama-cpp-local/test-model",

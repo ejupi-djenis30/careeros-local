@@ -39,7 +39,8 @@ or job-source acquisition.
 - [X] T010 Implement per-launch session-header middleware with constant-time comparison in `backend/desktop/session.py` and register it in `backend/main.py`
 - [X] T011 [P] Define versioned compact-model task contracts and validation error codes in `backend/ai/contracts.py`, `backend/ai/task_specs.py`, and `backend/ai/__init__.py`
 - [X] T012 [P] Add AI execution/evaluation ORM entities and repository methods in `backend/ai/models.py`, `backend/ai/repository.py`, and `backend/models/__init__.py`
-- [X] T013 Create and round-trip-test the AI audit migration in `alembic/versions/` and `tests/backend/integration/test_ai_audit_migration.py`
+- [X] T013 Create and round-trip-test the AI audit migration in
+  `backend/migrations/versions/` and `tests/backend/integration/test_ai_audit_migration.py`
 - [X] T014 Implement redacted AI execution audit recording in `backend/ai/audit.py` and cover content exclusion in `tests/backend/ai/test_audit.py`
 
 **Checkpoint**: Desktop requests can be authenticated, local paths are safe, structured contracts
@@ -56,17 +57,26 @@ system Python, create data, restart offline, and confirm zero orphaned child pro
 
 ### Tests for User Story 1
 
-- [X] T015 [P] [US1] Add frozen-entry argument, migration-backup and readiness tests in `tests/desktop/test_backend_entry.py`
-- [X] T016 [P] [US1] Add Rust unit tests for random-port allocation, sidecar arguments, bootstrap redaction and bounded restart in `frontend/src-tauri/src/lifecycle.rs` and `frontend/src-tauri/src/commands.rs`
+- [X] T015 [P] [US1] Add frozen-entry argument, migration-backup, readiness and ordered
+  graceful-watchdog/hard-timeout tests in `tests/desktop/test_backend_entry.py`
+- [X] T016 [P] [US1] Add Rust unit tests for random-port allocation, sidecar arguments,
+  bootstrap redaction, bounded restart, token-authenticated shutdown transport and idempotent exit
+  state in `frontend/src-tauri/src/lifecycle.rs` and `frontend/src-tauri/src/commands.rs`
 - [X] T017 [P] [US1] Add frontend bootstrap/client session-header tests in `frontend/src/platform/desktop.test.js` and `frontend/src/lib/client.desktop.test.js`
 - [X] T018 [P] [US1] Add packaged-process lifecycle acceptance coverage in `tests/desktop/test_packaged_lifecycle.py`
 
 ### Implementation for User Story 1
 
-- [X] T019 [US1] Implement frozen backend CLI, environment initialization, migration backup/restore, parent watchdog and clean Uvicorn shutdown in `desktop/backend_main.py`
+- [X] T019 [US1] Implement frozen backend CLI, environment initialization, migration
+  backup/restore, desktop-only authenticated shutdown route, graceful Uvicorn drain and bounded
+  parent watchdog in `desktop/backend_main.py`, `backend/api/routes/desktop.py` and
+  `backend/api/api.py`
 - [X] T020 [US1] Define reproducible PyInstaller analysis, data files and hidden imports in `desktop/careeros-backend.spec`
 - [X] T021 [US1] Implement the verified one-folder resource build flow and optional non-distributed one-file diagnostic in `scripts/build_backend_sidecar.py`
-- [X] T022 [US1] Implement Tauri random-port/session creation, single-instance backend spawn, readiness state and shutdown in `frontend/src-tauri/src/lifecycle.rs` and `frontend/src-tauri/src/main.rs`
+- [X] T022 [US1] Implement Tauri random-port/session creation, single-instance backend spawn,
+  readiness state, exit prevention, bounded graceful shutdown with forced fallback and Windows
+  kill-on-close Job Object containment in `frontend/src-tauri/src/lifecycle.rs` and
+  `frontend/src-tauri/src/lib.rs`
 - [X] T023 [US1] Expose only the redacted `desktop_bootstrap` invoke contract in `frontend/src-tauri/src/commands.rs` and `frontend/src-tauri/src/lib.rs`
 - [X] T024 [US1] Add desktop bootstrap splash, API reconfiguration and bounded readiness polling in `frontend/src/platform/desktop.js`, `frontend/src/components/DesktopBoot.jsx`, and `frontend/src/main.jsx`
 - [X] T025 [US1] Refactor the API client to support a runtime loopback base URL and session header without weakening browser validation in `frontend/src/lib/client.js`
@@ -273,22 +283,25 @@ T047 model-manager UI tests
 
 ## Task validation
 
-- Task identifiers remain sequential through T163.
-- User Story 1: 14 tasks (T015–T028).
-- User Story 2: 6 tasks (T029–T034).
-- User Story 3: 7 tasks (T035–T041).
-- User Story 4: 25 tasks (T042–T058 and T124–T131).
-- User Story 5: 6 tasks (T059–T064).
+- Task identifiers remain sequential through T231.
+- User Story 1: 50 tasks.
+- User Story 2: 11 tasks.
+- User Story 3: 9 tasks.
+- User Story 4: 27 tasks.
+- User Story 5: 18 tasks.
 - User Story 6: 10 tasks (T106–T115).
 - User Story 7: 15 tasks (T116–T123 and T157–T163).
 - User Story 8: 12 tasks (T132–T143).
 - User Story 9: 6 tasks (T144–T149).
-- User Story 10: 7 tasks (T150–T156).
+- User Story 10: 18 tasks.
 - Setup, foundation, polish, convergence and release work: 55 tasks.
 - Every task uses the required checkbox, sequential ID, appropriate story label and exact path.
 - Suggested MVP scope: Setup + Foundation + User Story 1.
 
 ## Phase 9: Convergence
+
+The suffixes `(contradicts)`, `(partial)` and `(missing)` preserve each finding's classification at
+the start of the audit; they do not describe current status. A checked task records its remediation.
 
 - [x] T077 CRITICAL add post-bundle native lifecycle, offline-reopen, vault-preservation and uninstall acceptance gates for the release matrix in `.github/workflows/desktop-release.yml` and `scripts/` per Constitution I/V/VII and SC-010 (contradicts)
 - [x] T078 Add local source-text preview, deterministic fact candidates, explicit review/acceptance and provenance tests in `backend/career/sources.py`, `backend/api/routes/career_profile.py`, and `frontend/src/features/career-profile/SourceImporter.jsx` per FR-013 (partial)
@@ -466,7 +479,7 @@ failure while the desktop is active.
   scopes, explicit agent disclosure, bounded DTOs and the existing exclusive vault lease
 - [x] T151 [US10] Add the user-bound automation grant model, digest-only token persistence,
   expiry/revocation service and Alembic migration in `backend/automation/`,
-  `backend/model_registry.py` and `alembic/versions/`
+  `backend/model_registry.py` and `backend/migrations/versions/`
 - [x] T152 [US10] Add cwd-independent vault bootstrap, current-schema checks, authorization-only
   migration and per-read `desktop_instance_lease` ownership with grant revalidation in
   `backend/automation/runtime.py` and `backend/automation/mcp_server.py`
@@ -552,3 +565,269 @@ browser storage, logs, later API responses or the other account.
   analysis/convergence in `specs/001-desktop-career-agent/`
 - [x] T174 [US10] Run proportional Python/React/security gates, repository hygiene and diff checks;
   record only commands actually executed
+
+## Phase 21: User Story 1 — Mobile workspace navigation isolation
+
+**Goal**: Make the mobile workspace drawer a complete modal navigation surface without changing
+the persistent desktop sidebar or adding a runtime, permission or network boundary.
+
+**Independent Test**: Open the workspace menu at mobile width, traverse it in both directions,
+attempt to reach obscured content, close it through Escape, navigation and a desktop resize, and
+verify focus, body scrolling and accessibility state are restored. Repeat the CSS geometry check
+at 320, 375, 991 and 1,280 px with reduced motion enabled.
+
+- [x] T175 [US1] Amend constitution, specification, plan and tasks for modal mobile navigation,
+  inert background content, scroll/focus restoration and reduced-motion acceptance
+- [x] T176 [US1] Implement modal semantics, inert workspace isolation, body-scroll locking,
+  focus containment and route/resize cleanup in `frontend/src/app/WorkspaceShell.jsx` and
+  `frontend/src/components/Layout/Sidebar.jsx`; remove the unused Bootstrap JavaScript entrypoint
+  only after a repository-wide dependency scan
+- [x] T177 [US1] Cover modal semantics, forward/reverse focus wrap, Escape, opener restoration,
+  inert state, scroll restoration, non-focusable scrim, route changes, resize and unmount in
+  `frontend/src/app/WorkspaceShell.test.jsx` and `frontend/src/components/Layout/Sidebar.test.jsx`
+- [x] T178 [US1] Add real-Chromium mobile/desktop geometry, overflow and reduced-motion validation
+  in `frontend/e2e/workspace-shell-responsive.mjs` and expose the focused npm script
+- [x] T179 [US1] Run proportional and release frontend gates, record exact analysis in
+  `mobile-workspace-navigation-analysis.md`, and converge the active Spec Kit artifacts in
+  `mobile-workspace-navigation-convergence.md`
+
+## Phase 22: User Story 1 — Measured offline renderer boot
+
+**Goal**: Start the private login workspace with only the selected local language and auditable
+icons, while enforcing byte, contrast, keyboard, CSP and offline recovery contracts.
+
+**Independent Test**: Build the production renderer, open it at 390 px first in English and then
+with Italian persisted, and prove each boot fetches one local catalogue and no icon font. Switch
+English to Italian, exercise keyboard focus and disabled form state, run axe and inspect the
+console. Force both locale imports to fail and prove a localized focused retry appears and performs
+no automatic reload or repeated request.
+
+- [x] T180 [US1] Amend constitution, specification, plan and tasks for executable renderer budgets,
+  one-locale offline loading, explicit boot recovery, icon subsetting and enforceable CSP delivery
+- [x] T181 [US1] Split English/Italian into independent bundled modules behind a deduplicating
+  registry; add pending switch semantics, Italian-to-English fallback, localized focused boot retry
+  and registry/StrictMode/failure/localization tests
+- [x] T182 [US1] Generate an MIT-attributed SVG-mask subset from every explicit Bootstrap icon
+  source token, reject computed/missing/stale names and remove the complete font entrypoint
+- [x] T183 [US1] Raise language/privacy contrast, language touch targets and retain visible focus;
+  move `frame-ancestors` to its enforceable Nginx header-only boundary and cover distribution
+  contracts
+- [x] T184 [US1] Enforce production entry/locale/CSS/initial raw and gzip budgets and add real
+  Chromium EN/IT loading, axe, contrast, icon, focus, disabled-state and console validation
+- [x] T185 [US1] Add a seven-day default cooldown to all Dependabot ecosystems, route release
+  repository/tag/commit values through quoted environment variables, fix the proxy upstream Host
+  to `localhost` and add configuration contract tests
+- [x] T186 [US1] Run complete frontend and release gates, record exact before/after evidence in
+  `renderer-boot-analysis.md`, and converge active artifacts in `renderer-boot-convergence.md`
+
+## Phase 23: User Story 10 — Agent Access production hardening
+
+**Goal**: Close the remaining local-origin, forwarded-identity, lifecycle-retention and real-browser
+quality gaps without widening the read-only agent boundary.
+
+**Independent Test**: Attempt credentialed preflight and refresh from an unrelated localhost port,
+send a forged `X-Forwarded-For`, race issuance and revocation, create more than 100 inactive rows
+for two users, export a backup, and exercise Agent Access in production Chromium at 320, 390 and
+1,440 px in English and Italian. Verify exact-origin isolation, active-cap enforcement, owner-only
+retention, no grant material in export, WCAG 2.2 AA, keyboard entry and no bearer after route exit.
+
+- [x] T187 [US10] Remove the permissive localhost CORS default, keep credentialed origins exact,
+  make Compose backend-only, disable proxy-header trust in container/native runtimes and add
+  measurable configuration and request-identity tests
+- [x] T188 [US10] Equalize unknown-account CLI password work, serialize all grant mutations, order
+  history by lifecycle transition and prune only the owner's inactive tail in bounded batches
+- [x] T189 [US10] Align runtime/static secret and bounds schemas, prove backup exclusion, cross-user
+  erasure/restore behavior, concurrent active-cap enforcement and revocation idempotency
+- [x] T190 [US10] Add bilingual interrupted-issuance guidance, hide the closed mobile drawer from
+  off-screen traversal and add a fresh-build Playwright WCAG 2.2/responsive/lifecycle/secret gate
+- [x] T191 [US10] Run focused and complete backend/frontend/distribution gates, record exact evidence
+  in the Agent Access analysis/convergence artifacts and leave no test service running
+
+## Phase 24: User Story 1 — Fail-closed local session and distribution boundary
+
+**Goal**: Preserve a small professional login boot while making runtime configuration, credential
+bounds, logout truthfulness, API compression and rollout caching fail closed.
+
+**Independent Test**: Reject malformed environment/CORS/API-base/password inputs, fail then retry
+an explicit logout without remounting private content, and inspect a hardened production container:
+HTML and logo revalidate, fingerprinted CSS/JS are immutable and gzip-compressed, and a private API
+response over 1,000 bytes has one no-store policy and no content encoding.
+
+- [x] T192 [US1] Amend constitution, specification, plan and tasks for canonical local runtime
+  configuration, truthful session termination, private-response compression and rollout caching
+- [x] T193 [US1] Validate environment, JWT, signing-secret, exact CORS, exact renderer API-base and
+  bcrypt UTF-8 boundaries; add explicit logout failure/retry with the workspace unmounted
+- [x] T194 [US1] Lazy-load the authenticated workspace and layered Bootstrap CSS, compact locale
+  namespaces without removing keys and ratchet login plus authenticated-chunk raw/gzip budgets
+- [x] T195 [US1] Restrict immutable caching to fingerprinted assets, revalidate HTML/unhashed
+  assets, disable dynamic API compression and add static/container header and transfer contracts
+
+## Phase 25: User Story 1 — Replay-detecting browser refresh sessions
+
+**Goal**: Replace the documented 14-day stateless refresh replay window with bounded,
+restart-durable, digest-only session families while preserving local and container login flows.
+
+**Independent Test**: Race the same token through two file-backed SQLite sessions, replay the old
+token after a normal rotation, log out with an already rotated token, submit a signed pre-migration
+token without `sid`, force issue and rotation commit failures, restore and erase one of two users,
+and round-trip the migration. Verify one race winner followed by family revocation, cleared invalid
+cookies, no raw token/JTI at rest or in backup, an eight-row cap and zero partial persistence.
+
+- [x] T196 [US1] Amend constitution, specification, plan, tasks and data model for required claims,
+  bounded digest-only session families, CAS rotation, replay revocation and access-token residual
+  lifetime
+- [x] T197 [US1] Add the `AuthSession` model and Alembic revision, database-unique account slots,
+  bounded issuance, atomic rotation, replay detection and current-or-old-token revocation
+- [x] T198 [US1] Integrate login/register/refresh/logout, restore and erasure lifecycle behavior;
+  exclude session state from portable archives and close the renderer when a refreshed retry is 401
+- [x] T199 [US1] Prove required claims, digest-only storage, sequential and concurrent replay,
+  logout with an old token, pre-migration rejection, allocation bounds, cross-user portability,
+  migration cascade/round-trip and issue/rotation rollback
+- [x] T200 [US1] Run focused and proportional broad gates, record exact evidence in
+  `refresh-session-analysis.md`, and converge the active artifacts in
+  `refresh-session-convergence.md`
+
+## Phase 26: User Story 1 — Live access-family authority
+
+**Goal**: Remove residual access-bearer authority after committed family revocation, make client
+identity transitions deterministic and fail every Node-backed entry point before work on an
+unsupported runtime without adding token persistence or a schema migration.
+
+**Independent Test**: Bind access and refresh JWTs to one stable `sid`, rotate and race refreshes,
+log out one or two presented families, inject a logout commit failure, restore and erase one of two
+users, overlap login/register/refresh calls, retry a terminal protected `401`, send every auth
+mutation with missing Origin and hostile Fetch Metadata, and run preflight on Node 24.18 and an
+older 24.x runtime. Verify live-family rejection after each committed lifecycle event, atomic
+rollback plus cookie clearing and in-memory bearer retry, last-started-wins identity, native caller
+compatibility and fail-fast coverage for every npm entry point.
+
+- [x] T201 [US1] Amend constitution, specification, plan, tasks, data model, OpenAPI and privacy
+  guidance for mandatory access `sid`, live family authority, the in-flight request boundary and
+  no new access-token persistence or schema revision
+- [x] T202 [US1] Issue and rotate access/refresh pairs under one stable family, require the live
+  indexed family lookup on every protected request and revoke cookie/bearer families atomically
+- [x] T203 [US1] Clear refresh cookies and preserve an in-memory bearer retry after logout commit
+  failure; make account transitions last-started-wins and harden missing-Origin browser mutations
+  with Fetch Metadata without rejecting native callers that omit both headers
+- [x] T204 [US1] Enforce `>=24.18.0 <25` with npm engine strictness, an executable version checker,
+  lifecycle hooks for every Node/Vite/Playwright/Tauri entry point and an exhaustive manifest test
+- [x] T205 [US1] Run focused and complete backend/frontend/Rust/static gates, record exact evidence
+  in `access-session-analysis.md`, and converge every active artifact in
+  `access-session-convergence.md`
+
+## Phase 27: User Story 5 — Crash-recoverable vault lifecycle
+
+**Goal**: Make reset, restore and complete erasure restart-safe, purpose-isolated and durably
+cleanable while preserving shared content-addressed files and responsive desktop health probes.
+
+**Independent Test**: Kill restore after its first file publication, retry the same archive, lose
+the archive and erase instead, bind the published file from another account before rollback, race
+login with reset, log out an erasure recovery session, corrupt/torn-write the journal, and block a
+writer while probing health. Verify deterministic convergence, no unrelated file deletion, no
+normal authority while pending, reauthentication-only recovery and non-blocking liveness/readiness.
+
+- [x] T206 [US5] Amend constitution, specification, plan and tasks for four-state lifecycle,
+  purpose-bound recovery, durable journal ownership, cleanup sanitation and measurable crash tests
+- [x] T207 [US5] Add the constrained indexed `User` lifecycle/fingerprint fields and Alembic
+  migration with conservative backfill, pending-state downgrade refusal and migration tests
+- [x] T208 [US5] Serialize lifecycle transitions with session issuance, reject normal and
+  automation authority while pending, add maintenance-only password reauthentication, invalidate
+  erasure sentinels on logout and perform reset/erasure final session sweeps
+- [x] T209 [US5] Add the writer-priority activity gate, one maintenance mutex, cancellation-safe
+  managed worker state, static root response, pure liveness, non-blocking readiness and ordered
+  lifespan shutdown tests
+- [x] T210 [US5] Add redundant checksummed monotonic restore journals, owner-scoped staging,
+  same-fingerprint retry, lost-archive erasure, durable directory metadata and Windows write-through
+  replacement plus managed startup temporary cleanup
+- [x] T211 [US5] Derive exact canonical restore paths, reject non-canonical UUID identities,
+  preserve newly shared references, revoke restored authority, disable schedules and sanitize
+  database/file remnants before clearing failed-restore state
+- [x] T212 [US5] Cover journal corruption/torn writes, process loss, SQLite/WAL privacy, shared-file
+  rollback, auth races/logout recovery, activity contention, storage faults and bounded upload and
+  archive resources with focused backend tests
+- [x] T213 [US5] Update data model, OpenAPI, architecture and privacy guidance with lifecycle state,
+  recovery response, journal, resource ceilings and restored-schedule semantics
+- [x] T214 [US5] Run complete Ruff, type, backend, migration and Node-preflight gates and record the
+  exact pass/skip/failure counts without weakening unrelated checks
+- [x] T215 [US5] Record cross-artifact analysis in `vault-lifecycle-analysis.md`, converge remaining
+  gaps in `vault-lifecycle-convergence.md`, rerun affected gates and leave no active test service
+
+## Phase 28: Production-boundary cancellation and containment follow-up
+
+**Goal**: Close implementation gaps already governed by the desktop lifecycle, accessibility,
+live-session and release-evidence requirements without expanding product scope or persistence.
+
+**Independent Test**: Hold a shared browser refresh open while cancelling one waiting request,
+abort a stalled desktop readiness probe, enter recovery and failed-logout shells from focused
+private controls, launch the managed runtime under a secret-bearing parent environment, and force
+native package smoke failures. Verify prompt caller cancellation without cancelling other waiters,
+bounded bootstrap cleanup, deterministic recovery focus, child-process environment minimization and
+zero unverified sidecar cleanup path.
+
+- [x] T216 [US1] Make shared browser refresh waiting caller-cancellable and independently bounded;
+  preserve one shared rotation for surviving requests and add focused race regressions
+- [x] T217 [US1] Make desktop readiness probes abortable across Strict Mode cleanup and stalled
+  loopback responses, with focused platform/component tests
+- [x] T218 [US1] Restore deterministic keyboard focus when recovery, failed-logout or failed desktop
+  boot UI replaces private content, without creating additional tab stops
+- [x] T219 [US4] Remove desktop, vault, automation and host credential variables from the managed
+  model child environment while retaining its launch-scoped llama API key and required runtime
+  environment
+- [x] T220 [US1] Require Windows, macOS and Linux package smoke failure paths to wait for sidecar
+  disappearance, then run focused frontend/backend/release/Rust and bundle gates and record exact
+  analysis and convergence evidence
+- [x] T221 [US1] Restrict data-derived external navigation to HTTPS or validated mail addresses and
+  narrow the native opener capability to the same schemes so imported links cannot open HTTP
+  loopback services
+- [x] T222 [US3] Make Job-Room provider transport ignore ambient proxy variables, reject requests
+  outside its exact HTTPS origin and refuse redirects before any second network hop
+- [x] T223 [US1] Bound every intermediate release artifact to fourteen days and ordinary CI
+  evidence to seven days, with a workflow contract that prevents future default retention
+
+## Phase 29: Renderer CSS delivery boundary
+
+**Goal**: Prevent unauthenticated lifecycle surfaces from downloading authenticated workspace CSS
+while preserving the established workspace cascade, accessibility media and responsive behavior.
+
+**Independent Test**: Build under supported Node, inspect the HTML-linked and lazy workspace CSS
+assets, then exercise login and the authenticated shell in real Chromium. Verify one small initial
+sheet contains login/recovery/boot but no workspace or Bootstrap sentinels, one lazy sheet contains
+the complete workspace graph in order, exact raw/gzip budgets pass and responsive/accessibility
+contracts remain present.
+
+- [x] T224 [US1] Split the renderer CSS and icon delivery graph at `AuthenticatedWorkspace`, add
+  executable initial/lazy selector, cascade, media and byte-budget contracts, run complete frontend
+  and pertinent real-browser gates, and record exact before/after evidence in
+  `renderer-css-boundary-analysis.md` and `renderer-css-boundary-convergence.md`
+
+## Phase 30: Bounded transport, runtime and content-addressed persistence
+
+**Goal**: Keep hostile or concurrent local/remote inputs bounded before parsing, preserve process
+liveness, continuously attest the managed model runtime and make file/database ownership converge
+without replacement, orphaning or destructive loser cleanup.
+
+**Independent Test**: Stream an oversized body without `Content-Length`, hold source and photo
+parsing while probing liveness, return compressed/oversized/malformed provider and inference bodies,
+tamper runtime inventory/model bytes, cancel each install/start phase, and race identical/conflicting
+source/photo/artifact writers through real file-backed SQLite connections. Verify early bounded
+failure, responsive health, no expanded network request, no unverified process, exactly one byte
+publisher, correct per-profile rows and zero temporary/private residue.
+
+- [x] T225 [US1] Extend specification, plan and tasks for pre-parser request ceilings, parser
+  offload, strict provider/inference envelopes, continuous runtime inventory and create-if-absent
+  content ownership without adding cloud, telemetry or schema scope
+- [x] T226 [US3] Bound and validate provider requests/responses plus Job-Room single-flight session,
+  CSRF cleanup, exact-origin paths and health timeouts; make local inference transport identity-only,
+  size-bounded and strict about model, usage and response contracts
+- [x] T227 [US4] Harden managed runtime redirects, timeouts, archive/inventory verification, disk
+  preflight, child environment/process ownership, cancellation, shutdown ordering and crash restart
+  bounds; verify one checksum-pinned real runtime archive
+- [x] T228 [US1] Enforce ASGI request-body and startup configuration ceilings, bound PDF/DOCX/text
+  expansion, make photo decoding request-local, split source parsing from persistence and offload
+  CPU-heavy source/photo work while liveness remains responsive
+- [x] T229 [US5] Make source, photo and resume artifact publication/deletion create-if-absent,
+  transaction-owned, race-safe and durably recoverable with shared-reference preservation
+- [x] T230 [US5] Add repeated thread and two-connection SQLite races, upload/decompression faults,
+  chunked-body, provider/inference stream, runtime tamper/cancel and liveness regressions
+- [x] T231 [US1] Run complete backend, frontend, distribution and applicable browser gates; record
+  exact evidence and residual environmental limits in production-hardening analysis/convergence

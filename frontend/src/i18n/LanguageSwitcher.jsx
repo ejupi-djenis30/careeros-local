@@ -1,10 +1,15 @@
-import { SUPPORTED_LANGUAGES } from "./messages";
+import { SUPPORTED_LANGUAGES } from "./messageRegistry";
 import { useI18n } from "./useI18n";
 
 export function LanguageSwitcher() {
-    const { language, setLanguage, t } = useI18n();
+    const { language, setLanguage, pendingLanguage, languageError, t } = useI18n();
     return (
-        <div className="language-switcher" role="group" aria-label={t("language.label")}>
+        <div
+            className="language-switcher"
+            role="group"
+            aria-label={t("language.label")}
+            aria-busy={pendingLanguage ? "true" : undefined}
+        >
             {SUPPORTED_LANGUAGES.map((code) => (
                 <button
                     key={code}
@@ -13,11 +18,15 @@ export function LanguageSwitcher() {
                     aria-pressed={language === code}
                     aria-label={t(`language.${code}`)}
                     title={t(`language.${code}`)}
-                    onClick={() => setLanguage(code)}
+                    disabled={Boolean(pendingLanguage)}
+                    onClick={() => void setLanguage(code)}
                 >
                     {code.toUpperCase()}
                 </button>
             ))}
+            {languageError && (
+                <span className="visually-hidden" role="alert">{t("language.loadFailed")}</span>
+            )}
         </div>
     );
 }

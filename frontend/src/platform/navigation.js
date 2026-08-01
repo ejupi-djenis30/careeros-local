@@ -4,9 +4,13 @@ import { CAREEROS_API_ERROR_EVENT } from "../lib/events";
 
 function validatedExternalTarget(value) {
     if (typeof value !== "string") return null;
-    if (value.startsWith("mailto:")) {
-        const decoded = decodeURIComponent(value.slice("mailto:".length));
-        return safeMailto(decoded);
+    if (value.slice(0, "mailto:".length).toLowerCase() === "mailto:") {
+        try {
+            const decoded = decodeURIComponent(value.slice("mailto:".length));
+            return safeMailto(decoded);
+        } catch {
+            return null;
+        }
     }
     return safeExternalUrl(value);
 }

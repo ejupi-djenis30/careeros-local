@@ -94,9 +94,7 @@ class ApplicationAgendaService:
             ),
             (identity_incomplete, "invalid"),
             (
-                Application.next_action_priority.notin_(
-                    ("low", "normal", "high", "urgent")
-                ),
+                Application.next_action_priority.notin_(("low", "normal", "high", "urgent")),
                 "invalid",
             ),
             (
@@ -245,7 +243,9 @@ class ApplicationAgendaService:
                     )
                 )
             except ValidationError as exc:
-                raise ApplicationValidationError("Application agenda projection is invalid") from exc
+                raise ApplicationValidationError(
+                    "Application agenda projection is invalid"
+                ) from exc
         active_count = int(stats_row.active_count)
         later_count = int(stats_row.later_count)
         visible_count = active_count - later_count

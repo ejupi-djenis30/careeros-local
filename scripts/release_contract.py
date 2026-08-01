@@ -34,6 +34,7 @@ from scripts.release_assets import (
     canonical_package_name,
     checksum_text,
     file_record,
+    is_link_like,
     parse_checksum_text,
     reject_casefold_collisions,
     sha256_file,
@@ -43,8 +44,13 @@ from scripts.release_assets import (
     validate_stable_version,
     validate_target_candidate,
 )
+from scripts.third_party_notices import (
+    NOTICE_NAME,
+    verify_notice_bytes,
+    verify_notice_file,
+)
 
-RELEASE_SCHEMA_VERSION = 3
+RELEASE_SCHEMA_VERSION = 4
 RELEASE_MANIFEST = "release-manifest.json"
 GLOBAL_CHECKSUMS = "SHA256SUMS"
 EVIDENCE_ARCHIVE = "supply-chain-evidence.tar.gz"
@@ -100,15 +106,21 @@ def _write_json(path: Path, value: object) -> None:
 
 
 def _ensure_empty_directory(path: Path) -> None:
+    if is_link_like(path):
+        raise RuntimeError(f"Release output directory must not be a link or junction: {path}")
     path.mkdir(parents=True, exist_ok=True)
+    if not path.is_dir():
+        raise RuntimeError(f"Release output path is not a directory: {path}")
     if any(path.iterdir()):
         raise RuntimeError(f"Release output directory must be empty: {path}")
 
 
-def inventory_directory(directory: Path, *, exclude: set[str] | None = None) -> list[dict[str, Any]]:
+def inventory_directory(
+    directory: Path, *, exclude: set[str] | None = None
+) -> list[dict[str, Any]]:
     excluded = exclude or set()
     entries = sorted(directory.iterdir(), key=lambda path: path.name.casefold())
-    if any(path.is_symlink() or not path.is_file() for path in entries):
+    if any(is_link_like(path) or not path.is_file() for path in entries):
         raise RuntimeError(f"Release directory may contain regular files only: {directory}")
     names = [path.name for path in entries]
     reject_casefold_collisions(names)
@@ -119,7 +131,9 @@ def _validate_cyclonedx(path: Path) -> dict[str, Any]:
     value = _json_file(path)
     if not isinstance(value, dict) or value.get("bomFormat") != "CycloneDX":
         raise RuntimeError(f"Release SBOM is not CycloneDX JSON: {path.name}")
-    if not isinstance(value.get("specVersion"), str) or not isinstance(value.get("components"), list):
+    if not isinstance(value.get("specVersion"), str) or not isinstance(
+        value.get("components"), list
+    ):
         raise RuntimeError(f"Release SBOM is missing its versioned component graph: {path.name}")
     return value
 
@@ -128,7 +142,7 @@ def validate_evidence_directory(directory: Path) -> list[dict[str, Any]]:
     if not directory.is_dir():
         raise RuntimeError(f"Supply-chain evidence directory does not exist: {directory}")
     entries = sorted(directory.iterdir(), key=lambda path: path.name)
-    if any(path.is_symlink() or not path.is_file() for path in entries):
+    if any(is_link_like(path) or not path.is_file() for path in entries):
         raise RuntimeError("Supply-chain evidence may contain regular files only")
     names = [path.name for path in entries]
     if names != sorted(EVIDENCE_FILES):
@@ -154,7 +168,9 @@ def validate_evidence_directory(directory: Path) -> list[dict[str, Any]]:
     return [file_record(path) for path in entries]
 
 
-def create_deterministic_evidence_archive(evidence: Path, destination: Path) -> list[dict[str, Any]]:
+def create_deterministic_evidence_archive(
+    evidence: Path, destination: Path
+) -> list[dict[str, Any]]:
     records = validate_evidence_directory(evidence)
     with destination.open("wb") as raw:
         with gzip.GzipFile(filename="", fileobj=raw, mode="wb", mtime=0) as compressed:
@@ -216,7 +232,7 @@ def expected_public_names(version: str) -> list[str]:
         names.append(target_checksum_name(target))
     names.extend(sbom_asset_names(version).values())
     names.extend(agent_public_names(version))
-    names.extend((LICENSE_NAME, EVIDENCE_ARCHIVE, RELEASE_MANIFEST, GLOBAL_CHECKSUMS))
+    names.extend((LICENSE_NAME, NOTICE_NAME, EVIDENCE_ARCHIVE, RELEASE_MANIFEST, GLOBAL_CHECKSUMS))
     reject_casefold_collisions(names)
     return sorted(names, key=str.casefold)
 
@@ -224,7 +240,9 @@ def expected_public_names(version: str) -> list[str]:
 def _native_candidates(native_root: Path, version: str, source_commit: str) -> list[dict[str, Any]]:
     manifests = sorted(native_root.rglob("candidate-*.json"), key=lambda path: path.name)
     if len(manifests) != len(TARGETS):
-        raise RuntimeError(f"Expected {len(TARGETS)} native target manifests, found {len(manifests)}")
+        raise RuntimeError(
+            f"Expected {len(TARGETS)} native target manifests, found {len(manifests)}"
+        )
     candidates: dict[str, dict[str, Any]] = {}
     for manifest_path in manifests:
         raw = _json_file(manifest_path)
@@ -278,9 +296,7 @@ def _agent_candidate(
 ) -> tuple[Path, dict[str, Any]]:
     manifests = sorted(agent_root.rglob(AGENT_CANDIDATE_MANIFEST))
     if len(manifests) != 1:
-        raise RuntimeError(
-            f"Expected one Agent Access candidate manifest, found {len(manifests)}"
-        )
+        raise RuntimeError(f"Expected one Agent Access candidate manifest, found {len(manifests)}")
     source = manifests[0].parent
     candidate = validate_agent_candidate(
         source,
@@ -310,6 +326,8 @@ def assemble_release_bundle(
     source_commit = validate_source_commit(source_commit)
     release_date = validate_release_date(release_date)
     approved_license_record(license_path)
+    source_notice = project_root / NOTICE_NAME
+    verify_notice_file(source_notice, root=project_root)
     _ensure_empty_directory(output)
     candidates = _native_candidates(native_root, version, source_commit)
     agent_source, agent_candidate = _agent_candidate(
@@ -365,7 +383,12 @@ def assemble_release_bundle(
         "requirementsLock": lock_record,
     }
     license_record = write_public_license(license_path, output / LICENSE_NAME)
-    evidence_records = create_deterministic_evidence_archive(evidence_root, output / EVIDENCE_ARCHIVE)
+    shutil.copy2(source_notice, output / NOTICE_NAME)
+    verify_notice_bytes((output / NOTICE_NAME).read_bytes(), root=project_root)
+    notice_record = file_record(output / NOTICE_NAME, artifact_type="third-party-notices")
+    evidence_records = create_deterministic_evidence_archive(
+        evidence_root, output / EVIDENCE_ARCHIVE
+    )
     sboms: dict[str, dict[str, Any]] = {}
     for component, public_name in sbom_asset_names(version).items():
         source_name = f"{component}-sbom.cdx.json"
@@ -385,6 +408,7 @@ def assemble_release_bundle(
         "sourceCommit": source_commit,
         "signedPackages": False,
         "license": license_record,
+        "thirdPartyNotices": notice_record,
         "targets": targets,
         "agentAccess": agent_access,
         "sboms": sboms,
@@ -428,12 +452,19 @@ def validate_release_bundle(
     source_commit = validate_source_commit(source_commit)
     release_date = validate_release_date(release_date)
     source_license_record = approved_license_record(license_path)
+    source_notice = project_root / NOTICE_NAME
+    verify_notice_file(source_notice, root=project_root)
     actual_names = [record["name"] for record in inventory_directory(directory)]
     if actual_names != expected_public_names(version):
         raise RuntimeError(f"Release bundle has missing or unexpected files: {actual_names}")
     license_record = verify_distributed_license(directory / LICENSE_NAME, source=license_path)
     if license_record != source_license_record:
         raise RuntimeError("Public LICENSE does not match the approved source record")
+    notice_payload = (directory / NOTICE_NAME).read_bytes()
+    verify_notice_bytes(notice_payload, root=project_root)
+    if notice_payload != source_notice.read_bytes():
+        raise RuntimeError("Public third-party notices differ from the approved source payload")
+    notice_record = file_record(directory / NOTICE_NAME, artifact_type="third-party-notices")
     inventory = inventory_directory(directory, exclude={GLOBAL_CHECKSUMS})
     parsed = parse_checksum_text((directory / GLOBAL_CHECKSUMS).read_text(encoding="utf-8"))
     expected_checksums = [
@@ -453,6 +484,7 @@ def validate_release_bundle(
         "sourceCommit": source_commit,
         "signedPackages": False,
         "license": license_record,
+        "thirdPartyNotices": notice_record,
     }
     for key, value in expected_header.items():
         if manifest.get(key) != value:
@@ -480,8 +512,12 @@ def validate_release_bundle(
         if item.get("checksum") != file_record(directory / checksum_name):
             raise RuntimeError(f"Release manifest checksum asset is incorrect for {target}")
         target_lines = parse_checksum_text((directory / checksum_name).read_text(encoding="utf-8"))
-        expected_lines = [{"sha256": record["sha256"], "name": record["name"]} for record in records]
-        if target_lines != sorted(expected_lines, key=lambda record: str(record["name"]).casefold()):
+        expected_lines = [
+            {"sha256": record["sha256"], "name": record["name"]} for record in records
+        ]
+        if target_lines != sorted(
+            expected_lines, key=lambda record: str(record["name"]).casefold()
+        ):
             raise RuntimeError(f"Target checksum inventory is incorrect for {target}")
     reject_casefold_collisions(native_names)
     wheel_record = validate_agent_wheel(
@@ -519,7 +555,9 @@ def validate_release_bundle(
     )
     evidence_records = _archive_records(directory / EVIDENCE_ARCHIVE)
     if manifest.get("evidenceFiles") != evidence_records:
-        raise RuntimeError("Release manifest evidence members do not match the deterministic archive")
+        raise RuntimeError(
+            "Release manifest evidence members do not match the deterministic archive"
+        )
     if manifest.get("evidenceArchive") != file_record(directory / EVIDENCE_ARCHIVE):
         raise RuntimeError("Release manifest evidence archive digest is incorrect")
     by_name = {record["name"]: record for record in evidence_records}

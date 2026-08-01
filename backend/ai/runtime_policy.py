@@ -12,6 +12,7 @@ from backend.ai.orchestrator import LocalAIOrchestrator, OrchestrationRequest
 from backend.ai.retrieval import EvidenceDocument
 from backend.ai.task_specs import TASK_SPECS
 from backend.core.config import settings
+from backend.core.diagnostics import FailureCode, diagnose_failure, log_failure
 from backend.providers.circuit_breaker import CircuitOpenError, CircuitState, circuit_registry
 from backend.providers.llm.factory import get_provider_for_step
 from backend.services.search.prompt_compaction import compact_prompt_text
@@ -101,11 +102,8 @@ class RuntimePolicyMixin:
         try:
             provider = self._get_provider(step)
         except Exception as exc:
-            logger.warning(
-                "[LLM] step=%s could not resolve provider for runtime policy; using settings defaults: %s",
-                step,
-                exc,
-            )
+            diagnostic = diagnose_failure(exc, FailureCode.RUNTIME_POLICY_FALLBACK)
+            log_failure(logger, diagnostic, level=logging.WARNING)
         context_window = self._resolve_step_context_window(step, provider)
         low_context_mode = str(getattr(settings, "SEARCH_LOW_CONTEXT_MODE", "auto") or "auto")
         low_context_mode = low_context_mode.strip().lower()

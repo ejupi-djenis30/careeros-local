@@ -70,6 +70,8 @@ describe("message catalogue contract", () => {
         expect(it("progressPage.state.reserved")).toBe("in preparazione");
         expect(en("historyCard.lastDays", { count: 7 })).toBe("Last 7 days");
         expect(it("historyCard.lastDays", { count: 7 })).toBe("Ultimi 7 giorni");
+        expect(en("home.setup.verified", { count: 1 })).toBe("Verified steps: 1");
+        expect(it("home.setup.verified", { count: 1 })).toBe("Passaggi verificati: 1");
         expect(en("searchProgress.analyzingTargetsCount", { current: 2, total: 5 })).toBe("Analyzing jobs (2/5)…");
         expect(it("searchProgress.analyzingTargetsCount", { current: 2, total: 5 })).toBe("Analisi annunci (2/5)…");
     });

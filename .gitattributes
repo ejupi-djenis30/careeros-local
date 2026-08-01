@@ -3,3 +3,5 @@
 backend/inference/model_catalog.json text eol=lf
 backend/inference/model_catalog.sha256 text eol=lf
 LICENSE text eol=lf
+THIRD_PARTY_NOTICES.txt text eol=lf
+frontend/src-tauri/windows/nsis-hooks.nsh text eol=lf

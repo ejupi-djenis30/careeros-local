@@ -55,9 +55,7 @@ class CareerProfileRepository:
             fact = existing_facts.get(fact_id)
             if fact_input.id and fact is None:
                 owner = (
-                    self.db.query(CareerFact.profile_id)
-                    .filter(CareerFact.id == fact_id)
-                    .scalar()
+                    self.db.query(CareerFact.profile_id).filter(CareerFact.id == fact_id).scalar()
                 )
                 if owner is not None:
                     raise ValueError(f"Career fact '{fact_id}' does not belong to this profile")
@@ -94,9 +92,7 @@ class CareerProfileRepository:
             goal = existing_goals.get(goal_id)
             if goal_input.id and goal is None:
                 owner = (
-                    self.db.query(CareerGoal.profile_id)
-                    .filter(CareerGoal.id == goal_id)
-                    .scalar()
+                    self.db.query(CareerGoal.profile_id).filter(CareerGoal.id == goal_id).scalar()
                 )
                 if owner is not None:
                     raise ValueError(f"Career goal '{goal_id}' does not belong to this profile")

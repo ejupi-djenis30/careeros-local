@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 from backend.applications.exports import (
     MAX_DOSSIER_ARTIFACT_BYTES,
     MAX_DOSSIER_EVENT_BYTES,
+    CalendarExportError,
     DossierBundle,
     DossierSizeError,
     build_dossier_bundle,
@@ -49,8 +50,8 @@ from backend.applications.snapshots import (
 )
 from backend.db.types import aware_utc
 from backend.models import Job
+from backend.resumes.artifact_policy import read_verified_resume_artifact
 from backend.resumes.models import ResumeDraft, ResumeVersion
-from backend.storage.atomic import read_verified
 
 TRANSITIONS = {
     "saved": {"preparing", "applied", "withdrawn", "archived"},
@@ -355,9 +356,7 @@ class ApplicationService:
             is not None
         )
 
-    def logical_opportunity_reached_applied(
-        self, user_id: int, scraped_job_id: int
-    ) -> bool:
+    def logical_opportunity_reached_applied(self, user_id: int, scraped_job_id: int) -> bool:
         """Return whether an owned application ever crossed the applied milestone."""
         return (
             self.db.query(Application.id)
@@ -438,9 +437,7 @@ class ApplicationService:
         if job is not None:
             assert scraped_job_id is not None
             if self._existing_logical_application(user_id, scraped_job_id):
-                raise ApplicationConflictError(
-                    "An application already exists for this opportunity"
-                )
+                raise ApplicationConflictError("An application already exists for this opportunity")
             from backend.services.job_service import JobService
 
             JobService(self.db)._mark_analysis_receipt(job, user_id)
@@ -557,7 +554,10 @@ class ApplicationService:
         application_id: str,
         export_format: Literal["json", "markdown"],
     ) -> ReadinessExport:
-        return export_readiness(self.readiness(user_id, application_id), export_format)
+        try:
+            return export_readiness(self.readiness(user_id, application_id), export_format)
+        except ValueError as exc:
+            raise ApplicationValidationError("Application readiness export is invalid") from exc
 
     def update_preparation(
         self, user_id: int, application_id: str, data: ApplicationPreparationUpdate
@@ -771,12 +771,15 @@ class ApplicationService:
     def task_calendar(self, user_id: int, application_id: str) -> bytes:
         application = self._application(user_id, application_id)
         snapshot = application.job_snapshot or {}
-        return export_task_calendar(
-            application.id,
-            str(snapshot.get("title") or "Application"),
-            str(snapshot.get("company") or "Unknown company"),
-            self._task_snapshots(application),
-        )
+        try:
+            return export_task_calendar(
+                application.id,
+                str(snapshot.get("title") or "Application"),
+                str(snapshot.get("company") or "Unknown company"),
+                self._task_snapshots(application),
+            )
+        except CalendarExportError as exc:
+            raise ApplicationValidationError(str(exc)) from exc
 
     def get_dossier_draft(
         self,
@@ -1011,18 +1014,25 @@ class ApplicationService:
         for artifact in version.artifacts:
             if artifact.format not in {"pdf", "docx"}:
                 continue
-            if artifact.byte_size > MAX_DOSSIER_ARTIFACT_BYTES:
+            if (
+                isinstance(artifact.byte_size, bool)
+                or not isinstance(artifact.byte_size, int)
+                or artifact.byte_size <= 0
+                or artifact.byte_size > MAX_DOSSIER_ARTIFACT_BYTES
+            ):
                 raise ApplicationValidationError(
                     f"The stored {artifact.format.upper()} resume artifact exceeds the dossier limit"
                 )
             try:
-                data = read_verified(artifact.storage_path, artifact.sha256)
+                data = read_verified_resume_artifact(
+                    artifact.storage_path,
+                    expected_sha256=artifact.sha256,
+                    expected_size=artifact.byte_size,
+                )
             except (OSError, ValueError) as exc:
                 raise ApplicationValidationError(
                     f"The stored {artifact.format.upper()} resume artifact failed verification"
                 ) from exc
-            if len(data) != artifact.byte_size:
-                raise ApplicationValidationError("Resume artifact size does not match its record")
             artifacts[artifact.format] = (data, artifact.media_type)
         if not artifacts:
             raise ApplicationValidationError("The linked resume has no verified export artifact")
@@ -1220,8 +1230,7 @@ class ApplicationService:
                 .where(
                     ApplicationDossierDraft.id == draft.id,
                     ApplicationDossierDraft.revision == draft.revision,
-                    ApplicationDossierDraft.application_revision
-                    == draft.application_revision,
+                    ApplicationDossierDraft.application_revision == draft.application_revision,
                     ApplicationDossierDraft.resume_version_id == draft.resume_version_id,
                 )
                 .execution_options(synchronize_session=False)

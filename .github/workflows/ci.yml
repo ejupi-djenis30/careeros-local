@@ -85,6 +85,8 @@ jobs:
           python -m pip install --require-hashes --requirement requirements-dev.lock
       - name: Validate release version metadata
         run: python scripts/check_release_versions.py
+      - name: Validate distributable third-party notices
+        run: python -m scripts.third_party_notices --check
       - name: Verify local-only inference boundary
         run: python -m pytest tests/backend/security -q
       - name: Audit dependencies and create Python supply-chain evidence
@@ -126,6 +128,7 @@ jobs:
             ${{ runner.temp }}/careeros/backend-sbom.cdx.json
             ${{ runner.temp }}/careeros/backend-licenses.json
           if-no-files-found: ignore
+          retention-days: 7
 
   frontend:
     name: Frontend · Node 24
@@ -178,13 +181,13 @@ jobs:
       - name: Build
         working-directory: frontend
         run: npm run build
-      - name: Install Chromium for agenda acceptance
+      - name: Install Chromium for browser acceptance
         working-directory: frontend
         timeout-minutes: 30
         run: npx --no-install playwright install --with-deps chromium
-      - name: Validate agenda geometry, contrast and local-day boundaries
+      - name: Validate responsive, accessibility and browser lifecycle quality
         working-directory: frontend
-        run: npm run test:agenda-responsive
+        run: npm run test:e2e
       - name: Validate demo recorder
         working-directory: frontend
         run: |
@@ -203,6 +206,7 @@ jobs:
             ${{ runner.temp }}/careeros/frontend-sbom.cdx.json
             ${{ runner.temp }}/careeros/frontend-licenses.json
           if-no-files-found: ignore
+          retention-days: 7
 
   rust-supply-chain:
     name: Rust · SBOM · licenses · vulnerabilities
@@ -284,13 +288,15 @@ jobs:
             ${{ runner.temp }}/careeros/cargo-exception-tree.txt
             ${{ runner.temp }}/careeros/security-exceptions.json
           if-no-files-found: ignore
+          retention-days: 7
 
   containers:
     name: Containers · SBOM · vulnerability gate
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: 45
     env:
       TRIVY_IMAGE: aquasec/trivy:0.72.0@sha256:cffe3f5161a47a6823fbd23d985795b3ed72a4c806da4c4df16266c02accdd6f
+      OLLAMA_IMAGE: ollama/ollama@sha256:57f573b47f1f71ebb445789f279fe3e596a8beab182f7cf486db9205bad87c5a
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -300,6 +306,8 @@ jobs:
         run: docker compose config --quiet
       - name: Build application images
         run: docker compose build backend frontend
+      - name: Pull pinned Ollama runtime
+        run: docker compose pull --quiet ollama
       - name: Smoke-test hardened frontend runtime
         shell: bash
         run: |
@@ -307,7 +315,7 @@ jobs:
           image="careeros-local-frontend:latest"
           runtime_flags=(
             --read-only
-            --tmpfs /tmp:size=64m,mode=1777
+            --tmpfs /tmp:rw,nosuid,nodev,noexec,size=64m,mode=1777
             --cap-drop ALL
             --security-opt no-new-privileges:true
             --add-host backend:127.0.0.1
@@ -315,6 +323,24 @@ jobs:
 
           test "$(docker image inspect --format '{{.Config.User}}' "$image")" = \
             "nginx:nginx"
+          docker run --rm --entrypoint sh "$image" -ec '
+            test "$(stat -c "%u:%g" /usr/share/nginx/html/index.html)" = "0:0"
+            test ! -w /usr/share/nginx/html
+            test ! -w /usr/share/nginx/html/index.html
+            for artifact in LICENSE THIRD_PARTY_NOTICES.txt; do
+              path="/usr/share/licenses/careeros-local/${artifact}"
+              test "$(stat -c "%u:%g" "$path")" = "0:0"
+              test ! -w "$path"
+            done
+          '
+          for artifact in LICENSE THIRD_PARTY_NOTICES.txt; do
+            expected_digest="$(sha256sum "$artifact" | awk '{ print $1 }')"
+            packaged_digest="$(
+              docker run --rm --entrypoint sha256sum "$image" \
+                "/usr/share/licenses/careeros-local/${artifact}" | awk '{ print $1 }'
+            )"
+            test "$packaged_digest" = "$expected_digest"
+          done
           docker run --rm "${runtime_flags[@]}" "$image" nginx -t
 
           container_id="$(docker run --detach "${runtime_flags[@]}" \
@@ -335,12 +361,287 @@ jobs:
           test -n "$published_port"
           curl --fail --silent --show-error \
             --retry 20 --retry-all-errors --retry-delay 1 \
+            --dump-header "$RUNNER_TEMP/careeros-index-headers.txt" \
             --output "$RUNNER_TEMP/careeros-frontend-index.html" \
             "http://127.0.0.1:${published_port}/"
           test -s "$RUNNER_TEMP/careeros-frontend-index.html"
           grep --quiet 'id="root"' "$RUNNER_TEMP/careeros-frontend-index.html"
+          grep --ignore-case --extended-regexp --quiet \
+            '^Cache-Control:.*no-cache.*must-revalidate' \
+            "$RUNNER_TEMP/careeros-index-headers.txt"
+          ! grep --ignore-case --quiet 'immutable' \
+            "$RUNNER_TEMP/careeros-index-headers.txt"
+          curl --fail --silent --show-error \
+            --dump-header "$RUNNER_TEMP/careeros-logo-headers.txt" \
+            --output "$RUNNER_TEMP/careeros-logo.svg" \
+            "http://127.0.0.1:${published_port}/careeros.svg"
+          test -s "$RUNNER_TEMP/careeros-logo.svg"
+          grep --ignore-case --extended-regexp --quiet \
+            '^Cache-Control:.*no-cache.*must-revalidate' \
+            "$RUNNER_TEMP/careeros-logo-headers.txt"
+          ! grep --ignore-case --quiet 'immutable' \
+            "$RUNNER_TEMP/careeros-logo-headers.txt"
+          curl --fail --silent --show-error \
+            --output "$RUNNER_TEMP/careeros-third-party-notices.txt" \
+            "http://127.0.0.1:${published_port}/THIRD_PARTY_NOTICES.txt"
+          cmp --silent \
+            THIRD_PARTY_NOTICES.txt \
+            "$RUNNER_TEMP/careeros-third-party-notices.txt"
+          css_path="$(
+            grep --only-matching --extended-regexp '/assets/[^"]+[.]css' \
+              "$RUNNER_TEMP/careeros-frontend-index.html" | head -n 1
+          )"
+          js_path="$(
+            grep --only-matching --extended-regexp '/assets/[^"]+[.]js' \
+              "$RUNNER_TEMP/careeros-frontend-index.html" | head -n 1
+          )"
+          test -n "$css_path"
+          test -n "$js_path"
+          for asset_kind in css js; do
+            if [[ "$asset_kind" == "css" ]]; then
+              asset_path="$css_path"
+              maximum_bytes=45000
+            else
+              asset_path="$js_path"
+              maximum_bytes=112000
+            fi
+            curl --fail --silent --show-error \
+              --header 'Accept-Encoding: gzip' \
+              --dump-header "$RUNNER_TEMP/careeros-${asset_kind}-headers.txt" \
+              --output "$RUNNER_TEMP/careeros-${asset_kind}.gz" \
+              "http://127.0.0.1:${published_port}${asset_path}"
+            grep --ignore-case --quiet '^Content-Encoding: gzip' \
+              "$RUNNER_TEMP/careeros-${asset_kind}-headers.txt"
+            grep --ignore-case --extended-regexp --quiet \
+              '^Vary:.*Accept-Encoding' \
+              "$RUNNER_TEMP/careeros-${asset_kind}-headers.txt"
+            grep --ignore-case --extended-regexp --quiet \
+              '^Cache-Control:.*max-age=31536000.*immutable' \
+              "$RUNNER_TEMP/careeros-${asset_kind}-headers.txt"
+            test "$(
+              grep --ignore-case --count '^Cache-Control:' \
+                "$RUNNER_TEMP/careeros-${asset_kind}-headers.txt"
+            )" = 1
+            test "$(wc -c < "$RUNNER_TEMP/careeros-${asset_kind}.gz")" \
+              -le "$maximum_bytes"
+          done
+          dd if=/dev/zero \
+            of="$RUNNER_TEMP/careeros-request-12m.bin" \
+            bs=1M count=12 status=none
+          ordinary_status="$(curl --silent --show-error \
+            --dump-header "$RUNNER_TEMP/careeros-413-headers.txt" \
+            --output "$RUNNER_TEMP/careeros-413.json" --write-out '%{http_code}' \
+            --header 'Content-Type: application/octet-stream' \
+            --data-binary "@$RUNNER_TEMP/careeros-request-12m.bin" \
+            "http://127.0.0.1:${published_port}/api/v1/auth/login")"
+          test "$ordinary_status" = "413"
+          grep --ignore-case --extended-regexp --quiet \
+            '^Content-Type: application/json' \
+            "$RUNNER_TEMP/careeros-413-headers.txt"
+          test "$(cat "$RUNNER_TEMP/careeros-413.json")" = \
+            '{"detail":"File too large or request body exceeds the local processing limit."}'
+          nested_status="$(curl --silent --show-error \
+            --output /dev/null --write-out '%{http_code}' \
+            --header 'Content-Type: application/octet-stream' \
+            --data-binary "@$RUNNER_TEMP/careeros-request-12m.bin" \
+            "http://127.0.0.1:${published_port}/api/v1/portability/inspect/nested")"
+          test "$nested_status" = "413"
+          portable_status="$(curl --silent --show-error \
+            --output /dev/null --write-out '%{http_code}' \
+            --header 'Content-Type: application/octet-stream' \
+            --data-binary "@$RUNNER_TEMP/careeros-request-12m.bin" \
+            "http://127.0.0.1:${published_port}/api/v1/portability/inspect")"
+          test "$portable_status" = "502"
+          frontend_logs="$(docker logs "$container_id" 2>&1)"
+          ! grep --fixed-strings 'THIRD_PARTY_NOTICES.txt' <<< "$frontend_logs"
+          grep --extended-regexp --quiet \
+            '^[1-5][0-9]{2} (GET|HEAD) [0-9]+[.][0-9]{3}$' \
+            <<< "$frontend_logs"
           test "$(docker inspect --format '{{.State.Running}}' "$container_id")" = \
             "true"
+      - name: Verify backend distribution notices
+        shell: bash
+        run: |
+          set -euo pipefail
+          expected_digest="$(sha256sum THIRD_PARTY_NOTICES.txt | awk '{ print $1 }')"
+          packaged_digest="$(
+            docker run --rm --entrypoint python \
+              careeros-local-backend:latest \
+              -c "import hashlib, pathlib; print(hashlib.sha256(pathlib.Path('/app/THIRD_PARTY_NOTICES.txt').read_bytes()).hexdigest())"
+          )"
+          test "$packaged_digest" = "$expected_digest"
+          for artifact in LICENSE THIRD_PARTY_NOTICES.txt; do
+            expected_digest="$(sha256sum "$artifact" | awk '{ print $1 }')"
+            packaged_digest="$(
+              docker run --rm --entrypoint sha256sum \
+                careeros-local-backend:latest \
+                "/usr/share/licenses/careeros-local/${artifact}" | awk '{ print $1 }'
+            )"
+            test "$packaged_digest" = "$expected_digest"
+          done
+      - name: Smoke-test hardened Alpine backend lifecycle
+        shell: bash
+        run: |
+          set -euo pipefail
+          image="careeros-local-backend:latest"
+          volume="careeros-ci-backend-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          docker volume create "$volume" > /dev/null
+          runtime_flags=(
+            --user 10001:10001
+            --read-only
+            --tmpfs /tmp:rw,nosuid,nodev,noexec,size=128m,mode=1777
+            --cap-drop ALL
+            --security-opt no-new-privileges:true
+            --pids-limit 256
+            --stop-timeout 30
+            --publish 127.0.0.1::8000
+            --env ENVIRONMENT=production
+            --env OFFLINE_MODE=true
+            --env DATABASE_URL=sqlite:////app/data/careeros.db
+            --env DATA_DIR=/app/data
+            --mount "type=volume,source=${volume},target=/app/data"
+          )
+          container_id="$(docker run --detach "${runtime_flags[@]}" "$image")"
+          cleanup() {
+            status=$?
+            trap - EXIT
+            if (( status != 0 )); then
+              docker logs "$container_id" >&2 || true
+            fi
+            docker rm --force "$container_id" > /dev/null 2>&1 || true
+            docker volume rm "$volume" > /dev/null 2>&1 || true
+            exit "$status"
+          }
+          trap cleanup EXIT
+
+          test "$(docker image inspect --format '{{.Config.User}}' "$image")" = \
+            "careernos:careernos"
+          docker image inspect --format '{{range .Config.Cmd}}{{println .}}{{end}}' "$image" | \
+            grep --fixed-strings --line-regexp -- '--no-access-log'
+          docker run --rm --entrypoint sh "$image" -ec '
+            test "$(id -u)" = 10001
+            test "$(id -g)" = 10001
+            for command_name in pip pip3 idle idle3; do
+              ! command -v "$command_name"
+            done
+            for artifact in LICENSE THIRD_PARTY_NOTICES.txt; do
+              path="/usr/share/licenses/careeros-local/${artifact}"
+              test "$(stat -c "%u:%g" "$path")" = "0:0"
+              test ! -w "$path"
+            done
+            python -c "
+          import importlib.util
+          assert importlib.util.find_spec(\"pip\") is None
+          assert importlib.util.find_spec(\"ensurepip\") is None
+          assert importlib.util.find_spec(\"setuptools\") is None
+          import bcrypt, cryptography, lxml, PIL, pydantic_core, reportlab, sqlalchemy, uvicorn
+          "
+          '
+          test "$(docker inspect --format '{{.HostConfig.ReadonlyRootfs}}' "$container_id")" = \
+            "true"
+          test "$(docker inspect --format '{{.HostConfig.PidsLimit}}' "$container_id")" = "256"
+          test "$(docker inspect --format '{{json .HostConfig.CapDrop}}' "$container_id")" = \
+            '["ALL"]'
+          test "$(docker inspect --format '{{json .HostConfig.SecurityOpt}}' "$container_id")" = \
+            '["no-new-privileges:true"]'
+
+          published_port="$(docker port "$container_id" 8000/tcp | \
+            awk -F: 'NR == 1 { print $NF }')"
+          base_uri="http://127.0.0.1:${published_port}/api/v1"
+          curl --fail --silent --show-error \
+            --retry 30 --retry-all-errors --retry-delay 1 \
+            "${base_uri}/health/ready" > "$RUNNER_TEMP/backend-ready.json"
+          python3 -c '
+          import json, pathlib
+          payload = json.loads(pathlib.Path("'"$RUNNER_TEMP/backend-ready.json"'").read_text())
+          assert payload == {
+              "status": "ready",
+              "database": "connected",
+              "storage": "writable",
+              "migrations": "current",
+          }
+          '
+
+          curl --fail --silent --show-error \
+            -H 'Content-Type: application/json' \
+            -d '{"username":"alpine_ci","password":"AlpineSmoke1Secure"}' \
+            "${base_uri}/auth/register" > "$RUNNER_TEMP/backend-register.json"
+          curl --fail --silent --show-error \
+            -H 'Content-Type: application/x-www-form-urlencoded' \
+            -d 'username=alpine_ci&password=AlpineSmoke1Secure' \
+            "${base_uri}/auth/login" > "$RUNNER_TEMP/backend-login.json"
+          token="$(
+            python3 -c 'import json,sys; print(json.load(sys.stdin)["access_token"])' \
+              < "$RUNNER_TEMP/backend-login.json"
+          )"
+          test -n "$token"
+          python3 -c '
+          import json, pathlib
+          pathlib.Path("'"$RUNNER_TEMP/backend-profile-input.json"'").write_text(
+              json.dumps({
+                  "name": "Alpine CI smoke",
+                  "remote_only": True,
+                  "cv_content": "x" * 4096,
+              })
+          )
+          '
+          curl --fail --silent --show-error \
+            -H "Authorization: Bearer ${token}" \
+            -H 'Content-Type: application/json' \
+            --data-binary "@$RUNNER_TEMP/backend-profile-input.json" \
+            "${base_uri}/profiles/" > "$RUNNER_TEMP/backend-profile.json"
+          curl --fail --silent --show-error \
+            -H "Authorization: Bearer ${token}" \
+            -H 'Accept-Encoding: gzip' \
+            --dump-header "$RUNNER_TEMP/backend-private-headers.txt" \
+            "${base_uri}/profiles/" > "$RUNNER_TEMP/backend-private-response.json"
+          test "$(wc -c < "$RUNNER_TEMP/backend-private-response.json")" -gt 1000
+          ! grep --ignore-case --quiet '^Content-Encoding:' \
+            "$RUNNER_TEMP/backend-private-headers.txt"
+
+          database_head="$(
+            docker exec "$container_id" python -c "
+          import sqlite3
+          connection = sqlite3.connect('/app/data/careeros.db')
+          print(connection.execute('SELECT version_num FROM alembic_version').fetchone()[0])
+          "
+          )"
+          migration_head="$(
+            docker exec "$container_id" alembic heads | awk 'NR == 1 { print $1 }'
+          )"
+          test "$database_head" = "$migration_head"
+          backend_logs="$(docker logs "$container_id" 2>&1)"
+          ! grep --fixed-strings '/api/v1/health/ready' <<< "$backend_logs"
+          grep --fixed-strings --quiet '[Scheduler] Started' <<< "$backend_logs"
+
+          docker stop --timeout 25 "$container_id" > /dev/null
+          test "$(docker inspect --format '{{.State.ExitCode}}' "$container_id")" = "0"
+          docker start "$container_id" > /dev/null
+          published_port="$(docker port "$container_id" 8000/tcp | \
+            awk -F: 'NR == 1 { print $NF }')"
+          base_uri="http://127.0.0.1:${published_port}/api/v1"
+          curl --fail --silent --show-error \
+            --retry 30 --retry-all-errors --retry-delay 1 \
+            "${base_uri}/health/ready" > /dev/null
+          curl --fail --silent --show-error \
+            -H 'Content-Type: application/x-www-form-urlencoded' \
+            -d 'username=alpine_ci&password=AlpineSmoke1Secure' \
+            "${base_uri}/auth/login" > "$RUNNER_TEMP/backend-login-restart.json"
+          token="$(
+            python3 -c 'import json,sys; print(json.load(sys.stdin)["access_token"])' \
+              < "$RUNNER_TEMP/backend-login-restart.json"
+          )"
+          curl --fail --silent --show-error \
+            -H "Authorization: Bearer ${token}" \
+            "${base_uri}/profiles/" > "$RUNNER_TEMP/backend-profiles-restart.json"
+          python3 -c '
+          import json, pathlib
+          profiles = json.loads(
+              pathlib.Path("'"$RUNNER_TEMP/backend-profiles-restart.json"'").read_text()
+          )
+          assert len(profiles) == 1
+          assert profiles[0]["name"] == "Alpine CI smoke"
+          '
       - name: Scan repository configuration and secrets
         run: |
           docker run --rm -v trivy-cache:/root/.cache/ -v "$PWD:/workspace:ro" "$TRIVY_IMAGE" \
@@ -360,6 +661,33 @@ jobs:
             image --skip-version-check --scanners vuln --ignore-unfixed \
             --severity HIGH,CRITICAL --exit-code 1 \
             careeros-local-frontend:latest
+      - name: Gate exact temporary Ollama vulnerability policy
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/careeros"
+          scanner=(
+            docker run --rm
+            -v trivy-cache:/root/.cache/
+            -v /var/run/docker.sock:/var/run/docker.sock
+            -v "$PWD:/workspace:ro"
+            -v "$RUNNER_TEMP/careeros:/reports"
+            "$TRIVY_IMAGE" image
+            --skip-version-check
+            --scanners vuln
+            --severity HIGH,CRITICAL
+          )
+          "${scanner[@]}" --format json \
+            --output /reports/ollama-vulnerabilities-raw.json \
+            "$OLLAMA_IMAGE"
+          "${scanner[@]}" --ignorefile /workspace/.trivyignore.yaml \
+            --exit-code 1 --format json \
+            --output /reports/ollama-vulnerabilities-filtered.json \
+            "$OLLAMA_IMAGE"
+          python3 scripts/check_ollama_vulnerability_policy.py \
+            "$RUNNER_TEMP/careeros/ollama-vulnerabilities-raw.json" \
+            "$RUNNER_TEMP/careeros/ollama-vulnerabilities-filtered.json" \
+            .trivyignore.yaml
       - name: Create container CycloneDX SBOMs
         if: always()
         run: |
@@ -381,3 +709,4 @@ jobs:
           name: container-sboms
           path: ${{ runner.temp }}/careeros/*-container.cdx.json
           if-no-files-found: ignore
+          retention-days: 7

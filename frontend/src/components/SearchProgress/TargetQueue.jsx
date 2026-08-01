@@ -53,6 +53,9 @@ export function TargetQueue({ state, analyzedJobs, searches_generated, active_se
                         ) : (
                             searches_generated?.map((s, i) => {
                                 const searchIndex = i + 1;
+                                const publicIndex = Number.isInteger(s?.index) && s.index > 0
+                                    ? s.index
+                                    : searchIndex;
                                 const isDone = completedIndices.has(searchIndex);
                                 const isCurrent = activeIndices.has(searchIndex);
 
@@ -68,8 +71,10 @@ export function TargetQueue({ state, analyzedJobs, searches_generated, active_se
                                             )}
                                         </div>
                                         <div>
-                                            <div className="x-small text-uppercase tracking-wider opacity-50 mb-1 text-secondary">{s.type || s.provider}</div>
-                                            <div className={`small fw-medium font-monospace ${isCurrent ? 'text-primary' : 'text-secondary'}`}>{s.query}</div>
+                                            <div className="x-small text-uppercase tracking-wider opacity-50 mb-1 text-secondary">{t("searchProgress.plan")}</div>
+                                            <div className={`small fw-medium font-monospace ${isCurrent ? 'text-primary' : 'text-secondary'}`}>
+                                                {t("searchProgress.queryTarget", { index: formatCount(publicIndex) })}
+                                            </div>
                                         </div>
                                     </li>
                                 );

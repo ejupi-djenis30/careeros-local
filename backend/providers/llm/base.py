@@ -1,6 +1,7 @@
 import asyncio
 import json
 import logging
+import math
 import time
 from abc import ABC, abstractmethod
 from typing import Any, Dict, Optional
@@ -24,10 +25,13 @@ def resolve_step_timeout_seconds(step: str, timeout_override: Optional[float] = 
     from backend.core.config import settings  # lazy to avoid circular import
 
     if timeout_override is not None:
-        return float(timeout_override)
-
-    timeout_attr = _STEP_TIMEOUT_ATTRS.get(step, "LLM_CALL_TIMEOUT_MATCH")
-    return float(getattr(settings, timeout_attr, 0) or 0)
+        timeout = float(timeout_override)
+    else:
+        timeout_attr = _STEP_TIMEOUT_ATTRS.get(step, "LLM_CALL_TIMEOUT_MATCH")
+        timeout = float(getattr(settings, timeout_attr, 0) or 0)
+    if not math.isfinite(timeout) or timeout < 0:
+        raise ValueError("LLM timeout must be finite and non-negative")
+    return timeout
 
 
 def extract_json_payload(text: str) -> str:

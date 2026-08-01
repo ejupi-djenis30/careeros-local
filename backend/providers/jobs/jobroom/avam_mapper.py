@@ -1,9 +1,17 @@
 import logging
 import time
-from typing import Dict, List
 
 import httpx
-from tenacity import retry, stop_after_attempt, wait_exponential
+from tenacity import retry, retry_if_exception, stop_after_attempt, wait_exponential
+
+from backend.core.diagnostics import FailureCode, diagnose_failure, log_failure
+from backend.providers.jobs.exceptions import ResponseParseError
+from backend.providers.jobs.http_policy import (
+    MAX_PROVIDER_RESPONSE_BYTES,
+    assert_bounded_provider_response,
+    is_retryable_provider_http_error,
+    provider_response_hooks,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -11,7 +19,7 @@ logger = logging.getLogger(__name__)
 # Keys are AVAM codes (as strings), values are lists of normalized job titles in various languages.
 # Note: These are representative codes. JobRoom API expects valid AVAM codes.
 # 27114 is often generic IT, 27114004 is software engineer etc.
-AVAM_MAPPING: Dict[str, List[str]] = {
+AVAM_MAPPING: dict[str, list[str]] = {
     # Software Engineering & IT
     "27114004": [
         "software engineer",
@@ -235,39 +243,65 @@ class AVAMProfessionMapper:
     Uses a hybrid approach: static dictionary (L1) -> JobRoom API live lookup (L2).
     """
 
-    def __init__(self):
+    _API_URL = "https://www.job-room.ch/job-board-api/public/occupations"
+    _MAX_RESPONSE_BYTES = MAX_PROVIDER_RESPONSE_BYTES
+    _MAX_RESULTS = 10_000
+
+    def __init__(self) -> None:
         self._static_cache = AVAM_MAPPING
-        self._api_cache: Dict[str, tuple[List[str], float]] = {}
+        self._api_cache: dict[str, tuple[tuple[str, ...], float]] = {}
         # TTL of 24h (86400 seconds)
         self._ttl_seconds = 86400
         # Max entries in the live-API cache before LRU eviction
         self._api_cache_max_size = 2048
-        self._client = httpx.AsyncClient(timeout=2.0)
 
-    @retry(stop=stop_after_attempt(2), wait=wait_exponential(multiplier=0.5, min=0.5, max=1))
-    async def _fetch_from_api(self, title: str) -> List[str]:
+    @retry(
+        retry=retry_if_exception(is_retryable_provider_http_error),
+        stop=stop_after_attempt(2),
+        wait=wait_exponential(multiplier=0.5, min=0.5, max=1),
+        reraise=True,
+    )
+    async def _fetch_from_api(self, title: str) -> list[str]:
         """Live lookup directly against federal database API."""
-        url = f"https://www.job-room.ch/job-board-api/public/occupations?prefix={title}&language=en"
-        response = await self._client.get(url)
-        response.raise_for_status()
+        async with httpx.AsyncClient(
+            timeout=2.0,
+            headers={"Accept-Encoding": "identity"},
+            follow_redirects=False,
+            trust_env=False,
+            event_hooks=provider_response_hooks(
+                "job_room_avam",
+                max_bytes=self._MAX_RESPONSE_BYTES,
+            ),
+        ) as client:
+            response = await client.get(
+                self._API_URL,
+                params={"prefix": title, "language": "en"},
+            )
+            assert_bounded_provider_response(
+                response,
+                "job_room_avam",
+                max_bytes=self._MAX_RESPONSE_BYTES,
+            )
+            response.raise_for_status()
+            results = response.json()
 
-        results = response.json()
-        codes = set()
+        if not isinstance(results, list) or len(results) > self._MAX_RESULTS:
+            raise ResponseParseError("job_room_avam", "Unexpected AVAM response format")
+        codes: set[str] = set()
         for occ in results:
-            if occ.get("type") == "AVAM" and occ.get("code"):
+            if isinstance(occ, dict) and occ.get("type") == "AVAM" and occ.get("code"):
                 codes.add(str(occ.get("code")))
 
-        return list(codes)
+        return sorted(codes)
 
-    async def resolve(self, title: str) -> List[str]:
+    async def resolve(self, title: str) -> list[str]:
         """
         Takes a job title/occupation string and returns a list of matching AVAM codes.
         Checks static dictionary first, falls back to API, and caches the result.
         """
-        if not title:
+        normalized = title.casefold().strip()
+        if not normalized:
             return []
-
-        normalized = title.lower().strip()
 
         # 1. Check L1 Static Cache
         matches = set()
@@ -277,19 +311,21 @@ class AVAMProfessionMapper:
                 if alias in normalized or normalized in alias:
                     matches.add(code)
 
-        result = list(matches)
+        result = sorted(matches)
         if result:
             logger.debug("Mapped occupation using static AVAM cache code_count=%d", len(result))
             return result
 
         # 2. Check L2 TTL API Cache
-        if normalized in self._api_cache:
-            cache_codes, timestamp = self._api_cache[normalized]
-            if time.time() - timestamp < self._ttl_seconds:
+        cached_entry = self._api_cache.pop(normalized, None)
+        if cached_entry is not None:
+            cache_codes, timestamp = cached_entry
+            if time.monotonic() - timestamp < self._ttl_seconds:
+                self._api_cache[normalized] = cached_entry
                 logger.debug(
                     "Mapped occupation using dynamic AVAM cache code_count=%d", len(cache_codes)
                 )
-                return cache_codes
+                return list(cache_codes)
 
         # 3. L3 Live API Fallback
         try:
@@ -298,16 +334,25 @@ class AVAMProfessionMapper:
                 logger.info("Mapped occupation using AVAM API code_count=%d", len(api_codes))
             else:
                 logger.debug("AVAM API returned no occupation mapping")
-            # Cache result (including empty) to prevent re-querying dead-ends; evict oldest if at capacity
-            if len(self._api_cache) >= self._api_cache_max_size:
+            # Cache results (including empty dead-ends) and remove expired entries
+            # before evicting the least recently used live entry.
+            now = time.monotonic()
+            expired = [
+                key
+                for key, (_, cached_at) in self._api_cache.items()
+                if now - cached_at >= self._ttl_seconds
+            ]
+            for key in expired:
+                self._api_cache.pop(key, None)
+            self._api_cache.pop(normalized, None)
+            while len(self._api_cache) >= self._api_cache_max_size:
                 self._api_cache.pop(next(iter(self._api_cache)))
-            self._api_cache[normalized] = (api_codes, time.time())
+            self._api_cache[normalized] = (tuple(api_codes), now)
             if api_codes:
-                return api_codes
+                return list(api_codes)
         except Exception as exc:
-            logger.warning(
-                "AVAM occupation mapping failed exception_type=%s", type(exc).__name__
-            )
+            diagnostic = diagnose_failure(exc, FailureCode.PROVIDER_REQUEST_FAILED)
+            log_failure(logger, diagnostic, level=logging.WARNING)
 
         return []
 

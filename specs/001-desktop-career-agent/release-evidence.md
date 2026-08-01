@@ -1,5 +1,9 @@
 # Windows x64 release evidence
 
+> Historical scope: this immutable snapshot records the v1.0.0 artifacts produced on the stated
+> date. It is not evidence for the current Unreleased production-hardening work, and its sizes and
+> digests must not be reused for a post-freeze candidate.
+
 Date: 2026-07-18  
 Target: `x86_64-pc-windows-msvc`
 
@@ -12,7 +16,7 @@ Target: `x86_64-pc-windows-msvc`
 Result: exit code `0`; Vite production build, frozen Python sidecar, optimized Tauri executable, MSI and NSIS bundles completed.
 
 | Artifact | Bytes | SHA-256 |
-|---|---:|---|
+| --- | ---: | --- |
 | `msi/CareerOS Local_1.0.0_x64_en-US.msi` | 58,949,280 | `0b2406a75c9091a7c9fd0557e2ed82d1f84e969751acfbbe3b00e6a5be7755f4` |
 | `nsis/CareerOS Local_1.0.0_x64-setup.exe` | 45,335,513 | `9c1f19f9a3dc43a863dab6b5ac3ad55c5aab48da5d7c85e30c5e057d9774a3e0` |
 
@@ -21,7 +25,7 @@ Result: exit code `0`; Vite production build, frozen Python sidecar, optimized T
 ```powershell
 $env:EXPECTED_TARGET = "x86_64-pc-windows-msvc"
 $env:GITHUB_ENV = Join-Path $env:TEMP "careeros-sidecar-env.txt"
-.venv\Scripts\python.exe scripts\verify_sidecar_build.py
+.venv\Scripts\python.exe -m scripts.verify_sidecar_build
 ```
 
 Result: exit code `0`; layout `onedir-resource`; 989 runtime files and 113,752,870 runtime bytes. The signed model catalog, catalog signature and versioned synthetic evaluation dataset were present. Generated interpreter caches and forbidden remote or legacy AI packages were absent.

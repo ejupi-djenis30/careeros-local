@@ -238,9 +238,7 @@ def test_profile_overview_is_ordered_paginated_lightweight_and_aggregates_all_pr
                     base_time + timedelta(days=2) if is_latest_success else None
                 ),
                 last_search_completed_at=(
-                    base_time + timedelta(days=2, minutes=5)
-                    if is_latest_success
-                    else None
+                    base_time + timedelta(days=2, minutes=5) if is_latest_success else None
                 ),
                 last_search_summary=(
                     {

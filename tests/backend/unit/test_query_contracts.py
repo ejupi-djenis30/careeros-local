@@ -85,14 +85,17 @@ def test_provider_plan_fingerprint_excludes_cv_and_rejects_legacy_or_model_cache
 
     _searches, legacy_meta = unpack_plan_cache_payload([{"query": "secret-one"}])
     assert is_cached_plan_compatible(legacy_meta, first) is False
-    assert is_cached_plan_compatible(
-        {
-            "version": 3,
-            "provenance": "model-derived",
-            "input_fingerprint": first,
-        },
-        first,
-    ) is False
+    assert (
+        is_cached_plan_compatible(
+            {
+                "version": 3,
+                "provenance": "model-derived",
+                "input_fingerprint": first,
+            },
+            first,
+        )
+        is False
+    )
 
 
 def test_route_provider_names_orders_it_sources_first():

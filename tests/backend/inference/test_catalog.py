@@ -41,9 +41,7 @@ def test_bundled_catalog_has_checkout_stable_line_endings() -> None:
         ("linux", "aarch64", "linux-aarch64"),
     ],
 )
-def test_platform_selection_is_explicit(
-    system_name: str, machine_name: str, expected: str
-) -> None:
+def test_platform_selection_is_explicit(system_name: str, machine_name: str, expected: str) -> None:
     assert current_platform_key(system_name=system_name, machine_name=machine_name) == expected
 
 

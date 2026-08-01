@@ -1,6 +1,8 @@
 import { configureApiRuntime } from "../lib/client";
 
 const LOOPBACK_API_PATTERN = /^http:\/\/127\.0\.0\.1:([1-9][0-9]{0,4})\/api\/v1$/;
+const APP_VERSION_PATTERN = /^(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/;
+const READINESS_PROBE_TIMEOUT_MS = 2_000;
 
 export function isDesktopShell() {
     return typeof window !== "undefined" && Boolean(window.__TAURI_INTERNALS__);
@@ -8,53 +10,149 @@ export function isDesktopShell() {
 
 function validateBootstrap(payload) {
     if (!payload || payload.desktop !== true) throw new Error("Native bootstrap response is invalid");
-    if (!LOOPBACK_API_PATTERN.test(payload.apiBaseUrl || "")) {
+    const apiMatch = LOOPBACK_API_PATTERN.exec(payload.apiBaseUrl || "");
+    if (!apiMatch || Number(apiMatch[1]) > 65_535) {
         throw new Error("Native bootstrap returned a non-loopback API URL");
     }
     if (!/^[A-Za-z0-9_-]{43,128}$/.test(payload.sessionToken || "")) {
         throw new Error("Native bootstrap returned an invalid session token");
     }
-    if (!/^\d+\.\d+\.\d+/.test(payload.appVersion || "")) {
+    if (
+        typeof payload.appVersion !== "string"
+        || payload.appVersion.length > 128
+        || !APP_VERSION_PATTERN.test(payload.appVersion)
+    ) {
         throw new Error("Native bootstrap returned an invalid application version");
     }
     return payload;
 }
 
-const wait = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds));
+function cancellationError() {
+    return new DOMException("Desktop bootstrap was cancelled", "AbortError");
+}
 
-async function waitForReadiness(configuration, { timeoutMs, initialDelayMs }) {
+function throwIfCancelled(signal) {
+    if (signal?.aborted) throw cancellationError();
+}
+
+async function waitForOperation(operation, signal) {
+    if (!signal) return operation;
+    throwIfCancelled(signal);
+    let cancel;
+    const cancelled = new Promise((_resolve, reject) => {
+        cancel = () => reject(cancellationError());
+        signal.addEventListener("abort", cancel, { once: true });
+    });
+    try {
+        return await Promise.race([operation, cancelled]);
+    } finally {
+        signal.removeEventListener("abort", cancel);
+    }
+}
+
+function wait(milliseconds, signal) {
+    return new Promise((resolve, reject) => {
+        throwIfCancelled(signal);
+        let timeoutId;
+        const cleanup = () => signal?.removeEventListener("abort", cancel);
+        const complete = () => {
+            cleanup();
+            resolve();
+        };
+        const cancel = () => {
+            clearTimeout(timeoutId);
+            cleanup();
+            reject(cancellationError());
+        };
+        timeoutId = setTimeout(complete, milliseconds);
+        signal?.addEventListener("abort", cancel, { once: true });
+    });
+}
+
+async function readinessRequest(configuration, { timeoutMs, signal }) {
+    throwIfCancelled(signal);
+    const controller = new AbortController();
+    const cancel = () => controller.abort(signal?.reason);
+    signal?.addEventListener("abort", cancel, { once: true });
+    const timeoutId = setTimeout(
+        () => controller.abort("readiness-probe-timeout"),
+        timeoutMs,
+    );
+    try {
+        const response = await fetch(`${configuration.apiBaseUrl}/health/ready`, {
+            method: "GET",
+            cache: "no-store",
+            // Never forward the unpersisted native session factor through a
+            // redirect, even if the process currently holding the loopback
+            // port returns one.
+            redirect: "error",
+            headers: { "X-CareerOS-Session": configuration.sessionToken },
+            signal: controller.signal,
+        });
+        const payload = response.ok ? await response.json() : null;
+        return { response, payload };
+    } catch (error) {
+        throwIfCancelled(signal);
+        throw error;
+    } finally {
+        clearTimeout(timeoutId);
+        signal?.removeEventListener("abort", cancel);
+    }
+}
+
+async function waitForReadiness(
+    configuration,
+    { timeoutMs, initialDelayMs, probeTimeoutMs, signal },
+) {
     const deadline = Date.now() + timeoutMs;
     let delayMs = initialDelayMs;
     let lastFailure = "local service is starting";
     while (Date.now() < deadline) {
+        throwIfCancelled(signal);
         try {
-            const response = await fetch(`${configuration.apiBaseUrl}/health/ready`, {
-                method: "GET",
-                cache: "no-store",
-                headers: { "X-CareerOS-Session": configuration.sessionToken },
+            const { response, payload } = await readinessRequest(configuration, {
+                timeoutMs: Math.max(1, Math.min(probeTimeoutMs, deadline - Date.now())),
+                signal,
             });
             if (response.ok) {
-                const payload = await response.json();
                 if (payload.status === "ready") return;
                 lastFailure = payload.status || "not ready";
             } else {
                 lastFailure = `HTTP ${response.status}`;
             }
         } catch (error) {
+            throwIfCancelled(signal);
             lastFailure = error instanceof Error ? error.message : String(error);
         }
-        await wait(delayMs);
+        const remainingMs = deadline - Date.now();
+        if (remainingMs <= 0) break;
+        await wait(Math.min(delayMs, remainingMs), signal);
         delayMs = Math.min(Math.ceil(delayMs * 1.6), 1000);
     }
+    throwIfCancelled(signal);
     throw new Error(`CareerOS Local service did not become ready: ${lastFailure}`);
 }
 
-export async function bootstrapDesktop({ timeoutMs = 90_000, initialDelayMs = 100 } = {}) {
+export async function bootstrapDesktop({
+    timeoutMs = 90_000,
+    initialDelayMs = 100,
+    probeTimeoutMs = READINESS_PROBE_TIMEOUT_MS,
+    signal,
+} = {}) {
     if (!isDesktopShell()) return { desktop: false, state: "browser" };
     const { invoke } = await import("@tauri-apps/api/core");
-    const configuration = validateBootstrap(await invoke("desktop_bootstrap"));
+    const configuration = validateBootstrap(await waitForOperation(
+        invoke("desktop_bootstrap"),
+        signal,
+    ));
+    throwIfCancelled(signal);
     configureApiRuntime(configuration);
-    await waitForReadiness(configuration, { timeoutMs, initialDelayMs });
+    await waitForReadiness(configuration, {
+        timeoutMs,
+        initialDelayMs,
+        probeTimeoutMs,
+        signal,
+    });
     return {
         desktop: true,
         state: "ready",

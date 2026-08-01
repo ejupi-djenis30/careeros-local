@@ -1,14 +1,17 @@
 from io import BytesIO
+from uuid import UUID
 
 from fastapi import APIRouter, Depends, File, HTTPException, Request, Response, UploadFile
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
+from starlette.concurrency import run_in_threadpool
 
 from backend.api.deps import get_current_user_id, limiter
+from backend.api.middleware import PRIVATE_NO_STORE_HEADERS
 from backend.core.config import settings
 from backend.db.base import get_db
-from backend.resumes.photos import load_profile_photo, store_profile_photo
-from backend.resumes.renderers.photo import PhotoValidationError
+from backend.resumes.photos import load_profile_photo, persist_normalized_profile_photo
+from backend.resumes.renderers.photo import PhotoValidationError, normalize_photo
 from backend.resumes.schemas import (
     PhotoAssetResponse,
     ResumeClaimPromote,
@@ -213,9 +216,7 @@ def restore_resume_version(
     db: Session = Depends(get_db),
 ) -> ResumeDraftResponse:
     try:
-        return ResumeService(db).restore_version(
-            user_id, resume_id, version_id, data
-        )
+        return ResumeService(db).restore_version(user_id, resume_id, version_id, data)
     except (ResumeValidationError, ResumeConflictError, ResumeNotFoundError, ValueError) as exc:
         db.rollback()
         raise _http_error(exc) from exc
@@ -236,18 +237,19 @@ def delete_resume(
 
 @artifact_router.get("/{artifact_id}")
 def download_artifact(
-    artifact_id: str,
+    artifact_id: UUID,
     user_id: int = Depends(get_current_user_id),
     db: Session = Depends(get_db),
-) -> StreamingResponse:
+) -> Response:
     try:
-        artifact, data, filename = ResumeService(db).artifact(user_id, artifact_id)
+        artifact, data, filename = ResumeService(db).artifact(user_id, str(artifact_id))
     except (ResumeValidationError, ResumeNotFoundError) as exc:
         raise _http_error(exc) from exc
-    return StreamingResponse(
-        BytesIO(data),
+    return Response(
+        content=data,
         media_type=artifact.media_type,
         headers={
+            **PRIVATE_NO_STORE_HEADERS,
             "Content-Disposition": f'attachment; filename="{filename}"',
             "X-Content-SHA256": artifact.sha256,
             "X-Content-Type-Options": "nosniff",
@@ -265,11 +267,14 @@ async def upload_profile_photo(
 ) -> PhotoAssetResponse:
     data = await file.read(settings.MAX_UPLOAD_FILE_SIZE + 1)
     try:
-        return store_profile_photo(
+        normalized, width, height = await run_in_threadpool(normalize_photo, data)
+        return persist_normalized_profile_photo(
             db,
             user_id=user_id,
             filename=file.filename or "photo",
-            data=data,
+            normalized=normalized,
+            width=width,
+            height=height,
         )
     except PhotoValidationError as exc:
         db.rollback()

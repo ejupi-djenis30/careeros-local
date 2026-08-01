@@ -1,11 +1,18 @@
 # -*- mode: python ; coding: utf-8 -*-
 """PyInstaller graph for the CareerOS Local backend sidecar."""
 
+# PyInstaller injects SPECPATH and its build primitives while evaluating specs.
+# ruff: noqa: F821
+
 import os
+import stat
 from pathlib import Path
 
-from PyInstaller.utils.hooks import collect_data_files, collect_submodules, copy_metadata
-
+from PyInstaller.utils.hooks import (
+    collect_data_files,
+    collect_submodules,
+    copy_metadata,
+)
 
 PROJECT_ROOT = Path(SPECPATH).resolve().parent
 MODE = os.environ.get("CAREEROS_PYINSTALLER_MODE", "onedir").strip().lower()
@@ -13,12 +20,30 @@ if MODE not in {"onedir", "onefile"}:
     raise ValueError("CAREEROS_PYINSTALLER_MODE must be onedir or onefile")
 
 
+def is_link_like(path):
+    if path.is_symlink() or (hasattr(path, "is_junction") and path.is_junction()):
+        return True
+    try:
+        attributes = getattr(path.lstat(), "st_file_attributes", 0)
+    except OSError:
+        return False
+    return bool(attributes & getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0))
+
+
 def collect_project_files(source_root, destination_root):
     """Collect source-controlled runtime data without interpreter caches."""
+    source_root = Path(source_root)
+    if is_link_like(source_root) or not source_root.is_dir():
+        raise ValueError(f"Runtime data root must be a regular directory: {source_root}")
+    resolved_root = source_root.resolve(strict=True)
     collected = []
     for source in source_root.rglob("*"):
+        if is_link_like(source):
+            raise ValueError(f"Runtime data must not contain links or junctions: {source}")
         if not source.is_file():
             continue
+        if not source.resolve(strict=True).is_relative_to(resolved_root):
+            raise ValueError(f"Runtime data escapes its source root: {source}")
         relative = source.relative_to(source_root)
         if "__pycache__" in relative.parts or source.suffix in {".pyc", ".pyo"}:
             continue

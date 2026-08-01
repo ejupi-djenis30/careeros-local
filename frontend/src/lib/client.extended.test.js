@@ -94,6 +94,20 @@ describe('ApiClient — extended coverage', () => {
     expect(serialised).toContain('password=b');
   });
 
+  it('extracts a bounded cross-platform filename without trusting malformed encoding', () => {
+    const encoded = new Response(null, {
+      headers: { 'Content-Disposition': "attachment; filename*=UTF-8'en'CareerOS%20r%C3%A9sum%C3%A9.pdf" },
+    });
+    const malformed = new Response(null, {
+      headers: { 'Content-Disposition': "attachment; filename*=UTF-8''%ZZ; filename=backup.zip" },
+    });
+
+    expect(ApiClient._filenameFromResponse(encoded)).toBe('CareerOS résumé.pdf');
+    expect(ApiClient._filenameFromResponse(malformed)).toBe('backup.zip');
+    expect(ApiClient._safeFilename('../CON.txt. ')).toBe('___CON.txt');
+    expect(ApiClient._safeFilename('...')).toBe('download');
+  });
+
   // ── Error extraction ────────────────────────────────────────────────────────
 
   it('uses detail string from error body', async () => {
@@ -161,5 +175,25 @@ describe('ApiClient — extended coverage', () => {
     const result = await ApiClient.get('/protected');
     expect(result).toEqual({ data: 'retried' });
     expect(ApiClient.getToken()).toBe('new-token');
+  });
+
+  it('ends the local session when the refreshed token is also rejected', async () => {
+    ApiClient.setToken('old-token');
+    const listener = vi.fn();
+    window.addEventListener('careeros:unauthorized', listener);
+    const fetchMock = vi.spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce({ status: 401, ok: false })
+      .mockResolvedValueOnce({
+        status: 200,
+        ok: true,
+        json: async () => ({ access_token: 'rejected-refresh-token' }),
+      })
+      .mockResolvedValueOnce({ status: 401, ok: false });
+
+    await expect(ApiClient.get('/protected')).rejects.toThrow('UNAUTHORIZED');
+
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(listener).toHaveBeenCalledTimes(1);
+    window.removeEventListener('careeros:unauthorized', listener);
   });
 });

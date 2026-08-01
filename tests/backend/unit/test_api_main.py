@@ -1,12 +1,30 @@
+from contextlib import asynccontextmanager
 from unittest.mock import MagicMock, patch
 
 from fastapi import HTTPException
 from fastapi.testclient import TestClient
 
 from backend.core.exceptions import CoreException
-from backend.main import app
+from backend.main import _api_documentation_urls, app
 
 client = TestClient(app, raise_server_exceptions=False)
+
+
+def test_api_documentation_is_local_development_only():
+    assert _api_documentation_urls("production", "/api/v1") == (None, None, None)
+    assert _api_documentation_urls("development", "/api/v1") == (
+        "/api/v1/openapi.json",
+        "/docs",
+        "/redoc",
+    )
+    assert _api_documentation_urls("test", "/api/v1") == (
+        "/api/v1/openapi.json",
+        "/docs",
+        "/redoc",
+    )
+    assert client.get("/docs").status_code == 200
+    assert client.get("/redoc").status_code == 200
+    assert client.get("/api/v1/openapi.json").status_code == 200
 
 
 def test_health():
@@ -37,6 +55,43 @@ def test_health_live_ignores_database_state():
         response = client.get("/api/v1/health/live")
     assert response.status_code == 200
     assert response.json() == {"status": "alive"}
+
+
+def test_readiness_fails_fast_without_db_checks_during_vault_maintenance():
+    class MaintenanceGate:
+        @asynccontextmanager
+        async def try_reader(self):
+            yield False
+
+    with (
+        patch("backend.main.vault_activity_gate", MaintenanceGate()),
+        patch(
+            "backend.main._check_db_status",
+            side_effect=AssertionError("readiness must not enter the database"),
+        ),
+    ):
+        response = client.get("/api/v1/health/ready")
+
+    assert response.status_code == 503
+    assert response.json() == {
+        "status": "maintenance",
+        "code": "vault_maintenance_pending",
+        "database": "not_checked",
+        "storage": "not_checked",
+        "migrations": "not_checked",
+    }
+
+
+def test_api_security_headers_disable_unused_browser_capabilities():
+    response = client.get("/api/v1/health/live")
+
+    assert response.headers["cache-control"] == "no-store, max-age=0"
+    assert response.headers["pragma"] == "no-cache"
+    assert response.headers["x-xss-protection"] == "0"
+    assert response.headers["referrer-policy"] == "no-referrer"
+    assert response.headers["permissions-policy"] == (
+        "camera=(), microphone=(), geolocation=(), display-capture=(), payment=(), usb=()"
+    )
 
 
 def test_readiness_checks_database_and_storage_independently():
@@ -98,24 +153,14 @@ def test_check_db_status_handles_session_creation_failure():
         assert _check_db_status() == "unavailable"
 
 
-def test_root_db_success():
-    with patch("backend.db.base.SessionLocal") as mock_session:
-        # Mock successful execute
-        mock_db = MagicMock()
-        mock_session.return_value = mock_db
+def test_root_is_static_and_never_touches_database():
+    with patch("backend.db.base.SessionLocal", side_effect=AssertionError("database probe")):
         response = client.get("/")
-        assert response.status_code == 200
-        assert response.json()["database"] == "connected"
-
-
-def test_root_db_failure():
-    with patch("backend.db.base.SessionLocal") as mock_session:
-        mock_db = MagicMock()
-        mock_db.execute.side_effect = Exception("DB Error")
-        mock_session.return_value = mock_db
-        response = client.get("/")
-        assert response.status_code == 200
-        assert response.json()["database"] == "unavailable"
+    assert response.status_code == 200
+    assert response.json() == {
+        "message": "CareerOS Local API",
+        "status": "online",
+    }
 
 
 def test_404_handler():
@@ -124,11 +169,14 @@ def test_404_handler():
     assert "detail" in response.json()
 
 
-def test_validation_handler():
+def test_validation_handler(caplog):
     # Trigger 422 using an unprotected route missing fields
     response = client.post("/api/v1/auth/register", json={})
     assert response.status_code == 422
     assert "Validation Error" in response.json()["message"]
+    assert response.headers["cache-control"] == "no-store, max-age=0"
+    assert response.headers["pragma"] == "no-cache"
+    assert "/api/v1/auth/register" not in caplog.text
 
 
 @app.get("/test-core-exception")
@@ -144,6 +192,11 @@ def raise_generic_exception():
 @app.get("/api/v1/automation/grants/test-generic-exception")
 def raise_private_generic_exception():
     raise Exception("Private test exception")
+
+
+@app.get("/api/v1/test-large-private-response")
+def return_large_private_response():
+    return {"private_payload": "x" * 4096}
 
 
 @app.get("/test-http-exception-headers")
@@ -170,13 +223,24 @@ def test_generic_exception_handler():
     assert response.json()["detail"] == "Internal Server Error"
 
 
-def test_private_generic_exception_handler_forces_no_store_headers():
+def test_api_generic_exception_handler_forces_no_store_headers():
     response = client.get("/api/v1/automation/grants/test-generic-exception")
 
     assert response.status_code == 500
     assert response.json()["detail"] == "Internal Server Error"
     assert response.headers["cache-control"] == "no-store, max-age=0"
     assert response.headers["pragma"] == "no-cache"
+
+
+def test_large_api_response_is_never_dynamically_compressed():
+    response = client.get(
+        "/api/v1/test-large-private-response",
+        headers={"Accept-Encoding": "gzip"},
+    )
+
+    assert response.status_code == 200
+    assert len(response.content) > 1000
+    assert "content-encoding" not in response.headers
 
 
 def test_http_exception_handler_preserves_security_headers():
@@ -194,9 +258,17 @@ def test_lifespan():
 
     from backend.main import lifespan
 
+    shutdown_order = []
     with (
         patch("backend.services.scheduler.start_scheduler") as mock_start,
-        patch("backend.services.scheduler.stop_scheduler") as mock_stop,
+        patch(
+            "backend.services.scheduler.stop_scheduler",
+            side_effect=lambda: shutdown_order.append("scheduler_stopped"),
+        ) as mock_stop,
+        patch(
+            "backend.services.search_status.get_all_active_tasks",
+            side_effect=lambda: shutdown_order.append("tasks_snapshotted") or {},
+        ),
     ):
 
         async def run_lifespan():
@@ -206,8 +278,153 @@ def test_lifespan():
             mock_start.assert_called_once()
             await ctx.__aexit__(None, None, None)
             mock_stop.assert_called_once()
+            assert shutdown_order == ["scheduler_stopped", "tasks_snapshotted"]
 
         asyncio.run(run_lifespan())
+
+
+def test_lifespan_runs_shutdown_cleanup_when_context_body_fails():
+    import asyncio
+    from types import SimpleNamespace
+    from unittest.mock import patch
+
+    import pytest
+
+    from backend.main import lifespan
+
+    order = []
+
+    async def run_lifespan():
+        with (
+            patch("backend.main.desktop_runtime", SimpleNamespace(enabled=False)),
+            patch("backend.services.scheduler.start_scheduler"),
+            patch(
+                "backend.services.scheduler.stop_scheduler",
+                side_effect=lambda: order.append("scheduler_stopped"),
+            ),
+            patch(
+                "backend.services.search_status.get_all_active_tasks",
+                side_effect=lambda: order.append("tasks_snapshotted") or {},
+            ),
+            patch(
+                "backend.inference.managed_runtime.stop_managed_runtime",
+                side_effect=lambda: order.append("runtime_stopped"),
+            ),
+        ):
+            with pytest.raises(RuntimeError, match="lifespan body failed"):
+                async with lifespan(app):
+                    raise RuntimeError("lifespan body failed")
+
+    asyncio.run(run_lifespan())
+
+    assert order == ["scheduler_stopped", "tasks_snapshotted", "runtime_stopped"]
+
+
+def test_lifespan_observes_status_failure_without_blocking_shutdown(caplog):
+    import asyncio
+    import logging
+    from types import SimpleNamespace
+    from unittest.mock import patch
+
+    from backend.main import lifespan
+
+    private_marker = "PRIVATE-SHUTDOWN-STATUS-DETAIL"
+    caplog.set_level(logging.WARNING, logger="backend.main")
+
+    async def run_lifespan():
+        active_task = asyncio.create_task(asyncio.Event().wait())
+        with (
+            patch("backend.main.desktop_runtime", SimpleNamespace(enabled=False)),
+            patch("backend.services.scheduler.start_scheduler"),
+            patch("backend.services.scheduler.stop_scheduler"),
+            patch(
+                "backend.services.search_status.get_all_active_tasks",
+                return_value={17: active_task},
+            ),
+            patch(
+                "backend.services.search_status.update_status",
+                side_effect=RuntimeError(private_marker),
+            ),
+            patch("backend.inference.managed_runtime.stop_managed_runtime") as mock_stop_runtime,
+        ):
+            async with lifespan(app):
+                pass
+
+        assert active_task.cancelled()
+        mock_stop_runtime.assert_called_once()
+
+    asyncio.run(run_lifespan())
+
+    assert "code=server_shutdown" in caplog.text
+    assert "exception_type=RuntimeError" in caplog.text
+    assert private_marker not in caplog.text
+
+
+def test_lifespan_interrupts_managed_runtime_start_before_joining_it():
+    import asyncio
+    import threading
+    from types import SimpleNamespace
+    from unittest.mock import MagicMock, patch
+
+    from backend.main import lifespan
+
+    order = []
+    start_entered = threading.Event()
+    allow_start_return = threading.Event()
+    manager = MagicMock()
+    manager.snapshot.return_value = SimpleNamespace(
+        runtime_installed=True,
+        model_installed=True,
+    )
+
+    def blocked_start(*, cancelled):
+        order.append("runtime_start_entered")
+        start_entered.set()
+        assert allow_start_return.wait(timeout=2)
+        assert cancelled.is_set()
+        order.append("runtime_start_cancelled")
+
+    async def quiesce_installer():
+        order.append("installer_quiesced")
+        allow_start_return.set()
+
+    manager.start.side_effect = blocked_start
+    manager.cancel_startup.side_effect = lambda event: (
+        order.append("runtime_start_cancel_requested"),
+        event.set(),
+    )
+    manager.stop.side_effect = lambda: order.append("runtime_stop_requested")
+
+    with (
+        patch("backend.main.desktop_runtime", SimpleNamespace(enabled=True)),
+        patch("backend.services.scheduler.start_scheduler"),
+        patch("backend.services.scheduler.stop_scheduler"),
+        patch("backend.services.search_status.get_all_active_tasks", return_value={}),
+        patch("backend.inference.managed_runtime.get_managed_runtime", return_value=manager),
+        patch(
+            "backend.inference.managed_runtime.stop_managed_runtime",
+            side_effect=lambda: order.append("runtime_stopped_final"),
+        ),
+        patch(
+            "backend.inference.managed_runtime.quiesce_managed_runtime_installation",
+            side_effect=quiesce_installer,
+        ),
+    ):
+
+        async def run_lifespan():
+            async with lifespan(app):
+                assert await asyncio.to_thread(start_entered.wait, 1)
+
+        asyncio.run(run_lifespan())
+
+    assert order == [
+        "runtime_start_entered",
+        "runtime_start_cancel_requested",
+        "runtime_stop_requested",
+        "installer_quiesced",
+        "runtime_start_cancelled",
+        "runtime_stopped_final",
+    ]
 
 
 def test_cors_empty():

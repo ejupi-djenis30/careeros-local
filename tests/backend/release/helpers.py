@@ -102,32 +102,30 @@ def write_agent_wheel(path: Path) -> Path:
         "backend/migrations/alembic.ini": b"[alembic]\nscript_location = %(here)s\n",
         "backend/migrations/script.py.mako": b'"""${message}"""\n',
         "desktop/backend_main.py": b"def main():\n    return 0\n",
-        prefix
-        + "METADATA": (
+        prefix + "METADATA": (
             "Metadata-Version: 2.4\n"
             "Name: careeros-local\n"
             f"Version: {VERSION}\n"
             "License-Expression: MIT\n"
             f"Requires-Python: {project['requires-python']}\n"
-            + "".join(
-                f"Requires-Dist: {dependency}\n" for dependency in project["dependencies"]
-            )
+            + "".join(f"Requires-Dist: {dependency}\n" for dependency in project["dependencies"])
             + "\n"
         ).encode(),
-        prefix
-        + "WHEEL": (
+        prefix + "WHEEL": (
             "Wheel-Version: 1.0\n"
             "Generator: CareerOS release contract test\n"
             "Root-Is-Purelib: true\n"
             "Tag: py3-none-any\n\n"
         ).encode(),
-        prefix
-        + "entry_points.txt": (
+        prefix + "entry_points.txt": (
             "[console_scripts]\n"
             "careeros = backend.automation.cli:main\n"
             "careeros-mcp = backend.automation.mcp_server:main\n"
         ).encode(),
         prefix + "licenses/LICENSE": (ROOT / "LICENSE").read_bytes().replace(b"\r\n", b"\n"),
+        prefix + "licenses/THIRD_PARTY_NOTICES.txt": (ROOT / "THIRD_PARTY_NOTICES.txt")
+        .read_bytes()
+        .replace(b"\r\n", b"\n"),
     }
     for migration in sorted((ROOT / "backend/migrations/versions").glob("*.py")):
         entries[migration.relative_to(ROOT).as_posix()] = migration.read_bytes()

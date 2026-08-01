@@ -15,12 +15,18 @@ from typing import Any, Callable
 import httpx
 
 from backend.core.config import settings
+from backend.core.diagnostics import FailureCode, diagnose_failure, log_failure
 from backend.providers.jobs.adecco.filters import build_query_string, filter_jobs
 from backend.providers.jobs.adecco.transformer import transform_job_data
 from backend.providers.jobs.base import JobProvider as BaseJobProvider
 from backend.providers.jobs.exceptions import (
     ProviderError,
     ResponseParseError,
+)
+from backend.providers.jobs.http_policy import (
+    MAX_PROVIDER_RESPONSE_BYTES,
+    assert_bounded_provider_response,
+    provider_response_hooks,
 )
 from backend.providers.jobs.models import (
     ContractType,
@@ -34,6 +40,7 @@ from backend.providers.jobs.models import (
 logger = logging.getLogger(__name__)
 
 API_BASE_URL = "https://www.adecco.com/api/data/jobs"
+MAX_RETRY_DELAY_SECONDS = 30.0
 
 # Adecco's Solr API expects these specific GUIDs to filter the response aggregations.
 # If omitted or incorrect, some facets or metadata might not be returned properly.
@@ -49,14 +56,25 @@ class AdeccoProvider(BaseJobProvider):
     # not the import-time loop (which can differ in tests or worker restarts).
     _global_sem: asyncio.Semaphore | None = None
     _global_sem_limit: int | None = None
+    _global_sem_loop: asyncio.AbstractEventLoop | None = None
+    _MAX_RESPONSE_BYTES = MAX_PROVIDER_RESPONSE_BYTES
 
     @classmethod
     def _get_semaphore(cls) -> asyncio.Semaphore:
         """Return the class-level semaphore, creating it on the current event loop if needed."""
         desired_limit = max(1, int(getattr(settings, "ADECCO_DETAIL_CONCURRENCY", 4) or 4))
-        if cls._global_sem is None or cls._global_sem_limit != desired_limit:
+        try:
+            current_loop = asyncio.get_running_loop()
+        except RuntimeError:
+            current_loop = None
+        if (
+            cls._global_sem is None
+            or cls._global_sem_limit != desired_limit
+            or (current_loop is not None and cls._global_sem_loop is not current_loop)
+        ):
             cls._global_sem = asyncio.Semaphore(desired_limit)
             cls._global_sem_limit = desired_limit
+            cls._global_sem_loop = current_loop
         return cls._global_sem
 
     def __init__(self, include_raw_data: bool = False):
@@ -75,6 +93,7 @@ class AdeccoProvider(BaseJobProvider):
         self._headers = {
             "User-Agent": random.choice(user_agents),
             "Accept": "application/json, text/plain, */*",
+            "Accept-Encoding": "identity",
             "Accept-Language": "en-US,en;q=0.9,de-CH;q=0.8,de;q=0.7",
             "Origin": "https://www.adecco.com",
             "Referer": "https://www.adecco.com/en-ch/job-search",
@@ -122,7 +141,7 @@ class AdeccoProvider(BaseJobProvider):
         )
 
     async def __aenter__(self) -> "AdeccoProvider":
-        self._client = httpx.AsyncClient(timeout=30.0, headers=self._headers)
+        self._ensure_client()
         return self
 
     async def __aexit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
@@ -139,7 +158,16 @@ class AdeccoProvider(BaseJobProvider):
         The client is kept alive for the provider's lifetime to avoid
         race conditions when multiple concurrent searches share this instance."""
         if self._client is None or self._client.is_closed:
-            self._client = httpx.AsyncClient(timeout=30.0, headers=self._headers)
+            self._client = httpx.AsyncClient(
+                timeout=30.0,
+                headers=self._headers,
+                follow_redirects=False,
+                trust_env=False,
+                event_hooks=provider_response_hooks(
+                    self.name,
+                    max_bytes=self._MAX_RESPONSE_BYTES,
+                ),
+            )
         return self._client
 
     @staticmethod
@@ -179,6 +207,11 @@ class AdeccoProvider(BaseJobProvider):
                         response = await func(*args, **kwargs)
                 else:
                     response = await func(*args, **kwargs)
+                assert_bounded_provider_response(
+                    response,
+                    self.name,
+                    max_bytes=self._MAX_RESPONSE_BYTES,
+                )
                 if response.status_code == 429:
                     raise httpx.HTTPStatusError(
                         "429 Too Many Requests", request=response.request, response=response
@@ -191,45 +224,66 @@ class AdeccoProvider(BaseJobProvider):
                     retry_after = e.response.headers.get("Retry-After")
                     sleep_time = None
                     if retry_after:
-                        if retry_after.isdigit():
-                            sleep_time = int(retry_after)
+                        if retry_after.isascii() and retry_after.isdigit():
+                            sleep_time = (
+                                MAX_RETRY_DELAY_SECONDS
+                                if len(retry_after) > 10
+                                else min(MAX_RETRY_DELAY_SECONDS, float(retry_after))
+                            )
                         else:
                             try:
                                 dt = email.utils.parsedate_to_datetime(retry_after)
-                                sleep_time = max(
-                                    0, (dt - datetime.now(timezone.utc)).total_seconds()
+                                sleep_time = min(
+                                    MAX_RETRY_DELAY_SECONDS,
+                                    max(0, (dt - datetime.now(timezone.utc)).total_seconds()),
                                 )
-                            except (TypeError, ValueError) as parse_error:
-                                logger.warning(
-                                    "Adecco Retry-After header %r is invalid: %s",
-                                    retry_after,
+                            except (OverflowError, TypeError, ValueError) as parse_error:
+                                diagnostic = diagnose_failure(
                                     parse_error,
+                                    FailureCode.PROVIDER_RETRY_HEADER_INVALID,
                                 )
+                                log_failure(logger, diagnostic, level=logging.WARNING)
 
                     if sleep_time is None:
                         # Stricter backoff for 429 than other errors: 4s, then 8s, capped at 30s
-                        sleep_time = min(30.0, random.uniform(4.0, 7.0) * (attempt + 1))
+                        sleep_time = min(
+                            MAX_RETRY_DELAY_SECONDS,
+                            random.uniform(4.0, 7.0) * (attempt + 1),
+                        )
 
                     logger.warning(
-                        f"Adecco 429 Too Many Requests. Retrying in {sleep_time:.1f}s (Attempt {attempt + 1}/{max_retries})"
+                        "Adecco rate_limited retry_seconds=%.1f attempt=%d max_attempts=%d",
+                        sleep_time,
+                        attempt + 1,
+                        max_retries,
                     )
                     await asyncio.sleep(sleep_time)
                     continue
                 # Retry on transient server errors
                 elif status in (500, 502, 503, 504) and attempt < max_retries - 1:
-                    sleep_time = min(30.0, random.uniform(2.0, 5.0) * (attempt + 1))
+                    sleep_time = min(
+                        MAX_RETRY_DELAY_SECONDS,
+                        random.uniform(2.0, 5.0) * (attempt + 1),
+                    )
                     logger.warning(
-                        f"Adecco {status} Error. Retrying in {sleep_time:.1f}s (Attempt {attempt + 1}/{max_retries})"
+                        "Adecco transient_http_status=%d retry_seconds=%.1f "
+                        "attempt=%d max_attempts=%d",
+                        status,
+                        sleep_time,
+                        attempt + 1,
+                        max_retries,
                     )
                     await asyncio.sleep(sleep_time)
                     continue
                 raise
             except (httpx.RequestError, asyncio.TimeoutError) as e:
                 if attempt < max_retries - 1:
-                    sleep_time = min(30.0, random.uniform(2.0, 5.0) * (attempt + 1))
-                    logger.warning(
-                        f"Adecco transient error {type(e).__name__}. Retrying in {sleep_time:.1f}s (Attempt {attempt + 1}/{max_retries})"
+                    sleep_time = min(
+                        MAX_RETRY_DELAY_SECONDS,
+                        random.uniform(2.0, 5.0) * (attempt + 1),
                     )
+                    diagnostic = diagnose_failure(e, FailureCode.PROVIDER_REQUEST_FAILED)
+                    log_failure(logger, diagnostic, level=logging.WARNING)
                     await asyncio.sleep(sleep_time)
                     continue
                 raise
@@ -314,19 +368,20 @@ class AdeccoProvider(BaseJobProvider):
                         light_job, detail_data, self.name, self._include_raw_data
                     )
                     return job_listing
-                except Exception as e:
-                    logger.warning(f"Failed to fetch details for {job_id} on {self.name}: {e}")
+                except Exception as error:
+                    diagnostic = diagnose_failure(error, FailureCode.PROVIDER_DETAIL_FAILED)
+                    log_failure(logger, diagnostic, level=logging.WARNING)
                     # Fallback to transform without details if detail fetch fails
                     try:
                         return transform_job_data(
                             light_job, None, self.name, self._include_raw_data
                         )
-                    except Exception as fallback_error:
-                        logger.warning(
-                            "Failed to transform Adecco job %s without details: %s",
-                            job_id,
-                            fallback_error,
+                    except Exception as error:
+                        diagnostic = diagnose_failure(
+                            error,
+                            FailureCode.PROVIDER_TRANSFORM_FAILED,
                         )
+                        log_failure(logger, diagnostic, level=logging.WARNING)
                         return None
 
             tasks = [process_job(job) for job in jobs_light]
@@ -366,12 +421,14 @@ class AdeccoProvider(BaseJobProvider):
                 request=request,
             )
 
-        except Exception as e:
-            from backend.providers.jobs.exceptions import format_provider_error
-
-            err_msg = format_provider_error(e)
-            logger.error(f"Search failed: {err_msg}")
-            raise ProviderError(self.name, err_msg) from e
+        except Exception as error:
+            diagnostic = diagnose_failure(error, FailureCode.PROVIDER_REQUEST_FAILED)
+            log_failure(logger, diagnostic)
+            raise ProviderError(
+                self.name,
+                "Search failed",
+                diagnostic=diagnostic,
+            ) from error
 
     async def health_check(self) -> ProviderHealth:
         """Check if Adecco API is accessible."""
@@ -392,6 +449,11 @@ class AdeccoProvider(BaseJobProvider):
 
             async with self._get_semaphore():
                 response = await client.post(f"{API_BASE_URL}/summarized", json=payload)
+            assert_bounded_provider_response(
+                response,
+                self.name,
+                max_bytes=self._MAX_RESPONSE_BYTES,
+            )
 
             latency_ms = int((time.time() - start_time) * 1000)
 
@@ -409,11 +471,13 @@ class AdeccoProvider(BaseJobProvider):
                     latency_ms=latency_ms,
                     message=f"HTTP {response.status_code}",
                 )
-        except Exception as e:
+        except Exception as error:
             latency_ms = int((time.time() - start_time) * 1000)
+            diagnostic = diagnose_failure(error, FailureCode.PROVIDER_HEALTH_FAILED)
+            log_failure(logger, diagnostic, level=logging.WARNING)
             return ProviderHealth(
                 provider=self.name,
                 status=ProviderStatus.UNAVAILABLE,
                 latency_ms=latency_ms,
-                message=str(e),
+                message=diagnostic.public_message,
             )

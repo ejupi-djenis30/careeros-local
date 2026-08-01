@@ -20,11 +20,12 @@ from backend.applications.schemas import ApplicationDossierCreate
 from backend.applications.service import ApplicationConflictError, ApplicationService
 from backend.career.models import CandidateProfile, CareerFact
 from backend.models import Job, ScrapedJob, SearchProfile, User
+from backend.resumes.artifact_policy import read_verified_resume_artifact
 from backend.resumes.models import ResumeArtifact, ResumeDraft, ResumeVersion
 from backend.resumes.renderers.ats import render_ats_docx, render_ats_pdf
 from backend.resumes.storage import store_resume_artifact
 from backend.services.auth import get_password_hash
-from backend.storage.atomic import read_verified, resolve_data_path
+from backend.storage.atomic import resolve_data_path
 
 
 @pytest.fixture
@@ -312,9 +313,7 @@ def test_application_rejects_duplicate_logical_job_and_jobs_resolve_one_pipeline
     stored_application = db_session.get(Application, application["id"])
     assert stored_application.scraped_job_id == duplicate.scraped_job_id
 
-    second_page = client.get(
-        "/api/v1/jobs/?page=2&page_size=1", headers=auth_headers
-    ).json()
+    second_page = client.get("/api/v1/jobs/?page=2&page_size=1", headers=auth_headers).json()
     assert second_page["total"] == 2
     assert second_page["pages"] == 2
     assert second_page["total_tracked"] == 1
@@ -326,9 +325,7 @@ def test_application_rejects_duplicate_logical_job_and_jobs_resolve_one_pipeline
     db_session.expire_all()
     assert db_session.get(Application, application["id"]).job_id is None
 
-    after_source_job_delete = client.get(
-        "/api/v1/jobs/?page_size=100", headers=auth_headers
-    )
+    after_source_job_delete = client.get("/api/v1/jobs/?page_size=100", headers=auth_headers)
     assert after_source_job_delete.status_code == 200, after_source_job_delete.text
     remaining = after_source_job_delete.json()
     assert remaining["total_tracked"] == 1
@@ -907,7 +904,7 @@ def test_readiness_complete_pack_and_exports_are_deterministic(
         assert first.headers["content-disposition"] == (
             f'attachment; filename="careeros-application-{application_id}-readiness.{extension}"'
         )
-        assert first.headers["cache-control"] == "private, no-store"
+        assert first.headers["cache-control"] == "no-store, max-age=0"
         decoded = first.content.decode("utf-8")
         assert "private/user/path" not in decoded
         assert "storage_path" not in decoded
@@ -953,7 +950,7 @@ def test_readiness_warns_when_one_required_artifact_was_never_published(
 
 @pytest.mark.parametrize(
     "failure_mode",
-    ["deleted", "corrupt", "path_escape", "unreadable", "size_mismatch"],
+    ["deleted", "corrupt", "path_escape", "unreadable", "size_mismatch", "media_mismatch"],
 )
 def test_readiness_blocks_recorded_artifacts_without_verified_local_bytes(
     client,
@@ -988,17 +985,30 @@ def test_readiness_blocks_recorded_artifacts_without_verified_local_bytes(
         db_session.expire_all()
     elif failure_mode == "unreadable":
 
-        def deny_pdf(path, expected_sha256):
+        def deny_pdf(path, *, expected_sha256, expected_size):
             if str(path).endswith(".pdf"):
                 raise PermissionError("simulated unreadable artifact")
-            return read_verified(path, expected_sha256)
+            return read_verified_resume_artifact(
+                path,
+                expected_sha256=expected_sha256,
+                expected_size=expected_size,
+            )
 
-        monkeypatch.setattr("backend.applications.readiness.read_verified", deny_pdf)
-    else:
+        monkeypatch.setattr(
+            "backend.applications.readiness.read_verified_resume_artifact",
+            deny_pdf,
+        )
+    elif failure_mode == "size_mismatch":
         db_session.execute(
             update(ResumeArtifact)
             .where(ResumeArtifact.id == pdf.id)
             .values(byte_size=pdf.byte_size + 1)
+        )
+        db_session.commit()
+        db_session.expire_all()
+    else:
+        db_session.execute(
+            update(ResumeArtifact).where(ResumeArtifact.id == pdf.id).values(media_type="text/html")
         )
         db_session.commit()
         db_session.expire_all()
@@ -1248,7 +1258,7 @@ def test_application_tasks_are_append_only_and_export_as_local_calendar(
         headers=auth_headers,
     )
     assert calendar.status_code == 200, calendar.text
-    assert calendar.headers["cache-control"] == "private, no-store"
+    assert calendar.headers["cache-control"] == "no-store, max-age=0"
     assert calendar.headers["x-content-sha256"] == hashlib.sha256(calendar.content).hexdigest()
     text = calendar.content.decode("utf-8")
     assert "BEGIN:VCALENDAR\r\n" in text
@@ -1387,6 +1397,13 @@ def test_application_dossier_is_versioned_and_zip_manifest_is_verifiable(
     second = client.get(url, headers=auth_headers)
     assert first.status_code == 200, first.text
     assert first.content == second.content
+    assert first.headers["cache-control"] == "no-store, max-age=0"
+    assert first.headers["pragma"] == "no-cache"
+    assert first.headers["content-type"] == "application/zip"
+    assert first.headers["content-disposition"] == (
+        f'attachment; filename="careeros-dossier-{application_id}-{dossier["id"]}.zip"'
+    )
+    assert int(first.headers["content-length"]) == len(first.content)
     assert first.headers["x-content-sha256"] == hashlib.sha256(first.content).hexdigest()
     with zipfile.ZipFile(io.BytesIO(first.content)) as archive:
         names = archive.namelist()
@@ -1752,7 +1769,7 @@ def test_dossier_draft_crud_is_durable_owned_and_compare_and_swap_safe(
     empty = client.get(endpoint, headers=auth_headers)
     assert empty.status_code == 200, empty.text
     assert empty.json() is None
-    assert empty.headers["cache-control"] == "private, no-store"
+    assert empty.headers["cache-control"] == "no-store, max-age=0"
 
     created = client.put(
         endpoint,
@@ -1764,7 +1781,7 @@ def test_dossier_draft_crud_is_durable_owned_and_compare_and_swap_safe(
         headers=auth_headers,
     )
     assert created.status_code == 200, created.text
-    assert created.headers["cache-control"] == "private, no-store"
+    assert created.headers["cache-control"] == "no-store, max-age=0"
     first = created.json()
     assert first["application_id"] == application_id
     assert first["application_revision"] == 1
@@ -1824,7 +1841,7 @@ def test_dossier_draft_crud_is_durable_owned_and_compare_and_swap_safe(
         headers=auth_headers,
     )
     assert deleted.status_code == 204, deleted.text
-    assert deleted.headers["cache-control"] == "private, no-store"
+    assert deleted.headers["cache-control"] == "no-store, max-age=0"
     assert client.get(endpoint, headers=auth_headers).json() is None
 
 

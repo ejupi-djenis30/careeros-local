@@ -5,10 +5,16 @@ const LOOPBACK_HOSTS = new Set(["localhost", "127.0.0.1", "[::1]", "::1"]);
 const SESSION_INVALIDATED_REASON = "session-invalidated";
 const CALLER_ABORTED_REASON = "caller-aborted";
 const REQUEST_TIMEOUT_REASON = "request-timeout";
+const REFRESH_TIMEOUT_MS = 30_000;
 
-function validateApiBase(candidate) {
-    const value = (candidate || DEFAULT_API_BASE).trim().replace(/\/$/, "");
-    if (value.startsWith("/")) return value;
+export function validateApiBase(candidate) {
+    const value = String(candidate || DEFAULT_API_BASE).trim();
+    if (value === DEFAULT_API_BASE || value === `${DEFAULT_API_BASE}/`) {
+        return DEFAULT_API_BASE;
+    }
+    if (value.startsWith("/")) {
+        throw new Error("VITE_API_URL relative path must be exactly /api/v1");
+    }
 
     const parsed = new URL(value);
     if (!LOOPBACK_HOSTS.has(parsed.hostname)) {
@@ -17,7 +23,13 @@ function validateApiBase(candidate) {
     if (!["http:", "https:"].includes(parsed.protocol)) {
         throw new Error("VITE_API_URL must use HTTP(S)");
     }
-    return parsed.toString().replace(/\/$/, "");
+    if (parsed.username || parsed.password || parsed.search || parsed.hash) {
+        throw new Error("VITE_API_URL must not contain credentials, query, or fragment");
+    }
+    if (parsed.pathname !== DEFAULT_API_BASE && parsed.pathname !== `${DEFAULT_API_BASE}/`) {
+        throw new Error("VITE_API_URL path must be exactly /api/v1");
+    }
+    return `${parsed.origin}${DEFAULT_API_BASE}`;
 }
 
 const INITIAL_API_BASE = validateApiBase(import.meta.env.VITE_API_URL);
@@ -99,6 +111,11 @@ export class ApiClient {
         }
     }
 
+    static bindMaintenanceToken(token) {
+        this.invalidateSession();
+        this.accessToken = typeof token === "string" && token ? token : null;
+    }
+
     static getSessionEpoch() {
         return this._sessionEpoch;
     }
@@ -119,6 +136,21 @@ export class ApiClient {
         return headers;
     }
 
+    static async _waitForRefresh(refreshPromise, signal) {
+        if (!signal) return refreshPromise;
+        if (signal.aborted) return null;
+        let stopWaiting;
+        const callerStopped = new Promise((resolve) => {
+            stopWaiting = () => resolve(null);
+            signal.addEventListener("abort", stopWaiting, { once: true });
+        });
+        try {
+            return await Promise.race([refreshPromise, callerStopped]);
+        } finally {
+            signal.removeEventListener("abort", stopWaiting);
+        }
+    }
+
     static async _handleUnauthorized(originalUrl, originalConfig, requestEpoch) {
         if (!this.isSessionEpoch(requestEpoch) || originalConfig.signal?.aborted) {
             return null;
@@ -127,35 +159,47 @@ export class ApiClient {
             const refreshEpoch = this._sessionEpoch;
             const refreshController = new AbortController();
             this._refreshController = refreshController;
-            this._refreshPromise = (async () => {
-                const response = await fetch(`${getApiBase()}/auth/refresh`, {
-                    method: "POST",
-                    credentials: "include",
-                    headers: this.getHeaders({ json: false }),
-                    signal: refreshController.signal,
-                });
-                if (!response.ok) return null;
-                const data = await response.json();
-                if (!data.access_token) return null;
-                if (!this.isSessionEpoch(refreshEpoch) || refreshController.signal.aborted) {
+            let operation;
+            operation = (async () => {
+                const timeoutId = setTimeout(
+                    () => refreshController.abort(REQUEST_TIMEOUT_REASON),
+                    REFRESH_TIMEOUT_MS,
+                );
+                try {
+                    const response = await fetch(`${getApiBase()}/auth/refresh`, {
+                        method: "POST",
+                        credentials: "include",
+                        redirect: "error",
+                        headers: this.getHeaders({ json: false }),
+                        signal: refreshController.signal,
+                    });
+                    if (!response.ok) return null;
+                    const data = await response.json();
+                    if (!data.access_token) return null;
+                    if (!this.isSessionEpoch(refreshEpoch) || refreshController.signal.aborted) {
+                        return null;
+                    }
+                    this.accessToken = data.access_token;
+                    return data.access_token;
+                } catch {
                     return null;
+                } finally {
+                    clearTimeout(timeoutId);
+                    if (this._refreshPromise === operation) {
+                        this._refreshPromise = null;
+                        this._refreshController = null;
+                    }
                 }
-                this.accessToken = data.access_token;
-                return data.access_token;
             })();
+            this._refreshPromise = operation;
         }
 
         const refreshPromise = this._refreshPromise;
         let refreshedToken = null;
         try {
-            refreshedToken = await refreshPromise;
+            refreshedToken = await this._waitForRefresh(refreshPromise, originalConfig.signal);
         } catch {
             refreshedToken = null;
-        } finally {
-            if (this._refreshPromise === refreshPromise) {
-                this._refreshPromise = null;
-                this._refreshController = null;
-            }
         }
 
         if (
@@ -163,10 +207,19 @@ export class ApiClient {
             this.isSessionEpoch(requestEpoch) &&
             !originalConfig.signal?.aborted
         ) {
-            return fetch(originalUrl, {
+            const retryResponse = await fetch(originalUrl, {
                 ...originalConfig,
                 headers: { ...originalConfig.headers, Authorization: `Bearer ${refreshedToken}` },
             });
+            if (
+                retryResponse.status === 401
+                && this.isSessionEpoch(requestEpoch)
+                && !originalConfig.signal?.aborted
+            ) {
+                window.dispatchEvent(new Event(CAREEROS_UNAUTHORIZED_EVENT));
+                return null;
+            }
+            return retryResponse;
         }
 
         if (
@@ -222,6 +275,9 @@ export class ApiClient {
         const config = {
             credentials: "include",
             ...fetchOptions,
+            // API responses must never relay access or per-launch desktop
+            // credentials through a redirect to a different origin.
+            redirect: "error",
             headers: {
                 ...this.getHeaders({ json: !isFormData }),
                 ...(options.headers || {}),
@@ -291,18 +347,30 @@ export class ApiClient {
 
     static _filenameFromResponse(response) {
         const disposition = response.headers.get("Content-Disposition") || "";
-        const utf8 = disposition.match(/filename\*=UTF-8''([^;]+)/i);
-        if (utf8) return this._safeFilename(decodeURIComponent(utf8[1]));
+        const utf8 = disposition.match(/filename\*\s*=\s*UTF-8'[^']*'([^;]+)/i);
+        if (utf8) {
+            try {
+                return this._safeFilename(decodeURIComponent(utf8[1].trim()));
+            } catch {
+                // Fall through to the plain filename when RFC 5987 encoding is malformed.
+            }
+        }
         const plain = disposition.match(/filename="?([^";]+)"?/i);
         return this._safeFilename(plain?.[1] || "download");
     }
 
     static _safeFilename(value) {
         const reserved = new Set(['\\', '/', ':', '*', '?', '"', '<', '>', '|']);
-        const normalized = Array.from(String(value), (character) => {
+        let normalized = Array.from(String(value).normalize("NFC"), (character) => {
             return character.charCodeAt(0) < 32 || reserved.has(character) ? "_" : character;
-        }).join("").trim();
-        return normalized.slice(0, 180) || "download";
+        }).join("").trim().replace(/[. ]+$/u, "");
+        if (!normalized || /^\.+$/u.test(normalized)) return "download";
+        normalized = normalized.replace(/^\.+/u, (dots) => "_".repeat(dots.length));
+        const stem = normalized.split(".", 1)[0].toUpperCase();
+        if (/^(?:CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])$/u.test(stem)) {
+            normalized = `_${normalized}`;
+        }
+        return normalized.slice(0, 180).replace(/[. ]+$/u, "") || "download";
     }
 
     static get(endpoint, signal, options = {}) {

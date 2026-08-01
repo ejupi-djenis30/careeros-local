@@ -2,6 +2,7 @@ import logging
 from datetime import datetime
 from typing import Any
 
+from backend.core.diagnostics import FailureCode, diagnose_failure, log_failure
 from backend.providers.jobs.models import (
     ApplicationChannel,
     CompanyInfo,
@@ -80,8 +81,9 @@ def transform_job_data(
                 lat=float(coords_data["lat"]),
                 lon=float(coords_data["lon"]),
             )
-        except (ValueError, TypeError) as exc:
-            logger.warning("Invalid job-room coordinates %r: %s", coords_data, exc)
+        except (ValueError, TypeError) as error:
+            diagnostic = diagnose_failure(error, FailureCode.PROVIDER_TRANSFORM_FAILED)
+            log_failure(logger, diagnostic, level=logging.WARNING)
 
     location = JobLocation(
         city=location_data.get("city", ""),
@@ -198,15 +200,17 @@ def transform_job_data(
     if job.get("createdTime"):
         try:
             created_at = datetime.fromisoformat(job["createdTime"].replace("Z", "+00:00"))
-        except (ValueError, TypeError) as exc:
-            logger.warning("Invalid job-room createdTime %r: %s", job.get("createdTime"), exc)
+        except (ValueError, TypeError) as error:
+            diagnostic = diagnose_failure(error, FailureCode.PROVIDER_TRANSFORM_FAILED)
+            log_failure(logger, diagnostic, level=logging.WARNING)
 
     updated_at = None
     if job.get("updatedTime"):
         try:
             updated_at = datetime.fromisoformat(job["updatedTime"].replace("Z", "+00:00"))
-        except (ValueError, TypeError) as exc:
-            logger.warning("Invalid job-room updatedTime %r: %s", job.get("updatedTime"), exc)
+        except (ValueError, TypeError) as error:
+            diagnostic = diagnose_failure(error, FailureCode.PROVIDER_TRANSFORM_FAILED)
+            log_failure(logger, diagnostic, level=logging.WARNING)
 
     return JobListing(
         id=job_id,

@@ -84,8 +84,8 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:
-      pages: write
-      id-token: write
+      pages: write # Required by actions/deploy-pages to publish the verified site.
+      id-token: write # Required for GitHub Pages OIDC deployment authentication.
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}

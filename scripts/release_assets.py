@@ -6,6 +6,7 @@ import hashlib
 import json
 import re
 import shutil
+import stat
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -47,6 +48,17 @@ TARGETS: dict[str, TargetSpec] = {
         "linux", "arm64", (PackageKind("appimage", ".AppImage"), PackageKind("deb", ".deb"))
     ),
 }
+
+
+def is_link_like(path: Path) -> bool:
+    """Return whether a path is a symbolic link or Windows reparse point."""
+    if path.is_symlink() or (hasattr(path, "is_junction") and path.is_junction()):
+        return True
+    try:
+        attributes = getattr(path.lstat(), "st_file_attributes", 0)
+    except OSError:
+        return False
+    return bool(attributes & getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0))
 
 
 def sha256_file(path: Path) -> str:
@@ -106,7 +118,7 @@ def target_checksum_name(target: str) -> str:
 
 
 def file_record(path: Path, *, artifact_type: str | None = None) -> dict[str, Any]:
-    if path.is_symlink() or not path.is_file():
+    if is_link_like(path) or not path.is_file():
         raise RuntimeError(f"Release asset must be a regular file: {path}")
     validate_portable_name(path.name)
     size = path.stat().st_size
@@ -144,7 +156,11 @@ def parse_checksum_text(text: str) -> list[dict[str, str]]:
 
 
 def _empty_directory(path: Path) -> None:
+    if is_link_like(path):
+        raise RuntimeError(f"Release output directory must not be a link or junction: {path}")
     path.mkdir(parents=True, exist_ok=True)
+    if not path.is_dir():
+        raise RuntimeError(f"Release output path is not a directory: {path}")
     if any(path.iterdir()):
         raise RuntimeError(f"Release output directory must be empty: {path}")
 
@@ -164,8 +180,8 @@ def _discover_packages(bundle_root: Path, spec: TargetSpec) -> dict[str, Path]:
         package = suffixes.get(path.suffix.casefold())
         if package is None:
             continue
-        if path.is_symlink():
-            raise RuntimeError(f"Native package is a symbolic link: {path}")
+        if is_link_like(path):
+            raise RuntimeError(f"Native package is a link or junction: {path}")
         if package.name in discovered:
             raise RuntimeError(f"Native bundle contains duplicate {package.name} packages")
         discovered[package.name] = path
@@ -223,9 +239,11 @@ def validate_target_candidate(
     if not isinstance(manifest, dict):
         raise RuntimeError("Target candidate manifest must be a JSON object")
     expected_names = [canonical_package_name(version, spec, package) for package in spec.packages]
-    expected_files = sorted(expected_names + [target_manifest_name(target), target_checksum_name(target)])
+    expected_files = sorted(
+        expected_names + [target_manifest_name(target), target_checksum_name(target)]
+    )
     entries = sorted(directory.iterdir(), key=lambda path: path.name)
-    if any(path.is_symlink() or not path.is_file() for path in entries):
+    if any(is_link_like(path) or not path.is_file() for path in entries):
         raise RuntimeError(f"Target candidate contains a non-regular file: {directory}")
     actual_files = [path.name for path in entries]
     reject_casefold_collisions(actual_files)
@@ -244,7 +262,9 @@ def validate_target_candidate(
     }
     for key, value in expected_header.items():
         if manifest.get(key) != value:
-            raise RuntimeError(f"Target candidate manifest has unexpected {key}: {manifest.get(key)!r}")
+            raise RuntimeError(
+                f"Target candidate manifest has unexpected {key}: {manifest.get(key)!r}"
+            )
     expected_records = [
         file_record(
             directory / canonical_package_name(version, spec, package),
@@ -254,8 +274,12 @@ def validate_target_candidate(
     ]
     if manifest.get("artifacts") != expected_records:
         raise RuntimeError("Target candidate manifest does not match package bytes")
-    parsed = parse_checksum_text((directory / target_checksum_name(target)).read_text(encoding="utf-8"))
-    checksum_records = [{"sha256": item["sha256"], "name": item["name"]} for item in expected_records]
+    parsed = parse_checksum_text(
+        (directory / target_checksum_name(target)).read_text(encoding="utf-8")
+    )
+    checksum_records = [
+        {"sha256": item["sha256"], "name": item["name"]} for item in expected_records
+    ]
     if parsed != sorted(checksum_records, key=lambda record: record["name"].casefold()):
         raise RuntimeError("Target checksum inventory does not match canonical package bytes")
     return manifest

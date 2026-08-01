@@ -51,8 +51,12 @@ def _date_range(payload: Mapping[str, Any]) -> str:
     start = _date_label(
         payload.get("start_date") or payload.get("issued_on") or payload.get("awarded_on")
     )
-    end = "Present" if payload.get("current") else _date_label(
-        payload.get("end_date") or payload.get("expires_on") or payload.get("published_on")
+    end = (
+        "Present"
+        if payload.get("current")
+        else _date_label(
+            payload.get("end_date") or payload.get("expires_on") or payload.get("published_on")
+        )
     )
     return " – ".join(item for item in (start, end) if item)
 
@@ -84,9 +88,7 @@ def fact_content(fact: Any) -> CanvasContent:
     if fact_type == "project":
         return CanvasContent(
             title=payload["name"],
-            subtitle=_join(
-                payload.get("role"), payload.get("organization"), payload.get("client")
-            ),
+            subtitle=_join(payload.get("role"), payload.get("organization"), payload.get("client")),
             date_range=_date_range(payload),
             description=payload.get("description", ""),
             bullets=list(payload.get("achievements", [])),
@@ -304,7 +306,9 @@ def legacy_fields(
     order = [*canvas_order, *(kind for kind in base.order if kind not in canvas_order)]
     config = ResumeSectionConfig(
         order=order or [cast(FactType, key) for key in SECTION_TITLES],
-        include_summary=any(section.kind == "summary" and section.visible for section in canvas.sections),
+        include_summary=any(
+            section.kind == "summary" and section.visible for section in canvas.sections
+        ),
         include_email=base.include_email,
         include_phone=base.include_phone,
         include_location=base.include_location,

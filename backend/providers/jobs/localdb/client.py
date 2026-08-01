@@ -109,7 +109,11 @@ class LocalDbProvider(JobProvider):
             results.append(self._db_job_to_listing(db_job))
 
         elapsed_ms = int((time.time() - start_time) * 1000)
-        logger.info(f"[{self.name}] Found {len(results)} internal jobs in {elapsed_ms}ms")
+        logger.info(
+            "LocalDbProvider search_complete result_count=%d elapsed_ms=%d",
+            len(results),
+            elapsed_ms,
+        )
 
         return JobSearchResponse(
             items=results,

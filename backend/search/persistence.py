@@ -12,6 +12,7 @@ from typing import Any, Dict, List, Optional
 from sqlalchemy.orm import Session
 
 from backend.core.config import settings
+from backend.core.diagnostics import ActivityCode, public_activity_message
 from backend.models import ScrapedJob, SearchProfile
 from backend.providers.circuit_breaker import CircuitOpenError
 from backend.providers.jobs.jobroom.client import JobRoomProvider
@@ -131,13 +132,12 @@ class PersistenceMixin:
 
         add_log(
             profile_id,
-            "Persisted shared job catalog entries before filtering: "
-            f"{result.created} created, {result.updated} refreshed"
-            + (f", {result.failed} failed" if result.failed else "")
-            + (
-                f", {result.conflict_recoveries} catalog conflicts recovered"
-                if result.conflict_recoveries
-                else ""
+            public_activity_message(
+                ActivityCode.CATALOG_PERSISTED,
+                created=result.created,
+                updated=result.updated,
+                failed=result.failed,
+                recovered=result.conflict_recoveries,
             ),
         )
         return result.created, result.updated
@@ -213,13 +213,7 @@ class PersistenceMixin:
             )
             if duplicate_reason:
                 self._increment_duplicate_count(duplicate_counts, duplicate_reason)
-                logger.debug(
-                    "[DEDUP] Skipping %s duplicate: %s/%s (desc_fp=%s…)",
-                    duplicate_reason,
-                    platform,
-                    platform_id,
-                    (desc_fp or "")[:8],
-                )
+                logger.debug("duplicate_listing_skipped")
                 continue
 
             self._record_dedup_markers(

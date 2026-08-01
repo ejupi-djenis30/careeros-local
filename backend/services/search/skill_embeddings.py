@@ -15,9 +15,7 @@ def is_available() -> bool:
 
 
 def _normalize(value: str) -> str:
-    return " ".join(
-        "".join(char if char.isalnum() else " " for char in value.lower()).split()
-    )
+    return " ".join("".join(char if char.isalnum() else " " for char in value.lower()).split())
 
 
 @lru_cache(maxsize=4096)
@@ -59,8 +57,7 @@ def embedding_skills_score(
     if not valid_job_skills or not profile_skills:
         return 0.0
     return sum(
-        best_embedding_match(item, profile_skills, threshold=threshold)
-        for item in valid_job_skills
+        best_embedding_match(item, profile_skills, threshold=threshold) for item in valid_job_skills
     ) / len(valid_job_skills)
 
 

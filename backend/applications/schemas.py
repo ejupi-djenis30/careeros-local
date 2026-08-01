@@ -288,6 +288,17 @@ class ApplicationTaskResponse(BaseModel):
     def normalize_datetimes(cls, value: datetime | None, info):
         return _require_timezone(value, info.field_name)
 
+    @field_validator("id")
+    @classmethod
+    def canonical_task_id(cls, value: str) -> str:
+        try:
+            canonical = str(UUID(value))
+        except (TypeError, ValueError, AttributeError) as exc:
+            raise ValueError("task id must be a UUID") from exc
+        if canonical != value:
+            raise ValueError("task id must use canonical UUID form")
+        return value
+
 
 class DossierAnswer(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -429,8 +440,7 @@ class ApplicationDossierDraftContent(BaseModel):
             )
         if len(set(evidence_ids)) > MAX_DOSSIER_UNIQUE_FACTS:
             raise ValueError(
-                f"dossier draft cannot reference more than "
-                f"{MAX_DOSSIER_UNIQUE_FACTS} unique facts"
+                f"dossier draft cannot reference more than {MAX_DOSSIER_UNIQUE_FACTS} unique facts"
             )
         encoded = json.dumps(
             self.model_dump(mode="json"),
@@ -671,20 +681,31 @@ class ApplicationReadinessCheck(BaseModel):
     status: ReadinessCheckStatus
     points_awarded: int = Field(ge=0, le=100)
     points_available: int = Field(ge=1, le=100)
-    evidence: list[ReadinessEvidence]
+    evidence: list[ReadinessEvidence] = Field(max_length=50)
     action: str | None = Field(default=None, max_length=80)
 
 
 class ApplicationReadinessReport(BaseModel):
     schema_version: Literal["1.0"] = "1.0"
-    application_id: str
+    application_id: str = Field(min_length=36, max_length=36)
     application_revision: int = Field(ge=1)
-    role_title: str
-    company: str
+    role_title: str = Field(min_length=1, max_length=240)
+    company: str = Field(min_length=1, max_length=240)
     status: ReadinessReportStatus
     score_kind: Literal["preflight_completeness"] = "preflight_completeness"
     completeness_score: int = Field(ge=0, le=100)
     blocker_count: int = Field(ge=0)
     warning_count: int = Field(ge=0)
-    checks: list[ApplicationReadinessCheck]
+    checks: list[ApplicationReadinessCheck] = Field(min_length=1, max_length=100)
     fingerprint: str = Field(pattern=r"^[a-f0-9]{64}$")
+
+    @field_validator("application_id")
+    @classmethod
+    def canonical_application_id(cls, value: str) -> str:
+        try:
+            canonical = str(UUID(value))
+        except (TypeError, ValueError, AttributeError) as exc:
+            raise ValueError("application id must be a UUID") from exc
+        if canonical != value:
+            raise ValueError("application id must use canonical UUID form")
+        return value

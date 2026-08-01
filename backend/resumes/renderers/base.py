@@ -1,3 +1,5 @@
+import zipfile
+from datetime import datetime, timezone
 from html import escape
 from io import BytesIO
 
@@ -20,10 +22,19 @@ from reportlab.platypus import (
     Spacer,
 )
 
+from backend.resumes import artifact_policy
+from backend.resumes.artifact_policy import (
+    MAX_RESUME_ARTIFACT_BYTES,
+    MAX_RESUME_DOCX_ENTRIES,
+    MAX_RESUME_DOCX_UNCOMPRESSED_BYTES,
+    ensure_resume_artifact_size,
+)
 from backend.resumes.content import ResumeContent, build_content
 
-PDF_MEDIA_TYPE = "application/pdf"
-DOCX_MEDIA_TYPE = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+_DOCX_TIMESTAMP = (1980, 1, 1, 0, 0, 0)
+_DOCUMENT_TIMESTAMP = datetime(2000, 1, 1, tzinfo=timezone.utc)
+DOCX_MEDIA_TYPE = artifact_policy.DOCX_MEDIA_TYPE
+PDF_MEDIA_TYPE = artifact_policy.PDF_MEDIA_TYPE
 
 
 def _paragraph_text(value: str) -> str:
@@ -44,9 +55,7 @@ def render_pdf(snapshot: dict, *, photo: bytes | None = None) -> bytes:
         "Arial": ("Helvetica", "Helvetica-Bold", "Helvetica-Oblique"),
         "Georgia": ("Times-Roman", "Times-Bold", "Times-Italic"),
     }
-    normal_font, bold_font, italic_font = font_names.get(
-        requested_font, font_names["Helvetica"]
-    )
+    normal_font, bold_font, italic_font = font_names.get(requested_font, font_names["Helvetica"])
     output = BytesIO()
     document = SimpleDocTemplate(
         output,
@@ -58,6 +67,9 @@ def render_pdf(snapshot: dict, *, photo: bytes | None = None) -> bytes:
         title=content.display_name,
         author="CareerOS Local",
         subject="Resume",
+        creator="CareerOS Local",
+        producer="CareerOS Local",
+        invariant=True,
     )
     base_styles = getSampleStyleSheet()
     name_style = ParagraphStyle(
@@ -164,15 +176,13 @@ def render_pdf(snapshot: dict, *, photo: bytes | None = None) -> bytes:
             if entry.description:
                 flowables.append(Paragraph(_paragraph_text(entry.description), body_style))
             for bullet in entry.bullets:
-                flowables.append(
-                    Paragraph(f"&bull;&nbsp;{_paragraph_text(bullet)}", bullet_style)
-                )
+                flowables.append(Paragraph(f"&bull;&nbsp;{_paragraph_text(bullet)}", bullet_style))
             if entry.layout.get("keep_together", True):
                 story.append(KeepTogether(flowables))
             else:
                 story.extend(flowables)
     document.build(story)
-    return output.getvalue()
+    return ensure_resume_artifact_size(output.getvalue(), label="PDF")
 
 
 def _configure_docx(document: DocxDocument, title: str, style: dict) -> None:
@@ -192,6 +202,49 @@ def _configure_docx(document: DocxDocument, title: str, style: dict) -> None:
     properties.subject = "Resume"
     properties.keywords = ""
     properties.comments = "Generated locally"
+    properties.last_modified_by = "CareerOS Local"
+    properties.created = _DOCUMENT_TIMESTAMP
+    properties.modified = _DOCUMENT_TIMESTAMP
+    properties.category = ""
+    properties.content_status = ""
+    properties.identifier = ""
+    properties.language = ""
+    properties.version = ""
+
+
+def _canonicalize_docx(data: bytes) -> bytes:
+    """Strip ZIP timestamps/extra fields and bound expansion before returning a DOCX."""
+
+    if len(data) > MAX_RESUME_ARTIFACT_BYTES:
+        raise ValueError(
+            f"Generated DOCX exceeds the {MAX_RESUME_ARTIFACT_BYTES}-byte artifact limit"
+        )
+    output = BytesIO()
+    try:
+        with zipfile.ZipFile(BytesIO(data)) as source:
+            entries = source.infolist()
+            if len(entries) > MAX_RESUME_DOCX_ENTRIES:
+                raise ValueError("Generated DOCX contains too many archive entries")
+            if sum(entry.file_size for entry in entries) > MAX_RESUME_DOCX_UNCOMPRESSED_BYTES:
+                raise ValueError("Generated DOCX expands beyond the local artifact limit")
+            if len({entry.filename for entry in entries}) != len(entries):
+                raise ValueError("Generated DOCX contains duplicate archive entries")
+            with zipfile.ZipFile(
+                output,
+                "w",
+                compression=zipfile.ZIP_DEFLATED,
+                compresslevel=9,
+                allowZip64=False,
+            ) as target:
+                for entry in entries:
+                    canonical = zipfile.ZipInfo(entry.filename, date_time=_DOCX_TIMESTAMP)
+                    canonical.compress_type = zipfile.ZIP_DEFLATED
+                    canonical.create_system = 3
+                    canonical.external_attr = (0o600 if not entry.is_dir() else 0o700) << 16
+                    target.writestr(canonical, source.read(entry))
+    except zipfile.BadZipFile as exc:
+        raise ValueError("Generated DOCX is not a valid archive") from exc
+    return ensure_resume_artifact_size(output.getvalue(), label="DOCX")
 
 
 def _add_docx_heading(document: DocxDocument, text: str) -> None:
@@ -266,4 +319,4 @@ def render_docx(snapshot: dict, *, photo: bytes | None = None) -> bytes:
             _add_docx_entry(document, entry)
     output = BytesIO()
     document.save(output)
-    return output.getvalue()
+    return _canonicalize_docx(output.getvalue())

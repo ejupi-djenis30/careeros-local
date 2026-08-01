@@ -24,9 +24,11 @@ from backend.career.coach_models import CoachConversation, CoachMessage
 from backend.career.models import CandidateProfile, CareerAsset
 from backend.core.config import settings
 from backend.models import Job, ScrapedJob, SearchProfile, User
+from backend.models.auth_session import AuthSession
 from backend.portability import archive as archive_module
 from backend.portability.manifest import CURRENT_ARCHIVE_VERSION, SUPPORTED_ARCHIVE_VERSIONS
 from backend.resumes.models import ResumeArtifact, ResumeDraft, ResumeVersion
+from backend.services.auth_sessions import issue_auth_session
 from backend.storage import atomic
 from backend.storage.atomic import atomic_write, resolve_data_path
 from backend.workflows.models import WorkflowRun
@@ -59,14 +61,21 @@ def _profile_payload():
     }
 
 
+def _reauthenticated_headers(client, username: str) -> dict[str, str]:
+    login = client.post(
+        "/api/v1/auth/login",
+        data={"username": username, "password": "Globalpass1"},
+    )
+    assert login.status_code == 200, login.text
+    return {"Authorization": f"Bearer {login.json()['access_token']}"}
+
+
 def test_v6_archive_version_is_outside_the_frozen_v5_decoder_contract():
     frozen_v5_supported_versions = frozenset({1, 2, 3, 4, 5})
 
     def decode_with_frozen_v5_contract(format_version: int) -> int:
         if format_version not in frozen_v5_supported_versions:
-            raise ValueError(
-                f"Archive version {format_version} is not supported by the v5 decoder"
-            )
+            raise ValueError(f"Archive version {format_version} is not supported by the v5 decoder")
         return format_version
 
     assert CURRENT_ARCHIVE_VERSION == 6
@@ -326,6 +335,28 @@ def _tamper_payload(archive_data: bytes) -> bytes:
     return output.getvalue()
 
 
+def _corrupt_stored_payload(archive_data: bytes) -> bytes:
+    with zipfile.ZipFile(BytesIO(archive_data), "r") as source:
+        files = {name: source.read(name) for name in source.namelist()}
+    output = BytesIO()
+    with zipfile.ZipFile(output, "w", zipfile.ZIP_STORED) as target:
+        for name, content in files.items():
+            target.writestr(name, content)
+
+    corrupted = bytearray(output.getvalue())
+    with zipfile.ZipFile(BytesIO(corrupted), "r") as stored:
+        info = stored.getinfo("payload.json")
+        name_length = int.from_bytes(
+            corrupted[info.header_offset + 26 : info.header_offset + 28], "little"
+        )
+        extra_length = int.from_bytes(
+            corrupted[info.header_offset + 28 : info.header_offset + 30], "little"
+        )
+        payload_offset = info.header_offset + 30 + name_length + extra_length
+        corrupted[payload_offset + (info.file_size // 2)] ^= 0x01
+    return bytes(corrupted)
+
+
 def _add_unsafe_member(archive_data: bytes) -> bytes:
     output = BytesIO()
     with zipfile.ZipFile(BytesIO(archive_data), mode="r") as source:
@@ -397,6 +428,57 @@ def _rewrite_career_asset_profile(archive_data: bytes, profile_id: str) -> bytes
         files = {name: source.read(name) for name in source.namelist()}
     payload = json.loads(files["payload.json"])
     payload["tables"]["career_assets"][0]["profile_id"] = profile_id
+    files["payload.json"] = json.dumps(
+        payload, ensure_ascii=False, separators=(",", ":"), sort_keys=True
+    ).encode("utf-8")
+    manifest = json.loads(files["manifest.json"])
+    payload_entry = next(entry for entry in manifest["entries"] if entry["path"] == "payload.json")
+    payload_entry["byte_size"] = len(files["payload.json"])
+    payload_entry["sha256"] = hashlib.sha256(files["payload.json"]).hexdigest()
+    files["manifest.json"] = json.dumps(
+        manifest, ensure_ascii=False, separators=(",", ":"), sort_keys=True
+    ).encode("utf-8")
+    output = BytesIO()
+    with zipfile.ZipFile(output, "w", zipfile.ZIP_DEFLATED) as target:
+        for name, content in files.items():
+            target.writestr(name, content)
+    return output.getvalue()
+
+
+def _rewrite_managed_storage_path(archive_data: bytes, storage_path: str) -> bytes:
+    with zipfile.ZipFile(BytesIO(archive_data), "r") as source:
+        files = {name: source.read(name) for name in source.namelist()}
+    payload = json.loads(files["payload.json"])
+    asset = payload["tables"]["career_assets"][0]
+    asset["storage_path"] = storage_path
+    binding = next(
+        item
+        for item in payload["file_bindings"]
+        if item["table"] == "career_assets" and item["record_id"] == asset["id"]
+    )
+    binding["storage_path"] = storage_path
+    files["payload.json"] = json.dumps(
+        payload, ensure_ascii=False, separators=(",", ":"), sort_keys=True
+    ).encode("utf-8")
+    manifest = json.loads(files["manifest.json"])
+    payload_entry = next(entry for entry in manifest["entries"] if entry["path"] == "payload.json")
+    payload_entry["byte_size"] = len(files["payload.json"])
+    payload_entry["sha256"] = hashlib.sha256(files["payload.json"]).hexdigest()
+    files["manifest.json"] = json.dumps(
+        manifest, ensure_ascii=False, separators=(",", ":"), sort_keys=True
+    ).encode("utf-8")
+    output = BytesIO()
+    with zipfile.ZipFile(output, "w", zipfile.ZIP_DEFLATED) as target:
+        for name, content in files.items():
+            target.writestr(name, content)
+    return output.getvalue()
+
+
+def _rewrite_candidate_profile_id(archive_data: bytes, record_id: str) -> bytes:
+    with zipfile.ZipFile(BytesIO(archive_data), "r") as source:
+        files = {name: source.read(name) for name in source.namelist()}
+    payload = json.loads(files["payload.json"])
+    payload["tables"]["candidate_profiles"][0]["id"] = record_id
     files["payload.json"] = json.dumps(
         payload, ensure_ascii=False, separators=(",", ":"), sort_keys=True
     ).encode("utf-8")
@@ -853,6 +935,7 @@ def test_historical_archive_rebuilds_application_projections_after_events(
         headers={**auth_headers, "X-Confirm-Delete": "DELETE-MY-CAREER-VAULT"},
     )
     assert deleted.status_code == 204, deleted.text
+    assert client.get("/api/v1/career-profile/summary", headers=auth_headers).status_code == 404
 
     restored = client.post(
         "/api/v1/portability/restore",
@@ -1221,7 +1304,7 @@ def test_inspection_rejects_incomplete_dossier_draft_rows_without_mutation(
     assert db_session.query(ApplicationDossierDraft).count() == before_drafts
 
 
-@pytest.mark.parametrize("mutator", [_tamper_payload, _add_unsafe_member])
+@pytest.mark.parametrize("mutator", [_tamper_payload, _corrupt_stored_payload, _add_unsafe_member])
 def test_inspection_rejects_adversarial_archives_with_stable_content_free_error(
     client,
     auth_headers,
@@ -1251,6 +1334,76 @@ def test_inspection_rejects_adversarial_archives_with_stable_content_free_error(
     assert "PRIVATE" not in inspected.text
     db_session.expire_all()
     assert db_session.query(CandidateProfile).count() == before_profiles
+
+
+@pytest.mark.parametrize(
+    "injected_path",
+    [
+        ".restore/user-999/journal.json",
+        ".trash/user-999/private.bin",
+        "models/runtime/private.bin",
+    ],
+)
+def test_inspection_rejects_noncanonical_managed_storage_namespaces(
+    client,
+    auth_headers,
+    db_session,
+    test_user,
+    portable_data_dir,
+    injected_path,
+):
+    created = client.put("/api/v1/career-profile", json=_profile_payload(), headers=auth_headers)
+    assert created.status_code == 200, created.text
+    source = client.post(
+        "/api/v1/career-profile/sources",
+        files={"file": ("source.txt", b"private source", "text/plain")},
+        headers=auth_headers,
+    )
+    assert source.status_code == 201, source.text
+    exported = client.get("/api/v1/portability/export", headers=auth_headers)
+    forged = _rewrite_managed_storage_path(exported.content, injected_path)
+
+    inspected = client.post(
+        "/api/v1/portability/inspect",
+        files={"file": ("forged.zip", forged, "application/zip")},
+        headers=auth_headers,
+    )
+
+    assert inspected.status_code == 422, inspected.text
+    assert not resolve_data_path(injected_path).exists()
+
+
+@pytest.mark.parametrize(
+    "record_id",
+    [
+        "foo/bar",
+        "00000000-0000-4000-8000-00000000000\n",
+        "AAAAAAAA-AAAA-4AAA-8AAA-AAAAAAAAAAAA",
+    ],
+)
+def test_inspection_rejects_noncanonical_uuid_primary_keys(
+    client,
+    auth_headers,
+    portable_data_dir,
+    record_id,
+):
+    created = client.put("/api/v1/career-profile", json=_profile_payload(), headers=auth_headers)
+    assert created.status_code == 200, created.text
+    exported = client.get("/api/v1/portability/export", headers=auth_headers)
+
+    inspected = client.post(
+        "/api/v1/portability/inspect",
+        files={
+            "file": (
+                "forged-id.zip",
+                _rewrite_candidate_profile_id(exported.content, record_id),
+                "application/zip",
+            )
+        },
+        headers=auth_headers,
+    )
+
+    assert inspected.status_code == 422, inspected.text
 
 
 def test_inspection_requires_authentication_and_bounds_uploads(
@@ -1352,15 +1505,19 @@ def test_export_delete_restore_round_trip(
     assert resolve_data_path(source_path).read_bytes() == source_data
     assert resolve_data_path(artifact_path).read_bytes().startswith(b"%PDF")
     loaded = client.get("/api/v1/career-profile", headers=auth_headers)
+    assert loaded.status_code == 401
+    reauthenticated_headers = _reauthenticated_headers(client, test_user.username)
+    loaded = client.get(
+        "/api/v1/career-profile",
+        headers=reauthenticated_headers,
+    )
     assert loaded.status_code == 200
     assert loaded.json()["facts"][0]["payload"]["name"] == "Python"
     restored_draft = db_session.query(ApplicationDossierDraft).one()
     assert restored_draft.revision == 2
-    assert restored_draft.content["cover_letter"] == (
-        "A private, durable application draft."
-    )
+    assert restored_draft.content["cover_letter"] == ("A private, durable application draft.")
 
-    exported_again = client.get("/api/v1/portability/export", headers=auth_headers)
+    exported_again = client.get("/api/v1/portability/export", headers=reauthenticated_headers)
     assert exported_again.status_code == 200
     with zipfile.ZipFile(BytesIO(exported_again.content)) as archive:
         payload_after = json.loads(archive.read("payload.json"))
@@ -1381,12 +1538,206 @@ def test_export_delete_restore_round_trip(
     assert payload_after == expected_payload
 
 
-def test_successful_restore_revokes_only_the_restored_users_active_automation_grants(
-    client, auth_headers, db_session, test_user, portable_data_dir
+def test_export_maps_corrupt_private_file_metadata_to_a_redacted_archive_error(
+    client,
+    auth_headers,
+    db_session,
+    portable_data_dir,
+):
+    created = client.put(
+        "/api/v1/career-profile",
+        json=_profile_payload(),
+        headers=auth_headers,
+    )
+    assert created.status_code == 200, created.text
+    imported = client.post(
+        "/api/v1/career-profile/sources",
+        files={"file": ("source.txt", b"private source", "text/plain")},
+        headers=auth_headers,
+    )
+    assert imported.status_code == 201, imported.text
+    asset = db_session.query(CareerAsset).one()
+    asset.byte_size += 1
+    db_session.commit()
+
+    exported = client.get("/api/v1/portability/export", headers=auth_headers)
+
+    assert exported.status_code == 404
+    assert exported.json()["detail"] == "A stored private file failed backup verification"
+    assert str(portable_data_dir) not in exported.text
+    assert asset.storage_path not in exported.text
+
+
+def test_export_preflights_the_aggregate_file_budget_before_reading(
+    client,
+    auth_headers,
+    db_session,
+    test_user,
+    portable_data_dir,
+    monkeypatch,
+):
+    created = client.put(
+        "/api/v1/career-profile",
+        json=_profile_payload(),
+        headers=auth_headers,
+    )
+    assert created.status_code == 200, created.text
+    body = created.json()
+    _seed_related_records(
+        db_session,
+        test_user.id,
+        body["id"],
+        body["facts"][0]["id"],
+    )
+    artifact = db_session.query(ResumeArtifact).one()
+    monkeypatch.setattr(
+        settings,
+        "PORTABLE_ARCHIVE_MAX_UNCOMPRESSED_BYTES",
+        artifact.byte_size - 1,
+    )
+    reads = 0
+
+    def unexpected_read(*_args, **_kwargs):
+        nonlocal reads
+        reads += 1
+        raise AssertionError("aggregate preflight must run before file reads")
+
+    monkeypatch.setattr(archive_module, "read_verified", unexpected_read)
+
+    with pytest.raises(
+        archive_module.ArchiveError,
+        match="configured uncompressed size limit",
+    ):
+        archive_module.export_archive(db_session, test_user.id)
+    assert reads == 0
+
+
+def test_export_preflights_the_member_budget_before_reading_private_files(
+    client,
+    auth_headers,
+    db_session,
+    test_user,
+    portable_data_dir,
+    monkeypatch,
+):
+    created = client.put(
+        "/api/v1/career-profile",
+        json=_profile_payload(),
+        headers=auth_headers,
+    )
+    assert created.status_code == 200, created.text
+    imported = client.post(
+        "/api/v1/career-profile/sources",
+        files={"file": ("source.txt", b"member budget evidence", "text/plain")},
+        headers=auth_headers,
+    )
+    assert imported.status_code == 201, imported.text
+    monkeypatch.setattr(settings, "PORTABLE_ARCHIVE_MAX_MEMBERS", 2)
+    reads = 0
+
+    def unexpected_read(*_args, **_kwargs):
+        nonlocal reads
+        reads += 1
+        raise AssertionError("member preflight must run before private file reads")
+
+    monkeypatch.setattr(archive_module, "read_verified", unexpected_read)
+
+    with pytest.raises(
+        archive_module.ArchiveError,
+        match="configured member limit",
+    ):
+        archive_module.export_archive(db_session, test_user.id)
+    assert reads == 0
+
+
+def test_export_rechecks_the_member_invariant_before_building_the_zip(
+    client,
+    auth_headers,
+    db_session,
+    test_user,
+    portable_data_dir,
+    monkeypatch,
+):
+    created = client.put(
+        "/api/v1/career-profile",
+        json=_profile_payload(),
+        headers=auth_headers,
+    )
+    assert created.status_code == 200, created.text
+    imported = client.post(
+        "/api/v1/career-profile/sources",
+        files={"file": ("source.txt", b"final member invariant", "text/plain")},
+        headers=auth_headers,
+    )
+    assert imported.status_code == 201, imported.text
+    monkeypatch.setattr(settings, "PORTABLE_ARCHIVE_MAX_MEMBERS", 3)
+    real_read = archive_module.read_verified
+
+    def read_then_tighten_limit(*args, **kwargs):
+        data = real_read(*args, **kwargs)
+        monkeypatch.setattr(settings, "PORTABLE_ARCHIVE_MAX_MEMBERS", 2)
+        return data
+
+    monkeypatch.setattr(archive_module, "read_verified", read_then_tighten_limit)
+
+    with pytest.raises(
+        archive_module.ArchiveError,
+        match="configured member limit",
+    ):
+        archive_module.export_archive(db_session, test_user.id)
+
+
+def test_export_excludes_auth_sessions_automation_grants_and_bearer_material(
+    client,
+    auth_headers,
+    db_session,
+    test_user,
+    portable_data_dir,
 ):
     profile = client.put(
-        "/api/v1/career-profile", json=_profile_payload(), headers=auth_headers
+        "/api/v1/career-profile",
+        json=_profile_payload(),
+        headers=auth_headers,
     )
+    assert profile.status_code == 200, profile.text
+    grant, token = issue_grant(
+        db_session,
+        user_id=test_user.id,
+        label="PRIVATE EXPORT EXCLUSION MARKER",
+        scopes=("system:read",),
+    )
+    persisted = db_session.get(AutomationGrant, grant.id)
+    assert persisted is not None
+    browser_session = (
+        db_session.query(AuthSession).filter(AuthSession.user_id == test_user.id).one()
+    )
+    browser_token = next(
+        cookie.value for cookie in client.cookies.jar if cookie.name == "careeros_refresh_token"
+    )
+
+    exported = client.get("/api/v1/portability/export", headers=auth_headers)
+    assert exported.status_code == 200, exported.text
+    with zipfile.ZipFile(BytesIO(exported.content)) as archive:
+        payload = json.loads(archive.read("payload.json"))
+        archive_text = "\n".join(
+            archive.read(name).decode("utf-8", errors="ignore") for name in archive.namelist()
+        )
+
+    assert "automation_grants" not in payload["tables"]
+    assert "auth_sessions" not in payload["tables"]
+    assert token not in archive_text
+    assert grant.id not in archive_text
+    assert persisted.token_digest not in archive_text
+    assert "PRIVATE EXPORT EXCLUSION MARKER" not in archive_text
+    assert browser_token not in archive_text
+    assert browser_session.id not in archive_text
+    assert browser_session.refresh_jti_digest not in archive_text
+
+
+def test_successful_restore_revokes_only_the_restored_users_active_grants_and_sessions(
+    client, auth_headers, db_session, test_user, portable_data_dir
+):
+    profile = client.put("/api/v1/career-profile", json=_profile_payload(), headers=auth_headers)
     assert profile.status_code == 200, profile.text
     exported = client.get("/api/v1/portability/export", headers=auth_headers)
     assert exported.status_code == 200, exported.text
@@ -1419,20 +1770,36 @@ def test_successful_restore_revokes_only_the_restored_users_active_automation_gr
         label="other-users-agent",
         scopes=["system:read"],
     )
+    restored_user_tokens = issue_auth_session(db_session, test_user)
+    restore_headers = {"Authorization": f"Bearer {restored_user_tokens.access_token}"}
+    owned_session_ids = {
+        session_id
+        for (session_id,) in db_session.query(AuthSession.id)
+        .filter(AuthSession.user_id == test_user.id)
+        .all()
+    }
+    assert owned_session_ids
+    assert restored_user_tokens.refresh_token
+    other_user_tokens = issue_auth_session(db_session, other_user)
+    other_session_id = next(
+        session_id
+        for (session_id,) in db_session.query(AuthSession.id)
+        .filter(AuthSession.user_id == other_user.id)
+        .all()
+    )
+    assert other_user_tokens.refresh_token
 
     restored = client.post(
         "/api/v1/portability/restore",
         files={"file": ("backup.zip", exported.content, "application/zip")},
-        headers=auth_headers,
+        headers=restore_headers,
     )
 
     assert restored.status_code == 200, restored.text
     db_session.expire_all()
     restored_user_grants = (
         db_session.query(AutomationGrant)
-        .filter(
-            AutomationGrant.id.in_([restored_user_first.id, restored_user_second.id])
-        )
+        .filter(AutomationGrant.id.in_([restored_user_first.id, restored_user_second.id]))
         .all()
     )
     assert len(restored_user_grants) == 2
@@ -1450,6 +1817,25 @@ def test_successful_restore_revokes_only_the_restored_users_active_automation_gr
     assert preserved is not None
     assert preserved.user_id == other_user.id
     assert preserved.revoked_at is None
+    restored_user_sessions = (
+        db_session.query(AuthSession).filter(AuthSession.id.in_(owned_session_ids)).all()
+    )
+    assert len(restored_user_sessions) == len(owned_session_ids)
+    assert all(session.revoked_at is not None for session in restored_user_sessions)
+    preserved_session = db_session.get(AuthSession, other_session_id)
+    assert preserved_session is not None
+    assert preserved_session.user_id == other_user.id
+    assert preserved_session.revoked_at is None
+    restored_access = client.get(
+        "/api/v1/career-profile/summary",
+        headers=restore_headers,
+    )
+    assert restored_access.status_code == 401
+    neighboring_access = client.get(
+        "/api/v1/career-profile/summary",
+        headers={"Authorization": f"Bearer {other_user_tokens.access_token}"},
+    )
+    assert neighboring_access.status_code == 404
 
 
 def test_v6_restore_preserves_but_hides_self_checksummed_forged_coach_advice(
@@ -1491,7 +1877,7 @@ def test_v6_restore_preserves_but_hides_self_checksummed_forged_coach_advice(
     }
     detail = client.get(
         f"/api/v1/career-coach/conversations/{assistant.conversation_id}",
-        headers=auth_headers,
+        headers=_reauthenticated_headers(client, test_user.username),
     )
     assert detail.status_code == 200, detail.text
     assert detail.json()["messages"] == []
@@ -1546,13 +1932,15 @@ def test_v6_verified_coach_round_trip_preserves_record_but_requires_revalidation
     assert source_metadata["output_fingerprint"] == fingerprint_output(result)
     assert db_session.get(AIExecution, execution_id) is not None
 
+    reauthenticated_headers = _reauthenticated_headers(client, test_user.username)
     after = client.get(
-        f"/api/v1/career-coach/conversations/{conversation_id}", headers=auth_headers
+        f"/api/v1/career-coach/conversations/{conversation_id}",
+        headers=reauthenticated_headers,
     )
     assert after.status_code == 200, after.text
     assert [message["role"] for message in after.json()["messages"]] == ["user"]
 
-    exported_again = client.get("/api/v1/portability/export", headers=auth_headers)
+    exported_again = client.get("/api/v1/portability/export", headers=reauthenticated_headers)
     assert exported_again.status_code == 200, exported_again.text
     with zipfile.ZipFile(BytesIO(exported_again.content)) as archive:
         payload = json.loads(archive.read("payload.json"))
@@ -1702,8 +2090,8 @@ def test_legacy_v4_search_archive_restores_into_v6_schema(
 ):
     created = client.put("/api/v1/career-profile", json=_profile_payload(), headers=auth_headers)
     assert created.status_code == 200, created.text
-    _profile_id, scraped_id, _job_id, application_id, _signals = (
-        _seed_search_portability_records(db_session, test_user.id)
+    _profile_id, scraped_id, _job_id, application_id, _signals = _seed_search_portability_records(
+        db_session, test_user.id
     )
     exported = client.get("/api/v1/portability/export", headers=auth_headers)
     assert exported.status_code == 200, exported.text
@@ -1752,8 +2140,8 @@ def test_v6_round_trip_preserves_jobless_application_logical_identity(
 ):
     created = client.put("/api/v1/career-profile", json=_profile_payload(), headers=auth_headers)
     assert created.status_code == 200, created.text
-    _profile_id, scraped_id, job_id, application_id, _signals = (
-        _seed_search_portability_records(db_session, test_user.id)
+    _profile_id, scraped_id, job_id, application_id, _signals = _seed_search_portability_records(
+        db_session, test_user.id
     )
 
     db_session.query(Job).filter(Job.id == job_id).delete(synchronize_session=False)
@@ -2122,17 +2510,19 @@ def test_backup_restore_disk_full_rolls_back_records_and_first_file(
     )
     assert deleted.status_code == 204, deleted.text
 
-    original_fsync = atomic.os.fsync
+    import backend.portability.restore as restore_module
+
+    original_write = restore_module.atomic_restore_write
     calls = 0
 
-    def fail_second_write(descriptor):
+    def fail_second_write(user_id, relative_path, data):
         nonlocal calls
         calls += 1
         if calls == 2:
-            raise OSError(errno.ENOSPC, "No space left on device")
-        return original_fsync(descriptor)
+            raise atomic.StorageWriteError("simulated storage exhaustion")
+        return original_write(user_id, relative_path, data)
 
-    monkeypatch.setattr(atomic.os, "fsync", fail_second_write)
+    monkeypatch.setattr(restore_module, "atomic_restore_write", fail_second_write)
     restored = client.post(
         "/api/v1/portability/restore",
         files={"file": ("backup.zip", archive_data, "application/zip")},
@@ -2148,7 +2538,7 @@ def test_backup_restore_disk_full_rolls_back_records_and_first_file(
 
 
 def test_backup_export_interruption_returns_507_without_mutating_vault(
-    client, auth_headers, db_session, monkeypatch
+    client, auth_headers, db_session, monkeypatch, portable_data_dir
 ):
     created = client.put("/api/v1/career-profile", json=_profile_payload(), headers=auth_headers)
     assert created.status_code == 200, created.text

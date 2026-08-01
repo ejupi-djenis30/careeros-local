@@ -14,6 +14,8 @@ from datetime import datetime, timezone
 from typing import Any, Callable, Dict, List, Optional, Tuple, cast
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
+from backend.core.diagnostics import FailureCode, diagnose_failure, log_failure
+
 # ─── Lazy import of embedding tier (Phase 1) ─────────────────────────────────
 # Imported lazily inside semantic_skills_score() so this module stays importable
 # without downloading a model or depending on a machine-learning package.
@@ -55,7 +57,8 @@ def _load_skill_taxonomy() -> Dict[str, Any]:
             loaded = json.load(f)
         return cast(Dict[str, Any], loaded) if isinstance(loaded, dict) else {}
     except Exception as exc:
-        logger.warning("[SKILL_TAXONOMY] Could not load skill_taxonomy.json: %s", exc)
+        diagnostic = diagnose_failure(exc, FailureCode.LOCAL_RESOURCE_LOAD_FAILED)
+        log_failure(logger, diagnostic, level=logging.WARNING)
         return {}
 
 
@@ -592,13 +595,8 @@ def parse_listing_publication_date(listing, platform: str, platform_id: str):
             return datetime.fromisoformat(date_raw.replace("Z", "+00:00"))
         return datetime.strptime(date_raw, "%Y-%m-%d")
     except (TypeError, ValueError) as exc:
-        logger.warning(
-            "Failed to parse publication date %r for %s/%s: %s",
-            publication.start_date,
-            platform,
-            platform_id,
-            exc,
-        )
+        diagnostic = diagnose_failure(exc, FailureCode.PROVIDER_TRANSFORM_FAILED)
+        log_failure(logger, diagnostic, level=logging.WARNING)
         return None
 
 

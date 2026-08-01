@@ -206,8 +206,10 @@ class SourceFactCandidate(BaseModel):
 
     @model_validator(mode="after")
     def validate_candidate_payload(self) -> "SourceFactCandidate":
-        self.payload = PAYLOAD_SCHEMAS[self.fact_type].model_validate(self.payload).model_dump(
-            mode="json", exclude_none=True
+        self.payload = (
+            PAYLOAD_SCHEMAS[self.fact_type]
+            .model_validate(self.payload)
+            .model_dump(mode="json", exclude_none=True)
         )
         return self
 

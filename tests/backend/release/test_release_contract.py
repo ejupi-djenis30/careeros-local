@@ -4,6 +4,7 @@ from pathlib import Path
 
 import pytest
 
+from scripts import release_assets, release_contract
 from scripts.agent_distribution import (
     AGENT_REQUIREMENTS_LOCK,
     canonical_agent_wheel_name,
@@ -32,14 +33,12 @@ from tests.backend.release.helpers import (
 
 
 def test_bundle_has_exact_global_inventory_and_valid_native_subjects(tmp_path: Path) -> None:
-    bundle, native_checksums, agent_checksums = write_release_bundle(
-        tmp_path, ROOT / "LICENSE"
-    )
+    bundle, native_checksums, agent_checksums = write_release_bundle(tmp_path, ROOT / "LICENSE")
 
-    assert sorted((path.name for path in bundle.iterdir()), key=str.casefold) == expected_public_names(
-        VERSION
-    )
-    assert len(expected_public_names(VERSION)) == 25
+    assert sorted(
+        (path.name for path in bundle.iterdir()), key=str.casefold
+    ) == expected_public_names(VERSION)
+    assert len(expected_public_names(VERSION)) == 26
     manifest = validate_release_bundle(
         bundle,
         version=VERSION,
@@ -48,7 +47,8 @@ def test_bundle_has_exact_global_inventory_and_valid_native_subjects(tmp_path: P
         license_path=ROOT / "LICENSE",
         project_root=ROOT,
     )
-    assert manifest["schemaVersion"] == 3
+    assert manifest["schemaVersion"] == 4
+    assert manifest["thirdPartyNotices"]["name"] == "THIRD_PARTY_NOTICES.txt"
     native_records = [record for target in manifest["targets"] for record in target["artifacts"]]
     validate_native_subject_checksums(native_checksums, records=native_records)
     assert manifest["agentAccess"]["wheel"]["name"] == canonical_agent_wheel_name(VERSION)
@@ -66,6 +66,23 @@ def test_non_mit_text_named_license_is_rejected(tmp_path: Path) -> None:
 
     with pytest.raises(RuntimeError, match="approved MIT license"):
         write_release_bundle(tmp_path / "case", fake)
+
+
+def test_release_output_rejects_directory_links(tmp_path: Path) -> None:
+    target = tmp_path / "real-output"
+    target.mkdir()
+    linked = tmp_path / "linked-output"
+    try:
+        linked.symlink_to(target, target_is_directory=True)
+    except OSError:
+        pytest.skip("The test account cannot create a directory symlink")
+    try:
+        with pytest.raises(RuntimeError, match="link or junction"):
+            release_assets._empty_directory(linked)
+        with pytest.raises(RuntimeError, match="link or junction"):
+            release_contract._ensure_empty_directory(linked)
+    finally:
+        linked.unlink(missing_ok=True)
 
 
 def test_approved_license_binding_is_stable_across_checkout_newlines(tmp_path: Path) -> None:
@@ -111,6 +128,35 @@ def test_public_license_is_required_and_tampering_fails_closed(tmp_path: Path) -
 
     public_license.write_bytes(b"tampered license\n")
     with pytest.raises(RuntimeError, match="differs from the approved text"):
+        validate_release_bundle(
+            bundle,
+            version=VERSION,
+            source_commit=COMMIT,
+            release_date=RELEASE_DATE,
+            license_path=ROOT / "LICENSE",
+            project_root=ROOT,
+        )
+
+
+def test_public_third_party_notices_are_required_and_tampering_fails_closed(
+    tmp_path: Path,
+) -> None:
+    bundle, _, _ = write_release_bundle(tmp_path, ROOT / "LICENSE")
+    notices = bundle / "THIRD_PARTY_NOTICES.txt"
+    notices.unlink()
+
+    with pytest.raises(RuntimeError, match="missing or unexpected"):
+        validate_release_bundle(
+            bundle,
+            version=VERSION,
+            source_commit=COMMIT,
+            release_date=RELEASE_DATE,
+            license_path=ROOT / "LICENSE",
+            project_root=ROOT,
+        )
+
+    notices.write_text("tampered notices\n", encoding="utf-8")
+    with pytest.raises(RuntimeError, match="approved generated payload"):
         validate_release_bundle(
             bundle,
             version=VERSION,
@@ -193,7 +239,9 @@ def test_evidence_archive_is_safe_and_bound_to_public_sboms(tmp_path: Path) -> N
     assert first == (bundle_two / EVIDENCE_ARCHIVE).read_bytes()
 
     public_sbom = bundle / f"careeros-backend-{VERSION}.cdx.json"
-    public_sbom.write_text('{"bomFormat":"CycloneDX","specVersion":"1.6","components":[]}', encoding="utf-8")
+    public_sbom.write_text(
+        '{"bomFormat":"CycloneDX","specVersion":"1.6","components":[]}', encoding="utf-8"
+    )
     with pytest.raises(RuntimeError, match="SHA256SUMS"):
         validate_release_bundle(
             bundle,

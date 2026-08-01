@@ -1,9 +1,32 @@
+import { readFileSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
+
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 
+const thirdPartyNotices = fileURLToPath(new URL('../THIRD_PARTY_NOTICES.txt', import.meta.url))
+
+function thirdPartyNoticesPlugin() {
+  return {
+    name: 'careeros-third-party-notices',
+    apply: 'build',
+    buildStart() {
+      const source = readFileSync(thirdPartyNotices)
+      if (source.byteLength === 0 || source.byteLength > 4 * 1024 * 1024) {
+        throw new Error('THIRD_PARTY_NOTICES.txt is missing or oversized')
+      }
+      this.emitFile({
+        type: 'asset',
+        fileName: 'THIRD_PARTY_NOTICES.txt',
+        source,
+      })
+    },
+  }
+}
+
 // https://vite.dev/config/
 export default defineConfig({
-  plugins: [react()],
+  plugins: [react(), thirdPartyNoticesPlugin()],
   server: {
     watch: {
       ignored: ['**/src-tauri/target/**', '**/src-tauri/binaries/**'],

@@ -12,7 +12,16 @@ from typing import Any, Dict, List, Optional
 from sqlalchemy.orm import Session
 
 from backend.core.config import settings
-from backend.models import ScrapedJob, SearchProfile
+from backend.core.diagnostics import (
+    ActivityCode,
+    FailureCode,
+    diagnose_failure,
+    log_failure,
+    public_activity_message,
+    public_status_message,
+)
+from backend.models import ScrapedJob, SearchProfile, User
+from backend.models.user import VAULT_STATE_READY
 from backend.providers.circuit_breaker import CircuitOpenError
 from backend.providers.jobs.jobroom.client import JobRoomProvider
 from backend.providers.jobs.swissdevjobs.client import SwissDevJobsProvider
@@ -76,6 +85,7 @@ from backend.services.search.query_contracts import (
     unpack_plan_cache_payload,
 )
 from backend.services.search_status import (
+    add_failure_log,
     add_log,
     get_status,
     init_status,
@@ -128,25 +138,25 @@ class FinalizationMixin:
             profile = self.profile_repo.get(profile_id)
             if profile is None:
                 return
+            owner = self.db.get(User, profile.user_id)
+            if owner is None or owner.vault_lifecycle_state != VAULT_STATE_READY:
+                logger.info("Search stopped because vault maintenance is pending")
+                return
             try:
                 readiness = await self.analysis_readiness_check()
             except Exception:
                 readiness = None
             if readiness is None or not readiness.ready:
                 init_status(profile_id, user_id=profile.user_id)
-                error_code = getattr(readiness, "error_code", None) or "readiness_check_failed"
                 add_log(
                     profile_id,
-                    "Required local-model readiness failed before search; no provider was contacted.",
+                    public_activity_message(ActivityCode.MODEL_READINESS_FAILED),
                 )
                 update_status(
                     profile_id,
                     state="error",
                     terminal_reason="local_model_required",
-                    error=(
-                        "Local analysis is not ready. Complete the model readiness checks and "
-                        f"retry ({error_code})."
-                    ),
+                    error=public_status_message(FailureCode.LOCAL_MODEL_REQUIRED),
                 )
                 return
             # Ensure fresh LLM providers (reload config).
@@ -166,11 +176,16 @@ class FinalizationMixin:
                 force_regenerate_cv_summary=force_regenerate_cv_summary,
                 force_regenerate_queries=force_regenerate_queries,
             )
-        except Exception as e:
-            logger.error(
-                f"Unexpected error in run_search for profile {profile_id}: {e}", exc_info=True
+        except Exception as error:
+            diagnostic = diagnose_failure(error, FailureCode.SEARCH_UNEXPECTED)
+            log_failure(logger, diagnostic)
+            add_failure_log(profile_id, diagnostic)
+            update_status(
+                profile_id,
+                state="error",
+                terminal_reason=FailureCode.SEARCH_UNEXPECTED.value,
+                error=diagnostic.public_message,
             )
-            update_status(profile_id, state="error", error=f"Unexpected error: {e}")
         finally:
             # Denied providers may still own sessions created during service
             # construction; close the complete configured set exactly once.
@@ -213,14 +228,16 @@ class FinalizationMixin:
             )
             add_log(
                 profile_id,
-                f"Pipeline exceeded maximum allowed time ({settings.SEARCH_PIPELINE_TIMEOUT_SECONDS}s). "
-                "Search terminated.",
+                public_activity_message(
+                    ActivityCode.PIPELINE_TIMEOUT,
+                    seconds=settings.SEARCH_PIPELINE_TIMEOUT_SECONDS,
+                ),
             )
             update_status(
                 profile_id,
                 state="error",
                 terminal_reason="pipeline_timeout",
-                error=f"Pipeline timed out after {settings.SEARCH_PIPELINE_TIMEOUT_SECONDS}s",
+                error=public_status_message(FailureCode.PIPELINE_TIMEOUT),
             )
 
     async def _run_pipeline(
@@ -232,7 +249,7 @@ class FinalizationMixin:
         """Execute the core search pipeline steps (wrapped by run_search with timeout)."""
         profile = self.profile_repo.get(profile_id)
         if not profile:
-            logger.error(f"Profile {profile_id} not found")
+            logger.error("Search profile not found profile_id=%d", profile_id)
             return
 
         profile_dict = {
@@ -252,7 +269,10 @@ class FinalizationMixin:
 
         # ── Step 1: Initialize status immediately ──
         init_status(profile_id, user_id=user_id)
-        add_log(profile_id, "Step 1: Building the explicit deterministic provider plan...")
+        add_log(
+            profile_id,
+            public_activity_message(ActivityCode.PLAN_GENERATING),
+        )
 
         provider_infos = {name: p.get_provider_info() for name, p in self.providers.items() if p}
 
@@ -262,8 +282,7 @@ class FinalizationMixin:
             terminal_reason = status_data.get("terminal_reason") or "no_explicit_queries"
             add_log(
                 profile_id,
-                "No provider query was produced. Add an explicit role or search strategy, "
-                "or enable at least one query category.",
+                public_activity_message(ActivityCode.NO_EXPLICIT_PLAN),
             )
             update_status(profile_id, state="done", terminal_reason=terminal_reason)
             return
@@ -274,15 +293,22 @@ class FinalizationMixin:
             force_regen_cv = profile_dict.get("force_regenerate_cv_summary", False)
             if profile.cached_cv_summary and not force_regen_cv:
                 cv_summary = profile.cached_cv_summary
-                add_log(profile_id, "✓ Using cached CV summary")
+                add_log(
+                    profile_id,
+                    public_activity_message(ActivityCode.CV_SUMMARY_CACHE_HIT),
+                )
             else:
                 try:
                     cv_summary = await llm_service.summarize_cv(profile_dict["cv_content"])
-                    add_log(profile_id, "CV summary generated for efficient analysis")
+                    add_log(
+                        profile_id,
+                        public_activity_message(ActivityCode.CV_SUMMARY_CREATED),
+                    )
                     # Save to cache
                     self.profile_repo.update(profile, {"cached_cv_summary": cv_summary})
-                except Exception as e:
-                    logger.warning(f"CV summarization failed: {e}")
+                except Exception as error:
+                    diagnostic = diagnose_failure(error, FailureCode.CV_SUMMARY_FAILED)
+                    log_failure(logger, diagnostic, level=logging.WARNING)
                     raw_cv = profile_dict["cv_content"]
                     # Guard against oversized fallback reaching the MATCH LLM
                     if len(raw_cv) > settings.MAX_DESCRIPTION_CHARS:
@@ -326,7 +352,8 @@ class FinalizationMixin:
         # query completes, overlapping with still-ongoing searches.
         update_status(profile_id, state="searching")
         add_log(
-            profile_id, "Step 2+: Streaming search with real-time normalization and analysis..."
+            profile_id,
+            public_activity_message(ActivityCode.PIPELINE_STREAMING),
         )
 
         # Pre-load profile job history for incremental deduplication inside the producer.
@@ -381,23 +408,30 @@ class FinalizationMixin:
                 and status_metrics["provider_successes"] == 0
             ):
                 add_log(
-                    profile_id, "All provider searches failed before any jobs could be processed."
+                    profile_id,
+                    public_activity_message(ActivityCode.PROVIDER_ALL_FAILED),
                 )
                 update_status(
                     profile_id,
                     state="error",
                     terminal_reason="search_execution_failed",
-                    error="All provider searches failed before any jobs could be processed.",
+                    error=public_status_message(FailureCode.PROVIDER_ALL_FAILED),
                 )
                 return
-            add_log(profile_id, "No jobs found across all queries.")
+            add_log(
+                profile_id,
+                public_activity_message(ActivityCode.NO_RESULTS),
+            )
             update_status(profile_id, state="done", terminal_reason="no_results")
             return
 
         unique_total = total_found - total_duplicates
         if unique_total == 0:
             if history_duplicates == total_duplicates and total_duplicates > 0:
-                add_log(profile_id, "All found jobs are already in profile history.")
+                add_log(
+                    profile_id,
+                    public_activity_message(ActivityCode.SEARCH_HISTORY_ONLY),
+                )
                 update_status(
                     profile_id,
                     state="done",
@@ -409,7 +443,7 @@ class FinalizationMixin:
             else:
                 add_log(
                     profile_id,
-                    "All fetched jobs collapsed during runtime deduplication (no prior profile history).",
+                    public_activity_message(ActivityCode.SEARCH_RUNTIME_DEDUP_ONLY),
                 )
                 update_status(
                     profile_id,
@@ -425,7 +459,7 @@ class FinalizationMixin:
             if analysis_failed > 0:
                 add_log(
                     profile_id,
-                    "Required local-model analysis did not complete; no heuristic results were saved.",
+                    public_activity_message(ActivityCode.LOCAL_ANALYSIS_FAILED),
                 )
                 update_status(
                     profile_id,
@@ -435,10 +469,7 @@ class FinalizationMixin:
                     jobs_duplicates=total_duplicates,
                     jobs_unique=total_found - total_duplicates,
                     jobs_skipped=total_filtered + analysis_failed,
-                    error=(
-                        "The required local-model analysis failed. Check model readiness and "
-                        "retry; no heuristic analysis was saved."
-                    ),
+                    error=public_status_message(FailureCode.LOCAL_ANALYSIS_FAILED),
                 )
                 return
             # Jobs are "explained" if they were filtered by structured rules OR if they
@@ -450,7 +481,7 @@ class FinalizationMixin:
             if status_metrics["errors"] > 0 and unexplained_unique > 0:
                 add_log(
                     profile_id,
-                    "Jobs were fetched but pipeline processing failed before analysis completed.",
+                    public_activity_message(ActivityCode.PIPELINE_PROCESSING_FAILED),
                 )
                 update_status(
                     profile_id,
@@ -460,10 +491,13 @@ class FinalizationMixin:
                     jobs_duplicates=total_duplicates,
                     jobs_unique=total_found - total_duplicates,
                     jobs_skipped=total_filtered + analysis_skipped,
-                    error="Jobs were fetched but pipeline processing failed before analysis completed.",
+                    error=public_status_message(FailureCode.PIPELINE_PROCESSING_FAILED),
                 )
             else:
-                add_log(profile_id, "No jobs passed structured filtering and analysis.")
+                add_log(
+                    profile_id,
+                    public_activity_message(ActivityCode.STRUCTURED_NO_RESULTS),
+                )
                 update_status(
                     profile_id,
                     state="done",
@@ -478,8 +512,7 @@ class FinalizationMixin:
         if analysis_failed > 0:
             add_log(
                 profile_id,
-                "Required local-model analysis failed for part of this run. Validated rows "
-                "already saved remain available, but the run is incomplete.",
+                public_activity_message(ActivityCode.LOCAL_ANALYSIS_FAILED),
             )
             update_status(
                 profile_id,
@@ -491,10 +524,7 @@ class FinalizationMixin:
                 jobs_duplicates=total_duplicates,
                 jobs_unique=total_found - total_duplicates,
                 jobs_skipped=total_filtered + consumer_skipped + analysis_failed,
-                error=(
-                    "Required local-model analysis failed for part of the run. Restore model "
-                    "readiness and retry; no heuristic analysis was saved."
-                ),
+                error=public_status_message(FailureCode.LOCAL_ANALYSIS_FAILED),
             )
             return
 
@@ -502,7 +532,10 @@ class FinalizationMixin:
         # Check whether any job made it through analysis but failed to persist.
         pre_finalize_errors = self._status_metrics(profile_id)["errors"]
         if consumer_saved == 0 and analyzed_pairs and pre_finalize_errors > 0:
-            add_log(profile_id, "Jobs were analyzed but none could be persisted.")
+            add_log(
+                profile_id,
+                public_activity_message(ActivityCode.JOBS_NOT_PERSISTED),
+            )
             update_status(
                 profile_id,
                 state="error",
@@ -512,7 +545,7 @@ class FinalizationMixin:
                 jobs_duplicates=total_duplicates,
                 jobs_unique=total_found - total_duplicates,
                 jobs_skipped=total_filtered + consumer_skipped + analysis_skipped,
-                error="Jobs were analyzed but none could be persisted.",
+                error=public_status_message(FailureCode.NO_PERSISTED_JOBS),
             )
             return
 
@@ -525,7 +558,10 @@ class FinalizationMixin:
         if needs_final_pass and analyzed_pairs:
             add_log(
                 profile_id,
-                f"Step 6b: Running final refinement passes ({len(analyzed_pairs)} jobs)...",
+                public_activity_message(
+                    ActivityCode.REFINEMENT_STARTED,
+                    count=len(analyzed_pairs),
+                ),
             )
             update_status(profile_id, state="analyzing")
             await self._finalize_and_save(profile_id, profile_dict, analyzed_pairs)
@@ -533,7 +569,12 @@ class FinalizationMixin:
         saved_count = consumer_saved
         total_skipped = total_filtered + consumer_skipped + analysis_skipped
         add_log(
-            profile_id, f"✓ Search complete – {saved_count} jobs saved, {consumer_skipped} skipped"
+            profile_id,
+            public_activity_message(
+                ActivityCode.SEARCH_COMPLETE,
+                saved=saved_count,
+                skipped=total_skipped,
+            ),
         )
         update_status(
             profile_id,
@@ -600,19 +641,10 @@ class FinalizationMixin:
             # records the issue so the user can debug if needed.
             try:
                 await self._normalize_persisted_jobs(profile_id, batch)
-            except Exception as norm_err:
-                from backend.services.llm_service import _unwrap_retry_error
-
-                _, err_msg = _unwrap_retry_error(norm_err)
-                logger.warning(
-                    "LLM normalization failed for profile %s batch — proceeding without full normalization: %s",
-                    profile_id,
-                    err_msg,
-                )
-                add_log(
-                    profile_id,
-                    f"⚠ Normalization warning (batch proceeds without field-level filters): {err_msg}",
-                )
+            except Exception as error:
+                diagnostic = diagnose_failure(error, FailureCode.JOB_NORMALIZATION_FAILED)
+                log_failure(logger, diagnostic, level=logging.WARNING)
+                add_failure_log(profile_id, diagnostic)
 
             # ── Filter ──
             pre_filter = len(batch)
@@ -643,8 +675,10 @@ class FinalizationMixin:
                 cumulative_skipped += analysis_input_count
                 add_log(
                     profile_id,
-                    "Required local-model analysis is unavailable; no result will be saved "
-                    f"for {analysis_input_count} job(s). Retry after model readiness is restored.",
+                    public_activity_message(
+                        ActivityCode.LOCAL_ANALYSIS_UNAVAILABLE,
+                        count=analysis_input_count,
+                    ),
                 )
                 update_status(
                     profile_id,
@@ -686,19 +720,15 @@ class FinalizationMixin:
                         if stale_count <= 3 or stale_count in {10, 25, 50, 100}:
                             add_log(
                                 profile_id,
-                                "Skipped an analyzed listing because a newer provider "
-                                "revision arrived before it could be saved.",
+                                public_activity_message(ActivityCode.STALE_RESULT_SKIPPED),
                             )
                         batch_skipped += 1
                         continue
                     batch_saved += 1
-                except Exception as save_exc:
+                except Exception as error:
                     self._increment_status_errors(profile_id)
-                    logger.warning(
-                        "Progressive save failed for profile %s: %s",
-                        profile_id,
-                        save_exc,
-                    )
+                    diagnostic = diagnose_failure(error, FailureCode.PROGRESSIVE_SAVE_FAILED)
+                    log_failure(logger, diagnostic, level=logging.WARNING)
                     batch_skipped += 1
 
             total_saved += batch_saved
@@ -736,5 +766,5 @@ class FinalizationMixin:
         """
         add_log(
             profile_id,
-            "Validated local-model analysis saved without post-analysis score mutation.",
+            public_activity_message(ActivityCode.ANALYSIS_REFINEMENT_SAVED),
         )

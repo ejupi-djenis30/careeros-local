@@ -1,8 +1,25 @@
 from fastapi import APIRouter, Depends, File, Header, HTTPException, Request, Response, UploadFile
+from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
+from starlette.concurrency import run_in_threadpool
 
-from backend.api.deps import get_current_user_id, limiter
-from backend.career.deletion import VaultDeletionError, delete_complete_vault
+from backend.api.deps import (
+    AuthFamilyAuthority,
+    get_current_user_id,
+    get_vault_maintenance_authority,
+    limiter,
+    require_vault_maintenance_operation,
+)
+from backend.api.routes.auth import clear_refresh_cookies
+from backend.career.activity import vault_activity_gate
+from backend.career.deletion import (
+    VaultDeletionError,
+    VaultMaintenanceConflictError,
+    begin_vault_maintenance,
+    clear_vault_maintenance,
+    delete_complete_vault,
+)
+from backend.career.maintenance import quiesce_user_vault_activity
 from backend.career.repository import CareerProfileConflictError
 from backend.career.schemas import (
     CareerProfileResponse,
@@ -11,10 +28,17 @@ from backend.career.schemas import (
     SourceDocumentResponse,
 )
 from backend.career.service import CareerProfileService
-from backend.career.sources import SourceImportError, import_source_document
+from backend.career.sources import (
+    SourceImportError,
+    persist_prepared_source_document,
+    prepare_source_document,
+)
 from backend.core.config import settings
 from backend.db.base import get_db
 from backend.desktop.lifecycle import VaultLockTimeout
+from backend.models import User
+from backend.models.user import VAULT_STATE_RESET_PENDING
+from backend.services.auth_sessions import issue_maintenance_access
 from backend.storage.atomic import StorageWriteError
 
 router = APIRouter()
@@ -64,10 +88,10 @@ def put_profile(
 
 @router.delete("", status_code=204)
 @limiter.limit("3/hour")
-def delete_profile(
+async def delete_profile(
     request: Request,
     confirmation: str | None = Header(default=None, alias="X-Confirm-Delete"),
-    user_id: int = Depends(get_current_user_id),
+    authority: AuthFamilyAuthority = Depends(get_vault_maintenance_authority),
     db: Session = Depends(get_db),
 ) -> Response:
     if confirmation != DELETE_CONFIRMATION:
@@ -75,12 +99,72 @@ def delete_profile(
             status_code=409,
             detail=f"Set X-Confirm-Delete to {DELETE_CONFIRMATION}",
         )
+    require_vault_maintenance_operation(authority, VAULT_STATE_RESET_PENDING)
+    transitioned_from_ready = False
     try:
-        delete_complete_vault(db, user_id)
+        async with vault_activity_gate.maintenance():
+            try:
+                transitioned_from_ready = begin_vault_maintenance(
+                    db,
+                    authority.user_id,
+                    authority.session_id,
+                    VAULT_STATE_RESET_PENDING,
+                    token_purpose=authority.token_purpose,
+                )
+                await quiesce_user_vault_activity(db, authority.user_id)
+                async with vault_activity_gate.writer():
+                    await quiesce_user_vault_activity(db, authority.user_id)
+                    await run_in_threadpool(
+                        delete_complete_vault,
+                        db,
+                        authority.user_id,
+                        maintenance_session_id=authority.session_id,
+                    )
+            except VaultLockTimeout:
+                if transitioned_from_ready:
+                    clear_vault_maintenance(
+                        db,
+                        authority.user_id,
+                        VAULT_STATE_RESET_PENDING,
+                    )
+                raise
+    except VaultMaintenanceConflictError as exc:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "code": "vault_maintenance_conflict",
+                "message": "Another local-data operation completed or is still pending.",
+            },
+        ) from exc
     except VaultLockTimeout as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
-    except VaultDeletionError as exc:
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
+    except Exception as exc:
+        db.rollback()
+        db.expire_all()
+        user = db.get(User, authority.user_id)
+        if user is not None and user.vault_lifecycle_state == VAULT_STATE_RESET_PENDING:
+            try:
+                retry_token = issue_maintenance_access(db, user).access_token
+            except Exception:
+                db.rollback()
+                retry_token = None
+            detail = {
+                "code": "reset_cleanup_pending",
+                "message": "Local vault cleanup is incomplete. Retry reset.",
+                "session_state": VAULT_STATE_RESET_PENDING,
+                "reauth_required": retry_token is None,
+            }
+            if retry_token is not None:
+                detail["maintenance_access_token"] = retry_token
+            failure = JSONResponse(
+                status_code=500,
+                content={"detail": detail},
+            )
+            clear_refresh_cookies(failure)
+            return failure
+        if isinstance(exc, VaultDeletionError):
+            raise HTTPException(status_code=500, detail=str(exc)) from exc
+        raise HTTPException(status_code=500, detail="Local vault reset failed") from exc
     return Response(status_code=204)
 
 
@@ -94,13 +178,13 @@ async def upload_source(
 ) -> SourceDocumentResponse:
     data = await file.read(settings.MAX_UPLOAD_FILE_SIZE + 1)
     try:
-        return import_source_document(
-            db,
-            user_id=user_id,
+        prepared = await run_in_threadpool(
+            prepare_source_document,
             filename=file.filename or "source",
             media_type=file.content_type or "application/octet-stream",
             data=data,
         )
+        return persist_prepared_source_document(db, user_id=user_id, prepared=prepared)
     except SourceImportError as exc:
         db.rollback()
         if "size limit" in str(exc):

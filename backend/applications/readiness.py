@@ -14,8 +14,11 @@ from backend.applications.schemas import (
 )
 from backend.career.completeness import calculate_completeness_score
 from backend.career.models import CandidateProfile
+from backend.resumes.artifact_policy import (
+    RESUME_ARTIFACT_MEDIA_TYPES,
+    read_verified_resume_artifact,
+)
 from backend.resumes.models import ResumeDraft, ResumeVersion
-from backend.storage.atomic import read_verified
 
 DESCRIPTION_MINIMUM = 120
 REQUIRED_ARTIFACT_FORMATS = frozenset({"pdf", "docx"})
@@ -59,9 +62,13 @@ def _artifact_availability(
             continue
         recorded.add(artifact_format)
         try:
-            data = read_verified(artifact.storage_path, artifact.sha256)
-            if len(data) != artifact.byte_size:
-                raise ValueError("Stored artifact length does not match its immutable record")
+            if artifact.media_type != RESUME_ARTIFACT_MEDIA_TYPES[artifact_format]:
+                raise ValueError("Stored artifact media type does not match its format")
+            read_verified_resume_artifact(
+                artifact.storage_path,
+                expected_sha256=artifact.sha256,
+                expected_size=artifact.byte_size,
+            )
         except (OSError, ValueError):
             failed.add(artifact_format)
         else:

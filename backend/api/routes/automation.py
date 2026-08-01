@@ -109,9 +109,7 @@ def _verify_current_password(
             return False
         raise _reauthentication_locked(retry_after)
     user = UserRepository(db).get(user_id)
-    candidate_hash = (
-        user.hashed_password if user is not None else DUMMY_PASSWORD_HASH
-    )
+    candidate_hash = user.hashed_password if user is not None else DUMMY_PASSWORD_HASH
     password_ok = verify_password(password, candidate_hash)
     if user is None or not password_ok:
         retry_after = reauthentication_guard.register_failure(user_id)
@@ -225,8 +223,7 @@ def list_automation_grants(
         status.HTTP_403_FORBIDDEN: {
             "model": AutomationErrorResponse | PrivateErrorResponse,
             "description": (
-                "The current password did not match, or desktop session "
-                "authorization failed."
+                "The current password did not match, or desktop session authorization failed."
             ),
             "headers": PRIVATE_RESPONSE_HEADERS,
         },
@@ -276,7 +273,14 @@ def create_automation_grant(
         )
     except AutomationGrantError as exc:
         raise _grant_error(exc) from exc
-    return GrantIssuedView(grant=grant, token=token)
+    return GrantIssuedView(
+        grant=grant,
+        token=token,
+        token_environment_variable="CAREEROS_MCP_TOKEN",
+        warning=(
+            "This token is shown once. Store it in your OS credential manager and never commit it."
+        ),
+    )
 
 
 @router.post(
@@ -291,8 +295,7 @@ def create_automation_grant(
         status.HTTP_403_FORBIDDEN: {
             "model": AutomationErrorResponse | PrivateErrorResponse,
             "description": (
-                "The current password did not match, or desktop session "
-                "authorization failed."
+                "The current password did not match, or desktop session authorization failed."
             ),
             "headers": PRIVATE_RESPONSE_HEADERS,
         },

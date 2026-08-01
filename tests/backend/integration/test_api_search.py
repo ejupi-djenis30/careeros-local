@@ -168,9 +168,10 @@ def test_new_search_defaults_to_career_vault_and_persists_private_snapshot_metad
     assert history["career_profile_revision"] == 1
     assert history["career_fact_ids"] == [confirmed_fact_id]
     assert history["source_snapshot_sha256"] == start_body["source_snapshot_sha256"]
-    assert hashlib.sha256(history["cv_content"].encode("utf-8")).hexdigest() == history[
-        "source_snapshot_sha256"
-    ]
+    assert (
+        hashlib.sha256(history["cv_content"].encode("utf-8")).hexdigest()
+        == history["source_snapshot_sha256"]
+    )
     assert [fact["id"] for fact in snapshot["facts"]] == [confirmed_fact_id]
     assert "private@example.test" not in history["cv_content"]
     assert "+41 79 111 22 33" not in history["cv_content"]
@@ -220,9 +221,7 @@ def test_uploaded_cv_remains_the_implicit_legacy_source(client, auth_headers: di
     assert started.status_code == 200, started.text
     body = started.json()
     assert body["profile_source"] == "uploaded_cv"
-    assert body["source_snapshot_sha256"] == hashlib.sha256(
-        cv_content.encode("utf-8")
-    ).hexdigest()
+    assert body["source_snapshot_sha256"] == hashlib.sha256(cv_content.encode("utf-8")).hexdigest()
     release_task(body["profile_id"])
 
     missing_upload = client.post(

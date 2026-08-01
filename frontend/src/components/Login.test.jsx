@@ -2,9 +2,14 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { I18nProvider } from "../i18n/I18nContext";
+import { assertAccessible } from "../test/accessibility";
 import { Login } from "./Login";
 
-const auth = vi.hoisted(() => ({ login: vi.fn(), register: vi.fn() }));
+const auth = vi.hoisted(() => ({
+    login: vi.fn(),
+    register: vi.fn(),
+    sessionNotice: null,
+}));
 
 vi.mock("../context/AuthContext", () => ({
     useAuth: () => auth,
@@ -24,6 +29,7 @@ describe("Login localization", () => {
         window.localStorage.clear();
         auth.login.mockReset();
         auth.register.mockReset();
+        auth.sessionNotice = null;
     });
 
     it("retranslates a local validation error when the language changes", async () => {
@@ -33,9 +39,20 @@ describe("Login localization", () => {
         await user.type(screen.getByLabelText("Password"), "short");
         await user.click(screen.getByRole("button", { name: "Create local account" }));
 
-        expect(screen.getByRole("alert")).toHaveTextContent("Use at least 8 characters, one uppercase letter and one number.");
+        expect(screen.getByRole("alert")).toHaveTextContent("Use 8–72 UTF-8 bytes, with one uppercase letter and one number.");
         await user.click(screen.getByRole("button", { name: "Italian" }));
-        expect(screen.getByRole("alert")).toHaveTextContent("Usa almeno 8 caratteri, una maiuscola e un numero.");
+        expect(screen.getByRole("alert")).toHaveTextContent("Usa 8–72 byte UTF-8, con una maiuscola e un numero.");
+        expect(auth.register).not.toHaveBeenCalled();
+    });
+
+    it("rejects a multibyte password beyond the bcrypt byte boundary locally", async () => {
+        const user = userEvent.setup();
+        renderLogin();
+        await openRegistration(user);
+        await user.type(screen.getByLabelText("Password"), `A1${"é".repeat(36)}`);
+        await user.click(screen.getByRole("button", { name: "Create local account" }));
+
+        expect(screen.getByRole("alert")).toHaveTextContent("8–72 UTF-8 bytes");
         expect(auth.register).not.toHaveBeenCalled();
     });
 
@@ -52,5 +69,36 @@ describe("Login localization", () => {
         expect(await screen.findByRole("alert")).toHaveTextContent("Registration failed. Please try again.");
         await user.click(screen.getByRole("button", { name: "Italian" }));
         expect(screen.getByRole("alert")).toHaveTextContent("Registrazione non riuscita. Riprova.");
+    });
+
+    it("keeps the localized login form accessible and disabled until credentials are complete", async () => {
+        const user = userEvent.setup();
+        const { container } = renderLogin();
+        const username = screen.getByLabelText("Username");
+        const password = screen.getByLabelText("Password");
+        const submit = screen.getByRole("button", { name: "Open workspace" });
+
+        expect(username).toHaveFocus();
+        expect(submit).toBeDisabled();
+        await assertAccessible(container);
+
+        await user.type(username, "local-user");
+        expect(submit).toBeDisabled();
+        await user.type(password, "Password1");
+        expect(submit).toBeEnabled();
+
+        await user.click(screen.getByRole("button", { name: "Italian" }));
+        expect(screen.getByRole("heading", { name: "Bentornato" })).toBeInTheDocument();
+        expect(screen.getByRole("button", { name: "Accedi allo spazio di lavoro" })).toBeEnabled();
+        await assertAccessible(container);
+    });
+
+    it("shows the explicit post-restore sign-in boundary", async () => {
+        auth.sessionNotice = "auth.restoreCompleteSignIn";
+        renderLogin();
+
+        expect(screen.getByRole("status")).toHaveTextContent(
+            "Restore complete. Sign in again to open the restored Career Vault.",
+        );
     });
 });

@@ -21,6 +21,7 @@
         "minHeight": 700,
         "resizable": true,
         "fullscreen": false,
+        "devtools": false,
         "center": true
       }
     ],
@@ -39,8 +40,15 @@
   },
   "bundle": {
     "active": true,
+    "windows": {
+      "nsis": {
+        "installerHooks": "windows/nsis-hooks.nsh",
+        "installMode": "currentUser"
+      }
+    },
     "resources": {
       "../../LICENSE": "LICENSE",
+      "../../THIRD_PARTY_NOTICES.txt": "THIRD_PARTY_NOTICES.txt",
       "binaries/careeros-backend-runtime/": "careeros-backend-runtime/"
     },
     "targets": "all",

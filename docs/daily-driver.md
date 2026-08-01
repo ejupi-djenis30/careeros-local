@@ -139,6 +139,8 @@ system's credential manager, then dismiss the panel. The page cannot recover it 
 and Claude Code snippets contain no credential; the client process receives the saved value
 through `CAREEROS_MCP_TOKEN`. CareerOS keeps you on this page while issuance is unresolved. If the
 session must end, it waits for the response and revokes any completed grant before signing out.
+If the operating system or process closes the window before that cleanup can finish, reopen
+**Agent access** on the next launch and revoke every new grant whose token you did not save.
 
 Close CareerOS before asking the agent to read the Vault. The MCP server opens no network listener,
 cannot edit data and makes no outbound or cloud request for ordinary vault reads. Model status may
@@ -149,6 +151,9 @@ provider's policy before connecting it. Return to **Agent access** to inspect ex
 grant after use; revocation asks for the password again. If repeated failed checks pause new grants,
 CareerOS stops checking revoke passwords for the lockout window. The signed-in desktop session may
 still revoke a grant owned by that account, but it cannot create another one until the window ends.
+The register always keeps every active grant and the 100 most recent inactive transitions. Older
+inactive rows are removed after a successful create or first revocation; an old retained identifier
+can therefore return `grant_not_found` after it leaves that window.
 
 ## Private by default
 

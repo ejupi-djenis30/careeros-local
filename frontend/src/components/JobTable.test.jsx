@@ -112,7 +112,7 @@ describe('JobTable', () => {
     it('copies job details to clipboard when copy is triggered', async () => {
         const mockJobs = [{
             id: '1', title: 'Software Engineer', company: 'Google', location: 'Zurich',
-            description: 'Test desc', external_url: 'http://test.com'
+            description: 'Test desc', external_url: 'https://test.com'
         }];
         const mockPagination = { page: 1, pages: 1, total: 1 };
 

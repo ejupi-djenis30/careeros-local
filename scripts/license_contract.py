@@ -50,9 +50,7 @@ def write_public_license(source: Path, destination: Path) -> dict[str, Any]:
     return verify_distributed_license(destination, source=source)
 
 
-def verify_distributed_license(
-    path: Path, *, source: Path = ROOT / LICENSE_NAME
-) -> dict[str, Any]:
+def verify_distributed_license(path: Path, *, source: Path = ROOT / LICENSE_NAME) -> dict[str, Any]:
     if path.name != LICENSE_NAME or path.is_symlink() or not path.is_file():
         raise RuntimeError(f"Packaged project LICENSE is missing or unsafe: {path}")
     expected = approved_license_bytes(source)

@@ -8,8 +8,10 @@ import shutil
 import subprocess
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
+import yaml
 
 from scripts import verify_sidecar_build
 from scripts.check_release_versions import (
@@ -20,10 +22,137 @@ from scripts.check_release_versions import (
 
 ROOT = Path(__file__).resolve().parents[3]
 WORKFLOW = ROOT / ".github" / "workflows" / "desktop-release.yml"
+CI_WORKFLOW = ROOT / ".github" / "workflows" / "ci.yml"
 TAURI_CONFIG = ROOT / "frontend" / "src-tauri" / "tauri.conf.json"
+TAURI_CAPABILITY = ROOT / "frontend" / "src-tauri" / "capabilities" / "main.json"
+NSIS_HOOKS = ROOT / "frontend" / "src-tauri" / "windows" / "nsis-hooks.nsh"
 WINDOWS_SMOKE = ROOT / "scripts" / "smoke_windows_installer.ps1"
 NATIVE_SMOKE = ROOT / "scripts" / "smoke_native_bundle.py"
 NATIVE_TARGETS = ROOT / ".github" / "native-targets.json"
+
+
+@pytest.mark.parametrize(
+    ("workflow_path", "retention_days"),
+    ((WORKFLOW, 14), (CI_WORKFLOW, 7)),
+)
+def test_uploaded_artifacts_have_bounded_retention(
+    workflow_path: Path,
+    retention_days: int,
+) -> None:
+    workflow = yaml.safe_load(workflow_path.read_text(encoding="utf-8"))
+    uploads = [
+        step
+        for job in workflow["jobs"].values()
+        for step in job.get("steps", [])
+        if str(step.get("uses", "")).startswith("actions/upload-artifact@")
+    ]
+
+    assert uploads
+    assert all(step.get("with", {}).get("retention-days") == retention_days for step in uploads)
+
+
+def test_native_opener_is_scoped_to_https_and_mailto() -> None:
+    capability = json.loads(TAURI_CAPABILITY.read_text(encoding="utf-8"))
+    opener_permissions = [
+        permission
+        for permission in capability["permissions"]
+        if isinstance(permission, dict)
+        and str(permission.get("identifier", "")).startswith("opener:")
+    ]
+
+    assert opener_permissions == [
+        {
+            "identifier": "opener:allow-open-url",
+            "allow": [{"url": "https://*"}, {"url": "mailto:*"}],
+        }
+    ]
+    assert "opener:allow-default-urls" not in capability["permissions"]
+
+
+def test_native_window_is_local_only_without_shell_or_devtools_access() -> None:
+    capability = json.loads(TAURI_CAPABILITY.read_text(encoding="utf-8"))
+    config = json.loads(TAURI_CONFIG.read_text(encoding="utf-8"))
+    permissions = capability["permissions"]
+
+    assert capability["local"] is True
+    assert capability["windows"] == ["main"]
+    assert {
+        "shell:deny-execute",
+        "shell:deny-kill",
+        "shell:deny-open",
+        "shell:deny-spawn",
+        "shell:deny-stdin-write",
+    } <= set(permission for permission in permissions if isinstance(permission, str))
+    assert not any(
+        permission.startswith("shell:allow-")
+        for permission in permissions
+        if isinstance(permission, str)
+    )
+    assert "core:webview:deny-internal-toggle-devtools" in permissions
+    assert config["app"]["windows"][0]["devtools"] is False
+
+
+def test_nsis_uninstall_preserves_coexisting_msi_registration() -> None:
+    config = json.loads(TAURI_CONFIG.read_text(encoding="utf-8"))
+    hooks = NSIS_HOOKS.read_text(encoding="utf-8")
+    windows_smoke = WINDOWS_SMOKE.read_text(encoding="utf-8")
+
+    assert config["bundle"]["windows"]["nsis"]["installerHooks"] == ("windows/nsis-hooks.nsh")
+    assert config["bundle"]["windows"]["nsis"]["installMode"] == "currentUser"
+    assert "!macro NSIS_HOOK_PREUNINSTALL" in hooks
+    assert "!macro NSIS_HOOK_POSTUNINSTALL" in hooks
+    assert "${If} $UpdateMode <> 1" in hooks
+    assert "Windows Installer ownership detected" in hooks
+    assert "Uninstall that MSI package first" in hooks
+    assert "Abort" in hooks
+    assert 'DeleteRegValue HKCU "Software\\careeros\\CareerOS Local" ""' in hooks
+    assert 'DeleteRegValue HKCU "Software\\careeros\\CareerOS Local" "Installer Language"' in hooks
+    assert 'DeleteRegKey /ifempty HKCU "Software\\careeros\\CareerOS Local"' in hooks
+    assert 'DeleteRegKey /ifempty HKCU "Software\\careeros"' in hooks
+    assert 'DeleteRegKey HKCU "Software\\careeros\\CareerOS Local"' not in hooks
+    pre_uninstall = hooks.index("!macro NSIS_HOOK_PREUNINSTALL")
+    post_uninstall = hooks.index("!macro NSIS_HOOK_POSTUNINSTALL")
+    assert pre_uninstall < post_uninstall
+    assert "UpdateMode" not in hooks[pre_uninstall:post_uninstall]
+    read_msi_registration = hooks.index(
+        'ReadRegStr $CareerOSMsiInstallDir HKCU "Software\\careeros\\CareerOS Local" "InstallDir"'
+    )
+    abort_uninstall = hooks.index("Abort")
+    assert hooks.index("SetRegView 64") < read_msi_registration < abort_uninstall
+    assert hooks.index("SetRegView 32", read_msi_registration) < abort_uninstall
+    assert hooks.count("${IfNot} ${Errors}") == 1
+    assert hooks.count("SetErrorLevel 1") == 1
+    assert "WriteReg" not in hooks
+    for private_path_token in ("$APPDATA", "$LOCALAPPDATA", "${BUNDLEID}", "$INSTDIR", "RmDir"):
+        assert private_path_token not in hooks
+    assert "function Assert-NsisLocationMetadataRemoved" in windows_smoke
+    assert "NSIS uninstall left installer location metadata" in windows_smoke
+    assert "function Assert-NsisRegistryCoexistenceOrdering" in windows_smoke
+    assert "Assert-NsisRegistryCoexistenceOrdering $NsisTemplate" in windows_smoke
+    assert "function Add-SmokeMsiRegistration" in windows_smoke
+    assert "function Assert-SmokeMsiRegistration" in windows_smoke
+    assert "NSIS uninstall did not reject a coexisting MSI registration" in windows_smoke
+    assert "Blocked NSIS uninstall removed MSI-owned payload" in windows_smoke
+    assert 'ArgumentList @("/S", "_?=$InstallRoot")' in windows_smoke
+    assert 'ArgumentList @("/S", "/UPDATE", "_?=$InstallRoot")' in windows_smoke
+    assert "NSIS update uninstall did not reject" in windows_smoke
+    assert "Blocked NSIS update uninstall removed MSI-owned payload" in windows_smoke
+    assert "function Wait-NsisInstallationRemoved" in windows_smoke
+    assert "RegistryView]::Registry32" in windows_smoke
+    assert "RegistryView]::Registry64" in windows_smoke
+    assert "function Open-InstallerRegistryKey" in windows_smoke
+    assert windows_smoke.count("Remove-SmokeMsiRegistration") >= 2
+    for msi_value in (
+        "InstallDir",
+        "Desktop Shortcut",
+        "Uninstaller Shortcut",
+        "Start Menu Shortcut",
+    ):
+        assert f'"{msi_value}"' in windows_smoke
+    pre_hook = windows_smoke.index("!insertmacro NSIS_HOOK_PREUNINSTALL")
+    shared_key_delete = windows_smoke.index('DeleteRegKey SHCTX "${MANUPRODUCTKEY}"')
+    post_hook = windows_smoke.index("!insertmacro NSIS_HOOK_POSTUNINSTALL")
+    assert pre_hook < shared_key_delete < post_hook
 
 
 def test_release_workflow_date_matches_the_current_changelog_release() -> None:
@@ -45,7 +174,7 @@ def test_required_check_name_and_versioned_toolchains_are_stable() -> None:
 
     assert "name: Release supply-chain evidence" in text
     for exact in (
-        'PYTHON_VERSION: "3.12.10"',
+        'PYTHON_VERSION: "3.12.13"',
         'NODE_VERSION: "24.18.0"',
         'RUST_VERSION: "1.96.0"',
         'GH_CLI_VERSION: "2.94.0"',
@@ -68,6 +197,61 @@ def test_required_check_name_and_versioned_toolchains_are_stable() -> None:
     assert "toolchain: stable" not in text
 
 
+def test_runtime_version_files_and_frontend_engine_are_exactly_bounded() -> None:
+    package = json.loads((ROOT / "frontend" / "package.json").read_text(encoding="utf-8"))
+    package_lock = json.loads((ROOT / "frontend" / "package-lock.json").read_text(encoding="utf-8"))
+
+    assert (ROOT / ".python-version").read_text(encoding="utf-8").strip() == "3.12.13"
+    assert (ROOT / ".nvmrc").read_text(encoding="utf-8").strip() == "24.18.0"
+    assert package["engines"]["node"] == ">=24.18.0 <25"
+    assert package_lock["packages"][""]["engines"]["node"] == ">=24.18.0 <25"
+    assert (ROOT / "frontend" / ".npmrc").read_text(encoding="utf-8").strip() == (
+        "engine-strict=true"
+    )
+    scripts = package["scripts"]
+    preflight = "npm run preflight:node"
+    assert scripts["preflight:node"] == "node ../scripts/check_node_version.mjs"
+
+    # Every user-facing npm entry point is Node/Vite/Playwright/Tauri-backed except
+    # the explicit Python-only sidecar preparation command. Deriving this set from
+    # the manifest makes a newly added command fail the contract until it receives
+    # the same exact runtime preflight.
+    preflight_hooks = {name for name, command in scripts.items() if command == preflight}
+    node_entrypoints = set(scripts) - preflight_hooks - {"preflight:node", "desktop:prepare"}
+    assert node_entrypoints == {
+        "brand:icons",
+        "build",
+        "demo:install",
+        "demo:record",
+        "dev",
+        "icons:build",
+        "lint",
+        "preview",
+        "tauri",
+        "tauri:build",
+        "tauri:dev",
+        "test",
+        "test:agent-access-quality",
+        "test:agenda-responsive",
+        "test:coverage",
+        "test:e2e",
+        "test:icons",
+        "test:licenses",
+        "test:login-quality",
+        "test:pages",
+        "test:shell-responsive",
+        "test:watch",
+    }
+    for entrypoint in node_entrypoints:
+        assert scripts[f"pre{entrypoint}"] == preflight
+    assert "Node.js 24.18.0 (`>=24.18.0 <25`; pinned in `.nvmrc`)" in (
+        ROOT / "README.md"
+    ).read_text(encoding="utf-8")
+    assert "Node.js 24.18.0 (`>=24.18.0 <25`; use the repository `.nvmrc`)" in (
+        ROOT / "docs" / "development.md"
+    ).read_text(encoding="utf-8")
+
+
 def test_native_build_forwards_locked_and_consumes_metadata_portably() -> None:
     text = WORKFLOW.read_text(encoding="utf-8")
 
@@ -80,6 +264,8 @@ def test_native_build_forwards_locked_and_consumes_metadata_portably() -> None:
     assert (
         "args: --target ${{ matrix.target }} --bundles ${{ matrix.bundles }} --locked"
     ) not in text
+    assert "python -m scripts.verify_sidecar_build" in text
+    assert "python scripts/verify_sidecar_build.py" not in text
 
 
 def test_source_built_cryptography_uses_verified_static_openssl() -> None:
@@ -158,6 +344,37 @@ def test_source_build_linkage_gate_accepts_self_contained_extension(
     verify_sidecar_build._verify_cryptography_linkage(tmp_path, "x86_64-apple-darwin")
 
 
+@pytest.mark.parametrize(
+    ("target", "machine", "wrong_machine"),
+    (
+        ("x86_64-pc-windows-msvc", 0x8664, 0xAA64),
+        ("aarch64-pc-windows-msvc", 0xAA64, 0x8664),
+    ),
+)
+def test_windows_sidecar_machine_must_match_release_target(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    target: str,
+    machine: int,
+    wrong_machine: int,
+) -> None:
+    image = SimpleNamespace(
+        FILE_HEADER=SimpleNamespace(Machine=machine),
+        OPTIONAL_HEADER=SimpleNamespace(Subsystem=2),
+        close=lambda: None,
+    )
+    monkeypatch.setitem(
+        sys.modules,
+        "pefile",
+        SimpleNamespace(PE=lambda _path, fast_load: image),
+    )
+
+    verify_sidecar_build._verify_windows_subsystem(tmp_path / "sidecar.exe", target)
+    image.FILE_HEADER.Machine = wrong_machine
+    with pytest.raises(RuntimeError, match="architecture does not match"):
+        verify_sidecar_build._verify_windows_subsystem(tmp_path / "sidecar.exe", target)
+
+
 def test_native_dependency_installation_is_fail_fast_on_powershell() -> None:
     text = WORKFLOW.read_text(encoding="utf-8")
 
@@ -189,6 +406,65 @@ def test_tag_publications_share_one_group_without_cancelling_the_running_tag() -
     assert "desktop-${{ github.workflow }}-${{ github.ref }}" not in text
 
 
+def test_release_commands_quote_github_metadata_from_environment() -> None:
+    text = WORKFLOW.read_text(encoding="utf-8")
+
+    for binding in (
+        "RELEASE_COMMIT: ${{ github.sha }}",
+        "RELEASE_REPOSITORY: ${{ github.repository }}",
+        "RELEASE_TAG: ${{ github.ref_name }}",
+    ):
+        assert binding in text
+    for unsafe_argument in (
+        "--commit ${{ github.sha }}",
+        "--repo ${{ github.repository }}",
+        "--tag ${{ github.ref_name }}",
+        "--expected-tag ${{ github.ref_name }}",
+    ):
+        assert unsafe_argument not in text
+    for safe_argument in (
+        '--commit "$RELEASE_COMMIT"',
+        '--repo "$RELEASE_REPOSITORY"',
+        '--tag "$RELEASE_TAG"',
+        '--expected-tag "$RELEASE_TAG"',
+    ):
+        assert safe_argument in text
+
+
+def test_release_workflow_avoids_publishable_dependency_caches_and_shell_interpolation() -> None:
+    text = WORKFLOW.read_text(encoding="utf-8")
+    workflow = yaml.safe_load(text)
+
+    assert "\n          cache:" not in text
+    assert "cache-dependency-path:" not in text
+    assert text.count("package-manager-cache: false") == 2
+    interpolated_run_steps = [
+        (job_name, step.get("name"))
+        for job_name, job in workflow["jobs"].items()
+        for step in job.get("steps", [])
+        if "${{" in str(step.get("run", ""))
+    ]
+    assert interpolated_run_steps == []
+
+    for binding in (
+        "AGENT_WHEEL_NAME: ${{ needs.agent-build.outputs.wheel-name }}",
+        "NATIVE_TARGET: ${{ matrix.target }}",
+        "EXPECTED_RELEASE_DATE: ${{ env.RELEASE_DATE }}",
+        "RELEASE_VERSION: ${{ steps.release-version.outputs.value }}",
+    ):
+        assert binding in text
+    for quoted_argument in (
+        '--wheel "agent-candidate/$AGENT_WHEEL_NAME"',
+        '--target "$NATIVE_TARGET"',
+        '--release-date "$EXPECTED_RELEASE_DATE"',
+        "careeros-backend-${RELEASE_VERSION}.cdx.json",
+    ):
+        assert quoted_argument in text
+
+    assert "Read-only baseline for build, smoke, and assembly jobs" in text
+    assert "Required for keyless Sigstore identity in actions/attest" in text
+
+
 def test_required_check_is_emitted_for_every_pull_request() -> None:
     text = WORKFLOW.read_text(encoding="utf-8")
     pull_request_trigger = text.index("  pull_request:")
@@ -218,6 +494,20 @@ def test_pull_requests_run_a_real_linux_x64_package_smoke() -> None:
     assert 'if os.environ["GITHUB_EVENT_NAME"] == "pull_request":' in workflow
     assert "matrix: ${{ fromJSON(needs.supply-chain.outputs.native-matrix) }}" in workflow
     assert "if: github.event_name != 'pull_request'\n    needs: supply-chain" not in workflow
+
+
+def test_native_builds_are_pinned_to_the_source_commit_timestamp() -> None:
+    text = WORKFLOW.read_text(encoding="utf-8")
+    native = text[text.index("  native:") : text.index("  assemble-release:")]
+
+    assert native.count("Pin native build timestamp to the source commit") == 1
+    assert (
+        'source_date_epoch="$(git show -s --format=%ct "${RELEASE_COMMIT}^{commit}")"'
+    ) in native
+    assert 'printf \'SOURCE_DATE_EPOCH=%s\\n\' "$source_date_epoch" >> "$GITHUB_ENV"' in native
+    assert native.index("Pin native build timestamp") < native.index(
+        "Freeze and smoke-test local backend"
+    )
 
 
 def test_only_tag_push_job_can_attest_or_publish() -> None:
@@ -305,7 +595,7 @@ def test_release_contract_jobs_install_the_locked_parser_dependencies() -> None:
 def test_agent_wheel_digest_is_stable_across_source_mtimes(tmp_path: Path) -> None:
     source_date_epoch = "1700000000"
     source_paths = ("backend", "desktop")
-    project_files = ("LICENSE", "README.md", "pyproject.toml")
+    project_files = ("LICENSE", "THIRD_PARTY_NOTICES.txt", "README.md", "pyproject.toml")
 
     def build_with_mtime(label: str, mtime: int) -> str:
         source_root = tmp_path / f"source-{label}"
@@ -378,18 +668,26 @@ def test_agent_wheel_receives_provenance_and_the_backend_sbom_only() -> None:
     assert "done < release-attestation/agent-subjects.sha256" in publisher
 
 
-def test_canonical_project_license_is_bundled_and_checked_in_every_native_path() -> None:
+def test_project_license_and_third_party_notices_are_checked_in_every_native_path() -> None:
     workflow = WORKFLOW.read_text(encoding="utf-8")
     config = json.loads(TAURI_CONFIG.read_text(encoding="utf-8"))
     windows_smoke = WINDOWS_SMOKE.read_text(encoding="utf-8")
 
     assert config["bundle"]["resources"]["../../LICENSE"] == "LICENSE"
+    assert (
+        config["bundle"]["resources"]["../../THIRD_PARTY_NOTICES.txt"] == "THIRD_PARTY_NOTICES.txt"
+    )
     assert "LICENSE text eol=lf" in (ROOT / ".gitattributes").read_text(encoding="utf-8")
+    assert "THIRD_PARTY_NOTICES.txt text eol=lf" in (ROOT / ".gitattributes").read_text(
+        encoding="utf-8"
+    )
     assert "-IncludeNsisInstall" in workflow
     assert "python -m scripts.smoke_native_bundle --target" in workflow
     assert "python scripts/smoke_native_bundle.py" not in workflow
     assert "Assert-PackagedLicense ($MsiApp.Directory.FullName)" in windows_smoke
     assert "Assert-PackagedLicense ($NsisApp.Directory.FullName)" in windows_smoke
+    assert "Assert-PackagedNotices ($MsiApp.Directory.FullName)" in windows_smoke
+    assert "Assert-PackagedNotices ($NsisApp.Directory.FullName)" in windows_smoke
 
 
 def test_package_smokes_require_fresh_frontend_backend_readiness_evidence() -> None:
@@ -404,6 +702,30 @@ def test_package_smokes_require_fresh_frontend_backend_readiness_evidence() -> N
     for source in (windows_smoke, native_smoke, lifecycle):
         assert marker in source
         assert payload in source
-    assert "Remove-Item -LiteralPath $ReadinessEvidence" in windows_smoke
+    assert "Remove-Item -LiteralPath $ReadinessEvidence -Force -ErrorAction Stop" in windows_smoke
+    assert "Could not clear stale desktop readiness evidence" in windows_smoke
     assert "readiness_evidence.unlink(missing_ok=True)" in native_smoke
     assert ".create_new(true)" in lifecycle
+
+
+def test_package_smokes_verify_sidecar_cleanup_on_failure_paths() -> None:
+    windows_smoke = WINDOWS_SMOKE.read_text(encoding="utf-8")
+    native_smoke = NATIVE_SMOKE.read_text(encoding="utf-8")
+
+    assert "function Wait-PackagedSidecarExit" in windows_smoke
+    assert "Wait-PackagedSidecarExit $DataDirectory" in windows_smoke
+    assert "[StringComparison]::OrdinalIgnoreCase" in windows_smoke
+    assert "$null -ne $Process -and -not $Process.HasExited" in windows_smoke
+    assert 'Assert-RegularDirectory $SmokeRoot "Installer smoke root"' in windows_smoke
+    install_root_assignment = windows_smoke.index("$NsisInstallRoot = $InstallRoot")
+    nsis_start = windows_smoke.index("$NsisInstall = Start-Process")
+    nsis_exit_check = windows_smoke.index("if ($NsisInstall.ExitCode -ne 0)")
+    assert install_root_assignment < nsis_start < nsis_exit_check
+    assert windows_smoke.count("$NsisInstallRoot = $InstallRoot") == 1
+    assert "$NsisUninstallCompleted = $true" in windows_smoke
+    assert "if ($null -ne $NsisInstallRoot -and -not $NsisUninstallCompleted)" in windows_smoke
+    assert "$PartialUninstallers.Count -eq 1" in windows_smoke
+    assert "if ($null -ne $NsisUninstaller)" in windows_smoke
+    assert "NSIS failure cleanup failed with code" in windows_smoke
+    assert "def _wait_for_no_orphan" in native_smoke
+    assert "finally:\n        _wait_for_no_orphan(data_directory)" in native_smoke

@@ -30,7 +30,9 @@ def render_gif(frames: list[Path], output: Path, *, width: int = 960) -> None:
     rendered: list[Image.Image] = []
     for frame in frames:
         with Image.open(frame) as source:
-            rendered.append(_fit(source, width).quantize(colors=128, method=Image.Quantize.MEDIANCUT))
+            rendered.append(
+                _fit(source, width).quantize(colors=128, method=Image.Quantize.MEDIANCUT)
+            )
     output.parent.mkdir(parents=True, exist_ok=True)
     rendered[0].save(
         output,
@@ -78,7 +80,9 @@ def render_poster(source: Path, output: Path, *, width: int = 1280) -> None:
         radius=18,
         fill=(12, 16, 14, 225),
     )
-    draw.text(((poster.width - text_width) // 2, text_y), label, font=font, fill=(241, 246, 242, 255))
+    draw.text(
+        ((poster.width - text_width) // 2, text_y), label, font=font, fill=(241, 246, 242, 255)
+    )
     Image.alpha_composite(poster, overlay).convert("RGB").save(output, quality=92, optimize=True)
 
 

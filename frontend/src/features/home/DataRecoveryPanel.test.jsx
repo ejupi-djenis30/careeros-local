@@ -1,4 +1,4 @@
-import { screen, waitFor } from "@testing-library/react";
+import { act, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { assertAccessible } from "../../test/accessibility";
@@ -118,6 +118,28 @@ describe("DataRecoveryPanel", () => {
         expect(screen.getByText(/Chiunque possieda il file/)).toBeInTheDocument();
         expect(screen.queryByText("private-backup-name.zip")).not.toBeInTheDocument();
         expect(screen.getByRole("button", { name: "Ripristina backup verificato" })).toBeDisabled();
+        expect(screen.getByLabelText("File di backup CareerOS Local")).toHaveAttribute("tabindex", "-1");
+    });
+
+    it("reports a native picker failure and prevents overlapping dialogs", async () => {
+        let rejectPicker;
+        platform.openBackupWithNativeDialog.mockReturnValue(new Promise((_, reject) => {
+            rejectPicker = reject;
+        }));
+        render(<DataRecoveryPanel hasProfile={false} />);
+        const choose = screen.getByRole("button", { name: /Scegli e verifica backup/ });
+
+        choose.click();
+        choose.click();
+        expect(platform.openBackupWithNativeDialog).toHaveBeenCalledTimes(1);
+        await act(async () => {
+            rejectPicker(new Error("Dialogo locale non disponibile"));
+            await Promise.resolve();
+        });
+
+        expect(await screen.findByRole("status")).toHaveTextContent("Dialogo locale non disponibile");
+        await waitFor(() => expect(choose).toBeEnabled());
+        expect(PortabilityService.inspectArchive).not.toHaveBeenCalled();
     });
 
     it("enables a separate restore action only for a verified restorable backup", async () => {
@@ -134,6 +156,29 @@ describe("DataRecoveryPanel", () => {
         expect(PortabilityService.restoreArchive).not.toHaveBeenCalled();
     });
 
+    it("does not render or refetch private state after terminal restore success", async () => {
+        const user = userEvent.setup();
+        PortabilityService.inspectArchive.mockResolvedValue({
+            ...inspection,
+            restorable: true,
+            warning_codes: [],
+        });
+        PortabilityService.restoreArchive.mockResolvedValue({
+            restored_files: 2,
+            restored_records: { profiles: 1, sources: 2 },
+        });
+        render(<DataRecoveryPanel hasProfile={false} onErased={vi.fn()} />);
+
+        await user.click(screen.getByRole("button", { name: /Scegli e verifica backup/ }));
+        await user.click(await screen.findByRole("button", {
+            name: "Ripristina backup verificato",
+        }));
+
+        await waitFor(() => expect(PortabilityService.restoreArchive).toHaveBeenCalledTimes(1));
+        expect(screen.queryByRole("status")).toBeNull();
+        expect(screen.getByRole("button", { name: "Ripristino…" })).toBeDisabled();
+    });
+
     it("requires the exact phrase before erasing managed local data", async () => {
         const user = userEvent.setup();
         const onErased = vi.fn();
@@ -145,8 +190,8 @@ describe("DataRecoveryPanel", () => {
         await user.click(erase);
 
         await waitFor(() => expect(PortabilityService.eraseLocalData).toHaveBeenCalledTimes(1));
-        expect(onErased).toHaveBeenCalledTimes(1);
-        expect(screen.getByRole("status")).toHaveTextContent("Rimossi 5 file gestiti");
+        expect(onErased).not.toHaveBeenCalled();
+        expect(screen.queryByRole("status")).toBeNull();
     });
 
     it("passes the recovery accessibility and destructive-action keyboard gate", async () => {

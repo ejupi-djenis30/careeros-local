@@ -10,6 +10,8 @@ const mockRefresh = vi.fn();
 const mockLogin = vi.fn();
 const mockRegister = vi.fn();
 const mockLogout = vi.fn();
+const mockPrepareLogout = vi.fn();
+const mockDiscardLogoutToken = vi.fn();
 
 vi.mock('../services/auth', () => ({
   AuthService: {
@@ -17,19 +19,29 @@ vi.mock('../services/auth', () => ({
     login: (...args) => mockLogin(...args),
     register: (...args) => mockRegister(...args),
     logout: (...args) => mockLogout(...args),
+    prepareLogout: (...args) => mockPrepareLogout(...args),
+    discardLogoutToken: (...args) => mockDiscardLogoutToken(...args),
   },
 }));
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 function Consumer() {
-  const { user, isLoggedIn } = useAuth();
+  const { user, isLoggedIn, maintenanceSession, sessionNotice } = useAuth();
   return (
     <>
       <div data-testid="user">{user ?? 'null'}</div>
       <div data-testid="logged-in">{String(isLoggedIn)}</div>
+      <div data-testid="maintenance-state">{maintenanceSession?.sessionState ?? 'none'}</div>
+      <div data-testid="maintenance-reauth">{String(maintenanceSession?.reauthRequired ?? false)}</div>
+      <div data-testid="session-notice">{sessionNotice ?? 'none'}</div>
     </>
   );
+}
+
+function PrivateWorkspaceMarker() {
+  const { isLoggedIn } = useAuth();
+  return isLoggedIn ? <div data-testid="private-workspace">private</div> : null;
 }
 
 function LoginButton() {
@@ -180,6 +192,52 @@ describe('AuthContext', () => {
     expect(screen.getByTestId('logged-in').textContent).toBe('true');
   });
 
+  it.each(['reset_pending', 'restore_pending', 'erasure_pending'])(
+    'keeps the private workspace unmounted when login returns %s',
+    async (sessionState) => {
+      mockRefresh.mockResolvedValue(null);
+      mockLogin.mockResolvedValue({
+        access_token: 'maintenance-token',
+        session_state: sessionState,
+      });
+
+      await renderAndWait(<><Consumer /><PrivateWorkspaceMarker /><LoginButton /></>);
+      await act(async () => {
+        screen.getByRole('button', { name: 'Login' }).click();
+      });
+
+      expect(screen.getByTestId('user')).toHaveTextContent('null');
+      expect(screen.getByTestId('logged-in')).toHaveTextContent('false');
+      expect(screen.getByTestId('maintenance-state')).toHaveTextContent(sessionState);
+      expect(screen.queryByTestId('private-workspace')).toBeNull();
+    },
+  );
+
+  it('does not let a late normal login replace an active recovery session', async () => {
+    let resolveLogin;
+    mockRefresh.mockResolvedValue(null);
+    mockLogin.mockReturnValue(new Promise((resolve) => {
+      resolveLogin = resolve;
+    }));
+    await renderAndWait(<><Consumer /><PrivateWorkspaceMarker /><LoginButton /></>);
+
+    screen.getByRole('button', { name: 'Login' }).click();
+    window.dispatchEvent(new CustomEvent('careeros:maintenance-pending', {
+      detail: {
+        sessionState: 'erasure_pending',
+        reauthRequired: false,
+      },
+    }));
+    await act(async () => resolveLogin({
+      access_token: 'late-normal-token',
+      username: 'alice',
+    }));
+
+    expect(screen.queryByTestId('private-workspace')).toBeNull();
+    expect(screen.getByTestId('user')).toHaveTextContent('null');
+    expect(screen.getByTestId('maintenance-state')).toHaveTextContent('erasure_pending');
+  });
+
   it('login surfaces an explicit error when response has no access_token', async () => {
     mockRefresh.mockResolvedValue(null);
     mockLogin.mockResolvedValue({ error: 'invalid credentials' });
@@ -260,6 +318,35 @@ describe('AuthContext', () => {
     expect(screen.getByRole('button', { name: 'Login' })).toBeTruthy();
   });
 
+  it('keeps the workspace unmounted and offers a retry after explicit logout fails', async () => {
+    mockRefresh.mockResolvedValue({ username: 'alice' });
+    mockLogout
+      .mockRejectedValueOnce(new Error('local backend unavailable'))
+      .mockResolvedValueOnce(undefined);
+
+    await renderAndWait(<><Consumer /><LogoutButton /></>);
+    await act(async () => {
+      screen.getByRole('button', { name: 'Logout' }).click();
+    });
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Session could not be ended');
+    expect(screen.queryByTestId('user')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Logout' })).toBeNull();
+    const retry = screen.getByRole('button', { name: 'Retry ending session' });
+    expect(retry).toBeTruthy();
+    await waitFor(() => expect(retry).toHaveFocus());
+    expect(mockLogout).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      screen.getByRole('button', { name: 'Retry ending session' }).click();
+    });
+
+    await waitFor(() => expect(mockLogout).toHaveBeenCalledTimes(2));
+    expect(screen.queryByRole('alert')).toBeNull();
+    expect(screen.getByTestId('user').textContent).toBe('null');
+    expect(screen.getByTestId('logged-in').textContent).toBe('false');
+  });
+
   it('lets an in-flight sensitive operation cancel a normal logout', async () => {
     mockRefresh.mockResolvedValue({ username: 'alice' });
     const preventLogout = event => event.preventDefault();
@@ -289,6 +376,120 @@ describe('AuthContext', () => {
       expect(screen.getByTestId('user').textContent).toBe('null');
     });
     expect(mockLogout).toHaveBeenCalled();
+  });
+
+  it('discards captured authority when forced session cleanup cannot reach the backend', async () => {
+    mockRefresh.mockResolvedValue({ username: 'alice' });
+    mockLogout.mockRejectedValue(new Error('backend unavailable'));
+    await renderAndWait(<><Consumer /><PrivateWorkspaceMarker /></>);
+
+    await act(async () => {
+      window.dispatchEvent(new Event('careeros:unauthorized'));
+    });
+
+    await waitFor(() => expect(mockDiscardLogoutToken).toHaveBeenCalledTimes(1));
+    expect(screen.queryByTestId('private-workspace')).toBeNull();
+    expect(screen.queryByRole('alert')).toBeNull();
+  });
+
+  it('escalates an in-flight normal logout when the session becomes unauthorized', async () => {
+    mockRefresh.mockResolvedValue({ username: 'alice' });
+    let rejectNormalLogout;
+    mockLogout
+      .mockImplementationOnce(() => new Promise((_resolve, reject) => {
+        rejectNormalLogout = reject;
+      }))
+      .mockResolvedValueOnce(undefined);
+    await renderAndWait(<><Consumer /><PrivateWorkspaceMarker /><LogoutButton /></>);
+
+    await act(async () => {
+      screen.getByRole('button', { name: 'Logout' }).click();
+    });
+    expect(rejectNormalLogout).toBeTypeOf('function');
+    act(() => {
+      window.dispatchEvent(new Event('careeros:unauthorized'));
+    });
+    await act(async () => rejectNormalLogout(new Error('first logout failed')));
+
+    await waitFor(() => expect(mockLogout).toHaveBeenCalledTimes(2));
+    expect(screen.queryByTestId('private-workspace')).toBeNull();
+    expect(screen.queryByRole('alert')).toBeNull();
+    expect(mockDiscardLogoutToken).not.toHaveBeenCalled();
+  });
+
+  it('synchronously replaces private DOM with maintenance recovery state', async () => {
+    mockRefresh.mockResolvedValue({ username: 'alice' });
+    await renderAndWait(<><Consumer /><PrivateWorkspaceMarker /></>);
+    expect(screen.getByTestId('private-workspace')).toBeInTheDocument();
+
+    window.dispatchEvent(new CustomEvent('careeros:maintenance-pending', {
+      detail: {
+        sessionState: 'restore_pending',
+        reauthRequired: false,
+      },
+    }));
+
+    expect(screen.queryByTestId('private-workspace')).toBeNull();
+    expect(screen.getByTestId('logged-in')).toHaveTextContent('false');
+    expect(screen.getByTestId('maintenance-state')).toHaveTextContent('restore_pending');
+    expect(mockLogout).not.toHaveBeenCalled();
+  });
+
+  it('keeps private DOM unmounted when a late refresh resolves after maintenance begins', async () => {
+    let resolveRefresh;
+    mockRefresh.mockReturnValue(new Promise((resolve) => {
+      resolveRefresh = resolve;
+    }));
+    render(<AuthProvider><><Consumer /><PrivateWorkspaceMarker /></></AuthProvider>);
+
+    window.dispatchEvent(new CustomEvent('careeros:maintenance-pending', {
+      detail: {
+        sessionState: 'reset_pending',
+        reauthRequired: true,
+      },
+    }));
+    expect(screen.queryByTestId('private-workspace')).toBeNull();
+
+    await act(async () => resolveRefresh({ username: 'late-user' }));
+    expect(screen.queryByTestId('private-workspace')).toBeNull();
+    expect(screen.getByTestId('user')).toHaveTextContent('null');
+    expect(screen.getByTestId('maintenance-state')).toHaveTextContent('reset_pending');
+    expect(screen.getByTestId('maintenance-reauth')).toHaveTextContent('true');
+  });
+
+  it('synchronously removes private DOM on recovery completion and preserves a generic notice', async () => {
+    mockRefresh.mockResolvedValue({ username: 'alice' });
+    await renderAndWait(<><Consumer /><PrivateWorkspaceMarker /></>);
+    expect(screen.getByTestId('private-workspace')).toBeInTheDocument();
+
+    window.dispatchEvent(new CustomEvent('careeros:maintenance-complete', {
+      detail: { messageKey: 'auth.maintenanceCompleteSignIn' },
+    }));
+
+    expect(screen.queryByTestId('private-workspace')).toBeNull();
+    await waitFor(() => expect(mockLogout).toHaveBeenCalledTimes(1));
+    expect(screen.getByTestId('session-notice')).toHaveTextContent(
+      'auth.maintenanceCompleteSignIn',
+    );
+  });
+
+  it('preserves an explicit restore-complete notice while ending the replaced session', async () => {
+    mockRefresh.mockResolvedValue({ username: 'alice' });
+
+    await renderAndWait(<Consumer />);
+    await act(async () => {
+      window.dispatchEvent(new CustomEvent('careeros:unauthorized', {
+        detail: { messageKey: 'auth.restoreCompleteSignIn' },
+      }));
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId('user').textContent).toBe('null');
+    });
+    expect(screen.getByTestId('session-notice').textContent).toBe(
+      'auth.restoreCompleteSignIn',
+    );
+    expect(mockLogout).toHaveBeenCalledTimes(1);
   });
 
   it('waits for forced-logout cleanup before invalidating the server session', async () => {

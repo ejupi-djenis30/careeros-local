@@ -180,7 +180,7 @@ the first provider search, enable only the job sources you want under Career Vau
 
 ## Run locally
 
-Requirements: Python 3.12, Node.js 24 LTS, npm and Git. Native desktop development additionally
+Requirements: Python 3.12, Node.js 24.18.0 (`>=24.18.0 <25`; pinned in `.nvmrc`), npm and Git. Native desktop development additionally
 requires Rust stable and the [Tauri prerequisites](https://v2.tauri.app/start/prerequisites/).
 
 ```powershell
@@ -325,6 +325,10 @@ operating system's credential manager before dismissing the panel. The page neve
 automatically or writes it to browser storage. While a bearer is being issued, CareerOS keeps you
 on that page. If the session must end, it waits for the response and revokes any completed grant
 before signing out.
+If the process or operating system closes the window while creation is finishing, reopen
+**Agent access** before connecting a client and revoke any grant whose token you did not save.
+Every active grant remains visible; successful grant mutations keep the 100 most recent inactive
+transitions and remove older inactive metadata.
 
 The same page shows active, expired and revoked grants, supports password-confirmed revocation and
 provides token-free Codex and Claude Code setup snippets. Close the desktop app before the agent
@@ -464,6 +468,8 @@ screenshots under `docs/assets/`. Full details are in the [demo recording guide]
 .venv\Scripts\python.exe -m mypy backend scripts --ignore-missing-imports --no-error-summary
 .venv\Scripts\python.exe -m pytest tests/backend -q --cov=backend --cov-branch --cov-fail-under=80
 npm --prefix frontend run test:coverage
+npm --prefix frontend run demo:install
+npm --prefix frontend run test:e2e
 npm --prefix frontend run lint
 npm --prefix frontend run build
 cargo fmt --manifest-path frontend/src-tauri/Cargo.toml --check
@@ -517,4 +523,6 @@ collectively to **CareerOS Local contributors**.
 ## License
 
 CareerOS Local is released under the [MIT License](LICENSE). Third-party runtimes and models
-retain their own licenses; the application displays the selected model license before download.
+retain their own licenses. Runtime dependency copyright and license texts are shipped in the
+lock-bound [third-party notices](THIRD_PARTY_NOTICES.txt); the application separately displays
+the selected model license before download.

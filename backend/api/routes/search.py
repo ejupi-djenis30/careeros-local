@@ -10,6 +10,12 @@ from sqlalchemy.orm import Session
 from backend.api.deps import get_current_user_id, limiter, require_local_analysis_ready
 from backend.career.service import CareerProfileService, CareerSearchSnapshotError
 from backend.core.config import settings
+from backend.core.diagnostics import (
+    FailureCode,
+    diagnose_failure,
+    log_failure,
+    public_status_message,
+)
 from backend.db.base import SessionLocal, get_db
 from backend.repositories.profile_repository import ProfileRepository
 from backend.schemas.profile import StartSearchRequest
@@ -25,7 +31,7 @@ from backend.services.search_status import (
     reserve_task,
     update_status,
 )
-from backend.services.utils import extract_text_from_file
+from backend.services.utils import extract_text_from_file, safe_upload_filename
 
 logger = logging.getLogger(__name__)
 
@@ -67,19 +73,14 @@ async def upload_cv(
     file: UploadFile = File(...),
     user_id: int = Depends(get_current_user_id),
 ):
-    MAX_FILE_SIZE = settings.MAX_UPLOAD_FILE_SIZE
-    # Reject early using Content-Length if the client provides it, to avoid
-    # reading a potentially huge payload into memory before we can check it.
-    if file.size is not None and file.size > MAX_FILE_SIZE:
-        raise HTTPException(status_code=400, detail="File too large. Maximum size is 10MB.")
-    content = await file.read()
-    if len(content) > MAX_FILE_SIZE:
-        raise HTTPException(status_code=400, detail="File too large. Maximum size is 10MB.")
-    # Rewind so extract_text_from_file can read it again
-    await file.seek(0)
+    if file.size is not None and file.size > settings.MAX_UPLOAD_FILE_SIZE:
+        raise HTTPException(
+            status_code=413,
+            detail="File too large for local CV processing.",
+        )
 
     text = await extract_text_from_file(file)
-    return {"text": text, "filename": file.filename}
+    return {"text": text, "filename": safe_upload_filename(file.filename, fallback="cv")}
 
 
 @router.post("/start", response_model=SearchStartResponse)
@@ -178,9 +179,7 @@ async def start_search(
                 )
             source_metadata = {
                 "profile_source": "uploaded_cv",
-                "source_snapshot_sha256": hashlib.sha256(
-                    supplied_cv.encode("utf-8")
-                ).hexdigest(),
+                "source_snapshot_sha256": hashlib.sha256(supplied_cv.encode("utf-8")).hexdigest(),
             }
 
         profile_data["user_id"] = user_id
@@ -229,9 +228,10 @@ async def start_search(
         except asyncio.CancelledError:
             release_task(_profile_id, _reservation_token)
             raise
-        except Exception:
+        except Exception as error:
             release_task(_profile_id, _reservation_token)
-            logger.exception("Background search failed unexpectedly for profile %d", _profile_id)
+            diagnostic = diagnose_failure(error, FailureCode.SEARCH_UNEXPECTED)
+            log_failure(logger, diagnostic, level=logging.ERROR)
         finally:
             if fresh_db is not None:
                 fresh_db.close()
@@ -250,9 +250,7 @@ async def start_search(
 
     stored_source = getattr(profile, "profile_source", None)
     resolved_source = (
-        stored_source
-        if stored_source in {"career_vault", "uploaded_cv"}
-        else "uploaded_cv"
+        stored_source if stored_source in {"career_vault", "uploaded_cv"} else "uploaded_cv"
     )
     stored_sha256 = getattr(profile, "source_snapshot_sha256", None)
     resolved_sha256 = (
@@ -289,7 +287,11 @@ async def stop_search(
     profile_repo.update(profile, {"is_stopped": True})
 
     # Also update the in-memory status so frontend sees it immediately
-    update_status(profile_id, state="stopped", error="Search stopped by user.")
+    update_status(
+        profile_id,
+        state="stopped",
+        error=public_status_message(FailureCode.SEARCH_STOPPED),
+    )
 
     # Explicitly cancel the background task if it exists
     cancel_task(profile_id)

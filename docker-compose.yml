@@ -1,9 +1,17 @@
 name: careeros-local
 
+x-default-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
 services:
   ollama:
-    image: ollama/ollama:0.30.8@sha256:05b6fe5143ed006d6d4abd39bdd575f962a5822bdf81e6fbb5e6894eb984ab9c
+    image: ollama/ollama:0.32.0@sha256:57f573b47f1f71ebb445789f279fe3e596a8beab182f7cf486db9205bad87c5a
     restart: unless-stopped
+    init: true
+    pids_limit: 512
     environment:
       OLLAMA_HOST: 0.0.0.0:11434
       OLLAMA_KEEP_ALIVE: 15m
@@ -18,8 +26,16 @@ services:
       timeout: 5s
       retries: 12
       start_period: 10s
+    read_only: true
+    tmpfs:
+      - /tmp:rw,nosuid,nodev,noexec,size=256m,mode=1777
+    cap_drop:
+      - ALL
     security_opt:
       - no-new-privileges:true
+    logging: *default-logging
+    networks:
+      - model
 
   backend:
     build:
@@ -27,6 +43,9 @@ services:
       dockerfile: Dockerfile
     restart: unless-stopped
     init: true
+    user: "10001:10001"
+    pids_limit: 256
+    stop_grace_period: 30s
     depends_on:
       ollama:
         condition: service_healthy
@@ -40,19 +59,22 @@ services:
       LOCAL_INFERENCE_ALLOWED_HOSTS: ollama
       LOCAL_MODEL: ${LOCAL_MODEL:-qwen3:1.7b}
       CORS_ORIGINS: http://localhost:5173,http://127.0.0.1:5173
-      CORS_ALLOW_ORIGIN_REGEX: ^https?://(localhost|127\.0\.0\.1)(:5173)?$
       ALLOWED_HOSTS: '["localhost","127.0.0.1","backend","testserver"]'
     volumes:
       - app_data:/app/data
-    ports:
-      - "127.0.0.1:8000:8000"
+    expose:
+      - "8000"
     read_only: true
     tmpfs:
-      - /tmp:size=128m,mode=1777
+      - /tmp:rw,nosuid,nodev,noexec,size=128m,mode=1777
     cap_drop:
       - ALL
     security_opt:
       - no-new-privileges:true
+    logging: *default-logging
+    networks:
+      - app
+      - model
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/v1/health/ready', timeout=3)"]
       interval: 10s
@@ -62,10 +84,11 @@ services:
 
   frontend:
     build:
-      context: ./frontend
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: frontend/Dockerfile
     restart: unless-stopped
     init: true
+    pids_limit: 128
     depends_on:
       backend:
         condition: service_healthy
@@ -73,11 +96,14 @@ services:
       - "127.0.0.1:5173:8080"
     read_only: true
     tmpfs:
-      - /tmp:size=64m,mode=1777
+      - /tmp:rw,nosuid,nodev,noexec,size=64m,mode=1777
     cap_drop:
       - ALL
     security_opt:
       - no-new-privileges:true
+    logging: *default-logging
+    networks:
+      - app
     healthcheck:
       test: ["CMD", "wget", "--quiet", "--output-document=-", "http://127.0.0.1:8080/"]
       interval: 10s
@@ -90,3 +116,9 @@ volumes:
     name: careeros-local-vault
   ollama_data:
     name: careeros-local-models
+
+networks:
+  app:
+    name: careeros-local-app
+  model:
+    name: careeros-local-model

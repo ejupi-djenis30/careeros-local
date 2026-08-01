@@ -4,6 +4,11 @@ CareerOS releases fail closed. A manual workflow run is a read-only rehearsal: i
 retain workflow artifacts, but it cannot request an OIDC token, create attestations, touch a
 GitHub Release, or publish anything. Only a stable-version tag push can enter the publisher.
 
+This guide describes the current, post-v1.10 schema-4 contract. It contains 26 public assets,
+including first-class third-party notices; the historical immutable
+[v1.10.0 release](release-evidence-v1.10.0.md) used its earlier schema-3, 25-asset contract.
+Before the next rehearsal, advance all seven version sources and never reuse a published tag.
+
 ## Candidate requirements
 
 Before creating a tag:
@@ -13,7 +18,9 @@ Before creating a tag:
 3. Keep all seven version sources on the same stable `MAJOR.MINOR.PATCH` value. Prerelease and
    build metadata are rejected.
 4. Update `CHANGELOG.md` with a dated, human-written section for that exact version.
-5. Confirm that `LICENSE` is the approved MIT license and that security exceptions remain valid.
+5. Confirm that `LICENSE` is the approved MIT license, run
+   `python -m scripts.third_party_notices --check`, and confirm that security exceptions remain
+   valid.
 
 Run the metadata and release-contract tests locally:
 
@@ -24,29 +31,31 @@ Run the metadata and release-contract tests locally:
 
 ## Read-only rehearsal
 
-Run **Desktop packages** from `main`. You may supply the planned tag, such as `v1.10.0`, in
+Run **Desktop packages** from `main`. Supply the new `vMAJOR.MINOR.PATCH` planned tag in
 `expected_tag`. The workflow builds six native targets on versioned GitHub-hosted runners,
 smoke-tests each package, normalizes installer names, and assembles one exact candidate.
 
-The candidate contains 25 public assets:
+The candidate contains 26 public assets:
 
 - 10 native installers with portable, no-space names;
 - six target-specific SHA-256 files whose filenames exactly match their downloads;
-- the installable Agent Access wheel `careeros_local-1.10.0-py3-none-any.whl` and the exact
+- the installable Agent Access wheel `careeros_local-<version>-py3-none-any.whl` and the exact
   hash-locked `requirements.lock` used to install its dependency graph;
 - three CycloneDX SBOMs;
 - one deterministic supply-chain evidence archive;
 - the canonical LF `LICENSE`, downloadable as a first-class asset and byte-identical to the
   project notice embedded by Tauri in every native package;
+- the deterministic `THIRD_PARTY_NOTICES.txt`, bound to the npm, Python and Cargo locks and
+  byte-identical to the web, container, Tauri and release-candidate payload;
 - `release-manifest.json`, which binds target, package type, name, size, SHA-256, source commit,
-  release date, evidence, SBOMs, and the exact public MIT `LICENSE` asset;
+  release date, evidence, SBOMs, the public MIT `LICENSE`, and third-party notices;
 - `SHA256SUMS`, which binds every other public asset.
 
 The native smoke gates do not trust package metadata alone. They mount each DMG read-only,
 extract each AppImage and DEB, administratively extract each MSI, and install each NSIS package;
-every resulting payload must expose the approved project `LICENSE` bytes at the canonical Tauri
-resource root. Missing, changed, duplicate case-variant, symlink-alias, or dependency-only license
-files stop the run before staging.
+every resulting payload must expose both the approved project `LICENSE` and the generated
+`THIRD_PARTY_NOTICES.txt` bytes at the canonical Tauri resource root. Missing, changed, duplicate
+case-variant, symlink-alias, or dependency-only files stop the run before staging.
 
 The Agent Access candidate is built once on the pinned release toolchain. Its wheel filename,
 metadata, Python range, dependency declarations, entry points, MIT license, package resources,
@@ -72,8 +81,8 @@ must equal the candidate source and remain contained in the repository's current
 The tag workflow re-runs every build and check. Its final job then:
 
 1. verifies the tag and default-branch policy before requesting attestations;
-2. re-hashes the exact 25-file candidate;
-3. creates SLSA provenance for all 25 assets;
+2. re-hashes the exact 26-file candidate;
+3. creates SLSA provenance for all 26 assets;
 4. binds each of the three CycloneDX SBOMs to all 10 native installers and the rooted backend SBOM
    to the Agent Access wheel;
 5. verifies every attestation against the tag commit, tag ref, workflow identity, GitHub OIDC
@@ -97,7 +106,7 @@ write-free no-op.
 ## Download verification
 
 The global checksum command requires one directory containing the complete published set:
-`SHA256SUMS` plus all other 24 assets. On GNU/Linux or in Git Bash, run:
+`SHA256SUMS` plus all other 25 assets. On GNU/Linux or in Git Bash, run:
 
 ```bash
 sha256sum --check SHA256SUMS
@@ -107,16 +116,17 @@ If you downloaded only one Windows installer and `SHA256SUMS`, compare that exac
 PowerShell's native `Get-FileHash` before verifying provenance:
 
 ```powershell
-$asset = "CareerOS-Local_1.10.0_windows-x64-setup.exe"
+$releaseVersion = "<version>"
+$asset = "CareerOS-Local_${releaseVersion}_windows-x64-setup.exe"
 $entry = @(Get-Content .\SHA256SUMS | Where-Object { ($_ -split '\s+', 2)[1] -eq $asset })
 if ($entry.Count -ne 1) { throw "Expected exactly one checksum entry for $asset" }
 $expected = ($entry[0] -split '\s+', 2)[0]
 $actual = (Get-FileHash -Algorithm SHA256 -LiteralPath $asset).Hash
 if ($actual -ne $expected) { throw "SHA-256 mismatch for $asset" }
 
-gh attestation verify .\CareerOS-Local_1.10.0_windows-x64-setup.exe `
+gh attestation verify ".\$asset" `
   --repo ejupi-djenis30/careeros-local `
-  --source-ref refs/tags/v1.10.0
+  --source-ref "refs/tags/v$releaseVersion"
 ```
 
 The native installers remain unsigned community builds until platform signature checks are

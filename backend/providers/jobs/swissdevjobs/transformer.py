@@ -4,6 +4,7 @@ from typing import Any
 
 from pydantic import ValidationError
 
+from backend.core.diagnostics import FailureCode, diagnose_failure, log_failure
 from backend.providers.jobs.models import (
     ApplicationChannel,
     CompanyInfo,
@@ -78,10 +79,12 @@ def transform_job_data(
         if active_from:
             try:
                 created_at = datetime.fromisoformat(active_from.replace("Z", "+00:00"))
-            except (ValueError, TypeError) as e:
-                logger.warning(
-                    f"Invalid activeFrom for SwissDevJobs job {light.get('jobUrl')}: {e}"
+            except (ValueError, TypeError) as error:
+                diagnostic = diagnose_failure(
+                    error,
+                    FailureCode.PROVIDER_TRANSFORM_FAILED,
                 )
+                log_failure(logger, diagnostic, level=logging.WARNING)
 
         return JobListing(
             id=str(job_id),
@@ -95,9 +98,11 @@ def transform_job_data(
             created_at=created_at,
             raw_data=detail if include_raw_data else None,
         )
-    except ValidationError as e:
-        logger.warning(f"Validation error transforming job {light.get('jobUrl')}: {e}")
+    except ValidationError as error:
+        diagnostic = diagnose_failure(error, FailureCode.PROVIDER_TRANSFORM_FAILED)
+        log_failure(logger, diagnostic, level=logging.WARNING)
         return None
-    except Exception as e:
-        logger.warning(f"Unexpected error transforming job {light.get('jobUrl')}: {e}")
+    except Exception as error:
+        diagnostic = diagnose_failure(error, FailureCode.PROVIDER_TRANSFORM_FAILED)
+        log_failure(logger, diagnostic, level=logging.WARNING)
         return None

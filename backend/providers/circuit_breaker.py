@@ -23,6 +23,8 @@ from collections.abc import Awaitable, Callable
 from enum import Enum
 from typing import Any
 
+from backend.core.diagnostics import FailureCode, diagnose_failure, log_failure
+
 logger = logging.getLogger(__name__)
 
 
@@ -138,11 +140,11 @@ class CircuitBreaker:
             prev_state = self._state
             self._state = CircuitState.OPEN
             if prev_state != CircuitState.OPEN:
+                diagnostic = diagnose_failure(exc, FailureCode.PROVIDER_REQUEST_FAILED)
+                log_failure(logger, diagnostic, level=logging.WARNING)
                 logger.warning(
-                    "Circuit breaker '%s' TRIPPED to OPEN after %d failure(s). Last error: %s",
-                    self._service,
+                    "circuit_breaker_open failure_count=%d",
                     self._failure_count,
-                    exc,
                 )
 
     def _on_success(self) -> None:

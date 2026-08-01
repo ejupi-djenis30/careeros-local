@@ -428,9 +428,7 @@ class TestLLMServiceNormalizeUserProfile:
         }
         with (
             patch.object(llm, "_get_provider", return_value=MagicMock(model_id="test/mock-model")),
-            patch.object(
-                llm, "_call_provider_json", AsyncMock(return_value=valid_llm_output)
-            ),
+            patch.object(llm, "_call_provider_json", AsyncMock(return_value=valid_llm_output)),
         ):
             result = await llm.normalize_user_profile("cv text", "Python developer", "")
 

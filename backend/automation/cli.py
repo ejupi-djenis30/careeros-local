@@ -60,11 +60,15 @@ def _emit_authorized_grant(grant: Any, token: str) -> None:
 
 def _account(db: Any, username: str) -> Any:
     from backend.repositories.user_repository import UserRepository
-    from backend.services.auth import verify_password
+    from backend.services.auth import DUMMY_PASSWORD_HASH, verify_password
 
     user = UserRepository(db).get_by_username(username.strip())
     password = getpass.getpass("CareerOS password: ")
-    if user is None or not verify_password(password, user.hashed_password):
+    # Keep unknown and known accounts on the same bcrypt path. The CLI is local,
+    # but scripts and shared terminals must not gain a username timing oracle.
+    candidate_hash = user.hashed_password if user is not None else DUMMY_PASSWORD_HASH
+    password_ok = verify_password(password, candidate_hash)
+    if user is None or not password_ok:
         raise AutomationGrantError(
             "authentication_failed", "CareerOS account authentication failed"
         )

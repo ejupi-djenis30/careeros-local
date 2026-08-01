@@ -45,9 +45,7 @@ def validate_publishable_canvas(
             if block.kind == "fact" and not block.content.title.strip():
                 raise ValueError(f"Claim block '{block.id}' requires a title before publication")
             if set(block.fact_ids) - valid_fact_ids:
-                raise ValueError(
-                    f"Claim block '{block.id}' has invalid career fact provenance"
-                )
+                raise ValueError(f"Claim block '{block.id}' has invalid career fact provenance")
     identity = next(
         (section for section in canvas.sections if section.kind == "identity" and section.visible),
         None,

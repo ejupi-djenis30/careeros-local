@@ -10,6 +10,11 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, cast
 
+from backend.storage.private_secret import (
+    InstallationSecretError,
+    read_installation_secret_file,
+)
+
 
 class AutomationRuntimeError(RuntimeError):
     """A stable automation bootstrap failure safe to show without a traceback."""
@@ -62,15 +67,15 @@ def _configure_environment(data_dir: Path) -> Path:
             "CareerOS vault not found; open the desktop app before authorizing automation",
         )
     try:
-        installation_secret = secret_path.read_text(encoding="utf-8").strip()
-    except OSError as exc:
+        installation_secret = read_installation_secret_file(secret_path, trusted_root=data_dir)
+    except FileNotFoundError as exc:
         raise AutomationRuntimeError(
             "installation_secret_missing", "CareerOS installation secret is unavailable"
         ) from exc
-    if len(installation_secret) < 32:
+    except (InstallationSecretError, OSError) as exc:
         raise AutomationRuntimeError(
             "installation_secret_invalid", "CareerOS installation secret is invalid"
-        )
+        ) from exc
     initialized_modules = {
         name for name in ("backend.core.config", "backend.db.base") if name in sys.modules
     }
@@ -223,12 +228,15 @@ def doctor(data_dir_value: str | Path | None) -> dict[str, object]:
     diagnostic_codes: list[str] = []
 
     secret_status = "missing"
-    if secret_path.is_file():
-        try:
-            installation_secret = secret_path.read_text(encoding="utf-8").strip()
-            secret_status = "ready" if len(installation_secret) >= 32 else "invalid"
-        except OSError:
-            secret_status = "unavailable"
+    try:
+        read_installation_secret_file(secret_path, trusted_root=data_dir)
+        secret_status = "ready"
+    except FileNotFoundError:
+        pass
+    except InstallationSecretError:
+        secret_status = "invalid"
+    except OSError:
+        secret_status = "unavailable"
     if secret_status != "ready":
         diagnostic_codes.append(f"installation_secret_{secret_status}")
 
@@ -259,7 +267,7 @@ def doctor(data_dir_value: str | Path | None) -> dict[str, object]:
         "ready": not diagnostic_codes,
         "diagnostic_codes": diagnostic_codes,
         "vault_exists": vault_exists,
-        "installation_secret_exists": secret_path.is_file(),
+        "installation_secret_exists": secret_status != "missing",
         "installation_secret_status": secret_status,
         "schema_status": schema_status,
         "database_revision": next(iter(current), None) if current else None,

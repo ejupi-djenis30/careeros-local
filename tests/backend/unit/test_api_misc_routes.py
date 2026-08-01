@@ -357,13 +357,17 @@ def test_deps_full():
     from backend.api.deps import get_current_user_id, job_service_dep, profile_service_dep
 
     mock_db = MagicMock()
-    mock_db.query.return_value.filter.return_value.first.return_value = None
+    session_lookup = mock_db.query.return_value.join.return_value.filter.return_value
+    session_lookup.scalar.return_value = None
 
-    with patch("backend.api.deps.decode_access_token", return_value={"sub": "missing_user"}):
+    with patch(
+        "backend.api.deps.decode_access_token",
+        return_value={"sub": "missing_user", "sid": "a" * 32},
+    ):
         with pytest.raises(HTTPException) as exc:
             get_current_user_id(token="dummy", db=mock_db)
         assert exc.value.status_code == 401
-        assert "User not found" in str(exc.value.detail)
+        assert exc.value.detail == "Invalid token"
 
     # Evaluate job/profile service wrappers
     with patch("backend.services.job_service.get_job_service") as mock_js:
@@ -375,8 +379,10 @@ def test_deps_full():
         mock_ps.assert_called_with(mock_db)
 
     # test success
-    mock_user = MagicMock(id=5)
-    mock_db.query.return_value.filter.return_value.first.return_value = mock_user
-    with patch("backend.api.deps.decode_access_token", return_value={"sub": "exist_user"}):
+    session_lookup.scalar.return_value = 5
+    with patch(
+        "backend.api.deps.decode_access_token",
+        return_value={"sub": "exist_user", "sid": "b" * 32, "purpose": "session"},
+    ):
         res_id = get_current_user_id(token="dummy", db=mock_db)
         assert res_id == 5

@@ -31,3 +31,23 @@ def test_logging_filter_redacts_formatted_arguments():
     assert "candidate@example.test" not in rendered
     assert "private summary" not in rendered
     assert "redacted-detail" in rendered
+
+
+def test_logging_filter_neutralizes_newlines_and_terminal_controls():
+    record = logging.LogRecord(
+        name="test",
+        level=logging.WARNING,
+        pathname=__file__,
+        lineno=1,
+        msg="first line\nWARNING forged record\r\n\x1b[31mcolored\x00",
+        args=(),
+        exc_info=None,
+    )
+
+    assert PrivacyRedactionFilter().filter(record)
+    rendered = PrivacyFormatter("%(message)s").format(record)
+    assert "\n" not in rendered
+    assert "\r" not in rendered
+    assert "\x1b" not in rendered
+    assert "\x00" not in rendered
+    assert "forged record" in rendered

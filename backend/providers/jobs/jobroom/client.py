@@ -8,10 +8,13 @@ Production-grade client for job-room.ch with:
 - Multiple execution modes
 """
 
+import asyncio
 import logging
 import time
 from typing import Any, cast
+from urllib.parse import quote
 
+from backend.core.diagnostics import FailureCode, diagnose_failure, log_failure
 from backend.providers.jobs.base import (
     JobProvider as BaseJobProvider,
 )
@@ -73,6 +76,7 @@ class JobRoomProvider(BaseJobProvider):
         self._session: ScraperSession | None = None
         self._mapper = BFSLocationMapper()
         self._csrf_initialized = False
+        self._session_lock = asyncio.Lock()
 
     @property
     def name(self) -> str:
@@ -113,23 +117,84 @@ class JobRoomProvider(BaseJobProvider):
 
     async def _init_session(self) -> None:
         """Initialize HTTP session with CSRF token."""
-        if self._session is None:
-            self._session = ScraperSession(
+        if self._session is not None and self._csrf_initialized:
+            return
+
+        async with self._session_lock:
+            if self._session is not None and self._csrf_initialized:
+                return
+
+            session = self._session or ScraperSession(
                 mode=self._mode,
                 base_url=BASE_URL,
+                provider=self.name,
             )
-            await self._session.start()
+            try:
+                await session.start()
+                await session.refresh_csrf_token(BASE_URL)
+            except BaseException:
+                # A partially initialized client must not survive cancellation or
+                # a failed CSRF bootstrap and get reused by the next operation.
+                self._session = None
+                self._csrf_initialized = False
+                try:
+                    await session.close()
+                except Exception as cleanup_error:
+                    diagnostic = diagnose_failure(
+                        cleanup_error,
+                        FailureCode.PROVIDER_REQUEST_FAILED,
+                    )
+                    log_failure(logger, diagnostic, level=logging.WARNING)
+                raise
 
-        if self._session and not self._csrf_initialized:
-            await self._session.refresh_csrf_token(BASE_URL)
+            self._session = session
             self._csrf_initialized = True
 
     async def close(self) -> None:
         """Close provider resources."""
-        if self._session:
-            await self._session.close()
+        async with self._session_lock:
+            session = self._session
             self._session = None
             self._csrf_initialized = False
+            if session is not None:
+                await session.close()
+
+    def _parse_search_response(
+        self,
+        data: Any,
+        *,
+        page_size: int,
+    ) -> tuple[list[dict[str, Any]], int]:
+        """Validate the untrusted provider envelope before transforming jobs."""
+
+        jobs: Any
+        if isinstance(data, list):
+            jobs = data
+            total_count: Any = len(jobs)
+        elif isinstance(data, dict):
+            jobs = data.get("content", data.get("jobAdvertisements", []))
+            total_count = data.get("totalElements", len(jobs) if isinstance(jobs, list) else 0)
+        else:
+            raise ResponseParseError(
+                self.name,
+                f"Unexpected response format: {type(data).__name__}",
+            )
+
+        if not isinstance(jobs, list) or any(not isinstance(job, dict) for job in jobs):
+            raise ResponseParseError(self.name, "Expected a list of job objects")
+        if len(jobs) > page_size:
+            raise ResponseParseError(
+                self.name,
+                "Provider returned more jobs than the requested page size",
+            )
+        if (
+            not isinstance(total_count, int)
+            or isinstance(total_count, bool)
+            or total_count < len(jobs)
+        ):
+            raise ResponseParseError(self.name, "Provider returned an invalid total count")
+
+        return cast(list[dict[str, Any]], jobs), total_count
 
     # =========================================================================
     # Search Implementation
@@ -143,7 +208,7 @@ class JobRoomProvider(BaseJobProvider):
         payload = build_search_payload(request, self._mapper)
 
         if self._session is None:
-            raise ProviderError(self.name, "Session not initialized — _init_session() failed")
+            raise ProviderError(self.name, "Session not initialized")
         url = build_search_url(request)
 
         try:
@@ -156,14 +221,10 @@ class JobRoomProvider(BaseJobProvider):
 
             data = response.json()
 
-            if isinstance(data, list):
-                jobs = data
-                total_count = len(jobs)
-            elif isinstance(data, dict):
-                jobs = cast(list[Any], data.get("content", data.get("jobAdvertisements", [])))
-                total_count = data.get("totalElements", len(jobs))
-            else:
-                raise ResponseParseError(self.name, f"Unexpected response format: {type(data)}")
+            jobs, total_count = self._parse_search_response(
+                data,
+                page_size=request.page_size,
+            )
 
             transformed = [
                 transform_job_data(job, self.name, self._include_raw_data) for job in jobs
@@ -183,12 +244,14 @@ class JobRoomProvider(BaseJobProvider):
                 request=request,
             )
 
-        except Exception as e:
-            from backend.providers.jobs.exceptions import format_provider_error
-
-            err_msg = format_provider_error(e)
-            logger.error(f"Search failed: {err_msg}")
-            raise ProviderError(self.name, err_msg) from e
+        except Exception as error:
+            diagnostic = diagnose_failure(error, FailureCode.PROVIDER_REQUEST_FAILED)
+            log_failure(logger, diagnostic)
+            raise ProviderError(
+                self.name,
+                "Search failed",
+                diagnostic=diagnostic,
+            ) from error
 
     # =========================================================================
     # Job Details Implementation
@@ -196,12 +259,18 @@ class JobRoomProvider(BaseJobProvider):
 
     async def get_details(self, job_id: str, language: str = "en") -> JobListing:
         """Get full details for a specific job."""
+        if not isinstance(job_id, str):
+            raise ProviderError(self.name, "Invalid job identifier")
+        normalized_job_id = job_id.strip()
+        if not normalized_job_id or len(normalized_job_id) > 256:
+            raise ProviderError(self.name, "Invalid job identifier")
+
         await self._init_session()
         if self._session is None:
-            raise ProviderError(self.name, "Session not initialized — _init_session() failed")
+            raise ProviderError(self.name, "Session not initialized")
 
         lang_param = LANGUAGE_PARAMS.get(language, "ZW4=")
-        url = f"{API_BASE}/{job_id}?_ng={lang_param}"
+        url = f"{API_BASE}/{quote(normalized_job_id, safe='')}?_ng={lang_param}"
 
         try:
             response = await self._session.with_retry_csrf(
@@ -215,18 +284,17 @@ class JobRoomProvider(BaseJobProvider):
                 {"jobAdvertisement": data}, self.name, self._include_raw_data
             )
             if listing is None:
-                raise ResponseParseError(
-                    self.name,
-                    f"Could not transform job-room details for id={job_id}",
-                )
+                raise ResponseParseError(self.name, "Job details request failed")
             return listing
 
-        except Exception as e:
-            from backend.providers.jobs.exceptions import format_provider_error
-
-            err_msg = format_provider_error(e)
-            logger.error(f"Failed to get job details: {err_msg}")
-            raise ProviderError(self.name, err_msg) from e
+        except Exception as error:
+            diagnostic = diagnose_failure(error, FailureCode.PROVIDER_DETAIL_FAILED)
+            log_failure(logger, diagnostic)
+            raise ProviderError(
+                self.name,
+                "Job details request failed",
+                diagnostic=diagnostic,
+            ) from error
 
     # =========================================================================
     # Health Check
@@ -239,7 +307,7 @@ class JobRoomProvider(BaseJobProvider):
         try:
             await self._init_session()
             if self._session is None:
-                raise ProviderError(self.name, "Session not initialized — _init_session() failed")
+                raise ProviderError(self.name, "Session not initialized")
 
             response = await self._session.get(BASE_URL)
             latency_ms = int((time.time() - start_time) * 1000)
@@ -259,11 +327,13 @@ class JobRoomProvider(BaseJobProvider):
                     message=f"HTTP {response.status_code}",
                 )
 
-        except Exception as e:
+        except Exception as error:
             latency_ms = int((time.time() - start_time) * 1000)
+            diagnostic = diagnose_failure(error, FailureCode.PROVIDER_HEALTH_FAILED)
+            log_failure(logger, diagnostic, level=logging.WARNING)
             return ProviderHealth(
                 provider=self.name,
                 status=ProviderStatus.UNAVAILABLE,
                 latency_ms=latency_ms,
-                message=str(e),
+                message=diagnostic.public_message,
             )

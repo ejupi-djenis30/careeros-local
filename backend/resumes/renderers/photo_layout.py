@@ -22,8 +22,14 @@ from reportlab.platypus import (
     Spacer,
 )
 
+from backend.resumes.artifact_policy import ensure_resume_artifact_size
 from backend.resumes.content import ResumeContent, build_content
-from backend.resumes.renderers.base import _add_docx_entry, _add_docx_heading, _configure_docx
+from backend.resumes.renderers.base import (
+    _add_docx_entry,
+    _add_docx_heading,
+    _canonicalize_docx,
+    _configure_docx,
+)
 
 
 def _text(value: str) -> str:
@@ -131,8 +137,7 @@ def _section_flowables(section, styles: dict[str, ParagraphStyle]) -> list[Flowa
         if entry.description:
             flowables.append(Paragraph(_text(entry.description), styles["body"]))
         flowables.extend(
-            Paragraph(f"&bull;&nbsp;{_text(bullet)}", styles["bullet"])
-            for bullet in entry.bullets
+            Paragraph(f"&bull;&nbsp;{_text(bullet)}", styles["bullet"]) for bullet in entry.bullets
         )
         if entry.layout.get("keep_together", True):
             result.append(KeepTogether(flowables))
@@ -155,6 +160,9 @@ def render_two_column_pdf(snapshot: dict, photo: bytes | None) -> bytes:
         title=content.display_name,
         author="CareerOS Local",
         subject="Resume",
+        creator="CareerOS Local",
+        producer="CareerOS Local",
+        invariant=True,
     )
     styles = _pdf_styles(content)
     story: list[Flowable] = []
@@ -181,7 +189,7 @@ def render_two_column_pdf(snapshot: dict, photo: bytes | None) -> bytes:
             story.append(PageBreak())
         story.append(BalancedColumns(segment, nCols=2, innerPadding=8 * mm, endSlack=0.05))
     document.build(story)
-    return output.getvalue()
+    return ensure_resume_artifact_size(output.getvalue(), label="PDF")
 
 
 def _add_header(document, content: ResumeContent, photo: bytes | None) -> None:
@@ -224,4 +232,4 @@ def render_two_column_docx(snapshot: dict, photo: bytes | None) -> bytes:
             _add_docx_entry(document, entry)
     output = BytesIO()
     document.save(output)
-    return output.getvalue()
+    return _canonicalize_docx(output.getvalue())

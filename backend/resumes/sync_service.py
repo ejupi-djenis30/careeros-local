@@ -14,9 +14,7 @@ class ResumeSynchronizationService:
         self.db = db
         self.drafts = drafts
 
-    def synchronize(
-        self, user_id: int, draft_id: str, data: ResumeSync
-    ) -> ResumeSyncResponse:
+    def synchronize(self, user_id: int, draft_id: str, data: ResumeSync) -> ResumeSyncResponse:
         profile = self.drafts.profile(user_id)
         draft = self.drafts.draft(user_id, draft_id)
         if draft.revision != data.expected_revision:
@@ -92,7 +90,5 @@ class ResumeSynchronizationService:
         self.db.commit()
         self.db.expire_all()
         result.applied = True
-        result.draft = self.drafts.response(
-            profile, self.drafts.draft(user_id, draft_id)
-        )
+        result.draft = self.drafts.response(profile, self.drafts.draft(user_id, draft_id))
         return result

@@ -359,9 +359,7 @@ class JobService:
 
             compute_and_save_preferences(user_id, self.repo.db)
 
-        return self._with_application_link(
-            user_id, self._mark_analysis_receipt(result, user_id)
-        )
+        return self._with_application_link(user_id, self._mark_analysis_receipt(result, user_id))
 
     def record_view(self, user_id: int, job_id: int):
         """Idempotently record the first time a user views a job's analysis."""
@@ -372,9 +370,7 @@ class JobService:
             raise HTTPException(status_code=403, detail="Not authorized")
         if job.viewed_at is None:
             self.repo.update(job, {"viewed_at": datetime.now(timezone.utc)})
-        return self._with_application_link(
-            user_id, self._mark_analysis_receipt(job, user_id)
-        )
+        return self._with_application_link(user_id, self._mark_analysis_receipt(job, user_id))
 
     def delete_job(self, user_id: int, job_id: int):
         """Soft-delete: mark dismissed instead of hard-deleting rows."""

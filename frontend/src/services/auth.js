@@ -2,8 +2,12 @@ import { ApiClient } from "../lib/client";
 
 export const AuthService = {
     _refreshPromise: null,
+    _logoutToken: null,
 
     async login(username, password) {
+        // Account transitions supersede every older request/refresh epoch. A
+        // late response can no longer remount or overwrite the new identity.
+        ApiClient.invalidateSession();
         const sessionEpoch = ApiClient.getSessionEpoch();
         const resData = await ApiClient.postForm(
             "/auth/login",
@@ -15,12 +19,14 @@ export const AuthService = {
         );
         if (!ApiClient.isSessionEpoch(sessionEpoch)) return null;
         if (resData.access_token) {
+            this._logoutToken = null;
             ApiClient.setToken(resData.access_token);
         }
         return resData;
     },
 
     async register(username, password) {
+        ApiClient.invalidateSession();
         const sessionEpoch = ApiClient.getSessionEpoch();
         const resData = await ApiClient.post("/auth/register", { username, password }, {
             suppressGlobalError: true,
@@ -28,6 +34,7 @@ export const AuthService = {
         });
         if (!ApiClient.isSessionEpoch(sessionEpoch)) return null;
         if (resData.access_token) {
+            this._logoutToken = null;
             ApiClient.setToken(resData.access_token);
         }
         return resData;
@@ -43,6 +50,7 @@ export const AuthService = {
                     suppressUnauthorizedRefresh: true,
                 });
                 if (resData.access_token && ApiClient.isSessionEpoch(sessionEpoch)) {
+                    this._logoutToken = null;
                     ApiClient.setToken(resData.access_token);
                     return resData;
                 }
@@ -65,15 +73,30 @@ export const AuthService = {
     },
 
     async logout() {
+        const logoutToken = this._logoutToken || ApiClient.getToken();
+        this._logoutToken = logoutToken;
         ApiClient.invalidateSession();
-        try {
-            await ApiClient.post("/auth/logout", {}, {
-                suppressGlobalError: true,
-                suppressUnauthorizedRefresh: true,
-            });
-        } catch {
-            // Logout failure is non-critical
+        const options = {
+            suppressGlobalError: true,
+            suppressUnauthorizedRefresh: true,
+        };
+        if (logoutToken) {
+            options.headers = { Authorization: `Bearer ${logoutToken}` };
         }
+        await ApiClient.post("/auth/logout", {}, options);
+        this._logoutToken = null;
+    },
+
+    prepareLogout() {
+        if (!this._logoutToken) {
+            this._logoutToken = ApiClient.getToken();
+        }
+        ApiClient.invalidateSession();
+    },
+
+    discardLogoutToken() {
+        this._logoutToken = null;
+        ApiClient.invalidateSession();
     },
 
     isLoggedIn() {

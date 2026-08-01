@@ -113,9 +113,7 @@ def load_verified_catalog(catalog_path: Path, signature_path: Path) -> ModelCata
     return ModelCatalog.model_validate_json(catalog_path.read_text(encoding="utf-8"))
 
 
-def current_platform_key(
-    *, system_name: str | None = None, machine_name: str | None = None
-) -> str:
+def current_platform_key(*, system_name: str | None = None, machine_name: str | None = None) -> str:
     system_value = system_name or sys.platform
     system = {"win32": "windows", "darwin": "macos"}.get(system_value, "linux")
     machine = (machine_name or platform.machine()).lower()

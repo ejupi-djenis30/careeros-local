@@ -11,6 +11,15 @@ from typing import Any, Dict, List, Optional
 from sqlalchemy.orm import Session
 
 from backend.core.config import settings
+from backend.core.diagnostics import (
+    ActivityCode,
+    FailureCode,
+    diagnose_failure,
+    log_failure,
+    public_activity_message,
+    public_progress_label,
+    public_progress_targets,
+)
 from backend.models import ScrapedJob, SearchProfile
 from backend.providers.circuit_breaker import CircuitOpenError
 from backend.providers.jobs.jobroom.client import JobRoomProvider
@@ -70,6 +79,7 @@ from backend.services.search.query_contracts import (
     unpack_plan_cache_payload,
 )
 from backend.services.search_status import (
+    add_failure_log,
     add_log,
     get_status,
     init_status,
@@ -171,10 +181,9 @@ class AcquisitionMixin:
                     close_result = session.aclose()
                     if asyncio.iscoroutine(close_result):
                         await close_result
-            except Exception as close_error:
-                logger.warning(
-                    "Failed to close provider %s cleanly: %s", provider_name, close_error
-                )
+            except Exception as error:
+                diagnostic = diagnose_failure(error, FailureCode.PROVIDER_CLEANUP_FAILED)
+                log_failure(logger, diagnostic, level=logging.WARNING)
 
     async def _generate_plan(
         self, profile_id: int, profile_dict: dict, profile, provider_infos
@@ -186,11 +195,7 @@ class AcquisitionMixin:
         force_regen_q = profile_dict.get("force_regenerate_queries", False)
         add_log(
             profile_id,
-            "Provider query plan: deterministic explicit-input planner; "
-            f"profile_id={profile_id} force_regenerate_queries={force_regen_q} "
-            f"max_queries={profile.max_queries} max_occupation_queries={profile.max_occupation_queries} "
-            f"max_keyword_queries={profile.max_keyword_queries} "
-            f"role_description_len={len(profile_dict.get('role_description') or '')}",
+            public_activity_message(ActivityCode.PLAN_GENERATING),
         )
         fingerprint_profile = {
             **profile_dict,
@@ -213,17 +218,21 @@ class AcquisitionMixin:
                     cache_compatible = True
                     add_log(
                         profile_id,
-                        f"Using {len(searches)} cached deterministic explicit queries.",
+                        public_activity_message(
+                            ActivityCode.PLAN_CACHE_HIT,
+                            count=len(searches),
+                        ),
                     )
                     update_status(profile_id, plan_cache_hit=1, plan_cache_miss=0)
                 else:
                     add_log(
                         profile_id,
-                        "Cached queries ignored: legacy, model-derived, or built from different explicit inputs.",
+                        public_activity_message(ActivityCode.PLAN_CACHE_REJECTED),
                     )
                     update_status(profile_id, plan_cache_hit=0, plan_cache_miss=1)
-            except Exception as e:
-                logger.error(f"Failed to parse cached queries: {e}")
+            except Exception as error:
+                diagnostic = diagnose_failure(error, FailureCode.PLAN_CACHE_READ_FAILED)
+                log_failure(logger, diagnostic)
                 update_status(profile_id, plan_cache_hit=0, plan_cache_miss=1)
         else:
             update_status(profile_id, plan_cache_hit=0, plan_cache_miss=1)
@@ -232,7 +241,7 @@ class AcquisitionMixin:
             searches = self._build_deterministic_explicit_plan(profile_dict, profile)
             add_log(
                 profile_id,
-                f"Built {len(searches)} provider queries from explicit search instructions.",
+                public_activity_message(ActivityCode.PLAN_BUILT, count=len(searches)),
             )
             update_status(
                 profile_id,
@@ -258,23 +267,28 @@ class AcquisitionMixin:
             else:
                 dropped_duplicate_queries += 1
 
-        preferred_searches, pref_stats = self._apply_query_preferences(unique_searches, preferences)
+        preferred_searches, _ = self._apply_query_preferences(unique_searches, preferences)
         dropped_by_preferences = len(unique_searches) - len(preferred_searches)
         if dropped_by_preferences:
             add_log(
                 profile_id,
-                "Provider plan preference filter: "
-                f"kept={len(preferred_searches)} dropped={dropped_by_preferences} "
-                f"dropped_language={pref_stats.get('dropped_language', 0)} "
-                f"dropped_domain={pref_stats.get('dropped_domain', 0)}",
+                public_activity_message(
+                    ActivityCode.PLAN_PREFERENCE_FILTERED,
+                    kept=len(preferred_searches),
+                    dropped=dropped_by_preferences,
+                ),
             )
         unique_searches = preferred_searches
 
         add_log(
             profile_id,
-            "Provider plan validation: "
-            f"input={len(searches)} kept={len(unique_searches)} "
-            f"dropped_empty={dropped_empty_queries} dropped_duplicates={dropped_duplicate_queries}",
+            public_activity_message(
+                ActivityCode.PLAN_VALIDATED,
+                input=len(searches),
+                kept=len(unique_searches),
+                invalid=dropped_empty_queries,
+                duplicate=dropped_duplicate_queries,
+            ),
         )
         terminal_reason = None
         if not unique_searches:
@@ -292,14 +306,15 @@ class AcquisitionMixin:
                     stats={"count": len(unique_searches)},
                 )
                 self.profile_repo.update(profile, {"cached_queries": cache_payload})
-            except Exception as e:
-                logger.warning(f"Failed to cache deterministic queries: {e}")
+            except Exception as error:
+                diagnostic = diagnose_failure(error, FailureCode.PLAN_CACHE_WRITE_FAILED)
+                log_failure(logger, diagnostic, level=logging.WARNING)
 
         # Update status with the actual plan details
         update_status(
             profile_id,
             total_searches=len(unique_searches),
-            searches_generated=unique_searches,
+            searches_generated=public_progress_targets(len(unique_searches)),
             plan_unique_count=len(unique_searches),
             planner_mode="deterministic_explicit",
             plan_provenance="deterministic-explicit",
@@ -307,12 +322,19 @@ class AcquisitionMixin:
         )
         add_log(
             profile_id,
-            f"Provider plan contains {len(unique_searches)} validated explicit queries.",
+            public_activity_message(
+                ActivityCode.PLAN_READY,
+                count=len(unique_searches),
+            ),
         )
         if profile.max_queries and len(unique_searches) < profile.max_queries:
             add_log(
                 profile_id,
-                f"⚠ Requested {profile.max_queries} queries but only {len(unique_searches)} unique queries were available after validation/deduplication",
+                public_activity_message(
+                    ActivityCode.PLAN_BELOW_REQUESTED,
+                    available=len(unique_searches),
+                    requested=profile.max_queries,
+                ),
             )
         return unique_searches
 
@@ -330,7 +352,10 @@ class AcquisitionMixin:
         query_concurrency = settings.SEARCH_CONCURRENCY if execution_mode == "immediate" else 1
         semaphore = asyncio.Semaphore(max(1, query_concurrency))
         provider_parallel = execution_mode == "immediate"
-        add_log(profile_id, f"Execution mode: {execution_mode}")
+        add_log(
+            profile_id,
+            public_activity_message(ActivityCode.PROVIDER_EXECUTION_STARTED),
+        )
 
         async def execute_single_search(idx: int, search: dict):
             async with semaphore:
@@ -341,11 +366,16 @@ class AcquisitionMixin:
 
                 normalized_search, _ = normalize_search_item(search)
                 if not normalized_search:
-                    add_log(profile_id, f"⚠ Skipping invalid query payload at index {idx + 1}")
+                    add_log(
+                        profile_id,
+                        public_activity_message(
+                            ActivityCode.QUERY_INVALID,
+                            index=idx + 1,
+                        ),
+                    )
                     return []
 
                 query = normalized_search.get("query", "")
-                domain = normalized_search.get("domain", "general")
                 query_type = normalized_search.get("type", "keyword")
                 query_language = normalized_search.get("language", "en")
 
@@ -358,22 +388,32 @@ class AcquisitionMixin:
                         execution_metrics["avam_fallback_count"] += 1
                         add_log(
                             profile_id,
-                            f"  ℹ AVAM found no codes for «{query}», JobRoom will use keyword fallback",
+                            public_activity_message(ActivityCode.OCCUPATION_FALLBACK),
                         )
 
                 compatible = route_provider_names(normalized_search, self.providers, provider_infos)
                 if not compatible:
                     execution_metrics["queries_without_provider"] += 1
-                    add_log(profile_id, f"⚠ No providers accept domain '{domain}' for «{query}»")
+                    add_log(
+                        profile_id,
+                        public_activity_message(ActivityCode.NO_PROVIDER_FOR_TARGET),
+                    )
                     return []
 
                 # Update status
                 update_status(
-                    profile_id, current_search_index=idx + 1, current_query=f"«{query}» ({domain})"
+                    profile_id,
+                    current_search_index=idx + 1,
+                    current_query=public_progress_label(idx + 1, len(searches)),
                 )
                 add_log(
                     profile_id,
-                    f"Running query {idx + 1}/{len(searches)}: «{query}» on {', '.join(compatible)}",
+                    public_activity_message(
+                        ActivityCode.QUERY_RUNNING,
+                        index=idx + 1,
+                        total=len(searches),
+                        providers=len(compatible),
+                    ),
                 )
 
                 async def search_provider(provider_name: str, req: JobSearchRequest):
@@ -474,15 +514,26 @@ class AcquisitionMixin:
                         p_results.append(await task)
 
                 found_jobs = []
-                for p_name, items, error in p_results:
+                for _provider_name, items, error in p_results:
                     if error:
                         execution_metrics["provider_failures"] += 1
                         self._increment_status_errors(profile_id)
-                        add_log(profile_id, f"  ⚠ {p_name} failed: {str(error)[:100]}")
+                        diagnostic = diagnose_failure(
+                            error,
+                            FailureCode.PROVIDER_SEARCH_FAILED,
+                        )
+                        log_failure(logger, diagnostic, level=logging.WARNING)
+                        add_failure_log(profile_id, diagnostic)
                     else:
                         execution_metrics["provider_successes"] += 1
                         found_jobs.extend(items)
-                        add_log(profile_id, f"  ↳ {p_name}: {len(items)} jobs")
+                        add_log(
+                            profile_id,
+                            public_activity_message(
+                                ActivityCode.PROVIDER_RESULTS,
+                                count=len(items),
+                            ),
+                        )
 
                 return found_jobs
 
@@ -550,7 +601,10 @@ class AcquisitionMixin:
         query_concurrency = settings.SEARCH_CONCURRENCY if execution_mode == "immediate" else 1
         semaphore = asyncio.Semaphore(max(1, query_concurrency))
         provider_parallel = execution_mode == "immediate"
-        add_log(profile_id, f"Execution mode: {execution_mode}")
+        add_log(
+            profile_id,
+            public_activity_message(ActivityCode.PROVIDER_EXECUTION_STARTED),
+        )
 
         # Mutable dedup state — shared across concurrent coroutines.
         # Safe in asyncio: check+add is always synchronous (no await between).
@@ -575,11 +629,16 @@ class AcquisitionMixin:
                 try:
                     normalized_search, _ = normalize_search_item(search)
                     if not normalized_search:
-                        add_log(profile_id, f"⚠ Skipping invalid query payload at index {idx + 1}")
+                        add_log(
+                            profile_id,
+                            public_activity_message(
+                                ActivityCode.QUERY_INVALID,
+                                index=idx + 1,
+                            ),
+                        )
                         return
 
                     query = normalized_search.get("query", "")
-                    domain = normalized_search.get("domain", "general")
                     query_type = normalized_search.get("type", "keyword")
                     query_language = normalized_search.get("language", "en")
 
@@ -592,7 +651,7 @@ class AcquisitionMixin:
                             execution_metrics["avam_fallback_count"] += 1
                             add_log(
                                 profile_id,
-                                f"  ℹ AVAM found no codes for «{query}», JobRoom will use keyword fallback",
+                                public_activity_message(ActivityCode.OCCUPATION_FALLBACK),
                             )
 
                     compatible = route_provider_names(
@@ -601,7 +660,8 @@ class AcquisitionMixin:
                     if not compatible:
                         execution_metrics["queries_without_provider"] += 1
                         add_log(
-                            profile_id, f"⚠ No providers accept domain '{domain}' for «{query}»"
+                            profile_id,
+                            public_activity_message(ActivityCode.NO_PROVIDER_FOR_TARGET),
                         )
                         return
 
@@ -610,14 +670,19 @@ class AcquisitionMixin:
                     update_status(
                         profile_id,
                         current_search_index=query_idx,
-                        current_query=f"«{query}» ({domain})",
+                        current_query=public_progress_label(query_idx, len(searches)),
                         active_search_indices=sorted(active_query_indices),
                         searches_completed=len(completed_query_indices),
                         completed_search_indices=sorted(completed_query_indices),
                     )
                     add_log(
                         profile_id,
-                        f"Running query {query_idx}/{len(searches)}: «{query}» on {', '.join(compatible)}",
+                        public_activity_message(
+                            ActivityCode.QUERY_RUNNING,
+                            index=query_idx,
+                            total=len(searches),
+                            providers=len(compatible),
+                        ),
                     )
 
                     async def search_provider(provider_name: str, req: JobSearchRequest):
@@ -703,14 +768,25 @@ class AcquisitionMixin:
                             p_results.append(await task)
 
                     found_jobs = []
-                    for p_name, items, error in p_results:
+                    for _provider_name, items, error in p_results:
                         if error:
                             execution_metrics["provider_failures"] += 1
-                            add_log(profile_id, f"  ⚠ {p_name} failed: {str(error)[:100]}")
+                            diagnostic = diagnose_failure(
+                                error,
+                                FailureCode.PROVIDER_SEARCH_FAILED,
+                            )
+                            log_failure(logger, diagnostic, level=logging.WARNING)
+                            add_failure_log(profile_id, diagnostic)
                         else:
                             execution_metrics["provider_successes"] += 1
                             found_jobs.extend(items)
-                            add_log(profile_id, f"  ↳ {p_name}: {len(items)} jobs")
+                            add_log(
+                                profile_id,
+                                public_activity_message(
+                                    ActivityCode.PROVIDER_RESULTS,
+                                    count=len(items),
+                                ),
+                            )
 
                     total_found += len(found_jobs)
                     if not found_jobs:
@@ -722,14 +798,14 @@ class AcquisitionMixin:
                     # from a later response as proof that an advert closed.
                     try:
                         await self._persist_scraped_job_catalog(profile_id, found_jobs)
-                    except Exception as persist_err:
+                    except Exception as error:
                         self._increment_status_errors(profile_id)
-                        logger.error(
-                            "Failed to persist job batch for profile %s: %s",
-                            profile_id,
-                            persist_err,
+                        diagnostic = diagnose_failure(
+                            error,
+                            FailureCode.CATALOG_PERSISTENCE_FAILED,
                         )
-                        add_log(profile_id, f"Persistence error for streamed batch: {persist_err}")
+                        log_failure(logger, diagnostic)
+                        add_failure_log(profile_id, diagnostic)
                         return
 
                     persisted_observations = [
@@ -740,8 +816,10 @@ class AcquisitionMixin:
                         self._increment_status_errors(profile_id, failed_catalog_count)
                         add_log(
                             profile_id,
-                            "Skipped "
-                            f"{failed_catalog_count} job(s) because catalog persistence failed before analysis.",
+                            public_activity_message(
+                                ActivityCode.CATALOG_ROWS_SKIPPED,
+                                count=failed_catalog_count,
+                            ),
                         )
 
                     # ── Incremental dedup: cross-query (T1-T3) + profile history ──
@@ -797,8 +875,10 @@ class AcquisitionMixin:
                     if refreshed_observation_count:
                         add_log(
                             profile_id,
-                            "Reprocessing "
-                            f"{refreshed_observation_count} changed catalog observation(s).",
+                            public_activity_message(
+                                ActivityCode.OBSERVATIONS_REPROCESSING,
+                                count=refreshed_observation_count,
+                            ),
                         )
 
                     if not new_unique:
@@ -845,7 +925,11 @@ class AcquisitionMixin:
         if total_duplicates > 0:
             add_log(
                 profile_id,
-                f"Deduplication: {total_found} found, {total_duplicates} duplicates, "
-                f"{total_found - total_duplicates} unique",
+                public_activity_message(
+                    ActivityCode.DEDUPLICATION_COMPLETE,
+                    found=total_found,
+                    duplicates=total_duplicates,
+                    unique=total_found - total_duplicates,
+                ),
             )
         return total_found, total_duplicates

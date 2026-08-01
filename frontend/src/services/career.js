@@ -1,4 +1,5 @@
 import { ApiClient } from "../lib/client";
+import { VaultMaintenance } from "./vaultMaintenance";
 
 export const CareerService = {
     getProfile(options = {}) {
@@ -12,6 +13,22 @@ export const CareerService = {
     },
     saveProfile(profile) {
         return ApiClient.put("/career-profile", profile);
+    },
+    async resetVault() {
+        let result;
+        try {
+            result = await ApiClient.delete("/career-profile", {
+                headers: { "X-Confirm-Delete": "DELETE-MY-CAREER-VAULT" },
+                timeoutMs: 120_000,
+                suppressGlobalError: true,
+                suppressUnauthorizedRefresh: true,
+            });
+        } catch (error) {
+            VaultMaintenance.handleFailure(error);
+            throw error;
+        }
+        VaultMaintenance.complete();
+        return result;
     },
     uploadSource(file) {
         const formData = new FormData();

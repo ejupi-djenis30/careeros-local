@@ -8,6 +8,7 @@ from typing import Any, Dict, Optional
 
 from pydantic import ValidationError
 
+from backend.core.diagnostics import FailureCode, diagnose_failure, log_failure
 from backend.providers.jobs.models import (
     ApplicationChannel,
     CompanyInfo,
@@ -160,9 +161,11 @@ def transform_job_data(
             created_at=created_at,
             raw_data=raw_data,
         )
-    except ValidationError as e:
-        logger.warning(f"Validation error transforming Adecco job {job_id}: {e}")
+    except ValidationError as error:
+        diagnostic = diagnose_failure(error, FailureCode.PROVIDER_TRANSFORM_FAILED)
+        log_failure(logger, diagnostic, level=logging.WARNING)
         return None
-    except Exception as e:
-        logger.warning(f"Unexpected error transforming Adecco job {job_id}: {e}")
+    except Exception as error:
+        diagnostic = diagnose_failure(error, FailureCode.PROVIDER_TRANSFORM_FAILED)
+        log_failure(logger, diagnostic, level=logging.WARNING)
         return None

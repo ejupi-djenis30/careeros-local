@@ -3,7 +3,8 @@ from __future__ import annotations
 from copy import deepcopy
 from typing import Any
 
-from sqlalchemy.orm import Session
+from sqlalchemy import text as sql_text
+from sqlalchemy.orm import Query, Session
 
 from backend.career.models import CandidateProfile, CareerAsset, CareerFact, CareerGoal
 from backend.career.repository import CareerProfileRepository
@@ -26,7 +27,12 @@ from backend.resumes.schemas import (
     ResumeSummary,
     ResumeVersionLinkOption,
 )
-from backend.resumes.storage import remove_stored_artifact
+from backend.resumes.storage import (
+    RESUME_DELETE_PENDING_KEY,
+    is_resume_delete_pending,
+    reconcile_resume_publication_journals,
+    remove_stored_artifact,
+)
 
 
 class ResumeDraftService:
@@ -40,15 +46,28 @@ class ResumeDraftService:
         return profile
 
     def draft(self, user_id: int, draft_id: str) -> ResumeDraft:
-        draft = (
+        draft = self._owned_draft_query(user_id, draft_id).first()
+        if draft is None or is_resume_delete_pending(draft.generation_context):
+            raise ResumeNotFoundError("Resume draft not found")
+        return draft
+
+    def _owned_draft_query(self, user_id: int, draft_id: str) -> Query[ResumeDraft]:
+        return (
             self.db.query(ResumeDraft)
             .join(CandidateProfile, ResumeDraft.profile_id == CandidateProfile.id)
             .filter(ResumeDraft.id == draft_id, CandidateProfile.user_id == user_id)
-            .first()
         )
-        if draft is None:
-            raise ResumeNotFoundError("Resume draft not found")
-        return draft
+
+    def _locked_owned_draft(self, user_id: int, draft_id: str) -> ResumeDraft | None:
+        query = self._owned_draft_query(user_id, draft_id)
+        if self.db.get_bind().dialect.name != "sqlite":
+            query = query.with_for_update()
+        return query.first()
+
+    def _begin_sqlite_write(self) -> None:
+        self.db.rollback()
+        if self.db.get_bind().dialect.name == "sqlite":
+            self.db.execute(sql_text("BEGIN IMMEDIATE"))
 
     def validate_selection(self, profile: CandidateProfile, data: Any) -> list[CareerFact]:
         if data.template_kind == "photo" and not data.photo_asset_id:
@@ -179,6 +198,9 @@ class ResumeDraftService:
             .order_by(ResumeDraft.updated_at.desc())
             .all()
         )
+        drafts = [
+            draft for draft in drafts if not is_resume_delete_pending(draft.generation_context)
+        ]
         return [
             ResumeSummary(
                 id=draft.id,
@@ -203,6 +225,11 @@ class ResumeDraftService:
             .order_by(ResumeVersion.published_at.desc())
             .all()
         )
+        versions = [
+            version
+            for version in versions
+            if not is_resume_delete_pending(version.draft.generation_context)
+        ]
         return [
             ResumeVersionLinkOption(
                 id=version.id,
@@ -228,12 +255,16 @@ class ResumeDraftService:
                 .first()
             )
             if goal is None:
-                raise ResumeValidationError("The selected career goal does not belong to this profile")
+                raise ResumeValidationError(
+                    "The selected career goal does not belong to this profile"
+                )
         target_snapshot: dict[str, Any] = {}
         if data.target_job_id:
-            job = self.db.query(Job).filter(
-                Job.id == data.target_job_id, Job.user_id == user_id
-            ).first()
+            job = (
+                self.db.query(Job)
+                .filter(Job.id == data.target_job_id, Job.user_id == user_id)
+                .first()
+            )
             if job is None:
                 raise ResumeValidationError("The selected target job does not belong to this user")
             target_snapshot = {
@@ -271,9 +302,7 @@ class ResumeDraftService:
         self.db.refresh(draft)
         return self.response(profile, draft)
 
-    def duplicate(
-        self, user_id: int, draft_id: str, data: ResumeDuplicate
-    ) -> ResumeDraftResponse:
+    def duplicate(self, user_id: int, draft_id: str, data: ResumeDuplicate) -> ResumeDraftResponse:
         profile = self.profile(user_id)
         source = self.draft(user_id, draft_id)
         duplicate = ResumeDraft(
@@ -295,11 +324,67 @@ class ResumeDraftService:
         return self.response(profile, duplicate)
 
     def delete(self, user_id: int, draft_id: str) -> None:
-        draft = self.draft(user_id, draft_id)
-        paths = [
-            artifact.storage_path for version in draft.versions for artifact in version.artifacts
-        ]
-        self.db.delete(draft)
+        # Authentication performs a read on this request-scoped session. End
+        # that snapshot before taking SQLite's writer reservation so a publish
+        # and delete cannot both proceed from stale draft/version state.
+        self._begin_sqlite_write()
+        draft = self._locked_owned_draft(user_id, draft_id)
+        if draft is None:
+            self.db.commit()
+            return
+        committed_version_ids = {
+            version_id
+            for (version_id,) in self.db.query(ResumeVersion.id)
+            .filter(ResumeVersion.draft_id == draft_id)
+            .all()
+        }
+        reconcile_resume_publication_journals(
+            draft_id=draft_id,
+            committed_version_ids=committed_version_ids,
+        )
+
+        paths = sorted(
+            {artifact.storage_path for version in draft.versions for artifact in version.artifacts}
+        )
+        if not is_resume_delete_pending(draft.generation_context):
+            generation_context = deepcopy(draft.generation_context or {})
+            generation_context[RESUME_DELETE_PENDING_KEY] = {"version": 1}
+            draft.generation_context = generation_context
+            draft.revision += 1
+        # The marker commits before any unlink. A failed or interrupted file
+        # removal therefore leaves an owned row that a later DELETE can resume.
         self.db.commit()
-        for path in paths:
-            remove_stored_artifact(path)
+
+        self._begin_sqlite_write()
+        pending = self._locked_owned_draft(user_id, draft_id)
+        if pending is None:
+            self.db.commit()
+            return
+        paths = sorted(
+            {
+                *paths,
+                *(
+                    artifact.storage_path
+                    for version in pending.versions
+                    for artifact in version.artifacts
+                ),
+            }
+        )
+        try:
+            for path in paths:
+                remove_stored_artifact(path)
+        except Exception:
+            self.db.rollback()
+            raise
+
+        self.db.delete(pending)
+        try:
+            self.db.commit()
+        except Exception:
+            self.db.rollback()
+            # A driver may surface an error after SQLite made the commit
+            # durable. DELETE is intentionally idempotent in that case.
+            if self._owned_draft_query(user_id, draft_id).first() is None:
+                self.db.rollback()
+                return
+            raise

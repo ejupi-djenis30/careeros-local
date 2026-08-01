@@ -12,7 +12,7 @@ from backend.applications.agenda import ApplicationAgendaService
 from backend.applications.models import Application
 from backend.applications.schemas import ApplicationAgendaResponse
 from backend.applications.service import ApplicationValidationError
-from backend.db.base import Base, configure_sqlite_connection
+from backend.db.base import Base, configure_sqlite_connection, ensure_sqlite_parent
 from backend.models import User
 from backend.services.auth import get_password_hash
 
@@ -52,9 +52,7 @@ def agenda_database_path():
         yield Path(directory) / "agenda.sqlite3"
 
 
-def test_agenda_classifies_local_day_orders_and_accounts_for_omissions(
-    db_session, test_user
-):
+def test_agenda_classifies_local_day_orders_and_accounts_for_omissions(db_session, test_user):
     now = datetime(2026, 7, 23, 20, 30, tzinfo=timezone.utc)
     rows = [
         _application(
@@ -207,9 +205,7 @@ def test_agenda_is_user_scoped_and_reads_only_scalar_projections(db_session, tes
     plan_details = [str(row[-1]) for row in query_plan]
     assert plan_details
     assert all("application_events" not in detail.casefold() for detail in plan_details)
-    index_rows = db_session.connection().exec_driver_sql(
-        "PRAGMA index_list('applications')"
-    )
+    index_rows = db_session.connection().exec_driver_sql("PRAGMA index_list('applications')")
     index_names = {str(row[1]) for row in index_rows}
     assert "ix_applications_user_stage_next_action" in index_names
 
@@ -217,6 +213,7 @@ def test_agenda_is_user_scoped_and_reads_only_scalar_projections(db_session, tes
 def test_agenda_counts_and_rows_share_one_snapshot_during_interleaved_write(
     agenda_database_path,
 ):
+    ensure_sqlite_parent(f"sqlite:///{agenda_database_path.as_posix()}")
     engine = create_engine(
         f"sqlite:///{agenda_database_path.as_posix()}",
         connect_args={"check_same_thread": False},
@@ -396,9 +393,7 @@ def test_agenda_api_is_static_authenticated_and_bounds_inputs(
         assert invalid.status_code == 422
 
 
-def test_agenda_route_translates_schema_validation_to_422(
-    client, auth_headers, monkeypatch
-):
+def test_agenda_route_translates_schema_validation_to_422(client, auth_headers, monkeypatch):
     now = datetime.now(timezone.utc)
 
     def invalid_response(*_args, **_kwargs):

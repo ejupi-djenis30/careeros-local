@@ -5,8 +5,10 @@
 - The career vault is the canonical SQLite database under the OS application-data directory.
 - Attachments, photos, resume artifacts, models and runtime binaries are content-addressed or
   integrity-manifested files beside the database, never database blobs.
-- Session tokens, ports, process identifiers and active download progress are ephemeral and
-  MUST NOT be written to the vault.
+- Raw session tokens, raw JWT identifiers, ports, process identifiers and active download progress
+  are ephemeral and MUST NOT be written to the vault. The browser auth boundary persists only the
+  SHA-256 digest of the one currently valid refresh JTI in each bounded session family; access
+  JTIs are never persisted.
 - Prompts and model outputs are never stored in AI audit tables; trusted product records store
   only the accepted domain result already required by the user workflow.
 
@@ -17,6 +19,63 @@
 Aggregate over users, candidate profile, career facts, evidence sources, assets, goals, jobs,
 applications, workflows, coach conversations, resume drafts, immutable versions and exports.
 Backup manifests include schema version, record counts and content hashes.
+
+### User vault lifecycle
+
+The owner row is the durable recovery boundary. Normal session authority exists only in `ready`;
+the other states survive process loss before destructive work begins.
+
+| Field | Type | Rules |
+|------|------|-------|
+| `vault_lifecycle_state` | short string | Required; exactly `ready`, `reset_pending`, `restore_pending` or `erasure_pending`; indexed |
+| `vault_maintenance_fingerprint` | 64-char hex nullable | Required only for `restore_pending`; lowercase SHA-256 of the verified archive |
+
+Database checks bind state and fingerprint: `restore_pending` requires one canonical fingerprint,
+while every other state requires `NULL`. Transitions to pending commit before mutation. Reset and
+erasure repeat family revocation under the same owner-row serialization before returning to
+`ready` or deleting the owner. Restore returns to `ready` in the same commit that restores records,
+revokes sessions and grants, and leaves imported schedules disabled.
+
+### Auth Session
+
+`AuthSession` is content-free server-side authority for one browser access/refresh family. It is
+not part of the portable career archive. Phase T reuses this existing schema and requires no new
+table, column or migration.
+
+| Field | Type | Rules |
+|------|------|-------|
+| `id` | 32-char hex | Non-secret family id (`sid`), primary key, signed into both access and refresh JWTs |
+| `user_id` | integer | Required owner, cascade delete with User |
+| `slot` | integer | 0–7; unique with `user_id`, enforcing eight rows per account |
+| `refresh_jti_digest` | 64-char hex | Unique SHA-256 of the only current JTI; raw JTI is never stored |
+| `expires_at` | UTC timestamp | Current refresh expiry |
+| `revoked_at` | UTC timestamp nullable | Set by replay, logout or restore |
+| `created_at` | UTC timestamp | Family issuance time used for deterministic capacity eviction |
+| `updated_at` | UTC timestamp | Last rotation or revocation |
+
+State transition:
+
+```text
+issued(current digest A) -> rotated(current digest B) -> rotated(current digest C)
+          |                          |                           |
+          +-> logout/replay --------+---------------------------+-> revoked
+          +-> expiry/capacity eviction/complete erasure ----------------> removed
+```
+
+Rotation is one conditional database update over family, owner, current digest, non-revoked state
+and expiry. A zero-row update followed by a live family with a different digest is replay and
+revokes that family. Restore revokes only the restored user's rows. Complete erasure removes only
+the erased user's rows. Every protected access first validates the JWT's own expiry and then uses
+one indexed join to require this row's `id`, owner subject, non-revoked state and refresh-family
+expiry. A committed revoke or delete therefore denies all later access requests for that `sid`;
+work already authorized before the commit is not retroactively cancelled. The access JTI remains
+ephemeral because family-level authority is sufficient—there is no per-access-token blacklist.
+During reset or restore recovery, a live family may anchor only a signed, non-refreshable
+`vault_maintenance` access bearer. During erasure recovery the family is represented by a revoked
+sentinel whose digest is derived from its id; maintenance dependencies recognize it only in the
+matching durable state. Logout deletes that exact sentinel so the presented bearer cannot regain
+authority. A new correct-password login may replace it, but purpose-bound tokens never authorize
+ordinary routes, refresh, automation authentication or grant issuance.
 
 ### Provider Listing Observation
 
@@ -205,6 +264,26 @@ Evaluation rows contain no case prompts or outputs. Those remain synthetic fixtu
 
 ## New file-manifest entities
 
+### Restore ownership journal
+
+Per-account JSON copies at `.restore/user-{id}/journal.json` and `journal.backup.json` contain no
+document bytes or record payloads:
+
+| Field | Type | Rules |
+|------|------|-------|
+| `version` | integer | Exact supported journal contract |
+| `generation` | positive integer | Monotonic; a newer copy must contain a path superset |
+| `user_id` | positive integer | Exact owner namespace |
+| `archive_fingerprint` | 64-char hex | Must match durable restore lifecycle state |
+| `paths` | sorted string array | Only absent destinations under canonical `assets/` or `resumes/` |
+| `checksum` | 64-char hex | SHA-256 of the canonical preceding fields |
+
+Owner-scoped temporary bytes live only in `.restore/user-{id}/staging`. Journal copies are durable
+before publication. A valid higher generation can repair a torn lower copy only when owner,
+fingerprint and path monotonicity agree; same-generation disagreement, invalid dual copies or a
+non-monotonic generation fails closed. Cleanup removes only paths with no current binding from a
+different account and then removes the full owner namespace.
+
 ### ModelCatalogEntry
 
 Checked-in immutable metadata: key, display name, author, license, capability profile, parameter
@@ -281,3 +360,16 @@ The application-link revision adds the nullable logical-opportunity foreign key 
 unique constraint. The next revision restores the database-managed `jobs.updated_at` default that
 the earlier SQLite table rebuild had dropped. Its round-trip rebuild preserves data, indexes,
 foreign keys and uniqueness while allowing database-level inserts to omit the timestamp again.
+
+The refresh-session revision follows the current dossier-draft head and creates an empty
+`auth_sessions` table. It does not backfill stateless refresh JWTs because their raw values and
+identifiers were intentionally never persisted; a pre-migration token therefore fails closed and
+the existing auth response clears it. The unique `(user_id, slot)` constraint enforces the row cap,
+the JTI digest is unique, and the user foreign key cascades. Downgrade drops only this content-free
+authority table; upgrading again starts with no trusted refresh sessions and requires login.
+
+The vault-lifecycle revision follows the refresh-session head. It adds the two owner fields with a
+`ready`/`NULL` backfill, state/fingerprint check constraints and an index over lifecycle state.
+Upgrade preserves all vault records. Downgrade refuses while any owner is pending because dropping
+the recovery marker could expose a partially reset, restored or erased vault as normal; once every
+owner is `ready`, downgrade removes only the index, checks and lifecycle columns.

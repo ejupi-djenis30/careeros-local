@@ -124,10 +124,13 @@ def test_zero_limits_disable_queries_while_none_uses_defaults():
     )
     assert [item["query"] for item in plan] == ["Python"]
 
-    assert build_deterministic_search_plan(
-        {"role_description": "Platform Engineer"},
-        _profile(max_queries=0, max_occupation_queries=None, max_keyword_queries=None),
-    ) == []
+    assert (
+        build_deterministic_search_plan(
+            {"role_description": "Platform Engineer"},
+            _profile(max_queries=0, max_occupation_queries=None, max_keyword_queries=None),
+        )
+        == []
+    )
 
     defaulted = build_deterministic_search_plan(
         {"role_description": "Platform Engineer"},
@@ -146,7 +149,10 @@ def test_acquisition_boundary_preserves_configured_zero(monkeypatch):
         max_keyword_queries=None,
     )
 
-    assert AcquisitionMixin()._build_deterministic_explicit_plan(
-        {"role_description": "Platform Engineer", "search_strategy": "Python"},
-        profile,
-    ) == []
+    assert (
+        AcquisitionMixin()._build_deterministic_explicit_plan(
+            {"role_description": "Platform Engineer", "search_strategy": "Python"},
+            profile,
+        )
+        == []
+    )

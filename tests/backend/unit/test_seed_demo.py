@@ -154,9 +154,9 @@ def test_first_seed_creates_verified_profile_ats_resume_and_application():
 
     assert summary == seed_demo.SeedSummary("created", "created", "created", "created")
     profile_write = next(call for call in api.calls if call["method"] == "PUT")
-    assert {
-        fact["verification_status"] for fact in profile_write["payload"]["facts"]
-    } == {"confirmed"}
+    assert {fact["verification_status"] for fact in profile_write["payload"]["facts"]} == {
+        "confirmed"
+    }
     assert any(call["path"] == "/resumes/generate" for call in api.calls)
     assert any(call["path"] == "/resumes/resume-draft-id/publish" for call in api.calls)
     assert any(call["path"] == "/applications" and call["method"] == "POST" for call in api.calls)
@@ -175,7 +175,13 @@ def test_repeat_seed_reuses_owned_demo_records_without_product_writes():
             seed_demo.ApiResult(200, _ready_profile()),
             seed_demo.ApiResult(
                 200,
-                [{"id": "resume-draft-id", "title": seed_demo.DEMO_RESUME_TITLE, "template_kind": "ats"}],
+                [
+                    {
+                        "id": "resume-draft-id",
+                        "title": seed_demo.DEMO_RESUME_TITLE,
+                        "template_kind": "ats",
+                    }
+                ],
             ),
             seed_demo.ApiResult(200, {"versions": [_published_version()]}),
             seed_demo.ApiResult(
@@ -199,15 +205,12 @@ def test_repeat_seed_reuses_owned_demo_records_without_product_writes():
     product_writes = [
         call
         for call in api.calls
-        if call["method"] in {"POST", "PUT", "PATCH"}
-        and not call["path"].startswith("/auth/")
+        if call["method"] in {"POST", "PUT", "PATCH"} and not call["path"].startswith("/auth/")
     ]
     assert product_writes == []
 
 
-def test_seed_payloads_match_the_real_api_and_second_run_is_idempotent(
-    client, monkeypatch
-):
+def test_seed_payloads_match_the_real_api_and_second_run_is_idempotent(client, monkeypatch):
     with TemporaryDirectory(prefix="careeros-seed-") as directory:
         monkeypatch.setattr("backend.storage.atomic.settings.DATA_DIR", directory)
         api = ApiTestAdapter(client)

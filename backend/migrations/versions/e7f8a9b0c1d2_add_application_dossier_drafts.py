@@ -40,7 +40,9 @@ def upgrade() -> None:
             server_default=sa.text("CURRENT_TIMESTAMP"),
             nullable=False,
         ),
-        sa.CheckConstraint("application_revision >= 1", name="ck_dossier_draft_application_revision"),
+        sa.CheckConstraint(
+            "application_revision >= 1", name="ck_dossier_draft_application_revision"
+        ),
         sa.CheckConstraint("revision >= 1", name="ck_dossier_draft_revision"),
         sa.ForeignKeyConstraint(
             ["application_id"],

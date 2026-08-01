@@ -188,7 +188,11 @@ def test_verified_application_readiness_under_100ms_p95(db_session, test_user, m
             generation_context={"mode": "deterministic"},
         )
         db_session.add(draft)
-        db_session.flush()
+        # Resume publication deliberately ends the request's prior SQLite read
+        # snapshot before acquiring BEGIN IMMEDIATE. Benchmark the real service
+        # contract with an already durable profile/draft, not fixture-only
+        # uncommitted rows that production cannot publish.
+        db_session.commit()
         version = publish_draft(
             db_session,
             profile=profile,

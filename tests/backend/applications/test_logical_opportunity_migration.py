@@ -182,13 +182,11 @@ def test_logical_opportunity_migration_backfills_and_round_trips(
     command.upgrade(config, LOGICAL_OPPORTUNITY_REVISION)
 
     inspector = sa.inspect(engine)
-    columns = {
-        column["name"]: column for column in inspector.get_columns("applications")
-    }
+    columns = {column["name"]: column for column in inspector.get_columns("applications")}
     assert columns["scraped_job_id"]["nullable"] is True
-    assert {
-        index["name"] for index in inspector.get_indexes("applications")
-    } >= {"ix_applications_scraped_job_id"}
+    assert {index["name"] for index in inspector.get_indexes("applications")} >= {
+        "ix_applications_scraped_job_id"
+    }
     assert {
         constraint["name"]: tuple(constraint["column_names"])
         for constraint in inspector.get_unique_constraints("applications")
@@ -247,8 +245,7 @@ def test_logical_opportunity_migration_backfills_and_round_trips(
     command.downgrade(config, PREVIOUS_HEAD)
     downgraded_inspector = sa.inspect(engine)
     assert "scraped_job_id" not in {
-        column["name"]
-        for column in downgraded_inspector.get_columns("applications")
+        column["name"] for column in downgraded_inspector.get_columns("applications")
     }
     assert "ix_applications_scraped_job_id" not in {
         index["name"] for index in downgraded_inspector.get_indexes("applications")
@@ -260,7 +257,7 @@ def test_logical_opportunity_migration_backfills_and_round_trips(
 
     command.upgrade(config, "head")
     script = ScriptDirectory.from_config(config)
-    assert script.get_heads() == ["e7f8a9b0c1d2"]
+    assert script.get_heads() == ["a9b0c1d2e3f4"]
 
     round_trip_metadata = sa.MetaData()
     round_trip_applications = sa.Table(
@@ -275,9 +272,7 @@ def test_logical_opportunity_migration_backfills_and_round_trips(
                 round_trip_applications.c.scraped_job_id,
             )
         ).mappings()
-        round_trip_ids = {
-            row["id"]: row["scraped_job_id"] for row in round_trip_rows
-        }
+        round_trip_ids = {row["id"]: row["scraped_job_id"] for row in round_trip_rows}
     assert round_trip_ids[_LATEST_LOW_ID] == 301
     assert round_trip_ids[_OTHER_USER_APPLICATION_ID] == 301
     assert round_trip_ids[_SECOND_MANUAL_APPLICATION_ID] is None
@@ -302,15 +297,11 @@ def test_logical_opportunity_migration_backfills_and_round_trips(
     assert all(not column["nullable"] for column in dossier_columns.values())
     assert {
         constraint["name"]: tuple(constraint["column_names"])
-        for constraint in dossier_inspector.get_unique_constraints(
-            "application_dossier_drafts"
-        )
+        for constraint in dossier_inspector.get_unique_constraints("application_dossier_drafts")
     }["uq_application_dossier_draft_application"] == ("application_id",)
     dossier_foreign_keys = {
         tuple(foreign_key["constrained_columns"]): foreign_key
-        for foreign_key in dossier_inspector.get_foreign_keys(
-            "application_dossier_drafts"
-        )
+        for foreign_key in dossier_inspector.get_foreign_keys("application_dossier_drafts")
     }
     assert dossier_foreign_keys[("application_id",)]["referred_table"] == "applications"
     assert dossier_foreign_keys[("application_id",)].get("options", {}).get("ondelete") == (

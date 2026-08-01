@@ -32,10 +32,33 @@ process remains after exit.
    language runtime, API key, or online account.
 2. **Given** an existing vault and no network connection, **When** the user restarts the
    application, **Then** all locally available non-network features and documents work.
-3. **Given** the application is closed normally or after a crash, **When** process state is
-   inspected, **Then** no application-owned background service remains orphaned.
+3. **Given** the application is closed normally, **When** process state is inspected, **Then** the
+   sidecar first receives a bounded graceful-shutdown request and FastAPI lifespan cleanup is
+   allowed to stop managed local services. **Given** instead that the native parent disappears,
+   **Then** the watchdog or operating-system containment applies a bounded fallback and no
+   application-owned background service remains orphaned.
 4. **Given** an application update, **When** it is installed, **Then** the vault is migrated
    safely and existing profile, job, application, goal and resume data remain available.
+5. **Given** the authenticated workspace at a mobile width, **When** the navigation drawer opens,
+   **Then** it is exposed as modal navigation, focus starts and remains inside it, the obscured
+   workspace and skip link become inert, background scrolling stops, and Escape closes the drawer
+   and restores focus. Activating a route or resizing to the desktop layout also closes the drawer
+   without leaving scroll or accessibility state behind, and reduced-motion preferences suppress
+   the drawer transition.
+6. **Given** English or Italian is selected on the local login screen, **When** the packaged
+   renderer starts offline, **Then** it loads only that bundled language catalogue, renders the
+   complete icon interface without an application-wide icon font, stays inside the measured boot
+   budgets and exposes no serious accessibility, contrast, keyboard-focus or CSP-console defect.
+   Switching language loads the other bundled catalogue, disables duplicate switch actions while
+   it is pending and persists the new choice only after the catalogue is ready. If neither the
+   selected catalogue nor the English fallback can load, the loading state becomes a statically
+   localized alert with a focused explicit retry and never starts an automatic reload loop.
+7. **Given** an authenticated browser session, **When** its refresh token rotates, is replayed,
+   races another refresh, is presented to logout, or predates the server-side session migration,
+   **Then** exactly one current token can rotate, detected reuse revokes the whole bounded session
+   family, every access bearer from that family immediately loses authority for new protected
+   requests after committed revocation, logout removes every valid family presented by its cookie
+   and bearer atomically, and invalid legacy cookies are cleared without exposing private content.
 
 ---
 
@@ -158,6 +181,18 @@ temporary document content remains in application-managed storage.
 4. **Given** explicit deletion confirmation, **When** local erasure completes, **Then** the
    application removes its vault, generated documents and sensitive temporary files while
    leaving unrelated user files untouched.
+5. **Given** reset, restore or erasure is killed after its first mutation, **When** CareerOS
+   restarts, **Then** normal workspace access remains blocked and the user sees only the matching
+   password-protected recovery action.
+6. **Given** a restore published one managed file before process loss, **When** the same verified
+   archive is retried, **Then** restore resumes without conflict; **When** that archive is no
+   longer available, **Then** complete erasure can remove the pending data and recovery staging.
+7. **Given** a crashed restore published content that another local account subsequently bound,
+   **When** the first restore rolls back or erases, **Then** the shared file remains intact for the
+   account that still references it.
+8. **Given** the user logs out while complete erasure is pending, **When** the old recovery bearer
+   is presented, **Then** it is rejected; a correct-password login returns a new maintenance-only
+   authority without exposing the ordinary workspace.
 
 ---
 
@@ -363,6 +398,9 @@ fails with `vault_busy` instead of opening another connection.
 - The desktop app and an automation process race to acquire the same vault lease.
 - A developer starts a read command against a vault whose schema is behind the current Alembic head.
 - A connected agent provider has different retention or training terms from CareerOS itself.
+- Two tabs or processes submit the same refresh token concurrently and one response arrives late.
+- An upgrade leaves a signed pre-migration refresh JWT in the browser without a session-family id.
+- Persistence fails after a refresh digest is conditionally replaced but before commit.
 
 ## Requirements *(mandatory)*
 
@@ -371,7 +409,14 @@ fails with `vault_busy` instead of opening another connection.
 - **FR-001**: The product MUST be installable and launchable as a desktop application on
   supported Windows, macOS and Linux systems without developer tooling.
 - **FR-002**: The desktop application MUST own startup, health monitoring, restart limits and
-  shutdown of every packaged service and local model process it starts.
+  shutdown of every packaged service and local model process it starts. A normal native exit MUST
+  first request sidecar shutdown through the per-launch token-authenticated loopback API, prevent
+  the shell from exiting while the sidecar drains, and wait only for a fixed upper bound. The
+  sidecar MUST run FastAPI lifespan cleanup before exit when recovery remains possible. Parent
+  disappearance MUST request the same graceful path through a watchdog before its own hard timeout
+  unless operating-system containment has already terminated the process tree. A failed drain MUST
+  fall back to direct termination; on Windows the sidecar and descendants MUST be contained by a
+  kill-on-close Job Object so abrupt parent death or a wedged runtime cannot leave an orphan.
 - **FR-003**: The product MUST provide clear install, upgrade and uninstall behavior that does
   not erase the career vault unless the user explicitly requests data removal.
 - **FR-004**: The product MUST remain fully usable offline after required local components and
@@ -640,7 +685,10 @@ fails with `vault_busy` instead of opening another connection.
   or mutate the failed-check state; the authenticated desktop session MAY only revoke an owned
   grant. Listing MUST return every active owned grant plus bounded recent history. Creation MAY
   return the bearer only in that successful response; listing and revocation MUST never return or
-  reconstruct it.
+  reconstruct it. Inactive history MUST be ordered by the transition that removed authority, and a
+  successful create or first revocation MUST prune only that owner's inactive tail to the 100 most
+  recent rows without touching active grants or another account. A repeated revocation MUST return
+  the same metadata while its row remains inside that explicit retention window.
 - **FR-083**: Agent Access MUST explain the desktop-vault lease and external-client disclosure,
   present fixed scopes in plain language, identify active, expired and revoked grants, and make
   one-time token copying and dismissal keyboard accessible. The renderer MUST keep a returned
@@ -652,7 +700,186 @@ fails with `vault_busy` instead of opening another connection.
   issuance. If a successful result arrives after forced unmount, the client MUST attempt to revoke
   that grant without displaying or storing its bearer. Forced sign-out MUST wait for this
   compensating cleanup before invalidating the authenticated server session. Clipboard failure
-  MUST focus and select a keyboard-accessible read-only token field.
+  MUST focus and select a keyboard-accessible read-only token field. The page MUST explain that an
+  abrupt process or operating-system termination can outlive browser cleanup and direct the user to
+  reopen the register and revoke any completed grant whose bearer was not saved. Real-browser
+  acceptance MUST cover EN/IT, WCAG 2.2 AA, keyboard focus, 320/390/1440-pixel overflow, bounded
+  error recovery and bearer absence after route exit.
+- **FR-084**: At mobile widths, the workspace navigation drawer MUST be a labelled modal surface
+  while open. It MUST make the skip link and workspace content inert and hidden from assistive
+  technology, lock body scrolling, contain focus across its current controls, close on Escape,
+  route activation or transition to the desktop layout, and restore the prior focus and scroll
+  state when that target remains available. The visual scrim MAY close the drawer by pointer but
+  MUST NOT create a keyboard target that competes with the labelled close control. Drawer and
+  scrim transitions MUST respect `prefers-reduced-motion`. A closed off-canvas drawer MUST be
+  hidden from keyboard and assistive-technology traversal at mobile widths.
+- **FR-085**: The production renderer MUST emit English and Italian as independently loadable,
+  locally bundled catalogues and load only the selected catalogue at login. A language change MUST
+  disable both switch controls while its catalogue is pending, preserve the current language after
+  a load failure and persist only a successfully loaded choice. The controls MUST retain visible
+  keyboard focus, at least 44 by 44 CSS-pixel targets and WCAG AA small-text contrast. Production
+  code MUST NOT import the eager bilingual catalogue used by tests. If initial selected-language
+  loading and the English fallback both fail, the provider MUST expose static localized failure
+  copy and a focused user-activated retry without automatic reload or repeated requests.
+- **FR-086**: The production build MUST replace the complete Bootstrap Icons webfont with a
+  deterministic MIT-attributed SVG-mask subset generated from every explicit `bi-*` production
+  source token, plus a separate subset generated from lifecycle-only sources for initial UI. The
+  build MUST reject computed, missing or stale icon names, emit no Bootstrap Icons WOFF/WOFF2
+  asset, cap the initial JavaScript entry at 350,000 raw and 112,000 gzip bytes, cap one selected
+  locale at 82,000 raw and 26,000 gzip bytes, cap lifecycle CSS at 23,000 raw and 6,200 gzip bytes,
+  and cap worst-case login HTML, entry, one locale and CSS at 440,000 raw and 140,000 gzip bytes.
+  Bootstrap and authenticated workspace code MUST load only after a session is established; their
+  CSS and shell chunks MUST remain below 445,000/73,500 and 32,000/9,600 raw/gzip bytes
+  respectively.
+  The browser meta CSP MUST omit `frame-ancestors`, which is not enforced from meta; Nginx web
+  distribution MUST retain `frame-ancestors 'none'` and `X-Frame-Options: DENY` response headers,
+  while the native shell retains its Tauri CSP.
+- **FR-087**: Every Dependabot ecosystem entry MUST apply a seven-day default cooldown to routine
+  dependency updates. Release shell commands MUST consume repository, tag and commit context
+  through quoted environment variables rather than directly interpolating GitHub expressions.
+  The Nginx API proxy MUST normalize its upstream `Host` to `localhost` instead of forwarding the
+  client-supplied host; existing loopback binding, TrustedHost and same-origin controls remain.
+- **FR-088**: Runtime security configuration MUST accept only the canonical `development`, `test`
+  and `production` environments, the exact `/api/v1` private prefix and the reviewed `HS256` JWT
+  algorithm. Trusted hosts MUST be non-empty, unique canonical DNS or IP hosts with no wildcard,
+  scheme, path, port or ambiguous authority; bracketed IPv6 configuration and request authorities
+  MUST normalize to the same address. Production signing
+  secrets MUST contain at least 32 non-control characters without surrounding whitespace.
+  Credentialed CORS origins MUST be unique exact HTTP(S) origins or the supported Tauri origin,
+  with no wildcard, credentials, non-root path, query or fragment. Renderer API bases MUST use the
+  exact `/api/v1` path and, when absolute, an HTTP(S) loopback origin without credentials, query or
+  fragment. Production CORS MUST require HTTPS except for exact loopback and supported local Tauri
+  origins. Registration and login MUST reject, never truncate or hash, passwords over bcrypt's
+  72-byte UTF-8 boundary. Authenticated API responses MUST be non-cacheable and dynamically
+  uncompressed; Nginx MAY gzip public fingerprinted assets, MUST cache only those assets as
+  immutable, and MUST make the SPA shell and unhashed assets revalidate. Explicit logout failure
+  MUST unmount the private workspace, report the uncleared server session and offer a retry.
+  Refresh cookies MUST use the narrow auth path and every issuance or clear operation MUST remove
+  historical root-path canonical and legacy cookie variants. When `Origin` is absent, an auth
+  mutation carrying browser `Sec-Fetch-Site` metadata MUST accept only one canonical
+  `same-origin` value; `same-site`, `cross-site`, `none` or ambiguous values MUST fail closed.
+  Native and CLI callers that omit both headers MUST remain supported. The repository MUST pin
+  Node.js to `>=24.18.0 <25`, enable strict engine installation and run the same fail-fast check
+  before every Node-, Vite-, Playwright- or Tauri-backed npm entry point.
+- **FR-089**: Access and refresh JWTs MUST both include required `exp`, `iat`, `jti`, `sid`, `sub`
+  and `type` claims and MUST share one stable `sid` for their persisted `AuthSession`. Every
+  protected request MUST authorize the access token only after one indexed lookup binds its
+  signed subject and `sid` to a live, unexpired, non-revoked row. A refresh MUST additionally match
+  the SHA-256 digest of its presented JTI and atomically replace that digest while preserving the
+  family id. Reuse of an older token, including the loser of a concurrent refresh, MUST revoke the
+  family so both the winner's refresh and access credentials lose authority for new requests.
+  Logout MUST atomically revoke every distinct valid family identified by the presented refresh
+  cookie and access bearer, including an already rotated signed token. A failed logout commit MUST
+  roll back every revocation, return `503`, clear every refresh-cookie variant to prevent automatic
+  resurrection and leave only an in-memory access bearer available for explicit retry. At most
+  eight session rows MAY exist per account, enforced by database-unique slots; allocation races
+  MUST retry without exceeding that cap. Raw JWTs, raw JTIs and access-JTI state MUST NOT be
+  stored. Pre-migration access and refresh tokens without `sid` MUST fail closed; invalid refresh
+  cookies MUST be cleared. Portable export MUST exclude session rows; successful restore MUST
+  revoke only the restored account's sessions and complete erasure MUST remove only that account's
+  sessions. A failed issue, rotation or revocation commit MUST roll back. Once a revoke or delete
+  commits, all later protected requests for that family MUST return `401`; a request already
+  authorized before the commit MAY complete.
+- **FR-090**: Every account MUST persist exactly one vault lifecycle state from `ready`,
+  `reset_pending`, `restore_pending` and `erasure_pending`, with database checks that require a
+  lowercase SHA-256 archive fingerprint only for restore recovery. A destructive transition MUST
+  commit before mutation begins. A migration downgrade MUST refuse while any account is pending,
+  and ordinary login, access refresh, automation authorization and agent-grant issuance MUST fail
+  closed unless the state is `ready`.
+- **FR-091**: Correct-password login for a pending account MUST return a non-refreshable access
+  token whose signed purpose is `vault_maintenance` plus the durable `session_state`. That token
+  MUST authorize only the matching reset, restore or erasure operation and MUST be rejected by
+  normal workspace dependencies. Logout MUST invalidate a presented erasure-recovery sentinel;
+  the old bearer MUST remain invalid after password reauthentication creates a replacement.
+- **FR-092**: Reset, restore and erasure MUST share one process-wide maintenance mutex and an
+  explicit reader/writer activity gate. New readers MUST fail fast once a writer is waiting,
+  destructive work MUST run through one application worker, and cancellation MUST release every
+  gate. `/health/live` MUST remain pure asynchronous process liveness. `/health/ready` MUST try the
+  activity gate without blocking and report not-ready during writer contention or an unhealthy
+  joined managed-runtime worker.
+- **FR-093**: Reset and complete erasure MUST revoke every ordinary auth family before mutation and
+  perform a final locked sweep before completion so a login racing the initial snapshot cannot
+  survive. Reset MUST preserve only the currently presented maintenance authority; complete
+  erasure MUST remove all account sessions. Erasure MAY supersede reset or restore recovery and
+  MUST remove both published journal-owned bytes and owner-scoped staging.
+- **FR-094**: Restore MUST durably journal every absent destination before the first publication.
+  The per-account journal MUST have checksummed redundant copies, monotonic generations, a verified
+  archive fingerprint, canonical managed paths and owner-scoped staging. Restart recovery MUST
+  accept only the same verified archive; inconsistent copies or a different archive MUST fail
+  closed. A successful retry or cleanup MUST remove the complete journal namespace durably.
+- **FR-095**: Restore inspection and decoding MUST reject non-canonical UUID primary keys,
+  control-character aliases, path-like identifiers, non-canonical storage bindings and any path
+  outside the exact content-addressed asset, profile-photo or resume-artifact layout. Restore MUST
+  preserve a journaled file if another account now references it, revoke restored sessions and
+  automation grants, and restore every schedule disabled until the user explicitly enables it.
+- **FR-096**: A failed restore MAY return the account to `ready` only after rolling back database
+  work, durably deleting every still-exclusive journal-owned file, clearing recovery metadata and
+  sanitizing recoverable SQLite/WAL bytes. Any incomplete cleanup MUST retain `restore_pending`
+  with an actionable same-archive-retry-or-erasure response. Atomic publication MUST fsync content
+  and parent metadata and use a write-through replacement primitive on Windows. Startup cleanup
+  MUST delete only recognized `.write-*` temporaries under managed `assets` and `resumes` roots.
+- **FR-097**: Portable archive verification MUST enforce at most 128 MiB compressed bytes,
+  256 MiB uncompressed bytes, 5,000 members and 100,000 decoded records before unbounded work.
+  Uploaded source reads MUST stop after the configured file limit plus one byte. Parsing failures
+  MUST return stable content-free errors while private diagnostics remain sanitized.
+- **FR-098**: Data-derived job and application links MUST open only absolute credential-free HTTPS
+  URLs, while email actions MUST use the separately validated `mailto` path. The native opener
+  capability MUST expose only those same two schemes; HTTP loopback authority remains exclusive to
+  the authenticated desktop API bootstrap. Provider requests MUST reject every URL outside their
+  configured exact HTTPS origin before network activity, MUST NOT follow redirects and MUST NOT
+  inherit ambient proxy variables.
+- **FR-099**: GitHub Actions artifacts used only as ordinary CI evidence MUST expire after seven
+  days. Supply-chain evidence, build-once inputs, native target candidates and assembled release
+  inputs MUST expire after fourteen days, and every upload step MUST set retention explicitly.
+- **FR-100**: Login, recovery, localization and native boot MUST load one consolidated critical
+  stylesheet containing no authenticated-workspace layout, feature or Bootstrap rules and only the
+  icons referenced by those lifecycle surfaces. The complete icon subset, legacy styles, CareerOS
+  workspace design system and layered Bootstrap compatibility sheet MUST load only through the
+  authenticated workspace boundary in their established cascade order. Production contracts MUST
+  enforce raw and gzip ceilings independently for critical CSS, complete initial resources and the
+  lazy workspace stylesheet, and MUST preserve print, forced-colors, reduced-motion and responsive
+  viewport behavior on the surface that uses it.
+- **FR-101**: The native HTTP boundary MUST reject a request body above a configured hard ceiling
+  while ASGI is receiving it, before multipart parsing and even when `Content-Length` is absent.
+  Invalid, duplicate or conflicting declared lengths and mixed Content-Length/Transfer-Encoding
+  framing MUST fail closed and close the connection. The default ceiling MUST leave bounded
+  multipart framing room above the file ceiling and the reverse proxy MUST enforce the same limit
+  with the API's content-free JSON and private-header failure contract.
+  Every upload, decoded-text, page, archive-member, expanded-byte, resume-page and photo-pixel
+  setting MUST have a positive startup-validated hard maximum. PDF and DOCX imports MUST enforce
+  page, extracted-character, member and actual expanded-byte limits before persistence. CPU-heavy
+  source parsing and image normalization MUST run outside the event loop so pure liveness remains
+  responsive, and concurrent image requests MUST NOT mutate a process-global decoder limit.
+- **FR-102**: Every local-inference and job-provider client MUST ignore ambient proxy settings,
+  request identity encoding, reject compressed responses, refuse redirects and stop both declared
+  and actually streamed bodies at a fixed ceiling before JSON parsing. Response envelopes, model
+  catalogs, usage counters and provider page counts MUST be type- and range-validated; malformed or
+  non-finite inference parameters, timeouts, context windows, output budgets, model identifiers,
+  provider pagination, workload, coordinate and distance inputs MUST fail at construction or
+  startup. Job-Room session/CSRF initialization MUST be single-flight and cancellation-safe, and a
+  detail identifier MUST remain one percent-encoded path segment.
+- **FR-103**: Managed runtime and model acquisition MUST use manually validated HTTPS redirects,
+  allowlisted delivery hosts, bounded hop count, explicit connect/read/write/pool timeouts and no
+  ambient proxy. Declared and actual archive size, member count, duplicate/case-colliding paths,
+  special files, containment, checksum and cancellation MUST be checked before publication. A
+  runtime installation MUST retain its checksum-pinned source archive and derive an inventory of
+  every payload file; marker-only legacy installations MUST reinstall. Launch MUST reverify model
+  size/hash and runtime inventory, minimize child environment and loader/proxy variables, use the
+  runtime working directory and keep the process handle when termination is unconfirmed. Startup,
+  installation, extraction and shutdown cancellation MUST converge within bounded retry/timeout
+  policy without orphaning a managed process.
+- **FR-104**: Content-addressed publication MUST be create-if-absent and MUST never replace a race
+  winner. A losing identical writer MUST verify the durable bytes and report non-ownership; a
+  conflicting writer MUST fail. SQLite source and normalized-photo persistence MUST serialize the
+  shared file and unique row in one immediate transaction, remove only a file created by the
+  failing transaction while its lock is held, and preserve cross-profile references during
+  deletion. Successful responses MUST be prepared before commit so post-commit refresh failure
+  cannot turn committed bytes into destructive cleanup. Equivalent concurrent imports across two
+  real SQLite connections MUST converge to one file, one row per profile and no temporary residue.
+  Resume publication MUST serialize version allocation, durably journal prospective PDF/DOCX paths
+  before publication and reconcile ambiguous commit or process loss without deleting committed or
+  shared bytes. Draft deletion and complete vault erasure MUST be idempotently retryable and remove
+  every attributable publication journal and orphan while preserving foreign profile claims.
 
 ### Key Entities
 
@@ -686,6 +913,15 @@ fails with `vault_busy` instead of opening another connection.
   metrics and reproducible run results.
 - **Automation Grant**: A revocable, expiring authorization bound to one local user, represented
   at rest by a bearer-token digest, label, fixed scope set and lifecycle timestamps.
+- **Auth Session**: One bounded browser refresh family identified by a non-secret `sid`, account
+  id, unique slot, current JTI digest, expiry and optional revocation timestamp; no raw token or JTI
+  is persisted or exported.
+- **Vault Lifecycle**: The durable account state that distinguishes normal workspace authority
+  from interrupted reset, restore or complete erasure, with an archive fingerprint only while a
+  particular restore is recoverable.
+- **Restore Ownership Journal**: A redundant checksummed per-account manifest of managed paths
+  that were absent before restore, its monotonic generation and archive fingerprint, together with
+  an owner-scoped staging directory used for restart-safe publication and cleanup.
 
 ## Success Criteria *(mandatory)*
 
@@ -709,8 +945,10 @@ fails with `vault_busy` instead of opening another connection.
 - **SC-008**: A backup restored to a fresh installation reproduces 100% of expected entities,
   relationships and attachment hashes in the portability test corpus.
 - **SC-009**: Normal application exit leaves zero orphaned application-owned processes in 100%
-  of lifecycle tests; crash recovery restores a usable workspace in under 30 seconds in 95%
-  of supported test environments.
+  of lifecycle tests; normal-exit tests observe an authenticated graceful request before any
+  forced fallback, watchdog tests prove cleanup is awaited before hard exit, and crash-containment
+  tests preserve a finite shell-exit bound. Crash recovery restores a usable workspace in under
+  30 seconds in 95% of supported test environments.
 - **SC-010**: Every published artifact passes install, launch, offline reopen, export and
   uninstall smoke tests and is accompanied by a checksum and software inventory.
 - **SC-011**: Core keyboard-only workflow tests complete without a trap and all actionable
@@ -780,6 +1018,90 @@ fails with `vault_busy` instead of opening another connection.
   listing, idempotent revocation and stable content-free errors. Frontend tests prove explicit-only
   clipboard use, bearer cleanup on dismissal and unmount, keyboard operation, honest source-install
   guidance and usable grant listing after mutation failures.
+- **SC-028**: Workspace-shell tests prove modal semantics, inert and assistive-technology-hidden
+  background content, body-scroll restoration, forward and reverse focus wrapping, Escape and
+  opener-focus restoration, route and desktop-resize closure, unmount cleanup and a non-focusable
+  scrim. Real Chromium checks 320, 375, 991 and 1,280 px geometry plus reduced-motion transition
+  suppression without horizontal overflow.
+- **SC-029**: The production build reports and enforces entry, selected-locale, CSS and worst-case
+  login raw/gzip budgets, emits two independently loadable catalogues and zero icon-font files.
+  Real Chromium at 390 px proves English and persisted Italian each load only their selected
+  catalogue, English-to-Italian switching succeeds offline, both states have zero WCAG A/AA/2.1-AA
+  axe violations, inactive-language and privacy-copy contrast are at least 4.5:1, both language
+  targets are at least 44 by 44 CSS pixels, keyboard focus is visible, disabled submit semantics
+  remain correct, subset icons have visible geometry and no CSP warning or page error occurs.
+  A forced dual-catalogue failure proves localized recovery, focused retry and exactly one new
+  selected/fallback attempt only after each explicit activation.
+- **SC-030**: Configuration contract tests prove all five Dependabot entries use a seven-day
+  default cooldown, release command arguments contain no direct `github.repository`,
+  `github.ref_name` or `github.sha` interpolation, and the API proxy sends exactly
+  `Host: localhost` without reflecting `$host`.
+- **SC-031**: Configuration, API and renderer tests reject malformed environment, algorithm,
+  signing secret, CORS, API-base and overlong UTF-8 password inputs. A production container smoke
+  proves exactly one private cache policy, no API compression for a response above 1,000 bytes,
+  no-cache HTML/unhashed assets, immutable and gzip-compressed fingerprinted assets, and a
+  failed-then-successful explicit logout keeps the workspace unmounted until the server cookie is
+  cleared. Browser-origin tests reject every mutation carrying non-same-origin Fetch Metadata
+  without `Origin`, while native callers omitting both remain valid. Production-build measurements
+  remain within every login and authenticated-workspace raw/gzip ceiling. Runtime contract tests
+  prove every Node-backed npm entry point accepts Node 24.18 and fails before work below the floor.
+- **SC-032**: Auth-session acceptance tests prove required-claim rejection, digest-only storage,
+  stable access/refresh family binding, live access rejection after logout, replay, restore and
+  erasure, one compare-and-swap winner under a real two-connection refresh race, and rejection of
+  that winner's access after the loser revokes the family. They also prove atomic two-family logout
+  rollback, `503` plus cookie clearing and bearer retry after commit failure, last-started-wins
+  frontend login/register/refresh behavior, rejection and cookie clearing for pre-migration
+  tokens, an eight-row database-enforced per-account cap, cross-user restore/erasure isolation,
+  migration cascade and downgrade/upgrade, and zero partial persistence after forced failures.
+- **SC-033**: Vault-lifecycle acceptance tests kill restore after the first publication, prove a
+  same-fingerprint retry converges, prove a different archive is rejected, and prove lost-archive
+  erasure removes final bytes, owner staging and the journal. Injected late restore failures leave
+  zero private marker bytes in SQLite, WAL and SHM; incomplete cleanup retains recoverable state.
+- **SC-034**: Auth and race tests prove pending accounts cannot obtain normal access, refresh or
+  automation authority; maintenance tokens fail on ordinary routes; reset's final sweep revokes a
+  family created after its initial snapshot; logout invalidates an erasure sentinel; and only a
+  new correct-password maintenance login can complete the operation.
+- **SC-035**: Activity tests prove one writer excludes readers, queued writers prevent reader
+  starvation, cancellation releases both the maintenance mutex and activity gate, liveness stays
+  responsive during blocked database work, and readiness returns not-ready without waiting behind
+  a writer or unhealthy joined managed-runtime worker.
+- **SC-036**: Portability and storage tests reject traversal, control-character and non-canonical
+  UUID identities plus asset, photo and resume binding aliases; preserve a published file after a
+  different account binds it; validate restart journal corruption and monotonicity; clean only
+  managed stale temporary files; and exercise atomic replacement of an existing destination on
+  every supported platform, including the write-through Windows implementation.
+- **SC-037**: Resource-bound tests reject archives above every compressed, uncompressed, member
+  and record ceiling before mutation, prove uploads read only the limit plus one byte, and prove
+  corrupt PDF/document diagnostics expose neither parser internals nor source content.
+- **SC-038**: Renderer and native-capability tests reject HTTP loopback and credential-bearing
+  external targets, provider transport tests reject scheme, host, port and redirect expansion
+  before a second request, and workflow tests prove no artifact upload inherits GitHub's default
+  retention.
+- **SC-039**: A fresh production build emits exactly one initial lifecycle stylesheet at no more
+  than 23,000 raw and 6,200 gzip bytes, keeps worst-case login resources below 440,000 raw and
+  140,000 gzip bytes, and emits exactly one lazy authenticated-workspace stylesheet below 445,000
+  raw and 73,500 gzip bytes. The validator proves workspace selectors and Bootstrap are absent from
+  initial CSS while authentication, recovery, native boot, forced-colors, reduced-motion and mobile
+  lifecycle rules remain present; the lazy sheet retains workspace selectors, print and all
+  responsive/accessibility media contracts. Full frontend, distribution and real-browser login
+  and workspace responsive gates pass without weakening the established cascade.
+- **SC-040**: Request-boundary tests reject oversized declared and chunked bodies plus duplicate or
+  mixed framing before route completion with private security/no-store headers, while exact-boundary
+  bodies pass; the real Nginx image returns the same JSON 413 contract. Adversarial PDF,
+  DOCX and image tests prove every configured decompression/page/pixel ceiling, and concurrent slow
+  source/image parsing leaves `/health/live` responsive in under one second.
+- **SC-041**: Provider and inference tests use real HTTPX streams to reject long, malformed,
+  compressed, oversized and schema-invalid responses; construction tests reject non-finite or
+  out-of-range controls. Cancellation and concurrent Job-Room bootstrap tests leave no partial
+  client, redirect or cross-origin request.
+- **SC-042**: Managed-runtime tests reject redirect expansion, archive aliases, special entries,
+  declared/actual size divergence, inventory/model tampering, environment leakage and unconfirmed
+  process termination. A real checksum-pinned Windows ARM64 release archive reproduces its complete
+  inventory without downloading or launching the 1.83 GB model.
+- **SC-043**: Repeated multi-thread and real two-connection SQLite tests prove exactly one atomic
+  byte publisher, no replacement under conflicting content, one source/photo row per profile,
+  serialized monotonic resume versions, crash-reconciled publication journals, retryable deletion,
+  preserved shared ownership, bounded profile revision and zero `.write-*` residue.
 
 ## Assumptions
 

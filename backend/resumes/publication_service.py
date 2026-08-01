@@ -1,10 +1,14 @@
 from __future__ import annotations
 
-import re
-
 from sqlalchemy.orm import Session
 
 from backend.career.models import CandidateProfile
+from backend.core.config import settings
+from backend.resumes.artifact_policy import (
+    RESUME_ARTIFACT_MEDIA_TYPES,
+    read_verified_resume_artifact,
+    safe_resume_filename,
+)
 from backend.resumes.canvas import normalize_canvas
 from backend.resumes.canvas_validation import validate_publishable_canvas
 from backend.resumes.draft_service import ResumeDraftService
@@ -60,7 +64,12 @@ class ResumePublicationService:
         photo_bytes = None
         if photo:
             try:
-                photo_bytes = read_verified(photo.storage_path, photo.sha256)
+                photo_bytes = read_verified(
+                    photo.storage_path,
+                    photo.sha256,
+                    expected_size=photo.byte_size,
+                    maximum_size=settings.MAX_UPLOAD_FILE_SIZE,
+                )
             except (OSError, ValueError) as exc:
                 raise ResumeValidationError(
                     "The normalized photo failed its integrity check"
@@ -90,9 +99,7 @@ class ResumePublicationService:
 
     @staticmethod
     def _changed_keys(left: dict, right: dict) -> list[str]:
-        return sorted(
-            key for key in set(left) | set(right) if left.get(key) != right.get(key)
-        )
+        return sorted(key for key in set(left) | set(right) if left.get(key) != right.get(key))
 
     def compare(
         self, user_id: int, left_version_id: str, right_version_id: str
@@ -118,9 +125,7 @@ class ResumePublicationService:
             added_fact_ids=sorted(set(right_facts) - set(left_facts)),
             removed_fact_ids=sorted(set(left_facts) - set(right_facts)),
             changed_fact_ids=sorted(
-                fact_id
-                for fact_id in shared
-                if left_facts[fact_id] != right_facts[fact_id]
+                fact_id for fact_id in shared if left_facts[fact_id] != right_facts[fact_id]
             ),
         )
 
@@ -168,9 +173,15 @@ class ResumePublicationService:
         if result is None:
             raise ResumeNotFoundError("Resume artifact not found")
         artifact, title = result
+        expected_media_type = RESUME_ARTIFACT_MEDIA_TYPES.get(artifact.format)
+        if expected_media_type is None or artifact.media_type != expected_media_type:
+            raise ResumeValidationError("Resume artifact metadata is invalid")
         try:
-            data = read_verified(artifact.storage_path, artifact.sha256)
+            data = read_verified_resume_artifact(
+                artifact.storage_path,
+                expected_sha256=artifact.sha256,
+                expected_size=artifact.byte_size,
+            )
         except (OSError, ValueError) as exc:
             raise ResumeValidationError("Resume artifact failed its integrity check") from exc
-        safe_title = re.sub(r"[^A-Za-z0-9._-]+", "-", title).strip("-") or "resume"
-        return artifact, data, f"{safe_title}.{artifact.format}"
+        return artifact, data, safe_resume_filename(title, artifact.format)

@@ -74,7 +74,9 @@ def test_generator_is_deterministic_goal_aware_and_requires_no_model(
     def forbidden_model_call(*_args, **_kwargs):
         raise AssertionError("automatic resume generation must not require inference")
 
-    monkeypatch.setattr("backend.services.llm_service.LLMService._get_provider", forbidden_model_call)
+    monkeypatch.setattr(
+        "backend.services.llm_service.LLMService._get_provider", forbidden_model_call
+    )
     now = datetime(2026, 7, 17, tzinfo=timezone.utc)
     first = generate_resume(profile, facts, template_kind="ats", goal=goal, generated_at=now)
     second_result = generate_resume(
@@ -114,9 +116,7 @@ def test_generator_selects_targeted_facts_within_canvas_limits_and_keeps_recent_
     profile = _detached_profile()
     facts = [_skill(index, f"Generic skill {index}") for index in range(950)]
     relevant = _skill(951, "Privacy platform architecture")
-    experiences = [
-        _experience(index, f"Engineer {index}", 1995 + index) for index in range(25)
-    ]
+    experiences = [_experience(index, f"Engineer {index}", 1995 + index) for index in range(25)]
     current_relevant = _experience(999, "Staff Privacy Platform Engineer", 2025)
     facts.extend([relevant, *experiences, current_relevant])
     goal = CareerGoal(

@@ -1,8 +1,11 @@
 import errno
 import hashlib
+from concurrent.futures import ThreadPoolExecutor
 from io import BytesIO
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from threading import Event
+from time import monotonic
 from uuid import uuid4
 
 import pytest
@@ -11,6 +14,7 @@ from PIL import Image
 from pypdf import PdfReader
 
 from backend.career.models import CareerAsset
+from backend.resumes.artifact_policy import MAX_RESUME_ARTIFACT_BYTES, safe_resume_filename
 from backend.resumes.models import ResumeArtifact, ResumeVersion
 from backend.storage import atomic
 
@@ -104,6 +108,7 @@ def test_ats_resume_publishes_text_extractable_immutable_artifacts(
         assert published.status_code == 201, published.text
         version = published.json()
         assert version["semantic_version"] == "1.0.0"
+        assert version["renderer_version"] == "careeros-canvas-3.0.1"
         assert version["quality_report"]["layout"] == "single-column"
         assert version["quality_report"]["pdf_image_count"] == 0
         assert {item["format"] for item in version["artifacts"]} == {"pdf", "docx"}
@@ -113,6 +118,13 @@ def test_ats_resume_publishes_text_extractable_immutable_artifacts(
             f"/api/v1/resume-artifacts/{artifacts['pdf']['id']}", headers=auth_headers
         )
         assert pdf_response.status_code == 200
+        assert pdf_response.headers["cache-control"] == "no-store, max-age=0"
+        assert pdf_response.headers["pragma"] == "no-cache"
+        assert pdf_response.headers["content-disposition"] == (
+            'attachment; filename="Analytical-Engineer-Resume.pdf"'
+        )
+        assert int(pdf_response.headers["content-length"]) == len(pdf_response.content)
+        assert pdf_response.headers["content-type"] == "application/pdf"
         assert hashlib.sha256(pdf_response.content).hexdigest() == artifacts["pdf"]["sha256"]
         pdf = PdfReader(BytesIO(pdf_response.content))
         text = "\n".join(page.extract_text() or "" for page in pdf.pages)
@@ -124,6 +136,10 @@ def test_ats_resume_publishes_text_extractable_immutable_artifacts(
             f"/api/v1/resume-artifacts/{artifacts['docx']['id']}", headers=auth_headers
         )
         assert docx_response.status_code == 200
+        assert docx_response.headers["content-disposition"] == (
+            'attachment; filename="Analytical-Engineer-Resume.docx"'
+        )
+        assert int(docx_response.headers["content-length"]) == len(docx_response.content)
         document = Document(BytesIO(docx_response.content))
         assert "Algorithm design" in "\n".join(p.text for p in document.paragraphs)
 
@@ -141,6 +157,18 @@ def test_ats_resume_publishes_text_extractable_immutable_artifacts(
         persisted = db_session.query(ResumeVersion).filter(ResumeVersion.id == version["id"]).one()
         assert persisted.snapshot_sha256 == original_hash
         assert persisted.snapshot["profile"]["headline"] == "Analytical Engineer"
+
+        db_session.execute(
+            ResumeArtifact.__table__.update()
+            .where(ResumeArtifact.id == artifacts["pdf"]["id"])
+            .values(byte_size=MAX_RESUME_ARTIFACT_BYTES + 1)
+        )
+        db_session.commit()
+        invalid = client.get(
+            f"/api/v1/resume-artifacts/{artifacts['pdf']['id']}", headers=auth_headers
+        )
+        assert invalid.status_code == 422
+        assert invalid.headers["cache-control"] == "no-store, max-age=0"
         persisted.semantic_version = "9.9.9"
         with pytest.raises(ValueError, match="immutable"):
             db_session.commit()
@@ -154,9 +182,7 @@ def test_publish_disk_full_removes_first_artifact_and_rolls_back_version(
         data_dir = Path(directory)
         monkeypatch.setattr("backend.storage.atomic.settings.DATA_DIR", directory)
         profile = _create_profile(client, auth_headers)
-        created = client.post(
-            "/api/v1/resumes", json=_draft_payload(profile), headers=auth_headers
-        )
+        created = client.post("/api/v1/resumes", json=_draft_payload(profile), headers=auth_headers)
         assert created.status_code == 201, created.text
 
         original_fsync = atomic.os.fsync
@@ -187,9 +213,7 @@ def test_named_versions_compare_and_restore_without_mutating_history(
     with TemporaryDirectory() as directory:
         monkeypatch.setattr("backend.storage.atomic.settings.DATA_DIR", directory)
         profile = _create_profile(client, auth_headers)
-        created = client.post(
-            "/api/v1/resumes", json=_draft_payload(profile), headers=auth_headers
-        )
+        created = client.post("/api/v1/resumes", json=_draft_payload(profile), headers=auth_headers)
         assert created.status_code == 201, created.text
         draft = created.json()
 
@@ -206,9 +230,7 @@ def test_named_versions_compare_and_restore_without_mutating_history(
         changed["expected_revision"] = draft["revision"]
         changed["title"] = "Tailored Resume"
         changed["section_config"]["include_phone"] = False
-        updated = client.put(
-            f"/api/v1/resumes/{draft['id']}", json=changed, headers=auth_headers
-        )
+        updated = client.put(f"/api/v1/resumes/{draft['id']}", json=changed, headers=auth_headers)
         assert updated.status_code == 200, updated.text
 
         second_response = client.post(
@@ -228,13 +250,10 @@ def test_named_versions_compare_and_restore_without_mutating_history(
         comparison_payload = comparison.json()
         assert comparison_payload["left_name"] == "Candidatura Alpha"
         assert comparison_payload["right_name"] == "Candidatura Beta"
-        assert {"title", "section_config"} <= set(
-            comparison_payload["resume_changes"]
-        )
+        assert {"title", "section_config"} <= set(comparison_payload["resume_changes"])
 
         before_hashes = {
-            item.id: item.snapshot_sha256
-            for item in db_session.query(ResumeVersion).all()
+            item.id: item.snapshot_sha256 for item in db_session.query(ResumeVersion).all()
         }
         restored = client.post(
             f"/api/v1/resumes/{draft['id']}/versions/{first['id']}/restore",
@@ -255,8 +274,7 @@ def test_named_versions_compare_and_restore_without_mutating_history(
         }
         db_session.expire_all()
         assert {
-            item.id: item.snapshot_sha256
-            for item in db_session.query(ResumeVersion).all()
+            item.id: item.snapshot_sha256 for item in db_session.query(ResumeVersion).all()
         } == before_hashes
 
 
@@ -317,10 +335,74 @@ def test_photo_resume_strips_exif_and_embeds_only_normalized_photo(
         assert quality["docx_image_count"] >= 1
 
 
+def test_photo_normalization_does_not_block_process_liveness(client, auth_headers, monkeypatch):
+    _create_profile(client, auth_headers)
+    source = BytesIO()
+    Image.new("RGB", (96, 128), (62, 89, 120)).save(source, format="JPEG")
+    from backend.api.routes import resumes as route_module
+
+    original_normalize = route_module.normalize_photo
+    started = Event()
+    release = Event()
+
+    def slow_normalize(data):
+        started.set()
+        if not release.wait(timeout=5):
+            raise TimeoutError("test did not release photo normalization")
+        return original_normalize(data)
+
+    monkeypatch.setattr(route_module, "normalize_photo", slow_normalize)
+    with TemporaryDirectory() as directory:
+        monkeypatch.setattr("backend.storage.atomic.settings.DATA_DIR", directory)
+        with ThreadPoolExecutor(max_workers=1) as executor:
+            pending = executor.submit(
+                client.post,
+                "/api/v1/career-profile/photo",
+                files={"file": ("portrait.jpg", source.getvalue(), "image/jpeg")},
+                headers=auth_headers,
+            )
+            try:
+                assert started.wait(timeout=2)
+                before = monotonic()
+                liveness = client.get("/api/v1/health/live")
+                elapsed = monotonic() - before
+            finally:
+                release.set()
+            uploaded = pending.result(timeout=5)
+
+    assert liveness.status_code == 200
+    assert elapsed < 1.0
+    assert uploaded.status_code == 201, uploaded.text
+
+
 def test_resume_artifact_requires_owner(client, auth_headers):
     assert (
         client.get(f"/api/v1/resume-artifacts/{uuid4()}", headers=auth_headers).status_code == 404
     )
+
+
+def test_resume_artifact_rejects_malformed_identifier_without_reflecting_it(client, auth_headers):
+    marker = "not-a-uuid-private-marker"
+
+    response = client.get(f"/api/v1/resume-artifacts/{marker}", headers=auth_headers)
+
+    assert response.status_code == 422
+    assert marker not in response.text
+    assert response.headers["cache-control"] == "no-store, max-age=0"
+    assert response.headers["x-content-type-options"] == "nosniff"
+
+
+@pytest.mark.parametrize(
+    ("title", "artifact_format", "expected"),
+    [
+        ("../../CON.pdf", "pdf", "resume-CON.pdf"),
+        ("Résumé Zürich", "docx", "Resume-Zurich.docx"),
+        ("...", "pdf", "resume.pdf"),
+        ("NUL.hidden", "pdf", "resume-NUL.hidden.pdf"),
+    ],
+)
+def test_resume_download_filename_is_cross_platform_safe(title, artifact_format, expected):
+    assert safe_resume_filename(title, artifact_format) == expected
 
 
 def test_generate_resume_endpoint_creates_goal_aware_canvas(

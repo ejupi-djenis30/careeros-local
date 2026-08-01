@@ -8,6 +8,7 @@ from pydantic import ValidationError
 from sqlalchemy.orm import Session
 
 from backend.api.deps import get_current_user_id, limiter
+from backend.api.middleware import PRIVATE_NO_STORE_HEADERS
 from backend.applications.agenda import ApplicationAgendaService
 from backend.applications.schemas import (
     ApplicationAgendaResponse,
@@ -46,7 +47,8 @@ def _http_error(exc: Exception) -> HTTPException:
 def list_applications(
     offset: int = Query(default=0, ge=0),
     limit: int = Query(default=200, ge=1, le=500),
-    user_id: int = Depends(get_current_user_id), db: Session = Depends(get_db)
+    user_id: int = Depends(get_current_user_id),
+    db: Session = Depends(get_db),
 ) -> list[ApplicationSummary]:
     return ApplicationService(db).list(user_id, offset=offset, limit=limit)
 
@@ -84,9 +86,7 @@ def get_application_agenda(
     except ApplicationValidationError as exc:
         raise _http_error(exc) from exc
     except ValidationError as exc:
-        validation_error = ApplicationValidationError(
-            "Application agenda projection is invalid"
-        )
+        validation_error = ApplicationValidationError("Application agenda projection is invalid")
         raise _http_error(validation_error) from exc
 
 
@@ -113,7 +113,7 @@ def get_application(
 ) -> ApplicationResponse:
     try:
         return ApplicationService(db).get(user_id, str(application_id))
-    except ApplicationNotFoundError as exc:
+    except (ApplicationNotFoundError, ApplicationValidationError) as exc:
         raise _http_error(exc) from exc
 
 
@@ -125,7 +125,7 @@ def get_application_readiness(
 ) -> ApplicationReadinessReport:
     try:
         return ApplicationService(db).readiness(user_id, str(application_id))
-    except ApplicationNotFoundError as exc:
+    except (ApplicationNotFoundError, ApplicationValidationError) as exc:
         raise _http_error(exc) from exc
 
 
@@ -140,13 +140,13 @@ def export_application_readiness(
         exported = ApplicationService(db).export_readiness(
             user_id, str(application_id), export_format
         )
-    except ApplicationNotFoundError as exc:
+    except (ApplicationNotFoundError, ApplicationValidationError) as exc:
         raise _http_error(exc) from exc
     return Response(
         content=exported.data,
         media_type=exported.media_type,
         headers={
-            "Cache-Control": "private, no-store",
+            **PRIVATE_NO_STORE_HEADERS,
             "Content-Disposition": f'attachment; filename="{exported.filename}"',
             "X-Content-SHA256": exported.sha256,
             "X-Content-Type-Options": "nosniff",
@@ -202,9 +202,7 @@ def create_application_task(
         raise _http_error(exc) from exc
 
 
-@router.patch(
-    "/{application_id}/tasks/{task_id}", response_model=ApplicationResponse
-)
+@router.patch("/{application_id}/tasks/{task_id}", response_model=ApplicationResponse)
 @limiter.limit("40/minute")
 def update_application_task(
     request: Request,
@@ -215,9 +213,7 @@ def update_application_task(
     db: Session = Depends(get_db),
 ) -> ApplicationResponse:
     try:
-        return ApplicationService(db).update_task(
-            user_id, str(application_id), str(task_id), data
-        )
+        return ApplicationService(db).update_task(user_id, str(application_id), str(task_id), data)
     except (ApplicationNotFoundError, ApplicationConflictError, ApplicationValidationError) as exc:
         db.rollback()
         raise _http_error(exc) from exc
@@ -231,13 +227,13 @@ def export_application_task_calendar(
 ) -> Response:
     try:
         data = ApplicationService(db).task_calendar(user_id, str(application_id))
-    except ApplicationNotFoundError as exc:
+    except (ApplicationNotFoundError, ApplicationValidationError) as exc:
         raise _http_error(exc) from exc
     return Response(
         content=data,
         media_type="text/calendar; charset=utf-8",
         headers={
-            "Cache-Control": "private, no-store",
+            **PRIVATE_NO_STORE_HEADERS,
             "Content-Disposition": (
                 f'attachment; filename="careeros-application-{application_id}-tasks.ics"'
             ),
@@ -257,7 +253,7 @@ def get_application_dossier_draft(
     user_id: int = Depends(get_current_user_id),
     db: Session = Depends(get_db),
 ) -> ApplicationDossierDraftResponse | None:
-    response.headers["Cache-Control"] = "private, no-store"
+    response.headers.update(PRIVATE_NO_STORE_HEADERS)
     try:
         return ApplicationService(db).get_dossier_draft(user_id, str(application_id))
     except ApplicationNotFoundError as exc:
@@ -277,7 +273,7 @@ def put_application_dossier_draft(
     user_id: int = Depends(get_current_user_id),
     db: Session = Depends(get_db),
 ) -> ApplicationDossierDraftResponse:
-    response.headers["Cache-Control"] = "private, no-store"
+    response.headers.update(PRIVATE_NO_STORE_HEADERS)
     try:
         return ApplicationService(db).put_dossier_draft(
             user_id,
@@ -307,7 +303,7 @@ def delete_application_dossier_draft(
     except (ApplicationNotFoundError, ApplicationConflictError) as exc:
         db.rollback()
         raise _http_error(exc) from exc
-    return Response(status_code=204, headers={"Cache-Control": "private, no-store"})
+    return Response(status_code=204, headers=PRIVATE_NO_STORE_HEADERS)
 
 
 @router.post("/{application_id}/dossiers", response_model=ApplicationResponse, status_code=201)
@@ -343,7 +339,7 @@ def download_application_dossier(
         content=bundle.data,
         media_type="application/zip",
         headers={
-            "Cache-Control": "private, no-store",
+            **PRIVATE_NO_STORE_HEADERS,
             "Content-Disposition": (
                 f'attachment; filename="careeros-dossier-{application_id}-{dossier_id}.zip"'
             ),

@@ -1,6 +1,9 @@
 import re
+from typing import Literal
 
 from pydantic import BaseModel, field_validator
+
+from backend.core.credentials import password_fits_bcrypt
 
 # ═══════════════════════════════════════
 # Auth Schemas
@@ -25,6 +28,8 @@ class UserCreate(BaseModel):
     def validate_password(cls, v: str) -> str:
         if len(v) < 8:
             raise ValueError("Password must be at least 8 characters long")
+        if not password_fits_bcrypt(v):
+            raise ValueError("Password must be at most 72 UTF-8 bytes")
         if not re.search(r"[A-Z]", v):
             raise ValueError("Password must contain at least one uppercase letter")
         if not re.search(r"\d", v):
@@ -41,3 +46,4 @@ class Token(BaseModel):
     access_token: str
     token_type: str = "bearer"
     username: str
+    session_state: Literal["reset_pending", "restore_pending", "erasure_pending"] | None = None

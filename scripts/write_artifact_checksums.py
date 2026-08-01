@@ -47,7 +47,9 @@ def main() -> int:
     parser.add_argument("--output", required=True, type=Path)
     arguments = parser.parse_args()
     root = Path(__file__).resolve().parents[1]
-    bundle_root = root / "frontend" / "src-tauri" / "target" / arguments.target / "release" / "bundle"
+    bundle_root = (
+        root / "frontend" / "src-tauri" / "target" / arguments.target / "release" / "bundle"
+    )
     artifacts = release_artifacts(bundle_root)
     if not artifacts:
         raise RuntimeError(f"No desktop bundles were created under {bundle_root}")

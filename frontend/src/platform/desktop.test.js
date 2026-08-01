@@ -75,7 +75,92 @@ describe("desktop bootstrap", () => {
 
         expect(result).toMatchObject({ desktop: true, state: "ready", appVersion: "1.0.0" });
         expect(invoke).toHaveBeenCalledWith("desktop_bootstrap");
+        expect(fetchMock.mock.calls[0][1].redirect).toBe("error");
         expect(fetchMock.mock.calls[0][1].headers["X-CareerOS-Session"]).toBe(token);
+    });
+
+    it.each([
+        ["out-of-range port", { apiBaseUrl: "http://127.0.0.1:65536/api/v1" }],
+        ["version suffix smuggling", { appVersion: "1.0.0/../../payload" }],
+        ["short session token", { sessionToken: "too-short" }],
+    ])("rejects invalid native bootstrap metadata: %s", async (_label, override) => {
+        window.__TAURI_INTERNALS__ = {};
+        invoke.mockResolvedValue({
+            desktop: true,
+            apiBaseUrl: "http://127.0.0.1:43127/api/v1",
+            sessionToken: "native-" + "x".repeat(48),
+            appVersion: "1.0.0",
+            dataDirectory: "C:/CareerOS",
+            backendState: "waiting_ready",
+            ...override,
+        });
+        const fetchMock = vi.spyOn(globalThis, "fetch");
+
+        await expect(bootstrapDesktop()).rejects.toThrow(/native bootstrap/i);
+
+        expect(fetchMock).not.toHaveBeenCalled();
+    });
+
+    it("aborts a stalled authenticated readiness probe when its owner unmounts", async () => {
+        window.__TAURI_INTERNALS__ = {};
+        const token = "native-" + "x".repeat(48);
+        invoke.mockResolvedValue({
+            desktop: true,
+            apiBaseUrl: "http://127.0.0.1:43127/api/v1",
+            sessionToken: token,
+            appVersion: "1.0.0",
+            dataDirectory: "C:/CareerOS",
+            backendState: "waiting_ready",
+        });
+        let probeSignal;
+        vi.spyOn(globalThis, "fetch").mockImplementation((_url, options) => {
+            probeSignal = options.signal;
+            return new Promise((_resolve, reject) => {
+                probeSignal.addEventListener("abort", () => {
+                    reject(new DOMException("Readiness cancelled", "AbortError"));
+                }, { once: true });
+            });
+        });
+        const owner = new AbortController();
+
+        const pending = bootstrapDesktop({
+            timeoutMs: 90_000,
+            initialDelayMs: 1,
+            signal: owner.signal,
+        });
+        await vi.waitFor(() => expect(probeSignal).toBeInstanceOf(AbortSignal));
+        owner.abort();
+
+        await expect(pending).rejects.toMatchObject({ name: "AbortError" });
+        expect(probeSignal.aborted).toBe(true);
+    });
+
+    it("keeps a stalled readiness response body inside the probe deadline", async () => {
+        window.__TAURI_INTERNALS__ = {};
+        const token = "native-" + "x".repeat(48);
+        invoke.mockResolvedValue({
+            desktop: true,
+            apiBaseUrl: "http://127.0.0.1:43127/api/v1",
+            sessionToken: token,
+            appVersion: "1.0.0",
+            dataDirectory: "C:/CareerOS",
+            backendState: "waiting_ready",
+        });
+        vi.spyOn(globalThis, "fetch").mockImplementation((_url, options) => Promise.resolve({
+            ok: true,
+            status: 200,
+            json: () => new Promise((_resolve, reject) => {
+                options.signal.addEventListener("abort", () => {
+                    reject(new DOMException("Body cancelled", "AbortError"));
+                }, { once: true });
+            }),
+        }));
+
+        await expect(bootstrapDesktop({
+            timeoutMs: 25,
+            initialDelayMs: 1,
+            probeTimeoutMs: 5,
+        })).rejects.toThrow(/did not become ready/i);
     });
 
     it("uses the native backup writer and scoped restore picker", async () => {

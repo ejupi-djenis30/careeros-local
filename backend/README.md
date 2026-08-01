@@ -16,7 +16,7 @@ All persistent models must be registered in `backend/model_registry.py` and migr
 ## Run and test
 
 ```powershell
-.venv\Scripts\python.exe -m uvicorn backend.main:app --host 127.0.0.1 --port 8000 --reload
+.venv\Scripts\python.exe -m uvicorn backend.main:app --host 127.0.0.1 --port 8000 --reload --no-proxy-headers
 .venv\Scripts\python.exe -m ruff check backend tests/backend
 .venv\Scripts\python.exe -m pytest tests/backend -q
 ```

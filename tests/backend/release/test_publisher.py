@@ -6,7 +6,7 @@ from typing import Any
 
 import pytest
 
-from scripts.publish_github_release import Publisher
+from scripts.publish_github_release import Publisher, _require_publish_context
 from scripts.release_github import ApiFailure, GitHubApi, Response
 from tests.backend.release.helpers import COMMIT, RELEASE_DATE, VERSION
 
@@ -61,9 +61,7 @@ class FakeReleaseApi:
             raise ApiFailure("lost upload response", ambiguous=True)
         return dict(asset)
 
-    def update_release(
-        self, _repo: str, release_id: int, _body: dict[str, Any]
-    ) -> dict[str, Any]:
+    def update_release(self, _repo: str, release_id: int, _body: dict[str, Any]) -> dict[str, Any]:
         self.update_calls += 1
         release = next(value for value in self.release_values if value["id"] == release_id)
         release["draft"] = False
@@ -141,6 +139,26 @@ def _seed_exact_published(publisher: Publisher, api: FakeReleaseApi) -> None:
         for index, (name, record) in enumerate(publisher.expected.items(), start=1)
     ]
     api.latest_id = 101
+
+
+def test_publish_context_is_bound_to_the_requested_repository(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    expected = {
+        "GITHUB_EVENT_NAME": "push",
+        "GITHUB_REF_TYPE": "tag",
+        "GITHUB_REF_NAME": f"v{VERSION}",
+        "GITHUB_SHA": COMMIT,
+        "GITHUB_REPOSITORY": "owner/repo",
+    }
+    for name, value in expected.items():
+        monkeypatch.setenv(name, value)
+
+    _require_publish_context(f"v{VERSION}", COMMIT, "owner/repo")
+
+    monkeypatch.setenv("GITHUB_REPOSITORY", "owner/other")
+    with pytest.raises(RuntimeError, match="GITHUB_REPOSITORY=owner/repo"):
+        _require_publish_context(f"v{VERSION}", COMMIT, "owner/repo")
 
 
 def test_publisher_recovers_ambiguous_create_upload_and_publish(tmp_path: Path) -> None:
@@ -292,7 +310,7 @@ def test_duplicate_candidate_on_a_later_release_page_fails_closed(tmp_path: Path
                 200,
                 {
                     "link": (
-                        '<https://api.github.com/repos/owner/repo/releases?per_page=100&page=2>; '
+                        "<https://api.github.com/repos/owner/repo/releases?per_page=100&page=2>; "
                         'rel="next"'
                     )
                 },

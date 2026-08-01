@@ -14,9 +14,7 @@ def test_job_source_api_is_deny_by_default(client, auth_headers) -> None:
     assert response.status_code == 200
     sources = {item["key"]: item for item in response.json()}
     assert sources["local_db"]["consented"] is True
-    assert all(
-        item["consented"] is False for item in sources.values() if item["network"]
-    )
+    assert all(item["consented"] is False for item in sources.values() if item["network"])
 
 
 def test_job_source_api_reflects_only_saved_explicit_consent(client, auth_headers) -> None:

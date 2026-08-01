@@ -45,9 +45,7 @@ def test_release_date_must_match_the_unique_changelog_heading(tmp_path: Path) ->
         validate_release_date("1.6.0", "2026-07-23", tmp_path)
 
     (tmp_path / "CHANGELOG.md").write_text(
-        "# Changelog\n\n"
-        "## [1.6.0] - 2026-07-24\n\n"
-        "## [1.6.0] - 2026-07-24\n",
+        "# Changelog\n\n## [1.6.0] - 2026-07-24\n\n## [1.6.0] - 2026-07-24\n",
         encoding="utf-8",
     )
     with pytest.raises(RuntimeError, match="exactly one dated release heading"):

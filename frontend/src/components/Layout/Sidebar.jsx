@@ -9,11 +9,13 @@ export function Sidebar({ username, onLogout, isOpen, onClose, containerRef }) {
     const { t } = useI18n();
     const navigation = getNavigation(t);
     return (
-        <aside
+        <div
             id="workspace-sidebar"
             ref={containerRef}
             className={`workspace-sidebar ${isOpen ? "is-open" : ""}`}
             aria-label={t("sidebar.navigation")}
+            role={isOpen ? "dialog" : "complementary"}
+            aria-modal={isOpen || undefined}
         >
             <div className="workspace-brand">
                 <img
@@ -64,6 +66,6 @@ export function Sidebar({ username, onLogout, isOpen, onClose, containerRef }) {
                     </button>
                 </div>
             </div>
-        </aside>
+        </div>
     );
 }

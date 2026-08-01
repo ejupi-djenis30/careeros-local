@@ -147,14 +147,10 @@ class GitHubApi:
         return _object(self.json("GET", f"/repos/{repo}/releases/latest"))
 
     def create_release(self, repo: str, body: dict[str, Any]) -> dict[str, Any]:
-        return _object(
-            self.json("POST", f"/repos/{repo}/releases", body=body, expected=(201,))
-        )
+        return _object(self.json("POST", f"/repos/{repo}/releases", body=body, expected=(201,)))
 
     def update_release(self, repo: str, release_id: int, body: dict[str, Any]) -> dict[str, Any]:
-        return _object(
-            self.json("PATCH", f"/repos/{repo}/releases/{release_id}", body=body)
-        )
+        return _object(self.json("PATCH", f"/repos/{repo}/releases/{release_id}", body=body))
 
     def upload_asset(self, upload_url: str, *, name: str, payload: bytes) -> dict[str, Any]:
         base = upload_url.split("{", 1)[0]
@@ -229,9 +225,10 @@ def _resolve_annotated_tag(api: GitHubApi, repo: str, tag: str) -> str:
 def _require_contained(api: GitHubApi, *, repo: str, source_commit: str, head: str) -> None:
     comparison = _object(api.json("GET", f"/repos/{repo}/compare/{source_commit}...{head}"))
     merge_base = _object(comparison.get("merge_base_commit"))
-    if comparison.get("status") not in {"ahead", "identical"} or merge_base.get(
-        "sha"
-    ) != source_commit:
+    if (
+        comparison.get("status") not in {"ahead", "identical"}
+        or merge_base.get("sha") != source_commit
+    ):
         raise RuntimeError("Release source is not contained in the current default branch")
 
 

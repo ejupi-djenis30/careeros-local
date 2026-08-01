@@ -29,13 +29,16 @@ def _try_lock(handle: BinaryIO) -> bool:
             import msvcrt
 
             msvcrt.locking(  # type: ignore[attr-defined]
-                handle.fileno(), msvcrt.LK_NBLCK, 1  # type: ignore[attr-defined]
+                handle.fileno(),
+                msvcrt.LK_NBLCK,
+                1,  # type: ignore[attr-defined]
             )
         else:
             import fcntl
 
             fcntl.flock(  # type: ignore[attr-defined]
-                handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB  # type: ignore[attr-defined]
+                handle.fileno(),
+                fcntl.LOCK_EX | fcntl.LOCK_NB,  # type: ignore[attr-defined]
             )
     except OSError:
         return False
@@ -48,7 +51,9 @@ def _unlock(handle: BinaryIO) -> None:
         import msvcrt
 
         msvcrt.locking(  # type: ignore[attr-defined]
-            handle.fileno(), msvcrt.LK_UNLCK, 1  # type: ignore[attr-defined]
+            handle.fileno(),
+            msvcrt.LK_UNLCK,
+            1,  # type: ignore[attr-defined]
         )
     else:
         import fcntl
@@ -113,9 +118,7 @@ def desktop_instance_lease(*, root: Path | None = None) -> Iterator[None]:
             handle.write(b"0")
             handle.flush()
         if not _try_lock(handle):
-            raise DesktopInstanceAlreadyRunning(
-                "CareerOS Local is already using this career vault"
-            )
+            raise DesktopInstanceAlreadyRunning("CareerOS Local is already using this career vault")
         try:
             yield
         finally:

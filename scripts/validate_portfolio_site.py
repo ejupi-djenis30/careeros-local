@@ -99,6 +99,7 @@ class PortfolioParser(HTMLParser):
         self.videos_without_controls: list[int] = []
         self.external_executables: list[tuple[str, int]] = []
         self.referrer_policies: list[str] = []
+        self.robots_policies: list[str] = []
         self.csp_policies: list[str] = []
         self.inline_scripts: list[tuple[str, int]] = []
         self.picture_contracts: list[dict[str, object]] = []
@@ -142,7 +143,12 @@ class PortfolioParser(HTMLParser):
                 self.videos_without_controls.append(line)
         elif tag == "meta" and (attributes.get("name") or "").lower() == "referrer":
             self.referrer_policies.append(attributes.get("content") or "")
-        elif tag == "meta" and (attributes.get("http-equiv") or "").lower() == "content-security-policy":
+        elif tag == "meta" and (attributes.get("name") or "").lower() == "robots":
+            self.robots_policies.append(attributes.get("content") or "")
+        elif (
+            tag == "meta"
+            and (attributes.get("http-equiv") or "").lower() == "content-security-policy"
+        ):
             self.csp_policies.append(attributes.get("content") or "")
 
         if tag == "script" and not attributes.get("src"):
@@ -243,9 +249,7 @@ def _validate_svg_asset(path: Path, spec: EditorialAssetSpec) -> list[str]:
     if _local_name(root.tag) != "svg":
         errors.append(f"{label}: root element must be svg")
     if root.get("width") != str(spec.width) or root.get("height") != str(spec.height):
-        errors.append(
-            f"{label}: dimensions must be {spec.width}x{spec.height}"
-        )
+        errors.append(f"{label}: dimensions must be {spec.width}x{spec.height}")
     expected_view_box = f"0 0 {spec.width} {spec.height}"
     if root.get("viewBox") != expected_view_box:
         errors.append(f"{label}: viewBox must be {expected_view_box}")
@@ -291,17 +295,13 @@ def _validate_svg_asset(path: Path, spec: EditorialAssetSpec) -> list[str]:
 
     expected_quadrants = {"top-left", "top-right", "bottom-left", "bottom-right"}
     if len(quadrants) != 4 or set(quadrants) != expected_quadrants:
-        errors.append(
-            f"{label}: expected exactly four named data-quadrant elements"
-        )
+        errors.append(f"{label}: expected exactly four named data-quadrant elements")
     else:
         expected_transforms = {
             "top-left": "",
             "top-right": f"translate({spec.width} 0) scale(-1 1)",
             "bottom-left": f"translate(0 {spec.height}) scale(1 -1)",
-            "bottom-right": (
-                f"translate({spec.width} {spec.height}) scale(-1 -1)"
-            ),
+            "bottom-right": (f"translate({spec.width} {spec.height}) scale(-1 -1)"),
         }
         for name, element in quadrants.items():
             if element.get("href") != f"#{spec.quadrant_id}":
@@ -319,9 +319,7 @@ def _validate_svg_asset(path: Path, spec: EditorialAssetSpec) -> list[str]:
         if _local_name(elements[0].tag) != "rect":
             errors.append(f"{label}: data-{role} must be a rect")
             continue
-        bounds = _read_svg_bounds(
-            elements[0], label=label, role=role, errors=errors
-        )
+        bounds = _read_svg_bounds(elements[0], label=label, role=role, errors=errors)
         if bounds != expected_bounds:
             errors.append(f"{label}: {role} bounds must be {expected_bounds}")
 
@@ -369,9 +367,7 @@ def _validate_png_asset(path: Path, spec: EditorialAssetSpec) -> list[str]:
                     struct.unpack(">IIBBBBB", chunk_data)
                 )
                 if (width, height) != (spec.width, spec.height):
-                    errors.append(
-                        f"{label}: dimensions must be {spec.width}x{spec.height}"
-                    )
+                    errors.append(f"{label}: dimensions must be {spec.width}x{spec.height}")
                 if bit_depth != 8 or color_type not in {2, 6}:
                     errors.append(f"{label}: expected 8-bit RGB or RGBA pixels")
                 if compression != 0 or filtering != 0 or interlace not in {0, 1}:
@@ -385,9 +381,7 @@ def _validate_png_asset(path: Path, spec: EditorialAssetSpec) -> list[str]:
 
     unexpected_chunks = sorted(set(chunks) - ALLOWED_PNG_CHUNKS)
     if unexpected_chunks:
-        readable = ", ".join(
-            chunk.decode("ascii", errors="replace") for chunk in unexpected_chunks
-        )
+        readable = ", ".join(chunk.decode("ascii", errors="replace") for chunk in unexpected_chunks)
         errors.append(f"{label}: unsafe or metadata PNG chunks found: {readable}")
     if not chunks or chunks[0] != b"IHDR" or chunks.count(b"IHDR") != 1:
         errors.append(f"{label}: PNG must begin with exactly one IHDR")
@@ -432,9 +426,7 @@ def validate_responsive_screenshots(parser: PortfolioParser) -> list[str]:
         fallback_source = f"assets/{stem}.png"
         matching_contracts = contracts_by_fallback.get(fallback_source, [])
         if len(matching_contracts) != 1:
-            errors.append(
-                f"{fallback_source}: expected exactly one responsive picture contract"
-            )
+            errors.append(f"{fallback_source}: expected exactly one responsive picture contract")
             continue
 
         contract = matching_contracts[0]
@@ -462,9 +454,7 @@ def validate_responsive_screenshots(parser: PortfolioParser) -> list[str]:
             if isinstance(source, dict) and isinstance(source.get("type"), str)
         }
         if set(sources_by_type) != {"image/avif", "image/webp"}:
-            errors.append(
-                f"line {line}: screenshot picture must contain AVIF and WebP sources"
-            )
+            errors.append(f"line {line}: screenshot picture must contain AVIF and WebP sources")
             continue
 
         sizes_values: set[str] = set()
@@ -476,15 +466,12 @@ def validate_responsive_screenshots(parser: PortfolioParser) -> list[str]:
             srcset = source.get("srcset")
             sizes = source.get("sizes")
             if not isinstance(srcset, str) or not isinstance(sizes, str):
-                errors.append(
-                    f"line {line}: {media_type} source must declare srcset and sizes"
-                )
+                errors.append(f"line {line}: {media_type} source must declare srcset and sizes")
                 continue
             sizes_values.add(" ".join(sizes.split()))
             candidates = _parse_srcset(srcset)
             expected_candidates = [
-                (f"assets/{stem}-{width}.{extension}", f"{width}w")
-                for width in RESPONSIVE_WIDTHS
+                (f"assets/{stem}-{width}.{extension}", f"{width}w") for width in RESPONSIVE_WIDTHS
             ]
             if candidates != expected_candidates:
                 errors.append(
@@ -498,9 +485,7 @@ def validate_responsive_screenshots(parser: PortfolioParser) -> list[str]:
                     continue
                 payload = candidate_path.read_bytes()
                 valid_signature = (
-                    extension == "avif"
-                    and len(payload) >= 12
-                    and payload[4:12] == b"ftypavif"
+                    extension == "avif" and len(payload) >= 12 and payload[4:12] == b"ftypavif"
                 ) or (
                     extension == "webp"
                     and len(payload) >= 12
@@ -518,7 +503,7 @@ def validate_responsive_screenshots(parser: PortfolioParser) -> list[str]:
 
 
 def validate_robots(site_root: Path = SITE_ROOT) -> list[str]:
-    """Keep crawler policy explicit so GitHub Pages never serves its HTML 404."""
+    """Validate the project artifact without claiming host-root robots authority."""
 
     path = site_root / "robots.txt"
     if not path.is_file():
@@ -527,11 +512,7 @@ def validate_robots(site_root: Path = SITE_ROOT) -> list[str]:
         policy = path.read_text(encoding="utf-8")
     except UnicodeDecodeError:
         return ["robots.txt must be UTF-8"]
-    expected = (
-        "User-agent: *\n"
-        "Allow: /careeros-local/\n"
-        f"Sitemap: {SITE_URL}sitemap.xml\n"
-    )
+    expected = f"User-agent: *\nAllow: /careeros-local/\nSitemap: {SITE_URL}sitemap.xml\n"
     if policy.replace("\r\n", "\n") != expected:
         return ["robots.txt must retain the project Pages scope and canonical sitemap"]
     return []
@@ -592,7 +573,9 @@ def validate_pages_discovery(
         errors.append("security.txt must contain exactly the five reviewed fields")
     for position, expected_line in expected_lines.items():
         if len(lines) <= position or lines[position] != expected_line:
-            errors.append(f"security.txt is missing its canonical {expected_line.split(':', 1)[0]} field")
+            errors.append(
+                f"security.txt is missing its canonical {expected_line.split(':', 1)[0]} field"
+            )
     if re.search(r"^Contact:\s*mailto:", security_source, re.IGNORECASE | re.MULTILINE):
         errors.append("security.txt must use private vulnerability reporting, not email")
     if re.search(r"@[A-Za-z0-9.-]+", security_source):
@@ -672,6 +655,8 @@ def validate() -> list[str]:
 
     if parser.referrer_policies != ["no-referrer"]:
         errors.append("portfolio must declare exactly one no-referrer policy")
+    if parser.robots_policies != ["index, follow, max-image-preview:large"]:
+        errors.append("portfolio must declare exactly one indexable robots meta policy")
 
     if len(parser.csp_policies) != 1:
         errors.append("portfolio must declare exactly one Content Security Policy")
@@ -693,9 +678,7 @@ def validate() -> list[str]:
         }
         for directive, expected_sources in required_directives.items():
             if csp.get(directive) != expected_sources:
-                errors.append(
-                    f"CSP {directive} must be {' '.join(sorted(expected_sources))}"
-                )
+                errors.append(f"CSP {directive} must be {' '.join(sorted(expected_sources))}")
 
         expected_script_hashes = {
             "'sha256-"

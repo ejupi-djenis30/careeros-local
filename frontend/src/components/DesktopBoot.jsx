@@ -11,14 +11,16 @@ export function DesktopBoot({ children }) {
 
     useEffect(() => {
         let active = true;
-        bootstrapDesktop()
+        const controller = new AbortController();
+        bootstrapDesktop({ signal: controller.signal })
             .then(() => active && setStatus({ state: "ready", error: null }))
-            .catch((error) => active && setStatus({
+            .catch((error) => active && error?.name !== "AbortError" && setStatus({
                 state: "failed",
                 error: error instanceof Error ? error.message : String(error),
             }));
         return () => {
             active = false;
+            controller.abort();
         };
     }, [attempt]);
 
@@ -40,7 +42,7 @@ export function DesktopBoot({ children }) {
                 <div className="desktop-boot__error" role="alert">
                     <h2>{t("desktop.failed")}</h2>
                     <p>{status.error}</p>
-                    <button type="button" className="button button--primary" onClick={retry}>{t("desktop.retry")}</button>
+                    <button autoFocus type="button" className="button button--primary" onClick={retry}>{t("desktop.retry")}</button>
                 </div>
             )}
         </main>

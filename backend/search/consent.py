@@ -16,17 +16,12 @@ LOCAL_JOB_SOURCE = "local_db"
 
 def load_job_source_consents(db: Session, user_id: int) -> dict[str, bool]:
     preferences = (
-        db.query(CandidateProfile.preferences)
-        .filter(CandidateProfile.user_id == user_id)
-        .scalar()
+        db.query(CandidateProfile.preferences).filter(CandidateProfile.user_id == user_id).scalar()
     )
     raw = preferences.get("job_source_consents", {}) if isinstance(preferences, dict) else {}
     if not isinstance(raw, dict):
         return {}
-    return {
-        name: raw.get(name) is True
-        for name in NETWORK_JOB_SOURCES
-    }
+    return {name: raw.get(name) is True for name in NETWORK_JOB_SOURCES}
 
 
 def consented_job_providers(
@@ -35,8 +30,7 @@ def consented_job_providers(
     return {
         name: provider
         for name, provider in providers.items()
-        if name == LOCAL_JOB_SOURCE
-        or (name in NETWORK_JOB_SOURCES and consents.get(name) is True)
+        if name == LOCAL_JOB_SOURCE or (name in NETWORK_JOB_SOURCES and consents.get(name) is True)
     }
 
 
