@@ -21,7 +21,7 @@ ARG CAREEROS_BUILD_REVISION=unknown
 LABEL org.opencontainers.image.title="CareerOS Local web" \
       org.opencontainers.image.description="Local-first CareerOS browser interface" \
       org.opencontainers.image.source="https://github.com/ejupi-djenis30/careeros-local" \
-      org.opencontainers.image.version="1.11.0" \
+      org.opencontainers.image.version="1.11.1" \
       org.opencontainers.image.revision="${CAREEROS_BUILD_REVISION}" \
       org.opencontainers.image.licenses="MIT"
 

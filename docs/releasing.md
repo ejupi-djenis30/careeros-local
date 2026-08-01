@@ -9,6 +9,11 @@ including first-class third-party notices; the historical immutable
 [v1.10.0 release](release-evidence-v1.10.0.md) used its earlier schema-3, 25-asset contract.
 Before the next rehearsal, advance all seven version sources and never reuse a published tag.
 
+The signed `v1.11.0` tag identifies an unpublished candidate. Its tag workflow was cancelled
+before assembly, attestation or release creation after protected-branch CI exposed a storage
+contention defect. The tag remains immutable and must not be moved, reused or represented as a
+release; `v1.11.1` supersedes it with the correction and a fresh end-to-end release run.
+
 ## Candidate requirements
 
 Before creating a tag:
