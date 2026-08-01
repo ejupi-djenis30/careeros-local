@@ -5,6 +5,20 @@ All notable changes to CareerOS Local are documented here. The format follows
 
 ## [Unreleased]
 
+## [1.11.1] - 2026-08-01
+
+### Fixed
+
+- Concurrent identical content-addressed writes now accept the narrowly scoped POSIX `ctime`
+  transition caused when the winning publisher removes its private hard-link alias. Descriptor,
+  inode, file type, exact size, modification time and content still have to match, while recovery
+  metadata retains its stricter single-link and `ctime` invariants.
+
+### Changed
+
+- The 1.11 release line is published as v1.11.1. The signed v1.11.0 source tag remains immutable,
+  but its publication was stopped before a GitHub Release or any public release asset was created.
+
 ## [1.11.0] - 2026-08-01
 
 ### Added
@@ -535,7 +549,8 @@ All notable changes to CareerOS Local are documented here. The format follows
   autosave/revision loop.
 - Removed the rate-limit error and incomplete pipeline from public screenshots.
 
-[Unreleased]: https://github.com/ejupi-djenis30/careeros-local/compare/v1.11.0...HEAD
+[Unreleased]: https://github.com/ejupi-djenis30/careeros-local/compare/v1.11.1...HEAD
+[1.11.1]: https://github.com/ejupi-djenis30/careeros-local/compare/v1.11.0...v1.11.1
 [1.11.0]: https://github.com/ejupi-djenis30/careeros-local/compare/v1.10.0...v1.11.0
 [1.10.0]: https://github.com/ejupi-djenis30/careeros-local/compare/v1.9.0...v1.10.0
 [1.9.0]: https://github.com/ejupi-djenis30/careeros-local/compare/v1.8.0...v1.9.0

@@ -221,17 +221,17 @@ npm --prefix frontend run tauri:dev
 ## Use CareerOS from Codex or Claude Code
 
 Agent Access is packaged as a Python wheel, separately from the desktop app. The desktop installers
-do not add `careeros` to `PATH`. The v1.11.0 release contract treats
-`careeros_local-1.11.0-py3-none-any.whl` and `requirements.lock` as one installable pair. Download
+do not add `careeros` to `PATH`. The v1.11.1 release contract treats
+`careeros_local-1.11.1-py3-none-any.whl` and `requirements.lock` as one installable pair. Download
 both from the same release, compare them with `SHA256SUMS`, and verify their GitHub provenance:
 
 ```shell
-gh attestation verify careeros_local-1.11.0-py3-none-any.whl \
+gh attestation verify careeros_local-1.11.1-py3-none-any.whl \
   --repo ejupi-djenis30/careeros-local \
-  --source-ref refs/tags/v1.11.0
+  --source-ref refs/tags/v1.11.1
 gh attestation verify requirements.lock \
   --repo ejupi-djenis30/careeros-local \
-  --source-ref refs/tags/v1.11.0
+  --source-ref refs/tags/v1.11.1
 ```
 
 If either asset is absent, do not combine files from different releases. Build the wheel from the
@@ -263,11 +263,11 @@ means Codex or Claude Code can start it without relying on an activated developm
 $agentHome = Join-Path $env:LOCALAPPDATA "CareerOS\agent-cli"
 py -3.12 -m venv $agentHome
 $agentPython = Join-Path $agentHome "Scripts\python.exe"
-$wheel = Get-Item -LiteralPath .\dist\careeros_local-1.11.0-py3-none-any.whl `
+$wheel = Get-Item -LiteralPath .\dist\careeros_local-1.11.1-py3-none-any.whl `
   -ErrorAction Stop
 $wheelInventory = @(Get-ChildItem -LiteralPath .\dist -Filter "careeros_local-*.whl")
 if ($wheelInventory.Count -ne 1 -or $wheelInventory[0].FullName -ne $wheel.FullName) {
-  throw "dist must contain only the reviewed CareerOS 1.11.0 wheel"
+  throw "dist must contain only the reviewed CareerOS 1.11.1 wheel"
 }
 $requirementsLock = (Resolve-Path .\requirements.lock).Path
 & $agentPython -m pip install --require-hashes --requirement $requirementsLock
@@ -505,7 +505,8 @@ collectively to **CareerOS Local contributors**.
 - [CV-first first-use convergence](specs/001-desktop-career-agent/cv-first-convergence.md)
 - [Agent interface analysis](specs/001-desktop-career-agent/agent-interface-analysis.md)
 - [Agent interface convergence](specs/001-desktop-career-agent/agent-interface-convergence.md)
-- [v1.11.0 release evidence](docs/release-evidence-v1.11.0.md)
+- [v1.11.1 release evidence](docs/release-evidence-v1.11.1.md)
+- [v1.11.0 unpublished candidate record](docs/release-evidence-v1.11.0.md)
 - [v1.10.0 release evidence](docs/release-evidence-v1.10.0.md)
 - [v1.9.0 release evidence](docs/release-evidence-v1.9.0.md)
 - [v1.8.0 release preparation](specs/001-desktop-career-agent/release-evidence-v1.8.0.md)
