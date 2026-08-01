@@ -22,7 +22,7 @@ def test_container_oci_metadata_matches_release_manifests() -> None:
     tauri = json.loads((ROOT / "frontend/src-tauri/tauri.conf.json").read_text(encoding="utf-8"))
     version = pyproject["project"]["version"]
 
-    assert {version, package["version"], tauri["version"]} == {"1.10.0"}
+    assert {version, package["version"], tauri["version"]} == {"1.11.0"}
     for path in (ROOT / "Dockerfile", ROOT / "frontend/Dockerfile"):
         dockerfile = path.read_text(encoding="utf-8")
         assert dockerfile.count("ARG CAREEROS_BUILD_REVISION=unknown") == 1

@@ -418,6 +418,28 @@ def test_journal_scan_limit_fails_before_parsing_or_unlinking(
     assert len(list(journal_directory.glob("*.json"))) == 3
 
 
+def test_journal_removed_after_scan_converges_as_completed_cleanup(
+    asset_vault: AssetVault,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    journal = _pending_source_journal(asset_vault)
+    real_load = publication_module._load_journal
+    removed = False
+
+    def remove_then_load(path: Path) -> publication_module.AssetPublicationJournal:
+        nonlocal removed
+        if path == journal and not removed:
+            removed = True
+            path.unlink()
+        return real_load(path)
+
+    monkeypatch.setattr(publication_module, "_load_journal", remove_then_load)
+
+    assert _reconcile(asset_vault) == 0
+    assert removed is True
+    assert _journal_files(asset_vault) == []
+
+
 def _pending_source_journal(vault: AssetVault) -> Path:
     content = b"pending journal read contract"
     digest = hashlib.sha256(content).hexdigest()

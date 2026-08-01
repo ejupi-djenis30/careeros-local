@@ -7837,8 +7837,8 @@ which covers the CareerOS Local project itself.
   "schemaVersion": 1,
   "sourceLocks": {
     ".python-version": "aa0d6581054e6e4ff3f91839deca7a854ad37221b8784d060b42d0f847ff1a3b",
-    "frontend/package-lock.json": "2b8ea0d5082d58c216c0ece09f4ccdc01a2f89b37d936151c35f522abb14f192",
-    "frontend/src-tauri/Cargo.lock": "c2f3381797b8fc0e02f578bf20a1ed28d23c28a9ff9090a3ded95ed2eacebb87",
+    "frontend/package-lock.json": "6d5023d2e7872ea16ef90491ae4d72260a34f4e1d05bf26de0f1062dcf4d8754",
+    "frontend/src-tauri/Cargo.lock": "9aa5cfde5de6bb466034464133e4f510bfde7b6fe48f37e7610d3e14a83d0292",
     "requirements-tooling.lock": "c148290daf0b684800d7c550e40c124afaedb3f7203d63b7907e20a7a0a1f311",
     "requirements.lock": "68ed3d0d0dc96e24b2b02c5f6b4da8fdc4e53f80ca5d48672138ae1a13a0a03f"
   },

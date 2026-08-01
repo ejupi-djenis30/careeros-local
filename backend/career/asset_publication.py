@@ -121,6 +121,12 @@ def _load_journal(path: Path) -> AssetPublicationJournal:
     try:
         payload = json.loads(_read_stable_journal_bytes(path).decode("utf-8"))
         return _validated_payload(payload, filename=path.name)
+    except FileNotFoundError:
+        # A committed writer removes its journal after releasing SQLite's
+        # writer lock. Another writer may therefore enumerate that journal
+        # immediately before the cleanup finishes. Preserve the narrow
+        # disappearance signal so the namespace snapshot can converge.
+        raise
     except (OSError, UnicodeError, ValueError, json.JSONDecodeError) as exc:
         raise StorageWriteError(
             "Asset publication recovery metadata is invalid; verify the local data directory."
@@ -161,7 +167,16 @@ def all_asset_publication_journals() -> list[AssetPublicationJournal]:
             "Asset publication recovery metadata could not be scanned; "
             "verify the local data directory."
         ) from exc
-    return [_load_journal(path) for path in sorted(paths)]
+    journals: list[AssetPublicationJournal] = []
+    for path in sorted(paths):
+        try:
+            journals.append(_load_journal(path))
+        except FileNotFoundError:
+            # Post-commit cleanup is intentionally outside the database
+            # transaction. A path that disappeared after enumeration has
+            # already converged and is not malformed recovery metadata.
+            continue
+    return journals
 
 
 def write_asset_publication_journal(
