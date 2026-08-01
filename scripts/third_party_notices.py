@@ -703,6 +703,7 @@ def main() -> int:
     mode = parser.add_mutually_exclusive_group(required=True)
     mode.add_argument("--write", action="store_true")
     mode.add_argument("--check", action="store_true")
+    mode.add_argument("--verify", action="store_true")
     mode.add_argument("--package-root", type=Path)
     arguments = parser.parse_args()
     if arguments.write:
@@ -729,15 +730,16 @@ def main() -> int:
         )
         return 0
     payload = NOTICE_PATH.read_bytes()
-    generated = build_notice().encode("utf-8")
-    if payload != generated:
-        raise RuntimeError(
-            "THIRD_PARTY_NOTICES.txt is approved but is not reproducible from this toolchain"
-        )
+    if arguments.check:
+        generated = build_notice().encode("utf-8")
+        if payload != generated:
+            raise RuntimeError(
+                "THIRD_PARTY_NOTICES.txt is approved but is not reproducible from this toolchain"
+            )
     manifest = verify_notice_bytes(payload)
     counts = manifest["componentCounts"]
     print(
-        "THIRD_PARTY_NOTICES_OK "
+        ("THIRD_PARTY_NOTICES_OK " if arguments.check else "THIRD_PARTY_NOTICES_VERIFIED ")
         + " ".join(f"{key}={counts[key]}" for key in ("frontend", "python", "runtime", "rust"))
     )
     return 0

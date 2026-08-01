@@ -31,7 +31,9 @@ export function optimizeSvg(svg, iconName) {
     const match = svg.match(/^\s*<svg\b[^>]*>([\s\S]*?)<\/svg>\s*$/);
     if (!match) throw new Error(`Bootstrap icon is not a valid SVG: ${iconName}`);
     const body = match[1].replace(/>\s+</g, "><").trim();
-    if (/<!--|-->|<!\[CDATA\[|<!DOCTYPE|<\?/i.test(body)) {
+    const normalizedBody = body.toLowerCase();
+    const unsupportedXmlTokens = ["<!--", "-->", "--!>", "<![cdata[", "<!doctype", "<?"];
+    if (unsupportedXmlTokens.some((token) => normalizedBody.includes(token))) {
         throw new Error(`Bootstrap icon contains unsupported XML markup: ${iconName}`);
     }
     if (/\s(?:on[a-z][\w:-]*|href|xlink:href|src|style)\s*=/i.test(body) || /\burl\s*\(/i.test(body)) {
