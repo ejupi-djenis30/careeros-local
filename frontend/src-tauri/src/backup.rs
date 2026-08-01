@@ -11,12 +11,16 @@ use tauri::ipc::{InvokeBody, Request};
 use tauri::WebviewWindow;
 use tauri_plugin_dialog::DialogExt;
 
-const MAX_BACKUP_BYTES: usize = 512 * 1024 * 1024;
+// The backend accepts at most 128 MiB of archive bytes. Its 129 MiB HTTP request
+// ceiling only reserves space for multipart framing, which raw Tauri IPC does not use.
+const MAX_BACKUP_BYTES: usize = 128 * 1024 * 1024;
 const BUFFER_BYTES: usize = 128 * 1024;
 const SIDECAR_ATTEMPTS: usize = 16;
 const FILENAME_HEADER: &str = "X-CareerOS-Filename";
 const TITLE_HEADER: &str = "X-CareerOS-Dialog-Title";
 const DIGEST_HEADER: &str = "X-Content-SHA256";
+const MAX_ENCODED_FILENAME_BYTES: usize = 240;
+const MAX_ENCODED_TITLE_BYTES: usize = 160;
 static BACKUP_SAVE_LOCK: Mutex<()> = Mutex::new(());
 
 #[derive(Debug, Serialize)]
@@ -84,12 +88,19 @@ struct Sidecar {
     file: Option<File>,
 }
 
-fn decode_text_header(request: &Request<'_>, name: &str) -> Result<String, BackupSaveError> {
+fn decode_text_header(
+    request: &Request<'_>,
+    name: &str,
+    maximum_encoded_bytes: usize,
+) -> Result<String, BackupSaveError> {
     let encoded = request
         .headers()
         .get(name)
         .and_then(|value| value.to_str().ok())
         .ok_or_else(BackupSaveError::invalid_request)?;
+    if encoded.len() > maximum_encoded_bytes || !encoded.is_ascii() {
+        return Err(BackupSaveError::invalid_request());
+    }
     let bytes = STANDARD
         .decode(encoded)
         .map_err(|_| BackupSaveError::invalid_request())?;
@@ -97,7 +108,11 @@ fn decode_text_header(request: &Request<'_>, name: &str) -> Result<String, Backu
 }
 
 fn decode_filename(request: &Request<'_>) -> Result<String, BackupSaveError> {
-    validate_filename(decode_text_header(request, FILENAME_HEADER)?)
+    validate_filename(decode_text_header(
+        request,
+        FILENAME_HEADER,
+        MAX_ENCODED_FILENAME_BYTES,
+    )?)
 }
 
 fn validate_filename(value: String) -> Result<String, BackupSaveError> {
@@ -255,6 +270,72 @@ fn remove_file_if_present(path: &Path) -> io::Result<()> {
     }
 }
 
+fn same_regular_file(left: &Path, right: &Path) -> io::Result<bool> {
+    let left_metadata = fs::symlink_metadata(left)?;
+    let right_metadata = fs::symlink_metadata(right)?;
+    if !left_metadata.file_type().is_file()
+        || !right_metadata.file_type().is_file()
+        || is_reparse_point(&left_metadata)
+        || is_reparse_point(&right_metadata)
+    {
+        return Ok(false);
+    }
+
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::MetadataExt;
+
+        Ok(left_metadata.dev() == right_metadata.dev()
+            && left_metadata.ino() == right_metadata.ino())
+    }
+
+    #[cfg(windows)]
+    {
+        Ok(windows_file_identity(left, left_metadata.file_type())?
+            == windows_file_identity(right, right_metadata.file_type())?)
+    }
+
+    #[cfg(not(any(unix, windows)))]
+    {
+        Ok(false)
+    }
+}
+
+#[cfg(windows)]
+fn windows_file_identity(path: &Path, file_type: fs::FileType) -> io::Result<(u32, u64)> {
+    use std::os::windows::fs::OpenOptionsExt;
+    use std::os::windows::io::AsRawHandle;
+    use windows_sys::Win32::Storage::FileSystem::{
+        GetFileInformationByHandle, BY_HANDLE_FILE_INFORMATION, FILE_ATTRIBUTE_REPARSE_POINT,
+        FILE_FLAG_OPEN_REPARSE_POINT,
+    };
+
+    if !file_type.is_file() {
+        return Err(io::Error::other("backup path is not a regular file"));
+    }
+    let file = OpenOptions::new()
+        .read(true)
+        .custom_flags(FILE_FLAG_OPEN_REPARSE_POINT)
+        .open(path)?;
+    let mut information = BY_HANDLE_FILE_INFORMATION::default();
+    // SAFETY: `file` owns a live OS handle and `information` is a valid writable structure.
+    if unsafe { GetFileInformationByHandle(file.as_raw_handle(), &mut information) } == 0 {
+        return Err(io::Error::last_os_error());
+    }
+    if information.dwFileAttributes & FILE_ATTRIBUTE_REPARSE_POINT != 0 {
+        return Err(io::Error::other("backup path is a reparse point"));
+    }
+    Ok((
+        information.dwVolumeSerialNumber,
+        (u64::from(information.nFileIndexHigh) << 32) | u64::from(information.nFileIndexLow),
+    ))
+}
+
+fn publish_no_clobber(source: &Path, destination: &Path) -> io::Result<()> {
+    reject_special_file(source)?;
+    fs::hard_link(source, destination)
+}
+
 fn rollback(
     destination: &Path,
     parent: &Path,
@@ -263,18 +344,30 @@ fn rollback(
     original: Option<FileFingerprint>,
     promoted: bool,
 ) -> Result<(), BackupSaveError> {
-    let _ = remove_file_if_present(part);
-    if promoted && remove_file_if_present(destination).is_err() {
-        return Err(BackupSaveError::rollback_failure());
+    if promoted {
+        match same_regular_file(part, destination) {
+            Ok(true) => {
+                remove_file_if_present(destination)
+                    .map_err(|_| BackupSaveError::rollback_failure())?;
+                sync_parent(parent).map_err(|_| BackupSaveError::rollback_failure())?;
+            }
+            Err(error) if error.kind() == io::ErrorKind::NotFound => {}
+            Ok(false) | Err(_) => {
+                let _ = remove_file_if_present(part);
+                return Err(BackupSaveError::rollback_failure());
+            }
+        }
     }
+    remove_file_if_present(part).map_err(|_| BackupSaveError::rollback_failure())?;
     if let Some(expected) = original {
         if fingerprint(rollback).ok() != Some(expected) {
             return Err(BackupSaveError::rollback_failure());
         }
-        if fs::symlink_metadata(destination).is_ok()
-            || fs::rename(rollback, destination).is_err()
+        if publish_no_clobber(rollback, destination).is_err()
             || sync_parent(parent).is_err()
             || fingerprint(destination).ok() != Some(expected)
+            || remove_file_if_present(rollback).is_err()
+            || sync_parent(parent).is_err()
         {
             return Err(BackupSaveError::rollback_failure());
         }
@@ -291,6 +384,26 @@ fn save_verified_backup_bytes<F>(
     after_promote: F,
 ) -> Result<(), BackupSaveError>
 where
+    F: FnOnce(&Path) -> io::Result<()>,
+{
+    save_verified_backup_bytes_with_hooks(
+        destination,
+        bytes,
+        expected_sha256,
+        |_| Ok(()),
+        after_promote,
+    )
+}
+
+fn save_verified_backup_bytes_with_hooks<B, F>(
+    destination: &Path,
+    bytes: &[u8],
+    expected_sha256: [u8; 32],
+    before_promote: B,
+    after_promote: F,
+) -> Result<(), BackupSaveError>
+where
+    B: FnOnce(&Path) -> io::Result<()>,
     F: FnOnce(&Path) -> io::Result<()>,
 {
     if digest_bytes(bytes) != expected_sha256 {
@@ -349,10 +462,9 @@ where
             }
         }
 
-        if fs::symlink_metadata(&destination).is_ok() {
-            return Err(BackupSaveError::io_failure());
-        }
-        fs::rename(&sidecar.part, &destination).map_err(|_| BackupSaveError::io_failure())?;
+        before_promote(&destination).map_err(|_| BackupSaveError::io_failure())?;
+        publish_no_clobber(&sidecar.part, &destination)
+            .map_err(|_| BackupSaveError::io_failure())?;
         promoted = true;
         sync_parent(&parent).map_err(|_| BackupSaveError::io_failure())?;
         after_promote(&destination).map_err(|_| BackupSaveError::io_failure())?;
@@ -364,6 +476,7 @@ where
         {
             return Err(BackupSaveError::io_failure());
         }
+        remove_file_if_present(&sidecar.part).map_err(|_| BackupSaveError::io_failure())?;
         if original.is_some() {
             remove_file_if_present(&sidecar.rollback).map_err(|_| BackupSaveError::io_failure())?;
             let _ = sync_parent(&parent);
@@ -393,7 +506,11 @@ pub fn desktop_save_verified_backup(
     request: Request<'_>,
 ) -> Result<Option<VerifiedBackupSave>, BackupSaveError> {
     let filename = decode_filename(&request)?;
-    let title = validate_title(decode_text_header(&request, TITLE_HEADER)?)?;
+    let title = validate_title(decode_text_header(
+        &request,
+        TITLE_HEADER,
+        MAX_ENCODED_TITLE_BYTES,
+    )?)?;
     let (expected_sha256, sha256) = decode_digest(&request)?;
     let bytes = payload(&request)?;
     if digest_bytes(bytes) != expected_sha256 {
@@ -423,7 +540,10 @@ pub fn desktop_save_verified_backup(
 
 #[cfg(test)]
 mod tests {
-    use super::{digest_bytes, save_verified_backup_bytes, validate_filename, validate_title};
+    use super::{
+        digest_bytes, save_verified_backup_bytes, save_verified_backup_bytes_with_hooks,
+        validate_filename, validate_title, MAX_BACKUP_BYTES,
+    };
     use std::fs::{self, OpenOptions};
     use std::io::Write;
     use std::path::{Path, PathBuf};
@@ -511,6 +631,11 @@ mod tests {
     }
 
     #[test]
+    fn raw_ipc_payload_ceiling_matches_the_backend_archive_ceiling() {
+        assert_eq!(MAX_BACKUP_BYTES, 128 * 1024 * 1024);
+    }
+
+    #[test]
     fn creates_and_replaces_a_verified_backup_without_sidecars() {
         let directory = TestDirectory::new();
         let destination = directory.path().join("backup.zip");
@@ -566,6 +691,53 @@ mod tests {
         assert_eq!(error.code, "backup_save_failed");
         assert_eq!(fs::read(&destination).unwrap(), b"existing backup");
         assert!(directory.sidecars().is_empty());
+    }
+
+    #[test]
+    fn no_clobber_publish_preserves_a_concurrent_new_destination() {
+        let directory = TestDirectory::new();
+        let destination = directory.path().join("backup.zip");
+        let replacement = b"verified replacement";
+
+        let error = save_verified_backup_bytes_with_hooks(
+            &destination,
+            replacement,
+            digest_bytes(replacement),
+            |path| fs::write(path, b"external writer"),
+            |_| Ok(()),
+        )
+        .unwrap_err();
+
+        assert_eq!(error.code, "backup_save_failed");
+        assert_eq!(fs::read(&destination).unwrap(), b"external writer");
+        assert!(directory.sidecars().is_empty());
+    }
+
+    #[test]
+    fn no_clobber_rollback_never_overwrites_a_concurrent_writer() {
+        let directory = TestDirectory::new();
+        let destination = directory.path().join("backup.zip");
+        fs::write(&destination, b"existing backup").unwrap();
+        let replacement = b"verified replacement";
+
+        let error = save_verified_backup_bytes_with_hooks(
+            &destination,
+            replacement,
+            digest_bytes(replacement),
+            |path| fs::write(path, b"external writer"),
+            |_| Ok(()),
+        )
+        .unwrap_err();
+
+        assert_eq!(error.code, "backup_rollback_failed");
+        assert_eq!(fs::read(&destination).unwrap(), b"external writer");
+        let sidecars = directory.sidecars();
+        assert_eq!(sidecars.len(), 1);
+        assert!(sidecars[0]
+            .file_name()
+            .and_then(|name| name.to_str())
+            .is_some_and(|name| name.ends_with(".rollback")));
+        assert_eq!(fs::read(&sidecars[0]).unwrap(), b"existing backup");
     }
 
     #[test]

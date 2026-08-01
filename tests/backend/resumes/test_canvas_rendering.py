@@ -20,8 +20,12 @@ def test_saved_canvas_drives_pdf_docx_order_visibility_and_ats_quality(
         assert generated.status_code == 201, generated.text
         draft = generated.json()
         canvas = draft["canvas_document"]
-        experience = next(section for section in canvas["sections"] if section["kind"] == "experience")
-        education = next(section for section in canvas["sections"] if section["kind"] == "education")
+        experience = next(
+            section for section in canvas["sections"] if section["kind"] == "experience"
+        )
+        education = next(
+            section for section in canvas["sections"] if section["kind"] == "education"
+        )
         skill = next(section for section in canvas["sections"] if section["kind"] == "skill")
         experience["blocks"][0]["content"]["title"] = "Tailored Principal Engineer"
         experience["blocks"][0]["manual_fields"] = ["title"]
@@ -47,13 +51,9 @@ def test_saved_canvas_drives_pdf_docx_order_visibility_and_ats_quality(
             "photo_asset_id": None,
             "canvas_document": canvas,
         }
-        saved = client.put(
-            f"/api/v1/resumes/{draft['id']}", json=payload, headers=auth_headers
-        )
+        saved = client.put(f"/api/v1/resumes/{draft['id']}", json=payload, headers=auth_headers)
         assert saved.status_code == 200, saved.text
-        published = client.post(
-            f"/api/v1/resumes/{draft['id']}/publish", headers=auth_headers
-        )
+        published = client.post(f"/api/v1/resumes/{draft['id']}/publish", headers=auth_headers)
         assert published.status_code == 201, published.text
         version = published.json()
         assert version["quality_report"]["layout"] == "single-column"
@@ -69,7 +69,9 @@ def test_saved_canvas_drives_pdf_docx_order_visibility_and_ats_quality(
         docx_bytes = client.get(
             f"/api/v1/resume-artifacts/{artifacts['docx']['id']}", headers=auth_headers
         ).content
-        docx_text = "\n".join(paragraph.text for paragraph in Document(BytesIO(docx_bytes)).paragraphs)
+        docx_text = "\n".join(
+            paragraph.text for paragraph in Document(BytesIO(docx_bytes)).paragraphs
+        )
 
         for text in (pdf_text, docx_text):
             assert "Tailored Principal Engineer" in text
@@ -91,9 +93,7 @@ def test_photo_canvas_uses_normalized_preview_and_two_column_pdf_docx(
         )
         assert uploaded.status_code == 201, uploaded.text
         photo = uploaded.json()
-        preview = client.get(
-            f"/api/v1/career-profile/photo/{photo['id']}", headers=auth_headers
-        )
+        preview = client.get(f"/api/v1/career-profile/photo/{photo['id']}", headers=auth_headers)
         assert preview.status_code == 200
         assert preview.headers["content-type"] == "image/jpeg"
         with Image.open(BytesIO(preview.content)) as normalized:
@@ -128,9 +128,7 @@ def test_photo_canvas_uses_normalized_preview_and_two_column_pdf_docx(
             headers=auth_headers,
         )
         assert saved.status_code == 200, saved.text
-        published = client.post(
-            f"/api/v1/resumes/{draft['id']}/publish", headers=auth_headers
-        )
+        published = client.post(f"/api/v1/resumes/{draft['id']}/publish", headers=auth_headers)
         assert published.status_code == 201, published.text
         version = published.json()
         assert version["quality_report"]["layout"] == "two-column-photo"

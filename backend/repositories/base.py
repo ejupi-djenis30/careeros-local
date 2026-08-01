@@ -5,6 +5,8 @@ from pydantic import BaseModel as PydanticBaseModel
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from backend.core.diagnostics import FailureCode, diagnose_failure, log_failure
+
 logger = logging.getLogger(__name__)
 
 ModelType = TypeVar("ModelType")
@@ -36,11 +38,13 @@ class BaseRepository(Generic[ModelType]):
             self.db.refresh(db_obj)
         except IntegrityError as exc:
             self.db.rollback()
-            logger.warning("Integrity violation creating %s: %s", self.model.__name__, exc.orig)
+            diagnostic = diagnose_failure(exc, FailureCode.REPOSITORY_INTEGRITY_FAILED)
+            log_failure(logger, diagnostic, level=logging.WARNING)
             raise
         except Exception as exc:
             self.db.rollback()
-            logger.error("Unexpected DB error creating %s: %s", self.model.__name__, exc)
+            diagnostic = diagnose_failure(exc, FailureCode.REPOSITORY_OPERATION_FAILED)
+            log_failure(logger, diagnostic)
             raise
         return db_obj
 
@@ -62,21 +66,13 @@ class BaseRepository(Generic[ModelType]):
             self.db.refresh(db_obj)
         except IntegrityError as exc:
             self.db.rollback()
-            logger.warning(
-                "Integrity violation updating %s id=%s: %s",
-                self.model.__name__,
-                getattr(db_obj, "id", "?"),
-                exc.orig,
-            )
+            diagnostic = diagnose_failure(exc, FailureCode.REPOSITORY_INTEGRITY_FAILED)
+            log_failure(logger, diagnostic, level=logging.WARNING)
             raise
         except Exception as exc:
             self.db.rollback()
-            logger.error(
-                "Unexpected DB error updating %s id=%s: %s",
-                self.model.__name__,
-                getattr(db_obj, "id", "?"),
-                exc,
-            )
+            diagnostic = diagnose_failure(exc, FailureCode.REPOSITORY_OPERATION_FAILED)
+            log_failure(logger, diagnostic)
             raise
         return db_obj
 
@@ -88,14 +84,12 @@ class BaseRepository(Generic[ModelType]):
                 self.db.commit()
             except IntegrityError as exc:
                 self.db.rollback()
-                logger.warning(
-                    "Integrity violation deleting %s id=%s: %s", self.model.__name__, id, exc.orig
-                )
+                diagnostic = diagnose_failure(exc, FailureCode.REPOSITORY_INTEGRITY_FAILED)
+                log_failure(logger, diagnostic, level=logging.WARNING)
                 raise
             except Exception as exc:
                 self.db.rollback()
-                logger.error(
-                    "Unexpected DB error deleting %s id=%s: %s", self.model.__name__, id, exc
-                )
+                diagnostic = diagnose_failure(exc, FailureCode.REPOSITORY_OPERATION_FAILED)
+                log_failure(logger, diagnostic)
                 raise
         return obj

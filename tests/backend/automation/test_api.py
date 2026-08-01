@@ -348,11 +348,7 @@ def test_malformed_password_never_appears_in_validation_errors(
     path,
 ) -> None:
     secret = "MalformedActualSecret123"
-    payload = (
-        _payload(password=[secret])
-        if path == ENDPOINT
-        else {"password": [secret]}
-    )
+    payload = _payload(password=[secret]) if path == ENDPOINT else {"password": [secret]}
 
     response = client.post(path, headers=auth_headers, json=payload)
 
@@ -504,6 +500,24 @@ def test_listing_keeps_every_active_grant_with_more_than_one_hundred_history_row
         for index in range(RECENT_GRANT_HISTORY_LIMIT + 5)
     ]
     db_session.add_all([active, *history])
+    other = User(
+        username="history-neighbor",
+        hashed_password=get_password_hash("Otherpass1"),
+    )
+    db_session.add(other)
+    db_session.flush()
+    foreign_history = AutomationGrant(
+        id=str(uuid.uuid4()),
+        user_id=other.id,
+        label="Foreign retained history",
+        token_digest="f" * 64,
+        scopes=["system:read"],
+        expires_at=now + timedelta(days=30),
+        revoked_at=now - timedelta(days=500),
+        created_at=now - timedelta(days=500),
+        updated_at=now - timedelta(days=500),
+    )
+    db_session.add(foreign_history)
     db_session.commit()
 
     response = client.get(ENDPOINT, headers=auth_headers)
@@ -521,3 +535,17 @@ def test_listing_keeps_every_active_grant_with_more_than_one_hundred_history_row
         json={"password": "Globalpass1"},
     )
     assert revoked.status_code == 200
+
+    # Revocation time, rather than the old issuance time, makes the transition
+    # the newest history entry. The mutation also trims only this owner's
+    # inactive tail; active and neighboring-account records are never pruned.
+    after = client.get(ENDPOINT, headers=auth_headers)
+    assert after.status_code == 200
+    assert len(after.json()) == RECENT_GRANT_HISTORY_LIMIT
+    assert after.json()[0]["id"] == active.id
+    db_session.expire_all()
+    assert (
+        db_session.query(AutomationGrant).filter(AutomationGrant.user_id == test_user.id).count()
+        == RECENT_GRANT_HISTORY_LIMIT
+    )
+    assert db_session.get(AutomationGrant, foreign_history.id) is not None

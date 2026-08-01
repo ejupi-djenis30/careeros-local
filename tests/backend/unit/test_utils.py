@@ -74,14 +74,14 @@ async def test_extract_text_from_file_pdf_error():
     # Invalid PDF content
     mock_file = UploadFile(filename="test.pdf", file=None)
     # Mocking read() to return invalid bytes
-    mock_file.read = lambda: (async_return(b"not a pdf"))
+    mock_file.read = lambda _size=-1: async_return(b"not a pdf")
 
     from backend.services.utils import extract_text_from_file
 
     with pytest.raises(HTTPException) as excinfo:
         await extract_text_from_file(mock_file)
     assert excinfo.value.status_code == 400
-    assert "Failed to process file" in excinfo.value.detail
+    assert excinfo.value.detail == "The uploaded file could not be processed."
 
 
 @pytest.mark.asyncio
@@ -89,7 +89,7 @@ async def test_extract_text_from_file_pdf_success():
     from backend.services.utils import extract_text_from_file
 
     mock_file = UploadFile(filename="test.pdf", file=None)
-    mock_file.read = lambda: (async_return(b"%PDF-1.4 mock pdf"))
+    mock_file.read = lambda _size=-1: async_return(b"%PDF-1.4 mock pdf")
 
     from unittest.mock import MagicMock, patch
 

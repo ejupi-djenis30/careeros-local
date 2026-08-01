@@ -1,8 +1,10 @@
+import asyncio
 from unittest.mock import MagicMock, patch
 
 import pytest
 
 import backend.services.search_status as ss
+from backend.core.diagnostics import ActivityCode, public_activity_message
 from backend.services.search_status import (
     add_log,
     cancel_task,
@@ -52,21 +54,26 @@ def test_init_status():
 
 def test_add_log():
     init_status(1)
-    add_log(1, "First log")
-    add_log(1, "Second log")
+    first = public_activity_message(ActivityCode.PROGRESS_HEARTBEAT, sequence=1)
+    second = public_activity_message(ActivityCode.PROGRESS_HEARTBEAT, sequence=2)
+    add_log(1, first)
+    add_log(1, second)
     status = get_status(1)
     assert len(status["log"]) == 2
-    assert status["log"][0]["message"] == "First log"
-    assert status["log"][1]["message"] == "Second log"
+    assert status["log"][0]["message"] == first
+    assert status["log"][1]["message"] == second
 
 
 def test_add_log_overflow():
     init_status(1)
     for i in range(110):
-        add_log(1, f"Log {i}")
+        add_log(
+            1,
+            public_activity_message(ActivityCode.PROGRESS_HEARTBEAT, sequence=i),
+        )
     status = get_status(1)
     assert len(status["log"]) == 100
-    assert status["log"][-1]["message"] == "Log 109"
+    assert status["log"][-1]["message"] == "Search activity checkpoint 109."
 
 
 def test_update_status():
@@ -154,7 +161,9 @@ def test_persist_status_logs_warning_on_repository_failure(caplog):
     ):
         mock_session_local.return_value = MagicMock()
         init_status(1)
-    assert "Search status repository operation failed" in caplog.text
+    assert "code=repository_operation_failed" in caplog.text
+    assert "exception_type=RuntimeError" in caplog.text
+    assert "correlation_id=" in caplog.text
     assert "boom" not in caplog.text
 
 
@@ -196,12 +205,18 @@ def test_add_log_persists_every_update_without_debounce_skip():
     init_status(1)
 
     with patch("backend.services.search_status._persist_status_entry") as mock_persist:
-        add_log(1, "First persisted log")
-        add_log(1, "Second persisted log")
+        add_log(
+            1,
+            public_activity_message(ActivityCode.PROGRESS_HEARTBEAT, sequence=1),
+        )
+        add_log(
+            1,
+            public_activity_message(ActivityCode.PROGRESS_HEARTBEAT, sequence=2),
+        )
 
     assert mock_persist.call_count == 2
     final_payload = mock_persist.call_args.args[1]
-    assert final_payload["log"][-1]["message"] == "Second persisted log"
+    assert final_payload["log"][-1]["message"] == "Search activity checkpoint 2."
 
 
 def test_reserve_task_persists_shared_reserved_entry():
@@ -384,3 +399,42 @@ def test_merge_with_persisted_statuses_prefers_newer_updated_entry_over_older_st
         merged = ss._merge_with_persisted_statuses(memory)
 
     assert merged[77]["state"] == "done"
+
+
+@pytest.mark.asyncio
+async def test_cancel_and_clear_tasks_joins_worker_and_cleans_when_caller_is_cancelled(
+    monkeypatch,
+):
+    worker_cancelled = asyncio.Event()
+    allow_worker_exit = asyncio.Event()
+    released: list[int] = []
+    cleared: list[int] = []
+
+    async def worker() -> None:
+        try:
+            await asyncio.Future()
+        except asyncio.CancelledError:
+            worker_cancelled.set()
+            await allow_worker_exit.wait()
+
+    profile_id = 9876
+    worker_task = asyncio.create_task(worker())
+    with ss._lock:
+        ss._active_tasks[profile_id] = worker_task
+    monkeypatch.setattr(ss, "release_task", lambda value: released.append(value) or True)
+    monkeypatch.setattr(ss, "clear_status", lambda value: cleared.append(value))
+
+    cleanup = asyncio.create_task(ss.cancel_and_clear_tasks([profile_id]))
+    await worker_cancelled.wait()
+    cleanup.cancel()
+    await asyncio.sleep(0)
+    assert not cleanup.done()
+
+    allow_worker_exit.set()
+    with pytest.raises(asyncio.CancelledError):
+        await cleanup
+
+    assert released == [profile_id]
+    assert cleared == [profile_id]
+    with ss._lock:
+        ss._active_tasks.pop(profile_id, None)

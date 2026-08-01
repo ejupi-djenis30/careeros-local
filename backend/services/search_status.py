@@ -5,6 +5,7 @@ persists progress/status snapshots to the same shared database so polling works
 across workers without relying on a shared JSON file.
 """
 
+import asyncio
 import copy
 import logging
 import threading
@@ -16,6 +17,22 @@ from typing import Any, Dict, List, Literal, Optional, overload
 from sqlalchemy.exc import OperationalError, ProgrammingError
 
 from backend.core.config import settings
+from backend.core.diagnostics import (
+    FailureCode,
+    FailureDiagnostic,
+    diagnose_failure,
+    is_public_activity_message,
+    is_public_diagnostic_message,
+    is_public_progress_label,
+    log_failure,
+    public_progress_targets,
+    public_status_message,
+    restore_public_activity_message,
+    restore_public_diagnostic_message,
+    restore_public_progress_label,
+    sanitize_persisted_message,
+    unclassified_status_error,
+)
 from backend.db.base import SessionLocal
 from backend.repositories.profile_repository import ProfileRepository
 
@@ -24,6 +41,7 @@ logger = logging.getLogger(__name__)
 _lock = threading.Lock()
 
 _VALID_STATUS_KEYS = {
+    "diagnostic_schema",
     "user_id",
     "state",
     "total_searches",
@@ -44,7 +62,6 @@ _VALID_STATUS_KEYS = {
     "jobs_stale_before_save",
     "jobs_skipped",
     "errors",
-    "log",
     "analysis_targets",
     "analysis_current_index",
     "started_at",
@@ -66,8 +83,19 @@ _VALID_STATUS_KEYS = {
     "provider_successes",
     "avam_fallback_count",
 }
-_PERSISTED_STATUS_KEYS = _VALID_STATUS_KEYS | {"reservation_token"}
+_PERSISTED_STATUS_KEYS = _VALID_STATUS_KEYS | {"log", "reservation_token"}
 _TERMINAL_STATES = {"done", "error", "stopped", "cancelled"}
+_DIAGNOSTIC_SCHEMA = 2
+_TERMINAL_FAILURE_CODES = {
+    "job_persistence_failed": FailureCode.NO_PERSISTED_JOBS,
+    "local_analysis_failed": FailureCode.LOCAL_ANALYSIS_FAILED,
+    "local_model_required": FailureCode.LOCAL_MODEL_REQUIRED,
+    "pipeline_processing_failed": FailureCode.PIPELINE_PROCESSING_FAILED,
+    "pipeline_timeout": FailureCode.PIPELINE_TIMEOUT,
+    "search_execution_failed": FailureCode.PROVIDER_ALL_FAILED,
+    "search_unexpected": FailureCode.SEARCH_UNEXPECTED,
+    "server_shutdown": FailureCode.SERVER_SHUTDOWN,
+}
 _RESERVED_STATE = "reserved"
 _STATUS_RETENTION_SECONDS = 86400.0
 _RESERVATION_TTL_SECONDS = 30.0
@@ -127,8 +155,67 @@ def _merge_status_maps(
 
 def _normalize_status_entry(entry: Dict[str, Any]) -> Dict[str, Any]:
     payload = {k: copy.deepcopy(v) for k, v in entry.items() if k in _PERSISTED_STATUS_KEYS}
+    payload["diagnostic_schema"] = _DIAGNOSTIC_SCHEMA
     if "updated_at" not in payload:
         payload["updated_at"] = datetime.now(timezone.utc).isoformat()
+    return payload
+
+
+def _sanitize_loaded_status(entry: Dict[str, Any]) -> Dict[str, Any]:
+    payload = copy.deepcopy(entry)
+    legacy_schema = payload.get("diagnostic_schema") != _DIAGNOSTIC_SCHEMA
+    raw_targets = payload.get("searches_generated")
+    target_count = len(raw_targets) if isinstance(raw_targets, list) else 0
+    payload["searches_generated"] = public_progress_targets(min(target_count, 100))
+    raw_analysis_targets = payload.get("analysis_targets")
+    analysis_target_count = (
+        len(raw_analysis_targets) if isinstance(raw_analysis_targets, list) else 0
+    )
+    payload["analysis_targets"] = public_progress_targets(min(analysis_target_count, 100))
+    current_query = payload.get("current_query")
+    if current_query:
+        try:
+            payload["current_query"] = restore_public_progress_label(current_query)
+        except (TypeError, ValueError):
+            payload["current_query"] = ""
+    else:
+        payload["current_query"] = ""
+    if legacy_schema:
+        payload["analysis_targets"] = []
+        payload["log"] = []
+        terminal_reason = str(payload.get("terminal_reason") or "")
+        failure_code = _TERMINAL_FAILURE_CODES.get(terminal_reason)
+        if payload.get("error"):
+            payload["error"] = public_status_message(
+                failure_code or FailureCode.UNCLASSIFIED_STATUS_ERROR
+            )
+        payload["diagnostic_schema"] = _DIAGNOSTIC_SCHEMA
+    elif payload.get("error"):
+        try:
+            payload["error"] = restore_public_diagnostic_message(payload["error"])
+        except (TypeError, ValueError):
+            payload["error"] = public_status_message(FailureCode.UNCLASSIFIED_STATUS_ERROR)
+    if not legacy_schema:
+        public_log: list[dict[str, str]] = []
+        raw_log = payload.get("log")
+        if isinstance(raw_log, list):
+            for item in raw_log[-100:]:
+                if not isinstance(item, dict) or set(item) != {"time", "message"}:
+                    continue
+                timestamp = item.get("time")
+                if not isinstance(timestamp, str) or len(timestamp) > 64:
+                    continue
+                if _parse_timestamp(timestamp) <= 0:
+                    continue
+                try:
+                    message: str = restore_public_activity_message(item.get("message"))
+                except (TypeError, ValueError):
+                    try:
+                        message = restore_public_diagnostic_message(item.get("message"))
+                    except (TypeError, ValueError):
+                        continue
+                public_log.append({"time": timestamp, "message": str(message)})
+        payload["log"] = public_log
     return payload
 
 
@@ -212,23 +299,18 @@ def _snapshot_statuses() -> Dict[int, Dict[str, Any]]:
 
 
 def _with_profile_repo(operation_name: str, callback):
+    del operation_name
     db = SessionLocal()
     try:
         repo = ProfileRepository(db)
         return callback(repo)
     except (OperationalError, ProgrammingError) as exc:
-        logger.debug(
-            "Search status repository unavailable operation_present=%s exception_type=%s",
-            bool(operation_name),
-            type(exc).__name__,
-        )
+        diagnostic = diagnose_failure(exc, FailureCode.REPOSITORY_OPERATION_FAILED)
+        log_failure(logger, diagnostic, level=logging.DEBUG)
         return None
     except Exception as exc:
-        logger.warning(
-            "Search status repository operation failed operation_present=%s exception_type=%s",
-            bool(operation_name),
-            type(exc).__name__,
-        )
+        diagnostic = diagnose_failure(exc, FailureCode.REPOSITORY_OPERATION_FAILED)
+        log_failure(logger, diagnostic, level=logging.WARNING)
         return None
     finally:
         db.close()
@@ -254,7 +336,7 @@ def _load_persisted_status(profile_id: int) -> Dict[str, Any] | None:
         f"load search status for profile {profile_id}",
         lambda repo: repo.get_search_status(profile_id),
     )
-    return result if isinstance(result, dict) else None
+    return _sanitize_loaded_status(result) if isinstance(result, dict) else None
 
 
 def _load_statuses(user_id: Optional[int] = None) -> Dict[int, Dict[str, Any]]:
@@ -262,7 +344,13 @@ def _load_statuses(user_id: Optional[int] = None) -> Dict[int, Dict[str, Any]]:
         "load persisted search statuses",
         lambda repo: repo.get_search_statuses(user_id=user_id),
     )
-    return result if isinstance(result, dict) else {}
+    if not isinstance(result, dict):
+        return {}
+    return {
+        profile_id: _sanitize_loaded_status(entry)
+        for profile_id, entry in result.items()
+        if isinstance(entry, dict)
+    }
 
 
 def _clear_stale_persisted_statuses() -> None:
@@ -396,6 +484,7 @@ def init_status(
     """Initialize or reset status when search begins."""
     with _lock:
         _statuses[profile_id] = {
+            "diagnostic_schema": _DIAGNOSTIC_SCHEMA,
             "user_id": user_id,
             "state": "generating",
             "terminal_reason": None,
@@ -405,7 +494,7 @@ def init_status(
             "active_search_indices": [],
             "completed_search_indices": [],
             "current_query": "",
-            "searches_generated": searches or [],
+            "searches_generated": public_progress_targets(len(searches or [])),
             "jobs_found": 0,
             "jobs_new": 0,
             "jobs_unique": 0,
@@ -439,8 +528,11 @@ def init_status(
     _persist_current_status(profile_id)
 
 
-def add_log(profile_id: int, message: str) -> None:
-    """Append a log entry."""
+def add_log(profile_id: int, message: object) -> None:
+    """Append a registry-sealed, content-free activity or failure message."""
+    if not (is_public_activity_message(message) or is_public_diagnostic_message(message)):
+        raise TypeError("Persisted search activity must come from the public registry")
+    message = sanitize_persisted_message(message)
     status = _get_local_status(profile_id)
     if status is None:
         status = _load_status_into_memory(profile_id)
@@ -466,11 +558,40 @@ def add_log(profile_id: int, message: str) -> None:
     _persist_current_status(profile_id)
 
 
+def add_failure_log(profile_id: int, diagnostic: FailureDiagnostic) -> None:
+    """Persist only the registry-owned public representation of a failure."""
+    add_log(profile_id, diagnostic.public_message)
+
+
 def update_status(profile_id: int, **kwargs) -> None:
     """Update any status fields."""
     invalid = set(kwargs.keys()) - _VALID_STATUS_KEYS
     if invalid:
         logger.warning("update_status called with unknown keys: %s", invalid)
+    if "current_query" in kwargs:
+        current_query = kwargs["current_query"]
+        if current_query and not is_public_progress_label(current_query):
+            kwargs["current_query"] = ""
+        else:
+            kwargs["current_query"] = str(current_query or "")
+    if "searches_generated" in kwargs:
+        searches = kwargs["searches_generated"]
+        kwargs["searches_generated"] = public_progress_targets(
+            min(len(searches), 100) if isinstance(searches, list) else 0
+        )
+    if "analysis_targets" in kwargs:
+        targets = kwargs["analysis_targets"]
+        kwargs["analysis_targets"] = public_progress_targets(
+            min(len(targets), 100) if isinstance(targets, list) else 0
+        )
+    if kwargs.get("error") is not None:
+        error = kwargs["error"]
+        if not is_public_diagnostic_message(error):
+            diagnostic = unclassified_status_error()
+            log_failure(logger, diagnostic)
+            kwargs["error"] = diagnostic.public_message
+        else:
+            kwargs["error"] = sanitize_persisted_message(error)
 
     status = _get_local_status(profile_id)
     if status is None:
@@ -578,11 +699,8 @@ def register_task(profile_id: int, task: Any, reservation_token: str | None = No
                 )
                 return False
         except Exception as exc:
-            logger.warning(
-                "register_task: profile %d DB-backed lock activation raised %s",
-                profile_id,
-                exc,
-            )
+            diagnostic = diagnose_failure(exc, FailureCode.REPOSITORY_OPERATION_FAILED)
+            log_failure(logger, diagnostic, level=logging.WARNING)
             return False
 
     rollback_db_activation = False
@@ -606,11 +724,8 @@ def register_task(profile_id: int, task: Any, reservation_token: str | None = No
         try:
             _release_profile_search_lock(profile_id, activation_token)
         except Exception as exc:
-            logger.warning(
-                "register_task: profile %d failed DB-backed activation rollback: %s",
-                profile_id,
-                exc,
-            )
+            diagnostic = diagnose_failure(exc, FailureCode.REPOSITORY_OPERATION_FAILED)
+            log_failure(logger, diagnostic, level=logging.WARNING)
 
     logger.warning(
         "register_task: profile %d activation could not be finalized in memory",
@@ -671,7 +786,8 @@ def reserve_task(
         if not _acquire_profile_search_lock(profile_id, token):
             return False
     except Exception as exc:
-        logger.warning("reserve_task: failed to acquire DB-backed search lock: %s", exc)
+        diagnostic = diagnose_failure(exc, FailureCode.REPOSITORY_OPERATION_FAILED)
+        log_failure(logger, diagnostic, level=logging.WARNING)
         return False
 
     with _lock:
@@ -705,7 +821,8 @@ def release_task(profile_id: int, reservation_token: str | None = None) -> bool:
     try:
         db_released = _release_profile_search_lock(profile_id, reservation_token)
     except Exception as exc:
-        logger.warning("release_task: failed to clear DB-backed search lock: %s", exc)
+        diagnostic = diagnose_failure(exc, FailureCode.REPOSITORY_OPERATION_FAILED)
+        log_failure(logger, diagnostic, level=logging.WARNING)
         db_released = False
 
     if clear_local_reserved_status:
@@ -727,3 +844,37 @@ def cancel_task(profile_id: int):
             task.cancel()
             return True
     return False
+
+
+async def cancel_and_clear_tasks(profile_ids: list[int]) -> None:
+    """Cancel, await and remove every runtime trace for owned search profiles."""
+
+    unique_profile_ids = sorted(set(profile_ids))
+    tasks: list[Any] = []
+    with _lock:
+        for profile_id in unique_profile_ids:
+            task = _active_tasks.get(profile_id)
+            _reserved_tasks.pop(profile_id, None)
+            if task is not None and not task.done():
+                task.cancel()
+                tasks.append(task)
+    caller_cancelled = False
+    try:
+        if tasks:
+            joined = asyncio.gather(*tasks, return_exceptions=True)
+            while not joined.done():
+                try:
+                    await asyncio.shield(joined)
+                except asyncio.CancelledError:
+                    # Destructive maintenance cannot outlive the workers it is
+                    # meant to quiesce. Preserve cancellation, but join first.
+                    caller_cancelled = True
+            await joined
+    finally:
+        for profile_id in unique_profile_ids:
+            try:
+                release_task(profile_id)
+            finally:
+                clear_status(profile_id)
+    if caller_cancelled:
+        raise asyncio.CancelledError

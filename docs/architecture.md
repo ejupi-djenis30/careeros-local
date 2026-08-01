@@ -79,13 +79,48 @@ requires a new MCP session. If the desktop owns the lease, the tool returns `vau
 
 ## Native boundary
 
-Rust allocates an ephemeral IPv4 loopback port, generates a desktop session secret, starts the bundled backend without a visible terminal, waits for readiness, supervises failure, and terminates the child on exit. Tauri capabilities permit only required core, native open-dialog, scoped file-read, and safe URL-opening commands. Backup writes stay inside a dedicated Rust command that opens its own save dialog.
+Rust allocates an ephemeral IPv4 loopback port, generates a desktop session secret, and starts the bundled backend without a visible terminal. The child runs from its packaged runtime directory with an explicit operating-system and accelerator environment allowlist; ambient application secrets, Python import paths, dynamic-loader overrides, and unrelated configuration are not inherited. A fixed readiness deadline terminates an unready child so the bounded supervisor can retry, while executable and data paths must remain regular, non-reparse filesystem entries. The root response is static and does not touch SQLite. `/health/live` is a pure asynchronous process probe; `/health/ready` makes a non-blocking activity-gate attempt and verifies the joined managed-runtime worker, so a long vault writer cannot freeze the supervisor. Lifespan shutdown stops the scheduler before snapshotting or cancelling tasks, then waits for managed-runtime startup/worker termination within the native sidecar drain bound. Tauri capabilities permit only required core, native open-dialog, scoped file-read, and safe URL-opening commands; renderer shell execution and developer tools are denied. Backup writes stay inside a dedicated Rust command that opens its own save dialog.
 
 ## Domain and persistence
 
+`User.vault_lifecycle_state` is the durable destructive-operation boundary: `ready`,
+`reset_pending`, `restore_pending` or `erasure_pending`. Normal routes acquire a reader lease from
+the writer-priority vault activity gate and require a live session-purpose family. Maintenance
+routes additionally take one process-wide maintenance mutex, persist pending state while holding
+the account/database writer serialization, quiesce owned jobs and then acquire the writer lease.
+Queued writers reject new readers instead of starving. Purpose-bound recovery tokens can reach
+only the operation matching durable state; they cannot refresh, read the workspace or create
+automation grants. Reset and erasure perform a final session sweep before completion to contain a
+login that raced the initial transition.
+
 The Career Vault is the canonical user-owned record. Typed profile facts carry verification state and provenance. Resume drafts reference selected facts; publishing creates immutable versions and content-addressed PDF/DOCX artifacts. Applications, events, workflows, conversations, and AI audit records reference the owning local user.
 
-SQLite connections enforce foreign keys, secure deletion, WAL mode, and a busy timeout. Alembic owns schema changes. Files are always resolved beneath the configured data root and written with flush, fsync, and atomic replacement.
+CareerOS accepts one file-backed SQLite vault beneath the configured data root; SQLite URI/query
+aliases and linked database files are rejected. Every connection verifies foreign keys, secure
+deletion, WAL mode, `synchronous=FULL`, `trusted_schema=OFF`, and a bounded busy timeout. Alembic
+owns schema changes and the packaged revision graph must have exactly one base and one head.
+Startup migration is serialized by a process-local and OS advisory lock, backs up committed WAL
+frames through SQLite's backup API, and records a durable recovery journal before schema mutation.
+On failure or interrupted startup, the verified backup is atomically restored and stale `-journal`,
+`-wal`, and `-shm` files are removed. Production refuses `downgrade` and `stamp`; restoring a
+verified backup is the supported rollback path.
+
+The vault and its migration lock must remain on a local NTFS or POSIX filesystem. SQLite WAL and
+the operating-system lock primitives used here do not provide a supported durability or exclusion
+guarantee on SMB, NFS, cloud-synchronised folders, or other network filesystems. The lock also
+coordinates CareerOS processes only; an unrelated process that writes the database directly does
+not participate in that advisory boundary. Other persisted files are resolved beneath the data
+root and written with flush, fsync, and atomic replacement.
+
+Resume publication renders and validates outside the SQLite writer section, then takes
+`BEGIN IMMEDIATE`, revalidates draft/profile revisions, reconciles any interrupted publication
+journal and allocates `version_number` while serialized on the draft. A durable journal owns the
+content-addressed PDF/DOCX paths before either file is published; database rows become authoritative
+only after both files have been fsynced. A missing commit is cleaned immediately, an ambiguous commit
+preserves the bytes until a fresh transaction proves ownership, and a process interruption is
+reconciled by the next locked publish or delete. Draft deletion first commits a private
+delete-pending marker, then durably unlinks every artifact and finally removes the cascading rows.
+Retries therefore resume cleanup without exposing a half-deleted draft or losing its file inventory.
 
 ## Application readiness
 
@@ -300,7 +335,19 @@ member names, paths, user identifiers, career content, prompts or output cross t
 
 Restore requires an empty vault, rejects ambiguous shared-listing or preference collisions,
 neutralizes runtime search state, and runs preflight, file writes, and database insertion under an
-exclusive desktop vault lock with rollback. The desktop renderer verifies the export header digest
+exclusive desktop vault lock with rollback. Archive processing is bounded to 128 MiB compressed,
+256 MiB expanded, 5,000 members and 100,000 records. Before publishing an absent asset or resume,
+restore persists redundant checksummed ownership journals under `.restore/user-{id}`, bound to the
+verified archive digest and exact canonical storage paths. Bytes stage inside that owner namespace,
+are fsynced and atomically promoted; Windows promotion uses write-through replacement. A killed
+restore therefore accepts only the same archive on restart. If it is lost, complete erasure removes
+published exclusive bytes, staging and journal metadata. Rollback preserves a path that another
+account has since bound, deletes every still-exclusive journal path and sanitizes SQLite/WAL before
+clearing pending state. If cleanup is incomplete, `restore_pending` remains visible. Successful
+restore revokes sessions and automation grants and imports schedules disabled. Startup removes
+only recognized `.write-*` remnants under `assets` and `resumes`.
+
+The desktop renderer verifies the export header digest
 in memory, then sends bounded raw bytes, the digest, and a validated suggested filename to a narrow
 Rust command. The command runs off the main thread, opens the native save dialog itself, and never
 returns the selected path to JavaScript. It reserves a random part sibling with `create_new`, flushes
@@ -312,4 +359,8 @@ and rename behavior still depend on the destination filesystem.
 
 Explicit erasure deletes every user-scoped vault domain, checkpoints and vacuums SQLite, and
 removes user-namespaced staging paths. Post-commit cleanup failures remain discoverable and
-retryable without traversing unrelated directories.
+retryable without traversing unrelated directories. Reset and erasure reserve SQLite's writer
+before taking one bounded view of the resume publication journal namespace, then stage the owned
+journal records and crash-left artifacts in the same durable user trash as committed files.
+Journal and database references owned by another profile are never moved; a mismatched journal
+owner fails closed instead of crossing profile storage boundaries.

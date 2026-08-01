@@ -47,9 +47,7 @@ def test_canvas_edit_persists_manual_fields_with_optimistic_revision(
     experience["page_break_before"] = True
     payload["canvas_document"]["style"]["accent_color"] = "#0057B8"
 
-    response = client.put(
-        f"/api/v1/resumes/{draft['id']}", json=payload, headers=auth_headers
-    )
+    response = client.put(f"/api/v1/resumes/{draft['id']}", json=payload, headers=auth_headers)
     assert response.status_code == 200, response.text
     saved = response.json()
     assert saved["revision"] == 2
@@ -62,9 +60,7 @@ def test_canvas_edit_persists_manual_fields_with_optimistic_revision(
     assert saved_experience["page_break_before"] is True
     assert saved_experience["blocks"][0]["manual_fields"] == ["title"]
 
-    stale = client.put(
-        f"/api/v1/resumes/{draft['id']}", json=payload, headers=auth_headers
-    )
+    stale = client.put(f"/api/v1/resumes/{draft['id']}", json=payload, headers=auth_headers)
     assert stale.status_code == 409
 
 
@@ -82,17 +78,13 @@ def test_canvas_rejects_unknown_provenance_and_invalid_ats_layout(
     unsupported_id = str(uuid4())
     fact_block["fact_ids"] = [unsupported_id]
     unknown["selected_fact_ids"].append(unsupported_id)
-    response = client.put(
-        f"/api/v1/resumes/{draft['id']}", json=unknown, headers=auth_headers
-    )
+    response = client.put(f"/api/v1/resumes/{draft['id']}", json=unknown, headers=auth_headers)
     assert response.status_code == 422
     assert "missing career facts" in response.text
 
     multi_column = _write_payload(deepcopy(draft))
     multi_column["canvas_document"]["style"]["columns"] = 2
-    response = client.put(
-        f"/api/v1/resumes/{draft['id']}", json=multi_column, headers=auth_headers
-    )
+    response = client.put(f"/api/v1/resumes/{draft['id']}", json=multi_column, headers=auth_headers)
     assert response.status_code == 422
     assert "single-column" in response.text
 
@@ -166,9 +158,7 @@ def test_manual_claim_can_be_saved_as_draft_but_not_published(
         if block["id"] == "manual-career-impact"
     )
     assert manual["fact_ids"] == []
-    blocked = client.post(
-        f"/api/v1/resumes/{draft['id']}/publish", headers=auth_headers
-    )
+    blocked = client.post(f"/api/v1/resumes/{draft['id']}/publish", headers=auth_headers)
     assert blocked.status_code == 422
     assert "provenance" in blocked.text.casefold()
 
@@ -211,9 +201,9 @@ def test_manual_claim_promotion_atomically_revisions_profile_and_draft(
 
     db_session.expire_all()
     fact = db_session.query(CareerFact).filter(CareerFact.id == fact_id).one()
-    profile = db_session.query(CandidateProfile).filter(
-        CandidateProfile.id == result["profile_id"]
-    ).one()
+    profile = (
+        db_session.query(CandidateProfile).filter(CandidateProfile.id == result["profile_id"]).one()
+    )
     assert fact.fact_type == "achievement"
     assert fact.verification_status == "confirmed"
     assert fact.payload["title"] == "Built an offline career workflow"
@@ -237,20 +227,15 @@ def test_fact_selection_reconciles_canvas_without_losing_manual_blocks(
 ):
     draft = _generate(client, auth_headers, saved_detailed_profile)
     skill_id = next(
-        fact["id"]
-        for fact in saved_detailed_profile["facts"]
-        if fact["fact_type"] == "skill"
+        fact["id"] for fact in saved_detailed_profile["facts"] if fact["fact_type"] == "skill"
     )
     payload = _write_payload(deepcopy(draft))
     payload["selected_fact_ids"].remove(skill_id)
-    removed = client.put(
-        f"/api/v1/resumes/{draft['id']}", json=payload, headers=auth_headers
-    )
+    removed = client.put(f"/api/v1/resumes/{draft['id']}", json=payload, headers=auth_headers)
     assert removed.status_code == 200, removed.text
     without_skill = removed.json()
     assert all(
-        section["kind"] != "skill"
-        for section in without_skill["canvas_document"]["sections"]
+        section["kind"] != "skill" for section in without_skill["canvas_document"]["sections"]
     )
 
     restored_payload = _write_payload(without_skill)

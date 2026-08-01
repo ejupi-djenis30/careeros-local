@@ -16,7 +16,7 @@ def test_ollama_provider_uses_native_chat_contract():
         result = provider.generate_text("System", "User", max_tokens=64)
 
     assert result == "Local response"
-    path, = client.post.call_args.args
+    (path,) = client.post.call_args.args
     payload = client.post.call_args.kwargs["json"]
     assert path == "/api/chat"
     assert payload["model"] == "qwen3:4b"

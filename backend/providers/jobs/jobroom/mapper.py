@@ -10,6 +10,7 @@ import logging
 from pathlib import Path
 from typing import Any, NamedTuple
 
+from backend.core.diagnostics import FailureCode, diagnose_failure, log_failure
 from backend.providers.jobs.exceptions import LocationNotFoundError
 
 logger = logging.getLogger(__name__)
@@ -329,7 +330,8 @@ class BFSLocationMapper:
             logger.info("Loaded extended BFS location data")
 
         except Exception as exc:
-            logger.warning("BFS data load failed exception_type=%s", type(exc).__name__)
+            diagnostic = diagnose_failure(exc, FailureCode.LOCAL_RESOURCE_LOAD_FAILED)
+            log_failure(logger, diagnostic, level=logging.WARNING)
 
     def resolve(self, location: str) -> list[str]:
         """

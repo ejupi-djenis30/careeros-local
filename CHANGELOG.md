@@ -5,6 +5,130 @@ All notable changes to CareerOS Local are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- Added restart-durable Career Vault reset, restore and erasure recovery with four persisted
+  lifecycle states, a checksummed restore journal, purpose-bound maintenance sessions and a
+  same-archive retry flow.
+- Added a closed, typed diagnostics and activity registry for search progress, failure codes and
+  public status messages. Persisted search diagnostics now use schema v2 and discard legacy,
+  malformed or tampered entries instead of replaying untrusted text.
+- Added real forced-colors, keyboard-focus and WCAG checks for login and Agent Access across the
+  supported English and Italian responsive layouts.
+- Added container lifecycle CI for migrations, health, registration, login, authenticated
+  mutation, restart persistence and graceful shutdown, plus an exact expiring Ollama
+  vulnerability baseline that distinguishes 31 findings across 30 vulnerability identifiers.
+- Added one canonical packaged Alembic chain, a bounded cross-process migration lock and a
+  checksummed recovery journal that restores the previous SQLite vault after an interrupted or
+  failed schema upgrade.
+- Added strict restart journals for source, photo, resume-artifact and portable-restore publication;
+  every journal has an explicit entry/path/byte ceiling and is read through a stable regular-file
+  descriptor before recovery can change private state.
+- Added one bounded canonical installation-secret reader for container fallback, CLI and MCP
+  startup, including regular-file identity, link/reparse, private-path, POSIX ownership/mode and
+  pre/post descriptor checks.
+
+### Changed
+
+- The contributor backend image now uses the digest-pinned Python 3.12.13 Alpine 3.23 runtime on
+  amd64 and arm64, runs as UID/GID 10001 and removes pip, ensurepip, setuptools and idle from the
+  production surface.
+- The Compose stack now pins Ollama 0.32.0, separates application and model traffic, bounds process
+  counts and log retention, and applies read-only roots, temporary writable storage, dropped
+  capabilities and no-new-privileges consistently.
+- Runtime contracts now pin CPython 3.12.13 and Node 24.18.x. Third-party notices are regenerated
+  from those exact inputs, and notice verification now rebuilds the payload with the pinned
+  interpreter before accepting it.
+- Container access logs now retain only content-free operational timing/status fields, Uvicorn
+  access logging is disabled in favor of structured application diagnostics, and web assets stay
+  root-owned and non-writable by the Nginx worker.
+- Production runtimes no longer expose CDN-backed Swagger/ReDoc pages or the HTTP OpenAPI endpoint;
+  development and direct Python contract generation remain available. Credentialed CORS now
+  accepts exact configured origins only and no longer exposes a regex expansion option.
+- Both runtime images now carry root-owned, non-writable canonical `LICENSE` and
+  `THIRD_PARTY_NOTICES.txt` files under the standard system license directory, with byte-for-byte
+  digest checks in container CI.
+- The authenticated workspace and layered Bootstrap CSS now load only after session restoration.
+  Locale catalogues retain all 1,524 bilingual keys in a compact namespace representation, and
+  ratcheted login plus authenticated-chunk budgets preserve measured transfer headroom.
+- Environment, private API prefix, trusted Host authority, JWT algorithm, production signing
+  secret, credentialed CORS origins and renderer API bases now use canonical fail-closed
+  configuration contracts, including bracketed IPv6 normalization.
+- Provider, local-inference and managed-runtime transports now enforce strict response identity,
+  byte and time envelopes before decoding. Source parsing and photo normalization run outside the
+  SQLite writer boundary while liveness probes remain responsive.
+- Desktop startup now migrates before the first application database handle, validates its private
+  data directories and installation secret through stable descriptors, and accepts only an exact,
+  bounded JSON readiness response from the loopback sidecar.
+- SQLite startup now parses, resolves and contains the target without filesystem mutation, acquires
+  the bounded no-follow migration lock, and only then creates the private data chain and reserves a
+  new database. It applies and verifies WAL, foreign-key, secure-delete and trusted-schema policies
+  before the lazy application engine opens its first handle, and enforces `0700` directories plus
+  `0600` main/WAL/SHM/journal files on POSIX.
+
+### Fixed
+
+- The NSIS uninstaller now removes only its per-user location and language metadata after a full
+  uninstall, preserves all four MSI-owned registry values even when the user selects delete app
+  data, and fails closed before deleting files whenever Windows Installer still owns the shared
+  payload. The real installer smoke proves that refusal leaves the application, backend,
+  uninstaller and MSI registration intact, then removes the simulated MSI ownership and verifies
+  the normal NSIS uninstall and rollback paths without touching the user-owned CareerOS vault.
+- Windows sidecar verification now rejects PE machine types that do not match the declared native
+  release target.
+- Updated the Tauri transitive `event-listener` lock from 5.4.1 to 5.4.2, removing the
+  `RUSTSEC-2026-0221` soundness advisory from the complete desktop dependency graph.
+- Search status, logs and exception paths no longer persist or emit raw query, provider, profile,
+  URL or exception content; forged diagnostic wrappers and arbitrary logging arguments fail
+  closed at the public boundary.
+- Agent Access and login controls now retain system colors, visible focus, readable status
+  boundaries and operable primary actions when Windows forced-colors mode is active.
+- Search target queues now expose content-free ordinal labels instead of rendering query, domain
+  or provider values in progress UI.
+- Every direct and proxied `/api/v1` response is non-cacheable, including early authentication,
+  CORS, Trusted Host and exception responses. Browser auth mutations now reject any supplied
+  origin outside the exact local UI allowlist, and the obsolete browser XSS auditor is explicitly
+  disabled.
+- Access tokens without an explicit `access` type now fail closed. Access and refresh tokens now
+  belong to a persisted session family: refresh rotation is single-use, replay revokes the family
+  and ordinary workspace routes reject purpose-bound maintenance sessions.
+- External job, CV and application links now require HTTPS; plain HTTP remains available only for
+  exact loopback hosts. Credential-bearing, protocol-relative, non-loopback cleartext and
+  ambiguous IPv6/IDN targets fail closed before browser or native navigation.
+- Registration and login reject passwords beyond bcrypt's 72-byte UTF-8 boundary without
+  truncation or hash work. A failed explicit logout now hides the private workspace, reports that
+  the local server session was not ended and offers a retry instead of claiming success.
+- Refresh cookies are scoped to `/api/v1/auth`; login, rotation and logout also remove historical
+  root-path CareerOS cookies so upgrades cannot retain ambiguous same-name values.
+- Authenticated API responses are no longer dynamically compressed. Nginx emits one private cache
+  policy for proxied API responses, revalidates the SPA shell and unhashed public assets, and
+  applies immutable caching and gzip only to fingerprinted build assets.
+- Source, photo and resume artifact publication now uses create-if-absent ownership with durable
+  crash recovery. Verified private-file reads require the recorded size, an explicit byte ceiling,
+  a stable regular-file identity and a matching SHA-256 digest, and reject symlink/reparse aliases.
+  Windows stability checks retain path/descriptor identity while comparing mutation timestamps
+  between descriptor snapshots, avoiding false NTFS metadata drift under concurrent load.
+- Interrupted atomic-write cleanup no longer uses recursive path traversal: it skips symbolic links
+  and Windows junctions, shares one bounded scan across both private namespaces, completes discovery
+  before unlinking, and revalidates every parent chain at deletion time.
+- Fixed a POSIX migration-lock lifetime hazard by avoiding secondary database descriptor closes in
+  the connection hook, and made source/photo recovery converge from committed SQLite references
+  after hard process loss or an ambiguous commit result without deleting another profile's bytes.
+- Portable restore and complete-vault deletion now verify a fresh locked SQLite postcondition when
+  a commit acknowledgement is lost. A committed restore preserves its rows, files and ready
+  lifecycle; a committed deletion completes privacy cleanup without restoring staged bytes, while
+  failures proven to occur before commit retain rollback and retry behavior. Erasure session
+  finalization likewise accepts an ambiguous commit only after proving ready lifecycle, a cleared
+  maintenance fingerprint and zero remaining sessions from a fresh snapshot.
+- Portable export now enforces the same ZIP member ceiling as restore before reading any private
+  file and rechecks the invariant before assembly, preventing a successful but unrestorable backup.
+- Portable restore now rejects Boolean, zero and per-table oversized private-file sizes before
+  publication, then requires every bound source/photo or resume-artifact member to match its exact
+  declared size, digest and canonical storage path.
+- Native backup export publishes without replacement, preserves an externally created race winner
+  and keeps the recovery file when publication cannot complete; renderer-to-Rust backup payloads
+  are capped at the backend's 128 MiB archive limit.
+
 ## [1.10.0] - 2026-07-30
 
 ### Added

@@ -6,6 +6,7 @@ describe('AuthService', () => {
   beforeEach(() => {
     ApiClient.setToken(null);
     AuthService._refreshPromise = null;
+    AuthService._logoutToken = null;
   });
 
   afterEach(() => {
@@ -57,6 +58,22 @@ describe('AuthService', () => {
     expect(ApiClient.getToken()).toBeNull();
   });
 
+  it('makes overlapping logins last-started-wins', async () => {
+    const resolvers = [];
+    vi.spyOn(ApiClient, 'postForm').mockImplementation(() => new Promise(resolve => {
+      resolvers.push(resolve);
+    }));
+
+    const first = AuthService.login('alice', 'first');
+    const second = AuthService.login('bob', 'second');
+    resolvers[1]({ access_token: 'bob-token', username: 'bob' });
+    await expect(second).resolves.toEqual({ access_token: 'bob-token', username: 'bob' });
+    resolvers[0]({ access_token: 'alice-token', username: 'alice' });
+
+    await expect(first).resolves.toBeNull();
+    expect(ApiClient.getToken()).toBe('bob-token');
+  });
+
   // ── register ───────────────────────────────────────────────────────────────
 
   it('register sets token when access_token is returned', async () => {
@@ -95,6 +112,22 @@ describe('AuthService', () => {
 
     await expect(registration).resolves.toBeNull();
     expect(ApiClient.getToken()).toBeNull();
+  });
+
+  it('makes overlapping registrations last-started-wins', async () => {
+    const resolvers = [];
+    vi.spyOn(ApiClient, 'post').mockImplementation(() => new Promise(resolve => {
+      resolvers.push(resolve);
+    }));
+
+    const first = AuthService.register('alice', 'first');
+    const second = AuthService.register('bob', 'second');
+    resolvers[1]({ access_token: 'bob-token', username: 'bob' });
+    await expect(second).resolves.toEqual({ access_token: 'bob-token', username: 'bob' });
+    resolvers[0]({ access_token: 'alice-token', username: 'alice' });
+
+    await expect(first).resolves.toBeNull();
+    expect(ApiClient.getToken()).toBe('bob-token');
   });
 
   // ── refresh ────────────────────────────────────────────────────────────────
@@ -139,7 +172,52 @@ describe('AuthService', () => {
     expect(AuthService._refreshPromise).toBeNull();
   });
 
+  it('does not let an old refresh overwrite a newer login', async () => {
+    ApiClient.setToken('old-token');
+    let resolveRefresh;
+    let resolveLogin;
+    vi.spyOn(ApiClient, 'post').mockReturnValue(new Promise(resolve => {
+      resolveRefresh = resolve;
+    }));
+    vi.spyOn(ApiClient, 'postForm').mockReturnValue(new Promise(resolve => {
+      resolveLogin = resolve;
+    }));
+
+    const refresh = AuthService.refresh();
+    const login = AuthService.login('new-user', 'Password1');
+    resolveLogin({ access_token: 'new-login-token', username: 'new-user' });
+    await expect(login).resolves.toEqual({
+      access_token: 'new-login-token',
+      username: 'new-user',
+    });
+    resolveRefresh({ access_token: 'late-refresh-token', username: 'old-user' });
+
+    await expect(refresh).resolves.toBeNull();
+    expect(ApiClient.getToken()).toBe('new-login-token');
+  });
+
   // ── logout ─────────────────────────────────────────────────────────────────
+
+  it('captures the bearer and invalidates requests before terminal recovery logout', () => {
+    ApiClient.setToken('maintenance-token');
+    const epoch = ApiClient.getSessionEpoch();
+
+    AuthService.prepareLogout();
+
+    expect(AuthService._logoutToken).toBe('maintenance-token');
+    expect(ApiClient.getToken()).toBeNull();
+    expect(ApiClient.getSessionEpoch()).toBeGreaterThan(epoch);
+  });
+
+  it('can discard a captured terminal bearer after best-effort backend logout fails', () => {
+    AuthService._logoutToken = 'captured-maintenance-token';
+    ApiClient.setToken('unexpected-live-token');
+
+    AuthService.discardLogoutToken();
+
+    expect(AuthService._logoutToken).toBeNull();
+    expect(ApiClient.getToken()).toBeNull();
+  });
 
   it('logout clears token', async () => {
     ApiClient.setToken('active-tok');
@@ -154,27 +232,51 @@ describe('AuthService', () => {
     expect(post).toHaveBeenCalledWith('/auth/logout', {}, {
       suppressGlobalError: true,
       suppressUnauthorizedRefresh: true,
+      headers: { Authorization: 'Bearer active-tok' },
     });
+    expect(AuthService._logoutToken).toBeNull();
   });
 
-  it('logout clears token even when API call fails', async () => {
+  it('logout clears the access token and propagates a server failure', async () => {
     ApiClient.setToken('active-tok');
     vi.spyOn(ApiClient, 'post').mockRejectedValue(new Error('Network'));
-    await AuthService.logout();
+    await expect(AuthService.logout()).rejects.toThrow('Network');
     expect(ApiClient.getToken()).toBeNull();
+    expect(AuthService._logoutToken).toBe('active-tok');
+  });
+
+  it('retries failed logout with the same in-memory bearer after local invalidation', async () => {
+    ApiClient.setToken('retry-token');
+    const post = vi.spyOn(ApiClient, 'post')
+      .mockRejectedValueOnce(new Error('Network'))
+      .mockResolvedValueOnce({});
+
+    await expect(AuthService.logout()).rejects.toThrow('Network');
+    await expect(AuthService.logout()).resolves.toBeUndefined();
+
+    expect(post).toHaveBeenCalledTimes(2);
+    for (const call of post.mock.calls) {
+      expect(call[2].headers).toEqual({ Authorization: 'Bearer retry-token' });
+    }
+    expect(AuthService._logoutToken).toBeNull();
   });
 
   it('keeps refresh and logout unauthorized handling request-scoped when they overlap', async () => {
     ApiClient.setToken('active-token');
     let resolveRefresh;
     const post = vi.spyOn(ApiClient, 'post').mockImplementation((path, _body, options) => {
+      if (path === '/auth/refresh') {
+        expect(options).toEqual({
+          suppressGlobalError: true,
+          suppressUnauthorizedRefresh: true,
+        });
+        return new Promise(resolve => { resolveRefresh = resolve; });
+      }
       expect(options).toEqual({
         suppressGlobalError: true,
         suppressUnauthorizedRefresh: true,
+        headers: { Authorization: 'Bearer active-token' },
       });
-      if (path === '/auth/refresh') {
-        return new Promise(resolve => { resolveRefresh = resolve; });
-      }
       return Promise.resolve({});
     });
 

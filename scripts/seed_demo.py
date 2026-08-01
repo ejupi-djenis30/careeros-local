@@ -117,10 +117,20 @@ PROFILE_PAYLOAD: dict[str, Any] = {
                 "deal_breakers": ["Mandatory relocation"],
                 "success_criteria": ["Sign a role aligned with local-first product work"],
                 "milestones": [
-                    {"id": "portfolio", "title": "Publish evidence portfolio", "status": "achieved", "completed_date": "2026-07-21"}
+                    {
+                        "id": "portfolio",
+                        "title": "Publish evidence portfolio",
+                        "status": "achieved",
+                        "completed_date": "2026-07-21",
+                    }
                 ],
                 "actions": [
-                    {"id": "application", "title": "Prepare a complete application pack", "status": "completed", "completed_date": "2026-07-21"}
+                    {
+                        "id": "application",
+                        "title": "Prepare a complete application pack",
+                        "status": "completed",
+                        "completed_date": "2026-07-21",
+                    }
                 ],
             },
         }
@@ -305,7 +315,11 @@ class ApiClient:
 def validate_credentials(username: str, password: str) -> None:
     if not 3 <= len(username) <= 50 or re.fullmatch(r"[A-Za-z0-9_]+", username) is None:
         raise SeedError("The username must be 3–50 alphanumeric or underscore characters")
-    if len(password) < 8 or re.search(r"[A-Z]", password) is None or re.search(r"\d", password) is None:
+    if (
+        len(password) < 8
+        or re.search(r"[A-Z]", password) is None
+        or re.search(r"\d", password) is None
+    ):
         raise SeedError("The password must be at least 8 characters with a capital and a digit")
 
 
@@ -364,9 +378,7 @@ def _profile_ready(profile: Mapping[str, Any]) -> bool:
 
 
 def ensure_profile(api: JsonApi, token: str) -> tuple[dict[str, Any], str]:
-    current = api.request_json(
-        "GET", "/career-profile", token=token, allowed_statuses=(200, 404)
-    )
+    current = api.request_json("GET", "/career-profile", token=token, allowed_statuses=(200, 404))
     if current.status == 200:
         profile = _object(current.value, "career profile")
         if not _profile_ready(profile):
@@ -392,11 +404,15 @@ def _published_resume_version(value: object) -> str | None:
     if not isinstance(value, dict) or not isinstance(value.get("id"), str):
         return None
     artifacts = value.get("artifacts")
-    formats = {
-        item.get("format")
-        for item in artifacts
-        if isinstance(artifacts, list) and isinstance(item, dict)
-    } if isinstance(artifacts, list) else set()
+    formats = (
+        {
+            item.get("format")
+            for item in artifacts
+            if isinstance(artifacts, list) and isinstance(item, dict)
+        }
+        if isinstance(artifacts, list)
+        else set()
+    )
     quality = value.get("quality_report")
     if {"pdf", "docx"}.issubset(formats) and isinstance(quality, dict) and quality.get("passed"):
         return str(value["id"])
@@ -434,9 +450,7 @@ def ensure_resume(api: JsonApi, token: str) -> tuple[str, str]:
     if not isinstance(draft_id, str):
         raise SeedError("The local API did not return the demo resume identifier")
     detail = _object(
-        api.request_json(
-            "GET", f"/resumes/{draft_id}", token=token, allowed_statuses=(200,)
-        ).value,
+        api.request_json("GET", f"/resumes/{draft_id}", token=token, allowed_statuses=(200,)).value,
         "resume detail",
     )
     versions = detail.get("versions")
@@ -523,9 +537,10 @@ def ensure_application(api: JsonApi, token: str, resume_version_id: str) -> str:
         )
         status = "created"
     snapshot = application.get("job_snapshot")
-    if not isinstance(snapshot, dict) or (
-        snapshot.get("title"), snapshot.get("company")
-    ) != (DEMO_JOB_TITLE, DEMO_JOB_COMPANY):
+    if not isinstance(snapshot, dict) or (snapshot.get("title"), snapshot.get("company")) != (
+        DEMO_JOB_TITLE,
+        DEMO_JOB_COMPANY,
+    ):
         raise SeedError("The local API did not create the requested demo application")
     application_id = application.get("id")
     if not isinstance(application_id, str):

@@ -2,7 +2,7 @@ from datetime import datetime
 from enum import Enum
 from typing import Any, Dict, List, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 
 class SortOrder(str, Enum):
@@ -31,42 +31,48 @@ class LanguageLevel(str, Enum):
 
 
 class LanguageSkillRequest(BaseModel):
-    language_code: str
+    language_code: str = Field(min_length=2, max_length=16)
     spoken_level: Optional[LanguageLevel] = None
     written_level: Optional[LanguageLevel] = None
 
 
 class Coordinates(BaseModel):
-    lat: float
-    lon: float
+    lat: float = Field(ge=-90, le=90)
+    lon: float = Field(ge=-180, le=180)
 
 
 class RadiusSearchRequest(BaseModel):
     geo_point: Coordinates
-    distance: int
+    distance: int = Field(ge=0)
 
 
 class JobSearchRequest(BaseModel):
-    query: str = ""
-    location: str = ""
-    canton_codes: List[str] = []
-    communal_codes: List[str] = []
-    keywords: List[str] = []
-    profession_codes: List[str] = []
-    workload_min: int = 0
-    workload_max: int = 100
+    query: str = Field(default="", max_length=1_000)
+    location: str = Field(default="", max_length=500)
+    canton_codes: List[str] = Field(default_factory=list, max_length=26)
+    communal_codes: List[str] = Field(default_factory=list, max_length=500)
+    keywords: List[str] = Field(default_factory=list, max_length=100)
+    profession_codes: List[str] = Field(default_factory=list, max_length=100)
+    workload_min: int = Field(default=0, ge=0, le=100)
+    workload_max: int = Field(default=100, ge=0, le=100)
     contract_type: ContractType = ContractType.ANY
-    company_name: Optional[str] = None
-    posted_within_days: Optional[int] = 30
+    company_name: Optional[str] = Field(default=None, max_length=500)
+    posted_within_days: Optional[int] = Field(default=30, ge=1)
     display_restricted: bool = False
-    radius: Optional[int] = None
+    radius: Optional[int] = Field(default=None, ge=0)
     radius_search: Optional[RadiusSearchRequest] = None
-    work_forms: List[WorkForm] = []
-    language_skills: List[LanguageSkillRequest] = []
-    language: str = "en"
-    page: int = 0
-    page_size: int = 20
+    work_forms: List[WorkForm] = Field(default_factory=list, max_length=10)
+    language_skills: List[LanguageSkillRequest] = Field(default_factory=list, max_length=20)
+    language: str = Field(default="en", min_length=2, max_length=16)
+    page: int = Field(default=0, ge=0)
+    page_size: int = Field(default=20, ge=1, le=100)
     sort: SortOrder = SortOrder.DATE_DESC
+
+    @model_validator(mode="after")
+    def validate_workload_range(self) -> "JobSearchRequest":
+        if self.workload_min > self.workload_max:
+            raise ValueError("workload_min cannot be greater than workload_max")
+        return self
 
 
 # Response Models

@@ -20,10 +20,11 @@ function browserDownload({ blob, filename }) {
     URL.revokeObjectURL(url);
 }
 
-export function DataRecoveryPanel({ hasProfile, onErased }) {
+export function DataRecoveryPanel({ hasProfile }) {
     const { t } = useI18n();
     const erasePhraseRequired = t("data.erasePhrase");
     const fileInput = useRef(null);
+    const selectingBackup = useRef(false);
     const [busy, setBusy] = useState("");
     const [message, setMessage] = useState(null);
     const [erasePhrase, setErasePhrase] = useState("");
@@ -68,7 +69,18 @@ export function DataRecoveryPanel({ hasProfile, onErased }) {
 
     const chooseBackup = async () => {
         if (isDesktopShell()) {
-            await inspect(await openBackupWithNativeDialog({ title: t("desktop.openBackup") }));
+            if (selectingBackup.current) return;
+            selectingBackup.current = true;
+            setBusy("inspect");
+            setMessage(null);
+            try {
+                await inspect(await openBackupWithNativeDialog({ title: t("desktop.openBackup") }));
+            } catch (error) {
+                setMessage(error.message ? { message: error.message } : { messageKey: "data.inspectFailed" });
+            } finally {
+                selectingBackup.current = false;
+                setBusy("");
+            }
         } else {
             fileInput.current?.click();
         }
@@ -78,36 +90,28 @@ export function DataRecoveryPanel({ hasProfile, onErased }) {
         if (hasProfile || !verifiedBackup?.inspection.restorable) return;
         setBusy("restore");
         setMessage(null);
+        let completed = false;
         try {
-            const result = await PortabilityService.restoreArchive(verifiedBackup.file);
-            setMessage({
-                messageKey: "data.restoreDone",
-                variables: {
-                    files: result.restored_files,
-                    records: Object.values(result.restored_records).reduce((sum, count) => sum + count, 0),
-                },
-            });
-            window.location.reload();
+            await PortabilityService.restoreArchive(verifiedBackup.file);
+            completed = true;
         } catch (error) {
             setMessage(error.message ? { message: error.message } : { messageKey: "data.restoreFailed" });
         } finally {
-            setBusy("");
+            if (!completed) setBusy("");
         }
     };
 
     const erase = async () => {
         setBusy("erase");
         setMessage(null);
+        let completed = false;
         try {
-            const result = await PortabilityService.eraseLocalData();
-            setErasePhrase("");
-            setVerifiedBackup(null);
-            setMessage({ messageKey: "data.eraseDone", variables: { files: result.files + result.model_files } });
-            onErased?.();
+            await PortabilityService.eraseLocalData();
+            completed = true;
         } catch (error) {
             setMessage(error.message ? { message: error.message } : { messageKey: "data.eraseFailed" });
         } finally {
-            setBusy("");
+            if (!completed) setBusy("");
         }
     };
 
@@ -119,7 +123,7 @@ export function DataRecoveryPanel({ hasProfile, onErased }) {
                 <button className="button button--secondary" type="button" onClick={backup} disabled={!hasProfile || Boolean(busy)}><i className="bi bi-download" />{busy === "backup" ? t("data.backupBusy") : t("data.backup")}</button>
                 <button className="button button--secondary" type="button" onClick={chooseBackup} disabled={Boolean(busy)}><i className="bi bi-shield-check" />{busy === "inspect" ? t("data.inspectBusy") : t("data.inspect")}</button>
                 <button className="button button--secondary" type="button" onClick={restore} disabled={hasProfile || !verifiedBackup?.inspection.restorable || Boolean(busy)}><i className="bi bi-upload" />{busy === "restore" ? t("data.restoreBusy") : t("data.restoreVerified")}</button>
-                <input ref={fileInput} className="visually-hidden" type="file" accept=".zip,application/zip" aria-label={t("data.backupFile")} onChange={(event) => inspect(event.target.files?.[0])} />
+                <input ref={fileInput} className="visually-hidden" type="file" tabIndex={-1} accept=".zip,application/zip" aria-label={t("data.backupFile")} onChange={(event) => inspect(event.target.files?.[0])} />
             </div>
             <small>{t("data.restoreRequiresEmpty")}</small>
             {verifiedBackup && <BackupInspectionSummary inspection={verifiedBackup.inspection} />}

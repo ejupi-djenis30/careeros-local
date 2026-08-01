@@ -52,9 +52,7 @@ class SourceApi:
 
 def test_source_policy_requires_verified_annotated_tag_on_stable_default_branch() -> None:
     assert (
-        verify_source_policy(
-            SourceApi(), repo="owner/repo", tag="v1.3.0", source_commit=COMMIT
-        )
+        verify_source_policy(SourceApi(), repo="owner/repo", tag="v1.3.0", source_commit=COMMIT)
         == "main"
     )
 
@@ -66,9 +64,12 @@ def test_source_policy_requires_verified_annotated_tag_on_stable_default_branch(
         verify_source_policy(
             SourceApi(verified=False), repo="owner/repo", tag="v1.3.0", source_commit=COMMIT
         )
-    assert verify_source_policy(
-        SourceApi(moving=True), repo="owner/repo", tag="v1.3.0", source_commit=COMMIT
-    ) == "main"
+    assert (
+        verify_source_policy(
+            SourceApi(moving=True), repo="owner/repo", tag="v1.3.0", source_commit=COMMIT
+        )
+        == "main"
+    )
     with pytest.raises(RuntimeError, match="identity changed"):
         verify_source_policy(
             SourceApi(renamed=True), repo="owner/repo", tag="v1.3.0", source_commit=COMMIT

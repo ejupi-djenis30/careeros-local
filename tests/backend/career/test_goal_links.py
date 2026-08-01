@@ -28,9 +28,7 @@ def _actions(version_id: str) -> list[dict]:
 
 
 def test_goal_links_require_learning_actions_in_the_same_goal() -> None:
-    payload = CareerGoalPayload.model_validate(
-        {"actions": _actions("version-1")}
-    )
+    payload = CareerGoalPayload.model_validate({"actions": _actions("version-1")})
     assert payload.actions[1].linked_learning_activity_ids == ["learn-architecture"]
 
     invalid = _actions("version-1")
@@ -39,9 +37,7 @@ def test_goal_links_require_learning_actions_in_the_same_goal() -> None:
         CareerGoalPayload.model_validate({"actions": invalid})
 
 
-def test_profile_goal_links_only_owned_resume_versions(
-    db_session, test_user
-) -> None:
+def test_profile_goal_links_only_owned_resume_versions(db_session, test_user) -> None:
     profile_service = CareerProfileService(db_session)
     profile = profile_service.save(
         test_user.id,
@@ -91,13 +87,9 @@ def test_profile_goal_links_only_owned_resume_versions(
             ],
         ),
     )
-    assert saved.goals[0].payload["actions"][1]["linked_resume_version_ids"] == [
-        version.id
-    ]
+    assert saved.goals[0].payload["actions"][1]["linked_resume_version_ids"] == [version.id]
     options = ResumeService(db_session).list_versions(test_user.id)
-    assert [(item.id, item.draft_title) for item in options] == [
-        (version.id, "CV Staff")
-    ]
+    assert [(item.id, item.draft_title) for item in options] == [(version.id, "CV Staff")]
 
     with pytest.raises(ValueError, match="same career profile"):
         profile_service.save(

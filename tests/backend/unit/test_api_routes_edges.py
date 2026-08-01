@@ -1,10 +1,11 @@
 import io
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from fastapi import HTTPException
 from fastapi.testclient import TestClient
 
-from backend.api.deps import get_current_user_id, get_db
+from backend.api.deps import get_current_user_id
 from backend.main import app
 
 client = TestClient(app)
@@ -19,33 +20,20 @@ def test_auth_refresh_missing_token():
 
 def test_auth_refresh_invalid_token():
     client.cookies.clear()
-    client.cookies.set(
-        "careeros_refresh_token", "invalid", domain="testserver.local", path="/"
-    )
-    with patch("backend.api.routes.auth.decode_refresh_token", return_value=None):
+    client.cookies.set("careeros_refresh_token", "invalid", domain="testserver.local", path="/")
+    with patch("backend.api.routes.auth.rotate_refresh_session", return_value=None):
         response = client.post("/api/v1/auth/refresh")
     assert response.status_code == 401
     assert "Invalid refresh token" in response.json()["detail"]
 
 
-def test_auth_refresh_user_vanished():
+def test_auth_refresh_rejected_session_is_generic():
     client.cookies.clear()
-    client.cookies.set(
-        "careeros_refresh_token", "valid", domain="testserver.local", path="/"
-    )
-    with (
-        patch("backend.api.routes.auth.decode_refresh_token", return_value={"sub": "testuser"}),
-        patch("backend.api.routes.auth.get_db"),
-    ):
-        mock_session = MagicMock()
-        mock_session.query.return_value.filter.return_value.first.return_value = None
-        app.dependency_overrides[get_db] = lambda: mock_session
-        try:
-            response = client.post("/api/v1/auth/refresh")
-            assert response.status_code == 401
-            assert "User vanished" in response.json()["detail"]
-        finally:
-            app.dependency_overrides.clear()
+    client.cookies.set("careeros_refresh_token", "valid", domain="testserver.local", path="/")
+    with patch("backend.api.routes.auth.rotate_refresh_session", return_value=None):
+        response = client.post("/api/v1/auth/refresh")
+    assert response.status_code == 401
+    assert response.json() == {"detail": "Invalid refresh token"}
 
 
 def test_auth_logout():
@@ -90,9 +78,12 @@ def test_auth_deps_user_not_found():
 
     from backend.api.deps import get_current_user_id
 
-    with patch("backend.api.deps.decode_access_token", return_value={"sub": "user"}):
+    with patch(
+        "backend.api.deps.decode_access_token",
+        return_value={"sub": "user", "sid": "a" * 32},
+    ):
         mock_db = MagicMock()
-        mock_db.query.return_value.filter.return_value.first.return_value = None
+        mock_db.query.return_value.join.return_value.filter.return_value.scalar.return_value = None
         with pytest.raises(HTTPException):
             get_current_user_id("token", mock_db)
 
@@ -150,9 +141,28 @@ def test_search_upload_file_too_large():
         response = client.post(
             "/api/v1/search/upload-cv", files={"file": ("test.pdf", large_file, "application/pdf")}
         )
-        assert response.status_code == 400
+        assert response.status_code == 413
         assert "File too large" in response.json()["detail"]
     app.dependency_overrides.clear()
+
+
+@pytest.mark.asyncio
+async def test_search_upload_bounds_stream_when_declared_size_is_missing(monkeypatch):
+    from backend.api.routes.search import upload_cv
+    from backend.core.config import settings
+
+    monkeypatch.setattr(settings, "MAX_UPLOAD_FILE_SIZE", 8)
+    upload = MagicMock()
+    upload.size = None
+    upload.filename = "resume.txt"
+    upload.content_type = "text/plain"
+    upload.read = AsyncMock(return_value=b"123456789")
+
+    with pytest.raises(HTTPException) as failure:
+        await upload_cv(MagicMock(), upload, 1)
+
+    assert failure.value.status_code == 413
+    upload.read.assert_awaited_once_with(9)
 
 
 @pytest.mark.asyncio

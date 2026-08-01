@@ -13,9 +13,7 @@ from pathlib import Path
 from typing import Any, cast
 
 ROOT = Path(__file__).resolve().parents[1]
-STABLE_SEMANTIC_VERSION = re.compile(
-    r"^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$"
-)
+STABLE_SEMANTIC_VERSION = re.compile(r"^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$")
 CHANGELOG_RELEASE = re.compile(
     r"^## \[(?P<version>(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*))\]"
     r" - (?P<release_date>[0-9]{4}-[0-9]{2}-[0-9]{2})$",
@@ -156,10 +154,7 @@ def main() -> int:
     versions = release_versions()
     version = validate_versions(versions, tag)
     release_date = validate_release_date(version, arguments.expected_release_date)
-    print(
-        f"RELEASE_VERSION={version} RELEASE_DATE={release_date} "
-        f"SOURCES={len(versions)}"
-    )
+    print(f"RELEASE_VERSION={version} RELEASE_DATE={release_date} SOURCES={len(versions)}")
     return 0
 
 

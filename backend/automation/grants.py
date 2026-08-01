@@ -7,10 +7,11 @@ import secrets
 import threading
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
-from typing import cast
+from typing import Any, cast
 
-from sqlalchemy import or_
+from sqlalchemy import case, or_
 from sqlalchemy.orm import Session
+from sqlalchemy.sql.elements import ColumnElement
 
 from backend.automation.models import AutomationGrant
 from backend.automation.schemas import (
@@ -19,12 +20,15 @@ from backend.automation.schemas import (
     GrantView,
     normalize_grant_label,
 )
+from backend.models import User
+from backend.models.user import VAULT_STATE_READY
 
 TOKEN_ENVIRONMENT_VARIABLE = "CAREEROS_MCP_TOKEN"
 TOKEN_PREFIX = "_".join(("careeros", "mcp", "v1", ""))
 MAX_ACTIVE_GRANTS_PER_USER = 32
 RECENT_GRANT_HISTORY_LIMIT = 100
-_ISSUE_LOCK = threading.Lock()
+_GRANT_MUTATION_LOCK = threading.Lock()
+_PRUNE_BATCH_SIZE = 500
 
 
 class AutomationGrantError(RuntimeError):
@@ -57,6 +61,71 @@ def normalize_scopes(values: list[str] | tuple[str, ...]) -> tuple[AutomationSco
     return tuple(scope for scope in ALL_AUTOMATION_SCOPES if scope in requested)
 
 
+def _inactive_filter(
+    *,
+    user_id: int,
+    now: datetime,
+) -> tuple[ColumnElement[bool], ColumnElement[bool]]:
+    return (
+        AutomationGrant.user_id == user_id,
+        or_(
+            AutomationGrant.revoked_at.is_not(None),
+            AutomationGrant.expires_at <= now,
+        ),
+    )
+
+
+def _inactivity_at() -> ColumnElement[Any]:
+    """Order history by the transition that removed authority, not issuance."""
+    return case(
+        (
+            AutomationGrant.revoked_at.is_not(None),
+            AutomationGrant.revoked_at,
+        ),
+        else_=AutomationGrant.expires_at,
+    )
+
+
+def _prune_inactive_history(
+    db: Session,
+    *,
+    user_id: int,
+    now: datetime,
+) -> int:
+    """Retain a bounded, owner-scoped inactive audit tail after mutations.
+
+    Active rows are never selected. Batching avoids an unbounded Python list and
+    SQLite parameter list when cleaning a vault created by an older build.
+    """
+    removed = 0
+    while True:
+        stale_ids = [
+            grant_id
+            for (grant_id,) in (
+                db.query(AutomationGrant.id)
+                .filter(*_inactive_filter(user_id=user_id, now=now))
+                .order_by(
+                    _inactivity_at().desc(),
+                    AutomationGrant.id.asc(),
+                )
+                .offset(RECENT_GRANT_HISTORY_LIMIT)
+                .limit(_PRUNE_BATCH_SIZE)
+                .all()
+            )
+        ]
+        if not stale_ids:
+            return removed
+        removed += (
+            db.query(AutomationGrant)
+            .filter(
+                AutomationGrant.user_id == user_id,
+                AutomationGrant.id.in_(stale_ids),
+            )
+            .delete(synchronize_session=False)
+        )
+        db.flush()
+
+
 def issue_grant(
     db: Session,
     *,
@@ -78,7 +147,13 @@ def issue_grant(
         )
     normalized_scopes = normalize_scopes(scopes)
     now = datetime.now(UTC)
-    with _ISSUE_LOCK:
+    with _GRANT_MUTATION_LOCK:
+        lifecycle_state = db.query(User.vault_lifecycle_state).filter(User.id == user_id).scalar()
+        if lifecycle_state != VAULT_STATE_READY:
+            raise AutomationGrantError(
+                "vault_maintenance_pending",
+                "Complete pending local-data maintenance before issuing a grant",
+            )
         active_count = (
             db.query(AutomationGrant)
             .filter(
@@ -106,6 +181,8 @@ def issue_grant(
             revoked_at=None,
         )
         db.add(grant)
+        db.flush()
+        _prune_inactive_history(db, user_id=user_id, now=now)
         db.commit()
         db.refresh(grant)
     return grant_view(grant), token
@@ -124,6 +201,12 @@ def authenticate_grant(db: Session, token: str) -> AutomationPrincipal:
         raise AutomationGrantError("revoked_grant", "The automation grant has been revoked")
     if grant.expires_at <= now:
         raise AutomationGrantError("expired_grant", "The automation grant has expired")
+    lifecycle_state = db.query(User.vault_lifecycle_state).filter(User.id == grant.user_id).scalar()
+    if lifecycle_state != VAULT_STATE_READY:
+        raise AutomationGrantError(
+            "vault_maintenance_pending",
+            "Career Vault maintenance is pending",
+        )
     try:
         scopes = frozenset(normalize_scopes(tuple(grant.scope_set())))
     except AutomationGrantError as exc:
@@ -149,14 +232,8 @@ def list_grants(db: Session, *, user_id: int) -> list[GrantView]:
     )
     history_rows = (
         db.query(AutomationGrant)
-        .filter(
-            AutomationGrant.user_id == user_id,
-            or_(
-                AutomationGrant.revoked_at.is_not(None),
-                AutomationGrant.expires_at <= now,
-            ),
-        )
-        .order_by(AutomationGrant.created_at.desc(), AutomationGrant.id.asc())
+        .filter(*_inactive_filter(user_id=user_id, now=now))
+        .order_by(_inactivity_at().desc(), AutomationGrant.id.asc())
         .limit(RECENT_GRANT_HISTORY_LIMIT)
         .all()
     )
@@ -165,15 +242,20 @@ def list_grants(db: Session, *, user_id: int) -> list[GrantView]:
 
 
 def revoke_grant(db: Session, *, user_id: int, grant_id: str) -> GrantView:
-    grant = (
-        db.query(AutomationGrant)
-        .filter(AutomationGrant.id == grant_id, AutomationGrant.user_id == user_id)
-        .first()
-    )
-    if grant is None:
-        raise AutomationGrantError("grant_not_found", "Automation grant not found")
-    if grant.revoked_at is None:
-        grant.revoked_at = datetime.now(UTC)
+    with _GRANT_MUTATION_LOCK:
+        grant = (
+            db.query(AutomationGrant)
+            .filter(AutomationGrant.id == grant_id, AutomationGrant.user_id == user_id)
+            .first()
+        )
+        if grant is None:
+            raise AutomationGrantError("grant_not_found", "Automation grant not found")
+        if grant.revoked_at is not None:
+            return grant_view(grant)
+        now = datetime.now(UTC)
+        grant.revoked_at = now
+        db.flush()
+        _prune_inactive_history(db, user_id=user_id, now=now)
         db.commit()
         db.refresh(grant)
     return grant_view(grant)

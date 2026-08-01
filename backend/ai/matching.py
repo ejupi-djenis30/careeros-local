@@ -17,6 +17,7 @@ from backend.ai.match_policy import (
 from backend.ai.orchestrator import LocalAIOrchestrator, OrchestrationRequest
 from backend.ai.retrieval import EvidenceDocument
 from backend.core.config import settings
+from backend.core.diagnostics import FailureCode, diagnose_failure, log_failure
 from backend.providers.circuit_breaker import CircuitOpenError, CircuitState, circuit_registry
 from backend.providers.llm.factory import get_provider_for_step
 from backend.services.search.query_contracts import (
@@ -351,9 +352,8 @@ Return ONLY JSON with a "results" array, one entry per job, IN ORDER:
                 expected_rows=len(jobs_metadata),
             )
         except Exception as exc:
-            logger.warning(
-                "[CRITIQUE] LLM critique call failed: %s. Returning initial results.", exc
-            )
+            diagnostic = diagnose_failure(exc, FailureCode.AI_CRITIQUE_FAILED)
+            log_failure(logger, diagnostic, level=logging.WARNING)
             return initial_results
 
         critique_rows = result.get("results", []) if isinstance(result, dict) else []

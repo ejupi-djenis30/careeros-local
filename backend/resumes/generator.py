@@ -155,9 +155,7 @@ def generate_resume(
     for fact in publishable:
         grouped.setdefault(fact.fact_type, []).append(fact)
     ordered: list[CareerFact] = []
-    order: list[FactType] = [
-        cast(FactType, kind) for kind in SECTION_TITLES if grouped.get(kind)
-    ]
+    order: list[FactType] = [cast(FactType, kind) for kind in SECTION_TITLES if grouped.get(kind)]
     for kind in order:
         ordered.extend(_select_group(kind, grouped[kind], terms))
 

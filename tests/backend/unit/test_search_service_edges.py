@@ -8,12 +8,21 @@ import pytest
 
 from backend.ai.audit import fingerprint_output
 from backend.ai.match_policy import derive_match_outcome, derive_match_presentation
+from backend.core.diagnostics import FailureCode, public_status_message
+from backend.models import User
+from backend.models.user import VAULT_STATE_READY
 from backend.repositories.job_repository import JobRepository
 from backend.repositories.profile_repository import ProfileRepository
 from backend.services.search_service import SearchService, get_search_service
 from backend.services.search_status import get_status
 
 _TEST_EXECUTIONS: dict[str, SimpleNamespace] = {}
+
+
+def _mock_entity_get(model, key):
+    if model is User:
+        return SimpleNamespace(vault_lifecycle_state=VAULT_STATE_READY)
+    return _TEST_EXECUTIONS.get(str(key))
 
 
 class _AnyFingerprint(str):
@@ -144,14 +153,14 @@ def mock_service():
             return_value=SimpleNamespace(ready=True, error_code=None)
         ),
     )
-    mock_job_repo.db.get.side_effect = lambda _model, key: _TEST_EXECUTIONS.get(str(key))
+    mock_job_repo.db.get.side_effect = _mock_entity_get
     return service
 
 
 @pytest.fixture
 def mock_service_with_real_repos():
     mock_db = MagicMock()
-    mock_db.get.side_effect = lambda _model, key: _TEST_EXECUTIONS.get(str(key))
+    mock_db.get.side_effect = _mock_entity_get
     return SearchService(
         db=mock_db,
         job_repo=JobRepository(mock_db),
@@ -186,7 +195,8 @@ async def test_run_search_checks_analysis_readiness_before_contacting_providers(
     status = get_status(1)
     assert status["state"] == "error"
     assert status["terminal_reason"] == "local_model_required"
-    assert "structured_probe_failed" in status["error"]
+    assert status["error"] == public_status_message(FailureCode.LOCAL_MODEL_REQUIRED)
+    assert "structured_probe_failed" not in status["error"]
 
 
 async def test_deduplicate(mock_service):
@@ -764,9 +774,7 @@ async def test_generate_plan_sets_cache_hit_metrics(mock_service):
     mock_update.assert_any_call(
         1,
         total_searches=1,
-        searches_generated=[
-            {"query": "dev", "type": "occupation", "domain": "it", "language": "en"}
-        ],
+        searches_generated=[{"index": 1}],
         plan_unique_count=1,
         planner_mode="deterministic_explicit",
         plan_provenance="deterministic-explicit",
@@ -877,7 +885,7 @@ async def test_save_single_job_invalid_publication_date_logs_warning(mock_servic
     mock_session = mock_service.job_repo.db
     mock_session.query.return_value.filter.return_value.first.return_value = None
 
-    with patch("backend.services.search.listing_utils.logger") as mock_logger:
+    with patch("backend.search.normalization.listings.logger") as mock_logger:
         await mock_service._save_single_job(
             listing,
             _validated_analysis(80, True),
@@ -885,7 +893,10 @@ async def test_save_single_job_invalid_publication_date_logs_warning(mock_servic
             None,
         )
 
-    mock_logger.warning.assert_called_once()
+    mock_logger.log.assert_called_once()
+    rendered = str(mock_logger.log.call_args)
+    assert "broken-date" not in rendered
+    assert "not-a-date" not in rendered
     mock_session.commit.assert_called_once()
 
 
@@ -1076,7 +1087,7 @@ async def test_persist_scraped_job_catalog_marks_failed_entries_without_queueing
     assert updated == 0
     assert getattr(listing_ok, "_catalog_persisted", None) is True
     assert getattr(listing_fail, "_catalog_persisted", None) is False
-    assert "catalog failure" in getattr(listing_fail, "_catalog_persist_error", "")
+    assert getattr(listing_fail, "_catalog_persist_error", "") == "catalog_persistence_failed"
 
 
 async def test_normalize_persisted_jobs_upgrades_bootstrap_rows(mock_service_with_real_repos):
@@ -1182,9 +1193,7 @@ async def test_normalize_persisted_jobs_discards_result_when_revision_changes_du
     current_record = {"value": revision_a}
     mock_session = mock_service_with_real_repos.job_repo.db
     mock_session.query.return_value.filter.return_value.all.return_value = [revision_a]
-    mock_session.get.side_effect = (
-        lambda _model, _key, **_kwargs: current_record["value"]
-    )
+    mock_session.get.side_effect = lambda _model, _key, **_kwargs: current_record["value"]
 
     async def replace_catalog_revision(_chunk):
         current_record["value"] = revision_b
@@ -2439,9 +2448,7 @@ async def test_normalize_persisted_jobs_splits_batches_by_prompt_budget(
         scraped_two,
     ]
     records_by_id = {101: scraped_one, 102: scraped_two}
-    mock_session.get.side_effect = (
-        lambda _model, key, **_kwargs: records_by_id.get(key)
-    )
+    mock_session.get.side_effect = lambda _model, key, **_kwargs: records_by_id.get(key)
 
     captured_chunks = []
 

@@ -8,9 +8,7 @@ def _listing():
     return SimpleNamespace(
         source="jobroom",
         id=" A-42 ",
-        external_url=(
-            "HTTPS://www.Example.com/jobs/Backend/?utm_source=x&lang=EN"
-        ),
+        external_url=("HTTPS://www.Example.com/jobs/Backend/?utm_source=x&lang=EN"),
         title="<b>Senior Backend Engineer</b>",
         company=SimpleNamespace(name="Acme AG"),
         employment=SimpleNamespace(
@@ -19,9 +17,7 @@ def _listing():
             work_forms=["Home Office"],
         ),
         language_skills=[SimpleNamespace(language_code="de", spoken_level="b2")],
-        occupations=[
-            SimpleNamespace(education_code="bachelor", qualification_code="Q1")
-        ],
+        occupations=[SimpleNamespace(education_code="bachelor", qualification_code="Q1")],
         skills=["Python", "FastAPI"],
         raw_data={},
     )

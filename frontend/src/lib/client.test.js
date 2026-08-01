@@ -7,6 +7,7 @@ describe('ApiClient', () => {
   });
 
   afterEach(() => {
+    vi.useRealTimers();
     vi.restoreAllMocks();
   });
 
@@ -92,13 +93,15 @@ describe('ApiClient', () => {
     const unauthorizedListener = vi.fn();
     window.addEventListener('careeros:unauthorized', unauthorizedListener);
 
-    vi.spyOn(globalThis, 'fetch')
+    const fetchMock = vi.spyOn(globalThis, 'fetch')
       .mockResolvedValueOnce({ status: 401, ok: false }) // original request → 401
       .mockResolvedValueOnce({ status: 401, ok: false }); // refresh attempt → also 401
 
     await expect(ApiClient.get('/some/api')).rejects.toThrow('UNAUTHORIZED');
 
     expect(unauthorizedListener).toHaveBeenCalledTimes(1);
+    expect(fetchMock.mock.calls[0][1].redirect).toBe('error');
+    expect(fetchMock.mock.calls[1][1].redirect).toBe('error');
 
     window.removeEventListener('careeros:unauthorized', unauthorizedListener);
   });
@@ -128,6 +131,79 @@ describe('ApiClient', () => {
     await expect(request).rejects.toMatchObject({ name: 'AbortError' });
     expect(ApiClient.getToken()).toBe('refreshed-token');
     expect(unauthorizedListener).not.toHaveBeenCalled();
+    window.removeEventListener('careeros:unauthorized', unauthorizedListener);
+  });
+
+  it('releases one cancelled waiter without cancelling the shared refresh for another request', async () => {
+    ApiClient.setToken('old-token');
+    const firstCaller = new AbortController();
+    let resolveRefresh;
+    const refreshResponse = new Promise((resolve) => {
+      resolveRefresh = resolve;
+    });
+    let protectedCalls = 0;
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockImplementation((url) => {
+      if (String(url).endsWith('/auth/refresh')) return refreshResponse;
+      protectedCalls += 1;
+      if (protectedCalls <= 2) return Promise.resolve({ status: 401, ok: false });
+      return Promise.resolve({
+        status: 200,
+        ok: true,
+        json: async () => ({ data: 'surviving-request' }),
+      });
+    });
+
+    const first = ApiClient.get('/first-protected', firstCaller.signal);
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+    const second = ApiClient.get('/second-protected');
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3));
+
+    firstCaller.abort();
+    const promptOutcome = await Promise.race([
+      first.then(() => 'resolved', (error) => error.name),
+      new Promise((resolve) => setTimeout(() => resolve('still-pending'), 50)),
+    ]);
+
+    resolveRefresh({
+      status: 200,
+      ok: true,
+      json: async () => ({ access_token: 'shared-refreshed-token' }),
+    });
+    await expect(first).rejects.toMatchObject({ name: 'AbortError' });
+    await expect(second).resolves.toEqual({ data: 'surviving-request' });
+
+    expect(promptOutcome).toBe('AbortError');
+    expect(fetchMock.mock.calls.filter(([url]) => String(url).endsWith('/auth/refresh'))).toHaveLength(1);
+    expect(ApiClient.getToken()).toBe('shared-refreshed-token');
+  });
+
+  it('bounds the shared refresh independently from a longer protected request timeout', async () => {
+    vi.useFakeTimers();
+    ApiClient.setToken('old-token');
+    const unauthorizedListener = vi.fn();
+    window.addEventListener('careeros:unauthorized', unauthorizedListener);
+    let refreshSignal;
+    const fetchMock = vi.spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce({ status: 401, ok: false })
+      .mockImplementationOnce((_url, options) => {
+        refreshSignal = options.signal;
+        return new Promise((_resolve, reject) => {
+          refreshSignal.addEventListener('abort', () => {
+            reject(new DOMException('Refresh timed out', 'AbortError'));
+          }, { once: true });
+        });
+      });
+
+    const request = ApiClient.get('/some/api', undefined, { timeoutMs: 60_000 });
+    const outcome = request.catch((error) => error);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+
+    await vi.advanceTimersByTimeAsync(30_000);
+
+    await expect(outcome).resolves.toMatchObject({ status: 401, message: 'UNAUTHORIZED' });
+    expect(refreshSignal.aborted).toBe(true);
+    expect(unauthorizedListener).toHaveBeenCalledTimes(1);
     window.removeEventListener('careeros:unauthorized', unauthorizedListener);
   });
 
@@ -180,6 +256,23 @@ describe('ApiClient', () => {
       message: 'SESSION_CHANGED',
       status: 0,
     });
+    expect(ApiClient._activeControllers.size).toBe(0);
+  });
+
+  it('aborts private-session requests before binding rotated maintenance authority', async () => {
+    ApiClient.setToken('private-session-token');
+    vi.spyOn(globalThis, 'fetch').mockImplementation((_url, { signal }) => (
+      new Promise((_resolve, reject) => {
+        signal.addEventListener('abort', () => reject(signal.reason), { once: true });
+      })
+    ));
+
+    const request = ApiClient.get('/career-profile');
+    await vi.waitFor(() => expect(ApiClient._activeControllers.size).toBe(1));
+    ApiClient.bindMaintenanceToken('rotated-maintenance-token');
+
+    await expect(request).rejects.toThrow('SESSION_CHANGED');
+    expect(ApiClient.getToken()).toBe('rotated-maintenance-token');
     expect(ApiClient._activeControllers.size).toBe(0);
   });
 

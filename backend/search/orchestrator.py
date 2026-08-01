@@ -95,6 +95,7 @@ def get_compatible_providers(
 ) -> List[str]:
     return route_provider_names({"domain": query_domain}, providers, provider_infos)
 
+
 import sys
 import types
 
@@ -112,7 +113,9 @@ from backend.search.matching import MatchingMixin
 from backend.search.finalization import FinalizationMixin
 
 
-class SearchService(AcquisitionMixin, PersistenceMixin, NormalizationMixin, MatchingMixin, FinalizationMixin):
+class SearchService(
+    AcquisitionMixin, PersistenceMixin, NormalizationMixin, MatchingMixin, FinalizationMixin
+):
     """Composition root for local acquisition, normalization, matching and persistence."""
 
     def __init__(
@@ -134,9 +137,7 @@ class SearchService(AcquisitionMixin, PersistenceMixin, NormalizationMixin, Matc
             self.db,
             self.job_repo,
         )
-        self.analysis_readiness_check = (
-            analysis_readiness_check or check_local_model_readiness
-        )
+        self.analysis_readiness_check = analysis_readiness_check or check_local_model_readiness
         # Providers (registered by domain)
         self.providers = {
             "job_room": JobRoomProvider(),
@@ -165,6 +166,7 @@ class _SearchModule(types.ModuleType):
 
 
 sys.modules[__name__].__class__ = _SearchModule
+
 
 def get_search_service(db: Session) -> SearchService:
     return SearchService(db)

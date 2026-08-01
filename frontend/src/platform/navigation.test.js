@@ -22,6 +22,12 @@ describe("desktop external navigation", () => {
     it("rejects script and credential-bearing targets", async () => {
         await expect(openExternal("javascript:alert(1)")).rejects.toThrow(/not allowed/i);
         await expect(openExternal("https://user:secret@example.test/")).rejects.toThrow(/not allowed/i);
+        await expect(openExternal("http://jobs.example.test/role")).rejects.toThrow(/not allowed/i);
+        await expect(openExternal("http://127.0.0.1:8000/admin")).rejects.toThrow(/not allowed/i);
+        await expect(openExternal("https:\\jobs.example.test\\role")).rejects.toThrow(/not allowed/i);
+        await expect(openExternal("mailto:%")).rejects.toThrow(/not allowed/i);
+        await expect(openExternal("mailto:candidate@example.test?subject=unsafe"))
+            .rejects.toThrow(/not allowed/i);
     });
 
     it("intercepts trusted external anchors in the desktop shell", async () => {

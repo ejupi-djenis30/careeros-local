@@ -89,9 +89,13 @@ def _keyword_candidates(profile_dict: dict[str, Any], profile: Any) -> list[str]
     # The free-form strategy is also explicit user input.  In particular, never mine
     # normalized skills, transferable skills, CV text or model-derived intent here.
     strategy = _clean_phrase(profile_dict.get("search_strategy"), maximum=1000)
-    candidates.extend(_clean_phrase(value, maximum=80) for value in _QUOTED_PHRASE.findall(strategy))
+    candidates.extend(
+        _clean_phrase(value, maximum=80) for value in _QUOTED_PHRASE.findall(strategy)
+    )
     for fragment in _STRATEGY_SEPARATORS.split(strategy):
-        words = [word for word in _WORD.findall(fragment) if word.casefold() not in _STRATEGY_STOPWORDS]
+        words = [
+            word for word in _WORD.findall(fragment) if word.casefold() not in _STRATEGY_STOPWORDS
+        ]
         if 1 <= len(words) <= 3:
             candidates.append(" ".join(words))
     return [candidate for candidate in candidates if candidate]

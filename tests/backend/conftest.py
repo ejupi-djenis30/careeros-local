@@ -12,6 +12,10 @@ if os.name == "nt":
         return None
 
     _pytest_pathlib._force_symlink = _skip_pytest_current_link
+    # A broken ``pytest-current`` link may predate this process. Resolving that
+    # OS-managed convenience link raises WinError 1463 before pytest can decide
+    # whether it is dead, so skip only this non-contract cleanup on Windows.
+    _pytest_pathlib.cleanup_dead_symlinks = lambda _root: None
 
 os.environ["TESTING"] = "1"
 os.environ.setdefault("SECRET_KEY", "test-only-local-secret-key-at-least-32-bytes")

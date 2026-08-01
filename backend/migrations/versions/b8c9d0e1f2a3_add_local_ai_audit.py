@@ -44,9 +44,7 @@ def upgrade() -> None:
     op.create_index("ix_ai_executions_task", "ai_executions", ["task"])
     op.create_index("ix_ai_executions_model_id", "ai_executions", ["model_id"])
     op.create_index("ix_ai_executions_created_at", "ai_executions", ["created_at"])
-    op.create_index(
-        "ix_ai_executions_task_created_at", "ai_executions", ["task", "created_at"]
-    )
+    op.create_index("ix_ai_executions_task_created_at", "ai_executions", ["task", "created_at"])
     op.create_index(
         "ix_ai_executions_model_created_at", "ai_executions", ["model_id", "created_at"]
     )

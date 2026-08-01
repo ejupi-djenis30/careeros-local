@@ -12,6 +12,13 @@ from typing import Any, Dict, List, Optional
 from sqlalchemy.orm import Session
 
 from backend.core.config import settings
+from backend.core.diagnostics import (
+    ActivityCode,
+    FailureCode,
+    diagnose_failure,
+    log_failure,
+    public_activity_message,
+)
 from backend.models import ScrapedJob, SearchProfile
 from backend.providers.circuit_breaker import CircuitOpenError
 from backend.providers.jobs.jobroom.client import JobRoomProvider
@@ -281,16 +288,16 @@ class MatchingMixin:
                         audit_user_id=profile_dict.get("user_id"),
                     )
                     return list(zip(batch_jobs, results))
-                except Exception as e:
+                except Exception as error:
                     self._increment_status_errors(profile_id)
-                    logger.warning(
-                        "Required local-model analysis failed; no substitute result persisted: %s",
-                        type(e).__name__,
+                    diagnostic = diagnose_failure(
+                        error,
+                        FailureCode.LOCAL_ANALYSIS_FAILED,
                     )
+                    log_failure(logger, diagnostic, level=logging.WARNING)
                     add_log(
                         profile_id,
-                        "Required local-model analysis failed for this batch; no heuristic "
-                        "result was saved.",
+                        public_activity_message(ActivityCode.LOCAL_ANALYSIS_FAILED),
                     )
                     return []
 
@@ -303,7 +310,10 @@ class MatchingMixin:
         # prevent us from persisting analysis results that are now unwanted.
         post_gather_status = get_status(profile_id)
         if post_gather_status.get("state") in STOP_STATES:
-            add_log(profile_id, "Search was stopped during analysis — discarding results.")
+            add_log(
+                profile_id,
+                public_activity_message(ActivityCode.ANALYSIS_DISCARDED),
+            )
             return 0, len(unique_jobs)
 
         jobs_to_persist = [item for batch_result in results for item in batch_result]
@@ -355,9 +365,16 @@ class MatchingMixin:
                             jobs_to_persist[orig_idx][0],
                             critiqued_analysis,
                         )
-                    add_log(profile_id, f"Critique pass refined {len(borderline)} borderline jobs.")
-                except Exception as exc:
-                    logger.warning("[CRITIQUE] Critique pass failed: %s", exc)
+                    add_log(
+                        profile_id,
+                        public_activity_message(
+                            ActivityCode.CRITIQUE_COMPLETE,
+                            count=len(borderline),
+                        ),
+                    )
+                except Exception as error:
+                    diagnostic = diagnose_failure(error, FailureCode.AI_CRITIQUE_FAILED)
+                    log_failure(logger, diagnostic, level=logging.WARNING)
 
         # ── Phase 3.4: Comparative re-ranking of top-N jobs ────────────────
         rerank_enabled = enable_refinement_passes and getattr(
@@ -414,9 +431,16 @@ class MatchingMixin:
                             bool(analysis.get("worth_applying", False)) and final_score >= 65
                         )
                         jobs_to_persist[orig_idx] = (job, updated)
-                add_log(profile_id, f"Re-ranked top {len(reranked)} jobs for calibration.")
-            except Exception as exc:
-                logger.warning("[RERANK] Re-rank pass failed: %s", exc)
+                add_log(
+                    profile_id,
+                    public_activity_message(
+                        ActivityCode.RERANK_COMPLETE,
+                        count=len(reranked),
+                    ),
+                )
+            except Exception as error:
+                diagnostic = diagnose_failure(error, FailureCode.AI_RERANK_FAILED)
+                log_failure(logger, diagnostic, level=logging.WARNING)
 
         saved_count = 0
         # ── Phase 3.3: Deterministic salary_below_market red flag injection ──
@@ -448,12 +472,9 @@ class MatchingMixin:
             try:
                 await self._save_single_job(job, analysis, profile_dict, origin_coords, commit=True)
                 saved_count += 1
-            except Exception as exc:
-                logger.warning(
-                    "Skipping job due to persistence error (profile %s): %s",
-                    profile_dict.get("id"),
-                    exc,
-                )
+            except Exception as error:
+                diagnostic = diagnose_failure(error, FailureCode.PROGRESSIVE_SAVE_FAILED)
+                log_failure(logger, diagnostic, level=logging.WARNING)
 
         skipped_count = len(unique_jobs) - saved_count
         return saved_count, skipped_count
@@ -485,29 +506,28 @@ class MatchingMixin:
                         audit_user_id=profile_dict.get("user_id"),
                     )
                     return list(zip(batch_jobs, results))
-                except CircuitOpenError as exc:
+                except CircuitOpenError as error:
                     self._increment_status_errors(profile_id)
-                    logger.warning(
-                        "Required local-model analysis circuit is open for profile %s: %s",
-                        profile_id,
-                        type(exc).__name__,
+                    diagnostic = diagnose_failure(
+                        error,
+                        FailureCode.LOCAL_ANALYSIS_FAILED,
                     )
+                    log_failure(logger, diagnostic, level=logging.WARNING)
                     add_log(
                         profile_id,
-                        "Required local-model analysis is temporarily unavailable; no "
-                        "heuristic result was saved.",
+                        public_activity_message(ActivityCode.LOCAL_ANALYSIS_FAILED),
                     )
                     return []
-                except Exception as e:
+                except Exception as error:
                     self._increment_status_errors(profile_id)
-                    logger.warning(
-                        "Required local-model analysis failed; no substitute result persisted: %s",
-                        type(e).__name__,
+                    diagnostic = diagnose_failure(
+                        error,
+                        FailureCode.LOCAL_ANALYSIS_FAILED,
                     )
+                    log_failure(logger, diagnostic, level=logging.WARNING)
                     add_log(
                         profile_id,
-                        "Required local-model analysis failed for this batch; no heuristic "
-                        "result was saved.",
+                        public_activity_message(ActivityCode.LOCAL_ANALYSIS_FAILED),
                     )
                     return []
 

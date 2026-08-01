@@ -11,9 +11,9 @@ describe('TargetQueue', () => {
         state="searching"
         analyzedJobs={[]}
         searches_generated={[
-          { query: 'python engineer', type: 'occupation' },
-          { query: 'data engineer', type: 'occupation' },
-          { query: 'ml engineer', type: 'occupation' },
+          { index: 1 },
+          { index: 2 },
+          { index: 3 },
         ]}
         active_search_indices={[2]}
         completed_search_indices={[1]}
@@ -29,6 +29,32 @@ describe('TargetQueue', () => {
     expect(items[1].querySelector('.spinner-border')).not.toBeNull();
     expect(items[2].querySelector('.bi-check-circle-fill')).toBeNull();
     expect(items[2].querySelector('.spinner-border')).toBeNull();
+    expect(screen.getByText('Query 1')).toBeInTheDocument();
+  });
+
+  it('never renders legacy query or domain content from a status payload', () => {
+    render(
+      <TargetQueue
+        state="searching"
+        analyzedJobs={[]}
+        searches_generated={[
+          {
+            index: 1,
+            query: 'PRIVATE-QUERY-SENTINEL',
+            domain: 'PRIVATE-DOMAIN-SENTINEL',
+          },
+        ]}
+        active_search_indices={[]}
+        completed_search_indices={[]}
+        activeItemRef={createRef()}
+        jobs_analyzed={0}
+        jobs_analyze_total={0}
+      />,
+    );
+
+    expect(screen.getByText('Query 1')).toBeInTheDocument();
+    expect(screen.queryByText('PRIVATE-QUERY-SENTINEL')).not.toBeInTheDocument();
+    expect(screen.queryByText('PRIVATE-DOMAIN-SENTINEL')).not.toBeInTheDocument();
   });
 
   it('renders structured refinement queue with done current and pending states', () => {

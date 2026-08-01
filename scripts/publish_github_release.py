@@ -69,9 +69,7 @@ def release_body(
         "sha256sumsSha256": sha256_file(directory / GLOBAL_CHECKSUMS),
     }
     marker = CONTRACT_PREFIX + json.dumps(contract, separators=(",", ":"), sort_keys=True) + " -->"
-    notes = _release_notes(
-        changelog, version=version, release_date=release_date
-    )
+    notes = _release_notes(changelog, version=version, release_date=release_date)
     verification = (
         "Packages are unsigned community builds. Verify `SHA256SUMS` and GitHub attestations "
         "before installation."
@@ -151,9 +149,7 @@ class Publisher:
             release_date=release_date,
             changelog=changelog,
         )
-        self.expected = {
-            str(record["name"]): record for record in inventory_directory(directory)
-        }
+        self.expected = {str(record["name"]): record for record in inventory_directory(directory)}
 
     def _discover(self) -> tuple[dict[str, Any] | None, list[dict[str, Any]]]:
         releases = self.api.releases(self.repo)
@@ -192,7 +188,9 @@ class Publisher:
                 continue
             match = re.fullmatch(r"v(.+)", tag)
             if match and _version_key(match.group(1)) >= current:
-                raise RuntimeError("Candidate version does not advance all published CareerOS releases")
+                raise RuntimeError(
+                    "Candidate version does not advance all published CareerOS releases"
+                )
 
     def _assert_assets(self, release: dict[str, Any], *, allow_missing: bool) -> set[str]:
         actual = _asset_map(self.api.assets(self.repo, _release_id(release)))
@@ -232,7 +230,9 @@ class Publisher:
         if not isinstance(upload_url, str):
             raise RuntimeError("Draft release has no upload URL")
         try:
-            self.api.upload_asset(upload_url, name=name, payload=(self.directory / name).read_bytes())
+            self.api.upload_asset(
+                upload_url, name=name, payload=(self.directory / name).read_bytes()
+            )
         except ApiFailure as error:
             if not error.ambiguous:
                 raise
@@ -324,12 +324,13 @@ class Publisher:
         return published
 
 
-def _require_publish_context(tag: str, source_commit: str) -> None:
+def _require_publish_context(tag: str, source_commit: str, repo: str) -> None:
     expected = {
         "GITHUB_EVENT_NAME": "push",
         "GITHUB_REF_TYPE": "tag",
         "GITHUB_REF_NAME": tag,
         "GITHUB_SHA": source_commit,
+        "GITHUB_REPOSITORY": repo,
     }
     for name, value in expected.items():
         if os.environ.get(name) != value:
@@ -345,7 +346,7 @@ def main() -> int:
     arguments = parser.parse_args()
     version = validate_versions(release_versions(), os.environ.get("GITHUB_REF_NAME"))
     tag = f"v{version}"
-    _require_publish_context(tag, arguments.commit)
+    _require_publish_context(tag, arguments.commit, arguments.repo)
     validate_release_bundle(
         arguments.directory,
         version=version,

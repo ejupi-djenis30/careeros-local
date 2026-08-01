@@ -1,10 +1,16 @@
+from __future__ import annotations
+
 import logging
 import re
 from collections.abc import Mapping
+from enum import Enum
 from numbers import Number
 from typing import Any
 
 REDACTED = "[redacted]"
+_DIAGNOSTIC_MESSAGE_FACTORY = object()
+_EXCEPTION_TYPE = re.compile(r"^[A-Z][A-Za-z0-9_]{0,63}$")
+_CORRELATION_ID = re.compile(r"^[0-9a-f]{16}$")
 
 _EMAIL = re.compile(r"(?i)\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b")
 _BEARER = re.compile(r"(?i)\bBearer\s+[A-Za-z0-9._~+/=-]+")
@@ -21,8 +27,55 @@ _CONTEXT_QUOTE = re.compile(
 )
 _SQL_PARAMETERS = re.compile(r"(?is)(\[parameters:\s*).*?(\](?:\s*\(|$))")
 _FAILURE_DETAILS = re.compile(
-    r"(?is)(\b(?:failed|failure|error|exception)\b[^:=\n]{0,80}[:=]\s*)(.+)$"
+    r"(?is)(\b(?:failed|failure|error|exception|warning)\b[^:=\n]{0,80}[:=]\s*)(.+)$"
 )
+_LOG_CONTROL_CHARACTERS = re.compile(r"[\x00-\x1f\x7f-\x9f]")
+
+
+class _SealedDiagnosticMessage(str):
+    """Non-forgeable marker for a fully validated, content-free diagnostic record."""
+
+    _diagnostic_seal: object
+
+    def __new__(
+        cls,
+        value: str,
+        *,
+        _factory: object | None = None,
+    ) -> _SealedDiagnosticMessage:
+        if _factory is not _DIAGNOSTIC_MESSAGE_FACTORY:
+            raise TypeError("Diagnostic messages must be created by the failure registry")
+        instance = super().__new__(cls, value)
+        instance._diagnostic_seal = _DIAGNOSTIC_MESSAGE_FACTORY
+        return instance
+
+
+def _seal_failure_diagnostic(
+    code: object,
+    exception_type: str,
+    correlation_id: str,
+) -> _SealedDiagnosticMessage:
+    """Seal only values owned by the central FailureCode registry."""
+    if (
+        not isinstance(code, Enum)
+        or type(code).__module__ != "backend.core.diagnostics"
+        or type(code).__name__ != "FailureCode"
+    ):
+        raise TypeError("Failure code is not owned by the diagnostic registry")
+    code_value = str(code.value)
+    if not re.fullmatch(r"[a-z][a-z0-9_]{2,63}", code_value):
+        raise ValueError("Failure code is not a bounded registry token")
+    if not _EXCEPTION_TYPE.fullmatch(exception_type):
+        raise ValueError("Exception type is not a bounded class token")
+    if not _CORRELATION_ID.fullmatch(correlation_id):
+        raise ValueError("Correlation ID is not a generated diagnostic reference")
+    return _SealedDiagnosticMessage(
+        "operation_failed "
+        f"code={code_value} "
+        f"exception_type={exception_type} "
+        f"correlation_id={correlation_id}",
+        _factory=_DIAGNOSTIC_MESSAGE_FACTORY,
+    )
 
 
 def redact_text(value: object) -> str:
@@ -64,10 +117,22 @@ def _redact_arguments(args: Any) -> Any:
     return _redact_argument(args)
 
 
+def _single_line_log_text(value: str) -> str:
+    """Prevent control characters from forging additional log records."""
+
+    return _LOG_CONTROL_CHARACTERS.sub(" ", value)
+
+
 class PrivacyRedactionFilter(logging.Filter):
     def filter(self, record: logging.LogRecord) -> bool:
+        if (
+            type(record.msg) is _SealedDiagnosticMessage
+            and getattr(record.msg, "_diagnostic_seal", None) is _DIAGNOSTIC_MESSAGE_FACTORY
+            and not record.args
+        ):
+            return True
         record.args = _redact_arguments(record.args)
-        record.msg = redact_text(record.getMessage())
+        record.msg = _single_line_log_text(redact_text(record.getMessage()))
         record.args = ()
         return True
 

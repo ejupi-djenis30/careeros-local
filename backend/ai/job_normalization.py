@@ -10,6 +10,7 @@ from tenacity import RetryError
 
 from backend.ai.orchestrator import LocalAIOrchestrator, OrchestrationRequest
 from backend.core.config import settings
+from backend.core.diagnostics import FailureCode, diagnose_failure, log_failure
 from backend.providers.circuit_breaker import CircuitOpenError, CircuitState, circuit_registry
 from backend.providers.llm.factory import get_provider_for_step
 from backend.services.search.prompt_compaction import compact_prompt_text
@@ -377,7 +378,11 @@ Return ONLY JSON:
                     len(normalized_rows),
                     indices_needing_review,
                 )
-        except Exception as _ve:
-            logger.warning("[NORMALIZE] normalization_validator call failed: %s", _ve)
+        except Exception as error:
+            diagnostic = diagnose_failure(
+                error,
+                FailureCode.NORMALIZATION_VALIDATOR_FAILED,
+            )
+            log_failure(logger, diagnostic, level=logging.WARNING)
 
         return normalized_rows

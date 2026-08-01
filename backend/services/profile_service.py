@@ -140,8 +140,7 @@ class ProfileService:
         )
         latest_counts = (
             latest_summary.get("counts")
-            if isinstance(latest_summary, dict)
-            and isinstance(latest_summary.get("counts"), dict)
+            if isinstance(latest_summary, dict) and isinstance(latest_summary.get("counts"), dict)
             else {}
         )
         latest_jobs_found = latest_counts.get("jobs_found")

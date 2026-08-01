@@ -1,3 +1,5 @@
+import zipfile
+from datetime import datetime, timezone
 from io import BytesIO
 
 import pytest
@@ -107,15 +109,71 @@ def test_ats_renderers_preserve_text_order_and_local_metadata():
     text = "\n".join(page.extract_text() or "" for page in pdf_document.pages)
     assert pdf_document.metadata is not None
     assert pdf_document.metadata.author == "CareerOS Local"
+    assert pdf_document.metadata.creator == "CareerOS Local"
+    assert pdf_document.metadata.producer == "CareerOS Local"
     assert pdf_document.metadata.title == "Mira Vale"
     word = Document(BytesIO(docx))
     word_text = "\n".join(paragraph.text for paragraph in word.paragraphs)
     assert word.core_properties.author == "CareerOS Local"
     assert word.core_properties.comments == "Generated locally"
+    assert word.core_properties.last_modified_by == "CareerOS Local"
     assert text.index("EXPERIENCE") < text.index("Role 0") < text.index("Role 1")
     assert word_text.index("EXPERIENCE") < word_text.index("Role 0") < word_text.index("Role 1")
     assert report["text_order_verified"] is True
     assert report["metadata_sanitized"] is True
+
+
+def test_renderers_are_byte_stable_and_strip_host_timestamps():
+    snapshot = _snapshot()
+
+    first_pdf = render_ats_pdf(snapshot)
+    first_docx = render_ats_docx(snapshot)
+    assert first_pdf == render_ats_pdf(snapshot)
+    assert first_docx == render_ats_docx(snapshot)
+
+    pdf = PdfReader(BytesIO(first_pdf))
+    assert pdf.metadata is not None
+    assert pdf.metadata.creation_date == datetime(2000, 1, 1, tzinfo=timezone.utc)
+    assert pdf.metadata.modification_date == datetime(2000, 1, 1, tzinfo=timezone.utc)
+    word = Document(BytesIO(first_docx))
+    assert word.core_properties.created == datetime(2000, 1, 1, tzinfo=timezone.utc)
+    assert word.core_properties.modified == datetime(2000, 1, 1, tzinfo=timezone.utc)
+    with zipfile.ZipFile(BytesIO(first_docx)) as archive:
+        assert {entry.date_time for entry in archive.infolist()} == {(1980, 1, 1, 0, 0, 0)}
+        assert {entry.extra for entry in archive.infolist()} == {b""}
+        assert {entry.comment for entry in archive.infolist()} == {b""}
+
+
+def test_quality_gate_rejects_artifact_size_before_parsing(monkeypatch):
+    monkeypatch.setattr("backend.resumes.quality.MAX_RESUME_ARTIFACT_BYTES", 8)
+
+    with pytest.raises(ResumeQualityError, match="cannot exceed"):
+        validate_resume_artifacts(
+            pdf=b"x" * 9,
+            docx=b"y",
+            required_headings=[],
+            required_text=[],
+            template_kind="ats",
+            expect_photo=False,
+        )
+
+
+def test_quality_gate_preflights_docx_expansion(monkeypatch):
+    output = BytesIO()
+    with zipfile.ZipFile(output, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+        archive.writestr("[Content_Types].xml", b"types")
+        archive.writestr("word/document.xml", b"x" * 128)
+    monkeypatch.setattr("backend.resumes.quality.MAX_RESUME_DOCX_UNCOMPRESSED_BYTES", 64)
+
+    with pytest.raises(ResumeQualityError, match="expands beyond"):
+        validate_resume_artifacts(
+            pdf=render_ats_pdf(_snapshot()),
+            docx=output.getvalue(),
+            required_headings=[],
+            required_text=[],
+            template_kind="ats",
+            expect_photo=False,
+        )
 
 
 def test_quality_gate_rejects_page_overflow(monkeypatch):

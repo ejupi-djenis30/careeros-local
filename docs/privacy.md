@@ -9,10 +9,56 @@ The app may store identity and contact data, work and education history, skills,
 ## Not collected
 
 The project contains no product telemetry, advertising identifiers, cloud AI integration, remote prompt logging, or analytics SDK. The application does not silently upload a profile or resume. Job-provider requests are user-initiated search operations and disclose only deterministic queries built from the explicit role, strategy and preferences. Provider planning never invokes the local model, and only v3 cache records marked `deterministic-explicit` can be reused.
+Links opened from job, resume and application data require HTTPS; unencrypted HTTP is accepted only
+for exact loopback hosts used by local runtimes.
 
 The daily application agenda is calculated locally from the authenticated user's scalar role and
 next-action projections. It does not read task-event or dossier bodies, contact a calendar service,
 or invoke the local model.
+
+## Local account sessions
+
+Access and refresh JWTs carry explicit token types, issuance times and unique identifiers. Access
+tokens without the `access` type are rejected. The browser refresh cookie is HTTP-only,
+SameSite-limited and Secure in production; a successful refresh replaces it with a token carrying
+a new identifier.
+New passwords are never silently truncated: registration and login reject values beyond bcrypt's
+72-byte UTF-8 boundary before hash work. If an explicit logout request cannot clear the HTTP-only
+cookie, CareerOS immediately hides the private workspace, reports that the server session was not
+ended and offers a retry; it does not expose the login form as though logout succeeded.
+The refresh cookie is restricted to `/api/v1/auth`; upgrades also delete historical root-path
+CareerOS cookies. Browser cookies are host-scoped rather than port-scoped, so another service on a
+different port of the same loopback host can still receive a cookie if the browser is induced to
+request that exact auth path. The narrow path and exact Origin mutation checks reduce exposure but
+do not make localhost ports separate cookie principals. The native desktop additionally requires
+its per-launch session header. Fully isolating the Docker/browser profile would require a
+dedicated origin boundary or another server-bound session factor rather than another cookie flag.
+
+Refresh JWTs are single-use members of a restart-durable session family. The database stores a
+non-secret family id and the SHA-256 digest of only the current JTI, never the raw JWT or JTI. A
+successful refresh atomically replaces that digest. Reusing an older token, including the loser of
+a concurrent refresh race, revokes the family so the new token cannot continue. Logout revokes the
+family even when the supplied signed token has already rotated. Each account has eight
+database-unique session slots; a new login at capacity removes the oldest family. Portable backups
+exclude these rows, restore revokes the restored account's rows and complete erasure removes them.
+
+An upgrade cannot backfill previously stateless refresh tokens because CareerOS deliberately did
+not persist them. Such a token lacks the required `sid`, is rejected and cleared, and the user signs
+in again. Access and refresh tokens now carry the same non-secret `sid`. Every protected request
+checks that `sid` and subject against a live, unexpired, non-revoked session row, in addition to the
+access JWT's own expiry. After logout, replay detection, restore or erasure commits, later requests
+from that family are rejected immediately; a request authorized before the commit may still finish.
+CareerOS does not persist access JWTs, access JTIs or a per-token blacklist—the existing family row
+is the only live authority. If a logout commit fails, all revocations roll back, the response is
+`503`, refresh cookies are cleared to prevent automatic restoration after reload, and the renderer
+keeps only its in-memory access bearer long enough to offer an explicit retry.
+
+Reset, restore and complete erasure persist a recovery state before changing private data. While
+that state is pending, ordinary access, refresh and automation grants are denied. After the user
+re-enters the current password, CareerOS can issue a maintenance-only access token with no refresh
+token; it works only for the matching recovery operation and cannot open the workspace. Logging
+out invalidates even an erasure recovery token. A later correct-password login issues a new
+recovery authority, rather than reviving the old bearer.
 
 ## Search profile snapshots
 
@@ -44,6 +90,10 @@ only in the current component, and copying requires an explicit button press. Di
 navigation removes the visible bearer; it never enters browser storage. CareerOS stores its
 SHA-256 digest, not the original token. The authenticated page lists only owned grant metadata.
 Creating or revoking a grant requires another password check.
+The portable backup format intentionally excludes automation-grant rows, including their labels,
+scope metadata and token digests. Complete vault erasure deletes the owned rows instead. Successful
+grant mutations retain only the 100 most recent inactive lifecycle transitions for that account;
+active grants are always kept and another account is never pruned.
 
 Automation reads open the SQLite vault with URI `mode=ro` and verify
 `PRAGMA query_only=ON` on every new connection. Grant authorization and revocation use a separate,
@@ -84,12 +134,34 @@ authenticated desktop session perform only an owned-grant revocation. It cannot 
 inspect another account's grants or clear the lockout. Stable errors and later list responses
 contain no bearer or password.
 
+Credentialed browser access uses exact local origins; an unrelated app on another localhost port
+is not trusted. Login, registration, refresh and logout reject any supplied browser origin that is
+not in that exact allowlist; native and CLI requests without an `Origin` header remain supported.
+Every `/api/v1` response is marked `no-store` by the backend even when the desktop connects
+directly. In the container profile only Nginx is published to the host, the backend remains on the
+private Compose network, and backend runtimes ignore forwarded client-identity headers. Container
+access logs retain status, method and request duration only: they do not record client addresses,
+paths, query strings or resource identifiers. Structured application diagnostics remain
+content-free and available for failures.
+The API does not use dynamic response compression, avoiding a length oracle across authenticated
+content. The web proxy gzips public fingerprinted assets only. It revalidates the SPA shell and
+unhashed public files on every rollout and gives a long immutable lifetime only to hash-named
+build assets.
+
+Production runtimes do not publish Swagger UI, ReDoc or the HTTP OpenAPI endpoint. This prevents
+developer documentation pages from loading CDN assets and removes an unnecessary production
+surface. The schema remains generated directly in Python for contract and CI validation.
+
 Each CLI command and MCP tool call uses the same exclusive vault lease as the desktop sidecar.
 MCP releases it after bootstrap and after every call, so an idle server does not keep the desktop
 closed. Before each tool read, it reacquires the lease and revalidates the token, expiry, revocation
 state and original grant identity. A call made while CareerOS Local owns the vault returns
 `vault_busy`; it does not become a second writer. Restore revokes all active automation grants for
 the restored account, and complete vault erasure deletes the grant records.
+
+Renderer cleanup is best effort if the whole process or operating system terminates during
+issuance. On the next launch, reopen **Agent access** and revoke any completed grant whose token
+you did not save before connecting a client.
 
 ## Model context
 
@@ -104,6 +176,12 @@ bindings without writing database rows or files. Its response contains only the 
 digest, creation time, record and byte counts, compatibility, current restore eligibility, and
 stable verification or warning codes. It never returns archive paths, profile fields, document
 text, prompts, model output, or user identifiers.
+
+Backup verification accepts at most 128 MiB of compressed input, 256 MiB after expansion, 5,000
+members and 100,000 decoded records. These bounds protect the local process because verification
+uses bounded in-memory archive structures. Source-document upload reads stop at the configured
+file limit plus one byte. Parser failures return stable content-free messages; document text and
+parser internals are not copied into diagnostics.
 
 A valid backup is not automatically restorable into the current vault. Restore remains a separate
 action, requires an empty vault, and rejects conflicting managed identifiers. Provider listings may
@@ -121,6 +199,14 @@ owned by another user still references it; application-only tracking is therefor
 account erasure. Backup files are not encrypted or authenticated by the application: checksums
 detect accidental or malicious byte changes, but do not prove who created an archive. Store backups
 in an encrypted location if confidentiality is required.
+
+Restore recovery keeps only a checksummed list of app-managed paths, the archive SHA-256 and
+owner-scoped temporary bytes under `.restore/user-{id}`. It does not journal profile records or
+document contents. If CareerOS stops after publishing a file, retry with the same ZIP. A different
+ZIP is rejected so it cannot take over the prior operation. If the original ZIP is unavailable,
+choose complete erasure; it removes the pending account's exclusive published bytes and staging.
+A file now referenced by another local account is preserved. Failed restore clears recovery state
+only after exclusive files are durably removed and SQLite rollback remnants are sanitized.
 
 In the desktop app, the native writer receives a bounded raw payload, the required export digest,
 and a validated suggested filename. It opens the save dialog itself, so the selected destination

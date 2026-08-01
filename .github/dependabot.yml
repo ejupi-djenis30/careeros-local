@@ -7,6 +7,8 @@ updates:
       interval: weekly
       day: monday
     open-pull-requests-limit: 5
+    cooldown:
+      default-days: 7
     groups:
       compatible-python-dependencies:
         patterns: ["*"]
@@ -22,6 +24,8 @@ updates:
       interval: weekly
       day: tuesday
     open-pull-requests-limit: 5
+    cooldown:
+      default-days: 7
     groups:
       compatible-frontend-dependencies:
         patterns: ["*"]
@@ -37,6 +41,8 @@ updates:
       interval: weekly
       day: wednesday
     open-pull-requests-limit: 5
+    cooldown:
+      default-days: 7
     groups:
       compatible-backend-images:
         patterns: ["*"]
@@ -54,6 +60,8 @@ updates:
       interval: weekly
       day: wednesday
     open-pull-requests-limit: 5
+    cooldown:
+      default-days: 7
     groups:
       compatible-frontend-images:
         patterns: ["*"]
@@ -71,6 +79,8 @@ updates:
       interval: weekly
       day: thursday
     open-pull-requests-limit: 5
+    cooldown:
+      default-days: 7
     groups:
       compatible-actions:
         patterns: ["*"]

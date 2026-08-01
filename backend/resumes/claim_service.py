@@ -65,11 +65,14 @@ class ResumeClaimService:
         if not selected_block.content.title:
             raise ResumeValidationError("Add a claim title before promoting it")
 
-        next_position = int(
-            self.db.query(func.coalesce(func.max(CareerFact.position), -1))
-            .filter(CareerFact.profile_id == profile.id)
-            .scalar()
-        ) + 1
+        next_position = (
+            int(
+                self.db.query(func.coalesce(func.max(CareerFact.position), -1))
+                .filter(CareerFact.profile_id == profile.id)
+                .scalar()
+            )
+            + 1
+        )
         fact_data = CareerFactInput(
             fact_type="achievement",
             position=next_position,

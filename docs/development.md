@@ -3,7 +3,7 @@
 ## Toolchain
 
 - Python 3.12
-- Node.js 24 LTS and npm
+- Node.js 24.18.0 (`>=24.18.0 <25`; use the repository `.nvmrc`) and npm
 - Rust stable compatible with the `rust-version` in `frontend/src-tauri/Cargo.toml`
 - Tauri platform prerequisites
 
@@ -45,10 +45,15 @@ Browser/container development:
 docker compose up --build
 ```
 
+Open `http://127.0.0.1:5173`. Compose publishes only the Nginx frontend; the backend stays on the
+private Compose network and accepts same-origin `/api/` traffic through that proxy. Uvicorn ignores
+forwarded identity headers, so rate-limit identity cannot be selected with a direct
+`X-Forwarded-For` value.
+
 Manual backend and frontend:
 
 ```powershell
-.venv\Scripts\python.exe -m uvicorn backend.main:app --host 127.0.0.1 --port 8000 --reload
+.venv\Scripts\python.exe -m uvicorn backend.main:app --host 127.0.0.1 --port 8000 --reload --no-proxy-headers
 npm --prefix frontend run dev
 ```
 
@@ -106,7 +111,29 @@ Import all mapped models through `backend/model_registry.py`. Create an Alembic 
 .venv\Scripts\python.exe -m alembic upgrade head
 ```
 
-Never replace a migration with a runtime `create_all` workaround.
+The downgrade round trip is a development/test check only. Production startup accepts forward
+migrations to the single packaged head and deliberately refuses Alembic `downgrade` and `stamp`;
+use the backup-protected startup runner and restore a verified backup for operational rollback.
+Keep the SQLite data root on a local NTFS or POSIX filesystem because WAL and advisory migration
+locks are not supported on network or cloud-synchronised filesystems. Never replace a migration
+with a runtime `create_all` workaround.
+
+On POSIX, source-runtime bootstrap requires the canonical `DATA_DIR` and every descendant through
+the database parent to be owned by the effective user and repairs that in-scope chain to mode
+`0700` before SQLite opens the vault. It never changes an ancestor above `DATA_DIR`, so that
+deployment-owned ancestor must not be writable by other users. The main database and its
+rollback-journal, WAL and shared-memory sidecars must be owned, ordinary, unaliased files and are
+verified through no-follow descriptors before being repaired to `0600`. This boundary protects
+against other OS users. It intentionally canonicalizes parent aliases and cannot isolate another
+hostile process running as the same user; use the CareerOS vault lock for cooperating processes.
+Runtime connection hooks revalidate these entries with `lstat` only: opening
+and closing an unrelated descriptor could release POSIX `fcntl` locks held by another SQLite
+connection in the process. Descriptor repair therefore happens only during pre-connection bootstrap
+and the Alembic environment repeats that bootstrap after new-vault crash recovery. Startup validates
+the canonical database location against `DATA_DIR` without filesystem writes, validates and acquires
+the migration lock, reserves the private vault, and only then constructs or connects the migration
+engine. Importing the readiness or application database modules does not create the vault or its
+parent directories.
 
 ## Tests and quality
 
@@ -115,6 +142,8 @@ Never replace a migration with a runtime `create_all` workaround.
 .venv\Scripts\python.exe -m mypy backend scripts --ignore-missing-imports --no-error-summary
 .venv\Scripts\python.exe -m pytest tests/backend -q --cov=backend --cov-branch --cov-fail-under=80
 npm --prefix frontend run test:coverage
+npm --prefix frontend run demo:install
+npm --prefix frontend run test:e2e
 npm --prefix frontend run lint
 npm --prefix frontend run build
 cargo fmt --manifest-path frontend/src-tauri/Cargo.toml --check

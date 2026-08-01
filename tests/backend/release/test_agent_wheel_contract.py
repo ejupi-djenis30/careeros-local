@@ -20,6 +20,10 @@ def test_wheel_metadata_matches_the_reviewed_production_dependency_inputs() -> N
     assert sorted(metadata["project"]["dependencies"], key=str.casefold) == sorted(
         _direct_requirements(), key=str.casefold
     )
+    assert metadata["project"]["license-files"] == [
+        "LICENSE",
+        "THIRD_PARTY_NOTICES.txt",
+    ]
 
 
 def test_ci_runs_the_clean_environment_wheel_smoke() -> None:

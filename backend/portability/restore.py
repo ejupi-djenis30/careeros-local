@@ -1,12 +1,13 @@
 from __future__ import annotations
 
-import hashlib
 import json
+import logging
 from datetime import UTC, date, datetime
 from types import SimpleNamespace
 from typing import Any, cast
+from uuid import UUID
 
-from sqlalchemy import JSON, Date, DateTime, or_, update
+from sqlalchemy import JSON, Date, DateTime, or_, text, update
 from sqlalchemy.exc import IntegrityError, StatementError
 from sqlalchemy.orm import Session
 
@@ -18,11 +19,18 @@ from backend.applications.service import (
 )
 from backend.applications.snapshots import sanitize_application_snapshot
 from backend.automation.models import AutomationGrant
-from backend.career.models import CandidateProfile
+from backend.career.deletion import (
+    _enable_sqlite_secure_delete,
+    _exclusive_restore_journal_paths,
+    _sanitize_sqlite_storage,
+)
+from backend.career.models import CandidateProfile, CareerAsset
 from backend.core.config import settings
 from backend.db.types import UTCDateTime, aware_utc
 from backend.desktop.lifecycle import VaultLockTimeout, desktop_vault_lock
 from backend.models import Job, ScrapedJob, SearchProfile, User
+from backend.models.auth_session import AuthSession
+from backend.models.user import VAULT_STATE_READY
 from backend.portability.archive import (
     EXPORT_MODELS,
     SCRAPED_JOB_PRIVATE_FIELDS,
@@ -32,6 +40,13 @@ from backend.portability.archive import (
     _json_value,
     _validated_members,
 )
+from backend.portability.journal import (
+    RestoreJournalError,
+    atomic_restore_write,
+    clear_restore_journal,
+    prepare_restore_journal,
+    read_restore_journal,
+)
 from backend.portability.manifest import (
     CURRENT_ARCHIVE_VERSION,
     PAYLOAD_MEMBER,
@@ -39,12 +54,20 @@ from backend.portability.manifest import (
     sha256,
 )
 from backend.portability.schemas import ArchiveManifest, RestoreResponse
+from backend.resumes.artifact_policy import MAX_RESUME_ARTIFACT_BYTES
+from backend.resumes.models import ResumeArtifact, ResumeDraft, ResumeVersion
 from backend.search.receipt import (
     SEARCH_RECEIPT_MAX_COUNTER,
     normalize_search_completion_summary,
 )
-from backend.storage.atomic import atomic_write, resolve_data_path
+from backend.storage.atomic import (
+    durable_unlink,
+    read_stable_bounded_file,
+    resolve_data_path,
+)
 from backend.workflows.models import WorkflowRun
+
+logger = logging.getLogger(__name__)
 
 FILE_TABLES = frozenset({"career_assets", "resume_artifacts"})
 USER_SCOPED_TABLES = frozenset(
@@ -57,6 +80,20 @@ USER_SCOPED_TABLES = frozenset(
         "ai_executions",
     }
 )
+
+
+class RestoreRolledBackError(RuntimeError):
+    """A restore failed, but every durable side effect was removed and sanitized."""
+
+    def __init__(self, original: Exception) -> None:
+        super().__init__(str(original))
+        self.original = original
+
+
+class RestoreCleanupPendingError(RuntimeError):
+    """A failed restore still owns durable bytes or recovery metadata."""
+
+
 REMAPPABLE_TABLES = frozenset({"search_profiles", "scraped_jobs", "jobs"})
 PREFERENCE_FIELDS = frozenset({"preference_signals", "preference_updated_at"})
 APPLICATION_PROJECTION_FIELDS = frozenset(
@@ -202,10 +239,9 @@ def _normalize_search_receipt_row(row: dict[str, Any]) -> None:
         raise ArchiveError("Archive search completion summary is invalid")
     summary_started_at = datetime.fromisoformat(normalized["started_at"])
     summary_completed_at = datetime.fromisoformat(normalized["finished_at"])
-    if (
-        aware_utc(started_at) != aware_utc(summary_started_at)
-        or aware_utc(completed_at) != aware_utc(summary_completed_at)
-    ):
+    if aware_utc(started_at) != aware_utc(summary_started_at) or aware_utc(
+        completed_at
+    ) != aware_utc(summary_completed_at):
         raise ArchiveError("Archive search completion receipt timestamps do not match")
     row["last_search_summary"] = normalized
 
@@ -230,6 +266,29 @@ def _assert_unique_archive_ids(table_name: str, rows: list[dict[str, Any]]) -> N
         ids.append(record_id)
     if len(ids) != len(set(ids)):
         raise ArchiveError(f"Archive {table_name} contains duplicate IDs")
+
+
+def _validate_canonical_string_primary_keys(
+    table_name: str,
+    model: type[Any],
+    rows: list[dict[str, Any]],
+) -> None:
+    """Reject aliases and path/control characters in UUID-backed identities."""
+
+    string_primary_keys = [
+        column
+        for column in model.__table__.primary_key.columns
+        if getattr(column.type, "length", None) == 36
+    ]
+    for row in rows:
+        for column in string_primary_keys:
+            value = row.get(column.name)
+            try:
+                canonical = str(UUID(value)) if isinstance(value, str) else None
+            except (ValueError, AttributeError, TypeError):
+                canonical = None
+            if canonical != value:
+                raise ArchiveError(f"Archive {table_name}.{column.name} is not a canonical UUID")
 
 
 def _decode_preference_state(format_version: int, tables: dict[str, Any]) -> dict[str, Any] | None:
@@ -328,9 +387,7 @@ def _validate_portable_foreign_keys(
     for table_name, model in EXPORT_MODELS:
         for column in model.__table__.columns:
             for foreign_key in column.foreign_keys:
-                target_table = archive_table_by_database_table.get(
-                    foreign_key.column.table.name
-                )
+                target_table = archive_table_by_database_table.get(foreign_key.column.table.name)
                 if target_table is None:
                     if (
                         foreign_key.column.table.name == "users"
@@ -343,18 +400,12 @@ def _validate_portable_foreign_keys(
                         f"Archive {table_name}.{column.name} has an unsupported "
                         "external relationship"
                     )
-                if (
-                    format_version < 3
-                    and table_name == "applications"
-                    and column.name == "job_id"
-                ):
+                if format_version < 3 and table_name == "applications" and column.name == "job_id":
                     # Versions 1 and 2 did not include the job tables. Their legacy
                     # application link is deliberately cleared during restore.
                     continue
 
-                target_values = {
-                    row.get(foreign_key.column.name) for row in decoded[target_table]
-                }
+                target_values = {row.get(foreign_key.column.name) for row in decoded[target_table]}
                 for row in decoded[table_name]:
                     value = row.get(column.name)
                     if value is None:
@@ -375,20 +426,13 @@ def _validate_portable_foreign_keys(
 def _validate_application_dossier_drafts(
     decoded: dict[str, list[dict[str, Any]]],
 ) -> None:
-    application_revisions = {
-        str(row["id"]): row.get("revision")
-        for row in decoded["applications"]
-    }
+    application_revisions = {str(row["id"]): row.get("revision") for row in decoded["applications"]}
     claimed_applications: set[str] = set()
     for row in decoded["application_dossier_drafts"]:
         required_ids = {
-            field: row.get(field)
-            for field in ("id", "application_id", "resume_version_id")
+            field: row.get(field) for field in ("id", "application_id", "resume_version_id")
         }
-        if any(
-            not isinstance(value, str) or not value.strip()
-            for value in required_ids.values()
-        ):
+        if any(not isinstance(value, str) or not value.strip() for value in required_ids.values()):
             raise ArchiveError("Archive dossier draft relationship is invalid")
         application_id = cast(str, required_ids["application_id"])
         if application_id in claimed_applications:
@@ -505,6 +549,7 @@ def _decode_payload(
                 for row in raw_rows
             ]
         decoded[table_name] = [_decode_row(model, row) for row in raw_rows]
+        _validate_canonical_string_primary_keys(table_name, model, decoded[table_name])
         _assert_unique_archive_ids(table_name, decoded[table_name])
         if enforce_destination_ids and table_name not in REMAPPABLE_TABLES:
             _assert_ids_available(db, model, decoded[table_name])
@@ -575,6 +620,75 @@ def _assert_empty_vault(db: Session, user_id: int, format_version: int) -> None:
             raise ArchiveConflictError("Restore requires empty preference signals")
 
 
+def _canonical_file_storage_path(
+    table_name: str,
+    record: dict[str, Any],
+    decoded: dict[str, list[dict[str, Any]]],
+) -> str:
+    """Derive storage ownership from trusted schema relationships, never archive paths."""
+
+    digest = record.get("sha256")
+    if (
+        not isinstance(digest, str)
+        or len(digest) != 64
+        or any(character not in "0123456789abcdef" for character in digest)
+    ):
+        raise ArchiveError("Archive file digest is invalid")
+
+    if table_name == "career_assets":
+        kind = record.get("kind")
+        if kind == "source_document":
+            if record.get("normalized") is not False:
+                raise ArchiveError("Archive source document normalization state is invalid")
+            return f"assets/{digest[:2]}/{digest}"
+        if kind == "profile_photo":
+            if record.get("normalized") is not True or record.get("media_type") != "image/jpeg":
+                raise ArchiveError("Archive profile photo metadata is invalid")
+            return f"assets/photos/{digest[:2]}/{digest}.jpg"
+        raise ArchiveError("Archive contains an unsupported managed asset kind")
+
+    if table_name == "resume_artifacts":
+        artifact_format = record.get("format")
+        media_types = {
+            "pdf": "application/pdf",
+            "docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        }
+        if (
+            artifact_format not in media_types
+            or record.get("media_type") != media_types[artifact_format]
+        ):
+            raise ArchiveError("Archive resume artifact metadata is invalid")
+        version = next(
+            (
+                row
+                for row in decoded["resume_versions"]
+                if row.get("id") == record.get("version_id")
+            ),
+            None,
+        )
+        draft = (
+            next(
+                (
+                    row
+                    for row in decoded["resume_drafts"]
+                    if row.get("id") == version.get("draft_id")
+                ),
+                None,
+            )
+            if version is not None
+            else None
+        )
+        if version is None or draft is None:
+            raise ArchiveError("Archive resume artifact relationship is invalid")
+        profile_id = draft.get("profile_id")
+        version_id = version.get("id")
+        if not isinstance(profile_id, str) or not isinstance(version_id, str):
+            raise ArchiveError("Archive resume artifact relationship is invalid")
+        return f"resumes/{profile_id}/{version_id}/{digest}.{artifact_format}"
+
+    raise ArchiveError("Archive contains an unsupported managed file table")
+
+
 def _prepare_file_writes(
     decoded: dict[str, list[dict[str, Any]]],
     bindings: list[dict[str, Any]],
@@ -609,17 +723,33 @@ def _prepare_file_writes(
             raise ArchiveError("Archive storage path does not match its record")
         if member not in members or member == PAYLOAD_MEMBER:
             raise ArchiveError("Archive file binding references a missing member")
+        byte_size = record.get("byte_size")
+        maximum_size = (
+            settings.MAX_UPLOAD_FILE_SIZE
+            if table_name == "career_assets"
+            else MAX_RESUME_ARTIFACT_BYTES
+        )
+        if (
+            isinstance(byte_size, bool)
+            or not isinstance(byte_size, int)
+            or byte_size <= 0
+            or byte_size > maximum_size
+        ):
+            raise ArchiveError("Archive file size metadata is invalid")
         file_data = members[member]
-        if sha256(file_data) != record.get("sha256") or len(file_data) != record.get("byte_size"):
+        if sha256(file_data) != record.get("sha256") or len(file_data) != byte_size:
             raise ArchiveError("Archived file does not match its database record")
+        canonical_path = _canonical_file_storage_path(table_name, record, decoded)
+        if record.get("storage_path") != canonical_path:
+            raise ArchiveError("Archive storage path is not canonical for its record")
         try:
             resolve_data_path(
-                str(record["storage_path"]),
+                canonical_path,
                 create_root=create_data_root,
             )
         except ValueError as exc:
             raise ArchiveError("Archive contains an unsafe storage path") from exc
-        writes.append((str(record["storage_path"]), file_data))
+        writes.append((canonical_path, file_data))
         actual_keys.add(key)
 
     if actual_keys != set(records):
@@ -633,19 +763,18 @@ def _file_destinations_available(writes: list[tuple[str, bytes]]) -> bool:
     """Check restore destinations without creating directories or changing files."""
 
     for relative_path, file_data in writes:
-        destination = resolve_data_path(relative_path, create_root=False)
         try:
-            if not destination.exists():
-                continue
-            if not destination.is_file() or destination.stat().st_size != len(file_data):
-                return False
-            digest = hashlib.sha256()
-            with destination.open("rb") as existing:
-                for chunk in iter(lambda: existing.read(128 * 1024), b""):
-                    digest.update(chunk)
-            if digest.hexdigest() != sha256(file_data):
-                return False
-        except OSError:
+            destination = resolve_data_path(relative_path, create_root=False)
+            existing = read_stable_bounded_file(
+                destination,
+                expected_size=len(file_data),
+                maximum_size=len(file_data),
+            )
+        except FileNotFoundError:
+            continue
+        except (OSError, ValueError):
+            return False
+        if sha256(existing) != sha256(file_data):
             return False
     return True
 
@@ -669,9 +798,7 @@ def _prepare_row(
             if format_version >= 3 and archived_job_id is not None
             else None
         )
-        row["scraped_job_id"] = application_logical_identity_map[
-            archived_application_id
-        ]
+        row["scraped_job_id"] = application_logical_identity_map[archived_application_id]
     if table_name == "workflow_runs":
         row["lease_owner"] = None
         row["lease_expires_at"] = None
@@ -725,6 +852,10 @@ def _restore_search_records(
         prepared["user_id"] = user_id
         for field in SEARCH_PROFILE_RUNTIME_FIELDS:
             prepared[field] = None
+        # A portable preference is not authority to restart an OS-local job.
+        # Keep the chosen interval, but require an explicit post-restore opt-in.
+        prepared["schedule_enabled"] = False
+        prepared["last_scheduled_run"] = None
         restored = _add_remappable_row(db, SearchProfile, prepared)
         profile_id_map[archived_id] = restored.id
 
@@ -776,9 +907,7 @@ def _application_logical_identity_map(
     """Choose one portable application timeline per restored logical opportunity."""
 
     applications = decoded["applications"]
-    logical_id_by_application: dict[object, int | None] = {
-        row["id"]: None for row in applications
-    }
+    logical_id_by_application: dict[object, int | None] = {row["id"]: None for row in applications}
     grouped: dict[int, list[dict[str, Any]]] = {}
     for row in applications:
         archived_scraped_job_id = row.get("scraped_job_id")
@@ -788,9 +917,7 @@ def _application_logical_identity_map(
         else:
             archived_job_id = row.get("job_id")
             logical_id = (
-                job_scraped_job_id_map.get(archived_job_id)
-                if archived_job_id is not None
-                else None
+                job_scraped_job_id_map.get(archived_job_id) if archived_job_id is not None else None
             )
         if logical_id is not None:
             grouped.setdefault(logical_id, []).append(row)
@@ -950,6 +1077,121 @@ def _rebuild_application_projections(
     db.flush()
 
 
+def _restored_file_bindings(
+    db: Session,
+    *,
+    user_id: int,
+    storage_paths: set[str],
+) -> dict[str, set[tuple[str, int]]]:
+    """Read every same-owner binding without exceeding SQLite's bind limit."""
+
+    bindings: dict[str, set[tuple[str, int]]] = {}
+    ordered = sorted(storage_paths)
+    for offset in range(0, len(ordered), 500):
+        batch = ordered[offset : offset + 500]
+        for storage_path, digest, byte_size in (
+            db.query(CareerAsset.storage_path, CareerAsset.sha256, CareerAsset.byte_size)
+            .join(CandidateProfile, CareerAsset.profile_id == CandidateProfile.id)
+            .filter(
+                CandidateProfile.user_id == user_id,
+                CareerAsset.storage_path.in_(batch),
+            )
+            .all()
+        ):
+            bindings.setdefault(storage_path, set()).add((digest, byte_size))
+        for storage_path, digest, byte_size in (
+            db.query(
+                ResumeArtifact.storage_path,
+                ResumeArtifact.sha256,
+                ResumeArtifact.byte_size,
+            )
+            .join(ResumeVersion, ResumeArtifact.version_id == ResumeVersion.id)
+            .join(ResumeDraft, ResumeVersion.draft_id == ResumeDraft.id)
+            .join(CandidateProfile, ResumeDraft.profile_id == CandidateProfile.id)
+            .filter(
+                CandidateProfile.user_id == user_id,
+                ResumeArtifact.storage_path.in_(batch),
+            )
+            .all()
+        ):
+            bindings.setdefault(storage_path, set()).add((digest, byte_size))
+    return bindings
+
+
+def _restore_commit_was_published(
+    db: Session,
+    *,
+    user_id: int,
+    decoded: dict[str, list[dict[str, Any]]],
+    writes: list[tuple[str, bytes]],
+    archive_fingerprint: str,
+) -> bool:
+    """Resolve a lost commit acknowledgement from a fresh authoritative snapshot.
+
+    Every valid archive contains exactly one destination-unique CandidateProfile.
+    Its presence proves that SQLite committed the whole transaction; its absence
+    proves rollback. Before accepting the committed outcome, also require the
+    lifecycle transition, every same-user file binding, the durable bytes, and
+    any surviving journal to agree with the verified archive.
+    """
+
+    profile_rows = decoded.get("candidate_profiles", [])
+    if len(profile_rows) != 1 or not isinstance(profile_rows[0].get("id"), str):
+        raise RestoreCleanupPendingError("Restore commit identity is unavailable")
+    expected_profile_id = cast(str, profile_rows[0]["id"])
+    bind = db.get_bind()
+    with Session(bind=bind, expire_on_commit=False) as verification:
+        if bind.dialect.name == "sqlite":
+            verification.execute(text("BEGIN IMMEDIATE"))
+        owner_query = verification.query(User).filter(User.id == user_id)
+        profile_query = verification.query(CandidateProfile).filter(
+            CandidateProfile.id == expected_profile_id
+        )
+        if bind.dialect.name != "sqlite":
+            owner_query = owner_query.with_for_update()
+            profile_query = profile_query.with_for_update()
+        owner = owner_query.one_or_none()
+        profile = profile_query.one_or_none()
+        if profile is None:
+            verification.rollback()
+            return False
+        if (
+            owner is None
+            or profile.user_id != user_id
+            or owner.vault_lifecycle_state != VAULT_STATE_READY
+            or owner.vault_maintenance_fingerprint is not None
+        ):
+            raise RestoreCleanupPendingError("Restore commit identity is inconsistent")
+
+        expected_bindings: dict[str, tuple[str, int]] = {}
+        for storage_path, file_data in writes:
+            metadata = (sha256(file_data), len(file_data))
+            previous = expected_bindings.setdefault(storage_path, metadata)
+            if previous != metadata:
+                raise RestoreCleanupPendingError("Restore file bindings conflict")
+        actual_bindings = _restored_file_bindings(
+            verification,
+            user_id=user_id,
+            storage_paths=set(expected_bindings),
+        )
+        if any(
+            actual_bindings.get(storage_path) != {metadata}
+            for storage_path, metadata in expected_bindings.items()
+        ):
+            raise RestoreCleanupPendingError("Restored database file bindings are incomplete")
+        if not _file_destinations_available(writes):
+            raise RestoreCleanupPendingError("Restored durable files are incomplete")
+
+        journal = read_restore_journal(user_id)
+        if journal is not None and (
+            journal["archive_fingerprint"] != archive_fingerprint
+            or not set(journal["paths"]).issubset(expected_bindings)
+        ):
+            raise RestoreCleanupPendingError("Restore recovery metadata disagrees with the commit")
+        verification.rollback()
+        return True
+
+
 def _restore_transaction(
     db: Session,
     user_id: int,
@@ -958,18 +1200,25 @@ def _restore_transaction(
     preference_state: dict[str, Any] | None,
     application_projection_contract: dict[str, dict[str, Any]],
     writes: list[tuple[str, bytes]],
+    archive_fingerprint: str,
 ) -> None:
-    created_paths: list[str] = []
+    commit_attempted = False
     try:
+        _enable_sqlite_secure_delete(db)
+        prepare_restore_journal(
+            user_id,
+            archive_fingerprint,
+            [relative_path for relative_path, _file_data in writes],
+        )
         for relative_path, file_data in writes:
             try:
-                _path, created = atomic_write(relative_path, file_data)
+                _path, created = atomic_restore_write(user_id, relative_path, file_data)
             except ValueError as exc:
                 raise ArchiveConflictError(
                     "Restore target contains a different managed file"
                 ) from exc
             if created:
-                created_paths.append(relative_path)
+                logger.debug("Published one restore-owned managed file")
         (
             job_id_map,
             job_scraped_job_id_map,
@@ -1003,18 +1252,94 @@ def _restore_transaction(
             {AutomationGrant.revoked_at: datetime.now(UTC)},
             synchronize_session=False,
         )
+        db.query(AuthSession).filter(
+            AuthSession.user_id == user_id,
+            AuthSession.revoked_at.is_(None),
+        ).update(
+            {AuthSession.revoked_at: datetime.now(UTC)},
+            synchronize_session=False,
+        )
+        user = db.get(User, user_id)
+        if user is None:
+            raise ArchiveError("Restore account no longer exists")
+        user.vault_lifecycle_state = VAULT_STATE_READY
+        user.vault_maintenance_fingerprint = None
         db.flush()
+        commit_attempted = True
         db.commit()
-    except (IntegrityError, StatementError) as exc:
-        db.rollback()
-        for relative_path in created_paths:
-            resolve_data_path(relative_path).unlink(missing_ok=True)
-        raise ArchiveError("Archive records failed relational validation") from exc
-    except Exception:
-        db.rollback()
-        for relative_path in created_paths:
-            resolve_data_path(relative_path).unlink(missing_ok=True)
-        raise
+        try:
+            clear_restore_journal(user_id)
+        except RestoreJournalError:
+            # The journal contains paths only, never file content. A stale copy is
+            # safe and complete erasure will remove it on the next cleanup pass.
+            logger.warning("Committed restore journal could not be removed")
+    except Exception as exc:
+        original: Exception = (
+            ArchiveError("Archive records failed relational validation")
+            if isinstance(exc, (IntegrityError, StatementError))
+            else exc
+        )
+        if commit_attempted:
+            db.rollback()
+            try:
+                committed = _restore_commit_was_published(
+                    db,
+                    user_id=user_id,
+                    decoded=decoded,
+                    writes=writes,
+                    archive_fingerprint=archive_fingerprint,
+                )
+            except Exception as verification_error:
+                raise RestoreCleanupPendingError(
+                    "Restore commit outcome could not be verified; retry the same archive"
+                ) from verification_error
+            if committed:
+                db.expire_all()
+                try:
+                    clear_restore_journal(user_id)
+                except RestoreJournalError:
+                    logger.warning("Committed restore journal could not be removed")
+                return
+        _rollback_failed_restore(db, user_id, original)
+
+
+def _rollback_failed_restore(db: Session, user_id: int, original: Exception) -> None:
+    """Remove all journal-owned bytes before declaring a failed restore rolled back."""
+
+    db.rollback()
+    cleanup_errors: list[Exception] = []
+    journal_paths: set[str] | None = None
+    try:
+        # A content-addressed file can gain a legitimate binding owned by a
+        # different account after the crashed restore published it. Ownership
+        # then transfers to that binding; rollback removes only still-exclusive
+        # journal paths while clearing this user's recovery metadata.
+        journal_paths = _exclusive_restore_journal_paths(db, user_id)
+    except Exception as exc:
+        cleanup_errors.append(exc)
+
+    if journal_paths is not None:
+        for relative_path in sorted(journal_paths):
+            try:
+                durable_unlink(resolve_data_path(relative_path))
+            except Exception as exc:
+                cleanup_errors.append(exc)
+        if not cleanup_errors:
+            try:
+                clear_restore_journal(user_id)
+            except Exception as exc:
+                cleanup_errors.append(exc)
+
+    try:
+        _sanitize_sqlite_storage(db)
+    except Exception as exc:
+        cleanup_errors.append(exc)
+
+    if cleanup_errors:
+        raise RestoreCleanupPendingError(
+            "Failed restore cleanup is incomplete; retry the same archive or erase local data"
+        ) from cleanup_errors[0]
+    raise RestoreRolledBackError(original) from original
 
 
 def restore_archive(db: Session, user_id: int, data: bytes) -> RestoreResponse:
@@ -1037,6 +1362,7 @@ def restore_archive(db: Session, user_id: int, data: bytes) -> RestoreResponse:
                 preference_state,
                 application_projection_contract,
                 writes,
+                sha256(data),
             )
     except VaultLockTimeout as exc:
         raise ArchiveConflictError(str(exc)) from exc

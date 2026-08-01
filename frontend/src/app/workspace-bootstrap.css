@@ -1,0 +1,6 @@
+/*
+ * Bootstrap supplies legacy workspace primitives that have not yet migrated to
+ * the CareerOS design system. Keeping it in a cascade layer makes the global
+ * CareerOS rules authoritative even though this stylesheet loads lazily.
+ */
+@import "bootstrap/dist/css/bootstrap.min.css" layer(careeros-bootstrap);

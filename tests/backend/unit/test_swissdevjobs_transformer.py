@@ -13,4 +13,6 @@ def test_transform_job_data_logs_invalid_active_from(caplog):
 
     assert listing is not None
     assert listing.created_at is None
-    assert "Invalid activeFrom for SwissDevJobs job python-dev" in caplog.text
+    assert "code=provider_transform_failed" in caplog.text
+    assert "invalid-date" not in caplog.text
+    assert "python-dev" not in caplog.text

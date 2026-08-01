@@ -10,6 +10,7 @@ from tenacity import RetryError, retry, retry_if_exception, stop_after_attempt, 
 
 from backend.ai.orchestrator import LocalAIOrchestrator, OrchestrationRequest
 from backend.core.config import settings
+from backend.core.diagnostics import FailureCode, diagnose_failure, log_failure
 from backend.providers.circuit_breaker import CircuitOpenError, CircuitState, circuit_registry
 from backend.providers.llm.factory import get_provider_for_step
 from backend.services.search.prompt_compaction import compact_prompt_text
@@ -166,7 +167,8 @@ Return ONLY JSON with a "results" array, one entry per job, IN ORDER:
                 expected_rows=len(top_jobs),
             )
         except Exception as exc:
-            logger.warning("[RERANK] LLM rerank call failed: %s. Returning original scores.", exc)
+            diagnostic = diagnose_failure(exc, FailureCode.AI_RERANK_FAILED)
+            log_failure(logger, diagnostic, level=logging.WARNING)
             return [
                 {"job_index": e.get("job_index", i), "final_score": e.get("current_score", 0)}
                 for i, e in enumerate(top_jobs)

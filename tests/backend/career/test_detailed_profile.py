@@ -150,9 +150,7 @@ def test_goal_compensation_and_completed_milestones_are_validated():
         CareerGoalInput(
             name="Invalid milestone",
             payload={
-                "milestones": [
-                    {"id": "promotion", "title": "Earn promotion", "status": "achieved"}
-                ]
+                "milestones": [{"id": "promotion", "title": "Earn promotion", "status": "achieved"}]
             },
         )
 
@@ -191,8 +189,6 @@ def test_skill_evidence_must_reference_a_fact_in_the_same_profile():
     payload["facts"][3]["payload"]["evidence_fact_ids"] = [EXPERIENCE_ID]
     validated = CareerProfileWrite.model_validate(payload)
     assert validated.facts[3].payload["evidence_fact_ids"] == [EXPERIENCE_ID]
-    payload["facts"][3]["payload"]["evidence_fact_ids"] = [
-        "90000000-0000-4000-8000-000000000009"
-    ]
+    payload["facts"][3]["payload"]["evidence_fact_ids"] = ["90000000-0000-4000-8000-000000000009"]
     with pytest.raises(ValidationError, match="evidence facts must belong"):
         CareerProfileWrite.model_validate(payload)

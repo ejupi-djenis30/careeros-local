@@ -62,9 +62,7 @@ class ResumeService:
     def generate(self, user_id: int, data: ResumeGenerate) -> ResumeDraftResponse:
         return self.drafts.generate(user_id, data)
 
-    def duplicate(
-        self, user_id: int, draft_id: str, data: ResumeDuplicate
-    ) -> ResumeDraftResponse:
+    def duplicate(self, user_id: int, draft_id: str, data: ResumeDuplicate) -> ResumeDraftResponse:
         return self.drafts.duplicate(user_id, draft_id, data)
 
     def promote_claim(
@@ -72,9 +70,7 @@ class ResumeService:
     ) -> ResumeDraftResponse:
         return self.claims.promote(user_id, draft_id, data)
 
-    def synchronize(
-        self, user_id: int, draft_id: str, data: ResumeSync
-    ) -> ResumeSyncResponse:
+    def synchronize(self, user_id: int, draft_id: str, data: ResumeSync) -> ResumeSyncResponse:
         return self.synchronization.synchronize(user_id, draft_id, data)
 
     def publish(
@@ -94,9 +90,7 @@ class ResumeService:
         version_id: str,
         data: ResumeVersionRestore,
     ) -> ResumeDraftResponse:
-        return self.publication.restore(
-            user_id, draft_id, version_id, data.expected_revision
-        )
+        return self.publication.restore(user_id, draft_id, version_id, data.expected_revision)
 
     def artifact(self, user_id: int, artifact_id: str) -> tuple[ResumeArtifact, bytes, str]:
         return self.publication.artifact(user_id, artifact_id)

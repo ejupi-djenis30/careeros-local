@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useLayoutEffect, useRef, useState } from "react";
 import { useLocation } from "react-router";
 import { Sidebar } from "../components/Layout/Sidebar";
 import { useAuth } from "../context/AuthContext";
@@ -6,21 +6,35 @@ import { useI18n } from "../i18n/useI18n";
 import { CAREEROS_MARK_URL } from "./brand";
 import { getPageContext } from "./navigation";
 
+const DESKTOP_BREAKPOINT = 992;
+
 export function WorkspaceShell({ children }) {
     const { user, logout } = useAuth();
     const { pathname } = useLocation();
     const [menuOpen, setMenuOpen] = useState(false);
     const menuButtonRef = useRef(null);
+    const restoreFocusFrameRef = useRef(null);
     const sidebarRef = useRef(null);
     const { t } = useI18n();
     const context = getPageContext(pathname, t);
 
-    useEffect(() => {
+    useLayoutEffect(() => {
         if (!menuOpen) return undefined;
+        if (restoreFocusFrameRef.current !== null) {
+            window.cancelAnimationFrame(restoreFocusFrameRef.current);
+            restoreFocusFrameRef.current = null;
+        }
         const sidebar = sidebarRef.current;
-        const previouslyFocused = document.activeElement;
+        const returnFocus = menuButtonRef.current;
+        const previousOverflow = document.body.style.overflow;
         const focusableSelector = "a[href], button:not([disabled]), [tabindex]:not([tabindex='-1'])";
-        sidebar?.querySelector(focusableSelector)?.focus();
+        document.body.style.overflow = "hidden";
+        const focusFrame = window.requestAnimationFrame(() => {
+            const initialFocus = sidebar?.querySelector(focusableSelector);
+            if (initialFocus instanceof HTMLElement) {
+                initialFocus.focus({ preventScroll: true });
+            }
+        });
 
         const handleKeyDown = (event) => {
             if (event.key === "Escape") {
@@ -41,16 +55,36 @@ export function WorkspaceShell({ children }) {
                 first.focus();
             }
         };
+        const handleResize = () => {
+            if (window.innerWidth >= DESKTOP_BREAKPOINT) setMenuOpen(false);
+        };
         document.addEventListener("keydown", handleKeyDown);
+        window.addEventListener("resize", handleResize);
         return () => {
+            window.cancelAnimationFrame(focusFrame);
             document.removeEventListener("keydown", handleKeyDown);
-            if (previouslyFocused instanceof HTMLElement) previouslyFocused.focus();
+            window.removeEventListener("resize", handleResize);
+            document.body.style.overflow = previousOverflow;
+            restoreFocusFrameRef.current = window.requestAnimationFrame(() => {
+                restoreFocusFrameRef.current = null;
+                if (
+                    returnFocus instanceof HTMLElement
+                    && returnFocus.isConnected
+                ) returnFocus.focus({ preventScroll: true });
+            });
         };
     }, [menuOpen]);
 
     return (
         <div className="workspace-layout">
-            <a className="skip-link" href="#main-content">{t("shell.skip")}</a>
+            <a
+                className="skip-link"
+                href="#main-content"
+                inert={menuOpen}
+                aria-hidden={menuOpen || undefined}
+            >
+                {t("shell.skip")}
+            </a>
             <Sidebar
                 username={user}
                 onLogout={logout}
@@ -62,11 +96,14 @@ export function WorkspaceShell({ children }) {
                 type="button"
                 className={`workspace-scrim ${menuOpen ? "is-visible" : ""}`}
                 onClick={() => setMenuOpen(false)}
-                aria-label={t("shell.closeMenu")}
-                aria-hidden={!menuOpen}
-                tabIndex={menuOpen ? 0 : -1}
+                aria-hidden="true"
+                tabIndex="-1"
             />
-            <div className="workspace-main">
+            <div
+                className="workspace-main"
+                inert={menuOpen}
+                aria-hidden={menuOpen || undefined}
+            >
                 <header className="workspace-header">
                     <button
                         ref={menuButtonRef}

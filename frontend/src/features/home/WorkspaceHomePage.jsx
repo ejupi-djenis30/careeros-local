@@ -280,7 +280,7 @@ export function WorkspaceHomePage() {
                 <div className="local-architecture"><span>Career Vault</span><i className="bi bi-arrow-right" /><span>{t("home.chosenContext")}</span><i className="bi bi-arrow-right" /><span>{t("home.localLlama")}</span></div>
                 <p>{t("home.modelDisclosure")}</p>
             </section>
-            <DataRecoveryPanel hasProfile={Boolean(profile)} onErased={retryHomeState} />
+            <DataRecoveryPanel hasProfile={Boolean(profile)} />
         </div>
     );
 }

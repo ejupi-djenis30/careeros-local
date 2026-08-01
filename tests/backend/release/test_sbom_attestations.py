@@ -75,13 +75,7 @@ def test_empty_or_wrong_predicate_verification_fails_closed(tmp_path: Path) -> N
 
     verification.write_text(
         json.dumps(
-            [
-                {
-                    "verificationResult": {
-                        "statement": {"predicateType": "foreign", "predicate": {}}
-                    }
-                }
-            ]
+            [{"verificationResult": {"statement": {"predicateType": "foreign", "predicate": {}}}}]
         ),
         encoding="utf-8",
     )

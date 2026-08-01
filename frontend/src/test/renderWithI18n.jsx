@@ -7,6 +7,8 @@ export function renderWithI18n(ui, options = {}) {
     const value = {
         language,
         setLanguage: () => {},
+        pendingLanguage: null,
+        languageError: false,
         t: createTranslator(language),
     };
     function I18nWrapper({ children }) {

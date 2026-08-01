@@ -123,7 +123,9 @@ class CareerGoalPayload(BaseModel):
     target_industries: list[str] = Field(default_factory=list, max_length=50)
     target_locations: list[str] = Field(default_factory=list, max_length=50)
     target_seniority: list[
-        Literal["intern", "junior", "mid", "senior", "staff", "lead", "manager", "director", "executive"]
+        Literal[
+            "intern", "junior", "mid", "senior", "staff", "lead", "manager", "director", "executive"
+        ]
     ] = Field(default_factory=list, max_length=20)
     work_modes: list[Literal["onsite", "hybrid", "remote"]] = Field(
         default_factory=list, max_length=3
@@ -177,9 +179,7 @@ class CareerGoalPayload(BaseModel):
         action_ids = [item.id for item in self.actions]
         if len(action_ids) != len(set(action_ids)):
             raise ValueError("action ids must be unique")
-        learning_activity_ids = {
-            item.id for item in self.actions if item.kind == "learning"
-        }
+        learning_activity_ids = {item.id for item in self.actions if item.kind == "learning"}
         for action in self.actions:
             linked_learning = set(action.linked_learning_activity_ids)
             if linked_learning - learning_activity_ids:
@@ -189,7 +189,9 @@ class CareerGoalPayload(BaseModel):
             if action.id in linked_learning:
                 raise ValueError("an action cannot link to itself as a learning activity")
         if self.target_date:
-            if any(item.target_date and item.target_date > self.target_date for item in self.milestones):
+            if any(
+                item.target_date and item.target_date > self.target_date for item in self.milestones
+            ):
                 raise ValueError("milestone target_date cannot exceed goal target_date")
             if any(item.due_date and item.due_date > self.target_date for item in self.actions):
                 raise ValueError("action due_date cannot exceed goal target_date")

@@ -12,6 +12,13 @@ from typing import Any, Dict, List, Optional
 from sqlalchemy.orm import Session
 
 from backend.core.config import settings
+from backend.core.diagnostics import (
+    ActivityCode,
+    FailureCode,
+    diagnose_failure,
+    log_failure,
+    public_activity_message,
+)
 from backend.models import ScrapedJob, SearchProfile
 from backend.providers.circuit_breaker import CircuitOpenError
 from backend.providers.jobs.jobroom.client import JobRoomProvider
@@ -71,6 +78,7 @@ from backend.services.search.query_contracts import (
     unpack_plan_cache_payload,
 )
 from backend.services.search_status import (
+    add_failure_log,
     add_log,
     get_status,
     init_status,
@@ -84,6 +92,42 @@ logger = logging.getLogger(__name__)
 
 
 STOP_STATES = {"stopped", "cancelled", "finished", "failed"}
+
+_PUBLIC_FILTER_REASONS = frozenset(
+    {
+        "distance_limit",
+        "distance_missing",
+        "language_level_mismatch",
+        "norm_dealbreaker_hit",
+        "norm_domain_mismatch",
+        "norm_entry_barrier_high",
+        "norm_escalated_dealbreaker_too_junior",
+        "norm_escalated_dealbreaker_too_senior",
+        "norm_escalated_dealbreaker_wrong_domain",
+        "norm_experience_floor",
+        "norm_prescore_low",
+        "norm_qualification_mismatch",
+        "norm_role_type_mismatch",
+        "norm_seniority_overqualified",
+        "norm_seniority_underqualified",
+        "norm_skills_disjoint",
+        "preferred_languages",
+        "remote_only",
+        "salary_min_chf",
+        "workload_missing",
+        "workload_range",
+    }
+)
+
+
+def _public_filter_reason(reason: object) -> str:
+    """Map internal filter detail to a closed, content-free persistence token."""
+    normalized = str(reason).strip().lower().replace(":", "_")
+    if normalized.startswith("norm_prescore_low_"):
+        normalized = "norm_prescore_low"
+    if normalized in _PUBLIC_FILTER_REASONS:
+        return normalized
+    return "unclassified_filter"
 
 
 # ─────────────────────── Domain Router ───────────────────────
@@ -127,7 +171,8 @@ class NormalizationMixin:
 
         if upgraded > 0:
             add_log(
-                profile_id, f"Normalized {upgraded} persisted jobs with LLM structured extraction."
+                profile_id,
+                public_activity_message(ActivityCode.NORMALIZED_ROWS, count=upgraded),
             )
         return upgraded
 
@@ -163,7 +208,10 @@ class NormalizationMixin:
         cached_fingerprint = getattr(profile, "cached_profile_snapshot_fingerprint", None)
 
         if cached_snapshot and cached_fingerprint == snapshot_fingerprint and not force:
-            add_log(profile_id, "✓ Using cached compact MATCH profile snapshot")
+            add_log(
+                profile_id,
+                public_activity_message(ActivityCode.PROFILE_SNAPSHOT_CACHE_HIT),
+            )
             return cached_snapshot
 
         runtime_policy = llm_service.get_step_runtime_policy("match")
@@ -215,7 +263,10 @@ class NormalizationMixin:
         )
 
         if already_normalized and not force:
-            add_log(profile_id, "✓ Using cached candidate profile normalization (dual-signal)")
+            add_log(
+                profile_id,
+                public_activity_message(ActivityCode.PROFILE_NORMALIZATION_CACHE_HIT),
+            )
             return {
                 # Candidate profile (CV facts)
                 "seniority": profile.profile_normalized_seniority,
@@ -267,29 +318,13 @@ class NormalizationMixin:
                 )
                 add_log(
                     profile_id,
-                    f"Candidate profile normalized: seniority={normalized.get('seniority')!r}, "
-                    f"domain={normalized.get('domain')!r}, "
-                    f"experience={normalized.get('experience_years')} yrs, "
-                    f"qualification={normalized.get('qualification_level')!r} | "
-                    f"intent: target_domain={normalized.get('intent_domain')!r}, "
-                    f"open_to_unrelated={normalized.get('open_to_unrelated')!r}",
+                    public_activity_message(ActivityCode.PROFILE_NORMALIZATION_SAVED),
                 )
             return normalized or {}
-        except Exception as exc:
-            # Unwrap tenacity RetryError so the real API error is visible in logs.
-            from backend.services.llm_service import _unwrap_retry_error
-
-            _, error_msg = _unwrap_retry_error(exc)
-            logger.error(
-                "Profile normalization failed for profile %s: %s",
-                profile_id,
-                error_msg,
-                exc_info=True,
-            )
-            add_log(
-                profile_id,
-                f"⚠ Profile normalization failed (normalization filters will be skipped): {error_msg}",
-            )
+        except Exception as error:
+            diagnostic = diagnose_failure(error, FailureCode.PROFILE_NORMALIZATION_FAILED)
+            log_failure(logger, diagnostic)
+            add_failure_log(profile_id, diagnostic)
             return {}
 
     def _apply_structured_filters(
@@ -309,21 +344,28 @@ class NormalizationMixin:
             if ok:
                 kept.append(job)
                 continue
-            dropped_reasons[reason] = dropped_reasons.get(reason, 0) + 1
+            public_reason = _public_filter_reason(reason)
+            dropped_reasons[public_reason] = dropped_reasons.get(public_reason, 0) + 1
 
         dropped_total = len(jobs) - len(kept)
         if dropped_total > 0:
-            reasons_text = ", ".join(
-                [f"{key}:{value}" for key, value in sorted(dropped_reasons.items())]
-            )
             add_log(
                 profile_id,
-                f"Structured filtering dropped {dropped_total}/{len(jobs)} jobs. Reasons: {reasons_text}",
+                public_activity_message(
+                    ActivityCode.FILTER_DROPPED,
+                    dropped=dropped_total,
+                    total=len(jobs),
+                    reason_count=len(dropped_reasons),
+                ),
             )
         if kept:
             add_log(
                 profile_id,
-                f"Structured filtering kept {len(kept)} / {len(jobs)} jobs using persisted job facts and deterministic constraints.",
+                public_activity_message(
+                    ActivityCode.FILTER_KEPT,
+                    kept=len(kept),
+                    total=len(jobs),
+                ),
             )
         return kept
 

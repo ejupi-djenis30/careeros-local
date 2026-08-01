@@ -11,8 +11,10 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.interval import IntervalTrigger
 from sqlalchemy.orm import Session
 
+from backend.career.activity import vault_activity_gate
 from backend.core.config import settings
 from backend.db.base import SessionLocal
+from backend.models.user import VAULT_STATE_READY, User
 from backend.repositories.profile_repository import ProfileRepository
 from backend.services.search_service import get_search_service
 from backend.services.search_status import release_task, reserve_task
@@ -45,11 +47,19 @@ def get_scheduler() -> AsyncIOScheduler:
     """Get or create the global scheduler."""
     global _scheduler
     if _scheduler is None:
-        _scheduler = AsyncIOScheduler()
+        # Every persisted schedule and timestamp in CareerOS is UTC. Declaring
+        # the scheduler timezone avoids host-local/DST drift and keeps minimal
+        # container images independent from optional OS timezone configuration.
+        _scheduler = AsyncIOScheduler(timezone=timezone.utc)
     return _scheduler
 
 
 async def _run_scheduled_search(profile_id: int):
+    async with vault_activity_gate.reader():
+        await _run_scheduled_search_with_permit(profile_id)
+
+
+async def _run_scheduled_search_with_permit(profile_id: int):
     """Execute a scheduled search for the given profile."""
     try:
         profile_id = _validated_profile_id(profile_id)
@@ -78,6 +88,12 @@ async def _run_scheduled_search(profile_id: int):
             logger.warning("[Scheduler] Profile not found; removing schedule")
             release_task(profile_id, reservation_token)
             remove_schedule(profile_id)
+            return
+
+        owner = db.get(User, profile.user_id)
+        if owner is None or owner.vault_lifecycle_state != VAULT_STATE_READY:
+            logger.info("[Scheduler] Skipping scheduled search during vault maintenance")
+            release_task(profile_id, reservation_token)
             return
 
         if not profile.schedule_enabled:
@@ -138,6 +154,11 @@ def remove_schedule(profile_id: int):
     if existing:
         scheduler.remove_job(job_id)
         logger.info("[Scheduler] Removed schedule")
+
+
+def remove_schedules_for_profiles(profile_ids: list[int]) -> None:
+    for profile_id in sorted(set(profile_ids)):
+        remove_schedule(profile_id)
 
 
 def get_all_schedules(user_id: int = None, db: Session = None) -> list[dict]:

@@ -10,24 +10,8 @@ import { AgentGrantForm } from "./AgentGrantForm";
 import { AgentGrantList } from "./AgentGrantList";
 import { useAgentAccessController } from "./useAgentAccessController";
 
-export function AgentAccessPage() {
-    const { language, t } = useI18n();
-    const { state, actions } = useAgentAccessController(t);
-    const blocker = useBlocker(state.creating);
-    const issueButtonRef = useRef(null);
-    const previouslyIssued = useRef(false);
-    const locale = language === "it" ? "it-CH" : "en-GB";
-
-    useEffect(() => {
-        if (
-            previouslyIssued.current
-            && !state.issued
-            && state.issuedRemovalReason === "dismissed"
-        ) {
-            issueButtonRef.current?.focus();
-        }
-        previouslyIssued.current = Boolean(state.issued);
-    }, [state.issued, state.issuedRemovalReason]);
+function PendingIssuanceNavigationGuard({ actions }) {
+    const blocker = useBlocker(true);
 
     useEffect(() => {
         if (blocker.state !== "blocked") return;
@@ -36,8 +20,6 @@ export function AgentAccessPage() {
     }, [actions, blocker]);
 
     useEffect(() => {
-        if (!state.creating) return undefined;
-
         const preventUnload = (event) => {
             event.preventDefault();
             event.returnValue = "";
@@ -79,10 +61,32 @@ export function AgentAccessPage() {
             window.removeEventListener(CAREEROS_BEFORE_LOGOUT_EVENT, preventLogout);
             document.removeEventListener("click", preventLinkNavigation);
         };
-    }, [actions, state.creating]);
+    }, [actions]);
+
+    return null;
+}
+
+export function AgentAccessPage() {
+    const { language, t } = useI18n();
+    const { state, actions } = useAgentAccessController(t);
+    const issueButtonRef = useRef(null);
+    const previouslyIssued = useRef(false);
+    const locale = language === "it" ? "it-CH" : "en-GB";
+
+    useEffect(() => {
+        if (
+            previouslyIssued.current
+            && !state.issued
+            && state.issuedRemovalReason === "dismissed"
+        ) {
+            issueButtonRef.current?.focus();
+        }
+        previouslyIssued.current = Boolean(state.issued);
+    }, [state.issued, state.issuedRemovalReason]);
 
     return (
         <div className="agent-access-grid">
+            {state.creating && <PendingIssuanceNavigationGuard actions={actions} />}
             <AgentAccessDisclosure activeCount={state.activeCount} t={t} />
             <AgentGrantForm
                 state={state}

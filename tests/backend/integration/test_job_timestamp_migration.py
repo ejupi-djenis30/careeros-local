@@ -12,7 +12,7 @@ from backend.core.config import settings
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 PREVIOUS_HEAD = "c5d6e7f8a9b0"
 TIMESTAMP_DEFAULT_REVISION = "d6e7f8a9b0c1"
-CURRENT_HEAD = "e7f8a9b0c1d2"
+CURRENT_HEAD = "a9b0c1d2e3f4"
 
 
 def _alembic_config(database_url: str) -> Config:
@@ -67,9 +67,7 @@ def test_job_timestamp_default_migration_supports_database_managed_inserts(
 
     command.upgrade(config, PREVIOUS_HEAD)
     before_inspector = sa.inspect(engine)
-    before_columns = {
-        column["name"]: column for column in before_inspector.get_columns("jobs")
-    }
+    before_columns = {column["name"]: column for column in before_inspector.get_columns("jobs")}
     assert before_columns["updated_at"]["nullable"] is False
     assert before_columns["updated_at"]["default"] is None
     schema_before = _schema_contract(before_inspector)
@@ -130,9 +128,7 @@ def test_job_timestamp_default_migration_supports_database_managed_inserts(
     command.upgrade(config, TIMESTAMP_DEFAULT_REVISION)
 
     upgraded_inspector = sa.inspect(engine)
-    upgraded_columns = {
-        column["name"]: column for column in upgraded_inspector.get_columns("jobs")
-    }
+    upgraded_columns = {column["name"]: column for column in upgraded_inspector.get_columns("jobs")}
     assert upgraded_columns["updated_at"]["nullable"] is False
     assert _has_current_timestamp_default(upgraded_columns["updated_at"]["default"])
     assert _schema_contract(upgraded_inspector) == schema_before
@@ -149,9 +145,7 @@ def test_job_timestamp_default_migration_supports_database_managed_inserts(
         )
     with engine.connect() as connection:
         rows = connection.execute(
-            sa.select(upgraded_jobs.c.id, upgraded_jobs.c.updated_at).order_by(
-                upgraded_jobs.c.id
-            )
+            sa.select(upgraded_jobs.c.id, upgraded_jobs.c.updated_at).order_by(upgraded_jobs.c.id)
         ).all()
     assert [row.id for row in rows] == [301, 302]
     assert rows[0].updated_at == existing_updated_at.replace(tzinfo=None)

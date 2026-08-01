@@ -16,8 +16,8 @@ describe('MobileJobCard', () => {
         workload: 100,
         applied: false,
         created_at: '2024-02-21T10:00:00Z',
-        application_url: 'http://apply.com',
-        external_url: 'http://source.com',
+        application_url: 'https://apply.com',
+        external_url: 'https://source.com',
         application_email: 'jobs@techcorp.example.test',
         affinity_analysis: 'Analysis text',
         analysis_verified: true
@@ -97,14 +97,14 @@ describe('MobileJobCard', () => {
     it('renders the external application page as a secondary action', () => {
         render(<MobileJobCard job={mockJob} {...mockHandlers} />);
         const applyLink = screen.getByTitle('Open application page');
-        expect(applyLink).toHaveAttribute('href', mockJob.application_url);
+        expect(applyLink).toHaveAttribute('href', 'https://apply.com/');
     });
 
     it('uses external_url if application_url is missing', () => {
         const jobNoApply = { ...mockJob, application_url: null };
         render(<MobileJobCard job={jobNoApply} {...mockHandlers} />);
         const applyLink = screen.getByTitle('Open application page');
-        expect(applyLink).toHaveAttribute('href', mockJob.external_url);
+        expect(applyLink).toHaveAttribute('href', 'https://source.com/');
     });
 
     it('renders email link when application_email is present', () => {

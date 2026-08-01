@@ -52,15 +52,17 @@ def test_duplicate_is_an_independent_exact_canvas_copy(
     payload = _write(duplicate)
     _experience(payload["canvas_document"])["blocks"][0]["content"]["title"] = "Copy only"
     _experience(payload["canvas_document"])["blocks"][0]["manual_fields"] = ["title"]
-    assert client.put(
-        f"/api/v1/resumes/{duplicate['id']}", json=payload, headers=auth_headers
-    ).status_code == 200
-    reloaded_original = client.get(
-        f"/api/v1/resumes/{original['id']}", headers=auth_headers
-    ).json()
-    assert _experience(reloaded_original["canvas_document"])["blocks"][0]["content"][
-        "title"
-    ] != "Copy only"
+    assert (
+        client.put(
+            f"/api/v1/resumes/{duplicate['id']}", json=payload, headers=auth_headers
+        ).status_code
+        == 200
+    )
+    reloaded_original = client.get(f"/api/v1/resumes/{original['id']}", headers=auth_headers).json()
+    assert (
+        _experience(reloaded_original["canvas_document"])["blocks"][0]["content"]["title"]
+        != "Copy only"
+    )
 
 
 def test_sync_preview_selective_apply_reset_and_stale_revision(
@@ -134,9 +136,10 @@ def test_sync_preview_selective_apply_reset_and_stale_revision(
     assert applied.status_code == 200, applied.text
     synchronized = applied.json()["draft"]
     assert synchronized["profile_revision"] == updated_profile["revision"]
-    assert _experience(synchronized["canvas_document"])["blocks"][0]["content"][
-        "title"
-    ] == "Hand-tailored Principal Engineer"
+    assert (
+        _experience(synchronized["canvas_document"])["blocks"][0]["content"]["title"]
+        == "Hand-tailored Principal Engineer"
+    )
     skill = next(
         section
         for section in synchronized["canvas_document"]["sections"]

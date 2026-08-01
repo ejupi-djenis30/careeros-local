@@ -20,6 +20,7 @@ from backend.automation.grants import TOKEN_PREFIX, AutomationGrantError
 from backend.automation.mcp_server import run_server
 from backend.automation.models import AutomationGrant
 from backend.automation.runtime import AutomationRuntimeError
+from backend.services.auth import DUMMY_PASSWORD_HASH
 
 
 def test_client_config_uses_environment_reference_and_absolute_data_dir(
@@ -99,6 +100,34 @@ def test_authorize_requires_an_explicit_least_privilege_scope() -> None:
     assert arguments.scope == ["system:read"]
 
 
+def test_unknown_cli_account_still_uses_the_constant_work_password_path(
+    db_session,
+    monkeypatch,
+) -> None:
+    from backend.repositories.user_repository import UserRepository
+    from backend.services import auth as auth_service
+
+    verification_calls: list[tuple[str, str]] = []
+    monkeypatch.setattr(
+        UserRepository,
+        "get_by_username",
+        lambda _repository, _username: None,
+    )
+    monkeypatch.setattr(cli.getpass, "getpass", lambda _prompt: "candidate-secret")
+
+    def verify(candidate: str, hashed_password: str) -> bool:
+        verification_calls.append((candidate, hashed_password))
+        return False
+
+    monkeypatch.setattr(auth_service, "verify_password", verify)
+
+    with pytest.raises(AutomationGrantError) as raised:
+        cli._account(db_session, "missing-account")
+
+    assert raised.value.code == "authentication_failed"
+    assert verification_calls == [("candidate-secret", DUMMY_PASSWORD_HASH)]
+
+
 def test_authorize_authenticates_account_and_binds_requested_scope(
     db_session, test_user, monkeypatch, capsys
 ) -> None:
@@ -160,6 +189,35 @@ def test_doctor_reports_corrupt_schema_and_short_secret_without_false_readiness(
         "installation_secret_invalid",
         "schema_unavailable",
     }
+
+
+def test_automation_rejects_a_linked_installation_secret_before_environment_mutation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    data_dir = tmp_path / "careeros-data"
+    vault = data_dir / "vault"
+    vault.mkdir(parents=True)
+    (vault / "careeros.db").touch()
+    external = tmp_path / "external-secret"
+    external.write_text("s" * 64, encoding="ascii")
+    secret = vault / ".installation-secret"
+    try:
+        secret.symlink_to(external)
+    except OSError as exc:
+        pytest.skip(f"File symlinks are unavailable: {exc}")
+    monkeypatch.delenv("CAREEROS_SECRET_FILE", raising=False)
+
+    with pytest.raises(AutomationRuntimeError) as raised:
+        runtime._configure_environment(data_dir)
+
+    assert raised.value.code == "installation_secret_invalid"
+    assert "CAREEROS_SECRET_FILE" not in os.environ
+    assert external.read_text(encoding="ascii") == "s" * 64
+
+    report = runtime.doctor(data_dir)
+    assert report["installation_secret_exists"] is True
+    assert report["installation_secret_status"] == "invalid"
 
 
 def _subprocess_environment(data_dir: Path) -> dict[str, str]:
@@ -338,9 +396,7 @@ def test_revision_inspection_is_enforced_by_sqlite(
             except sqlite3.OperationalError:
                 dbapi_connection.rollback()
                 write_blocked = True
-            observed_connections.append(
-                {"query_only": query_only, "write_blocked": write_blocked}
-            )
+            observed_connections.append({"query_only": query_only, "write_blocked": write_blocked})
             if query_only != 1 or not write_blocked:
                 raise AssertionError("revision inspection received a write-capable connection")
 

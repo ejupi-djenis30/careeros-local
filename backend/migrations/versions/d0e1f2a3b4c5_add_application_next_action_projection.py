@@ -67,9 +67,7 @@ def upgrade() -> None:
         if not isinstance(snapshot, dict):
             snapshot = {}
         latest_event_at = connection.execute(
-            sa.select(sa.func.max(events.c.occurred_at)).where(
-                events.c.application_id == row["id"]
-            )
+            sa.select(sa.func.max(events.c.occurred_at)).where(events.c.application_id == row["id"])
         ).scalar_one_or_none()
         connection.execute(
             applications.update()
@@ -88,9 +86,7 @@ def upgrade() -> None:
 
     with op.batch_alter_table("applications") as batch_op:
         batch_op.alter_column("job_title", existing_type=sa.String(length=240), nullable=False)
-        batch_op.alter_column(
-            "job_company", existing_type=sa.String(length=240), nullable=False
-        )
+        batch_op.alter_column("job_company", existing_type=sa.String(length=240), nullable=False)
         batch_op.alter_column(
             "latest_event_at", existing_type=sa.DateTime(timezone=True), nullable=False
         )

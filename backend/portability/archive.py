@@ -36,6 +36,7 @@ from backend.portability.manifest import (
     validate_manifest_compatibility,
 )
 from backend.portability.schemas import ArchiveEntry, ArchiveManifest
+from backend.resumes.artifact_policy import MAX_RESUME_ARTIFACT_BYTES
 from backend.resumes.models import ResumeArtifact, ResumeDraft, ResumeVersion
 from backend.storage.atomic import StorageWriteError, read_verified
 from backend.workflows.models import WorkflowRun
@@ -306,6 +307,8 @@ def export_archive(db: Session, user_id: int) -> bytes:
         rows = _queries(db, user_id)
         if not rows["candidate_profiles"]:
             raise ArchiveError("There is no career vault data to export")
+        if sum(len(records) for records in rows.values()) > settings.PORTABLE_ARCHIVE_MAX_RECORDS:
+            raise ArchiveError("The portable archive exceeds the configured record limit")
 
         # Validate every receipt inside the same database snapshot used for serialization.
         # Database provenance labels alone are never sufficient for an export decision.
@@ -354,28 +357,68 @@ def export_archive(db: Session, user_id: int) -> bytes:
         ]
 
         bindings: list[dict[str, str]] = []
-        file_members: dict[str, bytes] = {}
+        file_specs: list[tuple[str, str, Any, int]] = []
+        file_bytes = 0
+        uncompressed_limit = settings.PORTABLE_ARCHIVE_MAX_UNCOMPRESSED_BYTES
         for table_name, directory, records in (
             ("career_assets", "career-assets", rows["career_assets"]),
             ("resume_artifacts", "resume-artifacts", rows["resume_artifacts"]),
         ):
+            maximum_size = (
+                settings.MAX_UPLOAD_FILE_SIZE
+                if table_name == "career_assets"
+                else MAX_RESUME_ARTIFACT_BYTES
+            )
             for record in records:
+                byte_size = record.byte_size
+                if (
+                    isinstance(byte_size, bool)
+                    or not isinstance(byte_size, int)
+                    or byte_size <= 0
+                    or byte_size > maximum_size
+                ):
+                    raise ArchiveError("A stored private file failed backup verification")
+                if file_bytes > uncompressed_limit - byte_size:
+                    raise ArchiveError(
+                        "The portable archive exceeds the configured uncompressed size limit"
+                    )
+                file_bytes += byte_size
                 suffix = f".{record.format}" if table_name == "resume_artifacts" else ""
                 member = f"files/{directory}/{record.id}{suffix}"
-                data = read_verified(record.storage_path, record.sha256)
-                if len(data) != record.byte_size:
-                    raise ArchiveError(f"{table_name} record {record.id} failed its size check")
-                file_members[member] = data
-                bindings.append(
-                    {
-                        "table": table_name,
-                        "record_id": record.id,
-                        "storage_path": record.storage_path,
-                        "member": member,
-                    }
+                file_specs.append((table_name, member, record, maximum_size))
+
+        # Every portable archive also contains exactly one payload and one
+        # manifest. Reject an unusable backup before reading any private file;
+        # restore applies the same global member ceiling before decompression.
+        if 2 + len(file_specs) > settings.PORTABLE_ARCHIVE_MAX_MEMBERS:
+            raise ArchiveError("The portable archive exceeds the configured member limit")
+
+        file_members: dict[str, bytes] = {}
+        for table_name, member, record, maximum_size in file_specs:
+            try:
+                data = read_verified(
+                    record.storage_path,
+                    record.sha256,
+                    expected_size=record.byte_size,
+                    maximum_size=maximum_size,
                 )
+            except (OSError, ValueError) as exc:
+                raise ArchiveError("A stored private file failed backup verification") from exc
+            file_members[member] = data
+            bindings.append(
+                {
+                    "table": table_name,
+                    "record_id": record.id,
+                    "storage_path": record.storage_path,
+                    "member": member,
+                }
+            )
 
         payload = canonical_json({"tables": tables, "file_bindings": bindings})
+        if file_bytes > uncompressed_limit - len(payload):
+            raise ArchiveError(
+                "The portable archive exceeds the configured uncompressed size limit"
+            )
         members = {PAYLOAD_MEMBER: payload, **file_members}
         entries = [
             ArchiveEntry(path=path, sha256=sha256(data), byte_size=len(data))
@@ -390,6 +433,12 @@ def export_archive(db: Session, user_id: int) -> bytes:
             entries=entries,
         )
         manifest_data = canonical_json(manifest.model_dump(mode="json"))
+        if file_bytes + len(payload) > uncompressed_limit - len(manifest_data):
+            raise ArchiveError(
+                "The portable archive exceeds the configured uncompressed size limit"
+            )
+        if 1 + len(members) > settings.PORTABLE_ARCHIVE_MAX_MEMBERS:
+            raise ArchiveError("The portable archive exceeds the configured member limit")
 
         output = BytesIO()
         try:
@@ -454,7 +503,10 @@ def _validated_members(data: bytes) -> tuple[ArchiveManifest, dict[str, bytes]]:
             raise ArchiveError("Archive members do not match the manifest")
         members: dict[str, bytes] = {}
         for entry in manifest.entries:
-            member = archive.read(entry.path)
+            try:
+                member = archive.read(entry.path)
+            except (EOFError, OSError, RuntimeError, zipfile.BadZipFile) as exc:
+                raise ArchiveError("The archive contains an unreadable member") from exc
             if len(member) != entry.byte_size or sha256(member) != entry.sha256:
                 raise ArchiveError(f"Archive member failed integrity check: {entry.path}")
             members[entry.path] = member

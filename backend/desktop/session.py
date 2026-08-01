@@ -6,7 +6,9 @@ from typing import Any
 
 from starlette.responses import JSONResponse
 
-ASGIApp = Callable[[dict[str, Any], Callable[..., Awaitable[Any]], Callable[..., Awaitable[Any]]], Awaitable[None]]
+ASGIApp = Callable[
+    [dict[str, Any], Callable[..., Awaitable[Any]], Callable[..., Awaitable[Any]]], Awaitable[None]
+]
 
 
 class DesktopSessionMiddleware:
@@ -23,11 +25,12 @@ class DesktopSessionMiddleware:
             await self.app(scope, receive, send)
             return
 
-        supplied = b""
-        for name, value in scope.get("headers", []):
-            if name.lower() == b"x-careeros-session":
-                supplied = value.strip()
-                break
+        supplied_values = [
+            value.strip()
+            for name, value in scope.get("headers", [])
+            if name.lower() == b"x-careeros-session"
+        ]
+        supplied = supplied_values[0] if len(supplied_values) == 1 else b""
 
         if not supplied or not hmac.compare_digest(supplied, self._token):
             response = JSONResponse(

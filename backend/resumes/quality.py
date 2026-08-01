@@ -7,6 +7,11 @@ from docx import Document
 from pypdf import PdfReader
 
 from backend.core.config import settings
+from backend.resumes.artifact_policy import (
+    MAX_RESUME_ARTIFACT_BYTES,
+    MAX_RESUME_DOCX_ENTRIES,
+    MAX_RESUME_DOCX_UNCOMPRESSED_BYTES,
+)
 
 
 class ResumeQualityError(ValueError):
@@ -40,26 +45,32 @@ def validate_resume_artifacts(
     expect_photo: bool,
     columns: int = 1,
 ) -> dict:
+    if len(pdf) > MAX_RESUME_ARTIFACT_BYTES or len(docx) > MAX_RESUME_ARTIFACT_BYTES:
+        raise ResumeQualityError(
+            f"Generated resume artifacts cannot exceed {MAX_RESUME_ARTIFACT_BYTES} bytes"
+        )
     try:
         pdf_document = PdfReader(BytesIO(pdf))
         page_count = len(pdf_document.pages)
-        extracted_text = "\n".join(
-            page.extract_text() or "" for page in pdf_document.pages
-        )
-        pdf_image_count = sum(len(page.images) for page in pdf_document.pages)
-        metadata = pdf_document.metadata
-        pdf_metadata = {
-            "author": metadata.author if metadata else None,
-            "subject": metadata.subject if metadata else None,
-        }
     except Exception as exc:
         raise ResumeQualityError("Generated PDF could not be reopened") from exc
-
     if page_count < 1 or page_count > settings.RESUME_MAX_PAGES:
         raise ResumeQualityError(
             f"Generated PDF has {page_count} pages; the configured limit is "
             f"{settings.RESUME_MAX_PAGES}"
         )
+    try:
+        extracted_text = "\n".join(page.extract_text() or "" for page in pdf_document.pages)
+        pdf_image_count = sum(len(page.images) for page in pdf_document.pages)
+        metadata = pdf_document.metadata
+        pdf_metadata = {
+            "author": metadata.author if metadata else None,
+            "creator": metadata.creator if metadata else None,
+            "producer": metadata.producer if metadata else None,
+            "subject": metadata.subject if metadata else None,
+        }
+    except Exception as exc:
+        raise ResumeQualityError("Generated PDF could not be reopened") from exc
     normalized_pdf = _normalized(extracted_text)
     missing_pdf = [
         item
@@ -80,13 +91,25 @@ def validate_resume_artifacts(
         raise ResumeQualityError("Photo PDF does not contain the normalized photo")
 
     try:
+        with zipfile.ZipFile(BytesIO(docx)) as archive:
+            entries = archive.infolist()
+            if len(entries) > MAX_RESUME_DOCX_ENTRIES:
+                raise ResumeQualityError("Generated DOCX contains too many archive entries")
+            if len({entry.filename for entry in entries}) != len(entries):
+                raise ResumeQualityError("Generated DOCX contains duplicate archive entries")
+            if any(entry.flag_bits & 0x1 for entry in entries):
+                raise ResumeQualityError("Generated DOCX cannot contain encrypted entries")
+            if sum(entry.file_size for entry in entries) > MAX_RESUME_DOCX_UNCOMPRESSED_BYTES:
+                raise ResumeQualityError("Generated DOCX expands beyond the local artifact limit")
+            names = {entry.filename for entry in entries}
+            if not {"[Content_Types].xml", "word/document.xml"} <= names:
+                raise ResumeQualityError("Generated DOCX is missing required package entries")
+            docx_image_count = sum(1 for name in names if name.startswith("word/media/"))
         word_document = Document(BytesIO(docx))
         docx_text = "\n".join(paragraph.text for paragraph in word_document.paragraphs)
         docx_properties = word_document.core_properties
-        with zipfile.ZipFile(BytesIO(docx)) as archive:
-            docx_image_count = sum(
-                1 for name in archive.namelist() if name.startswith("word/media/")
-            )
+    except ResumeQualityError:
+        raise
     except Exception as exc:
         raise ResumeQualityError("Generated DOCX could not be reopened") from exc
     normalized_docx = _normalized(docx_text)
@@ -110,9 +133,12 @@ def validate_resume_artifacts(
 
     metadata_sanitized = (
         pdf_metadata.get("author") == "CareerOS Local"
+        and pdf_metadata.get("creator") == "CareerOS Local"
+        and pdf_metadata.get("producer") == "CareerOS Local"
         and pdf_metadata.get("subject") == "Resume"
         and docx_properties.author == "CareerOS Local"
         and docx_properties.comments == "Generated locally"
+        and docx_properties.last_modified_by == "CareerOS Local"
     )
     if not metadata_sanitized:
         raise ResumeQualityError("Generated artifacts contain unexpected document metadata")

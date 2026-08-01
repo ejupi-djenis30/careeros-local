@@ -2,6 +2,29 @@
 
 <!--
 Sync impact report
+- Amendment: destructive vault operations now persist an explicit four-state lifecycle before
+  mutation, use purpose-bound recovery authority and restart-durable ownership journals, and
+  clear pending state only after durable cleanup and SQLite sanitation have completed.
+- Amendment: the desktop backend now exposes non-blocking liveness/readiness probes and MUST
+  quiesce scheduled work, managed runtimes and writers in dependency order during shutdown.
+- Amendment: browser access and refresh JWTs now share one bounded persisted session family;
+  every protected access requires live family authority, while replay, logout, restore and
+  complete erasure revoke or remove that authority without storing a raw bearer or access JTI.
+- Amendment: browser cookie mutations use Fetch Metadata when `Origin` is absent, and every
+  Node-backed npm entry point fails before work unless the exact supported Node range is active.
+- Amendment: production environment, JWT, credentialed-origin and renderer API-base configuration
+  now fail closed; authenticated API payloads are never dynamically compressed, and an explicit
+  logout failure cannot be presented as a completed server-session termination.
+- Amendment: renderer boot now carries executable raw and compressed resource budgets, loads only
+  the selected bundled locale, and must not ship an application-wide icon font when an auditable
+  used-icon subset can preserve the same interface.
+- Amendment: content-security directives must be delivered through a channel where the target
+  runtime enforces them; web response-header framing protection cannot be represented as meta CSP.
+- Amendment: release shells receive repository/ref metadata only through quoted environment
+  variables, reverse proxies normalize the upstream Host, and dependency automation carries an
+  explicit non-security update cooldown.
+- Amendment: modal navigation overlays now follow the same focus, inert-background and scroll
+  isolation guarantees as modal content workflows.
 - Amendment: desktop grant management may return an external-agent bearer only after
   current-account password verification, through a non-cacheable one-time response that the
   renderer never persists automatically.
@@ -12,9 +35,9 @@ Sync impact report
 - Amendment: every workflow presented as AI analysis now requires a ready, validated local model
   and fails closed instead of substituting heuristic output; owned records and deterministic
   preflight/export workflows remain available without inference.
-- Version: 1.1.4 (hardens desktop automation-grant issuance and one-time secret handling).
+- Version: 1.2.0 (adds mandatory crash-recoverable vault maintenance and orderly shutdown).
 - Ratified: 2026-07-17.
-- Last amended: 2026-07-30.
+- Last amended: 2026-07-31.
 - Principles: desktop ownership, local intelligence, grounded career truth, durable vault,
   bounded architecture, measurable delivery, secure distribution, accessible documents.
 - Dependent artifacts: plan, specification, task and checklist templates reviewed.
@@ -29,6 +52,10 @@ without requiring Docker, a shell, Python, Node.js or a manually started web ser
 application services MUST bind only to loopback, use an ephemeral authenticated session,
 and terminate with the desktop process. Windows, macOS and Linux release artifacts MUST
 be reproducible from source and published with checksums.
+Shutdown MUST stop new scheduled work before snapshotting or cancelling background tasks, wait
+within a bounded deadline for managed-runtime workers, and terminate every child process even
+when the graceful path fails. Liveness MUST remain independent of database and writer activity;
+readiness MUST report contention without waiting behind a long-running writer.
 
 Rationale: a local-first product must feel owned by the user, not operated like a server.
 
@@ -98,6 +125,17 @@ set omits lower-priority items. They MUST NOT replay or expose another user's ev
 Counts and rows in one daily-work response MUST come from one database statement or an explicitly
 verified snapshot transaction. Local-day boundaries MUST be supplied as timezone-aware instants
 calculated by the renderer's local calendar, not reconstructed from a fixed UTC offset.
+Reset, restore and complete erasure MUST persist one of `reset_pending`, `restore_pending` or
+`erasure_pending` before the first destructive mutation; `ready` is the only state that permits
+normal workspace authority. Restore file ownership MUST be recorded before publication in a
+checksummed, restart-durable, per-account journal with owner-scoped staging. Retries MUST require
+the same verified archive fingerprint, while complete erasure MUST remain available when the
+archive is lost. Restore MUST accept only canonical identifiers and managed storage paths,
+preserve files that have become referenced by another account, revoke sessions and grants, and
+restore schedules disabled. A failed restore may clear pending state only after journal-owned
+exclusive files are durably removed and SQLite rollback remnants are sanitized; otherwise it
+MUST retain recoverable pending state. Startup cleanup MUST be confined to recognized temporary
+files inside managed asset and resume namespaces.
 
 Rationale: local storage without portability and recovery is only local lock-in.
 
@@ -118,6 +156,12 @@ process and API boundaries; integration tests cover SQLite, migrations, inferenc
 end-to-end tests cover installation, first launch, restart and upgrade. Tests deny network by
 default. A release is incomplete if lint, type checks, tests, AI evaluations, packaging, SBOM,
 license policy, vulnerability scan or artifact smoke tests fail.
+Renderer boot resources MUST have executable raw and compressed budgets. Language catalogues and
+other view-independent assets MUST remain bundled for offline use but load only when selected or
+needed; a build warning MUST be resolved through measured byte reduction rather than cosmetic
+chunk relocation.
+Dependency update automation MUST define an explicit review cooldown for routine updates across
+every managed ecosystem without delaying security updates.
 
 Rationale: production-grade is a verified state, not a label.
 
@@ -126,6 +170,36 @@ Rationale: production-grade is a verified state, not a label.
 Logs MUST exclude profile bodies, prompts, tokens, document text and contact details. The
 desktop shell MUST enforce a restrictive content security policy, disable arbitrary navigation,
 validate IPC messages and avoid renderer privileges. Core workflows MUST be keyboard accessible.
+Each content-security directive MUST use a delivery mechanism the target runtime enforces.
+Browser framing protection MUST remain in web response headers instead of an ineffective meta
+directive, while the desktop runtime retains its native CSP configuration.
+Production mode, the reviewed JWT algorithm, credentialed browser origins and renderer API bases
+MUST use canonical allowlisted values and MUST fail closed on wildcard, ambiguous or malformed
+configuration. Authenticated API responses MUST NOT use dynamic compression. An explicit sign-out
+failure MUST immediately hide the private workspace, report that the server session was not ended
+and offer a retry instead of exposing login controls or claiming success.
+Each browser access and refresh token MUST carry the same persisted session-family identifier.
+Every protected access MUST bind its signed subject and family identifier to a live, unexpired,
+non-revoked family row; a JWT alone is insufficient authority. Refresh tokens MUST be single-use,
+and their current JTI MUST be stored only as a one-way digest. Rotation MUST compare-and-swap that
+digest; reuse of an older token MUST revoke the family. Logout MUST atomically revoke every valid
+family presented by its cookie and bearer, including an already rotated refresh token. A failed
+logout commit MUST roll back, clear automatic refresh cookies, report failure and retain only an
+in-memory bearer for explicit retry. Session rows MUST be bounded per account, excluded from
+portable archives, revoked on restore and removed by complete erasure. Raw access and refresh
+tokens and access JTIs MUST NOT be persisted. Once revocation or deletion commits, new protected
+requests using that family MUST fail; a request authorized before that commit is not retroactively
+cancelled.
+Normal session access and refresh MUST fail while vault maintenance is pending. Recovery access
+MUST be password-reissued, purpose-bound, non-refreshable and accepted only by the matching
+maintenance operation; it MUST NOT authorize ordinary workspace routes or agent grants. Logout
+MUST invalidate even the special erasure-recovery family so the presented bearer cannot be
+reused, while a subsequent correct-password login MAY issue a fresh maintenance authority.
+Reset and erasure MUST revoke any session family created after the initial maintenance snapshot
+before declaring completion.
+Repository, ref and commit metadata MUST enter release shell commands through quoted environment
+variables instead of expression interpolation. A web reverse proxy MUST send the backend a fixed
+allowlisted Host rather than reflecting the client-supplied Host header.
 Creating an external-agent grant from the authenticated desktop MUST require current-account
 password verification. Repeated failures MUST be isolated to that account and MAY pause new
 issuance, but a correct current password MUST remain able to revoke an existing grant. The bearer
@@ -133,8 +207,9 @@ MAY appear only in the explicit non-cacheable issuance response, MUST be shown a
 secret, and MUST NOT be written to logs, browser storage, application storage or the clipboard
 without a direct user action. Grant lists expose only owned non-secret metadata and MUST keep
 every active grant visible and revocable.
-Modal workflows MUST identify themselves to assistive technology, contain keyboard focus while
-open, make obscured content inert, close with Escape where safe, and return focus to their opener.
+Modal workflows and modal navigation overlays MUST identify themselves to assistive technology,
+contain keyboard focus while open, make obscured content inert, lock background scrolling, close
+with Escape where safe, and return focus to their opener when it remains available.
 ATS resumes MUST be text-extractable and photo-free; visual templates MUST remain readable
 without color and strip image metadata. PDF and DOCX exports are generated locally and checked
 for required sections, non-empty text and overflow.
@@ -155,6 +230,9 @@ Rationale: private data and career documents deserve secure, inclusive defaults.
   desktop session token into an MCP credential or stores the one-time bearer for convenience.
 - The default installer starts on a clean supported OS without developer tooling.
 - The desktop app must recover cleanly from a crashed local model or backend process.
+- A killed reset, restore or erasure resumes safely from durable lifecycle state; an unrelated
+  normal session cannot bypass it, and lost-archive restore recovery can always converge by
+  complete erasure.
 - Release artifacts must be signed where credentials are available; unsigned development
   artifacts must be labeled clearly and must still include checksums and an SBOM.
 
@@ -179,4 +257,4 @@ minor; clarification without changed obligations is patch. Every plan MUST perfo
 check before research and again before release. Exceptions require owner approval, an expiry date
 and a tracked remediation task; there are no implicit exceptions.
 
-**Version**: 1.1.4 | **Ratified**: 2026-07-17 | **Last amended**: 2026-07-30
+**Version**: 1.2.0 | **Ratified**: 2026-07-17 | **Last amended**: 2026-07-31

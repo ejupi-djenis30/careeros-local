@@ -196,11 +196,7 @@ def _build_canvas_content(snapshot: dict[str, Any], canvas: dict[str, Any]) -> R
         (section for section in canvas["sections"] if section["kind"] == "identity"), None
     )
     identity_block = next(
-        (
-            block
-            for block in (identity or {}).get("blocks", [])
-            if block.get("visible", True)
-        ),
+        (block for block in (identity or {}).get("blocks", []) if block.get("visible", True)),
         None,
     )
     identity_content = (identity_block or {}).get("content", {})
@@ -213,9 +209,7 @@ def _build_canvas_content(snapshot: dict[str, Any], canvas: dict[str, Any]) -> R
         None,
     )
     summary_blocks = [
-        block
-        for block in (summary_section or {}).get("blocks", [])
-        if block.get("visible", True)
+        block for block in (summary_section or {}).get("blocks", []) if block.get("visible", True)
     ]
     summary = "\n".join(
         block.get("content", {}).get("description", "")

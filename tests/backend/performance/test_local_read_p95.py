@@ -47,9 +47,7 @@ def benchmark_database_path():
         yield Path(path) / "careeros-performance.db"
 
 
-def test_profile_and_application_page_reads_under_200ms_p95(
-    benchmark_database_path, capsys
-):
+def test_profile_and_application_page_reads_under_200ms_p95(benchmark_database_path, capsys):
     database_path = benchmark_database_path
     engine = create_engine(
         f"sqlite:///{database_path.as_posix()}",
@@ -134,14 +132,17 @@ def test_profile_and_application_page_reads_under_200ms_p95(
         # Warm filesystem pages and SQLAlchemy/Pydantic code paths before sampling.
         assert profile_service.get(user.id) is not None
         assert len(application_service.list(user.id, limit=PAGE_SIZE)) == PAGE_SIZE
-        assert len(
-            agenda_service.build(
-                user.id,
-                local_day_end=now + timedelta(hours=12),
-                limit=50,
-                now=now,
-            ).items
-        ) == 50
+        assert (
+            len(
+                agenda_service.build(
+                    user.id,
+                    local_day_end=now + timedelta(hours=12),
+                    limit=50,
+                    now=now,
+                ).items
+            )
+            == 50
+        )
 
         profile_samples: list[float] = []
         application_samples: list[float] = []

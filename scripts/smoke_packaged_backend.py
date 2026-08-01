@@ -7,6 +7,7 @@ import hashlib
 import json
 import os
 import socket
+import stat
 import subprocess
 import sys
 import time
@@ -15,6 +16,29 @@ import urllib.request
 import zipfile
 from io import BytesIO
 from pathlib import Path
+from typing import Any
+
+
+class _NoRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, *_args: Any, **_kwargs: Any) -> None:
+        return None
+
+
+def _is_link_like(path: Path) -> bool:
+    if path.is_symlink() or (hasattr(path, "is_junction") and path.is_junction()):
+        return True
+    try:
+        attributes = getattr(path.lstat(), "st_file_attributes", 0)
+    except OSError:
+        return False
+    return bool(attributes & getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0))
+
+
+def _require_clean_exit(returncode: int | None) -> None:
+    if returncode != 0:
+        raise RuntimeError(
+            f"Packaged backend did not terminate cleanly with its parent: {returncode}"
+        )
 
 
 def _free_port() -> int:
@@ -39,11 +63,10 @@ def _request(
         headers["Content-Type"] = "application/json"
     if access_token:
         headers["Authorization"] = f"Bearer {access_token}"
-    request = urllib.request.Request(
-        f"{base_url}{path}", data=data, headers=headers, method=method
-    )
+    request = urllib.request.Request(f"{base_url}{path}", data=data, headers=headers, method=method)
     try:
-        with urllib.request.urlopen(request, timeout=30) as response:
+        opener = urllib.request.build_opener(_NoRedirect())
+        with opener.open(request, timeout=30) as response:
             return response.read(), {
                 name.lower(): value for name, value in response.headers.items()
             }
@@ -63,13 +86,13 @@ def _wait_ready(base_url: str, session_token: str) -> None:
     deadline = time.monotonic() + 90
     while time.monotonic() < deadline:
         try:
-            ready = _json_request(
-                base_url, "/health/ready", session_token=session_token
-            )
+            ready = _json_request(base_url, "/health/ready", session_token=session_token)
             if ready.get("status") == "ready":
                 return
         except Exception:
             time.sleep(0.2)
+            continue
+        time.sleep(0.2)
     raise RuntimeError("Packaged backend did not become ready")
 
 
@@ -170,11 +193,17 @@ def main() -> int:
     parser.add_argument("--binary", required=True, type=Path)
     parser.add_argument("--data-dir", required=True, type=Path)
     arguments = parser.parse_args()
-    binary = arguments.binary.resolve()
-    data_dir = arguments.data_dir.resolve()
-    if not binary.is_file() or not data_dir.is_absolute():
+    if not arguments.binary.is_absolute() or not arguments.data_dir.is_absolute():
         raise RuntimeError("Packaged backend binary and absolute smoke data path are required")
+    if _is_link_like(arguments.binary) or _is_link_like(arguments.data_dir):
+        raise RuntimeError("Packaged backend smoke paths must not be links or junctions")
+    binary = arguments.binary.resolve(strict=True)
+    data_dir = arguments.data_dir.resolve()
+    if not binary.is_file() or data_dir == Path(data_dir.anchor):
+        raise RuntimeError("Packaged backend binary and bounded smoke data path are required")
     data_dir.mkdir(parents=True, exist_ok=True)
+    if _is_link_like(data_dir) or not data_dir.is_dir():
+        raise RuntimeError("Packaged backend smoke data path is not a regular directory")
     port = _free_port()
     token = "package-smoke-" + "x" * 48
     environment = os.environ.copy()
@@ -184,23 +213,24 @@ def main() -> int:
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
     )
-    process = subprocess.Popen(
-        [
-            str(binary),
-            "--host",
-            "127.0.0.1",
-            "--port",
-            str(port),
-            "--data-dir",
-            str(data_dir),
-            "--parent-pid",
-            str(parent.pid),
-        ],
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-        env=environment,
-    )
+    process: subprocess.Popen[bytes] | None = None
     try:
+        process = subprocess.Popen(
+            [
+                str(binary),
+                "--host",
+                "127.0.0.1",
+                "--port",
+                str(port),
+                "--data-dir",
+                str(data_dir),
+                "--parent-pid",
+                str(parent.pid),
+            ],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            env=environment,
+        )
         base_url = f"http://127.0.0.1:{port}/api/v1"
         _wait_ready(base_url, token)
         result = _exercise_exports(base_url, token, data_dir)
@@ -208,14 +238,22 @@ def main() -> int:
     finally:
         if parent.poll() is None:
             parent.terminate()
-            parent.wait(timeout=10)
-        try:
-            process.wait(timeout=15)
-        except subprocess.TimeoutExpired:
-            process.terminate()
-            process.wait(timeout=10)
-    if process.returncode is None:
-        raise RuntimeError("Packaged backend did not terminate with its parent")
+            try:
+                parent.wait(timeout=10)
+            except subprocess.TimeoutExpired:
+                parent.kill()
+                parent.wait(timeout=10)
+        if process is not None:
+            try:
+                process.wait(timeout=15)
+            except subprocess.TimeoutExpired:
+                process.terminate()
+                try:
+                    process.wait(timeout=10)
+                except subprocess.TimeoutExpired:
+                    process.kill()
+                    process.wait(timeout=10)
+    _require_clean_exit(None if process is None else process.returncode)
     return 0
 
 

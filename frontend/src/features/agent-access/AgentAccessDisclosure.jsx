@@ -14,10 +14,15 @@ export function AgentAccessDisclosure({ activeCount, t }) {
                     <li><i className="bi bi-eye" aria-hidden="true" />{t("agentAccess.readOnly")}</li>
                     <li><i className="bi bi-hdd" aria-hidden="true" />{t("agentAccess.localBoundary")}</li>
                     <li><i className="bi bi-door-closed" aria-hidden="true" />{t("agentAccess.leaseBoundary")}</li>
+                    <li>
+                        <i className="bi bi-exclamation-triangle" aria-hidden="true" />
+                        {t("agentAccess.interruptedIssuance")}
+                    </li>
                 </ul>
             </div>
             <div
                 className="agent-access-disclosure__metric"
+                role="group"
                 aria-label={countAvailable
                     ? t("agentAccess.activeCount", { count: activeCount })
                     : t("agentAccess.activeUnavailable")}

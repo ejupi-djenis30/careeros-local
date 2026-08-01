@@ -53,6 +53,10 @@ EVIDENCE_LABELS = {
     "verified_facts": "Verified in published snapshot",
 }
 
+MAX_READINESS_EXPORT_CHECKS = 100
+MAX_READINESS_EXPORT_EVIDENCE = 1_000
+MAX_READINESS_EXPORT_BYTES = 512 * 1024
+
 
 @dataclass(frozen=True)
 class ReadinessExport:
@@ -134,14 +138,24 @@ def export_readiness(
     report: ApplicationReadinessReport,
     export_format: Literal["json", "markdown"],
 ) -> ReadinessExport:
+    if len(report.checks) > MAX_READINESS_EXPORT_CHECKS:
+        raise ValueError("Readiness export contains too many checks")
+    if sum(len(check.evidence) for check in report.checks) > MAX_READINESS_EXPORT_EVIDENCE:
+        raise ValueError("Readiness export contains too much evidence")
+    if report.fingerprint != canonical_fingerprint(report):
+        raise ValueError("Readiness report fingerprint does not match its contents")
     if export_format == "json":
         data = canonical_json(report)
         extension = "json"
         media_type = "application/json"
-    else:
+    elif export_format == "markdown":
         data = canonical_markdown(report)
         extension = "md"
         media_type = "text/markdown; charset=utf-8"
+    else:
+        raise ValueError("Unsupported readiness export format")
+    if len(data) > MAX_READINESS_EXPORT_BYTES:
+        raise ValueError("Readiness export exceeds the local size limit")
     return ReadinessExport(
         data=data,
         filename=f"careeros-application-{report.application_id}-readiness.{extension}",

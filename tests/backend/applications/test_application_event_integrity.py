@@ -17,7 +17,7 @@ from backend.applications.service import (
     ApplicationService,
     ApplicationValidationError,
 )
-from backend.db.base import Base, configure_sqlite_connection
+from backend.db.base import Base, configure_sqlite_connection, ensure_sqlite_parent
 from backend.models import Job, ScrapedJob, SearchProfile, User
 
 
@@ -169,6 +169,7 @@ def test_application_board_reads_next_action_projection_without_replaying_events
 
 def test_stage_event_cas_has_one_winner(file_database_path):
     database_path = file_database_path
+    ensure_sqlite_parent(f"sqlite:///{database_path.as_posix()}")
     engine = create_engine(
         f"sqlite:///{database_path.as_posix()}",
         connect_args={"check_same_thread": False},
@@ -264,6 +265,7 @@ def test_stage_event_cas_has_one_winner(file_database_path):
 
 
 def test_logical_opportunity_create_race_has_one_winner(file_database_path):
+    ensure_sqlite_parent(f"sqlite:///{file_database_path.as_posix()}")
     engine = create_engine(
         f"sqlite:///{file_database_path.as_posix()}",
         connect_args={"check_same_thread": False},

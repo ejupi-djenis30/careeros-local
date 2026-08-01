@@ -1,5 +1,8 @@
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from threading import Event
+from time import monotonic
 
 
 def _profile_payload(expected_revision=0):
@@ -130,14 +133,10 @@ def test_source_document_import_is_local_hashed_and_idempotent(client, auth_head
                 "verification_status": "imported",
             }
         )
-        accepted = client.put(
-            "/api/v1/career-profile", json=updated, headers=auth_headers
-        )
+        accepted = client.put("/api/v1/career-profile", json=updated, headers=auth_headers)
         assert accepted.status_code == 200, accepted.text
         imported = next(
-            item
-            for item in accepted.json()["facts"]
-            if item["verification_status"] == "imported"
+            item for item in accepted.json()["facts"] if item["verification_status"] == "imported"
         )
         assert imported["source_document_id"] == payload["id"]
         assert imported["source_locator"] == "paragraph:1"
@@ -160,6 +159,45 @@ def test_source_document_skill_candidates_are_deterministic(client, auth_headers
     assert [item["payload"]["name"] for item in candidates] == ["Python", "FastAPI", "SQL"]
     assert all(item["fact_type"] == "skill" for item in candidates)
     assert len({item["candidate_id"] for item in candidates}) == 3
+
+
+def test_source_parsing_does_not_block_process_liveness(client, auth_headers, monkeypatch):
+    profile = client.put("/api/v1/career-profile", json=_profile_payload(), headers=auth_headers)
+    assert profile.status_code == 200
+    from backend.api.routes import career_profile as route_module
+
+    original_prepare = route_module.prepare_source_document
+    started = Event()
+    release = Event()
+
+    def slow_prepare(**kwargs):
+        started.set()
+        if not release.wait(timeout=5):
+            raise TimeoutError("test did not release source parsing")
+        return original_prepare(**kwargs)
+
+    monkeypatch.setattr(route_module, "prepare_source_document", slow_prepare)
+    with TemporaryDirectory() as directory:
+        monkeypatch.setattr("backend.career.sources.settings.DATA_DIR", directory)
+        with ThreadPoolExecutor(max_workers=1) as executor:
+            pending = executor.submit(
+                client.post,
+                "/api/v1/career-profile/sources",
+                headers=auth_headers,
+                files={"file": ("career.txt", b"Evidence remains local.", "text/plain")},
+            )
+            try:
+                assert started.wait(timeout=2)
+                before = monotonic()
+                liveness = client.get("/api/v1/health/live")
+                elapsed = monotonic() - before
+            finally:
+                release.set()
+            uploaded = pending.result(timeout=5)
+
+    assert liveness.status_code == 200
+    assert elapsed < 1.0
+    assert uploaded.status_code == 201, uploaded.text
 
 
 def test_source_document_import_rejects_unsupported_media_type(client, auth_headers):

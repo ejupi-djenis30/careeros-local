@@ -8,7 +8,7 @@ import pytest
 from sqlalchemy import create_engine, event
 from sqlalchemy.orm import sessionmaker
 
-from backend.db.base import configure_sqlite_connection
+from backend.db.base import configure_sqlite_connection, ensure_sqlite_parent
 from backend.models import User
 from backend.models.base_model import Base
 from backend.workflows.models import WorkflowRun
@@ -105,6 +105,7 @@ def test_cancel_retry_and_redacted_failure_lifecycle(db_session, test_user):
 def test_sqlite_atomic_claim_allows_only_one_worker():
     with TemporaryDirectory() as directory:
         database_path = Path(directory) / "workflow.db"
+        ensure_sqlite_parent(f"sqlite:///{database_path.as_posix()}")
         engine = create_engine(
             f"sqlite:///{database_path.as_posix()}", connect_args={"check_same_thread": False}
         )
@@ -146,8 +147,6 @@ def test_workflow_api_hides_payload_and_supports_cancel(client, auth_headers):
     run = response.json()
     assert run["status"] == "queued"
     assert "payload" not in run
-    cancelled = client.post(
-        f"/api/v1/workflows/{run['id']}/cancel", headers=auth_headers
-    )
+    cancelled = client.post(f"/api/v1/workflows/{run['id']}/cancel", headers=auth_headers)
     assert cancelled.status_code == 200
     assert cancelled.json()["status"] == "cancelled"

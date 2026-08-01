@@ -231,8 +231,7 @@ async function recordTour(frontendUrl, python, stagingDir) {
         const expectedAnonymousRefresh = !authenticated
             && text.includes("Failed to load resource")
             && text.includes("401");
-        const expectedMetaCspNotice = text.includes("'frame-ancestors' is ignored when delivered via a <meta>");
-        if (!expectedAnonymousRefresh && !expectedMetaCspNotice) runtimeErrors.push(`console: ${text}`);
+        if (!expectedAnonymousRefresh) runtimeErrors.push(`console: ${text}`);
     });
     page.on("response", (response) => {
         const expectedAnonymousRefresh = !authenticated

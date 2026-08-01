@@ -1,4 +1,5 @@
 import asyncio
+import logging
 import math
 import re
 from io import BytesIO
@@ -7,8 +8,13 @@ from typing import TYPE_CHECKING
 from fastapi import HTTPException, UploadFile
 from pypdf import PdfReader
 
+from backend.core.config import settings
+from backend.core.diagnostics import FailureCode, diagnose_failure, log_failure
+
 if TYPE_CHECKING:
     from backend.providers.jobs.models import Coordinates
+
+logger = logging.getLogger(__name__)
 
 _SWISS_CITY_COORDINATES: dict[str, tuple[float, float]] = {
     "zurich": (47.3769, 8.5417),
@@ -85,9 +91,26 @@ _BLOCKED_CONTENT_TYPES = {
 }
 
 
+def safe_upload_filename(value: str | None, *, fallback: str = "upload") -> str:
+    """Return a display-only basename without path or control characters."""
+
+    candidate = str(value or "").replace("\\", "/").rsplit("/", 1)[-1]
+    candidate = "".join(
+        character for character in candidate if ord(character) >= 32 and ord(character) != 127
+    ).strip(" .")
+    return candidate[:255] or fallback
+
+
+def _bounded_extracted_text(text: str) -> str:
+    if len(text) > settings.CV_IMPORT_MAX_EXTRACTED_CHARS:
+        raise ValueError("CV extracted text exceeded the configured safety limit")
+    return text
+
+
 async def extract_text_from_file(file: UploadFile) -> str:
-    content_type = (file.content_type or "").split(";")[0].strip().lower()
-    filename = (file.filename or "").lower()
+    raw_content_type = file.content_type if isinstance(file.content_type, str) else ""
+    content_type = raw_content_type.split(";")[0].strip().lower()
+    filename = safe_upload_filename(file.filename).lower()
     ext = next((e for e in _ALLOWED_EXTENSIONS if filename.endswith(e)), None)
 
     if ext is None:
@@ -104,24 +127,42 @@ async def extract_text_from_file(file: UploadFile) -> str:
         )
 
     try:
+        content = await file.read(settings.MAX_UPLOAD_FILE_SIZE + 1)
+        if len(content) > settings.MAX_UPLOAD_FILE_SIZE:
+            raise HTTPException(
+                status_code=413,
+                detail="File too large for local CV processing.",
+            )
         if ext == ".pdf":
-            content = await file.read()
             return await asyncio.to_thread(_extract_from_pdf, content)
-        else:  # .txt or .md
-            content = await file.read()
-            return content.decode("utf-8")
+        return _bounded_extracted_text(content.decode("utf-8"))
     except HTTPException:
         raise
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Failed to process file: {str(e)}")
+    except Exception as exc:
+        diagnostic = diagnose_failure(exc, FailureCode.LOCAL_RESOURCE_LOAD_FAILED)
+        log_failure(logger, diagnostic, level=logging.WARNING)
+        raise HTTPException(
+            status_code=400,
+            detail="The uploaded file could not be processed.",
+        ) from exc
 
 
 def _extract_from_pdf(content: bytes) -> str:
     try:
         document = PdfReader(BytesIO(content))
-        return "".join(page.extract_text() or "" for page in document.pages)
-    except Exception as e:
-        raise Exception(f"PDF parsing error: {str(e)}")
+        if len(document.pages) > settings.CV_IMPORT_MAX_PAGES:
+            raise ValueError("CV PDF exceeded the configured page limit")
+        parts: list[str] = []
+        extracted_characters = 0
+        for page in document.pages:
+            page_text = page.extract_text() or ""
+            extracted_characters += len(page_text)
+            if extracted_characters > settings.CV_IMPORT_MAX_EXTRACTED_CHARS:
+                raise ValueError("CV extracted text exceeded the configured safety limit")
+            parts.append(page_text)
+        return "".join(parts)
+    except Exception as exc:
+        raise ValueError("PDF parsing failed") from exc
 
 
 def haversine_distance(lat1: float, lon1: float, lat2: float, lon2: float) -> float:

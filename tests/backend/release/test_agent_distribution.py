@@ -63,6 +63,18 @@ def test_agent_wheel_record_rejects_changed_runtime_bytes(tmp_path: Path) -> Non
         validate_agent_wheel(wheel, version=VERSION, project_root=ROOT)
 
 
+def test_agent_wheel_rejects_tampered_third_party_notices(tmp_path: Path) -> None:
+    wheel = write_agent_wheel(tmp_path / "wheel")
+    _replace_member(
+        wheel,
+        f"careeros_local-{VERSION}.dist-info/licenses/THIRD_PARTY_NOTICES.txt",
+        b"tampered notices\n",
+    )
+
+    with pytest.raises(RuntimeError, match="approved generated payload"):
+        validate_agent_wheel(wheel, version=VERSION, project_root=ROOT)
+
+
 def test_agent_wheel_rejects_private_state_and_unsafe_paths(tmp_path: Path) -> None:
     wheel = write_agent_wheel(tmp_path / "wheel")
     with zipfile.ZipFile(wheel, mode="a") as archive:

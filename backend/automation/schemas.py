@@ -41,9 +41,7 @@ def normalize_grant_label(value: str) -> str:
         )
         for character in normalized
     ):
-        raise ValueError(
-            "Grant labels must contain 1 to 120 printable characters"
-        )
+        raise ValueError("Grant labels must contain 1 to 120 printable characters")
     return normalized
 
 
@@ -65,9 +63,13 @@ class AutomationErrorResponse(AutomationDTO):
 
 
 class GrantView(AutomationDTO):
-    id: str
-    label: str
-    scopes: list[AutomationScope]
+    id: str = Field(json_schema_extra={"format": "uuid"})
+    label: str = Field(min_length=1, max_length=120)
+    scopes: list[AutomationScope] = Field(
+        min_length=1,
+        max_length=4,
+        json_schema_extra={"uniqueItems": True},
+    )
     expires_at: datetime
     revoked_at: datetime | None
     created_at: datetime
@@ -86,9 +88,7 @@ class GrantIssueRequest(AutomationDTO):
 
     @field_validator("scopes")
     @classmethod
-    def scopes_must_be_unique(
-        cls, value: list[AutomationScope]
-    ) -> list[AutomationScope]:
+    def scopes_must_be_unique(cls, value: list[AutomationScope]) -> list[AutomationScope]:
         if len(value) != len(set(value)):
             raise ValueError("Automation scopes must be unique")
         return value
@@ -100,11 +100,15 @@ class GrantRevokeRequest(AutomationDTO):
 
 class GrantIssuedView(AutomationDTO):
     grant: GrantView
-    token: str = Field(min_length=50, max_length=96)
-    token_environment_variable: Literal["CAREEROS_MCP_TOKEN"] = "CAREEROS_MCP_TOKEN"
+    token: str = Field(
+        min_length=50,
+        max_length=96,
+        json_schema_extra={"readOnly": True},
+    )
+    token_environment_variable: Literal["CAREEROS_MCP_TOKEN"]
     warning: Literal[
         "This token is shown once. Store it in your OS credential manager and never commit it."
-    ] = "This token is shown once. Store it in your OS credential manager and never commit it."
+    ]
 
 
 class SystemStatusView(AutomationDTO):

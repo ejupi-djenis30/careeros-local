@@ -20,9 +20,7 @@ depends_on: Union[str, Sequence[str], None] = None
 def upgrade() -> None:
     with op.batch_alter_table("resume_drafts") as batch_op:
         batch_op.add_column(
-            sa.Column(
-                "canvas_document", sa.JSON(), nullable=False, server_default=sa.text("'{}'")
-            )
+            sa.Column("canvas_document", sa.JSON(), nullable=False, server_default=sa.text("'{}'"))
         )
         batch_op.add_column(
             sa.Column(

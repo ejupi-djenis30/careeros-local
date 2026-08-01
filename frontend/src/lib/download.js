@@ -4,9 +4,13 @@ export function saveBlob({ blob, filename }) {
     anchor.href = url;
     anchor.download = filename || "download";
     anchor.rel = "noopener";
-    document.body.appendChild(anchor);
-    anchor.click();
-    anchor.remove();
-    URL.revokeObjectURL(url);
+    try {
+        document.body.appendChild(anchor);
+        anchor.click();
+    } finally {
+        anchor.remove();
+        // Let the browser consume the synthetic navigation before releasing
+        // the backing URL. The timer also guarantees cleanup when click throws.
+        globalThis.setTimeout(() => URL.revokeObjectURL(url), 0);
+    }
 }
-

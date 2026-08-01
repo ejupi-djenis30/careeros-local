@@ -58,9 +58,7 @@ def test_portfolio_media_preserves_its_intrinsic_ratio():
 def test_trust_label_meets_small_text_contrast():
     css = (ROOT / "docs" / "site" / "styles.css").read_text(encoding="utf-8")
     root_declarations = css.split(":root {", maxsplit=1)[1].split("}", maxsplit=1)[0]
-    trust_declarations = (
-        css.split(".trust-label {", maxsplit=1)[1].split("}", maxsplit=1)[0]
-    )
+    trust_declarations = css.split(".trust-label {", maxsplit=1)[1].split("}", maxsplit=1)[0]
 
     assert "color: var(--muted);" in trust_declarations
 
@@ -83,19 +81,14 @@ def test_trust_label_meets_small_text_contrast():
 
     foreground = relative_luminance(read_hex_token("muted"))
     background = relative_luminance(read_hex_token("dark"))
-    contrast = (max(foreground, background) + 0.05) / (
-        min(foreground, background) + 0.05
-    )
+    contrast = (max(foreground, background) + 0.05) / (min(foreground, background) + 0.05)
 
     assert contrast >= 4.5
 
 
 def test_privacy_numbers_meet_small_text_contrast():
     css = (ROOT / "docs" / "site" / "styles.css").read_text(encoding="utf-8")
-    declarations = (
-        css.split(".privacy-list li > span {", maxsplit=1)[1]
-        .split("}", maxsplit=1)[0]
-    )
+    declarations = css.split(".privacy-list li > span {", maxsplit=1)[1].split("}", maxsplit=1)[0]
     match = re.search(
         r"color:\s*rgba\(\s*(\d+),\s*(\d+),\s*(\d+),\s*([0-9.]+)\s*\)",
         declarations,
@@ -141,9 +134,7 @@ def test_portfolio_delivers_responsive_modern_screenshots():
 
 
 def test_portfolio_crawler_policy_is_explicit_and_valid():
-    assert validate_pages_discovery(
-        now=datetime(2026, 7, 29, tzinfo=timezone.utc)
-    ) == []
+    assert validate_pages_discovery(now=datetime(2026, 7, 29, tzinfo=timezone.utc)) == []
     assert (ROOT / "docs" / "robots.txt").read_text(encoding="utf-8") == (
         "User-agent: *\n"
         "Allow: /careeros-local/\n"
@@ -157,13 +148,27 @@ def test_portfolio_crawler_policy_is_explicit_and_valid():
         "  </url>\n"
         "</urlset>\n"
     )
+    parser = _parse((ROOT / "docs" / "index.html").read_text(encoding="utf-8"))
+    assert parser.robots_policies == ["index, follow, max-image-preview:large"]
+
+
+def test_portfolio_validator_rejects_missing_indexable_meta_policy(monkeypatch, tmp_path):
+    source = (ROOT / "docs" / "index.html").read_text(encoding="utf-8")
+    changed = source.replace(
+        '    <meta name="robots" content="index, follow, max-image-preview:large" />\n',
+        "",
+        1,
+    )
+    index = tmp_path / "index.html"
+    index.write_text(changed, encoding="utf-8")
+    monkeypatch.setattr("scripts.validate_portfolio_site.INDEX", index)
+
+    assert "portfolio must declare exactly one indexable robots meta policy" in validate()
 
 
 def test_pages_workflow_preserves_hidden_security_metadata():
     assert validate_pages_workflow() == []
-    workflow = (ROOT / ".github" / "workflows" / "pages.yml").read_text(
-        encoding="utf-8"
-    )
+    workflow = (ROOT / ".github" / "workflows" / "pages.yml").read_text(encoding="utf-8")
 
     assert "path: docs" in workflow
     assert "include-hidden-files: true" in workflow
@@ -345,9 +350,7 @@ def test_editorial_svg_rejects_invalid_xml():
     spec = EDITORIAL_ASSET_SPECS[0]
     source = (ROOT / "docs" / "assets" / spec.svg_name).read_text(encoding="utf-8")
     with TemporaryDirectory() as directory:
-        path = _write_changed_svg(
-            Path(directory), source.replace("</svg>", "", 1)
-        )
+        path = _write_changed_svg(Path(directory), source.replace("</svg>", "", 1))
         errors = _validate_svg_asset(path, spec)
 
     assert any("invalid XML" in error for error in errors)
@@ -357,9 +360,7 @@ def test_editorial_svg_requires_dimensions_viewbox_frame_and_center():
     spec = EDITORIAL_ASSET_SPECS[0]
     source = (ROOT / "docs" / "assets" / spec.svg_name).read_text(encoding="utf-8")
     changed = source.replace(f'width="{spec.width}"', 'width="1"', 1)
-    changed = changed.replace(
-        f'viewBox="0 0 {spec.width} {spec.height}"', 'viewBox="0 0 1 1"', 1
-    )
+    changed = changed.replace(f'viewBox="0 0 {spec.width} {spec.height}"', 'viewBox="0 0 1 1"', 1)
     changed = changed.replace('data-frame="true"', 'data-frame-disabled="true"', 1)
     changed = changed.replace('data-center="true"', 'data-center-disabled="true"', 1)
     with TemporaryDirectory() as directory:
@@ -375,9 +376,7 @@ def test_editorial_svg_requires_dimensions_viewbox_frame_and_center():
 def test_editorial_svg_requires_exactly_four_named_quadrants():
     spec = EDITORIAL_ASSET_SPECS[0]
     source = (ROOT / "docs" / "assets" / spec.svg_name).read_text(encoding="utf-8")
-    changed = source.replace(
-        'data-quadrant="bottom-right"', 'data-slot="bottom-right"', 1
-    )
+    changed = source.replace('data-quadrant="bottom-right"', 'data-slot="bottom-right"', 1)
     with TemporaryDirectory() as directory:
         path = _write_changed_svg(Path(directory), changed)
         errors = _validate_svg_asset(path, spec)
@@ -392,9 +391,7 @@ def test_editorial_svg_rejects_embedded_and_executable_elements(
     spec = EDITORIAL_ASSET_SPECS[0]
     source = (ROOT / "docs" / "assets" / spec.svg_name).read_text(encoding="utf-8")
     with TemporaryDirectory() as directory:
-        path = _write_changed_svg(
-            Path(directory), source.replace("</svg>", f"<{tag}/></svg>")
-        )
+        path = _write_changed_svg(Path(directory), source.replace("</svg>", f"<{tag}/></svg>"))
         errors = _validate_svg_asset(path, spec)
 
     assert any(f"<{tag.casefold()}> is not allowed" in error for error in errors)

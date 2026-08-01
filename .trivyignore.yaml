@@ -1,0 +1,121 @@
+vulnerabilities:
+  - id: CVE-2026-25679
+    paths: ["usr/bin/ollama"]
+    expired_at: 2026-08-15
+    statement: Upstream Ollama 0.32.0 Go binary; no patched upstream image is available.
+  - id: CVE-2026-25681
+    paths: ["usr/bin/ollama"]
+    expired_at: 2026-08-15
+    statement: Upstream Ollama 0.32.0 Go binary; no patched upstream image is available.
+  - id: CVE-2026-27136
+    paths: ["usr/bin/ollama"]
+    expired_at: 2026-08-15
+    statement: Upstream Ollama 0.32.0 Go binary; no patched upstream image is available.
+  - id: CVE-2026-27137
+    paths: ["usr/bin/ollama"]
+    expired_at: 2026-08-15
+    statement: Upstream Ollama 0.32.0 Go binary; no patched upstream image is available.
+  - id: CVE-2026-27145
+    paths: ["usr/bin/ollama"]
+    expired_at: 2026-08-15
+    statement: Upstream Ollama 0.32.0 Go binary; no patched upstream image is available.
+  - id: CVE-2026-32280
+    paths: ["usr/bin/ollama"]
+    expired_at: 2026-08-15
+    statement: Upstream Ollama 0.32.0 Go binary; no patched upstream image is available.
+  - id: CVE-2026-32281
+    paths: ["usr/bin/ollama"]
+    expired_at: 2026-08-15
+    statement: Upstream Ollama 0.32.0 Go binary; no patched upstream image is available.
+  - id: CVE-2026-32283
+    paths: ["usr/bin/ollama"]
+    expired_at: 2026-08-15
+    statement: Upstream Ollama 0.32.0 Go binary; no patched upstream image is available.
+  - id: CVE-2026-32285
+    paths: ["usr/bin/ollama"]
+    expired_at: 2026-08-15
+    statement: Upstream Ollama 0.32.0 Go binary; no patched upstream image is available.
+  - id: CVE-2026-33810
+    paths: ["usr/bin/ollama"]
+    expired_at: 2026-08-15
+    statement: Upstream Ollama 0.32.0 Go binary; no patched upstream image is available.
+  - id: CVE-2026-33811
+    paths: ["usr/bin/ollama"]
+    expired_at: 2026-08-15
+    statement: Upstream Ollama 0.32.0 Go binary; no patched upstream image is available.
+  - id: CVE-2026-33814
+    paths: ["usr/bin/ollama"]
+    expired_at: 2026-08-15
+    statement: Upstream Ollama 0.32.0 Go binary; no patched upstream image is available.
+  - id: CVE-2026-39820
+    paths: ["usr/bin/ollama"]
+    expired_at: 2026-08-15
+    statement: Upstream Ollama 0.32.0 Go binary; no patched upstream image is available.
+  - id: CVE-2026-39821
+    paths: ["usr/bin/ollama"]
+    expired_at: 2026-08-15
+    statement: Upstream Ollama 0.32.0 Go binary; no patched upstream image is available.
+  - id: CVE-2026-39822
+    paths: ["usr/bin/ollama"]
+    expired_at: 2026-08-15
+    statement: Upstream Ollama 0.32.0 Go binary; no patched upstream image is available.
+  - id: CVE-2026-39828
+    paths: ["usr/bin/ollama"]
+    expired_at: 2026-08-15
+    statement: Upstream Ollama 0.32.0 Go binary; no patched upstream image is available.
+  - id: CVE-2026-39829
+    paths: ["usr/bin/ollama"]
+    expired_at: 2026-08-15
+    statement: Upstream Ollama 0.32.0 Go binary; no patched upstream image is available.
+  - id: CVE-2026-39830
+    paths: ["usr/bin/ollama"]
+    expired_at: 2026-08-15
+    statement: Upstream Ollama 0.32.0 Go binary; no patched upstream image is available.
+  - id: CVE-2026-39831
+    paths: ["usr/bin/ollama"]
+    expired_at: 2026-08-15
+    statement: Upstream Ollama 0.32.0 Go binary; no patched upstream image is available.
+  - id: CVE-2026-39832
+    paths: ["usr/bin/ollama"]
+    expired_at: 2026-08-15
+    statement: Upstream Ollama 0.32.0 Go binary; no patched upstream image is available.
+  - id: CVE-2026-39835
+    paths: ["usr/bin/ollama"]
+    expired_at: 2026-08-15
+    statement: Upstream Ollama 0.32.0 Go binary; no patched upstream image is available.
+  - id: CVE-2026-39836
+    paths: ["usr/bin/ollama"]
+    expired_at: 2026-08-15
+    statement: Upstream Ollama 0.32.0 Go binary; no patched upstream image is available.
+  - id: CVE-2026-42499
+    paths: ["usr/bin/ollama"]
+    expired_at: 2026-08-15
+    statement: Upstream Ollama 0.32.0 Go binary; no patched upstream image is available.
+  - id: CVE-2026-42504
+    paths: ["usr/bin/ollama"]
+    expired_at: 2026-08-15
+    statement: Upstream Ollama 0.32.0 Go binary; no patched upstream image is available.
+  - id: CVE-2026-42508
+    paths: ["usr/bin/ollama"]
+    expired_at: 2026-08-15
+    statement: Upstream Ollama 0.32.0 Go binary; no patched upstream image is available.
+  - id: CVE-2026-46595
+    paths: ["usr/bin/ollama"]
+    expired_at: 2026-08-15
+    statement: Upstream Ollama 0.32.0 Go binary; no patched upstream image is available.
+  - id: CVE-2026-46597
+    paths: ["usr/bin/ollama"]
+    expired_at: 2026-08-15
+    statement: Upstream Ollama 0.32.0 Go binary; no patched upstream image is available.
+  - id: CVE-2026-46602
+    paths: ["usr/bin/ollama"]
+    expired_at: 2026-08-15
+    statement: Upstream Ollama 0.32.0 Go binary; no patched upstream image is available.
+  - id: CVE-2026-46604
+    paths: ["usr/bin/ollama"]
+    expired_at: 2026-08-15
+    statement: Upstream Ollama 0.32.0 Go binary; no patched upstream image is available.
+  - id: CVE-2026-56852
+    paths: ["usr/bin/ollama"]
+    expired_at: 2026-08-15
+    statement: Upstream Ollama 0.32.0 Go binary; no patched upstream image is available.

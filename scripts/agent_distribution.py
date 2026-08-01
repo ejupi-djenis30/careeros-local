@@ -27,6 +27,7 @@ from scripts.release_assets import (
     validate_source_commit,
     validate_stable_version,
 )
+from scripts.third_party_notices import NOTICE_NAME, verify_notice_bytes
 
 AGENT_CANDIDATE_SCHEMA_VERSION = 1
 AGENT_CANDIDATE_MANIFEST = "candidate-agent.json"
@@ -285,6 +286,13 @@ def _required_resources(
     wheel_license = archive.read(licenses[0]).replace(b"\r\n", b"\n")
     if hashlib.sha256(wheel_license).hexdigest() != expected_license["sha256"]:
         raise RuntimeError("Agent wheel LICENSE differs from the approved project license")
+    notices = [name for name in files if name == prefix + f"licenses/{NOTICE_NAME}"]
+    if notices != [prefix + f"licenses/{NOTICE_NAME}"]:
+        raise RuntimeError(f"Agent wheel must contain exactly one canonical {NOTICE_NAME}")
+    wheel_notices = archive.read(notices[0]).replace(b"\r\n", b"\n")
+    verify_notice_bytes(wheel_notices, root=project_root)
+    if wheel_notices != (project_root / NOTICE_NAME).read_bytes():
+        raise RuntimeError("Agent wheel third-party notices differ from the approved payload")
 
 
 def _record(archive: zipfile.ZipFile, *, names: list[str], prefix: str) -> None:
@@ -330,6 +338,7 @@ def validate_agent_wheel(path: Path, *, version: str, project_root: Path) -> dic
             prefix + "entry_points.txt",
             prefix + "RECORD",
             prefix + "licenses/LICENSE",
+            prefix + f"licenses/{NOTICE_NAME}",
         }
         if not required_dist_info.issubset(names):
             raise RuntimeError(

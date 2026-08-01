@@ -90,9 +90,7 @@ def _merge_section(old: CanvasSection | None, new: CanvasSection | None) -> Canv
     if new is None:
         if old is None:
             return None
-        ungrounded = [
-            block for block in old.blocks if block.kind == "fact" and not block.fact_ids
-        ]
+        ungrounded = [block for block in old.blocks if block.kind == "fact" and not block.fact_ids]
         return old.model_copy(update={"blocks": ungrounded}) if ungrounded else None
     if old is None:
         return new

@@ -1,10 +1,13 @@
+import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import httpx
 import pytest
 
 from backend.providers.jobs.adecco import AdeccoProvider
 from backend.providers.jobs.adecco.filters import build_query_string
 from backend.providers.jobs.adecco.transformer import transform_job_data
+from backend.providers.jobs.exceptions import ResponseParseError
 from backend.providers.jobs.models import ContractType, JobSearchRequest, ProviderStatus, WorkForm
 
 # Setup sample data from what we reverse-engineered
@@ -65,15 +68,114 @@ async def test_adecco_health_check_failure(adept_provider):
 def test_adecco_semaphore_uses_configured_concurrency():
     original_sem = AdeccoProvider._global_sem
     original_limit = AdeccoProvider._global_sem_limit
+    original_loop = AdeccoProvider._global_sem_loop
     try:
         AdeccoProvider._global_sem = None
         AdeccoProvider._global_sem_limit = None
+        AdeccoProvider._global_sem_loop = None
         with patch("backend.providers.jobs.adecco.client.settings.ADECCO_DETAIL_CONCURRENCY", 5):
             semaphore = AdeccoProvider._get_semaphore()
         assert semaphore._value == 5
     finally:
         AdeccoProvider._global_sem = original_sem
         AdeccoProvider._global_sem_limit = original_limit
+        AdeccoProvider._global_sem_loop = original_loop
+
+
+def test_adecco_semaphore_is_recreated_for_a_new_event_loop():
+    original_sem = AdeccoProvider._global_sem
+    original_limit = AdeccoProvider._global_sem_limit
+    original_loop = AdeccoProvider._global_sem_loop
+
+    async def semaphore_on_current_loop():
+        return AdeccoProvider._get_semaphore()
+
+    try:
+        AdeccoProvider._global_sem = None
+        AdeccoProvider._global_sem_limit = None
+        AdeccoProvider._global_sem_loop = None
+        first = asyncio.run(semaphore_on_current_loop())
+        second = asyncio.run(semaphore_on_current_loop())
+        assert first is not second
+    finally:
+        AdeccoProvider._global_sem = original_sem
+        AdeccoProvider._global_sem_limit = original_limit
+        AdeccoProvider._global_sem_loop = original_loop
+
+
+def test_adecco_transport_ignores_ambient_proxies_and_redirects(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    options = {}
+    client = MagicMock()
+
+    def fake_client(**kwargs):
+        options.update(kwargs)
+        return client
+
+    monkeypatch.setattr(httpx, "AsyncClient", fake_client)
+    provider = AdeccoProvider()
+
+    assert provider._ensure_client() is client
+    assert options["trust_env"] is False
+    assert options["follow_redirects"] is False
+    assert options["headers"]["Accept-Encoding"] == "identity"
+    assert len(options["event_hooks"]["response"]) == 1
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("size_source", ["declared", "buffered"])
+async def test_adecco_oversize_is_not_retried(size_source: str) -> None:
+    if size_source == "declared":
+        response = httpx.Response(
+            200,
+            headers={"content-length": "5"},
+            content=b"",
+            request=httpx.Request("GET", "https://www.adecco.com/api/data/jobs"),
+        )
+    else:
+        response = httpx.Response(
+            200,
+            headers={"transfer-encoding": "chunked"},
+            content=b"12345",
+            request=httpx.Request("GET", "https://www.adecco.com/api/data/jobs"),
+        )
+    request = AsyncMock(return_value=response)
+    provider = AdeccoProvider()
+    provider._MAX_RESPONSE_BYTES = 4
+
+    with pytest.raises(ResponseParseError):
+        await provider._execute_with_retry(request, max_retries=3)
+
+    request.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "retry_after",
+    ["999999", "9" * 5_000, "Fri, 01 Jan 2100 00:00:00 GMT"],
+)
+async def test_adecco_retry_after_cannot_stall_a_search_beyond_the_bound(
+    retry_after: str,
+) -> None:
+    request = httpx.Request("GET", "https://www.adecco.com/api/data/jobs")
+    rate_limited = httpx.Response(
+        429,
+        headers={"Retry-After": retry_after},
+        request=request,
+    )
+    success = httpx.Response(200, json={"jobs": []}, request=request)
+    operation = AsyncMock(side_effect=[rate_limited, success])
+    provider = AdeccoProvider()
+
+    with patch(
+        "backend.providers.jobs.adecco.client.asyncio.sleep",
+        new_callable=AsyncMock,
+    ) as sleep:
+        result = await provider._execute_with_retry(operation, max_retries=2)
+
+    assert result is success
+    sleep.assert_awaited_once_with(30.0)
 
 
 @pytest.mark.asyncio
@@ -284,7 +386,8 @@ async def test_adecco_search_429_invalid_retry_after_logs_warning(adept_provider
         response = await adept_provider.search(JobSearchRequest(query="Software", page=0))
 
         assert response.total_count == 1
-        assert "Adecco Retry-After header 'not-a-date' is invalid" in caplog.text
+        assert "code=provider_retry_header_invalid" in caplog.text
+        assert "not-a-date" not in caplog.text
 
 
 @pytest.mark.asyncio
@@ -316,7 +419,11 @@ async def test_adecco_search_logs_when_fallback_transform_fails(adept_provider, 
 
         assert response.total_count == 1
         assert len(response.items) == 0
-        assert "Failed to transform Adecco job TEST-123 without details" in caplog.text
+        assert "code=provider_detail_failed" in caplog.text
+        assert "code=provider_transform_failed" in caplog.text
+        assert "TEST-123" not in caplog.text
+        assert "detail failed" not in caplog.text
+        assert "fallback transform failed" not in caplog.text
 
 
 def test_build_query_string_basic():

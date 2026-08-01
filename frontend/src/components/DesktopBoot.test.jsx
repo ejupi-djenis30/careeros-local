@@ -28,7 +28,6 @@ describe("DesktopBoot accessibility", () => {
         const retry = await screen.findByRole("button", { name: "Riprova" });
         await assertAccessible(container);
 
-        await user.tab();
         expect(retry).toHaveFocus();
         await user.keyboard("{Enter}");
         expect(bootstrapDesktop).toHaveBeenCalledTimes(2);
@@ -43,5 +42,23 @@ describe("DesktopBoot accessibility", () => {
         await waitFor(() => {
             expect(reportDesktopReady).toHaveBeenCalledTimes(1);
         });
+    });
+
+    it("cancels an unfinished readiness attempt when the owner unmounts", async () => {
+        let bootstrapSignal;
+        bootstrapDesktop.mockImplementation(({ signal }) => {
+            bootstrapSignal = signal;
+            return new Promise((_resolve, reject) => {
+                signal.addEventListener("abort", () => {
+                    reject(new DOMException("Boot cancelled", "AbortError"));
+                }, { once: true });
+            });
+        });
+        const view = render(<DesktopBoot><p>Area privata</p></DesktopBoot>);
+        await waitFor(() => expect(bootstrapSignal).toBeInstanceOf(AbortSignal));
+
+        view.unmount();
+
+        expect(bootstrapSignal.aborted).toBe(true);
     });
 });

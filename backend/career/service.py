@@ -88,9 +88,7 @@ _EMAIL_PATTERN = re.compile(
     r"(?<![A-Za-z0-9._%+-])[A-Za-z0-9._%+-]+@"
     r"[A-Za-z0-9.-]+\.[A-Za-z]{2,}(?![A-Za-z0-9_-])"
 )
-_PHONE_PATTERN = re.compile(
-    r"(?<![\w@])(?:\+?\d|\(\d)[\d\s()./-]{5,38}\d(?![\w@])"
-)
+_PHONE_PATTERN = re.compile(r"(?<![\w@])(?:\+?\d|\(\d)[\d\s()./-]{5,38}\d(?![\w@])")
 _PHONE_YEAR_PATTERN = re.compile(r"(?<!\d)(?:19|20)\d{2}(?!\d)")
 _PHONE_DATE_TIME_PATTERN = re.compile(
     r"(?:(?:19|20)\d{2}[-/.]\d{1,2}[-/.]\d{1,2}|"
@@ -133,9 +131,7 @@ class CareerSearchSnapshot:
 def _private_snapshot_key(key: str) -> bool:
     camel_separated = re.sub(r"(?<=[a-z0-9])(?=[A-Z])", "_", key)
     ascii_key = (
-        unicodedata.normalize("NFKD", camel_separated)
-        .encode("ascii", "ignore")
-        .decode("ascii")
+        unicodedata.normalize("NFKD", camel_separated).encode("ascii", "ignore").decode("ascii")
     )
     normalized = re.sub(r"[^a-z0-9]+", "_", ascii_key.casefold()).strip("_")
     return (
@@ -228,10 +224,7 @@ def _sanitize_snapshot_value(value: object, *, depth: int = 0) -> Any:
     if isinstance(value, (bool, int, float)):
         return value
     if isinstance(value, list):
-        sanitized = [
-            _sanitize_snapshot_value(item, depth=depth + 1)
-            for item in value[:24]
-        ]
+        sanitized = [_sanitize_snapshot_value(item, depth=depth + 1) for item in value[:24]]
         return [item for item in sanitized if item not in (None, "", [], {})]
     if isinstance(value, dict):
         sanitized_dict: dict[str, Any] = {}
@@ -268,8 +261,7 @@ def build_career_search_snapshot(profile: CandidateProfile) -> CareerSearchSnaps
         key: sanitized
         for key in _RELEVANT_PREFERENCE_KEYS
         if key in raw_preferences
-        and (sanitized := _sanitize_snapshot_value(raw_preferences[key]))
-        not in (None, "", [], {})
+        and (sanitized := _sanitize_snapshot_value(raw_preferences[key])) not in (None, "", [], {})
     }
     document: dict[str, Any] = {
         "eligible_fact_count": len(eligible_facts),
@@ -316,6 +308,7 @@ def build_career_search_snapshot(profile: CandidateProfile) -> CareerSearchSnaps
         sha256=digest,
     )
 
+
 class CareerProfileService:
     def __init__(self, db: Session):
         self.db = db
@@ -346,9 +339,7 @@ class CareerProfileService:
                 ) from exc
             raise
 
-    def _validate_resume_version_links(
-        self, user_id: int, data: CareerProfileWrite
-    ) -> None:
+    def _validate_resume_version_links(self, user_id: int, data: CareerProfileWrite) -> None:
         requested = {
             version_id
             for goal in data.goals

@@ -33,9 +33,7 @@ def _resolve_step_config(step: str) -> dict[str, Any]:
         "temperature": settings.LLM_TEMPERATURE if temperature is None else temperature,
         "top_p": settings.LLM_TOP_P if top_p is None else top_p,
         "max_tokens": settings.LLM_MAX_TOKENS if max_tokens is None else max_tokens,
-        "context_window": (
-            settings.LLM_CONTEXT_WINDOW if not context_window else context_window
-        ),
+        "context_window": (settings.LLM_CONTEXT_WINDOW if not context_window else context_window),
     }
 
 

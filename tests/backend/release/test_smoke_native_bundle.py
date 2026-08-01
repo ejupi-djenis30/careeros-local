@@ -8,6 +8,7 @@ import pytest
 
 from scripts import smoke_native_bundle
 from scripts.license_contract import approved_license_bytes
+from scripts.third_party_notices import NOTICE_PATH
 
 
 def _macos_bundle(tmp_path: Path) -> tuple[Path, Path, Path]:
@@ -31,7 +32,58 @@ def _populate_mounted_app(command: list[str]) -> Path:
     sidecar.parent.mkdir(parents=True)
     sidecar.write_bytes(b"backend")
     (app / "Contents" / "Resources" / "LICENSE").write_bytes(approved_license_bytes())
+    (app / "Contents" / "Resources" / "THIRD_PARTY_NOTICES.txt").write_bytes(
+        NOTICE_PATH.read_bytes()
+    )
     return app
+
+
+def test_bundle_root_is_bound_to_a_supported_host_target(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(smoke_native_bundle, "ROOT", tmp_path)
+    monkeypatch.setattr(smoke_native_bundle.sys, "platform", "linux")
+
+    expected = (
+        tmp_path
+        / "frontend"
+        / "src-tauri"
+        / "target"
+        / "x86_64-unknown-linux-gnu"
+        / "release"
+        / "bundle"
+    ).resolve()
+    assert smoke_native_bundle._validated_bundle_root("x86_64-unknown-linux-gnu") == expected
+    with pytest.raises(RuntimeError, match="Unsupported native smoke target"):
+        smoke_native_bundle._validated_bundle_root("foreign-target")
+    with pytest.raises(RuntimeError, match="does not match the linux runner"):
+        smoke_native_bundle._validated_bundle_root("aarch64-apple-darwin")
+
+
+def test_application_failure_still_waits_for_sidecar_disappearance(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    data_directory = tmp_path / "failed-smoke"
+    data_directory.mkdir()
+    cleanup = []
+    monkeypatch.setattr(
+        smoke_native_bundle.subprocess,
+        "run",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            subprocess.TimeoutExpired(["careeros-local"], 150)
+        ),
+    )
+    monkeypatch.setattr(
+        smoke_native_bundle,
+        "_wait_for_no_orphan",
+        lambda value: cleanup.append(value),
+        raising=False,
+    )
+
+    with pytest.raises(subprocess.TimeoutExpired):
+        smoke_native_bundle._run_application(["careeros-local"], data_directory)
+
+    assert cleanup == [data_directory]
 
 
 def test_macos_verifies_and_exercises_the_mounted_dmg(
@@ -85,7 +137,7 @@ def test_macos_rejects_tampered_license_and_still_detaches(
 
     monkeypatch.setattr(smoke_native_bundle.subprocess, "run", fake_run)
 
-    with pytest.raises(RuntimeError, match="license verification failed"):
+    with pytest.raises(RuntimeError, match="license/notice verification failed"):
         smoke_native_bundle._macos(bundle, smoke)
 
     assert commands[-1] == ["hdiutil", "detach", str(smoke / "dmg-mount")]
@@ -186,6 +238,7 @@ def test_linux_verifies_licenses_in_extracted_appimage_and_deb(
         resources = root / "usr" / "lib" / "careeros-local"
         resources.mkdir(parents=True)
         (resources / "LICENSE").write_bytes(approved_license_bytes())
+        (resources / "THIRD_PARTY_NOTICES.txt").write_bytes(NOTICE_PATH.read_bytes())
         runtime = resources / "careeros-backend-runtime"
         runtime.mkdir()
         (runtime / "careeros-backend").write_bytes(b"backend")

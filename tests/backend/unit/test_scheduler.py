@@ -1,10 +1,12 @@
 import logging
 from datetime import datetime, timezone
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
 import backend.services.scheduler as scheduler_mod
+from backend.models.user import VAULT_STATE_READY
 from backend.services.scheduler import (
     _run_scheduled_search,
     add_schedule,
@@ -25,11 +27,16 @@ def reset_scheduler_state():
     scheduler_mod._scheduler = None
 
 
-def test_get_scheduler():
+def test_get_scheduler_uses_utc_without_timezone_autodetection_warning(caplog):
+    caplog.set_level(logging.WARNING)
+
     s1 = get_scheduler()
     s2 = get_scheduler()
+
     assert s1 is s2
     assert s1 is not None
+    assert s1.timezone == timezone.utc
+    assert "no timezone configuration" not in caplog.text.lower()
 
 
 def test_add_schedule():
@@ -92,8 +99,10 @@ async def test_run_scheduled_search_success():
     mock_db = MagicMock()
     mock_profile = MagicMock()
     mock_profile.id = 1
+    mock_profile.user_id = 42
     mock_profile.schedule_enabled = True
     mock_db.query.return_value.filter.return_value.first.return_value = mock_profile
+    mock_db.get.return_value = SimpleNamespace(vault_lifecycle_state=VAULT_STATE_READY)
 
     mock_search_service = AsyncMock()
 
@@ -188,8 +197,10 @@ async def test_run_scheduled_search_profile_not_found():
 async def test_run_scheduled_search_disabled():
     mock_db = MagicMock()
     mock_profile = MagicMock()
+    mock_profile.user_id = 42
     mock_profile.schedule_enabled = False
     mock_db.query.return_value.filter.return_value.first.return_value = mock_profile
+    mock_db.get.return_value = SimpleNamespace(vault_lifecycle_state=VAULT_STATE_READY)
 
     mock_search_service = AsyncMock()
 
@@ -238,8 +249,10 @@ async def test_run_scheduled_search_exception_does_not_log_exception_details(cap
     mock_db = MagicMock()
     mock_profile = MagicMock()
     mock_profile.id = 1
+    mock_profile.user_id = 42
     mock_profile.schedule_enabled = True
     mock_db.query.return_value.filter.return_value.first.return_value = mock_profile
+    mock_db.get.return_value = SimpleNamespace(vault_lifecycle_state=VAULT_STATE_READY)
 
     with (
         patch("backend.services.scheduler.SessionLocal", return_value=mock_db),

@@ -18,6 +18,7 @@ from backend.ai.match_evidence import (
 from backend.ai.match_policy import DIMENSION_SCORE_FIELDS, materialize_match_citations
 from backend.ai.models import AIExecution
 from backend.core.config import settings
+from backend.core.diagnostics import FailureCode, diagnose_failure, log_failure
 from backend.jobs.urls import normalize_job_url
 from backend.models import Job, ScrapedJob
 from backend.repositories.job_repository import JobRepository
@@ -113,9 +114,7 @@ class SearchPipelinePersistence:
         ):
             return False
 
-        record_revision = cls._positive_catalog_revision(
-            getattr(record, "content_revision", None)
-        )
+        record_revision = cls._positive_catalog_revision(getattr(record, "content_revision", None))
         record_fingerprint = getattr(record, "content_fingerprint", None)
         return (
             record.id == captured_id
@@ -159,9 +158,7 @@ class SearchPipelinePersistence:
         record: ScrapedJob,
     ) -> CatalogNormalizationCapture | None:
         scraped_job_id = cls._positive_catalog_id(getattr(record, "id", None))
-        content_revision = cls._positive_catalog_revision(
-            getattr(record, "content_revision", None)
-        )
+        content_revision = cls._positive_catalog_revision(getattr(record, "content_revision", None))
         content_fingerprint = getattr(record, "content_fingerprint", None)
         if (
             scraped_job_id is None
@@ -188,9 +185,7 @@ class SearchPipelinePersistence:
         )
         if record is None:
             return None
-        record_revision = self._positive_catalog_revision(
-            getattr(record, "content_revision", None)
-        )
+        record_revision = self._positive_catalog_revision(getattr(record, "content_revision", None))
         record_fingerprint = getattr(record, "content_fingerprint", None)
         if (
             record.id != capture.scraped_job_id
@@ -497,8 +492,9 @@ class SearchPipelinePersistence:
                     failed += 1
                     savepoint.rollback()
                     setattr(listing, "_catalog_persisted", False)
-                    setattr(listing, "_catalog_persist_error", str(exc))
-                    logger.warning("Failed to persist scraped job catalog entry: %s", exc)
+                    diagnostic = diagnose_failure(exc, FailureCode.CATALOG_PERSISTENCE_FAILED)
+                    setattr(listing, "_catalog_persist_error", diagnostic.code.value)
+                    log_failure(logger, diagnostic, level=logging.WARNING)
             self.db.commit()
         except Exception:
             self.db.rollback()
@@ -551,11 +547,7 @@ class SearchPipelinePersistence:
 
             capture = self._capture_catalog_normalization(scraped_job)
             if capture is None:
-                logger.warning(
-                    "[NORMALIZE] Skipped catalog row with incomplete revision identity "
-                    "for profile %s",
-                    profile_id,
-                )
+                logger.warning("normalization_capture_incomplete")
                 continue
             compact_description = getattr(scraped_job, "compact_description", None)
             if not isinstance(compact_description, str) or not compact_description.strip():
@@ -587,19 +579,16 @@ class SearchPipelinePersistence:
                 or 1
             ),
         )
-        for chunk_index, chunk in enumerate(packed_chunks):
-            chunk_start = sum(len(previous_chunk) for previous_chunk in packed_chunks[:chunk_index])
+        for chunk in packed_chunks:
             try:
                 chunk_result = await normalize_job_batch(chunk)
                 normalized_rows.extend(chunk_result)
             except Exception as batch_err:
-                logger.warning(
-                    "[NORMALIZE] Batch %d-%d failed for profile %s, skipping chunk: %s",
-                    chunk_start,
-                    chunk_start + len(chunk) - 1,
-                    profile_id,
+                diagnostic = diagnose_failure(
                     batch_err,
+                    FailureCode.JOB_NORMALIZATION_FAILED,
                 )
+                log_failure(logger, diagnostic, level=logging.WARNING)
                 normalized_rows.extend([{} for _ in chunk])
 
         upgraded = 0
@@ -713,10 +702,7 @@ class SearchPipelinePersistence:
                 platform_id=platform_id,
             )
             if existing_sj is None:
-                logger.info(
-                    "Skipped stale analyzed observation before persistence for profile %s",
-                    profile_dict.get("id"),
-                )
+                logger.info("stale_analyzed_observation_skipped_before_persistence")
                 return "stale_catalog"
         else:
             # Compatibility path for callers that predate catalog-first acquisition.
@@ -781,16 +767,9 @@ class SearchPipelinePersistence:
             if not coords and location_str:
                 coords = await geocode_location_fn(location_str)
                 if coords:
-                    logger.info(
-                        "Resolved missing coordinates for %s via geocoding fallback", location_str
-                    )
+                    logger.info("missing_coordinates_resolved")
                 else:
-                    logger.warning(
-                        "Could not resolve coordinates for %s/%s with location %r",
-                        platform,
-                        platform_id,
-                        location_str,
-                    )
+                    logger.warning("missing_coordinates_unresolved")
 
             if coords:
                 distance_km = haversine_distance(
@@ -808,10 +787,7 @@ class SearchPipelinePersistence:
                 for_update=True,
             )
             if current_sj is None:
-                logger.info(
-                    "Skipped stale analyzed observation after asynchronous work for profile %s",
-                    profile_dict.get("id"),
-                )
+                logger.info("stale_analyzed_observation_skipped_after_async_work")
                 return "stale_catalog"
             existing_sj = current_sj
 
@@ -877,13 +853,8 @@ class SearchPipelinePersistence:
                 self.db.commit()
             except Exception as exc:
                 self.db.rollback()
-                logger.error(
-                    "Failed to persist job %s/%s for profile %s: %s",
-                    platform,
-                    platform_id,
-                    profile_dict.get("id"),
-                    exc,
-                )
+                diagnostic = diagnose_failure(exc, FailureCode.JOB_PERSISTENCE_FAILED)
+                log_failure(logger, diagnostic)
                 raise
         return "saved"
 

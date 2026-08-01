@@ -36,8 +36,15 @@ or clearing the issuance lock. Password checks and revocations are serialized pe
 parallel requests cannot fan out expensive checks or pass a stale lockout decision. Grant creation
 refuses a thirty-third active grant. Listing returns all active grants before adding at most 100
 recent expired or revoked rows, so an active bearer cannot disappear from the management surface.
+Inactive rows are ordered by the revocation or expiry transition that removed authority, not by
+their original issuance time. Every successful issue or first revocation trims only that owner's
+inactive tail to the most recent 100 rows in 500-row batches. Active rows and other accounts are
+excluded. A newly revoked old grant therefore remains visible; repeat revocation returns identical
+metadata while that row remains in the disclosed retention window. If all 32 active rows expire
+without another mutation, the local table can temporarily contain 132 inactive rows until the next
+successful mutation performs the trim.
 
-An outer ASGI middleware marks every response below this path
+An outer ASGI middleware marks every response below `/api/v1`
 `Cache-Control: no-store, max-age=0` and `Pragma: no-cache`, including authentication, validation,
 Trusted Host and desktop-session failures. The focused route repeats those headers on successful
 and domain-error responses. The global handlers repeat them for validation and unexpected 500
@@ -68,6 +75,11 @@ The one-time bearer exists only in component state and an in-memory ref:
 7. route unmount clears the ref and destroys the component state;
 8. no storage API, query string, URL, log or configuration snippet receives the bearer.
 
+Normal navigation and sign-out cover the renderer-controlled lifecycle, but no browser can
+guarantee cleanup after operating-system termination or sudden process loss. A successful server
+commit may therefore leave an active metadata row whose bearer was never shown. The page and owner
+guide direct the user to reopen the register and revoke any grant whose token was not saved.
+
 Creation moves focus to the one-time panel and announces only that the grant is ready, never the
 bearer. A clipboard failure focuses and selects the read-only token field for manual copying.
 Dismissal returns focus to the issuance button. Revocation is an inline, keyboard-operable
@@ -97,17 +109,21 @@ required.
 | --- | --- |
 | Reusing a desktop JWT from an agent | CLI/MCP authentication accepts only the separate grant token |
 | Recovering old tokens from the UI or API | Digest-only persistence and metadata-only listing |
-| Browser or intermediary caching | Path-wide no-store middleware plus response contracts |
+| Browser or intermediary caching | API-wide no-store middleware plus response contracts |
 | Cross-user listing or revocation | User id is taken from the authenticated account and included in every query |
 | Password or bearer in diagnostics | `SecretStr`, content-free errors, logging redaction and tests |
 | Parallel password fan-out or blocked emergency revoke | Per-account serialized guard; locked sessions inspect no more passwords and may only revoke owned grants |
 | Active grant hidden by recent history | Active-grant cap plus a list contract that always returns every active row |
+| Unbounded inactive history or stale ordering | Owner-only lifecycle ordering and bounded mutation-time pruning |
 | False zero while the register is unavailable | Unknown-state metric and disabled issuance until a successful list |
 | Silent clipboard disclosure | Clipboard call exists only behind an explicit button |
 | Grant finishes after route exit | Normal exits are blocked while pending; a late result triggers best-effort owned revocation |
+| Process dies after the server commits | Explicit reopen-and-revoke guidance; metadata remains visible until revoked |
 | Broad default access | Initial selection contains only content-free `system:read` |
 | Concurrent desktop and agent reads | Existing exclusive lease returns `vault_busy` |
 | Configuration committed with a token | Displayed snippets contain only the environment-variable name |
+| Credential theft or auth-cookie mutation from an unrelated localhost app | Exact credentialed CORS origins plus fail-closed Origin checks on login, registration, refresh and logout |
+| Forged forwarded address bypasses rate limits | Backend is private behind Nginx and Uvicorn ignores proxy identity headers |
 
 ## Rejected alternatives
 
@@ -130,5 +146,30 @@ required.
 - CareerOS controls data only until an MCP result reaches the chosen client.
 - The failed-reauthentication guard and active-issuance lock are process-local because CareerOS
   Local runs one sidecar. A future multi-worker service would require shared coordination.
+- Hard process termination can prevent the renderer's compensating revocation. The completed grant
+  remains in the owned register and must be revoked there before the client is connected.
 - Operating-system credential-manager integration is documented rather than automated; adding it
   would require a separate native secret-storage boundary and platform release tests.
+
+## Final verification evidence
+
+The 2026-07-31 convergence run completed the full backend suite with 1,693 passing tests, four
+performance tests skipped by their explicit `RUN_PERFORMANCE_TESTS=1` opt-in and 81.49% branch
+coverage. Running those four performance tests separately with the opt-in enabled passed every
+budget. The full frontend suite passed 420 tests across 74 files with 79.47% statement, 71.56%
+branch, 70.33% function and 84.11% line coverage. Rust formatting, Clippy and all 17 Rust tests
+also passed.
+
+Fresh production Chromium exercised Agent Access accessibility and lifecycle behavior at 320,
+390 and 1,440 px. A separate final runtime flow registered an account, signed out, signed back in,
+restored the session through refresh and signed out again. The refresh cookie was `HttpOnly`,
+`Secure`, `SameSite=Lax` and scoped to `/api/v1/auth`; no authentication cookie remained after the
+final logout.
+
+The exact final backend and frontend images were scanned with pinned Trivy 0.72.0 and contained
+zero HIGH or CRITICAL findings. Their OCI image indexes were
+`sha256:a5c9c31200308a63fb93dd1c5f86f82ae718eb48380c48aeb07a2661e9569e17`
+and `sha256:82325b96fb08c44da4f58eb510942adb1eb940f1b88fd7d7e93a5e2ae313485e`.
+After the runtime and browser checks, the standalone `careeros-final-*` containers, images,
+network, volumes and scan cache were removed. The user's pre-existing CareerOS stack was not
+modified.

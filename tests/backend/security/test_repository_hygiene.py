@@ -1,3 +1,4 @@
+import ast
 import json
 import os
 import subprocess
@@ -105,6 +106,43 @@ def test_backend_container_has_one_canonical_build_definition():
 
     compose = (ROOT / "docker-compose.yml").read_text(encoding="utf-8")
     assert "context: .\n      dockerfile: Dockerfile" in compose
+
+    dockerfile = (ROOT / "Dockerfile").read_text(encoding="utf-8")
+    assert "COPY desktop/__init__.py desktop/backend_main.py ./desktop/" in dockerfile
+    entrypoint = (ROOT / "docker/backend-entrypoint.sh").read_text(encoding="utf-8")
+    assert entrypoint.count("python -m backend.pre_start") == 1
+    assert "alembic upgrade" not in entrypoint
+    assert ".tmp.$$" not in entrypoint
+    assert "os.O_EXCL" in entrypoint
+    assert "secrets.token_hex(16)" in entrypoint
+    assert "os.link(temporary, path, follow_symlinks=False)" in entrypoint
+    assert "settle_completed_publication" in entrypoint
+    assert "os.path.samestat(metadata, candidate_metadata)" in entrypoint
+    assert 'getattr(metadata, "st_nlink", 1)' in entrypoint
+    assert "stat.S_IMODE(metadata.st_mode)" in entrypoint
+    assert "metadata.st_uid != os.geteuid()" in entrypoint
+    assert 'getattr(os, "O_NOFOLLOW", 0)' in entrypoint
+
+
+def test_runtime_never_bypasses_alembic_with_create_all() -> None:
+    offenders: list[str] = []
+    for path in (ROOT / "backend").rglob("*.py"):
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        if any(
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Attribute)
+            and node.func.attr == "create_all"
+            for node in ast.walk(tree)
+        ):
+            offenders.append(path.relative_to(ROOT).as_posix())
+    assert offenders == []
+
+
+def test_legacy_migration_tree_contains_no_runtime_files() -> None:
+    legacy_root = ROOT / "alembic"
+    assert [
+        path.relative_to(ROOT).as_posix() for path in legacy_root.rglob("*") if path.is_file()
+    ] == []
 
 
 def test_mypy_debt_ledger_does_not_hide_whole_stable_packages():

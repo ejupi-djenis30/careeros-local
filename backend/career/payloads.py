@@ -50,9 +50,10 @@ class DateRangePayload(BaseModel):
 class ExperiencePayload(DateRangePayload):
     role: str = Field(min_length=1, max_length=200)
     organization: str = Field(min_length=1, max_length=200)
-    employment_type: Literal[
-        "permanent", "temporary", "contract", "freelance", "internship", "apprenticeship"
-    ] | None = None
+    employment_type: (
+        Literal["permanent", "temporary", "contract", "freelance", "internship", "apprenticeship"]
+        | None
+    ) = None
     industry: str | None = Field(default=None, max_length=160)
     location: str | None = Field(default=None, max_length=200)
     work_mode: Literal["onsite", "hybrid", "remote"] | None = None
@@ -303,9 +304,9 @@ class CareerPreferences(BaseModel):
     desired_benefits: list[str] = Field(default_factory=list, max_length=50)
     excluded_companies: list[str] = Field(default_factory=list, max_length=100)
     excluded_industries: list[str] = Field(default_factory=list, max_length=100)
-    job_source_consents: dict[
-        Literal["job_room", "swissdevjobs", "adecco"], bool
-    ] = Field(default_factory=dict, max_length=3)
+    job_source_consents: dict[Literal["job_room", "swissdevjobs", "adecco"], bool] = Field(
+        default_factory=dict, max_length=3
+    )
 
     @field_validator(
         "target_roles",
@@ -329,7 +330,11 @@ class CareerPreferences(BaseModel):
             and self.workload_min > self.workload_max
         ):
             raise ValueError("workload_min cannot exceed workload_max")
-        if self.remote_only and self.preferred_work_modes and "remote" not in self.preferred_work_modes:
+        if (
+            self.remote_only
+            and self.preferred_work_modes
+            and "remote" not in self.preferred_work_modes
+        ):
             raise ValueError("remote_only conflicts with preferred_work_modes")
         return self
 

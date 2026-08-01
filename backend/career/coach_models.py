@@ -50,9 +50,7 @@ class CoachMessage(Base):
     cited_fact_ids: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list)
     cited_job_ids: Mapped[list[int]] = mapped_column(JSON, nullable=False, default=list)
     model_id: Mapped[str | None] = mapped_column(String(160), nullable=True)
-    generation_metadata: Mapped[dict[str, Any]] = mapped_column(
-        JSON, nullable=False, default=dict
-    )
+    generation_metadata: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False, default=dict)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
     conversation: Mapped[CoachConversation] = relationship(

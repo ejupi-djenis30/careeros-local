@@ -1,3 +1,4 @@
+use std::ffi::OsString;
 use std::fs::OpenOptions;
 use std::io::{Read, Write};
 use std::net::{Ipv4Addr, SocketAddr, TcpListener, TcpStream};
@@ -14,8 +15,72 @@ use tauri_plugin_shell::ShellExt;
 use crate::commands::DesktopBootstrap;
 
 const MAX_RESTARTS: u8 = 2;
+const GRACEFUL_SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(30);
+const FORCED_SHUTDOWN_SETTLE_TIMEOUT: Duration = Duration::from_secs(2);
+const SHUTDOWN_POLL_INTERVAL: Duration = Duration::from_millis(100);
+const BACKEND_READINESS_TIMEOUT: Duration = Duration::from_secs(90);
+const READINESS_PROBE_TOTAL_TIMEOUT: Duration = Duration::from_secs(1);
+const READINESS_RESPONSE_MAX_BYTES: usize = 8 * 1024;
 pub const SMOKE_READY_MARKER: &str = ".careeros-desktop-ready-v1";
 const SMOKE_READY_PAYLOAD: &str = "backend-ready+frontend-committed\n";
+const SIDECAR_ENVIRONMENT_NAMES: &[&str] = &[
+    "APPDATA",
+    "COMSPEC",
+    "HOME",
+    "LANG",
+    "LC_ALL",
+    "LC_CTYPE",
+    "LOCALAPPDATA",
+    "NUMBER_OF_PROCESSORS",
+    "PATH",
+    "PATHEXT",
+    "PROCESSOR_ARCHITECTURE",
+    "PROGRAMDATA",
+    "SYSTEMDRIVE",
+    "SYSTEMROOT",
+    "TEMP",
+    "TMP",
+    "TMPDIR",
+    "TZ",
+    "USERPROFILE",
+    "WINDIR",
+];
+const SIDECAR_ACCELERATOR_ENVIRONMENT_NAMES: &[&str] = &[
+    "CUDA_CACHE_PATH",
+    "CUDA_DEVICE_ORDER",
+    "CUDA_MODULE_LOADING",
+    "CUDA_PATH",
+    "CUDA_VISIBLE_DEVICES",
+    "HIP_PATH",
+    "HIP_VISIBLE_DEVICES",
+    "HSA_OVERRIDE_GFX_VERSION",
+    "NVIDIA_DRIVER_CAPABILITIES",
+    "NVIDIA_VISIBLE_DEVICES",
+    "ONEAPI_ROOT",
+    "ROCM_PATH",
+    "ROCR_VISIBLE_DEVICES",
+    "VK_ICD_FILENAMES",
+    "VK_LAYER_PATH",
+    "VULKAN_SDK",
+];
+
+#[cfg(windows)]
+struct ProcessJob {
+    handle: usize,
+}
+
+#[cfg(windows)]
+impl Drop for ProcessJob {
+    fn drop(&mut self) {
+        use windows_sys::Win32::Foundation::CloseHandle;
+
+        // SAFETY: `handle` is created by `CreateJobObjectW`, remains owned by
+        // this value, and is closed exactly once here.
+        unsafe {
+            CloseHandle(self.handle as _);
+        }
+    }
+}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum BackendPhase {
@@ -74,6 +139,10 @@ pub struct BackendLifecycle {
     child: Mutex<Option<CommandChild>>,
     restart_policy: Mutex<RestartPolicy>,
     shutting_down: AtomicBool,
+    supervisor_running: AtomicBool,
+    shutdown_complete: AtomicBool,
+    #[cfg(windows)]
+    process_job: Mutex<Option<ProcessJob>>,
     smoke_mode: bool,
     frontend_ready: AtomicBool,
 }
@@ -99,6 +168,10 @@ impl BackendLifecycle {
             child: Mutex::new(None),
             restart_policy: Mutex::new(RestartPolicy::bounded(MAX_RESTARTS)),
             shutting_down: AtomicBool::new(false),
+            supervisor_running: AtomicBool::new(false),
+            shutdown_complete: AtomicBool::new(false),
+            #[cfg(windows)]
+            process_job: Mutex::new(None),
             smoke_mode,
             frontend_ready: AtomicBool::new(false),
         }
@@ -134,12 +207,128 @@ impl BackendLifecycle {
             .register_failure()
     }
 
-    pub fn shutdown(&self) {
+    fn begin_shutdown(&self) -> bool {
+        !self.shutting_down.swap(true, Ordering::AcqRel)
+    }
+
+    pub fn is_shutdown_complete(&self) -> bool {
+        self.shutdown_complete.load(Ordering::Acquire)
+    }
+
+    fn mark_shutdown_complete(&self) {
+        self.shutdown_complete.store(true, Ordering::Release);
+    }
+
+    fn child_running(&self) -> bool {
+        self.child.lock().expect("child state poisoned").is_some()
+    }
+
+    fn supervisor_running(&self) -> bool {
+        self.supervisor_running.load(Ordering::Acquire)
+    }
+
+    pub fn force_shutdown(&self) {
         self.shutting_down.store(true, Ordering::Release);
-        if let Some(child) = self.child.lock().expect("child state poisoned").take() {
+        let child = self.child.lock().expect("child state poisoned").take();
+        self.release_process_job();
+        if let Some(child) = child {
             let _ = child.kill();
         }
     }
+
+    #[cfg(windows)]
+    fn assign_process_job(&self, process_id: u32) -> std::io::Result<()> {
+        use std::mem::size_of;
+        use std::ptr;
+
+        use windows_sys::Win32::Foundation::{CloseHandle, GetLastError};
+        use windows_sys::Win32::System::JobObjects::{
+            AssignProcessToJobObject, CreateJobObjectW, JobObjectExtendedLimitInformation,
+            SetInformationJobObject, JOBOBJECT_EXTENDED_LIMIT_INFORMATION,
+            JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE,
+        };
+        use windows_sys::Win32::System::Threading::{
+            OpenProcess, PROCESS_SET_QUOTA, PROCESS_TERMINATE,
+        };
+
+        let mut limits = JOBOBJECT_EXTENDED_LIMIT_INFORMATION::default();
+        limits.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
+
+        // SAFETY: all pointers are either null (for optional arguments) or
+        // refer to initialized values for the documented duration of the call.
+        let job = unsafe { CreateJobObjectW(ptr::null(), ptr::null()) };
+        if job.is_null() {
+            return Err(std::io::Error::last_os_error());
+        }
+        // SAFETY: `job` is a valid owned handle and `limits` has the exact
+        // layout required by `JobObjectExtendedLimitInformation`.
+        let configured = unsafe {
+            SetInformationJobObject(
+                job,
+                JobObjectExtendedLimitInformation,
+                (&raw const limits).cast(),
+                size_of::<JOBOBJECT_EXTENDED_LIMIT_INFORMATION>() as u32,
+            )
+        };
+        if configured == 0 {
+            let error = std::io::Error::last_os_error();
+            // SAFETY: `job` is still owned locally and has not been closed.
+            unsafe { CloseHandle(job) };
+            return Err(error);
+        }
+
+        // SAFETY: access rights are the documented minimum for assigning an
+        // existing process to a job; the process id comes from the spawned child.
+        let process = unsafe { OpenProcess(PROCESS_SET_QUOTA | PROCESS_TERMINATE, 0, process_id) };
+        if process.is_null() {
+            let error = std::io::Error::last_os_error();
+            // SAFETY: `job` is still owned locally and has not been closed.
+            unsafe { CloseHandle(job) };
+            return Err(error);
+        }
+        // SAFETY: both handles are valid for the duration of this call.
+        let assigned = unsafe { AssignProcessToJobObject(job, process) };
+        let assignment_error = if assigned == 0 {
+            // SAFETY: read the thread-local Win32 error before any other FFI call can overwrite it.
+            Some(unsafe { GetLastError() })
+        } else {
+            None
+        };
+        // SAFETY: the temporary process handle is no longer needed after the
+        // assignment attempt and remains owned locally.
+        unsafe { CloseHandle(process) };
+        if let Some(error) = assignment_error {
+            // SAFETY: `job` is still owned locally and has not been closed.
+            unsafe { CloseHandle(job) };
+            return Err(std::io::Error::from_raw_os_error(error as i32));
+        }
+
+        let previous = self
+            .process_job
+            .lock()
+            .expect("process job state poisoned")
+            .replace(ProcessJob {
+                handle: job as usize,
+            });
+        drop(previous);
+        Ok(())
+    }
+
+    #[cfg(not(windows))]
+    fn assign_process_job(&self, _process_id: u32) -> std::io::Result<()> {
+        Ok(())
+    }
+
+    #[cfg(windows)]
+    fn release_process_job(&self) {
+        self.process_job
+            .lock()
+            .expect("process job state poisoned")
+            .take();
+    }
+
+    #[cfg(not(windows))]
+    fn release_process_job(&self) {}
 
     pub fn mark_frontend_ready(&self) -> bool {
         if !self.smoke_mode {
@@ -203,29 +392,188 @@ pub fn sidecar_arguments(port: u16, data_directory: &Path, parent_pid: u32) -> V
     ]
 }
 
+fn sidecar_environment_name_allowed(name: &str, smoke_mode: bool) -> bool {
+    let canonical = name.to_ascii_uppercase();
+    SIDECAR_ENVIRONMENT_NAMES.contains(&canonical.as_str())
+        || SIDECAR_ACCELERATOR_ENVIRONMENT_NAMES.contains(&canonical.as_str())
+        || (smoke_mode && canonical == "OFFLINE_MODE")
+}
+
+fn sidecar_environment(smoke_mode: bool) -> Vec<(OsString, OsString)> {
+    std::env::vars_os()
+        .filter(|(name, _)| {
+            let Some(name) = name.to_str() else {
+                return false;
+            };
+            sidecar_environment_name_allowed(name, smoke_mode)
+        })
+        .collect()
+}
+
+fn sidecar_working_directory(executable_path: &Path) -> std::io::Result<&Path> {
+    executable_path
+        .parent()
+        .filter(|path| path.is_dir())
+        .ok_or_else(|| {
+            std::io::Error::new(
+                std::io::ErrorKind::NotFound,
+                "packaged backend runtime directory is missing",
+            )
+        })
+}
+
+fn readiness_response_is_ready(response: &[u8]) -> bool {
+    if response.len() > READINESS_RESPONSE_MAX_BYTES {
+        return false;
+    }
+    let Some(header_end) = response.windows(4).position(|window| window == b"\r\n\r\n") else {
+        return false;
+    };
+    let Ok(headers) = std::str::from_utf8(&response[..header_end]) else {
+        return false;
+    };
+    let mut lines = headers.split("\r\n");
+    if lines.next() != Some("HTTP/1.1 200 OK") {
+        return false;
+    }
+    let mut content_type: Option<&str> = None;
+    let mut content_length: Option<usize> = None;
+    for line in lines {
+        let Some((name, value)) = line.split_once(':') else {
+            return false;
+        };
+        match name.trim().to_ascii_lowercase().as_str() {
+            "content-type" => {
+                if content_type.replace(value.trim()).is_some() {
+                    return false;
+                }
+            }
+            "content-length" => {
+                let Ok(length) = value.trim().parse::<usize>() else {
+                    return false;
+                };
+                if content_length.replace(length).is_some() {
+                    return false;
+                }
+            }
+            "transfer-encoding" => return false,
+            _ => {}
+        }
+    }
+    let body = &response[header_end + 4..];
+    if content_length != Some(body.len())
+        || !content_type.is_some_and(|value| {
+            value.split(';').next().is_some_and(|media_type| {
+                media_type.trim().eq_ignore_ascii_case("application/json")
+            })
+        })
+    {
+        return false;
+    }
+    serde_json::from_slice::<serde_json::Value>(body)
+        .ok()
+        .and_then(|value| {
+            value
+                .get("status")
+                .and_then(serde_json::Value::as_str)
+                .map(str::to_owned)
+        })
+        .is_some_and(|status| status == "ready")
+}
+
 fn readiness_probe(port: u16, token: &str) -> bool {
     let address = SocketAddr::from((Ipv4Addr::LOCALHOST, port));
     let Ok(mut stream) = TcpStream::connect_timeout(&address, Duration::from_millis(300)) else {
         return false;
     };
-    let _ = stream.set_read_timeout(Some(Duration::from_millis(500)));
+    let _ = stream.set_write_timeout(Some(Duration::from_millis(300)));
     let request = format!(
         "GET /api/v1/health/ready HTTP/1.1\r\nHost: 127.0.0.1:{port}\r\nX-CareerOS-Session: {token}\r\nConnection: close\r\n\r\n"
     );
     if stream.write_all(request.as_bytes()).is_err() {
         return false;
     }
+    let deadline = Instant::now() + READINESS_PROBE_TOTAL_TIMEOUT;
     let mut response = Vec::with_capacity(1024);
-    if stream.read_to_end(&mut response).is_err() {
-        return false;
+    let mut chunk = [0_u8; 1024];
+    loop {
+        let Some(remaining) = deadline.checked_duration_since(Instant::now()) else {
+            return false;
+        };
+        if stream
+            .set_read_timeout(Some(remaining.min(Duration::from_millis(250))))
+            .is_err()
+        {
+            return false;
+        }
+        let count = match stream.read(&mut chunk) {
+            Ok(0) => break,
+            Ok(count) => count,
+            Err(_) => return false,
+        };
+        if response.len().saturating_add(count) > READINESS_RESPONSE_MAX_BYTES {
+            return false;
+        }
+        response.extend_from_slice(&chunk[..count]);
     }
-    let response = String::from_utf8_lossy(&response);
-    response.starts_with("HTTP/1.1 200") && response.contains("\"status\":\"ready\"")
+    readiness_response_is_ready(&response)
 }
 
-fn start_readiness_monitor(state: Arc<BackendLifecycle>) {
+fn request_backend_shutdown(port: u16, token: &str) -> bool {
+    let address = SocketAddr::from((Ipv4Addr::LOCALHOST, port));
+    let Ok(mut stream) = TcpStream::connect_timeout(&address, Duration::from_millis(300)) else {
+        return false;
+    };
+    let _ = stream.set_read_timeout(Some(Duration::from_millis(500)));
+    let _ = stream.set_write_timeout(Some(Duration::from_millis(500)));
+    let request = format!(
+        "POST /api/v1/desktop/shutdown HTTP/1.1\r\nHost: 127.0.0.1:{port}\r\nX-CareerOS-Session: {token}\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
+    );
+    if stream.write_all(request.as_bytes()).is_err() {
+        return false;
+    }
+    let mut response = [0_u8; 256];
+    let Ok(length) = stream.read(&mut response) else {
+        return false;
+    };
+    response[..length].starts_with(b"HTTP/1.1 202")
+}
+
+pub fn start_graceful_app_exit(app: AppHandle, state: Arc<BackendLifecycle>, exit_code: i32) {
+    if !state.begin_shutdown() {
+        return;
+    }
+
     thread::spawn(move || {
-        let deadline = Instant::now() + Duration::from_secs(90);
+        let deadline = Instant::now() + GRACEFUL_SHUTDOWN_TIMEOUT;
+        let mut shutdown_requested = false;
+        while Instant::now() < deadline {
+            if !state.child_running() && !state.supervisor_running() {
+                state.mark_shutdown_complete();
+                app.exit(exit_code);
+                return;
+            }
+            if state.child_running() && !shutdown_requested {
+                shutdown_requested = request_backend_shutdown(state.port, &state.session_token);
+            }
+            thread::sleep(SHUTDOWN_POLL_INTERVAL);
+        }
+
+        // The authenticated endpoint or Uvicorn drain did not complete within
+        // the hard bound. Closing the Windows job also terminates descendants.
+        state.force_shutdown();
+        let settle_deadline = Instant::now() + FORCED_SHUTDOWN_SETTLE_TIMEOUT;
+        while state.supervisor_running() && Instant::now() < settle_deadline {
+            thread::sleep(SHUTDOWN_POLL_INTERVAL);
+        }
+        state.mark_shutdown_complete();
+        app.exit(exit_code);
+    });
+}
+
+fn start_readiness_monitor(state: Arc<BackendLifecycle>, process_id: u32) {
+    thread::spawn(move || {
+        let deadline = Instant::now() + BACKEND_READINESS_TIMEOUT;
         while Instant::now() < deadline && !state.shutting_down.load(Ordering::Acquire) {
             if readiness_probe(state.port, &state.session_token) {
                 state.set_phase(BackendPhase::Ready);
@@ -233,25 +581,63 @@ fn start_readiness_monitor(state: Arc<BackendLifecycle>) {
             }
             thread::sleep(Duration::from_millis(150));
         }
+        if state.shutting_down.load(Ordering::Acquire) {
+            return;
+        }
+        let phase = state
+            .snapshot
+            .lock()
+            .expect("lifecycle snapshot poisoned")
+            .phase;
+        if phase == BackendPhase::Ready {
+            return;
+        }
+        let child = {
+            let mut child_state = state.child.lock().expect("child state poisoned");
+            if child_state
+                .as_ref()
+                .is_some_and(|child| child.pid() == process_id)
+            {
+                child_state.take()
+            } else {
+                None
+            }
+        };
+        if let Some(child) = child {
+            state.set_phase(BackendPhase::Failed);
+            state.release_process_job();
+            let _ = child.kill();
+        }
     });
 }
 
 pub fn start_backend_supervisor(app: AppHandle, state: Arc<BackendLifecycle>) {
+    state.supervisor_running.store(true, Ordering::Release);
     tauri::async_runtime::spawn(async move {
         loop {
             if state.shutting_down.load(Ordering::Acquire) {
                 break;
             }
             state.set_phase(BackendPhase::Spawning);
+            let working_directory = match sidecar_working_directory(&state.executable_path) {
+                Ok(value) => value,
+                Err(_) => {
+                    state.set_phase(BackendPhase::Failed);
+                    break;
+                }
+            };
             let spawned = app
                 .shell()
                 .command(&state.executable_path)
+                .env_clear()
+                .envs(sidecar_environment(state.smoke_mode))
                 .args(sidecar_arguments(
                     state.port,
                     &state.data_directory,
                     std::process::id(),
                 ))
                 .env("CAREEROS_DESKTOP_SESSION_TOKEN", &state.session_token)
+                .current_dir(working_directory)
                 .spawn();
             let (mut receiver, child) = match spawned {
                 Ok(value) => value,
@@ -263,16 +649,44 @@ pub fn start_backend_supervisor(app: AppHandle, state: Arc<BackendLifecycle>) {
                     break;
                 }
             };
-            *state.child.lock().expect("child state poisoned") = Some(child);
-            state.set_phase(BackendPhase::WaitingReady);
-            start_readiness_monitor(state.clone());
-
-            while let Some(event) = receiver.recv().await {
-                if matches!(event, CommandEvent::Terminated(_) | CommandEvent::Error(_)) {
+            let process_id = child.pid();
+            if state.assign_process_job(process_id).is_err() {
+                let _ = child.kill();
+                state.release_process_job();
+                state.set_phase(BackendPhase::Failed);
+                break;
+            }
+            {
+                let mut child_state = state.child.lock().expect("child state poisoned");
+                if state.shutting_down.load(Ordering::Acquire) {
+                    drop(child_state);
+                    state.release_process_job();
+                    let _ = child.kill();
                     break;
                 }
+                *child_state = Some(child);
             }
-            state.child.lock().expect("child state poisoned").take();
+            state.set_phase(BackendPhase::WaitingReady);
+            start_readiness_monitor(state.clone(), process_id);
+
+            let mut terminated = false;
+            while let Some(event) = receiver.recv().await {
+                match event {
+                    CommandEvent::Terminated(_) => {
+                        terminated = true;
+                        break;
+                    }
+                    CommandEvent::Error(_) => break,
+                    _ => {}
+                }
+            }
+            let child = state.child.lock().expect("child state poisoned").take();
+            state.release_process_job();
+            if !terminated {
+                if let Some(child) = child {
+                    let _ = child.kill();
+                }
+            }
             if state.shutting_down.load(Ordering::Acquire) {
                 break;
             }
@@ -281,6 +695,7 @@ pub fn start_backend_supervisor(app: AppHandle, state: Arc<BackendLifecycle>) {
                 break;
             }
         }
+        state.supervisor_running.store(false, Ordering::Release);
     });
 }
 
@@ -319,10 +734,16 @@ pub fn start_smoke_exit_monitor(app: AppHandle) {
 #[cfg(test)]
 mod tests {
     use super::{
-        allocate_loopback_port, generate_session_token, sidecar_arguments, smoke_exit_code,
-        BackendLifecycle, BackendPhase, RestartPolicy, SMOKE_READY_MARKER,
+        allocate_loopback_port, generate_session_token, readiness_probe,
+        readiness_response_is_ready, request_backend_shutdown, sidecar_arguments,
+        sidecar_environment_name_allowed, smoke_exit_code, BackendLifecycle, BackendPhase,
+        RestartPolicy, SMOKE_READY_MARKER,
     };
+    use std::io::{Read, Write};
+    use std::net::{Ipv4Addr, TcpListener};
     use std::path::{Path, PathBuf};
+    use std::thread;
+    use std::time::{Duration, Instant};
 
     #[test]
     fn allocates_an_ephemeral_ipv4_loopback_port() {
@@ -359,12 +780,157 @@ mod tests {
     }
 
     #[test]
+    fn sidecar_environment_is_an_explicit_non_secret_allowlist() {
+        for name in [
+            "AWS_SECRET_ACCESS_KEY",
+            "CAREEROS_DESKTOP_SESSION_TOKEN",
+            "DATABASE_URL",
+            "GITHUB_TOKEN",
+            "CUDA_API_KEY",
+            "INTEL_SECRET",
+            "LD_PRELOAD",
+            "NVIDIA_API_KEY",
+            "PYTHONPATH",
+            "SECRET_KEY",
+            "SSLKEYLOGFILE",
+        ] {
+            assert!(!sidecar_environment_name_allowed(name, false), "{name}");
+        }
+        for name in ["PATH", "SystemRoot", "TEMP", "CUDA_VISIBLE_DEVICES"] {
+            assert!(sidecar_environment_name_allowed(name, false), "{name}");
+        }
+        assert!(!sidecar_environment_name_allowed("OFFLINE_MODE", false));
+        assert!(sidecar_environment_name_allowed("OFFLINE_MODE", true));
+    }
+
+    #[test]
     fn restart_policy_is_strictly_bounded() {
         let mut policy = RestartPolicy::bounded(2);
         assert!(policy.register_failure());
         assert!(policy.register_failure());
         assert!(!policy.register_failure());
         assert!(!policy.register_failure());
+    }
+
+    #[test]
+    fn shutdown_request_is_loopback_token_authenticated() {
+        let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let server = thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            let mut request = Vec::new();
+            let mut chunk = [0_u8; 256];
+            while !request.windows(4).any(|window| window == b"\r\n\r\n") {
+                let count = stream.read(&mut chunk).unwrap();
+                if count == 0 {
+                    break;
+                }
+                request.extend_from_slice(&chunk[..count]);
+            }
+            stream
+                .write_all(
+                    b"HTTP/1.1 202 Accepted\r\nContent-Length: 0\r\nConnection: close\r\n\r\n",
+                )
+                .unwrap();
+            String::from_utf8(request).unwrap()
+        });
+
+        assert!(request_backend_shutdown(port, "desktop-secret"));
+        let request = server.join().unwrap();
+        assert!(request.starts_with("POST /api/v1/desktop/shutdown HTTP/1.1\r\n"));
+        assert!(request.contains("\r\nX-CareerOS-Session: desktop-secret\r\n"));
+        assert!(request.contains("\r\nContent-Length: 0\r\n"));
+    }
+
+    #[test]
+    fn readiness_requires_an_exact_bounded_json_response_body() {
+        let ready_body = br#"{"status":"ready"}"#;
+        let ready = format!(
+            "HTTP/1.1 200 OK\r\nContent-Type: application/json; charset=utf-8\r\nContent-Length: {}\r\n\r\n",
+            ready_body.len()
+        )
+        .into_bytes();
+        let mut response = ready;
+        response.extend_from_slice(ready_body);
+        assert!(readiness_response_is_ready(&response));
+
+        let false_body = br#"{"status":"starting"}"#;
+        let false_header = format!(
+            "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nX-Fake: \\\"status\\\":\\\"ready\\\"\r\nContent-Length: {}\r\n\r\n",
+            false_body.len()
+        );
+        let mut false_response = false_header.into_bytes();
+        false_response.extend_from_slice(false_body);
+        assert!(!readiness_response_is_ready(&false_response));
+        assert!(!readiness_response_is_ready(
+            b"HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: 18\r\n\r\n{\"status\":\"ready\"}"
+        ));
+    }
+
+    #[test]
+    fn readiness_probe_rejects_an_oversized_loopback_response() {
+        let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let server = thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            let mut request = [0_u8; 1024];
+            let _ = stream.read(&mut request);
+            let body = vec![b'x'; 9 * 1024];
+            let header = format!(
+                "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\n\r\n",
+                body.len()
+            );
+            let _ = stream.write_all(header.as_bytes());
+            let _ = stream.write_all(&body);
+        });
+
+        assert!(!readiness_probe(port, "desktop-secret"));
+        server.join().unwrap();
+    }
+
+    #[test]
+    fn readiness_probe_has_a_total_deadline_against_slow_drip_responses() {
+        let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let server = thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            let mut request = [0_u8; 1024];
+            let _ = stream.read(&mut request);
+            let header =
+                b"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: 18\r\n\r\n";
+            if stream.write_all(header).is_err() {
+                return;
+            }
+            for byte in br#"{"status":"ready"}"# {
+                if stream.write_all(&[*byte]).is_err() {
+                    break;
+                }
+                thread::sleep(Duration::from_millis(150));
+            }
+        });
+
+        let started = Instant::now();
+        assert!(!readiness_probe(port, "desktop-secret"));
+        assert!(started.elapsed() < Duration::from_secs(2));
+        server.join().unwrap();
+    }
+
+    #[test]
+    fn shutdown_state_is_idempotent_and_explicitly_completed() {
+        let lifecycle = BackendLifecycle::new(
+            43127,
+            "x".repeat(64),
+            "1.3.0".into(),
+            PathBuf::from("C:/CareerOS"),
+            PathBuf::from("C:/CareerOS/careeros-backend.exe"),
+            false,
+        );
+
+        assert!(lifecycle.begin_shutdown());
+        assert!(!lifecycle.begin_shutdown());
+        assert!(!lifecycle.is_shutdown_complete());
+        lifecycle.mark_shutdown_complete();
+        assert!(lifecycle.is_shutdown_complete());
     }
 
     #[test]

@@ -11,14 +11,25 @@ from datetime import datetime, timezone
 from typing import Any
 
 from backend.applications.schemas import ApplicationTaskResponse
+from backend.resumes.artifact_policy import (
+    MAX_RESUME_ARTIFACT_BYTES,
+    RESUME_ARTIFACT_MEDIA_TYPES,
+)
 
 MAX_DOSSIER_EVENT_BYTES = 512 * 1024
 MAX_DOSSIER_BUNDLE_BYTES = 32 * 1024 * 1024
-MAX_DOSSIER_ARTIFACT_BYTES = 16 * 1024 * 1024
+MAX_DOSSIER_ARTIFACT_BYTES = MAX_RESUME_ARTIFACT_BYTES
+MAX_DOSSIER_MANIFEST_BYTES = 256 * 1024
+MAX_CALENDAR_TASKS = 2_000
+MAX_CALENDAR_BYTES = 2 * 1024 * 1024
 
 
 class DossierSizeError(ValueError):
     """Raised before an oversized dossier is persisted or returned."""
+
+
+class CalendarExportError(ValueError):
+    """Raised when calendar input cannot be exported within a safe local bound."""
 
 
 def canonical_json(value: Any) -> bytes:
@@ -70,6 +81,12 @@ def build_dossier_bundle(
 ) -> DossierBundle:
     """Build a byte-stable application dossier and its canonical manifest."""
 
+    if not resume_artifacts:
+        raise ValueError("A dossier requires at least one verified resume artifact")
+    unsupported_formats = set(resume_artifacts) - set(RESUME_ARTIFACT_MEDIA_TYPES)
+    if unsupported_formats:
+        raise ValueError("A dossier contains an unsupported resume artifact format")
+
     files: dict[str, tuple[bytes, str]] = {
         "application.json": (
             canonical_json(
@@ -100,6 +117,12 @@ def build_dossier_bundle(
     if cover_letter:
         files["cover-letter.txt"] = (cover_letter.encode("utf-8"), "text/plain; charset=utf-8")
     for artifact_format, (data, media_type) in sorted(resume_artifacts.items()):
+        if not isinstance(data, bytes):
+            raise TypeError("Resume artifact payloads must be bytes")
+        if media_type != RESUME_ARTIFACT_MEDIA_TYPES[artifact_format]:
+            raise ValueError(
+                f"The {artifact_format.upper()} resume artifact has an unexpected media type"
+            )
         if len(data) > MAX_DOSSIER_ARTIFACT_BYTES:
             raise DossierSizeError(
                 f"The {artifact_format.upper()} resume artifact exceeds "
@@ -134,6 +157,10 @@ def build_dossier_bundle(
         "entries": entries,
     }
     manifest_data = canonical_json(manifest)
+    if len(manifest_data) > MAX_DOSSIER_MANIFEST_BYTES:
+        raise DossierSizeError(
+            f"Dossier manifest exceeds the {MAX_DOSSIER_MANIFEST_BYTES}-byte limit"
+        )
     output = io.BytesIO()
     with zipfile.ZipFile(output, "w") as archive:
         for path, (data, _media_type) in sorted(files.items()):
@@ -192,6 +219,11 @@ def export_task_calendar(
 ) -> bytes:
     """Export pending dated tasks as a portable RFC 5545 calendar."""
 
+    if len(tasks) > MAX_CALENDAR_TASKS:
+        raise CalendarExportError(
+            f"Calendar export cannot contain more than {MAX_CALENDAR_TASKS} tasks"
+        )
+
     lines = [
         "BEGIN:VCALENDAR",
         "VERSION:2.0",
@@ -200,13 +232,17 @@ def export_task_calendar(
         "METHOD:PUBLISH",
         f"X-WR-CALNAME:{_ics_escape(role_title)} · {_ics_escape(company)}",
     ]
+    event_ids: set[str] = set()
     for task in tasks:
         if task.status != "pending" or task.due_at is None:
             continue
+        if task.id in event_ids:
+            raise CalendarExportError("Calendar export contains a duplicate task identifier")
+        event_ids.add(task.id)
         lines.extend(
             [
                 "BEGIN:VEVENT",
-                f"UID:{task.id}@careeros.local",
+                f"UID:{_ics_escape(task.id)}@careeros.local",
                 f"DTSTAMP:{_ics_timestamp(task.updated_at)}",
                 f"DTSTART:{_ics_timestamp(task.due_at)}",
                 f"SUMMARY:{_ics_escape(task.title)}",
@@ -227,4 +263,7 @@ def export_task_calendar(
             )
         lines.append("END:VEVENT")
     lines.append("END:VCALENDAR")
-    return ("\r\n".join(_fold_ics_line(line) for line in lines) + "\r\n").encode("utf-8")
+    result = ("\r\n".join(_fold_ics_line(line) for line in lines) + "\r\n").encode("utf-8")
+    if len(result) > MAX_CALENDAR_BYTES:
+        raise CalendarExportError(f"Calendar export exceeds the {MAX_CALENDAR_BYTES}-byte limit")
+    return result

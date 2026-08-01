@@ -20,14 +20,17 @@ def normalize_photo(data: bytes) -> tuple[bytes, int, int]:
     if len(data) > settings.MAX_UPLOAD_FILE_SIZE:
         raise PhotoValidationError("The photo exceeds the configured size limit")
 
-    previous_limit = Image.MAX_IMAGE_PIXELS
-    Image.MAX_IMAGE_PIXELS = settings.RESUME_PHOTO_MAX_PIXELS
     try:
         with Image.open(BytesIO(data)) as source:
+            # Check dimensions before decoding pixels. Mutating Pillow's global
+            # MAX_IMAGE_PIXELS here made concurrent uploads temporarily inherit
+            # another request's limit (or the library default).
+            if source.width <= 0 or source.height <= 0:
+                raise PhotoValidationError("The photo dimensions are invalid")
+            if source.width * source.height > settings.RESUME_PHOTO_MAX_PIXELS:
+                raise PhotoValidationError("The photo has too many pixels")
             source.load()
             image = ImageOps.exif_transpose(source)
-            if image.width * image.height > settings.RESUME_PHOTO_MAX_PIXELS:
-                raise PhotoValidationError("The photo has too many pixels")
             if "A" in image.getbands() or image.mode == "P":
                 rgba = image.convert("RGBA")
                 background = Image.new("RGB", rgba.size, "white")
@@ -47,8 +50,6 @@ def normalize_photo(data: bytes) -> tuple[bytes, int, int]:
             result = output.getvalue()
     except (UnidentifiedImageError, OSError, Image.DecompressionBombError) as exc:
         raise PhotoValidationError("The uploaded file is not a valid safe image") from exc
-    finally:
-        Image.MAX_IMAGE_PIXELS = previous_limit
 
     with Image.open(BytesIO(result)) as check:
         if check.getexif():

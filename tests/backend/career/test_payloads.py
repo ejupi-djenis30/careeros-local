@@ -113,9 +113,7 @@ def test_preferences_capture_constraints_and_reject_contradictions():
     assert preferences.target_roles == ["Staff Engineer"]
     assert preferences.salary.currency == "CHF"
     with pytest.raises(ValidationError, match="remote_only"):
-        CareerPreferences.model_validate(
-            {"remote_only": True, "preferred_work_modes": ["onsite"]}
-        )
+        CareerPreferences.model_validate({"remote_only": True, "preferred_work_modes": ["onsite"]})
 
 
 def test_profile_rejects_cross_fact_self_evidence():
