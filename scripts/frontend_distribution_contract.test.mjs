@@ -148,7 +148,7 @@ test("binds the distributable third-party notices to every dependency lock", asy
     assert.deepEqual(manifest.componentCounts, {
         frontend: 12,
         python: 55,
-        runtime: 2,
+        runtime: 3,
         rust: 484,
     });
     for (const [relativePath, expectedHash] of Object.entries(manifest.sourceLocks)) {

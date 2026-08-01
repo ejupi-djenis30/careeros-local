@@ -22,7 +22,7 @@ NOTICE_NAME = "THIRD_PARTY_NOTICES.txt"
 NOTICE_PATH = ROOT / NOTICE_NAME
 NOTICE_SCHEMA = 1
 MAX_NOTICE_BYTES = 4 * 1024 * 1024
-APPROVED_NOTICE_SHA256 = "6a4c1922d2ba8bf3128ce23cc7f6294af4b9dc679cc2573a7f3bbe73df2378b3"
+APPROVED_NOTICE_SHA256 = "ed1a5e35bbb4796c9ba27f5190d67f7547eee5f815d5a97f8bc85e8d199ac0d6"
 
 MANIFEST_START = "----- BEGIN CAREEROS THIRD-PARTY MANIFEST -----"
 MANIFEST_END = "----- END CAREEROS THIRD-PARTY MANIFEST -----"
@@ -34,13 +34,21 @@ LEGAL_FILE_PATTERN = re.compile(
 )
 REQUIREMENT_PATTERN = re.compile(r"^(?P<name>[A-Za-z0-9_.-]+)==(?P<version>[^\s\\;]+)")
 CANONICAL_NAME_PATTERN = re.compile(r"[-_.]+")
+NATIVE_CPYTHON_LICENSES = {
+    "3.13.14": "third_party/licenses/cpython-3.13.14/LICENSE",
+}
+NATIVE_CPYTHON_LICENSE_SHA256 = {
+    "3.13.14": "78b12c3a81360b357002334f0e70ea0e92eebf7a9b358805c03c48484945f3bb",
+}
 
 SOURCE_FILES = (
+    ".native-python-version",
     ".python-version",
     "frontend/package-lock.json",
     "frontend/src-tauri/Cargo.lock",
     "requirements.lock",
     "requirements-tooling.lock",
+    *NATIVE_CPYTHON_LICENSES.values(),
 )
 
 RUST_LICENSE_SELECTIONS: dict[str, tuple[str, ...]] = {
@@ -220,10 +228,17 @@ def _cargo_inventory(root: Path = ROOT) -> list[dict[str, str]]:
 
 def _runtime_inventory(root: Path = ROOT) -> list[dict[str, str]]:
     python_version = (root / ".python-version").read_text(encoding="utf-8").strip()
+    native_python_version = (root / ".native-python-version").read_text(encoding="utf-8").strip()
     tooling = _locked_python_versions(root / "requirements-tooling.lock")
     pyinstaller_version = tooling.get("pyinstaller")
-    if not python_version or not pyinstaller_version:
-        raise RuntimeError("Pinned CPython and PyInstaller versions are required")
+    if not python_version or not native_python_version or not pyinstaller_version:
+        raise RuntimeError(
+            "Pinned backend CPython, native CPython and PyInstaller versions are required"
+        )
+    if native_python_version not in NATIVE_CPYTHON_LICENSES:
+        raise RuntimeError(
+            f"Native CPython {native_python_version} has no reviewed legal-text source"
+        )
     return [
         {
             "ecosystem": "runtime",
@@ -231,6 +246,13 @@ def _runtime_inventory(root: Path = ROOT) -> list[dict[str, str]]:
             "version": python_version,
             "license": "PSF-2.0",
             "source": ".python-version",
+        },
+        {
+            "ecosystem": "runtime",
+            "name": "cpython",
+            "version": native_python_version,
+            "license": "PSF-2.0",
+            "source": ".native-python-version",
         },
         {
             "ecosystem": "runtime",
@@ -427,8 +449,31 @@ def _canonical_rust_texts(
 def _runtime_legal_texts(
     package: dict[str, str],
     distributions: dict[tuple[str, str], importlib.metadata.Distribution],
+    *,
+    root: Path = ROOT,
 ) -> list[LegalText]:
     if package["name"] == "cpython":
+        if package["source"] == ".native-python-version":
+            relative = NATIVE_CPYTHON_LICENSES.get(package["version"])
+            expected_digest = NATIVE_CPYTHON_LICENSE_SHA256.get(package["version"])
+            if relative is None or expected_digest is None:
+                raise RuntimeError(
+                    f"Native CPython {package['version']} has no reviewed legal text"
+                )
+            license_path = root / relative
+            if license_path.is_symlink() or not license_path.is_file():
+                raise RuntimeError("The native CPython runtime license is missing or unsafe")
+            payload = license_path.read_bytes()
+            if _sha256(payload) != expected_digest:
+                raise RuntimeError("The native CPython runtime license digest is not approved")
+            return [
+                LegalText(
+                    source=f"runtime:cpython@{package['version']}/{relative}",
+                    text=_normalized_text(payload, source=str(license_path)),
+                )
+            ]
+        if package["source"] != ".python-version":
+            raise RuntimeError("The CPython runtime notice source is unsupported")
         interpreter_version = platform.python_version()
         if interpreter_version != package["version"]:
             raise RuntimeError(
@@ -478,7 +523,7 @@ def build_notice(root: Path = ROOT) -> str:
         elif package["ecosystem"] == "python":
             package["license"], legal_texts = _python_legal_texts(package, distributions)
         elif package["ecosystem"] == "runtime":
-            legal_texts = _runtime_legal_texts(package, distributions)
+            legal_texts = _runtime_legal_texts(package, distributions, root=root)
         else:
             key = (package["name"], package["version"], package["source"])
             metadata = cargo_packages.get(key)

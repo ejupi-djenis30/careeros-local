@@ -35,6 +35,34 @@ def test_cpython_notice_generation_requires_the_exact_pinned_interpreter(
         )
 
 
+def test_native_cpython_notice_uses_the_reviewed_lock_bound_license(tmp_path: Path) -> None:
+    relative = notices.NATIVE_CPYTHON_LICENSES["3.13.14"]
+    source = notices.ROOT / relative
+    target = tmp_path / relative
+    target.parent.mkdir(parents=True)
+    target.write_bytes(source.read_bytes())
+    package = {
+        "ecosystem": "runtime",
+        "name": "cpython",
+        "version": "3.13.14",
+        "license": "PSF-2.0",
+        "source": ".native-python-version",
+    }
+
+    legal_texts = notices._runtime_legal_texts(package, {}, root=tmp_path)
+
+    assert len(legal_texts) == 1
+    assert legal_texts[0].source.endswith(relative)
+    assert (
+        hashlib.sha256(source.read_bytes()).hexdigest()
+        == (notices.NATIVE_CPYTHON_LICENSE_SHA256["3.13.14"])
+    )
+
+    target.write_text("tampered\n", encoding="utf-8")
+    with pytest.raises(RuntimeError, match="license digest is not approved"):
+        notices._runtime_legal_texts(package, {}, root=tmp_path)
+
+
 def test_repository_notice_is_lock_bound_complete_and_approved() -> None:
     payload = NOTICE_PATH.read_bytes()
     manifest = verify_notice_file()
@@ -43,7 +71,7 @@ def test_repository_notice_is_lock_bound_complete_and_approved() -> None:
     assert manifest["componentCounts"] == {
         "frontend": 12,
         "python": 55,
-        "runtime": 2,
+        "runtime": 3,
         "rust": 484,
     }
     identities = {
@@ -53,6 +81,7 @@ def test_repository_notice_is_lock_bound_complete_and_approved() -> None:
     assert ("frontend", "bootstrap", "5.3.8") in identities
     assert ("frontend", "bootstrap-icons", "1.13.1") in identities
     assert ("runtime", "cpython", "3.12.13") in identities
+    assert ("runtime", "cpython", "3.13.14") in identities
     assert ("runtime", "pyinstaller", "6.21.0") in identities
     assert all(component["textIds"] for component in manifest["components"])
 

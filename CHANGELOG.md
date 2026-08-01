@@ -38,9 +38,10 @@ All notable changes to CareerOS Local are documented here. The format follows
 - The Compose stack now pins Ollama 0.32.0, separates application and model traffic, bounds process
   counts and log retention, and applies read-only roots, temporary writable storage, dropped
   capabilities and no-new-privileges consistently.
-- Runtime contracts now pin CPython 3.12.13 and Node 24.18.x. Third-party notices are regenerated
-  from those exact inputs, and notice verification now rebuilds the payload with the pinned
-  interpreter before accepting it.
+- Runtime contracts now pin CPython 3.12.13 for backend and container work, CPython 3.13.14 for
+  cross-platform native sidecars, and Node 24.18.x. Third-party notices are regenerated from
+  those exact inputs, include the reviewed native-runtime license, and remain lock-bound before
+  acceptance.
 - Container access logs now retain only content-free operational timing/status fields, Uvicorn
   access logging is disabled in favor of structured application diagnostics, and web assets stay
   root-owned and non-writable by the Nginx worker.

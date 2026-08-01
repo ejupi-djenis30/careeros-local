@@ -175,6 +175,7 @@ def test_required_check_name_and_versioned_toolchains_are_stable() -> None:
     assert "name: Release supply-chain evidence" in text
     for exact in (
         'PYTHON_VERSION: "3.12.13"',
+        "python-version-file: .native-python-version",
         'NODE_VERSION: "24.18.0"',
         'RUST_VERSION: "1.96.0"',
         'GH_CLI_VERSION: "2.94.0"',
@@ -202,6 +203,14 @@ def test_runtime_version_files_and_frontend_engine_are_exactly_bounded() -> None
     package_lock = json.loads((ROOT / "frontend" / "package-lock.json").read_text(encoding="utf-8"))
 
     assert (ROOT / ".python-version").read_text(encoding="utf-8").strip() == "3.12.13"
+    assert (ROOT / ".native-python-version").read_text(encoding="utf-8").strip() == "3.13.14"
+    native_job = (
+        WORKFLOW.read_text(encoding="utf-8")
+        .split("\n  native:", 1)[1]
+        .split("\n  assemble-release:", 1)[0]
+    )
+    assert "python-version-file: .native-python-version" in native_job
+    assert "python-version: ${{ env.PYTHON_VERSION }}" not in native_job
     assert (ROOT / ".nvmrc").read_text(encoding="utf-8").strip() == "24.18.0"
     assert package["engines"]["node"] == ">=24.18.0 <25"
     assert package_lock["packages"][""]["engines"]["node"] == ">=24.18.0 <25"

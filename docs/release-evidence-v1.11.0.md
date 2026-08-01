@@ -30,8 +30,8 @@ responsive and browser acceptance coverage while preserving the local-only infer
 The preparation change must pass these gates before merge:
 
 - release metadata validation for `v1.11.0` and `2026-08-01`;
-- exact third-party-notice regeneration with the pinned Python 3.12.13, Node 24.18.x and Cargo
-  dependency inputs;
+- exact third-party-notice regeneration with the pinned backend Python 3.12.13, native Python
+  3.13.14, Node 24.18.x and Cargo dependency inputs;
 - release-contract, repository-hygiene and distribution tests;
 - the complete protected-branch Python, React, Rust, migration, security, browser, container,
   CodeQL and packaging checks.
