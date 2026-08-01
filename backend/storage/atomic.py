@@ -122,7 +122,13 @@ def read_stable_bounded_file(
             or not os.path.samestat(opened, after)
             or after.st_size != opened.st_size
             or after.st_mtime_ns != opened.st_mtime_ns
-            or after.st_ctime_ns != opened.st_ctime_ns
+            # Publishing uses a temporary hard link. Once the destination is
+            # visible, removing that private alias changes only the inode's
+            # ctime on POSIX. Content-addressed winner validation deliberately
+            # permits that link transition while retaining the same descriptor,
+            # inode, size, mtime and exact bytes. Recovery metadata keeps the
+            # stricter ctime invariant through ``require_single_link=True``.
+            or (require_single_link and after.st_ctime_ns != opened.st_ctime_ns)
         ):
             raise ValueError("Stored file changed while it was being read")
         return data
