@@ -30,8 +30,8 @@ def _try_lock(handle: BinaryIO) -> bool:
 
             msvcrt.locking(  # type: ignore[attr-defined]
                 handle.fileno(),
-                msvcrt.LK_NBLCK,
-                1,  # type: ignore[attr-defined]
+                msvcrt.LK_NBLCK,  # type: ignore[attr-defined]
+                1,
             )
         else:
             import fcntl
@@ -52,8 +52,8 @@ def _unlock(handle: BinaryIO) -> None:
 
         msvcrt.locking(  # type: ignore[attr-defined]
             handle.fileno(),
-            msvcrt.LK_UNLCK,
-            1,  # type: ignore[attr-defined]
+            msvcrt.LK_UNLCK,  # type: ignore[attr-defined]
+            1,
         )
     else:
         import fcntl

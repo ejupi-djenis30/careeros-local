@@ -234,7 +234,7 @@ def durable_replace(source: str | Path, destination: str | Path) -> None:
 
     move_file_replace_existing = 0x1
     move_file_write_through = 0x8
-    kernel32 = ctypes.windll.kernel32
+    kernel32 = getattr(ctypes, "windll").kernel32
     kernel32.MoveFileExW.argtypes = [ctypes.c_wchar_p, ctypes.c_wchar_p, ctypes.c_uint32]
     kernel32.MoveFileExW.restype = ctypes.c_int
     if not kernel32.MoveFileExW(
@@ -242,7 +242,7 @@ def durable_replace(source: str | Path, destination: str | Path) -> None:
         os.fspath(destination),
         move_file_replace_existing | move_file_write_through,
     ):
-        raise ctypes.WinError()
+        raise getattr(ctypes, "WinError")()
 
 
 def durable_mkdir(directory: Path) -> None:
