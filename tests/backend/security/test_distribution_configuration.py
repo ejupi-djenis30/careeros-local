@@ -185,6 +185,16 @@ def test_backend_container_smoke_rediscovers_the_ephemeral_port_after_restart() 
     assert workflow.count('base_uri="http://127.0.0.1:${published_port}/api/v1"') == 2
 
 
+def test_backend_notice_gate_installs_the_locked_frontend_graph() -> None:
+    workflow = (ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
+    backend = workflow[workflow.index("  backend:") : workflow.index("  frontend:")]
+    before_notice = backend[: backend.index("Validate distributable third-party notices")]
+
+    assert "Set up Node for notice verification" in before_notice
+    assert "node-version-file: .nvmrc" in before_notice
+    assert "npm ci --prefix frontend --ignore-scripts" in before_notice
+
+
 def test_container_builds_ship_the_same_canonical_third_party_notices() -> None:
     compose = yaml.safe_load((ROOT / "docker-compose.yml").read_text(encoding="utf-8"))
     frontend = compose["services"]["frontend"]["build"]

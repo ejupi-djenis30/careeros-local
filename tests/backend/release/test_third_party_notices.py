@@ -57,6 +57,13 @@ def test_repository_notice_is_lock_bound_complete_and_approved() -> None:
     assert all(component["textIds"] for component in manifest["components"])
 
 
+def test_notice_source_locks_have_portable_checkout_bytes() -> None:
+    attributes = (notices.ROOT / ".gitattributes").read_text(encoding="utf-8")
+
+    for relative in notices.SOURCE_FILES:
+        assert f"{relative} text eol=lf" in attributes
+
+
 def test_notice_rejects_tampered_text_even_without_the_outer_approved_digest() -> None:
     payload = NOTICE_PATH.read_bytes()
     tampered = payload.replace(b"Permission is hereby granted", b"Permission is hereby changed", 1)

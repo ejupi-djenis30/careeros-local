@@ -27,17 +27,46 @@ async function sourceFiles(directory) {
     return nested.flat();
 }
 
-function optimizeSvg(svg, iconName) {
-    const match = svg.match(/<svg\b[^>]*>([\s\S]*?)<\/svg>/);
+export function optimizeSvg(svg, iconName) {
+    const match = svg.match(/^\s*<svg\b[^>]*>([\s\S]*?)<\/svg>\s*$/);
     if (!match) throw new Error(`Bootstrap icon is not a valid SVG: ${iconName}`);
-    const body = match[1]
-        .replace(/<!--[\s\S]*?-->/g, "")
-        .replace(/>\s+</g, "><")
-        .trim();
+    const body = match[1].replace(/>\s+</g, "><").trim();
+    if (/<!--|-->|<!\[CDATA\[|<!DOCTYPE|<\?/i.test(body)) {
+        throw new Error(`Bootstrap icon contains unsupported XML markup: ${iconName}`);
+    }
+    if (/\s(?:on[a-z][\w:-]*|href|xlink:href|src|style)\s*=/i.test(body) || /\burl\s*\(/i.test(body)) {
+        throw new Error(`Bootstrap icon contains an unsafe attribute: ${iconName}`);
+    }
+    const tags = [...body.matchAll(/<\/?([A-Za-z][\w:-]*)\b[^>]*>/g)];
+    const allowedTags = new Set(["circle", "ellipse", "g", "line", "path", "polygon", "polyline", "rect"]);
+    if (tags.some((tag) => !allowedTags.has(tag[1].toLowerCase()))) {
+        throw new Error(`Bootstrap icon contains an unsupported element: ${iconName}`);
+    }
+    const stack = [];
+    let cursor = 0;
+    for (const tag of tags) {
+        if (body.slice(cursor, tag.index).trim()) {
+            throw new Error(`Bootstrap icon contains malformed markup: ${iconName}`);
+        }
+        const name = tag[1].toLowerCase();
+        const closing = tag[0].startsWith("</");
+        const selfClosing = /\/\s*>$/.test(tag[0]);
+        if (closing) {
+            if (stack.pop() !== name) {
+                throw new Error(`Bootstrap icon contains malformed markup: ${iconName}`);
+            }
+        } else if (!selfClosing) {
+            stack.push(name);
+        }
+        cursor = tag.index + tag[0].length;
+    }
+    if (body.slice(cursor).trim() || stack.length !== 0) {
+        throw new Error(`Bootstrap icon contains malformed markup: ${iconName}`);
+    }
     return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16">${body}</svg>`;
 }
 
-function svgDataUrl(svg) {
+export function svgDataUrl(svg) {
     const payload = svg
         .replaceAll("%", "%25")
         .replaceAll("#", "%23")
@@ -99,31 +128,37 @@ ${rules.join("\n")}
 `;
 }
 
-const expected = await renderStylesheet();
-const shellExpected = await renderStylesheet(shellSourcePaths);
-if (checkOnly) {
-    const readCurrent = async (path) => {
-        try {
-            return await readFile(path, "utf8");
-        } catch {
-            return "";
+async function main() {
+    const expected = await renderStylesheet();
+    const shellExpected = await renderStylesheet(shellSourcePaths);
+    if (checkOnly) {
+        const readCurrent = async (path) => {
+            try {
+                return await readFile(path, "utf8");
+            } catch {
+                return "";
+            }
+        };
+        const [current, shellCurrent] = await Promise.all([
+            readCurrent(outputPath),
+            readCurrent(shellOutputPath),
+        ]);
+        if (current !== expected || shellCurrent !== shellExpected) {
+            throw new Error("Frontend icon subset is stale. Run `npm run icons:build`.");
         }
-    };
-    const [current, shellCurrent] = await Promise.all([
-        readCurrent(outputPath),
-        readCurrent(shellOutputPath),
-    ]);
-    if (current !== expected || shellCurrent !== shellExpected) {
-        throw new Error("Frontend icon subset is stale. Run `npm run icons:build`.");
+        console.log(
+            `Frontend icon subsets are current (${(expected.match(/^\.bi-/gm) ?? []).length} workspace, `
+            + `${(shellExpected.match(/^\.bi-/gm) ?? []).length} lifecycle icons).`,
+        );
+    } else {
+        await Promise.all([
+            writeFile(outputPath, expected, "utf8"),
+            writeFile(shellOutputPath, shellExpected, "utf8"),
+        ]);
+        console.log(`Wrote ${outputPath} and ${shellOutputPath}`);
     }
-    console.log(
-        `Frontend icon subsets are current (${(expected.match(/^\.bi-/gm) ?? []).length} workspace, `
-        + `${(shellExpected.match(/^\.bi-/gm) ?? []).length} lifecycle icons).`,
-    );
-} else {
-    await Promise.all([
-        writeFile(outputPath, expected, "utf8"),
-        writeFile(shellOutputPath, shellExpected, "utf8"),
-    ]);
-    console.log(`Wrote ${outputPath} and ${shellOutputPath}`);
+}
+
+if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+    await main();
 }

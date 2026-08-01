@@ -65,7 +65,7 @@
     "pretest:shell-responsive": "npm run preflight:node",
     "test:shell-responsive": "node e2e/workspace-shell-responsive.mjs",
     "pretest:licenses": "npm run preflight:node",
-    "test:licenses": "node --test ../scripts/audit_frontend_licenses.test.mjs ../scripts/frontend_distribution_contract.test.mjs && npm run test:icons",
+    "test:licenses": "node --test ../scripts/audit_frontend_licenses.test.mjs ../scripts/build_frontend_icons.test.mjs ../scripts/frontend_distribution_contract.test.mjs && npm run test:icons",
     "pretest:icons": "npm run preflight:node",
     "test:icons": "node ../scripts/build_frontend_icons.mjs --check"
   },

@@ -79,10 +79,16 @@ jobs:
           python-version-file: .python-version
           cache: pip
           cache-dependency-path: requirements-dev.lock
+      - name: Set up Node for notice verification
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .nvmrc
+          package-manager-cache: false
       - name: Install hash-locked dependencies
         run: |
           mkdir -p "$RUNNER_TEMP/careeros"
           python -m pip install --require-hashes --requirement requirements-dev.lock
+          npm ci --prefix frontend --ignore-scripts
       - name: Validate release version metadata
         run: python scripts/check_release_versions.py
       - name: Validate distributable third-party notices
