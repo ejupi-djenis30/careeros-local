@@ -33,7 +33,9 @@ Run the metadata and release-contract tests locally:
 
 Run **Desktop packages** from `main`. Supply the new `vMAJOR.MINOR.PATCH` planned tag in
 `expected_tag`. The workflow builds six native targets on versioned GitHub-hosted runners,
-smoke-tests each package, normalizes installer names, and assembles one exact candidate.
+freezes each sidecar with the exact CPython version in `.native-python-version`, smoke-tests each
+package, normalizes installer names, and assembles one exact candidate. The contributor and audit
+interpreter remains independently pinned in `.python-version`.
 
 The candidate contains 26 public assets:
 
