@@ -13,11 +13,11 @@ def test_job_source_api_is_deny_by_default(client, auth_headers) -> None:
 
     assert response.status_code == 200
     sources = {item["key"]: item for item in response.json()}
+    assert list(sources) == ["local_db"]
     assert sources["local_db"]["consented"] is True
-    assert all(item["consented"] is False for item in sources.values() if item["network"])
 
 
-def test_job_source_api_reflects_only_saved_explicit_consent(client, auth_headers) -> None:
+def test_legacy_profile_consent_cannot_install_or_enable_a_provider(client, auth_headers) -> None:
     saved = client.put(
         "/api/v1/career-profile",
         headers=auth_headers,
@@ -28,9 +28,38 @@ def test_job_source_api_reflects_only_saved_explicit_consent(client, auth_header
     response = client.get("/api/v1/search/sources", headers=auth_headers)
     sources = {item["key"]: item for item in response.json()}
 
-    assert sources["job_room"]["consented"] is True
-    assert sources["swissdevjobs"]["consented"] is False
-    assert sources["adecco"]["consented"] is False
+    assert list(sources) == ["local_db"]
+
+
+def test_job_source_api_reflects_imported_provider_revision_state(client, auth_headers) -> None:
+    imported = client.post(
+        "/api/v1/job-providers/packs/careeros.switzerland.core/import",
+        json={"activate": False},
+        headers=auth_headers,
+    )
+    assert imported.status_code == 201, imported.text
+    providers = imported.json()["imported"]
+
+    disabled_sources = {
+        item["key"]: item
+        for item in client.get("/api/v1/search/sources", headers=auth_headers).json()
+    }
+    assert disabled_sources["job_room"]["consented"] is False
+
+    job_room = providers[0]
+    enabled = client.patch(
+        f"/api/v1/job-providers/{job_room['id']}/state",
+        json={"expected_revision": 1, "enabled": True},
+        headers=auth_headers,
+    )
+    assert enabled.status_code == 200, enabled.text
+
+    enabled_sources = {
+        item["key"]: item
+        for item in client.get("/api/v1/search/sources", headers=auth_headers).json()
+    }
+    assert enabled_sources["job_room"]["consented"] is True
+    assert enabled_sources["swissdevjobs"]["consented"] is False
 
 
 def test_unknown_job_source_consent_is_rejected(client, auth_headers) -> None:

@@ -1,4 +1,4 @@
-"""Least-privilege read facade shared by the CLI and MCP transport."""
+"""Least-privilege domain facade shared by the CLI and MCP transport."""
 
 from __future__ import annotations
 
@@ -14,6 +14,9 @@ from backend.applications.service import (
     ApplicationService,
     ApplicationValidationError,
 )
+from backend.automation.facade_career_jobs import CareerJobOperationsMixin
+from backend.automation.facade_documents import DocumentApplicationOperationsMixin
+from backend.automation.facade_providers import ProviderOperationsMixin
 from backend.automation.grants import AutomationPrincipal
 from backend.automation.schemas import (
     ALL_AUTOMATION_SCOPES,
@@ -31,6 +34,7 @@ from backend.automation.schemas import (
     ResumeVersionView,
     SystemStatusView,
 )
+from backend.automation.tool_catalog import available_tool_names
 from backend.career.service import CareerProfileService
 from backend.resumes.service import ResumeService
 
@@ -43,7 +47,11 @@ class AutomationFacadeError(RuntimeError):
         self.code = code
 
 
-class AutomationFacade:
+class AutomationFacade(
+    ProviderOperationsMixin,
+    CareerJobOperationsMixin,
+    DocumentApplicationOperationsMixin,
+):
     """One scoped principal with a fresh database session per read operation."""
 
     def __init__(self, session_factory: Any, principal: AutomationPrincipal) -> None:
@@ -72,23 +80,14 @@ class AutomationFacade:
         self._require("system:read")
         with self._session_factory() as db:
             revision = db.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
-        tools = ["get_status"]
-        if self.allows("system:read"):
-            tools.append("get_local_model_status")
-        if self.allows("career:read"):
-            tools.append("get_career_summary")
-        if self.allows("resume:read"):
-            tools.append("get_resume_catalog")
-        if self.allows("applications:read"):
-            tools.extend(
-                ["list_applications", "get_application_readiness", "get_application_agenda"]
-            )
         scopes = [scope for scope in ALL_AUTOMATION_SCOPES if scope in self.principal.scopes]
+        mutation_scopes = {scope for scope in scopes if not scope.endswith(":read")}
         return SystemStatusView(
             product_version=__version__,
             database_revision=revision,
             granted_scopes=scopes,
-            available_tools=tools,
+            available_tools=available_tool_names(self.principal.scopes),
+            access_mode="scoped_operations" if mutation_scopes else "read_only",
         )
 
     async def local_model_status(self) -> LocalModelStatusView:

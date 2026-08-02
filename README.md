@@ -99,12 +99,12 @@ the assets.
   the model, and reports actions omitted by its seven-day horizon or compact row limit. Counts and
   rows share one SQL-statement snapshot; the renderer supplies the next browser-local midnight so
   today remains correct across daylight-saving transitions.
-- A separately installed `careeros` command gives Codex, Claude Code and shell scripts a narrow
-  read-only view of one explicitly authorized account. Its MCP server uses standard input/output
-  rather than a network listener, exposes only tools allowed by a revocable grant, and never
-  returns resume bodies, source documents, dedicated contact records, prompts, artifact bytes or
-  storage paths. User-authored labels, company names, locations and task titles can still contain
-  sensitive text, so grant only the scopes you are prepared to disclose to the connected agent.
+- A separately installed `careeros` command gives Codex and Claude Code typed operational access to
+  one explicitly authorized account. Its MCP server uses standard input/output rather than a
+  network listener and exposes only the read, write and execution tools covered by a revocable
+  grant. Career profile, jobs, declarative providers, resumes and applications use the same
+  ownership, revision, evidence and local-model readiness checks as the desktop. Arbitrary files,
+  SQL, prompts, grant management, backup/restore and full-vault erasure remain unavailable.
 - Vault erasure sanitizes SQLite even when artifact cleanup needs a retry.
 - Local AI calls use explicit context, strict schemas, bounded repair and content-free audit
   metadata through a managed llama.cpp-compatible runtime.
@@ -122,7 +122,7 @@ flowchart LR
     API --> Vault["SQLite vault + local artifacts"]
     API --> AI["Required local analysis runtime"]
     API -. "explicit source consent" .-> Jobs["Public job providers"]
-    Agent["Codex / Claude Code"] -->|"MCP stdio + scoped grant"| Automation["Read-only automation facade"]
+    Agent["Codex / Claude Code"] -->|"MCP stdio + scoped grant"| Automation["Typed automation facade"]
     Automation --> Vault
 ```
 
@@ -175,8 +175,17 @@ not confirm them for you: accept only accurate candidates, choose **Review impor
 the facts you have checked as confirmed, and save the Career Vault.
 
 Install the listed local model from the same Today page when you are ready to match opportunities.
-Model acquisition requires the displayed license consent and is separate from the CV import. Before
-the first provider search, enable only the job sources you want under Career Vault preferences.
+Model acquisition requires the displayed license consent and is separate from the CV import. A new
+Vault has no network job provider: search initially uses only jobs already stored locally. In the
+**Job providers** workspace you can configure a revisioned JSON API or HTML board, import a strict
+provider JSON document, or explicitly install a provider pack. The Swiss pack contains the reviewed
+Job-Room, SwissDevJobs and Adecco adapters plus declarative canton boards for Bern, Solothurn and
+Lucerne and specialist sources for medicine, NPOs, solar energy and purpose-driven work. It is
+available but is not installed automatically. Imports remain disabled unless you explicitly
+activate them. Request templates, pagination,
+throttling, response limits, canonical mappings, routing metadata and confidential headers all use
+the same bounded validation, deduplication and mandatory local-analysis pipeline. Pagination
+templates support both zero-based `{page}` and one-based `{page_one_based}` providers.
 
 ## Run locally
 
@@ -402,7 +411,7 @@ probe sends no Career Vault content and does not contact a cloud-model provider.
 agent is a separate trust boundary and may send returned application, resume or career metadata to
 its own provider.
 
-At least one `--scope` is required. Repeat it only for the reads this agent should receive:
+At least one `--scope` is required. Repeat it only for the data and operations this agent needs:
 
 ```powershell
 & $careeros authorize --username <your-username> --label applications `
@@ -414,15 +423,19 @@ At least one `--scope` is required. Repeat it only for the reads this agent shou
   --scope system:read --scope applications:read --days 7
 ```
 
-Available MCP tools are `get_status`, `get_local_model_status`, `get_career_summary`,
-`get_resume_catalog`, `list_applications`, `get_application_readiness` and
-`get_application_agenda`. The server registers only the tools permitted by the grant. It cannot
-edit the vault, search the web, run a free-form prompt, read arbitrary files or SQL, export
-documents, restore a backup, or delete data. Its read path opens the SQLite vault with URI
-`mode=ro` and verifies `PRAGMA query_only=ON` on every connection. Authorization and revocation use
-a separate, password-confirmed write path that is not exposed as an MCP tool.
+The server registers only tools permitted by the grant. The twelve scopes cover system status;
+Career Vault reads/writes; resume reads/writes; job reads/writes; live search execution; provider
+registry reads/writes; and application reads/writes. Tools can run enabled providers and required
+local analysis, configure and test a new provider, capture or curate jobs, create evidence-bound
+resume and dossier material, append application stages such as `applied`, and manage follow-up
+tasks. `get_status` returns the exact tools available in the current session.
 
-The same grant works with JSON CLI commands: `status`, `model-status`, `career-summary`, `resumes`,
+The agent still cannot run free-form SQL or prompts, read arbitrary paths, recover confidential
+provider headers, manage grants, export or restore the vault, erase the whole account, or bypass
+ownership, expected-revision, evidence and local-model readiness checks. Authorization and
+revocation remain separate password-confirmed operations and are never MCP tools.
+
+The same grant works with the bounded JSON CLI read commands: `status`, `model-status`, `career-summary`, `resumes`,
 `applications`, `readiness` and `agenda`. Run `careeros <command> --help` for the bounded paging,
 agenda and identifier arguments.
 

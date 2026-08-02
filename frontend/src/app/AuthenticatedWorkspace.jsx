@@ -19,6 +19,7 @@ const HistoryPage = lazy(() => import("../pages/HistoryPage").then((module) => (
 const JobsPage = lazy(() => import("../pages/JobsPage").then((module) => ({ default: module.JobsPage })));
 const NewSearchPage = lazy(() => import("../pages/NewSearchPage").then((module) => ({ default: module.NewSearchPage })));
 const ProgressPage = lazy(() => import("../pages/ProgressPage").then((module) => ({ default: module.ProgressPage })));
+const ProvidersPage = lazy(() => import("../features/providers/ProvidersPage").then((module) => ({ default: module.ProvidersPage })));
 const SchedulesPage = lazy(() => import("../pages/SchedulesPage").then((module) => ({ default: module.SchedulesPage })));
 
 class ErrorBoundary extends React.Component {
@@ -67,6 +68,7 @@ export function AuthenticatedWorkspace() {
                             <Route path="/coach" element={<RequiredLocalAnalysis><CareerCoachPage /></RequiredLocalAnalysis>} />
                             <Route path="/jobs" element={<JobsPage />} />
                             <Route path="/search" element={<RequiredLocalAnalysis><NewSearchPage /></RequiredLocalAnalysis>} />
+                            <Route path="/providers" element={<ProvidersPage />} />
                             <Route path="/new" element={<Navigate to="/search" replace />} />
                             <Route path="/schedules" element={<SchedulesPage />} />
                             <Route path="/history" element={<RequiredLocalAnalysis><HistoryPage /></RequiredLocalAnalysis>} />

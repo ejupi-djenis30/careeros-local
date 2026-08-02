@@ -12,7 +12,7 @@ from backend.core.config import settings
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 PREVIOUS_HEAD = "c5d6e7f8a9b0"
 TIMESTAMP_DEFAULT_REVISION = "d6e7f8a9b0c1"
-CURRENT_HEAD = "a9b0c1d2e3f4"
+CURRENT_HEAD = "b0c1d2e3f4a5"
 
 
 def _alembic_config(database_url: str) -> Config:

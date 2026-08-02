@@ -59,6 +59,10 @@ datas = [
 ]
 datas += collect_project_files(PROJECT_ROOT / "backend" / "migrations", "backend/migrations")
 datas += collect_project_files(PROJECT_ROOT / "backend" / "data", "backend/data")
+datas += collect_project_files(
+    PROJECT_ROOT / "backend" / "providers" / "configuration" / "packs",
+    "backend/providers/configuration/packs",
+)
 for package in ("alembic", "docx", "reportlab"):
     datas += collect_data_files(package)
 for distribution in ("alembic", "fastapi", "pydantic", "uvicorn"):

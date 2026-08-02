@@ -28,6 +28,7 @@ from backend.portability.journal import (
     clear_restore_journal,
     restore_journal_paths,
 )
+from backend.providers.configuration.models import JobProviderConfiguration
 from backend.resumes.models import ResumeArtifact, ResumeDraft, ResumeVersion
 from backend.resumes.storage import all_resume_publication_journals
 from backend.services.auth import (
@@ -594,6 +595,9 @@ def _deletion_commit_was_published(
             query.first() is not None
             for query in (
                 verification.query(CandidateProfile.id).filter(CandidateProfile.user_id == user_id),
+                verification.query(JobProviderConfiguration.id).filter(
+                    JobProviderConfiguration.user_id == user_id
+                ),
                 verification.query(SearchProfile.id).filter(SearchProfile.user_id == user_id),
                 verification.query(Job.id).filter(Job.user_id == user_id),
                 verification.query(Application.id).filter(Application.user_id == user_id),
@@ -724,6 +728,9 @@ def delete_complete_vault(
                 "search_profiles": db.query(SearchProfile)
                 .filter(SearchProfile.user_id == validated_user_id)
                 .count(),
+                "job_provider_configurations": db.query(JobProviderConfiguration)
+                .filter(JobProviderConfiguration.user_id == validated_user_id)
+                .count(),
                 "jobs": db.query(Job).filter(Job.user_id == validated_user_id).count(),
                 "scraped_jobs": len(exclusive_scraped_job_ids),
                 "preference_signals": int(
@@ -763,6 +770,9 @@ def delete_complete_vault(
             db.query(AutomationGrant).filter(AutomationGrant.user_id == validated_user_id).delete(
                 synchronize_session=False
             )
+            db.query(JobProviderConfiguration).filter(
+                JobProviderConfiguration.user_id == validated_user_id
+            ).delete(synchronize_session=False)
             db.query(AIExecution).filter(AIExecution.user_id == validated_user_id).delete(
                 synchronize_session=False
             )

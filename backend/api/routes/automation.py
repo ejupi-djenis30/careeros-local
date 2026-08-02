@@ -1,4 +1,4 @@
-"""Authenticated desktop management for read-only external-agent grants."""
+"""Authenticated desktop management for scoped external-agent grants."""
 
 from __future__ import annotations
 

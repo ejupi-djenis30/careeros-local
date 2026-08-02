@@ -257,7 +257,7 @@ def test_logical_opportunity_migration_backfills_and_round_trips(
 
     command.upgrade(config, "head")
     script = ScriptDirectory.from_config(config)
-    assert script.get_heads() == ["a9b0c1d2e3f4"]
+    assert script.get_heads() == ["b0c1d2e3f4a5"]
 
     round_trip_metadata = sa.MetaData()
     round_trip_applications = sa.Table(

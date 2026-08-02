@@ -54,6 +54,15 @@ from backend.portability.manifest import (
     sha256,
 )
 from backend.portability.schemas import ArchiveManifest, RestoreResponse
+from backend.providers.configuration.html_extract import validate_selector
+from backend.providers.configuration.models import JobProviderConfiguration
+from backend.providers.configuration.native import validate_native_adapter_id
+from backend.providers.configuration.network_policy import validate_destination_literal
+from backend.providers.configuration.schemas import (
+    ProviderCapabilitiesConfig,
+    ProviderConfigurationInput,
+    secret_header,
+)
 from backend.resumes.artifact_policy import MAX_RESUME_ARTIFACT_BYTES
 from backend.resumes.models import ResumeArtifact, ResumeDraft, ResumeVersion
 from backend.search.receipt import (
@@ -73,6 +82,7 @@ FILE_TABLES = frozenset({"career_assets", "resume_artifacts"})
 USER_SCOPED_TABLES = frozenset(
     {
         "candidate_profiles",
+        "job_provider_configurations",
         "search_profiles",
         "jobs",
         "applications",
@@ -555,6 +565,50 @@ def _decode_payload(
             _assert_ids_available(db, model, decoded[table_name])
     for row in decoded["search_profiles"]:
         _normalize_search_receipt_row(row)
+    for row in decoded["job_provider_configurations"]:
+        try:
+            if row.get("adapter_kind") == "native":
+                raw_adapter_id = row.get("native_adapter_id")
+                if not isinstance(raw_adapter_id, str):
+                    raise ValueError("Native provider rows require an adapter identifier")
+                native_adapter_id = validate_native_adapter_id(raw_adapter_id)
+                if row.get("key") != native_adapter_id:
+                    raise ValueError("Native provider keys must match the reviewed adapter ID")
+                if row.get("request_config") is not None or row.get("extraction_config") is not None:
+                    raise ValueError("Native provider rows cannot contain declarative configuration")
+                ProviderCapabilitiesConfig.model_validate(row.get("capabilities_config"))
+                # Restore never grants network consent, including for reviewed native adapters.
+                row["enabled"] = False
+                continue
+            request_config = row.get("request_config")
+            headers = request_config.get("headers", {}) if isinstance(request_config, dict) else {}
+            if not isinstance(headers, dict) or any(
+                isinstance(name, str) and secret_header(name) for name in headers
+            ):
+                raise ValueError("Portable provider configurations cannot contain secrets")
+            declaration = ProviderConfigurationInput.model_validate(
+                {
+                    "key": row.get("key"),
+                    "display_name": row.get("display_name"),
+                    "description": row.get("description"),
+                    "adapter_kind": row.get("adapter_kind"),
+                    "enabled": row.get("enabled"),
+                    "request": request_config,
+                    "extraction": row.get("extraction_config"),
+                    "capabilities": row.get("capabilities_config"),
+                }
+            )
+            validate_destination_literal(declaration.request.base_url)
+            if declaration.adapter_kind == "html":
+                validate_selector(declaration.extraction.item_selector or "")
+                for mapping in declaration.extraction.fields.values():
+                    if mapping.source != ".":
+                        validate_selector(mapping.source)
+            # Portable archives are integrity checked, not authenticated. Requiring an explicit
+            # re-enable prevents a crafted archive from silently granting network consent.
+            row["enabled"] = False
+        except (ValueError, TypeError) as exc:
+            raise ArchiveError("Archive provider configuration is invalid") from exc
     for row in decoded["jobs"]:
         _quarantine_unverified_analysis(
             row,
@@ -604,6 +658,11 @@ def _assert_decoded_ids_available(db: Session, decoded: dict[str, list[dict[str,
 def _assert_empty_vault(db: Session, user_id: int, format_version: int) -> None:
     checks = (
         (CandidateProfile, CandidateProfile.user_id, "career vault"),
+        (
+            JobProviderConfiguration,
+            JobProviderConfiguration.user_id,
+            "job provider configuration history",
+        ),
         (SearchProfile, SearchProfile.user_id, "search profile history"),
         (Job, Job.user_id, "job history"),
         (Application, Application.user_id, "application history"),

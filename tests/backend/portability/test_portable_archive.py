@@ -70,18 +70,18 @@ def _reauthenticated_headers(client, username: str) -> dict[str, str]:
     return {"Authorization": f"Bearer {login.json()['access_token']}"}
 
 
-def test_v6_archive_version_is_outside_the_frozen_v5_decoder_contract():
-    frozen_v5_supported_versions = frozenset({1, 2, 3, 4, 5})
+def test_v7_archive_version_is_outside_the_frozen_v6_decoder_contract():
+    frozen_v6_supported_versions = frozenset({1, 2, 3, 4, 5, 6})
 
-    def decode_with_frozen_v5_contract(format_version: int) -> int:
-        if format_version not in frozen_v5_supported_versions:
-            raise ValueError(f"Archive version {format_version} is not supported by the v5 decoder")
+    def decode_with_frozen_v6_contract(format_version: int) -> int:
+        if format_version not in frozen_v6_supported_versions:
+            raise ValueError(f"Archive version {format_version} is not supported by the v6 decoder")
         return format_version
 
-    assert CURRENT_ARCHIVE_VERSION == 6
-    assert SUPPORTED_ARCHIVE_VERSIONS == frozenset({1, 2, 3, 4, 5, 6})
-    with pytest.raises(ValueError, match="Archive version 6 is not supported"):
-        decode_with_frozen_v5_contract(CURRENT_ARCHIVE_VERSION)
+    assert CURRENT_ARCHIVE_VERSION == 7
+    assert SUPPORTED_ARCHIVE_VERSIONS == frozenset({1, 2, 3, 4, 5, 6, 7})
+    with pytest.raises(ValueError, match="Archive version 7 is not supported"):
+        decode_with_frozen_v6_contract(CURRENT_ARCHIVE_VERSION)
 
 
 @pytest.fixture
@@ -533,7 +533,7 @@ APPLICATION_PROJECTION_FIELDS = {
 def _rewrite_application_projection_fixture(
     archive_data: bytes,
     *,
-    format_version: int = 6,
+    format_version: int = 7,
     remove_projections: bool = False,
     projection_overrides: dict | None = None,
 ) -> bytes:
@@ -569,6 +569,8 @@ def _rewrite_application_projection_fixture(
                 row.pop(field, None)
 
     removed_tables: list[str] = []
+    if format_version < 7:
+        removed_tables.append("job_provider_configurations")
     if format_version < 6:
         removed_tables.append("application_dossier_drafts")
     if format_version < 3:
@@ -613,6 +615,7 @@ def _rewrite_legacy_v3_private_and_runtime_fields(archive_data: bytes, source_qu
     with zipfile.ZipFile(BytesIO(archive_data), "r") as source:
         files = {name: source.read(name) for name in source.namelist()}
     payload = json.loads(files["payload.json"])
+    payload["tables"].pop("job_provider_configurations")
     payload["tables"].pop("application_dossier_drafts")
     for row in payload["tables"]["jobs"]:
         for field in (
@@ -642,6 +645,7 @@ def _rewrite_legacy_v3_private_and_runtime_fields(archive_data: bytes, source_qu
     ).encode("utf-8")
     manifest = json.loads(files["manifest.json"])
     manifest["format_version"] = 3
+    manifest["record_counts"].pop("job_provider_configurations")
     manifest["record_counts"].pop("application_dossier_drafts")
     payload_entry = next(entry for entry in manifest["entries"] if entry["path"] == "payload.json")
     payload_entry["byte_size"] = len(files["payload.json"])
@@ -660,6 +664,7 @@ def _rewrite_legacy_v3_heuristic_match(archive_data: bytes) -> bytes:
     with zipfile.ZipFile(BytesIO(archive_data), "r") as source:
         files = {name: source.read(name) for name in source.namelist()}
     payload = json.loads(files["payload.json"])
+    payload["tables"].pop("job_provider_configurations")
     payload["tables"].pop("application_dossier_drafts")
     for field in (
         "analysis_provenance",
@@ -698,6 +703,7 @@ def _rewrite_legacy_v3_heuristic_match(archive_data: bytes) -> bytes:
     ).encode("utf-8")
     manifest = json.loads(files["manifest.json"])
     manifest["format_version"] = 3
+    manifest["record_counts"].pop("job_provider_configurations")
     manifest["record_counts"].pop("application_dossier_drafts")
     payload_entry = next(entry for entry in manifest["entries"] if entry["path"] == "payload.json")
     payload_entry["byte_size"] = len(files["payload.json"])
@@ -1532,7 +1538,7 @@ def test_export_delete_restore_round_trip(
     } == {key: value for key, value in expected_message.items() if key != "generation_metadata"}
     assert restored_message["generation_metadata"] == {
         "provenance": "quarantined",
-        "quarantine_reason": "unsigned_v6_coach_output_requires_revalidation",
+        "quarantine_reason": "unsigned_v7_coach_output_requires_revalidation",
         "source_generation_metadata": {"local": True},
     }
     assert payload_after == expected_payload
@@ -1838,7 +1844,7 @@ def test_successful_restore_revokes_only_the_restored_users_active_grants_and_se
     assert neighboring_access.status_code == 404
 
 
-def test_v6_restore_preserves_but_hides_self_checksummed_forged_coach_advice(
+def test_v7_restore_preserves_but_hides_self_checksummed_forged_coach_advice(
     client, auth_headers, db_session, test_user, portable_data_dir
 ):
     profile = client.put(
@@ -1856,7 +1862,7 @@ def test_v6_restore_preserves_but_hides_self_checksummed_forged_coach_advice(
     assert deleted.status_code == 204, deleted.text
     restored = client.post(
         "/api/v1/portability/restore",
-        files={"file": ("forged-v6.zip", forged, "application/zip")},
+        files={"file": ("forged-v7.zip", forged, "application/zip")},
         headers=auth_headers,
     )
 
@@ -1867,7 +1873,7 @@ def test_v6_restore_preserves_but_hides_self_checksummed_forged_coach_advice(
     assert assistant.content == "Forged authoritative executive advice."
     assert assistant.generation_metadata == {
         "provenance": "quarantined",
-        "quarantine_reason": "unsigned_v6_coach_output_requires_revalidation",
+        "quarantine_reason": "unsigned_v7_coach_output_requires_revalidation",
         "source_generation_metadata": {
             "provenance": "local_model_validated",
             "contract_version": "1.0.0",
@@ -1883,7 +1889,7 @@ def test_v6_restore_preserves_but_hides_self_checksummed_forged_coach_advice(
     assert detail.json()["messages"] == []
 
 
-def test_v6_verified_coach_round_trip_preserves_record_but_requires_revalidation(
+def test_v7_verified_coach_round_trip_preserves_record_but_requires_revalidation(
     client, auth_headers, db_session, test_user, portable_data_dir
 ):
     profile = client.put(
@@ -1912,7 +1918,7 @@ def test_v6_verified_coach_round_trip_preserves_record_but_requires_revalidation
     assert deleted.status_code == 204, deleted.text
     restored = client.post(
         "/api/v1/portability/restore",
-        files={"file": ("verified-v6.zip", exported.content, "application/zip")},
+        files={"file": ("verified-v7.zip", exported.content, "application/zip")},
         headers=auth_headers,
     )
     assert restored.status_code == 200, restored.text
@@ -1925,7 +1931,7 @@ def test_v6_verified_coach_round_trip_preserves_record_but_requires_revalidation
     assert assistant.model_id == "ollama-local/verified-coach"
     assert assistant.generation_metadata["provenance"] == "quarantined"
     assert assistant.generation_metadata["quarantine_reason"] == (
-        "unsigned_v6_coach_output_requires_revalidation"
+        "unsigned_v7_coach_output_requires_revalidation"
     )
     source_metadata = assistant.generation_metadata["source_generation_metadata"]
     assert source_metadata["execution_id"] == execution_id
@@ -1951,7 +1957,7 @@ def test_v6_verified_coach_round_trip_preserves_record_but_requires_revalidation
     assert archived_assistant["generation_metadata"]["provenance"] == "quarantined"
 
 
-def test_v6_round_trip_remaps_search_ids_and_preserves_application_job(
+def test_v7_round_trip_remaps_search_ids_and_preserves_application_job(
     client, auth_headers, db_session, test_user, portable_data_dir
 ):
     created = client.put("/api/v1/career-profile", json=_profile_payload(), headers=auth_headers)
@@ -1965,7 +1971,7 @@ def test_v6_round_trip_remaps_search_ids_and_preserves_application_job(
     with zipfile.ZipFile(BytesIO(exported.content)) as archive:
         manifest = json.loads(archive.read("manifest.json"))
         payload = json.loads(archive.read("payload.json"))
-    assert manifest["format_version"] == 6
+    assert manifest["format_version"] == 7
     expected_search_counts = {
         "search_profiles": 1,
         "scraped_jobs": 1,
@@ -2070,7 +2076,7 @@ def test_v6_round_trip_remaps_search_ids_and_preserves_application_job(
         "analysis": None,
         "worth_applying": None,
         "receipt_verified": False,
-        "quarantine_reason": "unsigned_v6_application_match_requires_revalidation",
+        "quarantine_reason": "unsigned_v7_application_match_requires_revalidation",
     }
     assert "affinity_analysis" not in restored_application.job_snapshot
     assert all(getattr(restored_profile, field) is None for field in runtime_fields)

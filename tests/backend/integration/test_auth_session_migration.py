@@ -15,6 +15,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[3]
 PREVIOUS_HEAD = "e7f8a9b0c1d2"
 AUTH_SESSION_REVISION = "f8a9b0c1d2e3"
 VAULT_LIFECYCLE_REVISION = "a9b0c1d2e3f4"
+CURRENT_HEAD = "b0c1d2e3f4a5"
 
 
 def _alembic_config(database_url: str) -> Config:
@@ -92,7 +93,7 @@ def test_auth_session_migration_is_empty_bounded_and_round_trips(tmp_path, monke
         assert "users" in sa.inspect(engine).get_table_names()
         command.upgrade(config, "head")
         assert "auth_sessions" in sa.inspect(engine).get_table_names()
-        assert ScriptDirectory.from_config(config).get_heads() == [VAULT_LIFECYCLE_REVISION]
+        assert ScriptDirectory.from_config(config).get_heads() == [CURRENT_HEAD]
     finally:
         engine.dispose()
 

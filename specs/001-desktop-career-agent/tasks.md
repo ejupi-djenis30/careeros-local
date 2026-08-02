@@ -831,3 +831,60 @@ publisher, correct per-profile rows and zero temporary/private residue.
   chunked-body, provider/inference stream, runtime tamper/cancel and liveness regressions
 - [x] T231 [US1] Run complete backend, frontend, distribution and applicable browser gates; record
   exact evidence and residual environmental limits in production-hardening analysis/convergence
+
+## Phase 31: User Story 10 — Declarative providers and scoped agent-operation parity
+
+**Goal**: Let users add advanced bounded job sources without code and let an explicitly authorized
+agent complete normal provider, search, career, resume and application workflows through typed
+domain operations.
+
+**Independent Test**: Configure JSON and HTML providers in the desktop, reject hostile network and
+mapping inputs, run them through the ordinary search pipeline, then use an MCP operational grant to
+inspect a verified job, generate and publish a resume, prepare an application dossier, record
+`applied` and create follow-up work. Verify read-only/partial scopes, revocation, user isolation,
+revision conflicts, local-model fail-closed behavior, secret redaction and portable round-trip.
+
+- [x] T232 [US10] Amend constitution, specification, plan and tasks for declarative providers,
+  operational agent scopes, typed parity, explicit network consent and unchanged privacy/evidence
+  boundaries
+- [x] T233 [US10] Add revisioned user-owned provider configuration persistence, Alembic migration,
+  portable archive v7, restore, erasure and data-model/OpenAPI contracts
+- [x] T234 [US10] Implement strict provider configuration schemas, CRUD, secret redaction,
+  validation diagnostics and JSON/HTML adapters with bounded public-HTTPS transport
+- [x] T235 [US10] Build the per-user provider registry into search consent and orchestration while
+  preserving observation, cancellation, deduplication, failure isolation and local-model gates
+- [x] T236 [US10] Add authenticated provider configuration/test API routes and the responsive,
+  keyboard-operable English/Italian Providers workspace with progressive advanced options
+- [x] T237 [US10] Extend grants, focused facades and MCP registration with career, jobs, providers,
+  search, resume and application typed read/write operations, CAS/idempotency and accurate tool
+  annotations
+- [x] T238 [US10] Add migration/portability/deletion, provider SSRF/stream, API/UI, search-registry,
+  scope-matrix, revision-conflict and in-memory/stdio MCP end-to-end tests
+- [x] T239 [US10] Run focused and complete backend/frontend/static gates, record exact evidence in
+  `configurable-providers-agent-parity-analysis.md`, converge every active artifact in
+  `configurable-providers-agent-parity-convergence.md` and leave no active service
+
+## Phase 32: Zero-provider bootstrap and explicit provider-pack import
+
+**Goal**: Ship no active network source by default and make every native or declarative source an
+explicit user-owned import with atomic validation and revisioned activation.
+
+**Independent Test**: Start with an empty vault and prove the provider registry contains no network
+adapter. Import one declarative document and the bundled Swiss pack through REST, UI and MCP; prove
+the imported entries are disabled unless explicitly activated, then run Job-Room only after
+activation. Reject malformed, credential-bearing, duplicate, oversized and unknown-native packs
+without partial rows and preserve disabled imports through archive/restore and erasure.
+
+- [x] T240 [US10] Amend constitution, specification, plan, tasks and data model for zero-provider
+  bootstrap, non-executable provider documents/packs and explicit revisioned activation
+- [x] T241 [US10] Add strict provider/pack schemas, bundled-pack loading, atomic import and a dormant
+  allowlisted native-adapter factory without dynamic code loading
+- [x] T242 [US10] Remove startup construction and fixed consent of Swiss providers; build each search
+  registry solely from enabled owned installations while retaining the local vault source
+- [x] T243 [US10] Add REST and MCP pack discovery/import plus revision-checked enable/disable parity
+- [x] T244 [US10] Add the empty-state, file import, bundled Swiss-pack import and native-provider
+  controls to the bilingual responsive Providers workspace
+- [x] T245 [US10] Update migration, archive/restore/erasure, OpenAPI, packaging and owner docs for
+  native import metadata and the external Swiss pack manifest
+- [x] T246 [US10] Add empty-bootstrap, atomic import, native allowlist, registry, API/MCP/UI,
+  portability and packaged-data regressions, then run complete gates with supported Node

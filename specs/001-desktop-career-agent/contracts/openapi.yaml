@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: CareerOS Local Desktop Additions
-  version: 1.3.0
+  version: 1.4.0
   description: Local model, application workflow and recovery interfaces for feature 001.
 servers:
   - url: http://127.0.0.1:{port}/api/v1
@@ -339,7 +339,7 @@ paths:
               schema: { $ref: "#/components/schemas/PrivateErrorResponse" }
     post:
       operationId: createAutomationGrant
-      description: Re-authenticates the local user and returns a read-only bearer token exactly once.
+      description: Re-authenticates the local user and returns a scoped bearer token exactly once.
       security:
         - desktopSession: []
           userAccessToken: []
@@ -800,6 +800,209 @@ paths:
           description: The application or saved draft changed before publication.
         "422":
           description: Readiness, evidence, content or bounded artifact validation failed.
+  /job-providers:
+    get:
+      operationId: listJobProviderConfigurations
+      description: Lists installed providers and discoverable packs. A fresh Vault has no installed network providers; configured header values are always redacted.
+      security:
+        - desktopSession: []
+          userAccessToken: []
+      responses:
+        "200":
+          description: Provider registry.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ProviderCatalog" }
+    post:
+      operationId: createJobProviderConfiguration
+      description: Creates a bounded JSON or HTML provider declaration; enabling it is explicit network-source consent.
+      security:
+        - desktopSession: []
+          userAccessToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ProviderConfigurationInput" }
+      responses:
+        "201":
+          description: Revisioned provider with confidential headers redacted.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ProviderConfiguration" }
+        "409": { description: Provider key or per-account provider limit conflict. }
+        "422": { description: Declaration, destination, mapping or bound is invalid. }
+  /job-providers/import:
+    post:
+      operationId: importJobProviderDocument
+      description: Atomically imports one strict data-only provider document or pack. Network access remains disabled unless activation is explicit.
+      security:
+        - desktopSession: []
+          userAccessToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ProviderImportRequest" }
+      responses:
+        "201":
+          description: Every provider in the document was imported at revision one.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ProviderImportResult" }
+        "409": { description: A provider key conflicts or the account provider limit would be exceeded; nothing was imported. }
+        "413": { description: The normalized document exceeds 256 KiB. }
+        "422": { description: The strict document, adapter reference, destination or mapping is invalid. }
+  /job-providers/packs/{pack_id}/import:
+    post:
+      operationId: importBundledJobProviderPack
+      description: Explicitly imports a discoverable source-controlled provider pack without loading manifest-supplied executable code.
+      security:
+        - desktopSession: []
+          userAccessToken: []
+      parameters:
+        - name: pack_id
+          in: path
+          required: true
+          schema: { type: string, pattern: "^[a-z][a-z0-9_.-]{2,159}$" }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ProviderPackInstallRequest" }
+      responses:
+        "201":
+          description: The complete pack was imported.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ProviderImportResult" }
+        "404": { description: The bundled provider pack does not exist or is invalid. }
+        "409": { description: A provider key conflicts or the account provider limit would be exceeded; nothing was imported. }
+        "422": { description: A pack provider is invalid. }
+  /job-providers/validate:
+    post:
+      operationId: validateJobProviderConfiguration
+      description: Validates declaration syntax, limits, mapping and the literal destination without network access.
+      security:
+        - desktopSession: []
+          userAccessToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ProviderConfigurationInput" }
+      responses:
+        "200":
+          description: Validation result and bounded warnings.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ProviderValidation" }
+        "422": { description: Declaration is invalid. }
+  /job-providers/{provider_id}:
+    parameters:
+      - name: provider_id
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    get:
+      operationId: getJobProviderConfiguration
+      security:
+        - desktopSession: []
+          userAccessToken: []
+      responses:
+        "200":
+          description: Owned provider with confidential headers redacted.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ProviderConfiguration" }
+        "404": { description: Provider is not owned or does not exist. }
+    put:
+      operationId: updateJobProviderConfiguration
+      description: Compare-and-swap update; redaction preservation markers may retain existing confidential headers.
+      security:
+        - desktopSession: []
+          userAccessToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ProviderConfigurationUpdate" }
+      responses:
+        "200":
+          description: Updated provider.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ProviderConfiguration" }
+        "404": { description: Provider is not owned or does not exist. }
+        "409": { description: Expected revision is stale or key conflicts. }
+        "422": { description: Declaration is invalid. }
+    delete:
+      operationId: deleteJobProviderConfiguration
+      description: Deletes one owned provider at the expected revision without deleting captured jobs.
+      security:
+        - desktopSession: []
+          userAccessToken: []
+      parameters:
+        - name: expected_revision
+          in: query
+          required: true
+          schema: { type: integer, minimum: 1 }
+      responses:
+        "204": { description: Provider deleted. }
+        "404": { description: Provider is not owned or does not exist. }
+        "409": { description: Expected revision is stale. }
+  /job-providers/{provider_id}/test:
+    post:
+      operationId: testJobProviderConfiguration
+      description: Resolves the declared public HTTPS origin and performs one bounded, no-redirect request returning at most five redacted mapped jobs.
+      security:
+        - desktopSession: []
+          userAccessToken: []
+      parameters:
+        - name: provider_id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ProviderTestRequest" }
+      responses:
+        "200":
+          description: Bounded provider sample.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ProviderTestResult" }
+        "404": { description: Provider is not owned or does not exist. }
+        "429": { description: Provider-test rate limit exceeded. }
+        "502": { description: Destination, request or response failed safely. }
+        "503": { description: Offline mode disables provider network access. }
+  /job-providers/{provider_id}/state:
+    patch:
+      operationId: setJobProviderNetworkState
+      description: Compare-and-swap enable or disable of any installed provider, including an imported native adapter.
+      security:
+        - desktopSession: []
+          userAccessToken: []
+      parameters:
+        - name: provider_id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ProviderStateUpdate" }
+      responses:
+        "200":
+          description: Provider network state updated at the next revision.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ProviderConfiguration" }
+        "404": { description: Provider is not owned or does not exist. }
+        "409": { description: Expected revision is stale. }
 components:
   securitySchemes:
     desktopSession:
@@ -1004,8 +1207,16 @@ components:
       enum:
         - system:read
         - career:read
+        - career:write
         - resume:read
+        - resume:write
+        - jobs:read
+        - jobs:write
+        - search:execute
+        - providers:read
+        - providers:write
         - applications:read
+        - applications:write
     AutomationGrant:
       type: object
       additionalProperties: false
@@ -1020,7 +1231,7 @@ components:
         scopes:
           type: array
           minItems: 1
-          maxItems: 4
+          maxItems: 12
           uniqueItems: true
           items: { $ref: "#/components/schemas/AutomationScope" }
         expires_at: { type: string, format: date-time }
@@ -1039,7 +1250,7 @@ components:
         scopes:
           type: array
           minItems: 1
-          maxItems: 4
+          maxItems: 12
           uniqueItems: true
           items: { $ref: "#/components/schemas/AutomationScope" }
         lifetime_days: { type: integer, minimum: 1, maximum: 365, default: 30 }
@@ -1059,6 +1270,256 @@ components:
         token_environment_variable: { const: CAREEROS_MCP_TOKEN }
         warning:
           const: This token is shown once. Store it in your OS credential manager and never commit it.
+    ProviderRequestConfiguration:
+      type: object
+      additionalProperties: false
+      required: [base_url, path_template, method, query_params, headers, timeout_seconds, max_response_bytes, max_pages, page_size, throttle_ms, retries]
+      properties:
+        base_url: { type: string, format: uri, minLength: 12, maxLength: 2048, description: Credential-free public HTTPS origin on port 443. }
+        path_template: { type: string, minLength: 1, maxLength: 1024 }
+        method: { type: string, enum: [GET, POST] }
+        query_params:
+          type: object
+          maxProperties: 30
+          additionalProperties: { type: string, maxLength: 2000 }
+        json_body: { type: [object, "null"] }
+        headers:
+          type: object
+          maxProperties: 20
+          additionalProperties: { type: string, maxLength: 2048, writeOnly: true }
+          description: Every value is confidential, redacted after write and omitted from portable archives.
+        timeout_seconds: { type: number, minimum: 1, maximum: 60, default: 20 }
+        max_response_bytes: { type: integer, minimum: 1024, maximum: 8388608, default: 2000000 }
+        max_pages: { type: integer, minimum: 1, maximum: 20, default: 5 }
+        page_size: { type: integer, minimum: 1, maximum: 100, default: 50 }
+        throttle_ms: { type: integer, minimum: 0, maximum: 10000, default: 250 }
+        retries: { type: integer, minimum: 0, maximum: 3, default: 1 }
+    ProviderFieldMapping:
+      type: object
+      additionalProperties: false
+      required: [source]
+      properties:
+        source: { type: string, minLength: 1, maxLength: 500 }
+        attribute: { type: [string, "null"], maxLength: 80 }
+        default: { type: [string, "null"], maxLength: 1000 }
+    ProviderExtractionConfiguration:
+      type: object
+      additionalProperties: false
+      required: [fields]
+      properties:
+        items_path: { type: [string, "null"], maxLength: 500 }
+        item_selector: { type: [string, "null"], maxLength: 500 }
+        total_path: { type: [string, "null"], maxLength: 500 }
+        fields:
+          type: object
+          minProperties: 2
+          maxProperties: 20
+          additionalProperties: { $ref: "#/components/schemas/ProviderFieldMapping" }
+          description: Canonical mappings must include id and title.
+    ProviderCapabilitiesConfiguration:
+      type: object
+      additionalProperties: false
+      required: [accepted_domains, supported_languages]
+      properties:
+        accepted_domains:
+          type: array
+          minItems: 1
+          maxItems: 20
+          uniqueItems: true
+          items: { type: string, minLength: 1, maxLength: 32 }
+        supported_languages:
+          type: array
+          minItems: 1
+          maxItems: 20
+          uniqueItems: true
+          items: { type: string, minLength: 1, maxLength: 32 }
+    ProviderConfigurationInput:
+      type: object
+      additionalProperties: false
+      required: [key, display_name, description, adapter_kind, enabled, request, extraction, capabilities]
+      properties:
+        key: { type: string, pattern: "^[a-z][a-z0-9_-]{1,63}$" }
+        display_name: { type: string, minLength: 1, maxLength: 160 }
+        description: { type: string, maxLength: 2000 }
+        adapter_kind: { type: string, enum: [json, html] }
+        enabled: { type: boolean, default: false }
+        request: { $ref: "#/components/schemas/ProviderRequestConfiguration" }
+        extraction: { $ref: "#/components/schemas/ProviderExtractionConfiguration" }
+        capabilities: { $ref: "#/components/schemas/ProviderCapabilitiesConfiguration" }
+    ProviderConfigurationUpdate:
+      allOf:
+        - { $ref: "#/components/schemas/ProviderConfigurationInput" }
+        - type: object
+          required: [expected_revision]
+          properties:
+            expected_revision: { type: integer, minimum: 1 }
+    ProviderConfiguration:
+      type: object
+      additionalProperties: false
+      required: [id, key, display_name, description, adapter_kind, enabled, revision, native_adapter_id, source_pack_id, source_pack_version, request, extraction, capabilities, has_secrets, created_at, updated_at]
+      properties:
+        id: { type: string, format: uuid }
+        key: { type: string, pattern: "^[a-z][a-z0-9_-]{1,63}$" }
+        display_name: { type: string, minLength: 1, maxLength: 160 }
+        description: { type: string, maxLength: 2000 }
+        adapter_kind: { type: string, enum: [json, html, native] }
+        enabled: { type: boolean }
+        revision: { type: integer, minimum: 1 }
+        native_adapter_id: { type: [string, "null"], maxLength: 64 }
+        source_pack_id: { type: [string, "null"], maxLength: 160 }
+        source_pack_version: { type: [string, "null"], maxLength: 64 }
+        request:
+          oneOf:
+            - { $ref: "#/components/schemas/ProviderRequestConfiguration" }
+            - { type: "null" }
+        extraction:
+          oneOf:
+            - { $ref: "#/components/schemas/ProviderExtractionConfiguration" }
+            - { type: "null" }
+        capabilities: { $ref: "#/components/schemas/ProviderCapabilitiesConfiguration" }
+        has_secrets: { type: boolean }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+    DeclarativeProviderImportEntry:
+      type: object
+      additionalProperties: false
+      required: [kind, configuration]
+      properties:
+        kind: { const: declarative }
+        configuration: { $ref: "#/components/schemas/ProviderConfigurationInput" }
+      description: The configuration must be disabled and contain no headers.
+    NativeProviderImportEntry:
+      type: object
+      additionalProperties: false
+      required: [kind, adapter_id, key, display_name, description, capabilities]
+      properties:
+        kind: { const: native }
+        adapter_id: { type: string, pattern: "^[a-z][a-z0-9_-]{1,63}$" }
+        key: { type: string, pattern: "^[a-z][a-z0-9_-]{1,63}$" }
+        display_name: { type: string, minLength: 1, maxLength: 160 }
+        description: { type: string, maxLength: 2000 }
+        capabilities: { $ref: "#/components/schemas/ProviderCapabilitiesConfiguration" }
+      description: adapter_id and key must match a closed, reviewed adapter identifier; module and executable paths are not accepted.
+    ProviderImportEntry:
+      oneOf:
+        - { $ref: "#/components/schemas/DeclarativeProviderImportEntry" }
+        - { $ref: "#/components/schemas/NativeProviderImportEntry" }
+      discriminator:
+        propertyName: kind
+    ProviderDocument:
+      type: object
+      additionalProperties: false
+      required: [kind, format_version, provider]
+      properties:
+        kind: { const: provider }
+        format_version: { const: 1 }
+        provider: { $ref: "#/components/schemas/ProviderImportEntry" }
+    ProviderPackDocument:
+      type: object
+      additionalProperties: false
+      required: [kind, format_version, id, version, name, description, providers]
+      properties:
+        kind: { const: provider_pack }
+        format_version: { const: 1 }
+        id: { type: string, pattern: "^[a-z][a-z0-9_.-]{2,159}$" }
+        version: { type: string, minLength: 5, maxLength: 64 }
+        name: { type: string, minLength: 1, maxLength: 160 }
+        description: { type: string, maxLength: 2000 }
+        providers:
+          type: array
+          minItems: 1
+          maxItems: 20
+          items: { $ref: "#/components/schemas/ProviderImportEntry" }
+    ProviderImportDocument:
+      oneOf:
+        - { $ref: "#/components/schemas/ProviderDocument" }
+        - { $ref: "#/components/schemas/ProviderPackDocument" }
+      discriminator:
+        propertyName: kind
+    ProviderImportRequest:
+      type: object
+      additionalProperties: false
+      required: [document]
+      properties:
+        document: { $ref: "#/components/schemas/ProviderImportDocument" }
+        activate: { type: boolean, default: false }
+    ProviderPackInstallRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        activate: { type: boolean, default: false }
+    ProviderStateUpdate:
+      type: object
+      additionalProperties: false
+      required: [expected_revision, enabled]
+      properties:
+        expected_revision: { type: integer, minimum: 1 }
+        enabled: { type: boolean }
+    ProviderPackSummary:
+      type: object
+      additionalProperties: false
+      required: [id, version, name, description, provider_keys]
+      properties:
+        id: { type: string }
+        version: { type: string }
+        name: { type: string }
+        description: { type: string }
+        provider_keys:
+          type: array
+          maxItems: 20
+          items: { type: string }
+    ProviderImportResult:
+      type: object
+      additionalProperties: false
+      required: [source_id, activated, imported]
+      properties:
+        source_id: { type: [string, "null"] }
+        activated: { type: boolean }
+        imported:
+          type: array
+          minItems: 1
+          maxItems: 20
+          items: { $ref: "#/components/schemas/ProviderConfiguration" }
+    ProviderCatalog:
+      type: object
+      additionalProperties: false
+      required: [installed, available_packs]
+      properties:
+        installed:
+          type: array
+          maxItems: 50
+          items: { $ref: "#/components/schemas/ProviderConfiguration" }
+        available_packs:
+          type: array
+          maxItems: 20
+          items: { $ref: "#/components/schemas/ProviderPackSummary" }
+    ProviderValidation:
+      type: object
+      additionalProperties: false
+      required: [valid, provider_key, warnings]
+      properties:
+        valid: { const: true }
+        provider_key: { type: string }
+        warnings: { type: array, maxItems: 20, items: { type: string } }
+    ProviderTestRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        query: { type: string, maxLength: 1000, default: software engineer }
+        location: { type: string, maxLength: 500, default: "" }
+        language: { type: string, minLength: 2, maxLength: 16, default: en }
+    ProviderTestResult:
+      type: object
+      additionalProperties: false
+      required: [provider_key, returned_count, sample, diagnostics]
+      properties:
+        provider_key: { type: string }
+        returned_count: { type: integer, minimum: 0, maximum: 5 }
+        sample:
+          type: array
+          maxItems: 5
+          items: { type: object }
+        diagnostics: { type: array, maxItems: 20, items: { type: string } }
     LocalModelStatus:
       type: object
       additionalProperties: false

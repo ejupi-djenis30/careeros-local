@@ -11,8 +11,16 @@ from pydantic import BaseModel, ConfigDict, Field, SecretStr, field_validator
 AutomationScope = Literal[
     "system:read",
     "career:read",
+    "career:write",
     "resume:read",
+    "resume:write",
+    "jobs:read",
+    "jobs:write",
+    "search:execute",
+    "providers:read",
+    "providers:write",
     "applications:read",
+    "applications:write",
 ]
 AutomationErrorCode = Literal[
     "authentication_failed",
@@ -26,8 +34,16 @@ AutomationErrorCode = Literal[
 ALL_AUTOMATION_SCOPES: tuple[AutomationScope, ...] = (
     "system:read",
     "career:read",
+    "career:write",
     "resume:read",
+    "resume:write",
+    "jobs:read",
+    "jobs:write",
+    "search:execute",
+    "providers:read",
+    "providers:write",
     "applications:read",
+    "applications:write",
 )
 
 
@@ -67,7 +83,7 @@ class GrantView(AutomationDTO):
     label: str = Field(min_length=1, max_length=120)
     scopes: list[AutomationScope] = Field(
         min_length=1,
-        max_length=4,
+        max_length=12,
         json_schema_extra={"uniqueItems": True},
     )
     expires_at: datetime
@@ -77,7 +93,7 @@ class GrantView(AutomationDTO):
 
 class GrantIssueRequest(AutomationDTO):
     label: str = Field(min_length=1, max_length=120)
-    scopes: list[AutomationScope] = Field(min_length=1, max_length=4)
+    scopes: list[AutomationScope] = Field(min_length=1, max_length=12)
     lifetime_days: int = Field(default=30, ge=1, le=365)
     password: SecretStr
 
@@ -115,7 +131,7 @@ class SystemStatusView(AutomationDTO):
     schema_version: Literal["1.0"] = "1.0"
     product: Literal["CareerOS Local"] = "CareerOS Local"
     product_version: str
-    access_mode: Literal["read_only"] = "read_only"
+    access_mode: Literal["read_only", "scoped_operations"] = "read_only"
     database_revision: str
     granted_scopes: list[AutomationScope]
     available_tools: list[str]

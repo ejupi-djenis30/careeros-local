@@ -2,6 +2,13 @@
 
 <!--
 Sync impact report
+- Amendment: a fresh vault contains no installed network job provider. Reviewed native adapters
+  remain dormant until the user imports a bounded provider document or pack; imports are atomic,
+  non-executable and disabled unless the importing action explicitly grants network activation.
+- Amendment: job providers may be added as bounded declarative user configurations, and
+  external-agent grants may authorize the same typed career operations as the desktop through
+  explicit read, write and execute scopes without exposing generic storage or bypassing domain
+  validation.
 - Amendment: destructive vault operations now persist an explicit four-state lifecycle before
   mutation, use purpose-bound recovery authority and restart-durable ownership journals, and
   clear pending state only after durable cleanup and SQLite sanitation have completed.
@@ -35,9 +42,9 @@ Sync impact report
 - Amendment: every workflow presented as AI analysis now requires a ready, validated local model
   and fails closed instead of substituting heuristic output; owned records and deterministic
   preflight/export workflows remain available without inference.
-- Version: 1.2.0 (adds mandatory crash-recoverable vault maintenance and orderly shutdown).
+- Version: 1.4.0 (adds zero-provider bootstrap and explicit provider-pack import).
 - Ratified: 2026-07-17.
-- Last amended: 2026-07-31.
+- Last amended: 2026-08-02.
 - Principles: desktop ownership, local intelligence, grounded career truth, durable vault,
   bounded architecture, measurable delivery, secure distribution, accessible documents.
 - Dependent artifacts: plan, specification, task and checklist templates reviewed.
@@ -91,6 +98,19 @@ evidence of artifact availability.
 Deterministic provider queries MUST use only user-entered search instructions and explicit
 preferences. CV prose, LLM-normalized profile fields and unconfirmed model intent MUST NOT become
 provider queries without a separate user confirmation.
+User-defined job providers MUST be declarative rather than executable. Their network requests MUST
+use explicit opt-in, credential-free HTTPS destinations outside loopback and private networks,
+bounded same-origin paths, disabled redirects and ambient proxies, bounded pagination and response
+bytes, and validated JSON or HTML extraction rules. Provider credentials and secret-looking header
+values MUST never enter logs, exports, tool results or list responses; configuration errors MUST
+fail closed before a request is made.
+A new vault MUST register no network job provider. A reviewed native adapter MAY ship as dormant
+application code, but it MUST NOT appear in the active registry until the user explicitly imports a
+strict provider document or provider pack that references its allowlisted adapter identifier.
+Provider documents and packs MUST be bounded JSON data, MUST NOT contain executable modules or
+stored credentials, MUST validate completely before an atomic import, and MUST remain disabled
+unless the import or a later revision-checked action explicitly enables network access. Bundled
+pack discovery is not installation or consent.
 
 Rationale: accuracy is more valuable than fluency in high-stakes career material.
 
@@ -207,6 +227,13 @@ MAY appear only in the explicit non-cacheable issuance response, MUST be shown a
 secret, and MUST NOT be written to logs, browser storage, application storage or the clipboard
 without a direct user action. Grant lists expose only owned non-secret metadata and MUST keep
 every active grant visible and revocable.
+External-agent authority MUST be purpose-bound through explicit read, write and execute scopes.
+Any career workflow available to an authenticated desktop user SHOULD have a typed agent operation
+with the same ownership checks, bounded schemas, local-model readiness gates, revision compare-and-
+swap and durable domain-service invariants. Grants MUST NOT expose generic SQL, arbitrary files,
+provider code execution, stored credentials, raw session authority, restore, erasure or a way to
+bypass normal validation. Every tool call MUST reacquire the vault lease and revalidate the grant;
+revocation, expiry and vault lifecycle state MUST fail closed before mutation.
 Modal workflows and modal navigation overlays MUST identify themselves to assistive technology,
 contain keyboard focus while open, make obscured content inert, lock background scrolling, close
 with Escape where safe, and return focus to their opener when it remains available.
@@ -226,8 +253,9 @@ Rationale: private data and career documents deserve secure, inclusive defaults.
   product readiness check.
 - A failed model call never degrades into an unlabeled heuristic match or completed AI result.
 - A generated career claim without evidence is rejected before it reaches the user.
-- External-agent access remains read-only and scoped; desktop grant management never turns the
-  desktop session token into an MCP credential or stores the one-time bearer for convenience.
+- External-agent access remains explicitly scoped and typed; read, write and execute grants may
+  operate normal career workflows but never turn the desktop session token into an MCP credential,
+  expose generic storage or store the one-time bearer for convenience.
 - The default installer starts on a clean supported OS without developer tooling.
 - The desktop app must recover cleanly from a crashed local model or backend process.
 - A killed reset, restore or erasure resumes safely from durable lifecycle state; an unrelated
@@ -257,4 +285,4 @@ minor; clarification without changed obligations is patch. Every plan MUST perfo
 check before research and again before release. Exceptions require owner approval, an expiry date
 and a tracked remediation task; there are no implicit exceptions.
 
-**Version**: 1.2.0 | **Ratified**: 2026-07-17 | **Last amended**: 2026-07-31
+**Version**: 1.3.0 | **Ratified**: 2026-07-17 | **Last amended**: 2026-08-02

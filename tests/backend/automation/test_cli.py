@@ -486,15 +486,17 @@ async def test_real_stdio_subprocess_has_clean_protocol_and_redacted_stderr(
         "get_status",
         "get_local_model_status",
         "list_applications",
+        "get_application",
         "get_application_readiness",
         "get_application_agenda",
+        "get_application_dossier_draft",
     }
     assert status.isError is False
     assert status.structuredContent is not None
     assert status.structuredContent["access_mode"] == "read_only"
     assert denied.isError is True
     assert expected_code in str(denied.content)
-    assert "read-only stdio session started" in diagnostics
+    assert "scoped operational stdio session started" in diagnostics
     assert token not in diagnostics
     assert str(data_dir) not in diagnostics
     assert "installation-secret" not in diagnostics

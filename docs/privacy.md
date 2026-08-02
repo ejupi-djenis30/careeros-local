@@ -4,11 +4,23 @@ CareerOS Local is designed to minimize disclosure of highly sensitive career dat
 
 ## Stored locally
 
-The app may store identity and contact data, work and education history, skills, languages, achievements, goals, preferences, source documents, profile photos, resume drafts and publications, job snapshots, application tasks, working dossier drafts and dossier versions, coach conversations, and redacted AI execution metadata. Dossier drafts are stored in the local SQLite vault rather than browser storage and are removed with their application or a complete-vault erasure. Model binaries and partial downloads are stored in separate app-managed directories.
+The app may store identity and contact data, work and education history, skills, languages,
+achievements, goals, preferences, source documents, profile photos, resume drafts and publications,
+job snapshots, declarative provider settings and confidential headers, application tasks, working
+dossier drafts and dossier versions, coach conversations, and redacted AI execution metadata.
+Dossier drafts and provider declarations are stored in the local SQLite vault rather than browser
+storage and are removed with their owner or a complete-vault erasure. Model binaries and partial
+downloads are stored in separate app-managed directories.
 
 ## Not collected
 
-The project contains no product telemetry, advertising identifiers, cloud AI integration, remote prompt logging, or analytics SDK. The application does not silently upload a profile or resume. Job-provider requests are user-initiated search operations and disclose only deterministic queries built from the explicit role, strategy and preferences. Provider planning never invokes the local model, and only v3 cache records marked `deterministic-explicit` can be reused.
+The project contains no product telemetry, advertising identifiers, cloud AI integration, remote
+prompt logging, or analytics SDK. The application does not silently upload a profile or resume.
+Job-provider requests are user-initiated search operations and disclose only deterministic queries
+built from the explicit role, strategy and preferences. Custom providers are non-executable
+declarations restricted to their public HTTPS origin, and disabled until explicitly enabled.
+Provider planning never invokes the local model, and only v3 cache records marked
+`deterministic-explicit` can be reused.
 Links opened from job, resume and application data require HTTPS; unencrypted HTTP is accepted only
 for exact loopback hosts used by local runtimes.
 
@@ -79,12 +91,13 @@ CV snapshot and the same digest-based reproducibility contract.
 
 ## CLI and agent access
 
-The separately installed `careeros` CLI and its MCP server use a distinct, read-only automation
+The separately installed `careeros` CLI and its MCP server use a distinct, scoped automation
 boundary. The Python wheel is separate from the desktop installer. A signed-in user can issue and
 revoke grants from the desktop **Agent access** page after re-entering the current CareerOS
 password. The CLI provides the same authorization path for terminal workflows. A grant belongs to
-one local account and has a label, an expiry and one or more of these scopes:
-`system:read`, `career:read`, `resume:read`, and `applications:read`. The bearer token is displayed
+one local account and has a label, an expiry and one or more granular read, write or execution
+scopes across system status, Career Vault, resumes, jobs, search, providers and applications. The
+bearer token is displayed
 only when the grant is created. The response is marked `no-store`, the renderer keeps the bearer
 only in the current component, and copying requires an explicit button press. Dismissal or
 navigation removes the visible bearer; it never enters browser storage. CareerOS stores its
@@ -94,30 +107,37 @@ The portable backup format intentionally excludes automation-grant rows, includi
 scope metadata and token digests. Complete vault erasure deletes the owned rows instead. Successful
 grant mutations retain only the 100 most recent inactive lifecycle transitions for that account;
 active grants are always kept and another account is never pruned.
+Portable provider declarations omit every configured header and are restored disabled. The owner
+must inspect and explicitly re-enable each imported source, supplying any credentials again.
 
-Automation reads open the SQLite vault with URI `mode=ro` and verify
-`PRAGMA query_only=ON` on every new connection. Grant authorization and revocation use a separate,
-password-confirmed write path; neither operation is available through the MCP tool surface.
+MCP opens a fresh session only while it holds the exclusive desktop vault lease. Typed mutations
+reuse the same owner filters, compare-and-swap revisions, evidence validation and local-model
+readiness gates as the desktop. Grant authorization and revocation use a separate,
+password-confirmed path; neither operation is available through the MCP tool surface.
 
 The MCP server communicates over the parent process's standard input and output and opens no
-network listener. Vault, resume, application and agenda reads generate no outbound or cloud
-traffic. The `get_local_model_status` tool is the narrow exception to a purely file-and-database
-read: it may make a content-free HTTP readiness probe to the configured, allowlisted local-runtime
+network listener. Ordinary Vault operations generate no outbound or cloud traffic.
+`run_job_search` and `test_provider_configuration` are explicit open-world operations and contact
+only enabled, declared public HTTPS job origins. The `get_local_model_status` tool may make a
+content-free HTTP readiness probe to the configured, allowlisted local-runtime
 endpoint. That endpoint is loopback by default; container deployments may explicitly allow a
 single-label runtime alias such as `ollama` or `host.docker.internal`. The probe contains no Career
 Vault data or prompt, does not contact a cloud-model provider and does not start a job search. The
 tools expose bounded projections:
 
 - product, schema and local-model readiness;
-- Career Vault completeness and fact counts without fact prose or dedicated contact fields;
-- resume draft/version metadata without document bodies or artifact bytes;
-- application summaries, deterministic readiness checks and a bounded next-action agenda.
+- the complete structured Career Vault when `career:read` is granted;
+- resume drafts and versions needed to generate, revise and publish truthful local materials;
+- jobs with receipt-verified local analysis and explicit source identity;
+- provider declarations with every configured header value redacted;
+- application history, deterministic readiness, dossier drafts and a bounded next-action agenda.
 
-The tools do not accept arbitrary paths, files, SQL or prompts. They do not expose source
-documents, resume text, dedicated contact records, local storage paths, access tokens or model
-prompts. User-authored labels, resume names, company names, locations and task titles can still
-contain personal or sensitive text; authorizing their scope allows the connected agent to receive
-those values. There are no create, update, delete, restore, export or network-search tools.
+The tools do not accept arbitrary paths, files, SQL or prompts. They do not expose source-document
+bytes, artifact bytes, local storage paths, access tokens, provider-header values or model prompts.
+User-authored profile, resume, job and application content can contain personal or sensitive text;
+authorizing its scope allows the connected agent to receive it. Typed create, update and narrowly
+targeted delete tools exist for ordinary product workflows. Backup/restore, complete-vault erasure,
+grant management, model installation and arbitrary data access remain desktop/operator-only.
 
 This boundary does not make an external agent private. An agent can include MCP results in a
 request to its own provider. Starting the server therefore requires the explicit
@@ -154,7 +174,7 @@ surface. The schema remains generated directly in Python for contract and CI val
 
 Each CLI command and MCP tool call uses the same exclusive vault lease as the desktop sidecar.
 MCP releases it after bootstrap and after every call, so an idle server does not keep the desktop
-closed. Before each tool read, it reacquires the lease and revalidates the token, expiry, revocation
+closed. Before each tool operation, it reacquires the lease and revalidates the token, expiry, revocation
 state and original grant identity. A call made while CareerOS Local owns the vault returns
 `vault_busy`; it does not become a second writer. Restore revokes all active automation grants for
 the restored account, and complete vault erasure deletes the grant records.
@@ -189,6 +209,13 @@ be shared only when their provider identity is stable. Manually captured listing
 server-derived per-user namespace, ignore client-supplied manual ids, and are never merged across
 users. Shared provider rows exclude user-specific discovery queries, while restore rejects private
 or stale cross-user collisions instead of silently merging them.
+
+A new Vault contains no network job providers. Configured providers and imported pack entries are
+owned rows and are contacted only while their current revision is enabled. Provider and pack JSON
+is strictly bounded data, cannot name executable modules or paths, and cannot carry configured
+headers. The bundled Swiss manifest is discoverable but not installed automatically. Portable
+archives preserve provider and pack provenance, omit configured headers, and force every restored
+provider back to disabled so importing a backup cannot silently grant network access.
 
 The exact confirmation phrase erases profile, resume, search, match, application, workflow,
 coaching, learned-preference, and AI-audit data plus app-owned files. SQLite secure deletion, WAL

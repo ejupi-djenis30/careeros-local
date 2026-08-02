@@ -196,6 +196,38 @@ Canvas invariants:
 
 ## New persistent entities
 
+### JobProviderConfiguration
+
+Purpose: one user-owned, revisioned provider installation. It either declares a public JSON/HTML
+adapter or references a reviewed native adapter through a bounded imported document or pack.
+
+| Field | Type | Rules |
+|------|------|-------|
+| `id` | UUID | Primary key |
+| `user_id` | integer | Required owner; cascade delete; indexed with enabled state |
+| `key` | short string | Unique per owner; normalized provider identifier |
+| `display_name` | string | Printable, 1–160 characters |
+| `description` | text | Bounded routing description |
+| `adapter_kind` | `json`, `html` or `native` | Check constrained; selects a strict parser or closed native factory |
+| `native_adapter_id` | nullable short string | Required only for native rows; allowlisted identifier, never a module/path |
+| `source_pack_id` | nullable short string | Bounded import provenance |
+| `source_pack_version` | nullable short string | Bounded pack version provenance |
+| `enabled` | boolean | Explicit consent for this source to participate in searches |
+| `revision` | positive integer | Monotonic compare-and-swap authority |
+| `request_config` | nullable JSON object | Required for declarative rows; HTTPS origin, templates, confidential headers and hard limits |
+| `extraction_config` | nullable JSON object | Required for declarative rows; JSON paths or bounded CSS mapped to canonical job fields |
+| `capabilities_config` | JSON object | Bounded accepted domains and supported languages |
+| `created_at` | timestamp | UTC |
+| `updated_at` | timestamp | UTC |
+
+Fresh users have no rows. A provider document or pack validates every entry and conflict before one
+atomic insert; imported rows default to disabled unless the import explicitly activates them.
+Declarations cannot contain code, arbitrary regex, redirects, ambient proxy settings, filesystem
+paths or an alternate network origin. Runtime resolution rejects local, private, link-local and
+otherwise non-public addresses immediately before every request. Every configured header value is
+confidential: API and MCP views return only a preservation marker, and portable archive v7 removes
+all headers and disables imported providers until the owner explicitly re-enables them.
+
 ### AIExecution
 
 Purpose: content-free audit and quality telemetry for a local AI task.
@@ -373,3 +405,8 @@ The vault-lifecycle revision follows the refresh-session head. It adds the two o
 Upgrade preserves all vault records. Downgrade refuses while any owner is pending because dropping
 the recovery marker could expose a partially reset, restored or erased vault as normal; once every
 owner is `ready`, downgrade removes only the index, checks and lifecycle columns.
+
+The provider-configuration revision follows the dossier-draft and vault-lifecycle chain. It creates
+an empty `job_provider_configurations` table with owner/key uniqueness, revision and adapter checks,
+plus owner and owner/enabled indexes. It does not infer provider consent or migrate executable
+scraper logic. Downgrade drops only these declarations; already captured jobs remain intact.

@@ -9,6 +9,7 @@ from backend.models import auth_session as auth_session_models
 from backend.models import job as job_models
 from backend.models import search_profile as search_profile_models
 from backend.models import user as user_models
+from backend.providers.configuration import models as provider_configuration_models
 from backend.resumes import models as resume_models
 from backend.workflows import models as workflow_models
 
@@ -20,6 +21,7 @@ __all__ = [
     "coach_models",
     "auth_session_models",
     "job_models",
+    "provider_configuration_models",
     "resume_models",
     "search_profile_models",
     "user_models",

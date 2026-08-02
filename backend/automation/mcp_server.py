@@ -1,4 +1,4 @@
-"""Read-only MCP stdio transport for a scoped CareerOS automation grant."""
+"""Scoped MCP stdio transport for typed CareerOS domain operations."""
 
 from __future__ import annotations
 
@@ -13,7 +13,6 @@ from typing import TYPE_CHECKING, Annotated, Any, TypeVar
 
 from mcp.server.fastmcp import FastMCP
 from mcp.server.fastmcp.exceptions import ToolError
-from mcp.types import ToolAnnotations
 from pydantic import Field
 
 from backend.automation.grants import (
@@ -21,6 +20,10 @@ from backend.automation.grants import (
     AutomationGrantError,
     authenticate_grant,
 )
+from backend.automation.mcp_annotations import READ_ONLY
+from backend.automation.mcp_career_jobs import register_career_job_tools
+from backend.automation.mcp_documents import register_document_application_tools
+from backend.automation.mcp_providers import register_provider_tools
 from backend.automation.runtime import AutomationRuntimeError, automation_runtime
 from backend.automation.schemas import (
     AgendaView,
@@ -37,13 +40,6 @@ if TYPE_CHECKING:
 
 ResultT = TypeVar("ResultT")
 
-_READ_ONLY = ToolAnnotations(
-    readOnlyHint=True,
-    destructiveHint=False,
-    idempotentHint=True,
-    openWorldHint=False,
-)
-
 
 def _safe(call: Callable[..., ResultT], *args: Any, **kwargs: Any) -> ResultT:
     from backend.automation.facade import AutomationFacadeError
@@ -53,7 +49,7 @@ def _safe(call: Callable[..., ResultT], *args: Any, **kwargs: Any) -> ResultT:
     except AutomationFacadeError as exc:
         raise ToolError(f"{exc.code}: {exc}") from None
     except Exception:
-        raise ToolError("internal_error: CareerOS could not complete the read operation") from None
+        raise ToolError("internal_error: CareerOS could not complete the operation") from None
 
 
 async def _safe_async(
@@ -66,7 +62,7 @@ async def _safe_async(
     except AutomationFacadeError as exc:
         raise ToolError(f"{exc.code}: {exc}") from None
     except Exception:
-        raise ToolError("internal_error: CareerOS could not complete the read operation") from None
+        raise ToolError("internal_error: CareerOS could not complete the operation") from None
 
 
 def build_server(
@@ -87,7 +83,7 @@ def build_server(
                 raise ToolError(f"{exc.code}: {exc}") from None
             except Exception:
                 raise ToolError(
-                    "internal_error: CareerOS could not authorize the read operation"
+                    "internal_error: CareerOS could not authorize the operation"
                 ) from None
 
     async def read_async(
@@ -103,15 +99,16 @@ def build_server(
                 raise ToolError(f"{exc.code}: {exc}") from None
             except Exception:
                 raise ToolError(
-                    "internal_error: CareerOS could not authorize the read operation"
+                    "internal_error: CareerOS could not authorize the operation"
                 ) from None
 
     server = FastMCP(
         name="CareerOS Local",
         instructions=(
-            "Read-only access to one explicitly authorized CareerOS vault. "
-            "Tool results are bounded projections, not raw resumes or source documents. "
-            "Never ask for passwords, grant tokens, arbitrary files, SQL, or destructive operations."
+            "Typed access to one explicitly authorized CareerOS vault. Read, write and network "
+            "operations appear only when their grant scopes allow them. Respect expected revisions, "
+            "use verified facts for application materials, and never ask for passwords, bearer "
+            "tokens, arbitrary files or SQL."
         ),
         website_url="https://github.com/ejupi-djenis30/careeros-local",
         log_level="ERROR",
@@ -129,11 +126,11 @@ def build_server(
 
             return await read_async(facade.local_model_status)
 
-        server.add_tool(get_status, name="get_status", annotations=_READ_ONLY)
+        server.add_tool(get_status, name="get_status", annotations=READ_ONLY)
         server.add_tool(
             get_local_model_status,
             name="get_local_model_status",
-            annotations=_READ_ONLY,
+            annotations=READ_ONLY,
         )
 
     if facade.allows("career:read"):
@@ -143,7 +140,7 @@ def build_server(
 
             return await read(facade.career_summary)
 
-        server.add_tool(get_career_summary, name="get_career_summary", annotations=_READ_ONLY)
+        server.add_tool(get_career_summary, name="get_career_summary", annotations=READ_ONLY)
 
     if facade.allows("resume:read"):
 
@@ -152,7 +149,7 @@ def build_server(
 
             return await read(facade.resume_catalog)
 
-        server.add_tool(get_resume_catalog, name="get_resume_catalog", annotations=_READ_ONLY)
+        server.add_tool(get_resume_catalog, name="get_resume_catalog", annotations=READ_ONLY)
 
     if facade.allows("applications:read"):
 
@@ -185,17 +182,21 @@ def build_server(
                 timezone_offset_minutes=timezone_offset_minutes,
             )
 
-        server.add_tool(list_applications, name="list_applications", annotations=_READ_ONLY)
+        server.add_tool(list_applications, name="list_applications", annotations=READ_ONLY)
         server.add_tool(
             get_application_readiness,
             name="get_application_readiness",
-            annotations=_READ_ONLY,
+            annotations=READ_ONLY,
         )
         server.add_tool(
             get_application_agenda,
             name="get_application_agenda",
-            annotations=_READ_ONLY,
+            annotations=READ_ONLY,
         )
+
+    register_career_job_tools(server, facade, read, read_async)
+    register_provider_tools(server, facade, read, read_async)
+    register_document_application_tools(server, facade, read)
 
     return server
 
@@ -217,7 +218,7 @@ def run_server(
             "grant_required", f"Set {TOKEN_ENVIRONMENT_VARIABLE} to an active automation grant"
         )
 
-    with automation_runtime(data_dir, migrate=False) as runtime:
+    with automation_runtime(data_dir, migrate=False, write_access=True) as runtime:
         from backend.automation.facade import AutomationFacade
 
         with runtime.session_factory() as db:
@@ -241,16 +242,16 @@ def run_server(
                 yield
         except DesktopInstanceAlreadyRunning as exc:
             raise AutomationRuntimeError(
-                "vault_busy", "Close CareerOS Local before reading the vault from MCP"
+                "vault_busy", "Close CareerOS Local before accessing the vault from MCP"
             ) from exc
 
-    sys.stderr.write("CareerOS MCP: read-only stdio session started\n")
+    sys.stderr.write("CareerOS MCP: scoped operational stdio session started\n")
     sys.stderr.flush()
     build_server(facade, access=authorized_access).run(transport="stdio")
 
 
 def _parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="CareerOS read-only MCP stdio server")
+    parser = argparse.ArgumentParser(description="CareerOS scoped MCP stdio server")
     parser.add_argument("--data-dir")
     parser.add_argument("--acknowledge-agent-disclosure", action="store_true")
     return parser

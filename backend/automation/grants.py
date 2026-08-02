@@ -57,7 +57,7 @@ def normalize_scopes(values: list[str] | tuple[str, ...]) -> tuple[AutomationSco
     requested = set(values)
     allowed = set(ALL_AUTOMATION_SCOPES)
     if not requested or not requested.issubset(allowed):
-        raise AutomationGrantError("invalid_scopes", "Choose one or more supported read scopes")
+        raise AutomationGrantError("invalid_scopes", "Choose one or more supported scopes")
     return tuple(scope for scope in ALL_AUTOMATION_SCOPES if scope in requested)
 
 

@@ -10,12 +10,11 @@ import { CareerProfilePage } from "./CareerProfilePage";
 
 const getProfile = vi.fn();
 const saveProfile = vi.fn();
-const getJobSources = vi.fn();
 const listResumeVersions = vi.fn();
 const showToast = vi.fn();
 const uploadSource = vi.fn();
 
-vi.mock("../../services/career", () => ({ CareerService: { getProfile: (...args) => getProfile(...args), getJobSources: (...args) => getJobSources(...args), saveProfile: (...args) => saveProfile(...args), uploadSource: (...args) => uploadSource(...args) } }));
+vi.mock("../../services/career", () => ({ CareerService: { getProfile: (...args) => getProfile(...args), saveProfile: (...args) => saveProfile(...args), uploadSource: (...args) => uploadSource(...args) } }));
 vi.mock("../../services/resumes", () => ({ ResumeService: { listVersions: (...args) => listResumeVersions(...args) } }));
 vi.mock("../../context/AuthContext", () => ({ useAuth: () => ({ user: "mira" }) }));
 vi.mock("../../context/ToastContext", () => ({ useToast: () => ({ showToast }) }));
@@ -44,10 +43,6 @@ describe("CareerProfilePage", () => {
     beforeEach(() => {
         vi.clearAllMocks();
         getProfile.mockResolvedValue(careerProfile());
-        getJobSources.mockResolvedValue([
-            { key: "local_db", label: "Archivio locale", network: false, available: true, consented: true },
-            { key: "job_room", label: "Job-Room", description: "Portale pubblico svizzero", network: true, available: true, consented: false },
-        ]);
         listResumeVersions.mockResolvedValue([
             { id: "resume-version-1", draft_id: "resume-1", draft_title: "CV Staff", semantic_version: "1.0.0", published_at: "2026-07-01T10:00:00Z" },
         ]);
@@ -222,17 +217,12 @@ describe("CareerProfilePage", () => {
         });
     });
 
-    it("persists explicit per-source network consent", async () => {
-        const user = userEvent.setup();
+    it("routes provider installation and network consent to Provider Studio", async () => {
         render(<CareerProfilePage />);
 
-        await user.click(await screen.findByRole("checkbox", { name: /Job-Room/ }));
-        await user.click(screen.getByRole("button", { name: "Salva Career Vault" }));
-
-        await waitFor(() => expect(saveProfile).toHaveBeenCalledTimes(1));
-        expect(saveProfile.mock.calls[0][0].preferences.job_source_consents).toEqual({
-            job_room: true,
-        });
+        const link = await screen.findByRole("link", { name: "Apri Studio provider" });
+        expect(link).toHaveAttribute("href", "/providers");
+        expect(screen.queryByRole("checkbox", { name: /Job-Room/ })).not.toBeInTheDocument();
     });
 
     it("links goal actions to learning activities and immutable resume versions", async () => {

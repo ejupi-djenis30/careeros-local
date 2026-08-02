@@ -16,6 +16,7 @@ export function getNavigation(t) {
             items: [
                 { to: "/jobs", label: t("nav.jobs"), icon: "bi-briefcase" },
                 { to: "/search", label: t("nav.search"), icon: "bi-radar" },
+                { to: "/providers", label: t("nav.providers"), icon: "bi-gear" },
                 { to: "/progress", label: t("nav.progress"), icon: "bi-activity" },
                 { to: "/history", label: t("nav.history"), icon: "bi-clock-history" },
                 { to: "/schedules", label: t("nav.schedules"), icon: "bi-calendar2-week" },
@@ -34,6 +35,7 @@ export function getPageContext(pathname, t) {
         "/agent-access": "agentAccess",
         "/jobs": "jobs",
         "/search": "search",
+        "/providers": "providers",
         "/progress": "progress",
         "/history": "history",
         "/schedules": "schedules",

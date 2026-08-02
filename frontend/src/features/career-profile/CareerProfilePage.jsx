@@ -25,7 +25,6 @@ export function CareerProfilePage() {
     const [dirty, setDirty] = useState(false);
     const [error, setError] = useState("");
     const [conflict, setConflict] = useState(false);
-    const [jobSources, setJobSources] = useState([]);
     const [resumeVersions, setResumeVersions] = useState([]);
     const profileRequestRef = useRef({ controller: null, id: 0 });
     const sectionLabels = {
@@ -52,9 +51,6 @@ export function CareerProfilePage() {
         const controller = new AbortController();
         profileRequestRef.current = { controller, id: requestId };
         const requestOptions = { signal: controller.signal, suppressGlobalError: true };
-        const sourceRequest = Promise.resolve()
-            .then(() => CareerService.getJobSources(requestOptions))
-            .catch(() => []);
         const versionRequest = Promise.resolve()
             .then(() => ResumeService.listVersions(requestOptions))
             .catch(() => []);
@@ -68,8 +64,8 @@ export function CareerProfilePage() {
                 return { error: loadError };
             });
 
-        return Promise.all([profileRequest, sourceRequest, versionRequest])
-            .then(([profileResult, nextJobSources, nextResumeVersions]) => {
+        return Promise.all([profileRequest, versionRequest])
+            .then(([profileResult, nextResumeVersions]) => {
                 if (controller.signal.aborted || profileRequestRef.current.id !== requestId) return;
                 if (profileResult.error) {
                     setError(profileResult.error.message);
@@ -80,7 +76,6 @@ export function CareerProfilePage() {
                     setConflict(false);
                     setDirty(false);
                 }
-                setJobSources(nextJobSources);
                 setResumeVersions(nextResumeVersions);
                 setLoading(false);
                 profileRequestRef.current.controller = null;
@@ -227,7 +222,7 @@ export function CareerProfilePage() {
                 <IdentityEditor profile={profile} onChange={update} />
                 {sourceFirst && factsEditor}
                 <GoalsEditor goals={profile.goals} facts={profile.facts} resumeVersions={resumeVersions} onChange={(goals) => update({ ...profile, goals })} />
-                <PreferencesEditor preferences={profile.preferences} jobSources={jobSources} onChange={(preferences) => update({ ...profile, preferences })} />
+                <PreferencesEditor preferences={profile.preferences} onChange={(preferences) => update({ ...profile, preferences })} />
                 {!sourceFirst && factsEditor}
                 {!sourceFirst && sourceImporter}
             </div>

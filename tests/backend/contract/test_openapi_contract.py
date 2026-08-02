@@ -143,8 +143,16 @@ def test_agent_access_runtime_and_static_schemas_share_secret_and_bound_contract
     expected_scopes = [
         "system:read",
         "career:read",
+        "career:write",
         "resume:read",
+        "resume:write",
+        "jobs:read",
+        "jobs:write",
+        "search:execute",
+        "providers:read",
+        "providers:write",
         "applications:read",
+        "applications:write",
     ]
 
     runtime_issue = runtime_schemas["GrantIssueRequest"]

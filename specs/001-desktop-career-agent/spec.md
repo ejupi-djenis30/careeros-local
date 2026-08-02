@@ -318,22 +318,27 @@ keyboard access from each agenda row to the owned application dialog.
 
 ---
 
-### User Story 10 - Read CareerOS safely from a coding agent (Priority: P2)
+### User Story 10 - Operate CareerOS safely from a coding agent (Priority: P2)
 
-A person can let Codex, Claude Code or a shell script inspect a limited part of one CareerOS
-account without exposing the whole vault or creating a second writer. The person chooses the
-scope and lifetime, receives one revocable bearer token, and must acknowledge that the connected
-agent may pass returned metadata to its own provider.
+A person can let Codex, Claude Code or another MCP client perform the same normal career work they
+can perform in the CareerOS workspace: configure job providers, search and analyze opportunities,
+maintain the Career Vault, prepare truthful resume and application materials, manage application
+tasks and record application progress. The person chooses granular read, write and execution
+scopes and a lifetime, receives one revocable bearer token, and acknowledges that the connected
+agent may pass returned data to its own provider.
 
-**Why this priority**: Application follow-up and career planning often happen while working in a
-terminal. A dedicated read boundary is safer and more predictable than giving an agent the vault
-file, a desktop session token, arbitrary filesystem access or a generic database command.
+**Why this priority**: Application work spans discovery, analysis, tailoring and follow-up. A typed
+operational boundary lets an agent complete that workflow while preserving CareerOS ownership,
+evidence, revision and local-model gates; giving it the vault file, a desktop session token,
+arbitrary filesystem access or a generic database command would bypass those guarantees.
 
-**Independent Test**: Create two local users and grants with different scope sets. Connect through
-the official MCP client over a real stdio subprocess, list and call the visible tools, and verify
-scope enforcement, user isolation, bounded typed results, stdout protocol purity, token redaction,
-revocation and expiry. Keep the desktop process open for a second run and verify that automation
-fails with `vault_busy` instead of opening another connection.
+**Independent Test**: Create two local users and grants with different scope sets. Through the
+official MCP client over a real stdio subprocess, configure and test a declarative provider, run a
+search, inspect verified analysis, generate a resume, create a dossier, move an application to
+`applied` and add a follow-up task. Verify exact tool discovery, scope enforcement, user isolation,
+revision conflicts, local-model fail-closed behavior, bounded typed results, stdout protocol
+purity, credential redaction, revocation and expiry. Keep the desktop process open for a second run
+and verify that automation fails with `vault_busy` instead of becoming a concurrent writer.
 
 **Acceptance Scenarios**:
 
@@ -343,13 +348,14 @@ fails with `vault_busy` instead of opening another connection.
    CareerOS returns a random bearer token once and persists only its SHA-256 digest, account
    binding, label, scopes, expiry and revocation state.
 2. **Given** a grant with only `applications:read`, **When** an MCP session starts, **Then** only
-   the three application tools are registered and a direct attempt to use another facade read
-   fails with `scope_denied`.
-3. **Given** a valid grant, **When** the CLI or MCP tools inspect CareerOS, **Then** results are
-   bounded typed projections and contain no resume body, source-document content, contact field,
-   prompt, artifact byte, bearer token or local storage path.
+   application read tools are registered and a direct attempt to call a mutation or another
+   domain facade fails with `scope_denied`.
+3. **Given** a grant with the corresponding read and write scopes, **When** the agent configures a
+   JSON or HTML job provider, searches, reviews verified job analysis, generates and publishes a
+   truthful resume, creates an application dossier and records `applied`, **Then** every result is
+   user-scoped, revisioned and equivalent to the corresponding desktop-domain operation.
 4. **Given** CareerOS Local is already running, **When** a CLI command or MCP tool call tries to
-   read the vault, **Then** it fails with `vault_busy`. **Given** an idle MCP server, **When** the
+   access the vault, **Then** it fails with `vault_busy`. **Given** an idle MCP server, **When** the
    desktop opens, **Then** it may own the vault until it closes; MCP reacquires the lease before
    the next read and never becomes a concurrent writer.
 5. **Given** a missing, expired, revoked, malformed or foreign token, **When** a read is attempted,
@@ -369,6 +375,23 @@ fails with `vault_busy` instead of opening another connection.
     signs out or leaves Agent Access, **Then** CareerOS performs no automatic clipboard or browser-
     storage write and removes the bearer from renderer state. Listing remains usable if issuance
     fails, and revoking an owned active grant requires the current password again.
+11. **Given** a provider configuration containing an HTTP URL, a private or loopback destination,
+    a redirect, an unbounded response, executable code or an invalid extraction rule, **When** it
+    is saved or tested, **Then** CareerOS rejects it before expanding network authority or parsing
+    the response and returns no stored secret value.
+12. **Given** two agent mutations derived from the same revision, **When** both are attempted,
+    **Then** one may commit and the stale operation receives a conflict that requires an explicit
+    reread; no last-write-wins path bypasses the domain service.
+13. **Given** a new or upgraded vault with no imported provider rows, **When** the desktop or MCP
+    starts, **Then** no network provider is installed, enabled or constructed and the Providers
+    workspace explains how to create or import one.
+14. **Given** the external Swiss provider pack, **When** the user or a `providers:write` agent
+    explicitly imports it, **Then** its reviewed native adapters and declarative canton and niche
+    sources become owned revisioned installations but perform no request until a separate explicit
+    activation or an import with `activate=true` succeeds.
+15. **Given** a provider document or pack containing unknown native adapters, executable fields,
+    credentials, duplicate keys, an oversized collection or one invalid declaration, **When** it
+    is imported, **Then** the complete import fails without creating or changing any provider.
 
 ### Edge Cases
 
@@ -581,22 +604,28 @@ fails with `vault_busy` instead of opening another connection.
 - **FR-060**: Backup copy MUST state that the current portable ZIP is neither encrypted nor
   authenticated and that imported AI analysis or coaching output requires fresh local-model
   validation. Restore MUST remain a separate explicit action and MUST still require an empty vault.
-- **FR-061**: A source-installed command MUST expose fixed CareerOS read operations to a human CLI
-  and an MCP server over standard input/output. MCP MUST open no network listener, initiate no
-  provider request and expose no generic prompt, SQL, filesystem, mutation, export, restore,
-  erasure or job-search operation.
+- **FR-061**: A source-installed command MUST expose typed CareerOS operations to a human CLI and
+  an MCP server over standard input/output. MCP MUST open no network listener and MUST expose
+  normal career, resume, job, provider, search and application workflows only through bounded
+  domain operations; it MUST expose no generic prompt, SQL, filesystem, credential, export,
+  restore or erasure operation.
 - **FR-062**: Automation authorization MUST require an interactive CareerOS password check and
   create a grant for exactly one local user with a bounded lifetime and an explicit subset of
-  `system:read`, `career:read`, `resume:read` and `applications:read`. The bearer token MUST be
-  returned once; only a cryptographic digest and non-secret grant metadata may be persisted.
-- **FR-063**: Every CLI data read, MCP bootstrap and MCP tool call MUST hold the existing exclusive
+  `system:read`, `career:read`, `career:write`, `resume:read`, `resume:write`, `jobs:read`,
+  `jobs:write`, `search:execute`, `providers:read`, `providers:write`, `applications:read` and
+  `applications:write`. The bearer token MUST be returned once; only a cryptographic digest and
+  non-secret grant metadata may be persisted.
+- **FR-063**: Every CLI data access, MCP bootstrap and MCP tool call MUST hold the existing exclusive
   desktop vault lease for that operation. MCP MUST release the lease while idle, then reacquire it
-  and revalidate the grant before every tool read. Ordinary reads MUST reject an outdated schema
-  without migration; only explicit authorization may migrate while the desktop is closed.
+  and revalidate the grant before every tool call. Ordinary operations MUST reject an outdated
+  schema without migration; only explicit authorization may migrate while the desktop is closed.
 - **FR-064**: MCP MUST register only the tools allowed by the authenticated grant. Every tool
-  result MUST use a bounded typed contract and omit raw resumes, source documents, contact data,
-  prompts, artifact bytes, tokens and local storage paths. Scope checks in the service MUST remain
-  authoritative even if client-side tool annotations are ignored.
+  result and input MUST use a bounded typed contract and disclose only fields needed by an
+  authorized domain operation. Source-document bytes, prompts, artifact bytes, tokens, stored
+  provider secrets and local storage paths MUST remain excluded. Mutations MUST call the same
+  user-scoped domain services, revision checks, evidence validation and local-model readiness gates
+  as the desktop. Scope checks in the service MUST remain authoritative even if client-side tool
+  annotations are ignored.
 - **FR-065**: MCP startup MUST require an explicit acknowledgement that a connected agent may
   transmit returned metadata outside the device. Documentation MUST distinguish CareerOS's
   no-egress stdio server from the separate privacy policy of the connected client and provider.
@@ -679,7 +708,7 @@ fails with `vault_busy` instead of opening another connection.
   Accepted candidates MUST remain `imported` until the user reviews and explicitly confirms them.
 - **FR-082**: The authenticated local API MUST expose only owned automation-grant metadata plus
   explicit create and revoke operations. Create and revoke MUST re-verify the current account
-  password before lockout, enforce bounded labels, lifetimes, fixed read scopes and active-grant
+  password before lockout, enforce bounded labels, lifetimes, fixed operational scopes and active-grant
   count, and set `Cache-Control: no-store`. Repeated password failures MUST be bounded per account.
   They MAY temporarily pause issuance. While locked, a revoke request MUST NOT inspect its password
   or mutate the failed-check state; the authenticated desktop session MAY only revoke an owned
@@ -690,7 +719,8 @@ fails with `vault_busy` instead of opening another connection.
   recent rows without touching active grants or another account. A repeated revocation MUST return
   the same metadata while its row remains inside that explicit retention window.
 - **FR-083**: Agent Access MUST explain the desktop-vault lease and external-client disclosure,
-  present fixed scopes in plain language, identify active, expired and revoked grants, and make
+  present fixed read, write and execution scopes in plain language, identify active, expired and
+  revoked grants, and make
   one-time token copying and dismissal keyboard accessible. The renderer MUST keep a returned
   bearer only in transient component state, clear it on dismissal, sign-out and unmount, never
   write it to browser storage, and never copy it without an explicit user action. Setup copy MUST
@@ -880,6 +910,59 @@ fails with `vault_busy` instead of opening another connection.
   before publication and reconcile ambiguous commit or process loss without deleting committed or
   shared bytes. Draft deletion and complete vault erasure MUST be idempotently retryable and remove
   every attributable publication journal and orphan while preserving foreign profile claims.
+- **FR-105**: Each user MUST be able to create, inspect, update, enable, disable and delete bounded
+  declarative job-provider configurations without changing application code. A configuration MUST
+  have a stable identifier, unique user-owned key, revision, display metadata, adapter kind,
+  request policy, response extraction mapping, enabled consent state and lifecycle timestamps.
+- **FR-106**: Declarative provider requests MUST accept only HTTPS public destinations, validated
+  same-origin paths, bounded GET or POST parameters, allowlisted template variables, bounded static
+  headers, explicit timeouts, throttling, page size and page count. They MUST ignore ambient proxy
+  settings, request identity encoding, refuse redirects and compressed responses, and reject
+  loopback, link-local, private, credential-bearing or DNS-resolved private destinations before
+  every request.
+- **FR-107**: Declarative provider responses MUST be size-bounded before parsing and support strict
+  JSON path extraction or a documented limited HTML selector subset. Field mappings MUST produce
+  the canonical job contract, reject executable expressions and invalid selectors, normalize only
+  bounded text and URLs, and report per-field diagnostics without persisting partial malformed
+  observations.
+- **FR-108**: Provider configuration validation MUST be available independently of network access.
+  A separate explicit test action MAY perform one bounded request and return a small redacted sample
+  and diagnostics. Provider list, export, logs and MCP results MUST redact secret-looking header
+  values; updates MAY use a preserve-secret sentinel without returning the stored value.
+- **FR-109**: Search orchestration MUST build its network-provider registry for the authenticated
+  user on each run exclusively from enabled owned provider installations. A fresh vault MUST have
+  no network providers; dormant application adapters and discoverable packs MUST NOT enter search.
+  Imported native and declarative providers MUST share cancellation, resource, deduplication,
+  observation, analysis and durable search-receipt behavior; one failed source MUST not make a
+  successful local source disappear.
+- **FR-110**: MCP MUST expose scope-filtered typed operations to read and save the Career Vault,
+  list and maintain jobs, configure providers, run searches, inspect verified analysis, generate
+  and publish resumes, create and revise application dossiers, manage tasks and append application
+  stage events including `applied`. Tool visibility is advisory; every facade method MUST recheck
+  its required scope and user ownership.
+- **FR-111**: Agent mutations MUST use explicit identifiers, bounded idempotency keys where creates
+  can be retried and expected revisions where an entity is mutable. A stale revision MUST fail with
+  a stable conflict and MUST NOT silently merge, overwrite or retry against newer user data.
+- **FR-112**: Agent-triggered analysis and search MUST require the same ready validated local model
+  as desktop analysis and MUST fail closed without heuristic substitution. Provider network access
+  MUST occur only for enabled sources and an authorized execution operation; deterministic local
+  preparation and owned-record editing remain available without inference.
+- **FR-113**: CareerOS MUST accept strict versioned JSON documents for one provider and for bounded
+  provider packs. Pack parsing MUST forbid unknown fields, executable content and credential-bearing
+  headers, cap document bytes and provider count, validate every entry before writes and commit all
+  entries atomically or none. Duplicate document keys or conflicts with owned keys MUST fail.
+- **FR-114**: A provider-pack native entry MUST reference only an application-shipped allowlisted
+  adapter identifier. Importing such an entry activates no dynamic module loading and creates the
+  same user-owned revision, enablement, portability and erasure boundary as a declarative provider.
+- **FR-115**: The Swiss providers previously constructed at startup MUST be represented by an
+  external bundled pack manifest containing Job-Room, SwissDevJobs and Adecco metadata. The same
+  manifest MAY include reviewed data-only canton or specialist declarations. Pack listing MAY
+  advertise the manifest, but installation and network consent require an explicit user or
+  `providers:write` agent mutation.
+- **FR-116**: UI, REST and MCP MUST support listing bundled packs, importing a bundled pack or supplied
+  provider document, and revision-checked enable/disable and deletion. A newly imported provider is
+  disabled by default; `activate=true` is an explicit network-consent mutation and MUST be visible in
+  the result.
 
 ### Key Entities
 
@@ -913,6 +996,12 @@ fails with `vault_busy` instead of opening another connection.
   metrics and reproducible run results.
 - **Automation Grant**: A revocable, expiring authorization bound to one local user, represented
   at rest by a bearer-token digest, label, fixed scope set and lifecycle timestamps.
+- **Job Provider Configuration**: A revisioned user-owned provider installation: either a
+  declarative HTTPS request and JSON/HTML extraction contract or an allowlisted dormant native
+  adapter reference imported from a provider document/pack, always with explicit enablement.
+- **Provider Import Document**: A bounded, versioned, non-executable JSON envelope for one provider.
+- **Provider Pack**: A bounded, versioned, non-executable JSON collection whose entries validate and
+  import atomically; bundled discovery alone creates no provider and grants no network consent.
 - **Auth Session**: One bounded browser refresh family identified by a non-secret `sid`, account
   id, unique slot, current JTI digest, expiry and optional revocation timestamp; no raw token or JTI
   is persisted or exported.
@@ -986,10 +1075,11 @@ fails with `vault_busy` instead of opening another connection.
   and surfaces a verified result only when the final destination digest matches exactly. Frontend
   tests prove distinct verify and restore controls, English/Italian copy and keyboard-accessible
   summaries.
-- **SC-021**: Automation acceptance tests prove typed read-only tool discovery and invocation
-  through an official in-memory and real stdio MCP client, exact scope filtering, cross-user
-  isolation, token digest storage, expiry and revocation, bounded outputs, stdout protocol purity,
-  explicit disclosure acknowledgement and exclusive-lease failure while the desktop is active.
+- **SC-021**: Automation acceptance tests prove typed read and mutation tool discovery and
+  invocation through an official in-memory and real stdio MCP client, exact scope filtering,
+  cross-user isolation, revision conflicts, token digest storage, expiry and revocation, bounded
+  outputs, stdout protocol purity, explicit disclosure acknowledgement and exclusive-lease failure
+  while the desktop is active.
 - **SC-022**: Listing-observation acceptance tests prove that unchanged repeats advance only
   last-seen time; changed repeats advance one revision and require fresh verified analysis; and
   refreshes preserve profile decisions, application state and immutable application snapshots.
@@ -1102,6 +1192,21 @@ fails with `vault_busy` instead of opening another connection.
   byte publisher, no replacement under conflicting content, one source/photo row per profile,
   serialized monotonic resume versions, crash-reconciled publication journals, retryable deletion,
   preserved shared ownership, bounded profile revision and zero `.write-*` residue.
+- **SC-044**: Provider configuration contract and integration tests cover JSON and HTML adapters,
+  create/update/disable/delete with revision conflicts, secret redaction and preservation, invalid
+  mappings, retries and pagination ceilings. Real streamed HTTP tests reject HTTP, credentials,
+  redirects, compression, oversized bodies and direct or DNS-resolved private destinations without
+  emitting a second request or persisting a partial observation.
+- **SC-045**: Search acceptance tests prove that a fresh Vault constructs no network adapter and
+  that only explicitly imported/configured and enabled providers enter the same user-scoped
+  pipeline. Disabled, absent or foreign installations perform zero network work; one source failure
+  remains isolated, observations deduplicate durably and verified local-model analysis plus the
+  successful-search receipt follow existing invariants.
+- **SC-046**: End-to-end MCP tests use an operational grant to create and validate a provider, run
+  a search, inspect a verified job, generate and publish a resume, create and publish an application
+  dossier, append `applied` and add a follow-up task. Read-only and partial grants discover no
+  unauthorized mutations; direct facade calls still fail, stale revisions never overwrite, all
+  records remain owned and revoked tokens cannot continue the workflow.
 
 ## Assumptions
 

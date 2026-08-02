@@ -1,0 +1,385 @@
+{
+  "kind": "provider_pack",
+  "format_version": 1,
+  "id": "careeros.switzerland.core",
+  "version": "1.1.0",
+  "name": "Swiss job providers",
+  "description": "Explicit-import Swiss pack combining reviewed native adapters with canton and specialist HTML job boards. Every provider remains disabled until the user activates it.",
+  "providers": [
+    {
+      "kind": "native",
+      "adapter_id": "job_room",
+      "key": "job_room",
+      "display_name": "Job-Room.ch (SECO)",
+      "description": "Generalist Swiss federal job portal covering roles across industries.",
+      "capabilities": {
+        "accepted_domains": ["*"],
+        "supported_languages": ["en", "de", "fr", "it"]
+      }
+    },
+    {
+      "kind": "native",
+      "adapter_id": "swissdevjobs",
+      "key": "swissdevjobs",
+      "display_name": "SwissDevJobs.ch",
+      "description": "Technology-focused jobs for software and IT professionals in Switzerland.",
+      "capabilities": {
+        "accepted_domains": ["it"],
+        "supported_languages": ["en", "de"]
+      }
+    },
+    {
+      "kind": "native",
+      "adapter_id": "adecco",
+      "key": "adecco",
+      "display_name": "Adecco Switzerland",
+      "description": "Generalist Swiss agency listings across industries.",
+      "capabilities": {
+        "accepted_domains": ["*"],
+        "supported_languages": ["en", "de"]
+      }
+    },
+    {
+      "kind": "declarative",
+      "configuration": {
+        "key": "canton_bern",
+        "display_name": "Kanton Bern jobs",
+        "description": "Official vacancies from the Canton of Bern and its public organizations.",
+        "adapter_kind": "html",
+        "enabled": false,
+        "request": {
+          "base_url": "https://www.jobs.apps.be.ch",
+          "path_template": "/",
+          "method": "GET",
+          "query_params": {
+            "lang": "{language}",
+            "offset": "{offset}"
+          },
+          "json_body": null,
+          "headers": {},
+          "timeout_seconds": 20,
+          "max_response_bytes": 500000,
+          "max_pages": 20,
+          "page_size": 10,
+          "throttle_ms": 1000,
+          "retries": 1
+        },
+        "extraction": {
+          "items_path": null,
+          "item_selector": "a.job",
+          "total_path": null,
+          "fields": {
+            "id": {"source": ".", "attribute": "href"},
+            "title": {"source": "h5"},
+            "description": {"source": "p.box-text"},
+            "company": {"source": "span.inst-parent"},
+            "location": {"source": "div.location"},
+            "url": {"source": ".", "attribute": "href"},
+            "application_url": {"source": ".", "attribute": "href"}
+          }
+        },
+        "capabilities": {
+          "accepted_domains": ["*"],
+          "supported_languages": ["de", "fr"]
+        }
+      }
+    },
+    {
+      "kind": "declarative",
+      "configuration": {
+        "key": "canton_solothurn",
+        "display_name": "Kanton Solothurn jobs",
+        "description": "Official vacancies published by the Canton of Solothurn.",
+        "adapter_kind": "html",
+        "enabled": false,
+        "request": {
+          "base_url": "https://job.so.ch",
+          "path_template": "/",
+          "method": "GET",
+          "query_params": {},
+          "json_body": null,
+          "headers": {},
+          "timeout_seconds": 20,
+          "max_response_bytes": 500000,
+          "max_pages": 1,
+          "page_size": 50,
+          "throttle_ms": 1000,
+          "retries": 1
+        },
+        "extraction": {
+          "items_path": null,
+          "item_selector": "a.job",
+          "total_path": null,
+          "fields": {
+            "id": {"source": ".", "attribute": "href"},
+            "title": {"source": "div.jobTitle h2"},
+            "description": {"source": "div.infoLine"},
+            "company": {"source": "span.provider-company", "default": "Kanton Solothurn"},
+            "location": {"source": "div.jobInfo strong"},
+            "url": {"source": ".", "attribute": "href"},
+            "application_url": {"source": ".", "attribute": "href"}
+          }
+        },
+        "capabilities": {
+          "accepted_domains": ["*"],
+          "supported_languages": ["de"]
+        }
+      }
+    },
+    {
+      "kind": "declarative",
+      "configuration": {
+        "key": "canton_lucerne",
+        "display_name": "Kanton Luzern jobs",
+        "description": "Official administration vacancies embedded by the Canton of Lucerne from its Refline feed.",
+        "adapter_kind": "html",
+        "enabled": false,
+        "request": {
+          "base_url": "https://apply.refline.ch",
+          "path_template": "/891537/positions_verwaltung.html",
+          "method": "GET",
+          "query_params": {},
+          "json_body": null,
+          "headers": {},
+          "timeout_seconds": 20,
+          "max_response_bytes": 500000,
+          "max_pages": 1,
+          "page_size": 100,
+          "throttle_ms": 1000,
+          "retries": 1
+        },
+        "extraction": {
+          "items_path": null,
+          "item_selector": "table.searchResult tbody tr",
+          "total_path": null,
+          "fields": {
+            "id": {"source": "td.position a", "attribute": "href"},
+            "title": {"source": "td.position a"},
+            "description": {"source": "."},
+            "company": {"source": "td.department"},
+            "location": {"source": "td.workplace"},
+            "url": {"source": "td.position a", "attribute": "href"},
+            "application_url": {"source": "td.position a", "attribute": "href"}
+          }
+        },
+        "capabilities": {
+          "accepted_domains": ["*"],
+          "supported_languages": ["de"]
+        }
+      }
+    },
+    {
+      "kind": "declarative",
+      "configuration": {
+        "key": "fmh_doctor_jobs",
+        "display_name": "FMHjob.ch — physicians",
+        "description": "Specialist Swiss medical vacancies for physicians published by FMH Services.",
+        "adapter_kind": "html",
+        "enabled": false,
+        "request": {
+          "base_url": "https://www.fmhjob.ch",
+          "path_template": "/suche-stelle-aerzte",
+          "method": "GET",
+          "query_params": {
+            "page": "{page_one_based}"
+          },
+          "json_body": null,
+          "headers": {},
+          "timeout_seconds": 30,
+          "max_response_bytes": 500000,
+          "max_pages": 8,
+          "page_size": 50,
+          "throttle_ms": 1000,
+          "retries": 1
+        },
+        "extraction": {
+          "items_path": null,
+          "item_selector": "div.object-list div.item",
+          "total_path": null,
+          "fields": {
+            "id": {"source": "a.absolute", "attribute": "href"},
+            "title": {"source": "span.headline3"},
+            "description": {"source": "div.tags"},
+            "location": {"source": "div.ort"},
+            "url": {"source": "a.absolute", "attribute": "href"},
+            "application_url": {"source": "a.absolute", "attribute": "href"}
+          }
+        },
+        "capabilities": {
+          "accepted_domains": ["medical"],
+          "supported_languages": ["de"]
+        }
+      }
+    },
+    {
+      "kind": "declarative",
+      "configuration": {
+        "key": "vmi_npo_jobs",
+        "display_name": "VMI NPO jobs",
+        "description": "Specialist vacancies in Swiss associations and non-profit organizations curated by VMI.",
+        "adapter_kind": "html",
+        "enabled": false,
+        "request": {
+          "base_url": "https://www.vmi.ch",
+          "path_template": "/de/npo-jobs/",
+          "method": "GET",
+          "query_params": {
+            "language": "de"
+          },
+          "json_body": null,
+          "headers": {},
+          "timeout_seconds": 20,
+          "max_response_bytes": 500000,
+          "max_pages": 1,
+          "page_size": 50,
+          "throttle_ms": 1000,
+          "retries": 1
+        },
+        "extraction": {
+          "items_path": null,
+          "item_selector": "div.jobs-layout",
+          "total_path": null,
+          "fields": {
+            "id": {"source": "div.link-container a", "attribute": "href"},
+            "title": {"source": "p.lead-medium"},
+            "description": {"source": "."},
+            "company": {"source": "p.technical-title"},
+            "url": {"source": "div.link-container a", "attribute": "href"},
+            "application_url": {"source": "div.link-container a", "attribute": "href"}
+          }
+        },
+        "capabilities": {
+          "accepted_domains": ["*"],
+          "supported_languages": ["de"]
+        }
+      }
+    },
+    {
+      "kind": "declarative",
+      "configuration": {
+        "key": "swissolar_jobs",
+        "display_name": "Swissolar jobs",
+        "description": "Specialist Swiss vacancies in solar energy, photovoltaics and related building technology.",
+        "adapter_kind": "html",
+        "enabled": false,
+        "request": {
+          "base_url": "https://www.swissolar.ch",
+          "path_template": "/de/angebot/stellenboerse",
+          "method": "GET",
+          "query_params": {},
+          "json_body": null,
+          "headers": {},
+          "timeout_seconds": 20,
+          "max_response_bytes": 750000,
+          "max_pages": 1,
+          "page_size": 50,
+          "throttle_ms": 1000,
+          "retries": 1
+        },
+        "extraction": {
+          "items_path": null,
+          "item_selector": "table[border=\"1\"]",
+          "total_path": null,
+          "fields": {
+            "id": {"source": "a", "attribute": "href"},
+            "title": {"source": "strong"},
+            "description": {"source": "."},
+            "url": {"source": "a", "attribute": "href"},
+            "application_url": {"source": "a", "attribute": "href"}
+          }
+        },
+        "capabilities": {
+          "accepted_domains": ["engineering", "construction", "sales", "administration", "marketing"],
+          "supported_languages": ["de"]
+        }
+      }
+    },
+    {
+      "kind": "declarative",
+      "configuration": {
+        "key": "kampajobs",
+        "display_name": "Kampajobs",
+        "description": "Swiss specialist board for paid roles, internships and volunteering in NGOs and NPOs.",
+        "adapter_kind": "html",
+        "enabled": false,
+        "request": {
+          "base_url": "https://www.kampajobs.ch",
+          "path_template": "/jobs",
+          "method": "GET",
+          "query_params": {
+            "search": "{query}",
+            "page": "{page}"
+          },
+          "json_body": null,
+          "headers": {},
+          "timeout_seconds": 30,
+          "max_response_bytes": 750000,
+          "max_pages": 5,
+          "page_size": 20,
+          "throttle_ms": 10000,
+          "retries": 1
+        },
+        "extraction": {
+          "items_path": null,
+          "item_selector": "article.node-job",
+          "total_path": null,
+          "fields": {
+            "id": {"source": ".", "attribute": "about"},
+            "title": {"source": "h2.node__title a"},
+            "description": {"source": "div.terms"},
+            "company": {"source": "span.recruiter-company-profile-job-organization"},
+            "location": {"source": "div.location"},
+            "url": {"source": "h2.node__title a", "attribute": "href"},
+            "application_url": {"source": "h2.node__title a", "attribute": "href"}
+          }
+        },
+        "capabilities": {
+          "accepted_domains": ["*"],
+          "supported_languages": ["de"]
+        }
+      }
+    },
+    {
+      "kind": "declarative",
+      "configuration": {
+        "key": "jobs_for_change",
+        "display_name": "JobsForChange.ch",
+        "description": "Swiss specialist board for roles in purpose-driven organizations and the social sector.",
+        "adapter_kind": "html",
+        "enabled": false,
+        "request": {
+          "base_url": "https://jobsforchange.ch",
+          "path_template": "/jobs/",
+          "method": "GET",
+          "query_params": {},
+          "json_body": null,
+          "headers": {},
+          "timeout_seconds": 20,
+          "max_response_bytes": 500000,
+          "max_pages": 1,
+          "page_size": 20,
+          "throttle_ms": 1000,
+          "retries": 1
+        },
+        "extraction": {
+          "items_path": null,
+          "item_selector": "li.list-group-item[data-job]",
+          "total_path": null,
+          "fields": {
+            "id": {"source": ".", "attribute": "data-job"},
+            "title": {"source": "strong"},
+            "description": {"source": "div.row"},
+            "company": {"source": "img", "attribute": "alt"},
+            "location": {"source": "div.hidden-xs"},
+            "url": {"source": "a", "attribute": "href"},
+            "application_url": {"source": "a", "attribute": "href"}
+          }
+        },
+        "capabilities": {
+          "accepted_domains": ["*"],
+          "supported_languages": ["de"]
+        }
+      }
+    }
+  ]
+}

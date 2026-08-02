@@ -11,7 +11,7 @@ flowchart LR
   DOMAIN --> DOSSIER["Append-only tasks + verifiable dossiers"]
   DOMAIN --> DB["SQLite Career Vault"]
   DOMAIN --> FILES["Atomic local assets"]
-  CLIENT["Codex / Claude Code / shell"] -->|"stdio + bearer grant"| AUTOMATION["Read-only automation facade"]
+  CLIENT["Codex / Claude Code / shell"] -->|"stdio + bearer grant"| AUTOMATION["Typed automation facade"]
   AUTOMATION --> DOMAIN
   API --> SEARCH["Search pipeline"]
   SEARCH --> AI["Strict local-AI orchestrator"]
@@ -28,9 +28,9 @@ flowchart LR
 server. It does not call the desktop sidecar's loopback HTTP API or reuse the desktop session
 token. Instead, the process configures the existing vault from the operating-system
 application-data directory, verifies the Alembic head, acquires `desktop_instance_lease`,
-authenticates a bearer grant and opens a fresh SQLAlchemy session for each read. The read engine
-opens the SQLite file with URI `mode=ro`, applies `PRAGMA query_only=ON` and verifies that pragma on
-every connection before exposing the session.
+authenticates a bearer grant and opens a fresh SQLAlchemy session for each typed operation. Reads,
+writes and public-provider execution all pass through the same domain services used by the loopback
+API; the facade adds scope checks and stable redacted errors rather than an alternate data path.
 
 Only `authorize` may migrate an older vault, and it does so while the desktop app is closed.
 Ordinary CLI reads and MCP startup fail with `migration_required` rather than changing the schema.
@@ -45,35 +45,47 @@ raw token is returned once at authorization and is never persisted. Authenticati
 missing, malformed, unknown, expired or revoked tokens before constructing the facade. A restore
 revokes existing grants; complete vault deletion removes them.
 
-The four scopes map to a fixed tool set:
+The twelve scopes map to a fixed, discoverable tool set:
 
 | Scope | MCP tools | Returned data |
 | --- | --- | --- |
 | `system:read` | `get_status`, `get_local_model_status` | Version, schema, enabled scopes/tools and content-free local-model readiness |
-| `career:read` | `get_career_summary` | Profile presence, revision, completeness, issue count and fact-family counts |
-| `resume:read` | `get_resume_catalog` | Bounded draft and published-version metadata |
-| `applications:read` | `list_applications`, `get_application_readiness`, `get_application_agenda` | Bounded application projections, deterministic preflight checks and follow-ups |
+| `career:read` | `get_career_summary`, `get_career_profile` | Summary or complete structured owned Career Vault |
+| `career:write` | `save_career_profile` | Revision-checked complete Career Vault write |
+| `resume:read` | `get_resume_catalog`, `get_resume` | Bounded catalog or one structured draft |
+| `resume:write` | `generate_resume`, `update_resume`, `publish_resume` | Fact-bound draft generation, revisioned editing and local artifact publication |
+| `jobs:read` | `list_jobs`, `get_job` | Owned jobs and receipt-verified local analysis |
+| `jobs:write` | `create_job`, `update_job`, `record_job_view`, `dismiss_job`, `delete_job` | Manual capture and ordinary job-library interactions |
+| `search:execute` + `jobs:read` | `run_job_search` | Enabled providers, mandatory local analysis and a bounded result page |
+| `providers:read` | `list_provider_configurations` | Owned declarations with every configured header redacted |
+| `providers:write` | validate/create/update/delete provider tools | Revisioned non-executable JSON/HTML declarations |
+| `providers:write` + `search:execute` | `test_provider_configuration` | One bounded public-origin diagnostic request |
+| `applications:read` | list/get/readiness/agenda/dossier-draft tools | Application history, projections, preflight and working materials |
+| `applications:write` | create/event/preparation/task/dossier tools | Revision-checked pipeline and evidence-bound material workflow |
 
 The MCP process uses only standard input/output. It registers tools allowed by the authenticated
-scope set and marks them read-only, non-destructive, idempotent and closed-world. Those annotations
-help clients present the tools correctly; scope checks in the facade are the enforcement boundary.
-There is no socket listener and no mutation, document export, backup/restore, erasure, arbitrary
-file, SQL, free-form prompt or network-search tool.
+scope set and marks each tool accurately as read-only, mutating, destructive and/or open-world.
+Those annotations help clients present the tools correctly; scope checks in the facade and domain
+checks are the enforcement boundary. There is no socket listener and no grant-management,
+backup/restore, full-vault erasure, arbitrary file, SQL or free-form-prompt tool.
 
-Tool DTOs deliberately omit resume and source-document bodies, dedicated contact records, prompts,
-artifact bytes, access tokens and local storage paths. User-authored labels, company names,
-locations and task titles remain visible within their authorized scope and may contain sensitive
-text. Lists and time windows have fixed upper bounds. The
+Operational DTOs expose the structured Career, resume, job and application content required for
+parity with the desktop when its corresponding scope is granted. They still omit source-document
+bytes, artifact bytes, access tokens, configured provider-header values, model prompts and local
+storage paths. User-authored content may be sensitive; lists and time windows have fixed upper
+bounds. The
 unauthenticated `doctor` setup command is separate from the tool facade and intentionally reports
 the resolved data directory so a local operator can diagnose configuration.
 
 MCP startup requires `--acknowledge-agent-disclosure` because the connected client controls what
-happens after a result leaves the process over stdio. Ordinary vault reads make no outbound or
-cloud request. `get_local_model_status` may make a content-free HTTP readiness probe only to the
+happens after a result leaves the process over stdio. Ordinary vault operations make no outbound
+or cloud request. `run_job_search` and `test_provider_configuration` are explicit open-world tools
+restricted to enabled, declared public HTTPS origins; local analysis remains local.
+`get_local_model_status` may make a content-free HTTP readiness probe only to the
 configured, allowlisted local-runtime endpoint. This is loopback by default; container deployments
 may explicitly allow a single-label runtime alias. The probe sends no Vault content or prompt.
 Codex, Claude Code or another client may still include returned private metadata in a remote
-request. Before every tool read, MCP obtains the vault lease and authenticates the bearer token
+request. Before every tool operation, MCP obtains the vault lease and authenticates the bearer token
 again. An expired or revoked grant fails on the next call; a grant whose identity or scopes changed
 requires a new MCP session. If the desktop owns the lease, the tool returns `vault_busy`.
 
@@ -226,6 +238,29 @@ model-derived cache entries are ignored and replaced. CV prose and model-normali
 local matching inputs and cannot become provider queries. A limit of zero is an explicit disable
 signal; only `NULL` selects a default. Legacy service imports are module aliases only and contain
 no orchestration logic.
+
+The composition root contains only the local-vault source. A fresh Vault has zero network-provider
+rows, and no source from the bundled Swiss pack is constructed or contacted by default. A fresh
+registry is assembled for each search after the owner is known from enabled, user-owned
+installations; that enabled revision is the network-consent record. Invalid rows are skipped with
+count-only diagnostics.
+
+Users may author a declarative provider or import a versioned provider/provider-pack JSON envelope.
+Imports are atomic and disabled by default. Manifests are data only: native entries can reference
+only a closed set of reviewed adapter identifiers and cannot supply a module, file path or code.
+The source-controlled Swiss pack is a packaged manifest which must be imported explicitly. It mixes
+the three reviewed native adapters with data-only declarations for the official Bern, Solothurn and
+Lucerne boards and specialist medical, NPO, solar and purpose-driven boards. The JSON adapter accepts
+dotted object paths. The HTML adapter uses a small tag/class/ID/attribute/descendant selector grammar
+and a bounded tree parser; neither accepts scripts, plugins, regex or executable scraper code.
+
+Every declarative request is HTTPS on the declared origin and default port, with no credentials in
+the URL, redirect following or ambient proxy. Literal and freshly resolved destinations must all be
+public; localhost, private, link-local and mixed public/private DNS answers fail closed. Templates
+have an allowlist of search variables, nesting and collection bounds. Timeout, response bytes,
+zero- or one-based pages, offsets, page size, delay and retry count are all capped. Compressed and oversized responses are
+rejected before parsing, parsed items are bounded, and raw provider payloads are never persisted.
+The desktop's bounded provider test and MCP's provider test call this exact adapter.
 
 Search history also owns an immutable candidate-input snapshot. For a new campaign, source
 resolution is deterministic: an explicit `profile_source` wins; otherwise non-empty `cv_content`

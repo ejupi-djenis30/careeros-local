@@ -24,10 +24,11 @@ attests all public assets and binds publication to a verified annotated tag thro
 idempotent GitHub Release state machine. Application Readiness adds a bounded deterministic
 domain service that joins only owned local records, emits inspectable checks and exposes
 canonical JSON/Markdown exports without introducing persistence or migration work.
-The source-installed automation interface adds a second entry point for fixed local reads: a
-human JSON CLI and an MCP stdio server share one scoped facade. Revocable user-bound grants,
-exclusive vault leasing, typed result limits and explicit agent-disclosure acknowledgement keep
-that interface narrower than the desktop API.
+The source-installed automation interface adds a second entry point for typed local operations: a
+human JSON CLI and an MCP stdio server share scoped domain facades. Revocable user-bound grants,
+exclusive vault leasing, typed bounds, revision checks and explicit agent-disclosure
+acknowledgement provide normal career-workflow parity without exposing generic storage. Job-source
+acquisition combines built-in adapters with revisioned user-owned declarative JSON/HTML providers.
 Browser refresh authentication uses a separate bounded stateful family. The JWT carries a
 non-secret session id and one-time JTI; SQLite stores only the current JTI digest in one of eight
 database-unique account slots. Compare-and-swap rotation detects reuse and revokes the family,
@@ -57,7 +58,7 @@ offline AI golden-set evaluator
 remain contributor-only development modes
 
 **Project Type**: Cross-platform desktop application with a local Python service sidecar,
-a source-installed read-only CLI/MCP entry point, and a managed native model-runtime child
+a source-installed scoped operational CLI/MCP entry point, and a managed native model-runtime child
 process required for AI analysis
 
 **Performance Goals**: warm local API reads p95 below 200 ms for a 10,000-record vault;
@@ -67,8 +68,9 @@ application readiness calculation below 100 ms for one application with 300 sele
 
 **Constraints**: no remote inference or API keys; zero hidden startup egress; installer does
 not bundle the 1.83 GB model; all service/model endpoints loopback-only; MCP uses stdio only;
-one active vault writer; no user-content logging; automation tools are read-only, scoped and
-bounded; release builds are native per operating system
+one active vault writer; no user-content logging; automation tools are scope-filtered, typed and
+bounded; custom providers are declarative HTTPS-only adapters; release builds are native per
+operating system
 
 **Scale/Scope**: one user and one vault per installation; up to 250,000 imported records,
 20,000 archive members, 100 resume blocks, 50 resume versions per draft, and five AI task
@@ -102,8 +104,10 @@ families in the first evaluation suite
   projections, bounded time-window inputs and explicit omission counts; it neither replays event
   payloads nor invokes local or remote inference.
 - **PASS — Agent least privilege**: the CLI and MCP server authenticate an expiring user-bound
-  grant, acquire the desktop lease for each read, expose only fixed bounded results, open no
-  listener and require acknowledgement before results can pass to an external agent client.
+  grant, acquire the desktop lease for each operation, expose only typed scope-filtered domain
+  workflows, open no listener and require acknowledgement before results can pass to an external
+  agent client. Writes reuse ownership, revision, evidence and readiness checks rather than generic
+  SQL, filesystem or desktop-session authority.
 
 ### Post-design gate
 
@@ -231,7 +235,7 @@ selected language is a local interface preference and never changes stored caree
 
 The agent interface is not another transport over the desktop API. `backend/automation` configures
 the existing vault before database imports, acquires the same process lease for each access,
-authenticates a stored grant digest and maps domain services into fixed DTOs. The CLI serializes
+authenticates a stored grant digest and maps domain services into typed bounded DTOs. The CLI serializes
 those DTOs as JSON. The MCP entry point registers only the allowed tools and writes protocol
 messages over stdio. Neither entry point accepts a desktop session token, arbitrary query or raw
 file path.
@@ -432,29 +436,30 @@ filesystem destination. Tests cover historical/current success, adversarial arch
 populated-vault inspection, final-byte verification, rollback faults, service behavior and keyboard
 accessibility.
 
-### Phase M — Scoped CLI and MCP reads
+### Phase M — Scoped CLI and MCP foundation
 
 Add one migration for expiring, revocable automation grants. Authorization requires the CareerOS
 username and an interactive password, binds the grant to that user and returns the random bearer
-token once while persisting only its SHA-256 digest. Four fixed scopes cover system/model status,
-Career Vault counts, resume metadata and application projections.
+token once while persisting only its SHA-256 digest. The initial read scopes cover system/model
+status, Career Vault counts, resume metadata and application projections; Phase Y extends the same
+grant model with domain-specific write and execution scopes.
 
 Bootstrap the source-installed command before normal database imports. It resolves the native
 application-data directory, verifies the installation secret and Alembic head, and holds
 `desktop_instance_lease` for each command. MCP uses it during bootstrap and reacquires it for every
-tool call while releasing it between calls. Each tool read also revalidates the grant. Only
-authorization may apply a pending migration; normal reads fail closed. This prevents an agent and
+tool call while releasing it between calls. Each tool operation also revalidates the grant. Only
+authorization may apply a pending migration; normal operations fail closed. This prevents an agent and
 the desktop sidecar from accessing the vault concurrently without keeping the desktop closed while
 MCP is idle.
 
-Map existing domain services through a focused read-only facade. DTOs exclude raw resume and
-source-document bodies, contact fields, prompts, artifact bytes, tokens and storage paths, while
-list sizes and agenda horizons remain bounded. Publish the same reads as JSON CLI commands and as
-scope-filtered MCP stdio tools. Require `--acknowledge-agent-disclosure` before serving MCP because
+Map existing domain services through focused facades. DTOs exclude source-document bytes, prompts,
+artifact bytes, tokens, stored provider secrets and storage paths, while lists and text fields
+remain bounded. Publish operations as JSON CLI commands and scope-filtered MCP stdio tools. Require
+`--acknowledge-agent-disclosure` before serving MCP because
 the external client, not CareerOS, decides whether results are sent to a remote provider.
 
 Cover digest-only token storage, expiry, revocation, wrong-user access, scope enforcement,
-zero-mutation reads, output bounds, official in-memory MCP negotiation and a real stdio subprocess.
+read-only grant immutability, output bounds, official in-memory MCP negotiation and a real stdio subprocess.
 Portability tests prove restore revokes active grants; deletion tests prove complete erasure
 removes them.
 
@@ -803,6 +808,67 @@ draft deletion and complete erasure without deleting shared or committed bytes. 
 normalized-photo and storage modules below the repository's focused-module size boundary. Record
 exact focused and full lint, type, backend, frontend, distribution and real-browser evidence in
 analysis and convergence artifacts.
+
+### Phase Y — Declarative providers and scoped agent-operation parity
+
+Persist one revisioned `job_provider_configurations` row per custom user source. The row stores a
+unique user-owned key, display metadata, adapter kind, an enabled consent bit and strictly validated
+request/extraction JSON. A new Alembic revision upgrades from the current head and portable archive
+v7 includes these rows; restore, inspection, complete erasure and cross-user tests treat them as
+ordinary user-scoped vault data. Secret-looking headers remain encrypted only to the extent of the
+local vault itself and are redacted from metadata, exports, logs and agent results.
+
+Keep provider configuration separate from execution. `backend/providers/configuration` owns
+Pydantic contracts, URL/network policy, redaction and CRUD with optimistic revisions. A generic
+JSON/HTML adapter consumes only validated declarations, uses the existing strict bounded HTTPX
+stream policy, re-resolves public DNS before each request, refuses redirects, compression and
+ambient proxies, and supports only allowlisted template variables, dotted JSON paths and a limited
+CSS selector subset. A registry starts with the local vault source and adds only enabled owned
+provider installations for each search run; no network adapter is constructed by default. The
+existing orchestration retains cancellation, deduplication, observation receipts and mandatory
+local-model analysis. One-source diagnostics never contain credentials or response bodies.
+
+Expose `/job-providers` list/detail/create/update/delete/validate/test routes and an authenticated
+Providers workspace. The editor starts with understandable fields and reveals bounded request,
+pagination and extraction controls as advanced options; discoverable packs remain separate from
+installed providers and require explicit import. Network test is an explicit action. English and Italian copy, keyboard
+operation, responsive layout, error recovery and no secret re-display are component-tested.
+
+Evolve automation grants without changing their digest-only bearer lifecycle. Add career, resume,
+job, provider, search and application read/write/execute scopes. Split MCP registration and domain
+facades into focused modules. Each call reacquires the desktop lease, revalidates grant and vault
+lifecycle, checks ownership and invokes the existing service with explicit expected revisions and
+idempotency keys. Tools cover provider management, profile reads/writes, job reads/manual actions,
+synchronous search and verified analysis, resume generation/publication, dossier preparation,
+tasks and stage events. Tool annotations describe mutation and open-world network behavior, but
+server-side scope checks remain authoritative. No tool accepts SQL, local paths, raw credentials or
+arbitrary prompts; restore and erasure remain purpose-bound desktop maintenance.
+
+Gate the phase with migration and portable round-trip tests, provider contract/SSRF/stream tests,
+search-registry integration, API and EN/IT UI tests, scope matrix and revision-conflict unit tests,
+official in-memory and real stdio MCP workflows, full backend/frontend lint and test suites, and
+cross-artifact analysis plus convergence evidence.
+
+## Zero-provider bootstrap and provider-pack extension (2026-08-02)
+
+The provider composition root starts with the local vault source only; no network adapter is
+constructed or consented by product defaults. `job_provider_configurations` represents both strict
+declarative adapters and imported references to an allowlisted native adapter. Native references
+cannot name Python modules or filesystem paths and are materialized only by a closed application
+factory after an enabled owned row is read for the current search.
+
+Versioned provider and provider-pack JSON envelopes are parsed with `extra=forbid`, bounded before
+validation, rejected when they carry configured headers, and flattened into one transaction after
+all keys, native adapter identifiers, destinations, selectors and owner conflicts validate. Import
+defaults to disabled; explicit `activate=true` or a later compare-and-swap state update is the only
+network-consent path. The Swiss pack is a source-controlled JSON runtime asset collected into the
+desktop sidecar and advertises the reviewed native adapters together with reviewed data-only canton
+and specialist declarations without installing them.
+
+The Providers workspace, REST API and scoped MCP catalog share pack discovery, document import,
+bundled-pack import and enable/disable operations. Portable archives retain import provenance but
+strip declarative headers and disable every restored provider. Search-source UI stops owning fixed
+Swiss consent checkboxes; provider installation state is the single active consent record.
 
 ## Complexity Tracking
 

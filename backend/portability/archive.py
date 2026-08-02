@@ -36,6 +36,8 @@ from backend.portability.manifest import (
     validate_manifest_compatibility,
 )
 from backend.portability.schemas import ArchiveEntry, ArchiveManifest
+from backend.providers.configuration.models import JobProviderConfiguration
+from backend.providers.configuration.schemas import secret_header
 from backend.resumes.artifact_policy import MAX_RESUME_ARTIFACT_BYTES
 from backend.resumes.models import ResumeArtifact, ResumeDraft, ResumeVersion
 from backend.storage.atomic import StorageWriteError, read_verified
@@ -59,6 +61,7 @@ EXPORT_MODELS: list[tuple[str, type[Any]]] = [
     ("source_documents", SourceDocument),
     ("career_facts", CareerFact),
     ("career_goals", CareerGoal),
+    ("job_provider_configurations", JobProviderConfiguration),
     ("resume_drafts", ResumeDraft),
     ("resume_versions", ResumeVersion),
     ("resume_artifacts", ResumeArtifact),
@@ -179,6 +182,9 @@ def _queries(db: Session, user_id: int) -> dict[str, list[Any]]:
     goals = (
         db.query(CareerGoal).filter(CareerGoal.profile_id == profile_id).all() if profile_id else []
     )
+    provider_configurations = (
+        db.query(JobProviderConfiguration).filter(JobProviderConfiguration.user_id == user_id).all()
+    )
     drafts = (
         db.query(ResumeDraft).filter(ResumeDraft.profile_id == profile_id).all()
         if profile_id
@@ -255,6 +261,7 @@ def _queries(db: Session, user_id: int) -> dict[str, list[Any]]:
         "source_documents": sources,
         "career_facts": facts,
         "career_goals": goals,
+        "job_provider_configurations": provider_configurations,
         "resume_drafts": drafts,
         "resume_versions": versions,
         "resume_artifacts": artifacts,
@@ -320,6 +327,7 @@ def export_archive(db: Session, user_id: int) -> bytes:
         tables: dict[str, list[dict[str, Any]]] = {}
         user_scoped = {
             "candidate_profiles",
+            "job_provider_configurations",
             "search_profiles",
             "jobs",
             "applications",
@@ -345,6 +353,29 @@ def export_archive(db: Session, user_id: int) -> bytes:
                         verified_job=jobs_by_id.get(item.job_id),
                         quarantine_reason="analysis_not_receipt_verified_at_export",
                     )
+                    tables[table_name].append(row)
+            elif table_name == "job_provider_configurations":
+                tables[table_name] = []
+                for item in rows[table_name]:
+                    row = _row(item, omit=omit)
+                    if row.get("adapter_kind") == "native":
+                        # Native adapters are referenced only by a reviewed, built-in ID. There
+                        # is no request declaration to sanitize and restored providers are
+                        # disabled by the restore boundary below.
+                        tables[table_name].append(row)
+                        continue
+                    request_config = dict(row.get("request_config") or {})
+                    headers = request_config.get("headers")
+                    if isinstance(headers, dict):
+                        filtered = {
+                            name: value
+                            for name, value in headers.items()
+                            if isinstance(name, str) and not secret_header(name)
+                        }
+                        if len(filtered) != len(headers):
+                            row["enabled"] = False
+                        request_config["headers"] = filtered
+                    row["request_config"] = request_config
                     tables[table_name].append(row)
             else:
                 tables[table_name] = [_row(item, omit=omit) for item in rows[table_name]]

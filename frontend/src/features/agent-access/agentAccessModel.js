@@ -1,8 +1,16 @@
 export const SCOPES = [
     "system:read",
     "career:read",
+    "career:write",
     "resume:read",
+    "resume:write",
+    "jobs:read",
+    "jobs:write",
+    "search:execute",
+    "providers:read",
+    "providers:write",
     "applications:read",
+    "applications:write",
 ];
 
 export const CODEX_CONFIG = `[mcp_servers.careeros]

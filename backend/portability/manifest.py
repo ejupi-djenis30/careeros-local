@@ -7,8 +7,8 @@ from typing import Any, Final, Literal
 from backend.portability.schemas import ArchiveManifest
 
 ARCHIVE_FORMAT: Final[Literal["careeros-portable-archive"]] = "careeros-portable-archive"
-CURRENT_ARCHIVE_VERSION: Final = 6
-SUPPORTED_ARCHIVE_VERSIONS: Final = frozenset({1, 2, 3, 4, 5, 6})
+CURRENT_ARCHIVE_VERSION: Final = 7
+SUPPORTED_ARCHIVE_VERSIONS: Final = frozenset({1, 2, 3, 4, 5, 6, 7})
 MANIFEST_MEMBER: Final = "manifest.json"
 PAYLOAD_MEMBER: Final = "payload.json"
 
@@ -38,6 +38,7 @@ V3_TABLES: Final = (
 V4_TABLES: Final = V3_TABLES
 V5_TABLES: Final = V4_TABLES
 V6_TABLES: Final = (*V5_TABLES, "application_dossier_drafts")
+V7_TABLES: Final = (*V6_TABLES, "job_provider_configurations")
 TABLES_BY_VERSION: Final = {
     1: frozenset(V1_TABLES),
     2: frozenset(V2_TABLES),
@@ -45,6 +46,7 @@ TABLES_BY_VERSION: Final = {
     4: frozenset(V4_TABLES),
     5: frozenset(V5_TABLES),
     6: frozenset(V6_TABLES),
+    7: frozenset(V7_TABLES),
 }
 
 

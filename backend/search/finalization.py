@@ -29,8 +29,6 @@ from backend.repositories.job_repository import JobRepository
 from backend.repositories.profile_repository import ProfileRepository
 from backend.search.consent import (
     consent_audit_record,
-    consented_job_providers,
-    load_job_source_consents,
 )
 from backend.search.normalization.listings import (
     bootstrap_normalized_job_data,
@@ -66,6 +64,8 @@ try:
     from backend.providers.jobs.adecco.client import AdeccoProvider
 except ImportError:
     AdeccoProvider = None
+from backend.providers.configuration.registry import configured_provider_registry
+from backend.providers.configuration.service import ProviderConfigurationService
 from backend.providers.jobs.jobroom.avam_mapper import avam_mapper
 from backend.providers.jobs.localdb.client import LocalDbProvider
 from backend.providers.jobs.models import (
@@ -133,6 +133,7 @@ class FinalizationMixin:
             release_task(profile_id, reservation_token)
             return
 
+        base_providers = self.providers
         configured_providers = self.providers
         try:
             profile = self.profile_repo.get(profile_id)
@@ -161,9 +162,15 @@ class FinalizationMixin:
                 return
             # Ensure fresh LLM providers (reload config).
             llm_service.clear_provider_cache()
-            original_provider_names = set(configured_providers)
-            consents = load_job_source_consents(self.db, profile.user_id)
-            self.providers = consented_job_providers(configured_providers, consents)
+            configured_providers, _installed_names = configured_provider_registry(
+                self.db,
+                profile.user_id,
+                builtins=base_providers,
+            )
+            original_provider_names = set(base_providers) | {
+                row.key for row in ProviderConfigurationService(self.db).rows(profile.user_id)
+            }
+            self.providers = configured_providers
             enabled_provider_names = set(self.providers)
             consent_audit = consent_audit_record(original_provider_names, enabled_provider_names)
             logger.info(
@@ -191,6 +198,7 @@ class FinalizationMixin:
             # construction; close the complete configured set exactly once.
             self.providers = configured_providers
             await self._close_provider_resources()
+            self.providers = base_providers
             if reservation_token is not None:
                 release_task(profile_id, reservation_token)
             unregister_task(profile_id)

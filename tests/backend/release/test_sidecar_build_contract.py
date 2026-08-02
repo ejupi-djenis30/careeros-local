@@ -104,3 +104,5 @@ def test_pyinstaller_spec_rejects_linked_runtime_data() -> None:
     assert "if is_link_like(source_root) or not source_root.is_dir():" in text
     assert "if is_link_like(source):" in text
     assert "source.resolve(strict=True).is_relative_to(resolved_root)" in text
+    assert '"providers" / "configuration" / "packs"' in text
+    assert '"backend/providers/configuration/packs"' in text

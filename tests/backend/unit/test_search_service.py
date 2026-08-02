@@ -96,6 +96,26 @@ def search_service(mock_db, mock_job_repo, mock_profile_repo):
     )
 
 
+def test_search_service_bootstrap_constructs_no_network_provider(
+    mock_db, mock_job_repo, mock_profile_repo
+):
+    with (
+        patch("backend.search.orchestrator.JobRoomProvider") as job_room,
+        patch("backend.search.orchestrator.SwissDevJobsProvider") as swissdevjobs,
+        patch("backend.search.orchestrator.AdeccoProvider") as adecco,
+    ):
+        service = SearchService(
+            db=mock_db,
+            job_repo=mock_job_repo,
+            profile_repo=mock_profile_repo,
+        )
+
+    assert set(service.providers) == {"local_db"}
+    job_room.assert_not_called()
+    swissdevjobs.assert_not_called()
+    adecco.assert_not_called()
+
+
 @pytest.mark.asyncio
 async def test_run_search_releases_reservation_without_activation_in_offline_mode(search_service):
     with (
