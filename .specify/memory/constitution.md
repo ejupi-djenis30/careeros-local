@@ -2,6 +2,9 @@
 
 <!--
 Sync impact report
+- Clarification: authenticated renderer requests must remain within the configured `/api/v1`
+  boundary after URL parsing, including data-derived path segments. This tightens the existing
+  local transport principle without adding an endpoint, authority or network capability.
 - Amendment: destructive vault operations now persist an explicit four-state lifecycle before
   mutation, use purpose-bound recovery authority and restart-durable ownership journals, and
   clear pending state only after durable cleanup and SQLite sanitation have completed.
@@ -35,9 +38,9 @@ Sync impact report
 - Amendment: every workflow presented as AI analysis now requires a ready, validated local model
   and fails closed instead of substituting heuristic output; owned records and deterministic
   preflight/export workflows remain available without inference.
-- Version: 1.2.0 (adds mandatory crash-recoverable vault maintenance and orderly shutdown).
+- Version: 1.2.1 (clarifies renderer request containment under the existing local boundary).
 - Ratified: 2026-07-17.
-- Last amended: 2026-07-31.
+- Last amended: 2026-09-07.
 - Principles: desktop ownership, local intelligence, grounded career truth, durable vault,
   bounded architecture, measurable delivery, secure distribution, accessible documents.
 - Dependent artifacts: plan, specification, task and checklist templates reviewed.
@@ -52,6 +55,8 @@ without requiring Docker, a shell, Python, Node.js or a manually started web ser
 application services MUST bind only to loopback, use an ephemeral authenticated session,
 and terminate with the desktop process. Windows, macOS and Linux release artifacts MUST
 be reproducible from source and published with checksums.
+Authenticated renderer requests MUST stay inside the configured `/api/v1` boundary after URL
+parsing; non-canonical data-derived paths MUST be rejected before credentials are attached.
 Shutdown MUST stop new scheduled work before snapshotting or cancelling background tasks, wait
 within a bounded deadline for managed-runtime workers, and terminate every child process even
 when the graceful path fails. Liveness MUST remain independent of database and writer activity;
@@ -257,4 +262,4 @@ minor; clarification without changed obligations is patch. Every plan MUST perfo
 check before research and again before release. Exceptions require owner approval, an expiry date
 and a tracked remediation task; there are no implicit exceptions.
 
-**Version**: 1.2.0 | **Ratified**: 2026-07-17 | **Last amended**: 2026-07-31
+**Version**: 1.2.1 | **Ratified**: 2026-07-17 | **Last amended**: 2026-09-07

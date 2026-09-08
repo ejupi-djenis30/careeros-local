@@ -295,7 +295,7 @@ jobs:
     timeout-minutes: 45
     env:
       TRIVY_IMAGE: aquasec/trivy:0.72.0@sha256:cffe3f5161a47a6823fbd23d985795b3ed72a4c806da4c4df16266c02accdd6f
-      OLLAMA_IMAGE: ollama/ollama@sha256:57f573b47f1f71ebb445789f279fe3e596a8beab182f7cf486db9205bad87c5a
+      OLLAMA_IMAGE: careeros-local-ollama:0.33.3-careeros.1
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -303,10 +303,50 @@ jobs:
           persist-credentials: false
       - name: Validate Compose
         run: docker compose config --quiet
-      - name: Build application images
-        run: docker compose build backend frontend
-      - name: Pull pinned Ollama runtime
-        run: docker compose pull --quiet ollama
+      - name: Build application and model images
+        run: docker compose build backend frontend ollama
+      - name: Smoke-test patched Ollama runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker run --rm --entrypoint sh "$OLLAMA_IMAGE" -ec '
+            provenance=/usr/share/doc/careeros-local-ollama/BUILD_PROVENANCE.txt
+            test -s "$provenance"
+            test -s /usr/lib/ollama/GO_LICENSE
+            grep --fixed-strings "go1.27.1" "$provenance"
+            grep --extended-regexp 'golang.org/x/crypto[[:space:]]+v0[.]55[.]0' "$provenance"
+            grep --extended-regexp 'golang.org/x/net[[:space:]]+v0[.]57[.]0' "$provenance"
+          '
+          container_id="$(docker run --detach --init \
+            --read-only \
+            --tmpfs /tmp:rw,nosuid,nodev,noexec,size=256m,mode=1777 \
+            --tmpfs /var/lib/ollama/.ollama:rw,nosuid,nodev,noexec,size=64m,mode=0700,uid=10001,gid=10001 \
+            --pids-limit 512 \
+            --cap-drop ALL \
+            --security-opt no-new-privileges:true \
+            --env OLLAMA_NO_CLOUD=true \
+            "$OLLAMA_IMAGE")"
+          cleanup() {
+            docker logs "$container_id" || true
+            docker rm --force "$container_id" >/dev/null 2>&1 || true
+          }
+          trap cleanup EXIT
+
+          ready=0
+          for _ in {1..30}; do
+            if docker exec "$container_id" ollama list \
+              > "$RUNNER_TEMP/ollama-list.txt" 2>&1; then
+              ready=1
+              break
+            fi
+            sleep 1
+          done
+          test "$ready" -eq 1
+          docker exec "$container_id" ollama --version \
+            > "$RUNNER_TEMP/ollama-version.txt" 2>&1
+          grep --fixed-strings "0.33.3-careeros.1" \
+            "$RUNNER_TEMP/ollama-version.txt"
+          test -s "$RUNNER_TEMP/ollama-list.txt"
       - name: Smoke-test hardened frontend runtime
         shell: bash
         run: |
@@ -660,33 +700,33 @@ jobs:
             image --skip-version-check --scanners vuln --ignore-unfixed \
             --severity HIGH,CRITICAL --exit-code 1 \
             careeros-local-frontend:latest
-      - name: Gate exact temporary Ollama vulnerability policy
+      - name: Gate patched Ollama high and critical vulnerabilities
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p "$RUNNER_TEMP/careeros"
-          scanner=(
-            docker run --rm
-            -v trivy-cache:/root/.cache/
-            -v /var/run/docker.sock:/var/run/docker.sock
-            -v "$PWD:/workspace:ro"
-            -v "$RUNNER_TEMP/careeros:/reports"
-            "$TRIVY_IMAGE" image
-            --skip-version-check
-            --scanners vuln
-            --severity HIGH,CRITICAL
-          )
-          "${scanner[@]}" --format json \
-            --output /reports/ollama-vulnerabilities-raw.json \
-            "$OLLAMA_IMAGE"
-          "${scanner[@]}" --ignorefile /workspace/.trivyignore.yaml \
-            --exit-code 1 --format json \
-            --output /reports/ollama-vulnerabilities-filtered.json \
-            "$OLLAMA_IMAGE"
-          python3 scripts/check_ollama_vulnerability_policy.py \
-            "$RUNNER_TEMP/careeros/ollama-vulnerabilities-raw.json" \
-            "$RUNNER_TEMP/careeros/ollama-vulnerabilities-filtered.json" \
-            .trivyignore.yaml
+          scan_status=0
+          docker run --rm \
+            -v trivy-cache:/root/.cache/ \
+            -v /var/run/docker.sock:/var/run/docker.sock \
+            -v "$RUNNER_TEMP/careeros:/reports" \
+            "$TRIVY_IMAGE" image \
+            --skip-version-check \
+            --scanners vuln \
+            --severity HIGH,CRITICAL \
+            --exit-code 1 \
+            --format json \
+            --output /reports/ollama-vulnerabilities.json \
+            "$OLLAMA_IMAGE" || scan_status=$?
+          test "$scan_status" -eq 0
+      - name: Upload Ollama vulnerability reports
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ollama-vulnerability-reports
+          path: ${{ runner.temp }}/careeros/ollama-vulnerabilities.json
+          if-no-files-found: ignore
+          retention-days: 7
       - name: Create container CycloneDX SBOMs
         if: always()
         run: |
@@ -701,6 +741,11 @@ jobs:
             -v "$RUNNER_TEMP/careeros:/reports" "$TRIVY_IMAGE" image --format cyclonedx \
             --skip-version-check --output /reports/frontend-container.cdx.json \
             careeros-local-frontend:latest
+          docker run --rm -v trivy-cache:/root/.cache/ \
+            -v /var/run/docker.sock:/var/run/docker.sock \
+            -v "$RUNNER_TEMP/careeros:/reports" "$TRIVY_IMAGE" image --format cyclonedx \
+            --skip-version-check --output /reports/ollama-container.cdx.json \
+            "$OLLAMA_IMAGE"
       - name: Upload container SBOMs
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1

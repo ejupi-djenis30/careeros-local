@@ -73,6 +73,23 @@ updates:
       - dependency-name: "*"
         update-types: ["version-update:semver-major"]
 
+  - package-ecosystem: docker
+    directory: /docker/ollama
+    schedule:
+      interval: weekly
+      day: wednesday
+    open-pull-requests-limit: 5
+    cooldown:
+      default-days: 7
+    groups:
+      compatible-ollama-images:
+        patterns: ["*"]
+        update-types: [minor, patch]
+    ignore:
+      # Source, runtime and patched module revisions move together after review.
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
+
   - package-ecosystem: github-actions
     directory: /
     schedule:

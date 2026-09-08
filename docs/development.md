@@ -45,6 +45,14 @@ Browser/container development:
 docker compose up --build
 ```
 
+The first container build compiles the CareerOS Ollama executable from the checksum-pinned 0.33.3
+source with the reviewed fixed Go module graph. Docker reuses that build afterward. The final image
+retains Ollama's digest-pinned native CPU/GPU payload and stores its source, toolchain, module graph
+and executable checksum in
+`/usr/share/doc/careeros-local-ollama/BUILD_PROVENANCE.txt`. Runtime model downloads remain explicit
+and local under the `ollama_data` volume. A network-disabled one-shot initializer migrates an
+existing volume to the model server's non-root UID/GID before startup.
+
 Open `http://127.0.0.1:5173`. Compose publishes only the Nginx frontend; the backend stays on the
 private Compose network and accepts same-origin `/api/` traffic through that proxy. Uvicorn ignores
 forwarded identity headers, so rate-limit identity cannot be selected with a direct

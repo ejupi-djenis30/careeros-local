@@ -102,6 +102,6 @@
   },
   "overrides": {
     "minimatch": "10.2.5",
-    "postcss": "8.5.18"
+    "postcss": "8.5.23"
   }
 }

@@ -5,6 +5,32 @@ All notable changes to CareerOS Local are documented here. The format follows
 
 ## [Unreleased]
 
+### Security
+
+- Replaced the expired Ollama exception inventory with a reproducible local image built from the
+  checksum-pinned 0.33.3 source and digest-pinned Go 1.27.1 toolchain. The build verifies fixed Go
+  module versions, regenerates dependency licensing, embeds provenance and retains the upstream
+  native runtime, while CI runs the real service, emits an SBOM and gates every HIGH/CRITICAL
+  finding without an ignore file. The persistent model server now runs as UID/GID 10001; a
+  network-disabled, capability-minimal one-shot migrates existing volume ownership before startup.
+- Updated the backend container to the verified Python 3.12.14 Alpine image and apply
+  supported Alpine security updates in both runtime images. Container vulnerability
+  gates and package SBOMs continue to cover the exact built images.
+- Updated the locked PDF parser to pypdf 6.16.1, HTTP/2 support to h2 4.4.1,
+  cryptography to 50.0.1 and packaging/audit tooling to pip 26.2. These updates remove the
+  newly reported Python dependency advisories without changing local-only application behavior.
+- Updated compatible frontend build/test dependencies, including PostCSS 8.5.23, JS-YAML 4.3.1,
+  Browserslist 4.28.7, humanfs 0.16.8, Undici 7.29.0, brace-expansion 5.0.9 and Nano ID 3.3.18.
+  The full frontend dependency audit is clean, including development tooling; no vulnerability
+  exceptions or audit suppressions were added.
+
+### Fixed
+
+- Asset-publication recovery now recognizes a journal unlinked by a concurrent committed writer
+  during the stable descriptor read, while continuing to fail closed if the path exists or was
+  replaced. Cross-profile content-addressed writes therefore converge without weakening journal
+  validation.
+
 ## [1.11.1] - 2026-08-01
 
 ### Fixed

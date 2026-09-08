@@ -880,6 +880,22 @@ fails with `vault_busy` instead of opening another connection.
   before publication and reconcile ambiguous commit or process loss without deleting committed or
   shared bytes. Draft deletion and complete vault erasure MUST be idempotently retryable and remove
   every attributable publication journal and orphan while preserving foreign profile claims.
+- **FR-105**: The Compose model runtime MUST retain the exact reviewed Ollama release source and
+  native runtime payload while replacing a vulnerable compiled Go executable with a reproducible
+  build from a checksum-pinned source archive, a digest-pinned Go builder and an exact reviewed
+  module set. The resulting image MUST retain the upstream entry point, local-only host policy and
+  complete Go dependency licensing and MUST publish build provenance inside the image. The
+  persistent server MUST run as a dedicated non-root numeric identity. Any legacy named-volume
+  ownership migration MUST run once without network access, with only the capability required to
+  change ownership, and MUST exit before the server starts.
+- **FR-106**: Container CI MUST build the Compose model runtime, exercise its real health command,
+  generate a CycloneDX inventory and fail on every detected HIGH or CRITICAL vulnerability. The
+  model-runtime gate MUST NOT use a vulnerability ignore file, expiry extension or filtered
+  baseline to make a vulnerable binary releasable.
+- **FR-107**: Asset-publication recovery MUST treat a journal that disappears during a stable-file
+  read as completed concurrent cleanup only after the exact path is rechecked and remains absent.
+  A path that still exists, was replaced or contains unstable or malformed metadata MUST continue
+  to fail closed before private storage is changed.
 
 ### Key Entities
 
@@ -1102,6 +1118,36 @@ fails with `vault_busy` instead of opening another connection.
   byte publisher, no replacement under conflicting content, one source/photo row per profile,
   serialized monotonic resume versions, crash-reconciled publication journals, retryable deletion,
   preserved shared ownership, bounded profile revision and zero `.write-*` residue.
+- **SC-044**: A real Compose build reproduces the reviewed Ollama 0.33.3 executable from its
+  checksum-pinned source with the asserted fixed Go graph, retains native runtime behavior and
+  licensing, passes `ollama list`, emits inspectable provenance and a CycloneDX inventory, and has
+  zero HIGH or CRITICAL Trivy findings without exceptions. A journal removed during stable read
+  converges, while an extant unstable or replacement path still fails closed.
+
+### Renderer request containment clarification (2026-09-07)
+
+Authenticated API request paths must begin with exactly one slash and remain canonical within
+the selected `/api/v1` base. Reject literal or percent-encoded dot segments, encoded path
+separators, backslashes, fragments, malformed path encoding and raw whitespace/control characters
+before creating a request or attaching access/per-launch credentials. Encoded query values and
+valid encoded resource identifiers remain supported in browser and desktop modes.
+
+Acceptance: adversarial paths issue zero fetch calls and create no active controller; valid
+requests retain their exact encoded path/query, existing headers and redirect rejection.
+
+### Model-runtime remediation clarification (2026-09-08)
+
+The contributor Compose stack builds its Ollama executable from the exact source revision behind
+the reviewed 0.33.3 image. Source archive checksum, builder image digest, upstream runtime-image
+digest, patched module versions and resulting Go build information are inspectable inputs or image
+artifacts. The upstream CPU/GPU runtime payload remains unchanged, and the runtime keeps the same
+local API and health contract.
+
+Acceptance: configuration tests reject source, builder, runtime-image or module drift; a real
+container build reports the expected patched version and dependency graph; Compose health and
+lifecycle checks pass; Trivy reports zero HIGH or CRITICAL findings without an ignore file; and
+the Ollama CycloneDX document is retained with the application-image inventories. A deterministic
+journal-unlink regression and repeated cross-profile publication race also pass.
 
 ## Assumptions
 

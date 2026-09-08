@@ -76,17 +76,17 @@ def test_current_frontend_exceptions_are_empty_after_router_upgrade():
     assert accepted == []
 
 
-def test_vulnerable_frontend_transitives_are_patched_and_manifest_is_release_evidence():
+def test_reviewed_frontend_pins_and_manifest_are_release_evidence():
     lock = json.loads((ROOT / "frontend/package-lock.json").read_text(encoding="utf-8"))
     package = json.loads((ROOT / "frontend/package.json").read_text(encoding="utf-8"))
     packages = lock["packages"]
     dependencies = package["dependencies"]
 
-    assert packages["node_modules/postcss"]["version"] == "8.5.18"
+    assert packages["node_modules/postcss"]["version"] == "8.5.23"
     assert packages["node_modules/postcss"]["dev"] is True
-    assert package["overrides"]["postcss"] == "8.5.18"
+    assert package["overrides"]["postcss"] == "8.5.23"
     assert packages["node_modules/minimatch"]["version"] == "10.2.5"
-    assert packages["node_modules/brace-expansion"]["version"] == "5.0.8"
+    assert packages["node_modules/brace-expansion"]["version"] == "5.0.9"
     assert packages["node_modules/brace-expansion"]["dev"] is True
     assert package["overrides"]["minimatch"] == "10.2.5"
     assert packages["node_modules/react-router"]["version"] == "8.3.0"
