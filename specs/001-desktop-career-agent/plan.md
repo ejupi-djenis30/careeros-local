@@ -7,6 +7,17 @@ distribution, profile/goal depth, automatic resumes and editable resume canvas.
 
 ## Summary
 
+### Renderer request containment follow-up (2026-09-07)
+
+Add a focused renderer path validator called before `ApiClient.request` allocates its abort
+controller or assembles authenticated headers. Check the raw path and decoded segments, then
+verify canonical URL parsing against a fixed validation origin and `/api/v1` prefix. Retain
+the existing selected runtime base, query encoding, cancellation and refresh behavior.
+
+Constitution check: preserves local-only transport and narrows the existing credential boundary;
+no persistence, migration, telemetry, extra network service or native capability is introduced.
+Use failing request-level regressions first, then the full frontend test, lint and bundle gates.
+
 CareerOS Local becomes a Tauri v2 desktop product around the existing React workspace and
 a frozen Python sidecar. Tauri owns one authenticated loopback process on a random port;
 the sidecar owns the SQLite vault and a managed `llama.cpp` process required by analysis workflows.
@@ -803,6 +814,27 @@ draft deletion and complete erasure without deleting shared or committed bytes. 
 normalized-photo and storage modules below the repository's focused-module size boundary. Record
 exact focused and full lint, type, backend, frontend, distribution and real-browser evidence in
 analysis and convergence artifacts.
+
+### Phase Y — Patched local model runtime and journal-read convergence
+
+Rebuild only the Go executable from the exact source revision used by the reviewed Ollama 0.33.3
+runtime image. Fetch that source through a SHA-256-verified archive, build it with a digest-pinned
+Go 1.27.1 image, upgrade the exact vulnerable Go modules to reviewed fixed versions, verify the
+resolved module graph and regenerate Ollama's aggregate Go license. Assemble the executable over
+the digest-pinned upstream runtime so its CPU/GPU libraries, entry point and local service contract
+stay intact. Store Go build information and the source identity in the image.
+
+Make Compose own this image build. CI builds all three service images, exercises the real Ollama
+health command, scans the resulting runtime without a vulnerability exception, uploads its raw
+report and adds its CycloneDX inventory to the existing container evidence. Remove the expired
+ignore inventory and its checker after executable configuration tests prove that no filtered gate
+remains.
+
+When a stable journal read detects an in-flight metadata change, recheck the enumerated path. Only
+an absent path represents the expected post-commit cleanup race; any extant or replacement path
+remains a recovery error. Add a deterministic unlink-during-read regression and repeat the real
+cross-profile SQLite race before running the complete backend and container gates. Record exact
+inputs, findings and validation in dedicated analysis and convergence artifacts.
 
 ## Complexity Tracking
 

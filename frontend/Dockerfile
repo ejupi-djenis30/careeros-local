@@ -25,7 +25,9 @@ LABEL org.opencontainers.image.title="CareerOS Local web" \
       org.opencontainers.image.revision="${CAREEROS_BUILD_REVISION}" \
       org.opencontainers.image.licenses="MIT"
 
-RUN rm -rf /usr/share/nginx/html/* /etc/nginx/conf.d/default.conf
+# Keep OS security fixes current even while the upstream image digest is pinned.
+RUN apk upgrade --no-cache \
+    && rm -rf /usr/share/nginx/html/* /etc/nginx/conf.d/default.conf
 
 COPY --from=build /app/frontend/dist /usr/share/nginx/html
 COPY frontend/nginx-main.conf /etc/nginx/nginx.conf

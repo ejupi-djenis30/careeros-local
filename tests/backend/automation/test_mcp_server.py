@@ -13,6 +13,7 @@ from backend.automation.facade import AutomationFacade
 from backend.automation.grants import AutomationGrantError, AutomationPrincipal
 from backend.automation.mcp_server import build_server
 from backend.db.base import SessionLocal
+from backend.inference.service import LocalModelStatus
 
 
 def _server(user_id: int, scopes: frozenset[str]):
@@ -26,8 +27,22 @@ def _server(user_id: int, scopes: frozenset[str]):
 
 @pytest.mark.asyncio
 async def test_official_client_negotiates_lists_and_calls_typed_tools(
-    db_session, test_user
+    db_session, test_user, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    async def deterministic_local_model_status() -> LocalModelStatus:
+        return LocalModelStatus(
+            available=False,
+            ready=False,
+            endpoint="http://127.0.0.1:11434",
+            configured_model="protocol-test-model",
+            installed_models=[],
+            error_code="local_runtime_unreachable",
+        )
+
+    monkeypatch.setattr(
+        "backend.inference.service.get_local_model_status",
+        deterministic_local_model_status,
+    )
     db_session.execute(
         text("CREATE TABLE IF NOT EXISTS alembic_version (version_num VARCHAR(32) NOT NULL)")
     )

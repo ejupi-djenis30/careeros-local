@@ -1,4 +1,5 @@
 import { CAREEROS_API_ERROR_EVENT, CAREEROS_UNAUTHORIZED_EVENT } from "./events";
+import { validateRequestPath } from "./requestPath";
 
 const DEFAULT_API_BASE = "/api/v1";
 const LOOPBACK_HOSTS = new Set(["localhost", "127.0.0.1", "[::1]", "::1"]);
@@ -249,7 +250,7 @@ export class ApiClient {
     }
 
     static async request(endpoint, options = {}) {
-        const url = `${getApiBase()}${endpoint}`;
+        const url = `${getApiBase()}${validateRequestPath(endpoint)}`;
         const isFormData = typeof FormData !== "undefined" && options.body instanceof FormData;
         const controller = new AbortController();
         const requestEpoch = this._sessionEpoch;

@@ -7,17 +7,47 @@ x-default-logging: &default-logging
     max-file: "3"
 
 services:
+  ollama-volume-init:
+    image: careeros-local-ollama:0.33.3-careeros.1
+    user: "0:0"
+    entrypoint: ["/bin/sh", "-ec"]
+    command: |
+      current_owner="$$(stat --format '%u:%g' /var/lib/ollama/.ollama)"
+      if [ "$$current_owner" != "10001:10001" ]; then
+        chown --recursive --no-dereference 10001:10001 /var/lib/ollama/.ollama
+      fi
+    restart: "no"
+    pids_limit: 64
+    read_only: true
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+    security_opt:
+      - no-new-privileges:true
+    volumes:
+      - ollama_data:/var/lib/ollama/.ollama
+    logging: *default-logging
+    network_mode: none
+
   ollama:
-    image: ollama/ollama:0.32.0@sha256:57f573b47f1f71ebb445789f279fe3e596a8beab182f7cf486db9205bad87c5a
+    image: careeros-local-ollama:0.33.3-careeros.1
+    build:
+      context: .
+      dockerfile: docker/ollama/Dockerfile
     restart: unless-stopped
     init: true
+    user: "10001:10001"
     pids_limit: 512
+    depends_on:
+      ollama-volume-init:
+        condition: service_completed_successfully
     environment:
       OLLAMA_HOST: 0.0.0.0:11434
       OLLAMA_KEEP_ALIVE: 15m
       OLLAMA_NO_CLOUD: "true"
     volumes:
-      - ollama_data:/root/.ollama
+      - ollama_data:/var/lib/ollama/.ollama
     expose:
       - "11434"
     healthcheck:

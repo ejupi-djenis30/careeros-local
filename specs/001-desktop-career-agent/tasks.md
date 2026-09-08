@@ -831,3 +831,32 @@ publisher, correct per-profile rows and zero temporary/private residue.
   chunked-body, provider/inference stream, runtime tamper/cancel and liveness regressions
 - [x] T231 [US1] Run complete backend, frontend, distribution and applicable browser gates; record
   exact evidence and residual environmental limits in production-hardening analysis/convergence
+
+## Phase 31: Renderer request containment
+
+- [x] T232 Reject non-canonical renderer endpoints before fetch and credential/controller creation,
+  preserving valid encoded paths and query values in browser and desktop modes.
+- [x] T233 Add request-level traversal/encoding regressions, run frontend tests, lint and build,
+  and record verified evidence and remaining release gates in request-boundary analysis/convergence.
+
+## Phase 32: Patched local model runtime and journal-read convergence
+
+**Goal**: Clear the expired Ollama release blocker with a reproducible, inspectable runtime build
+and close the remaining post-commit journal cleanup race without weakening local privacy or
+recovery validation.
+
+**Independent Test**: Build the Compose Ollama image from the pinned source archive, inspect its
+embedded Go build graph, run its real health command and scan it with Trivy. Concurrently unlink a
+journal after its descriptor is opened, then repeat cross-profile content publication. Verify zero
+HIGH/CRITICAL findings without an ignore file, preserved Ollama behavior, clean recovery
+convergence and fail-closed handling for every extant unstable path.
+
+- [x] T234 [US1] Extend specification, plan and tasks with reproducible Ollama remediation,
+  exception-free vulnerability evidence and the narrow journal-disappearance contract
+- [x] T235 [US5] Recheck a journal after stable-read failure, accept only confirmed disappearance
+  and cover the exact unlink-during-read interleaving plus repeated real SQLite races
+- [x] T236 [US4] Build the reviewed Ollama source with pinned fixed modules, preserve its native
+  runtime and licenses, wire Compose and replace the expired exception gate with strict scan/SBOM
+  evidence and executable configuration tests
+- [x] T237 [US1] Run the complete local backend gates, record exact analysis and convergence
+  evidence, and bind protected-main integration to the real Linux container build and scan

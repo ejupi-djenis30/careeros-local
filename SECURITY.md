@@ -25,6 +25,40 @@ CareerOS Local does not protect data from a fully compromised operating-system a
 
 CI runs hash-locked Python installs, npm lockfile installs, Rust lockfile builds, audits, SBOM generation, secret/misconfiguration scanning, migration round-trips, tests, and package checksums. A vulnerability exception must be documented with scope, rationale, expiry, and compensating control.
 
+## Patched local Ollama runtime (2026-09-08)
+
+Fresh Trivy 0.72.0 scans found **42 HIGH and 1 CRITICAL** findings compiled into `usr/bin/ollama`
+in both the formerly pinned 0.32.0 image and the reviewed upstream 0.33.3 image. The critical
+finding was CVE-2026-56854 in `golang.org/x/crypto` v0.43.0. Updating Ubuntu packages cannot replace
+a Go module embedded in that executable, so the expired exception inventory was removed instead
+of being extended.
+
+Compose now builds `careeros-local-ollama:0.33.3-careeros.1` from these immutable inputs:
+
+| Input | Reviewed identity |
+| --- | --- |
+| Ollama source | commit `b79067b0db7417f20108363bc22adb97f35c966a`, the v0.33.3 release |
+| Source archive | SHA-256 `8f1c4cfe1c687918e00bf9ab6f9966ebd4d727d3d64ccb109b2561afcd347b07` |
+| Go builder | `golang:1.27.1-bookworm` at `sha256:648f440f42a0958804efb24df176f806f9d353b41f1c0627f666428e40310f6b` |
+| Native runtime base | `ollama/ollama:0.33.3` at `sha256:32931b46719f673c05fdbaa81ccb26da18ea4a1c57590a754874ab28ba269eb2` |
+
+The build upgrades the affected module graph to `jsonparser` 1.1.2, `x/crypto` 0.55.0,
+`x/image` 0.45.0, `x/mod` 0.40.0, `x/net` 0.57.0, `x/sync` 0.22.0, `x/sys` 0.47.0,
+`x/term` 0.45.0 and `x/text` 0.41.0, then verifies the resolved versions before compiling. It
+replaces only the upstream Go executable and regenerated `GO_LICENSE`; the reviewed 0.33.3
+CPU/GPU runtime payload, entry point and local service contract remain unchanged. The image stores
+`go version -m` output, source identity and executable checksum in
+`/usr/share/doc/careeros-local-ollama/BUILD_PROVENANCE.txt`.
+
+The persistent Ollama process runs as UID/GID 10001. A network-disabled one-shot Compose service
+repairs ownership of an existing `careeros-local-models` volume with only `CAP_CHOWN`, a read-only
+root filesystem and no-new-privileges, then exits before Ollama starts. The running server drops
+all capabilities and never receives root authority.
+
+CI builds the image, starts the real server under the hardened runtime flags, waits for
+`ollama list`, checks the patched version, emits a CycloneDX inventory and runs a HIGH/CRITICAL Trivy gate
+without an ignore file or filtered baseline. The raw report is retained even when the gate fails.
+
 ## Active dependency exceptions
 
 ### CE-2026-001: `glib` 0.18.5 / RUSTSEC-2024-0429

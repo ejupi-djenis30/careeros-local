@@ -440,6 +440,29 @@ def test_journal_removed_after_scan_converges_as_completed_cleanup(
     assert _journal_files(asset_vault) == []
 
 
+def test_journal_removed_during_stable_read_converges_as_completed_cleanup(
+    asset_vault: AssetVault,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    journal = _pending_source_journal(asset_vault)
+    real_read = publication_module.read_stable_bounded_file
+    removed = False
+
+    def remove_while_open(path: Path, *, maximum_size: int) -> bytes:
+        nonlocal removed
+        if path == journal and not removed:
+            removed = True
+            path.unlink()
+            raise ValueError("Stored file changed while it was being read")
+        return real_read(path, maximum_size=maximum_size)
+
+    monkeypatch.setattr(publication_module, "read_stable_bounded_file", remove_while_open)
+
+    assert _reconcile(asset_vault) == 0
+    assert removed is True
+    assert _journal_files(asset_vault) == []
+
+
 def _pending_source_journal(vault: AssetVault) -> Path:
     content = b"pending journal read contract"
     digest = hashlib.sha256(content).hexdigest()

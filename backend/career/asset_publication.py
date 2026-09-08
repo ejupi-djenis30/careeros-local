@@ -111,7 +111,15 @@ def _is_reparse_point(metadata: os.stat_result) -> bool:
 
 
 def _read_stable_journal_bytes(path: Path) -> bytes:
-    payload = read_stable_bounded_file(path, maximum_size=_JOURNAL_MAX_BYTES)
+    try:
+        payload = read_stable_bounded_file(path, maximum_size=_JOURNAL_MAX_BYTES)
+    except ValueError:
+        # A committed writer can unlink its private journal after another writer
+        # opens the descriptor but before the stable reader performs its final
+        # path check. Only a path that is still absent is completed cleanup; an
+        # extant or replacement path must retain the original fail-closed error.
+        path.lstat()
+        raise
     if not payload:
         raise ValueError("Invalid asset publication journal file")
     return payload
