@@ -582,30 +582,30 @@ jobs:
           sudo install "$RUNNER_TEMP/gh_${GH_CLI_VERSION}_linux_amd64/bin/gh" /usr/local/bin/gh
           test "$(gh version | head -n 1)" = "gh version $GH_CLI_VERSION (2026-06-10)"
       - name: Attest all public release assets
-        uses: actions/attest@f7c74d28b9d84cb8768d0b8ca14a4bac6ef463e6 # v4.2.0
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
         with:
           subject-checksums: release-assets/SHA256SUMS
       - name: Attest the global checksum inventory
-        uses: actions/attest@f7c74d28b9d84cb8768d0b8ca14a4bac6ef463e6 # v4.2.0
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
         with:
           subject-path: release-assets/SHA256SUMS
       - name: Bind backend SBOM to every native package
-        uses: actions/attest@f7c74d28b9d84cb8768d0b8ca14a4bac6ef463e6 # v4.2.0
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
         with:
           subject-checksums: release-attestation/native-subjects.sha256
           sbom-path: release-assets/careeros-backend-${{ steps.release-version.outputs.value }}.cdx.json
       - name: Bind frontend SBOM to every native package
-        uses: actions/attest@f7c74d28b9d84cb8768d0b8ca14a4bac6ef463e6 # v4.2.0
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
         with:
           subject-checksums: release-attestation/native-subjects.sha256
           sbom-path: release-assets/careeros-frontend-${{ steps.release-version.outputs.value }}.cdx.json
       - name: Bind Rust SBOM to every native package
-        uses: actions/attest@f7c74d28b9d84cb8768d0b8ca14a4bac6ef463e6 # v4.2.0
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
         with:
           subject-checksums: release-attestation/native-subjects.sha256
           sbom-path: release-assets/careeros-rust-${{ steps.release-version.outputs.value }}.cdx.json
       - name: Bind backend SBOM to the Agent Access wheel
-        uses: actions/attest@f7c74d28b9d84cb8768d0b8ca14a4bac6ef463e6 # v4.2.0
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
         with:
           subject-checksums: release-attestation/agent-subjects.sha256
           sbom-path: release-assets/careeros-backend-${{ steps.release-version.outputs.value }}.cdx.json
