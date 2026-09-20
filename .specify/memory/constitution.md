@@ -2,6 +2,24 @@
 
 <!--
 Sync impact report
+- Version change: 2.0.0 -> 2.0.1 on 2026-09-19. This clarification makes
+  user-selected legacy campaign imports explicitly previewable, bounded, inert,
+  credential-excluding, idempotent, portable and erasable under the existing local-vault
+  obligations. No external authority or network capability is added.
+- Synchronized target: feature 003 specification, plan, tasks, contracts and validation.
+  Historical specifications remain evidence of previous releases.
+- Version change: 1.2.1 -> 2.0.0 on 2026-09-13, authorized by the owner request for
+  Codex / Claude Code analysis through MCP. This is a major redefinition of principle II.
+- Modified principles: II (local storage and explicit agent disclosure), III (validated
+  local or external-agent analysis), IV (provider-independent quality), product gates.
+- Added: draft-only external write authority and desktop-owned bridge requirement.
+- Removed: absolute local-inference-only and external-agent-read-only requirements.
+- Synchronized: AGENTS.md, plan-template.md; spec/tasks/checklist templates and installed
+  Spec Kit commands reviewed. Historical specs remain evidence of previous releases.
+- Runtime README/privacy guidance describes the shipped baseline until implementation;
+  feature 002 tracks its required update. No unresolved governance placeholders.
+- The entries below describe historical amendments through 1.2.1; where superseded, the
+  normative principles and 2.0.0 impact report above govern.
 - Clarification: authenticated renderer requests must remain within the configured `/api/v1`
   boundary after URL parsing, including data-derived path segments. This tightens the existing
   local transport principle without adding an endpoint, authority or network capability.
@@ -64,19 +82,29 @@ readiness MUST report contention without waiting behind a long-running writer.
 
 Rationale: a local-first product must feel owned by the user, not operated like a server.
 
-### II. Local-only intelligence is a non-negotiable boundary
+### II. Local ownership and explicit agent disclosure
 
-Prompts, embeddings, model outputs, profile data and documents MUST never be sent to a
-remote inference service. The source tree and dependency graph MUST contain no remote-AI
-client or fallback. Model acquisition is an explicit user action; inference works offline
-after acquisition. Runtime endpoints MUST be loopback-only and denied by default when
-their locality cannot be proven.
+Career data and generated artifacts MUST remain canonical in the local vault. The default
+local-model mode MUST keep prompts, embeddings and inference on device. Users MAY explicitly
+authorize a separately operated Codex or Claude Code client through a scoped MCP grant.
+That mode MUST disclose that selected data enters the client and may reach its model provider.
+CareerOS MUST NOT add hosted-model API clients, provider API keys, telemetry, remote error
+reporting, silent downloads or automatic external fallbacks. Grants MUST be revocable,
+time-bounded and minimal; previously issued read-only grants MUST NOT gain write or career
+text access. Local inference endpoints remain loopback / explicit local-container allowlist
+only. External clients perform their own inference; MCP transports context and proposals.
+Model acquisition remains explicit and the local-model mode works offline after acquisition.
+When the desktop is open, external clients MUST use the desktop-owned authenticated loopback
+bridge; they MUST NOT bypass its vault lease or open a second writable database connection.
 
-Rationale: privacy cannot depend on provider configuration or user vigilance.
+Rationale: users own the data and choose the intelligence provider with visible disclosure.
 
 ### III. Career truth is grounded and reviewable
 
-Every generated claim MUST reference one or more career-fact identifiers. AI MAY select,
+Every generated candidate-career claim MUST reference one or more career-fact identifiers.
+Claims about vacancies MUST reference captured job/source evidence; statements of preferences
+MUST reference explicit user input. Unknowns remain unknown rather than invented evidence.
+AI MAY select,
 compress and rewrite supported facts, but MUST NOT invent employers, dates, credentials,
 skills, results or metrics. Structured outputs MUST pass schema, evidence and consistency
 validation before persistence. Low-confidence results MUST be surfaced for review instead
@@ -86,8 +114,10 @@ Application-readiness decisions MUST be computed from versioned local records, e
 contributing check, and produce the same report bytes for the same application state. A model
 MUST NOT be required to inspect, explain or export readiness evidence.
 Any workflow presented as profile analysis, opportunity analysis, matching, tailoring, coaching
-or another AI-derived judgment MUST require a ready local model and MUST fail closed when local
-inference or structured-output validation is unavailable. Deterministic checks MAY remain
+or another AI-derived judgment MUST require either a ready local model or a user-authorized
+external-agent workflow. External work remains pending until a schema-valid, evidence-bound
+result tied to the current input revisions is returned. Missing, failed, revoked, expired or
+stale work MUST fail closed. Deterministic checks MAY remain
 available under their own accurate labels, but MUST NOT be substituted for, persisted as or
 displayed as completed AI analysis.
 Claims that a published document is available MUST be backed by readable bytes inside the approved
@@ -99,10 +129,14 @@ provider queries without a separate user confirmation.
 
 Rationale: accuracy is more valuable than fluency in high-stakes career material.
 
-### IV. Small-model quality is measured, not assumed
+### IV. Model quality is measured, not assumed
 
-AI workflows MUST be designed for locally runnable small models through bounded context,
+Local AI workflows MUST support locally runnable small models through bounded context,
 task-specific schemas, deterministic retrieval, constrained decoding and selective repair.
+External-agent workflows MUST use the same evidence requirements and versioned contract
+fixtures, with input revision binding and provider provenance. An external agent MAY submit
+draft proposals only; it MUST NOT confirm career facts, approve its own proposals, send an
+application, publish materials, change grants or invoke destructive vault operations.
 Every AI behavior change MUST be evaluated against a versioned offline golden set. Release
 gates MUST cover schema validity, evidence coverage, hallucination rate and task accuracy;
 latency and memory are recorded by model profile.
@@ -120,6 +154,15 @@ MUST validate bounded archive structure, member digests, record relationships an
 bindings while returning only content-free metadata. Saving a backup MUST NOT be described as
 verified until the bytes at the selected destination match the server-issued digest. Plain ZIP
 archives MUST be identified accurately as neither encrypted nor authenticated.
+User-selected legacy campaign imports MUST separate read-only preview from committed mutation,
+enforce bounded archive structure and per-member limits, reject traversal, duplicate canonical
+paths and executable interpretation, and identify one canonical fingerprint before writing.
+Credential stores and credential-like tracker sections MUST be excluded even when present in the
+selected archive; the preview MUST disclose the exclusion without echoing secret values. Import
+MUST preserve original campaign fields and local materials as inert, content-addressed evidence,
+reconcile tracker records with dossier-only records without inventing missing facts, and be
+idempotent for the same account and fingerprint. Imported campaign records and bytes MUST
+participate in complete portable backup, restore, reset and erasure semantics.
 Manual opportunity captures MUST use a server-owned per-user namespace and idempotent retries;
 client identifiers MUST NOT merge private captures across users. Concurrent application writers
 MUST advance revisions with an atomic compare-and-swap, and derived board projections MUST never
@@ -223,16 +266,21 @@ Rationale: private data and career documents deserve secure, inclusive defaults.
 
 ## Product gates
 
-- No code, package, environment variable or UI path may enable remote AI inference.
+- No direct remote inference client or automatic remote fallback may be introduced. Explicit
+  MCP client disclosure and draft-only authority are the only external intelligence boundary.
 - No hidden network request may occur during launch, editing, inference, rendering or tests.
 - Job-source access and model download are separate, explicit, auditable capabilities.
+- Legacy campaign archives are selected explicitly, previewed before mutation, never execute or
+  render active content, omit credentials, and remain fully portable and erasable after import.
 - The vault, manual editing, portability, deterministic readiness and existing exports remain
-  usable without inference; an AI analysis action is blocked until the local model passes the
-  product readiness check.
+  usable without inference; AI analysis requires a ready local model or a clearly identified
+  authorized external workflow and cannot be marked completed before validation.
 - A failed model call never degrades into an unlabeled heuristic match or completed AI result.
 - A generated career claim without evidence is rejected before it reaches the user.
-- External-agent access remains read-only and scoped; desktop grant management never turns the
-  desktop session token into an MCP credential or stores the one-time bearer for convenience.
+- External-agent access is scoped; old grants remain read-only. New proposal scopes are
+  separately opted into and never grant approval, publication, sending or destructive rights.
+  Desktop grant management never turns the desktop session token into an MCP credential or
+  stores the one-time bearer for convenience.
 - The default installer starts on a clean supported OS without developer tooling.
 - The desktop app must recover cleanly from a crashed local model or backend process.
 - A killed reset, restore or erasure resumes safely from durable lifecycle state; an unrelated
@@ -262,4 +310,4 @@ minor; clarification without changed obligations is patch. Every plan MUST perfo
 check before research and again before release. Exceptions require owner approval, an expiry date
 and a tracked remediation task; there are no implicit exceptions.
 
-**Version**: 1.2.1 | **Ratified**: 2026-07-17 | **Last amended**: 2026-09-07
+**Version**: 2.0.1 | **Ratified**: 2026-07-17 | **Last amended**: 2026-09-19

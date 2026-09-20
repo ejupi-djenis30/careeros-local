@@ -90,6 +90,25 @@ careeros --data-dir "C:\absolute\disposable\app-data" mcp serve `
   --acknowledge-agent-disclosure
 ```
 
+To exercise the headless campaign boundary, first build or obtain an allowlisted campaign ZIP and
+preview it without opening the vault. Close the desktop before import. Bind the write to the exact
+previewed bytes and one explicit account; never select a default or first user in automation.
+
+```powershell
+careeros campaign preview "C:\absolute\campaign.zip"
+careeros --data-dir "C:\absolute\disposable\app-data" campaign import `
+  "C:\absolute\campaign.zip" --username <test-user> `
+  --expected-fingerprint <sha256-from-preview> --profile-display-name "Test Candidate" `
+  --acknowledge-local-vault-write
+careeros --data-dir "C:\absolute\disposable\app-data" campaign list --username <test-user>
+careeros --data-dir "C:\absolute\disposable\app-data" campaign show <campaign-id> `
+  --username <test-user> --limit 250
+```
+
+Preview does not initialise the runtime. Import uses the normal exclusive lease, backup-protected
+migration and atomic campaign service. The archive parser omits credential rows; diagnostics and
+examples must never print them. List and show are read-only and owner-scoped.
+
 The desktop may run while the MCP process is idle. A tool call reacquires the lease and rechecks
 the grant, so it returns `vault_busy` while the desktop is using the vault.
 

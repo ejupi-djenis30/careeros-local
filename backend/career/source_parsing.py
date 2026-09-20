@@ -10,12 +10,19 @@ from dataclasses import dataclass, field
 from io import BytesIO
 from pathlib import Path
 
-from backend.career.schemas import SourceFactCandidate
+from backend.career.reference_parsing import (
+    SourceImportError,
+    extract_docx_text_in_document_order,
+    parse_goal_preferences,
+    validate_safe_source_input,
+)
+from backend.career.schemas import (
+    VALID_SOURCE_ROLES,
+    PreferenceCandidate,
+    SourceFactCandidate,
+    SourceRole,
+)
 from backend.core.config import settings
-
-
-class SourceImportError(ValueError):
-    pass
 
 
 @dataclass(frozen=True)
@@ -27,6 +34,10 @@ class PreparedSourceDocument:
     sha256: str
     candidates: tuple[SourceFactCandidate, ...] = field(repr=False)
     data: bytes = field(repr=False)
+    source_role: SourceRole = "profile"
+    preference_candidates: tuple[PreferenceCandidate, ...] = field(default=(), repr=False)
+    review_notes: tuple[str, ...] = field(default=(), repr=False)
+    warnings: tuple[str, ...] = field(default=(), repr=False)
 
 
 def _bounded_source_text(text: str) -> str:
@@ -138,12 +149,10 @@ def extract_text(data: bytes, document_type: str) -> str:
         raise SourceImportError("The uploaded file is not a valid DOCX")
     _validate_docx_package(data)
     try:
-        from docx import Document
-
-        word_document = Document(BytesIO(data))
-        return _bounded_source_text(
-            "\n".join(paragraph.text for paragraph in word_document.paragraphs)
+        docx_text = extract_docx_text_in_document_order(
+            data, settings.SOURCE_IMPORT_MAX_EXTRACTED_CHARS
         )
+        return _bounded_source_text(docx_text)
     except SourceImportError:
         raise
     except Exception as exc:
@@ -227,11 +236,17 @@ def prepare_source_document(
     filename: str,
     media_type: str,
     data: bytes,
+    source_role: str = "profile",
 ) -> PreparedSourceDocument:
+    if source_role not in VALID_SOURCE_ROLES:
+        raise SourceImportError(
+            f"Invalid source_role: '{source_role}'. Supported roles are: {', '.join(VALID_SOURCE_ROLES)}."
+        )
     if not data:
         raise SourceImportError("The source document is empty")
     if len(data) > settings.MAX_UPLOAD_FILE_SIZE:
         raise SourceImportError("The source document exceeds the configured size limit")
+    validate_safe_source_input(filename, data)
     safe_name = str(filename or "source").replace("\\", "/").rsplit("/", 1)[-1]
     safe_name = (
         "".join(
@@ -242,12 +257,39 @@ def prepare_source_document(
     normalized_media_type = (media_type or "application/octet-stream").split(";", 1)[0]
     document_type = _document_type(safe_name, normalized_media_type)
     extracted_text = extract_text(data, document_type)
+
+    typed_role: SourceRole = source_role  # type: ignore[assignment]
+    fact_cands: tuple[SourceFactCandidate, ...] = ()
+    pref_cands: tuple[PreferenceCandidate, ...] = ()
+    review_notes: tuple[str, ...] = ()
+    warnings: tuple[str, ...] = ()
+
+    if typed_role == "profile":
+        fact_cands = tuple(fact_candidates(extracted_text))
+    elif typed_role == "narrative":
+        review_notes = (
+            "Narrative reference retained for manual review; narrative text does not generate career facts automatically.",
+        )
+    elif typed_role == "template_reference":
+        review_notes = (
+            "Template reference retained for layout guidance; presentation text does not establish career facts.",
+        )
+    elif typed_role == "goals":
+        parsed_prefs, p_notes, p_warns = parse_goal_preferences(extracted_text)
+        pref_cands = tuple(parsed_prefs)
+        review_notes = tuple(p_notes)
+        warnings = tuple(p_warns)
+
     return PreparedSourceDocument(
         original_name=safe_name,
         media_type=normalized_media_type,
         document_type=document_type,
         extracted_text=extracted_text,
         sha256=hashlib.sha256(data).hexdigest(),
-        candidates=tuple(fact_candidates(extracted_text)),
+        candidates=fact_cands,
         data=data,
+        source_role=typed_role,
+        preference_candidates=pref_cands,
+        review_notes=review_notes,
+        warnings=warnings,
     )

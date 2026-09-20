@@ -13,7 +13,7 @@ export const MobileJobCard = memo(function MobileJobCard({ job, isGlobalView, on
     const sourceUrl = externalUrl && externalUrl !== applyUrl ? externalUrl : null;
     const mailtoUrl = safeMailto(job.application_email);
     const fmtDistance = job.distance_km != null ? parseFloat(Number(job.distance_km).toFixed(2)) : null;
-    const hasVerifiedAnalysis = job.analysis_verified === true;
+    const hasVerifiedAnalysis = job.analysis_verified === true || job.external_analysis_verified === true;
     const applicationState = getJobApplicationState(job, t);
 
     return (

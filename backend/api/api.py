@@ -1,10 +1,13 @@
 from fastapi import APIRouter
 
 from backend.api.routes import (
+    agent_bridge,
+    agent_work,
     ai_evaluations,
     applications,
     auth,
     automation,
+    campaigns,
     career_coach,
     career_profile,
     desktop,
@@ -19,6 +22,8 @@ from backend.api.routes import (
 )
 
 api_router = APIRouter()
+api_router.include_router(agent_bridge.router, prefix="/agent-bridge", tags=["agent-bridge"])
+api_router.include_router(agent_work.router, prefix="/agent-work", tags=["agent-work"])
 api_router.include_router(
     ai_evaluations.router,
     prefix="/ai-evaluations",
@@ -28,6 +33,12 @@ api_router.include_router(automation.router, prefix="/automation/grants", tags=[
 api_router.include_router(auth.router, prefix="/auth", tags=["auth"])
 api_router.include_router(desktop.router, prefix="/desktop", tags=["desktop"])
 api_router.include_router(applications.router, prefix="/applications", tags=["applications"])
+api_router.include_router(
+    campaigns.application_context_router,
+    prefix="/applications",
+    tags=["applications"],
+)
+api_router.include_router(campaigns.router, prefix="/campaigns", tags=["campaigns"])
 api_router.include_router(jobs.router, prefix="/jobs", tags=["jobs"])
 api_router.include_router(search.router, prefix="/search", tags=["search"])
 api_router.include_router(profiles.router, prefix="/profiles", tags=["profiles"])

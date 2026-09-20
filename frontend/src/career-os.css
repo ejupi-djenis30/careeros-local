@@ -2702,6 +2702,8 @@ summary:focus-visible {
 .application-detail > header { display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; padding-bottom: 1.2rem; border-bottom: 1px solid var(--cos-border); }
 .application-detail h2 { margin: 0.65rem 0 0; color: var(--cos-text); font-size: 1.65rem; letter-spacing: -0.045em; }
 .application-detail header p { margin: 0.25rem 0 0; color: var(--cos-muted); font-size: 0.78rem; }
+.dossier-section-links { display: flex; flex-wrap: wrap; gap: 0.75rem 1.25rem; margin: 1rem 0; font-size: 0.85rem; }
+.dossier-section-links a { color: var(--cos-accent); text-underline-offset: 0.2em; }
 
 .stage-badge { display: inline-flex; padding: 0.28rem 0.52rem; border-radius: 999px; background: rgba(255, 255, 255, 0.06); color: var(--cos-muted); font-size: 0.61rem; font-weight: 690; text-transform: uppercase; }
 .stage-badge--offer, .stage-badge--accepted { background: rgba(117, 223, 165, 0.08); color: var(--cos-success); }
@@ -2811,7 +2813,7 @@ summary:focus-visible {
 .dossier-row__remove { align-self: flex-end; }
 .dossier-row.dossier-checkline { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; }
 .dossier-row.dossier-checkline > legend { grid-column: 1 / -1; }
-.dossier-disclaimer { color: var(--cos-faint); font-size: 0.58rem; line-height: 1.5; }
+.dossier-disclaimer { color: var(--cos-muted); font-size: 0.78rem; line-height: 1.5; }
 .application-card__next { overflow: hidden; padding-right: 3.8rem; color: var(--cos-accent) !important; text-overflow: ellipsis; white-space: nowrap; }
 
 .application-preparation-form { margin: 1rem 0; padding: 1rem; border: 1px solid rgba(130, 185, 255, 0.2); border-radius: var(--cos-radius-lg); background: rgba(130, 185, 255, 0.045); }
@@ -4029,6 +4031,32 @@ summary:focus-visible {
   font-size: 0.58rem;
 }
 
+.agent-disclosure-acknowledgement {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  padding: 0.9rem 1rem;
+  border: 1px solid rgba(56, 189, 248, 0.3);
+  border-radius: var(--radius-md);
+  background: rgba(56, 189, 248, 0.07);
+  cursor: pointer;
+}
+
+.agent-disclosure-acknowledgement input {
+  margin-top: 0.2rem;
+}
+
+.agent-disclosure-acknowledgement span,
+.agent-disclosure-acknowledgement small {
+  display: block;
+}
+
+.agent-disclosure-acknowledgement small {
+  margin-top: 0.25rem;
+  color: var(--color-text-secondary);
+  line-height: 1.45;
+}
+
 .agent-inline-error {
   margin: 0 0 0.8rem;
   color: var(--cos-danger);
@@ -4260,6 +4288,23 @@ summary:focus-visible {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
+.agent-config-state {
+  display: flex;
+  min-height: 96px;
+  align-items: center;
+  justify-content: center;
+  gap: 0.6rem;
+  padding: 1rem;
+  border: 1px solid var(--cos-border);
+  border-radius: var(--cos-radius);
+  color: var(--cos-muted);
+}
+
+.agent-config-state p {
+  margin: 0;
+  font-size: 0.7rem;
+}
+
 .agent-config-card {
   display: flex;
   min-width: 0;
@@ -4374,4 +4419,76 @@ summary:focus-visible {
   .agent-revoke-form .button {
     width: 100%;
   }
+}
+.dossier-material-target,
+.dossier-materials,
+.dossier-publication-target,
+.dossier-cited-claim {
+    display: grid;
+    gap: 0.9rem;
+    min-width: 0;
+}
+
+.dossier-material-actions,
+.dossier-artifact-actions,
+.dossier-inline-options {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.65rem;
+}
+
+.dossier-artifact-actions {
+    justify-content: flex-end;
+    max-width: 100%;
+}
+
+.dossier-artifact-actions .button,
+.dossier-material-actions .button {
+    white-space: normal;
+    overflow-wrap: anywhere;
+}
+
+.dossier-materials .dossier-row,
+.dossier-material-target {
+    margin-block: 0.75rem;
+}
+
+.dossier-inline-options legend {
+    float: none;
+    font-size: 0.95rem;
+    font-weight: 600;
+    margin-bottom: 0.4rem;
+}
+
+@media (max-width: 600px) {
+    .dossier-versions article {
+        align-items: stretch;
+        flex-direction: column;
+    }
+    .dossier-artifact-actions { justify-content: flex-start; }
+    .dossier-material-actions .button { flex: 1 1 100%; }
+}
+
+/* Campaign Workspace */
+.campaign-import-panel { display: flex; flex-direction: column; gap: 0.75rem; margin-bottom: 0.5rem; }
+.campaign-preview { display: flex; flex-direction: column; gap: 0.75rem; padding: 1rem; border: 1px solid var(--cos-border); border-radius: var(--cos-radius); background: rgba(21, 27, 24, 0.75); }
+.campaign-preview__disclosure { margin: 0; color: var(--cos-muted); font-size: 0.8rem; }
+.campaign-preview__stats { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; }
+.campaign-preview__aggregates { display: flex; flex-wrap: wrap; gap: 0.75rem; font-size: 0.8rem; color: var(--cos-muted); }
+.campaign-preview__status-counts { display: flex; flex-direction: column; gap: 0.35rem; }
+.campaign-preview__status-counts h4 { margin: 0; font-size: 0.85rem; color: var(--cos-text); }
+.campaign-preview__status-list { display: flex; flex-wrap: wrap; gap: 0.4rem; }
+.campaign-preview__actions { display: flex; justify-content: flex-end; }
+.campaign-filters { display: flex; flex-direction: column; gap: 0.5rem; margin-bottom: 0.5rem; }
+.campaign-materials { display: flex; flex-direction: column; gap: 0.75rem; margin-top: 1rem; padding: 1rem; border: 1px solid var(--cos-border); border-radius: var(--cos-radius); background: rgba(21, 27, 24, 0.5); }
+.campaign-materials__meta { display: flex; gap: 0.75rem; color: var(--cos-muted); font-size: 0.85rem; font-weight: 500; }
+.campaign-materials__tracker { display: flex; flex-direction: column; gap: 0.35rem; font-size: 0.8rem; background: rgba(0, 0, 0, 0.2); padding: 0.75rem; border-radius: var(--cos-radius); overflow-x: auto; }
+.campaign-materials__group { display: flex; flex-direction: column; gap: 0.35rem; }
+.campaign-materials__group h4 { margin: 0; font-size: 0.85rem; color: var(--cos-text); }
+.campaign-materials__items { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+.campaign-materials__artifacts { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 0.5rem; }
+@media (max-width: 768px) {
+  .campaign-filters .form-grid--4 { grid-template-columns: 1fr; }
+  .campaign-preview .form-grid--2 { grid-template-columns: 1fr; }
 }

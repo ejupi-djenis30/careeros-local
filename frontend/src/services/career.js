@@ -30,9 +30,12 @@ export const CareerService = {
         VaultMaintenance.complete();
         return result;
     },
-    uploadSource(file) {
+    uploadSource(file, sourceRole = "profile") {
         const formData = new FormData();
         formData.append("file", file);
+        if (sourceRole) {
+            formData.append("source_role", sourceRole);
+        }
         return ApiClient.postMultipart("/career-profile/sources", formData, { timeoutMs: 60_000 });
     },
     uploadPhoto(file) {

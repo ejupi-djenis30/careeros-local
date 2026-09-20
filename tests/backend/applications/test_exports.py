@@ -165,3 +165,21 @@ def test_dossier_rejects_unexpected_resume_format_and_media_type():
         _small_dossier(resume_artifacts={"pdf": (b"%PDF-safe", "text/html")})
     with pytest.raises(ValueError, match="requires at least one"):
         _small_dossier(resume_artifacts={})
+
+
+@pytest.mark.parametrize(
+    "catalog, expected",
+    [
+        (None, "d4df3b6effa878a62261f2c11080592cb271814c5e4ca10becf7c8d52add6509"),
+        ({}, "5ceb4c8c04749ac44c74e0df3743408700e23775717af7c641a900cc2dd29541"),
+    ],
+)
+def test_legacy_packet_bytes_match_pre_materials_golden(catalog, expected):
+    # Captured from the original HEAD builder with this existing synthetic fixture.
+    assert _small_dossier(evidence_catalog=catalog).sha256 == expected
+
+
+@pytest.mark.parametrize("key", ["../secret.txt", "resume.pdf", "script.html"])
+def test_packet_rejects_arbitrary_material_member_names(key):
+    with pytest.raises(ValueError, match="Unsupported letter artifact"):
+        _small_dossier(schema_version="3.0", letter_artifacts={key: (b"data", "application/pdf")})

@@ -1,13 +1,25 @@
+import { useState } from "react";
 import { useI18n } from "../../i18n/useI18n";
+import { TemplateGallery } from "./TemplateGallery";
+import { tTemplate } from "./templateMessages";
 
 export function ResumeSettings({ studio }) {
-    const { t } = useI18n();
+    const { t, language } = useI18n();
+    const [galleryOpen, setGalleryOpen] = useState(false);
     const { profile, draft, busy, dirty, generationGoalId, autosaveState } = studio;
     const setTemplate = (template_kind) => {
         const canvas_document = draft.canvas_document && template_kind === "ats"
             ? { ...draft.canvas_document, style: { ...draft.canvas_document.style, columns: 1 } }
             : draft.canvas_document;
-        studio.changeDraft({ template_kind, canvas_document, photo_asset_id: template_kind === "ats" ? null : draft.photo_asset_id });
+        studio.changeDraft({
+            template_kind,
+            template_layout: template_kind === "photo" ? "swiss-photo" : "ats",
+            template_id: template_kind === "photo" ? "swiss-software-en" : "software-en",
+            template_version: 1,
+            locale: "en",
+            canvas_document,
+            photo_asset_id: draft.photo_asset_id,
+        });
     };
     const setInclusion = (key, enabled) => {
         const section_config = { ...draft.section_config, [key]: enabled };
@@ -36,7 +48,31 @@ export function ResumeSettings({ studio }) {
             {draft.id && <button type="button" className={`profile-sync-banner ${profile.revision > draft.profile_revision ? "is-stale" : ""}`} onClick={studio.reviewSync} disabled={Boolean(busy)}><i className="bi bi-arrow-repeat" /><span><strong>{profile.revision > draft.profile_revision ? t("resume.newerProfile") : t("resume.reviewUpdates")}</strong><small>{t("resume.reviewCopy")}</small></span><span>{t("resume.review")}</span></button>}
             <div className="form-grid form-grid--2"><label className="field-stack"><span>{t("resume.internalTitle")}</span><input className="form-control" value={draft.title} onChange={(event) => studio.changeDraft({ title: event.target.value })} maxLength={200} /></label><label className="field-stack"><span>{t("resume.nextVersionName")}</span><input className="form-control" value={studio.versionName} onChange={(event) => studio.setVersionName(event.target.value)} maxLength={200} /></label></div>
             <div className="resume-autofill"><div><i className="bi bi-magic" /><span><strong>{t("resume.buildFromProfile")}</strong><small>{t("resume.deterministic")}</small></span></div><label className="field-stack"><span>{t("resume.careerGoal")}</span><select className="form-select" value={generationGoalId} onChange={(event) => studio.setGenerationGoalId(event.target.value)}><option value="">{t("resume.generalProfile")}</option>{(profile.goals || []).map((goal) => <option key={goal.id} value={goal.id}>{goal.name}{goal.is_primary ? ` · ${t("resume.primary")}` : ""}</option>)}</select></label><button type="button" className="button button--primary" onClick={studio.generateFromProfile} disabled={Boolean(busy)}>{busy === "generate" ? t("resume.creating") : t("resume.createAutomatically")}</button></div>
-            <fieldset className="template-picker"><legend>{t("resume.template")}</legend><label className={draft.template_kind === "ats" ? "is-selected" : ""}><input type="radio" name="template" value="ats" checked={draft.template_kind === "ats"} onChange={() => setTemplate("ats")} /><i className="bi bi-file-text" /><span><strong>ATS</strong><small>{t("resume.oneColumn")}</small></span></label><label className={draft.template_kind === "photo" ? "is-selected" : ""}><input type="radio" name="template" value="photo" checked={draft.template_kind === "photo"} onChange={() => setTemplate("photo")} /><i className="bi bi-person-bounding-box" /><span><strong>{t("resume.withPhoto")}</strong><small>{t("resume.photoCopy")}</small></span></label></fieldset>
+            <fieldset className="template-picker">
+                <legend>{t("resume.template")}</legend>
+                <label className={draft.template_kind === "ats" ? "is-selected" : ""}>
+                    <input type="radio" name="template" value="ats" checked={draft.template_kind === "ats"} onChange={() => setTemplate("ats")} />
+                    <i className="bi bi-file-text" />
+                    <span><strong>ATS</strong><small>{t("resume.oneColumn")}</small></span>
+                </label>
+                <label className={draft.template_kind === "photo" ? "is-selected" : ""}>
+                    <input type="radio" name="template" value="photo" checked={draft.template_kind === "photo"} onChange={() => setTemplate("photo")} />
+                    <i className="bi bi-person-bounding-box" />
+                    <span><strong>{t("resume.withPhoto")}</strong><small>{t("resume.photoCopy")}</small></span>
+                </label>
+                <div className="template-gallery-trigger" style={{ marginTop: "0.5rem", width: "100%" }}>
+                    <button
+                        type="button"
+                        className="button button--secondary button--sm"
+                        onClick={() => setGalleryOpen(true)}
+                        style={{ display: "inline-flex", alignItems: "center", gap: "0.375rem" }}
+                    >
+                        <i className="bi bi-grid-3x3-gap" />
+                        <span>{draft.template_id ? `${tTemplate("template.templateLabel", language)}: ${draft.template_id}` : tTemplate("template.switchTemplate", language)}</span>
+                    </button>
+                </div>
+            </fieldset>
+            {galleryOpen && <TemplateGallery studio={studio} onClose={() => setGalleryOpen(false)} />}
             {draft.template_kind === "photo" && <label className={`photo-upload ${draft.photo_asset_id ? "is-ready" : ""}`}><i className={`bi ${draft.photo_asset_id ? "bi-check-circle-fill" : "bi-camera"}`} /><span>{draft.photo_asset_id ? t("resume.photoReady") : t("resume.uploadPhoto")}</span><input type="file" accept="image/jpeg,image/png,image/webp" onChange={(event) => studio.uploadPhoto(event.target.files?.[0])} disabled={busy === "photo"} /></label>}
             <fieldset className="inclusion-options"><legend>{t("resume.contacts")}</legend>{[["include_summary", t("resume.summary")], ["include_email", t("profile.email")], ["include_phone", t("profile.phone")], ["include_location", t("resume.location")], ["include_links", t("resume.links")]].map(([key, label]) => <label key={key} className="check-line"><input type="checkbox" checked={draft.section_config[key]} onChange={(event) => setInclusion(key, event.target.checked)} /> {label}</label>)}</fieldset>
         </section>

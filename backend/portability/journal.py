@@ -11,6 +11,7 @@ import tempfile
 from pathlib import Path
 from typing import Literal, Mapping, TypedDict, cast
 
+from backend.applications.packet_storage import packet_artifact_path
 from backend.core.config import settings
 from backend.storage.atomic import (
     StorageWriteError,
@@ -76,7 +77,23 @@ def _normalized_paths(paths: list[str] | tuple[str, ...]) -> list[str]:
         raise RestoreJournalError("Restore journal paths are invalid")
     normalized = sorted(set(paths))
     for path in normalized:
-        if not (path.startswith("assets/") or path.startswith("resumes/")):
+        is_packet = False
+        if path.startswith("applications/"):
+            parts = path.split("/")
+            try:
+                is_packet = (
+                    len(parts) == 5
+                    and parts[2] == "packets"
+                    and path
+                    == packet_artifact_path(
+                        application_id=parts[1],
+                        dossier_id=parts[3],
+                        sha256=parts[4].removesuffix(".zip"),
+                    )
+                )
+            except ValueError:
+                is_packet = False
+        if not (path.startswith("assets/") or path.startswith("resumes/") or is_packet):
             raise RestoreJournalError("Restore journal path is outside managed file namespaces")
         try:
             resolve_data_path(path, create_root=False)

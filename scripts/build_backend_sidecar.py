@@ -63,6 +63,16 @@ def executable_name() -> str:
     return "careeros-backend.exe" if os.name == "nt" else "careeros-backend"
 
 
+def mcp_executable_name() -> str:
+    return "careeros-mcp.exe" if os.name == "nt" else "careeros-mcp"
+
+
+def smoke_mcp_help(binary: Path) -> None:
+    result = subprocess.run([str(binary), "--help"], capture_output=True, timeout=30, check=False)
+    if result.returncode != 0 or b"--connection-file" not in result.stdout:
+        raise RuntimeError("Frozen MCP console help smoke failed")
+
+
 def run_pyinstaller(mode: str, *, console: bool) -> Path:
     destination = BUILD_ROOT / mode
     work = BUILD_ROOT / f"work-{mode}"
@@ -243,6 +253,7 @@ def main() -> int:
     # on Windows. Their complete lifecycle is exercised after bundling; here we
     # still require a clean --help exit and validate text wherever it exists.
     smoke_help(packaged, require_help_output=os.name != "nt")
+    smoke_mcp_help(packaged.parent / mcp_executable_name())
     prepared = prepare_tauri_runtime(packaged.parent, native_target_triple())
     if arguments.portable_onefile:
         portable = run_pyinstaller("onefile", console=True)

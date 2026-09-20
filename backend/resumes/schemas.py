@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import AliasPath, BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from backend.career.schemas import FactType
 from backend.resumes.canvas_schemas import (
@@ -11,9 +11,30 @@ from backend.resumes.canvas_schemas import (
     ResumeCanvasDocument,
     canonical_uuid,
 )
+from backend.resumes.templates import (
+    TemplateLayout,
+    TemplateLocale,
+    resolve_template_defaults,
+)
 
 TemplateKind = Literal["ats", "photo"]
 SyncMode = Literal["preview", "apply", "reset"]
+
+
+class TemplatePresetResponse(BaseModel):
+    id: str
+    version: int
+    name: str
+    family: str
+    locale: TemplateLocale
+    layout: TemplateLayout
+    template_kind: TemplateKind
+    photo_policy: Literal["forbidden", "optional"]
+    page_budget: int
+    letter_pairing: str
+    description: str
+    preview_style: dict[str, Any] = Field(default_factory=dict)
+    section_headings: dict[str, str] = Field(default_factory=dict)
 
 
 def _default_section_order() -> list[FactType]:
@@ -61,7 +82,10 @@ class FactContentOverride(BaseModel):
 
 class ResumeDraftBase(BaseModel):
     title: str = Field(min_length=1, max_length=200)
-    template_kind: TemplateKind
+    template_kind: TemplateKind = "ats"
+    template_id: str | None = None
+    template_version: int | None = None
+    locale: TemplateLocale | None = None
     section_config: ResumeSectionConfig = Field(default_factory=ResumeSectionConfig)
     selected_fact_ids: list[str] = Field(min_length=1, max_length=300)
     content_overrides: dict[str, FactContentOverride] = Field(default_factory=dict)
@@ -88,28 +112,47 @@ class ResumeDraftBase(BaseModel):
 
     @model_validator(mode="after")
     def validate_references(self):
+        preset, effective_locale = resolve_template_defaults(
+            self.template_id, self.template_version, self.locale, self.template_kind
+        )
+        self.template_id = preset.id
+        self.template_version = preset.version
+        self.locale = effective_locale  # type: ignore[assignment]
+        self.template_kind = preset.template_kind
+
         selected = set(self.selected_fact_ids)
         if set(self.content_overrides) - selected:
             raise ValueError("content overrides must reference selected career facts")
-        if self.template_kind == "ats" and self.photo_asset_id:
-            raise ValueError("ATS resumes cannot reference a photo")
         if self.canvas_document:
-            if self.template_kind == "ats" and self.canvas_document.style.columns != 1:
+            if preset.layout == "ats" and self.canvas_document.style.columns != 1:
                 raise ValueError("ATS resumes must use a single-column canvas")
         return self
 
 
-class ResumeDraftCreate(ResumeDraftBase):
+class ResumeDraftWrite(ResumeDraftBase):
+    @model_validator(mode="after")
+    def validate_photo_selection(self):
+        # A stored draft can remember its owned photo while ATS suppresses it.
+        # Writes must still exclude photos when the selected preset forbids them.
+        if self.template_kind == "ats" and self.photo_asset_id:
+            raise ValueError(f"ATS resumes cannot reference a photo (preset '{self.template_id}')")
+        return self
+
+
+class ResumeDraftCreate(ResumeDraftWrite):
     pass
 
 
-class ResumeDraftUpdate(ResumeDraftBase):
+class ResumeDraftUpdate(ResumeDraftWrite):
     expected_revision: int = Field(ge=1)
 
 
 class ResumeGenerate(BaseModel):
     title: str = Field(min_length=1, max_length=200)
-    template_kind: TemplateKind = "ats"
+    template_kind: TemplateKind | None = None
+    template_id: str | None = None
+    template_version: int | None = None
+    locale: TemplateLocale | None = None
     career_goal_id: str | None = None
     target_job_id: int | None = Field(default=None, ge=1)
     photo_asset_id: str | None = None
@@ -121,10 +164,15 @@ class ResumeGenerate(BaseModel):
 
     @model_validator(mode="after")
     def validate_template(self):
-        if self.template_kind == "ats" and self.photo_asset_id:
-            raise ValueError("ATS resumes cannot reference a photo")
-        if self.template_kind == "photo" and not self.photo_asset_id:
-            raise ValueError("photo resumes require a normalized profile photo")
+        preset, effective_locale = resolve_template_defaults(
+            self.template_id, self.template_version, self.locale, self.template_kind
+        )
+        self.template_id = preset.id
+        self.template_version = preset.version
+        self.locale = effective_locale  # type: ignore[assignment]
+        self.template_kind = preset.template_kind
+        if preset.photo_policy == "forbidden" and self.photo_asset_id:
+            raise ValueError(f"ATS resumes cannot reference a photo (preset '{preset.id}')")
         return self
 
 
@@ -178,12 +226,21 @@ class ResumeVersionResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: str
+    draft_revision: int | None = Field(
+        default=None,
+        strict=True,
+        ge=1,
+        validation_alias=AliasPath("snapshot", "resume", "draft_revision"),
+    )
     version_number: int
     semantic_version: str
     name: str
     profile_revision: int
     selected_fact_ids: list[str]
     template_kind: TemplateKind
+    template_id: str = "software-en"
+    template_version: int = 1
+    locale: str = "en"
     renderer_version: str
     published_at: datetime
     quality_report: dict[str, Any]
@@ -214,6 +271,7 @@ class ResumeVersionComparison(BaseModel):
 class ResumeDraftResponse(ResumeDraftBase):
     model_config = ConfigDict(from_attributes=True)
 
+    template_layout: TemplateLayout = "ats"
     id: str
     profile_id: str
     revision: int
@@ -229,6 +287,9 @@ class ResumeSummary(BaseModel):
     revision: int
     title: str
     template_kind: TemplateKind
+    template_id: str = "software-en"
+    template_version: int = 1
+    locale: str = "en"
     selected_fact_count: int
     latest_version: str | None
     updated_at: datetime

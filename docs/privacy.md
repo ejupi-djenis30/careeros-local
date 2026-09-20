@@ -79,87 +79,83 @@ CV snapshot and the same digest-based reproducibility contract.
 
 ## CLI and agent access
 
-The separately installed `careeros` CLI and its MCP server use a distinct, read-only automation
-boundary. The Python wheel is separate from the desktop installer. A signed-in user can issue and
-revoke grants from the desktop **Agent access** page after re-entering the current CareerOS
-password. The CLI provides the same authorization path for terminal workflows. A grant belongs to
-one local account and has a label, an expiry and one or more of these scopes:
-`system:read`, `career:read`, `resume:read`, and `applications:read`. The bearer token is displayed
-only when the grant is created. The response is marked `no-store`, the renderer keeps the bearer
-only in the current component, and copying requires an explicit button press. Dismissal or
-navigation removes the visible bearer; it never enters browser storage. CareerOS stores its
-SHA-256 digest, not the original token. The authenticated page lists only owned grant metadata.
-Creating or revoking a grant requires another password check.
-The portable backup format intentionally excludes automation-grant rows, including their labels,
-scope metadata and token digests. Complete vault erasure deletes the owned rows instead. Successful
-grant mutations retain only the 100 most recent inactive lifecycle transitions for that account;
-active grants are always kept and another account is never pruned.
+CareerOS has two deliberately separate MCP modes.
 
-Automation reads open the SQLite vault with URI `mode=ro` and verify
-`PRAGMA query_only=ON` on every new connection. Grant authorization and revocation use a separate,
-password-confirmed write path; neither operation is available through the MCP tool surface.
+The installed desktop workspace keeps the native application open. A dedicated console launcher
+connects over standard input/output to exact grant-authenticated loopback bridge routes. It never
+receives the desktop session token and never opens SQLite. A private connection descriptor contains
+only bounded version/process metadata and the current canonical loopback API address. It is written
+atomically after backend readiness, removed conditionally on shutdown, and rejected if stale, linked,
+insecure, malformed, oversized, non-loopback, or owned by a dead/reused process. The launcher rereads
+it before operations, so a client can survive a normal desktop restart without persisting an
+ephemeral port.
 
-The MCP server communicates over the parent process's standard input and output and opens no
-network listener. Vault, resume, application and agenda reads generate no outbound or cloud
-traffic. The `get_local_model_status` tool is the narrow exception to a purely file-and-database
-read: it may make a content-free HTTP readiness probe to the configured, allowlisted local-runtime
-endpoint. That endpoint is loopback by default; container deployments may explicitly allow a
-single-label runtime alias such as `ollama` or `host.docker.internal`. The probe contains no Career
-Vault data or prompt, does not contact a cloud-model provider and does not start a job search. The
-tools expose bounded projections:
+The preserved wheel-based mode is an offline read-only interface. It opens the SQLite vault with URI
+`mode=ro`, verifies `PRAGMA query_only=ON` on every connection and participates in the exclusive
+desktop vault lease. The desktop must be closed for those legacy calls. Its original
+`system:read`, `career:read`, `resume:read`, and `applications:read` scopes and seven bounded
+metadata/readiness tools are unchanged.
 
-- product, schema and local-model readiness;
-- Career Vault completeness and fact counts without fact prose or dedicated contact fields;
-- resume draft/version metadata without document bodies or artifact bytes;
-- application summaries, deterministic readiness checks and a bounded next-action agenda.
+Workspace access adds two explicit scopes:
 
-The tools do not accept arbitrary paths, files, SQL or prompts. They do not expose source
-documents, resume text, dedicated contact records, local storage paths, access tokens or model
-prompts. User-authored labels, resume names, company names, locations and task titles can still
-contain personal or sensitive text; authorizing their scope allows the connected agent to receive
-those values. There are no create, update, delete, restore, export or network-search tools.
+| Scope | Authority |
+| --- | --- |
+| `context:read` | List assigned work and read its frozen detailed facts, preferences and target evidence |
+| `proposals:write` | Submit one strict, idempotent discover, analyze or materials proposal for review |
 
-This boundary does not make an external agent private. An agent can include MCP results in a
-request to its own provider. Starting the server therefore requires the explicit
-`--acknowledge-agent-disclosure` flag. Issue the smallest useful scope set and short lifetime,
-protect `CAREEROS_MCP_TOKEN` with the operating system's credential facilities, and revoke the
-grant after use. Never store the bearer token in a repository, MCP configuration, project `.env`
-or shell startup file, and never paste it into a prompt.
+A full work request needs both scopes. A signed-in owner creates the grant in **Agent access** after
+re-entering the current password and acknowledging that selected data can be disclosed to an
+external client. The bearer is returned once in a `no-store` response and kept only in the current
+renderer component until the user copies or dismisses it. CareerOS persists a SHA-256 digest, grant
+identity, scope set, expiry and revocation state, never the raw token. The client configuration
+contains no bearer; `CAREEROS_MCP_TOKEN` must be supplied by the environment that starts the client.
 
-Grant management uses the authenticated loopback desktop API, but the desktop access token is
-never accepted as an MCP credential. The management API returns no resume, application or Career
-Vault content. It tracks failed password checks per account and can pause new grant creation after
-repeated failures. Once locked, the revoke route stops inspecting passwords and lets the already
-authenticated desktop session perform only an owned-grant revocation. It cannot issue access,
-inspect another account's grants or clear the lockout. Stable errors and later list responses
-contain no bearer or password.
+Every bridge operation revalidates the bearer, grant identity, account, scopes, expiry, revocation,
+work ownership and current vault lifecycle. Owner JWTs and `X-CareerOS-Session` are not accepted as
+agent authority. Only the exact bridge namespace bypasses the desktop-session middleware; loopback
+peer, canonical Host, origin policy, method, route, body limit and `Cache-Control: no-store` checks
+still apply. Restore removes live grant authority, and complete erasure deletes owned grant records.
 
-Credentialed browser access uses exact local origins; an unrelated app on another localhost port
-is not trusted. Login, registration, refresh and logout reject any supplied browser origin that is
-not in that exact allowlist; native and CLI requests without an `Origin` header remain supported.
-Every `/api/v1` response is marked `no-store` by the backend even when the desktop connects
-directly. In the container profile only Nginx is published to the host, the backend remains on the
-private Compose network, and backend runtimes ignore forwarded client-identity headers. Container
-access logs retain status, method and request duration only: they do not record client addresses,
-paths, query strings or resource identifiers. Structured application diagnostics remain
-content-free and available for failures.
-The API does not use dynamic response compression, avoiding a length oracle across authenticated
-content. The web proxy gzips public fingerprinted assets only. It revalidates the SPA shell and
-unhashed public files on every rollout and gives a long immutable lifetime only to hash-named
-build assets.
+The installed MCP server registers exactly six closed-world tools:
 
-Production runtimes do not publish Swagger UI, ReDoc or the HTTP OpenAPI endpoint. This prevents
-developer documentation pages from loading CDN assets and removes an unnecessary production
-surface. The schema remains generated directly in Python for contract and CI validation.
+- status and bounded work-request listing;
+- frozen work context with instructions, revisions, input digest and an untrusted-source warning;
+- strict idempotent proposal submission and a content-free receipt/review state;
+- immutable CV-template metadata.
 
-Each CLI command and MCP tool call uses the same exclusive vault lease as the desktop sidecar.
-MCP releases it after bootstrap and after every call, so an idle server does not keep the desktop
-closed. Before each tool read, it reacquires the lease and revalidates the token, expiry, revocation
-state and original grant identity. A call made while CareerOS Local owns the vault returns
-`vault_busy`; it does not become a second writer. Restore revokes all active automation grants for
-the restored account, and complete vault erasure deletes the grant records.
+Context is capped at 64 KiB and result input at 256 KiB, with lower row and field limits. Detailed
+context contains only confirmed selected fact IDs, explicit preferences and owned target snapshots
+chosen for the request. It omits account credentials, dedicated contact records, unrelated career
+records, source file paths, artifact bytes, prompts, desktop tokens and storage paths. Submitted
+source URLs/text are stored as untrusted data and are
+never fetched merely because an agent returned them.
 
-Renderer cleanup is best effort if the whole process or operating system terminates during
+Proposal submission does not approve or publish anything. CareerOS validates the discriminated
+schema, citations, fact membership, source quotations, score policy, current input revisions,
+idempotency key and request state. Owner-only UI routes perform rejection or acceptance. MCP has no
+tool for fact confirmation, proposal acceptance, CV/dossier publication, transmission, grant
+management, backup/restore, erasure, arbitrary file access, SQL, shell execution or free-form
+network search.
+
+This local transport does not make the connected model private. Codex, Claude Code or another
+client may include selected MCP context in a request to its own provider. Starting the server
+therefore requires `--acknowledge-agent-disclosure`. Use the smallest useful context, a short grant
+lifetime and the provider policy appropriate for that data. Keep `CAREEROS_MCP_TOKEN` in operating
+system credential facilities; never store it in a repository, MCP configuration, project `.env`,
+shell startup file or prompt. Revoke it after use.
+
+Grant creation and revocation remain owner actions on the authenticated loopback API. Repeated
+failed password checks pause new issuance. During that lockout an already authenticated owner may
+reduce only their own authority by revoking an owned grant; the route does not inspect another
+password, issue access, expose another account or clear the lockout. Stable error responses and
+application diagnostics omit bearer values, submitted context and model output.
+
+Credentialed browser access uses exact local origins; another process on a different localhost port
+is not trusted. Every `/api/v1` response is `no-store`. Production disables Swagger UI, ReDoc and
+the HTTP OpenAPI endpoint. The MCP process opens no listener and ignores proxy environment for its
+loopback connection. CareerOS has no hosted-model API, telemetry or remote error reporting.
+
+Renderer cleanup is best effort if the process or operating system terminates during grant
 issuance. On the next launch, reopen **Agent access** and revoke any completed grant whose token
 you did not save before connecting a client.
 
@@ -176,6 +172,12 @@ bindings without writing database rows or files. Its response contains only the 
 digest, creation time, record and byte counts, compatibility, current restore eligibility, and
 stable verification or warning codes. It never returns archive paths, profile fields, document
 text, prompts, model output, or user identifiers.
+
+Archive format 7 includes owned work requests, proposal history, template selections, material
+provenance, packet journals and the exact immutable schema 3 packet bytes. It excludes raw grant
+tokens. Restore preserves historical evidence but makes work terminal/inactive, clears live grant
+and proposal authority, and requires a newly issued grant before another external-agent session.
+Versions 1 through 6 remain readable through their original bounded contracts.
 
 Backup verification accepts at most 128 MiB of compressed input, 256 MiB after expansion, 5,000
 members and 100,000 decoded records. These bounds protect the local process because verification

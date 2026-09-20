@@ -166,7 +166,13 @@ describe('DesktopJobRow', () => {
     });
 
     it('hides every analysis-derived field when the result is not verified', () => {
-        const unverifiedJob = { ...mockJob, analysis_verified: false, worth_applying: true };
+        const unverifiedJob = {
+            ...mockJob,
+            analysis_verified: false,
+            external_analysis_verified: false,
+            analysis_provenance: "external_agent_proposal",
+            worth_applying: true,
+        };
         render(
             <table><tbody><DesktopJobRow {...defaultProps} job={unverifiedJob} onViewAnalysis={vi.fn()} /></tbody></table>
         );
@@ -174,5 +180,22 @@ describe('DesktopJobRow', () => {
         expect(screen.queryByText('85%')).not.toBeInTheDocument();
         expect(screen.queryByTitle('Top pick')).not.toBeInTheDocument();
         expect(screen.queryByTitle('View match analysis')).not.toBeInTheDocument();
+    });
+
+    it('shows an externally attested score without treating provenance text as trust', () => {
+        render(
+            <table><tbody><DesktopJobRow
+                {...defaultProps}
+                job={{
+                    ...mockJob,
+                    analysis_verified: false,
+                    external_analysis_verified: true,
+                    analysis_provenance: "external_agent_proposal",
+                }}
+                onViewAnalysis={vi.fn()}
+            /></tbody></table>
+        );
+        expect(screen.getByText('85%')).toBeInTheDocument();
+        expect(screen.getByTitle('View match analysis')).toBeInTheDocument();
     });
 });

@@ -7,6 +7,9 @@ import { useI18n } from "../../i18n/useI18n";
 import { ApplicationAgenda } from "./ApplicationAgenda";
 import { ApplicationDetailDialog } from "./ApplicationDetailDialog";
 import { BOARD_STAGES, STAGES, getStageLabels } from "./applicationModel";
+import { CampaignService } from "../../services/campaigns";
+import { CampaignImportPanel } from "./CampaignImportPanel";
+import { CampaignFilters } from "./CampaignFilters";
 
 function ApplicationCard({ application, onClick, locale, opening, expanded, buttonRef }) {
     return <button ref={buttonRef} type="button" className="application-card" onClick={onClick} disabled={opening} aria-busy={opening || undefined} aria-haspopup="dialog" aria-expanded={expanded}><strong>{application.title}</strong><span>{application.company}</span>{application.location && <small><i className="bi bi-geo-alt" /> {application.location}</small>}{application.next_action && <small className="application-card__next"><i className="bi bi-arrow-return-right" /> {application.next_action.title}</small>}<time dateTime={application.updated_at}>{new Date(application.updated_at).toLocaleDateString(locale)}</time></button>;
@@ -25,6 +28,7 @@ export function ApplicationsPage() {
     const { showToast } = useToast();
     const [applications, setApplications] = useState([]);
     const [selected, setSelected] = useState(null);
+    const [resumeDrafts, setResumeDrafts] = useState([]);
     const [resumeVersions, setResumeVersions] = useState([]);
     const [resumeMetadataStatus, setResumeMetadataStatus] = useState("loading");
     const [resumeMetadataRevision, setResumeMetadataRevision] = useState(0);
@@ -35,7 +39,10 @@ export function ApplicationsPage() {
     const [openingId, setOpeningId] = useState("");
     const [agendaRevision, setAgendaRevision] = useState(0);
     const [form, setForm] = useState(emptyForm(requestedJobId));
+    const [campaigns, setCampaigns] = useState([]);
+    const [filters, setFilters] = useState({ campaignId: "", query: "", stage: "", priority: "" });
     const applicationRequestRef = useRef({ controller: null, id: 0 });
+    const campaignRequestRef = useRef({ controller: null, id: 0 });
     const detailRequestRef = useRef({ controller: null, id: 0 });
     const [detailOpener, setDetailOpener] = useState(null);
     const backgroundRef = useRef(null);
@@ -44,6 +51,27 @@ export function ApplicationsPage() {
     const deepLinkAttemptRef = useRef("");
     const stageLabels = getStageLabels(t);
     const locale = language === "it" ? "it-IT" : "en-GB";
+
+    const requestCampaigns = useCallback(() => {
+        const requestId = campaignRequestRef.current.id + 1;
+        campaignRequestRef.current.controller?.abort();
+        const controller = new AbortController();
+        campaignRequestRef.current = { controller, id: requestId };
+
+        return CampaignService.list({ signal: controller.signal })
+            .then((items) => {
+                if (controller.signal.aborted || campaignRequestRef.current.id !== requestId) return;
+                setCampaigns(Array.isArray(items) ? items : []);
+            })
+            .catch((loadError) => {
+                if (controller.signal.aborted || loadError?.name === "AbortError" || campaignRequestRef.current.id !== requestId) return;
+            })
+            .finally(() => {
+                if (!controller.signal.aborted && campaignRequestRef.current.id === requestId) {
+                    campaignRequestRef.current.controller = null;
+                }
+            });
+    }, [setCampaigns]);
 
     const requestApplications = useCallback(() => {
         const requestId = applicationRequestRef.current.id + 1;
@@ -71,22 +99,27 @@ export function ApplicationsPage() {
 
     useEffect(() => {
         void requestApplications();
+        void requestCampaigns();
         return () => {
             applicationRequestRef.current.id += 1;
             applicationRequestRef.current.controller?.abort();
             applicationRequestRef.current.controller = null;
+            campaignRequestRef.current.id += 1;
+            campaignRequestRef.current.controller?.abort();
+            campaignRequestRef.current.controller = null;
             detailRequestRef.current.id += 1;
             detailRequestRef.current.controller?.abort();
             detailRequestRef.current.controller = null;
         };
-    }, [requestApplications]);
+    }, [requestApplications, requestCampaigns]);
     useEffect(() => {
         const controller = new AbortController();
         ResumeService.list({ signal: controller.signal })
             .then((items) => Promise.all(items.map((item) => ResumeService.get(item.id, { signal: controller.signal }))))
             .then((drafts) => {
                 if (controller.signal.aborted) return;
-                setResumeVersions(drafts.flatMap((draft) => draft.versions.map((version) => ({ id: version.id, label: `${draft.title} · v${version.semantic_version}`, selected_fact_ids: version.selected_fact_ids || [] }))));
+                setResumeDrafts(drafts);
+                setResumeVersions(drafts.flatMap((draft) => draft.versions.map((version) => ({ ...version, draft_id: draft.id, id: version.id, label: `${draft.title} · v${version.semantic_version}`, selected_fact_ids: version.selected_fact_ids || [] }))));
                 setResumeMetadataStatus("ready");
             })
             .catch((loadError) => {
@@ -101,7 +134,44 @@ export function ApplicationsPage() {
         setResumeMetadataRevision((current) => current + 1);
     };
 
-    const grouped = useMemo(() => Object.fromEntries(STAGES.map((stage) => [stage, applications.filter((item) => item.current_stage === stage)])), [applications]);
+    const handleCampaignImported = useCallback(async (result) => {
+        await Promise.all([requestApplications(), requestCampaigns()]);
+        setAgendaRevision((value) => value + 1);
+        showToast(
+            { messageKey: "applications.campaignImported", values: { count: result.application_count } },
+            "success",
+        );
+    }, [requestApplications, requestCampaigns, setAgendaRevision, showToast]);
+
+    const filteredApplications = useMemo(() => {
+        return applications.filter((app) => {
+            if (filters.campaignId && app.campaign_id !== filters.campaignId) return false;
+            if (filters.stage && app.current_stage !== filters.stage) return false;
+            if (filters.priority && app.campaign_priority !== filters.priority) return false;
+            if (filters.query) {
+                const q = filters.query.toLowerCase().trim();
+                const title = (app.title || "").toLowerCase();
+                const company = (app.company || "").toLowerCase();
+                const location = (app.location || "").toLowerCase();
+                const sourceAppId = (app.source_application_id || "").toLowerCase();
+                const platform = (app.campaign_platform || "").toLowerCase();
+                const category = (app.campaign_category || "").toLowerCase();
+                if (
+                    !title.includes(q) &&
+                    !company.includes(q) &&
+                    !location.includes(q) &&
+                    !sourceAppId.includes(q) &&
+                    !platform.includes(q) &&
+                    !category.includes(q)
+                ) {
+                    return false;
+                }
+            }
+            return true;
+        });
+    }, [applications, filters]);
+
+    const grouped = useMemo(() => Object.fromEntries(STAGES.map((stage) => [stage, filteredApplications.filter((item) => item.current_stage === stage)])), [filteredApplications]);
     const closed = grouped.rejected.length + grouped.withdrawn.length + grouped.archived.length;
 
     const openApplication = useCallback(async (id, opener) => {
@@ -192,7 +262,9 @@ export function ApplicationsPage() {
     return (
         <div className="applications-workspace">
             <div ref={backgroundRef} className="applications-workspace__background">
-            <div className="application-overview"><div><span>{t("applications.active")}</span><strong>{applications.length - closed}</strong></div><div><span>{t("applications.interviews")}</span><strong>{grouped.interview.length}</strong></div><div><span>{t("applications.offers")}</span><strong>{grouped.offer.length}</strong></div><div><span>{t("applications.closed")}</span><strong>{closed}</strong></div><button ref={addApplicationRef} type="button" className="button button--primary" onClick={() => setShowCreate((value) => !value)}><i className="bi bi-plus-lg" /> {t("applications.add")}</button></div>
+            <div className="application-overview"><div><span>{t("applications.active")}</span><strong>{filteredApplications.length - closed}</strong></div><div><span>{t("applications.interviews")}</span><strong>{grouped.interview.length}</strong></div><div><span>{t("applications.offers")}</span><strong>{grouped.offer.length}</strong></div><div><span>{t("applications.closed")}</span><strong>{closed}</strong></div><button ref={addApplicationRef} type="button" className="button button--primary" onClick={() => setShowCreate((value) => !value)}><i className="bi bi-plus-lg" /> {t("applications.add")}</button></div>
+            <CampaignImportPanel onImported={handleCampaignImported} />
+            <CampaignFilters campaigns={campaigns} filters={filters} onChange={setFilters} />
             {error && <div className="inline-alert inline-alert--danger" role="alert">{error}</div>}
             {resumeMetadataStatus === "loading" && <div className="inline-alert" role="status">{t("applications.resumeMetadataLoading")}</div>}
             {resumeMetadataStatus === "error" && <div className="inline-alert inline-alert--danger" role="alert"><span>{t("applications.resumeMetadataError")}</span> <button type="button" className="button button--secondary" onClick={retryResumeMetadata}>{t("applications.resumeMetadataRetry")}</button></div>}
@@ -219,7 +291,7 @@ export function ApplicationsPage() {
             </form>}
             {applications.length === 0 ? <div className="state-panel"><i className="bi bi-kanban" /><h2>{t("applications.emptyTitle")}</h2><p>{t("applications.emptyCopy")}</p><button className="button button--primary" onClick={() => setShowCreate(true)}>{t("applications.addFirst")}</button></div> : <div className="application-board">{BOARD_STAGES.map((stage) => <section key={stage} className="application-column"><header><span className={`stage-dot stage-dot--${stage}`} /><h2>{stageLabels[stage]}</h2><strong>{grouped[stage].length}</strong></header><div>{grouped[stage].map((application) => <ApplicationCard key={application.id} application={application} locale={locale} opening={openingId === application.id} expanded={selected?.id === application.id} buttonRef={(node) => { if (node) applicationCardRefs.current.set(application.id, node); else applicationCardRefs.current.delete(application.id); }} onClick={(event) => openApplication(application.id, event.currentTarget)} />)}{grouped[stage].length === 0 && <p className="application-column__empty">{t("applications.emptyColumn")}</p>}</div></section>)}{closed > 0 && <section className="application-column application-column--closed"><header><span className="stage-dot" /><h2>{t("applications.closed")}</h2><strong>{closed}</strong></header><div>{[...grouped.rejected, ...grouped.withdrawn, ...grouped.archived].map((application) => <ApplicationCard key={application.id} application={application} locale={locale} opening={openingId === application.id} expanded={selected?.id === application.id} buttonRef={(node) => { if (node) applicationCardRefs.current.set(application.id, node); else applicationCardRefs.current.delete(application.id); }} onClick={(event) => openApplication(application.id, event.currentTarget)} />)}</div></section>}</div>}
             </div>
-            {selected && <ApplicationDetailDialog application={selected} resumeVersions={resumeVersions} resumeMetadataStatus={resumeMetadataStatus} onRetryResumeMetadata={retryResumeMetadata} onChanged={handleChanged} onClose={closeApplication} returnFocus={detailOpener} backgroundRef={backgroundRef} />}
+            {selected && <ApplicationDetailDialog resumeDrafts={resumeDrafts} application={selected} resumeVersions={resumeVersions} resumeMetadataStatus={resumeMetadataStatus} onRetryResumeMetadata={retryResumeMetadata} onChanged={handleChanged} onClose={closeApplication} returnFocus={detailOpener} backgroundRef={backgroundRef} />}
         </div>
     );
 }

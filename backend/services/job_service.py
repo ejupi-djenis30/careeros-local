@@ -1,11 +1,14 @@
-import hashlib
 from datetime import datetime, timezone
 from typing import Any, Dict
 
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
-from backend.ai.attestation import MatchAttestationError, validate_match_attestation
+from backend.ai.attestation import (
+    MatchAttestationError,
+    is_external_agent_match_attested,
+    validate_match_attestation,
+)
 from backend.ai.match_evidence import (
     candidate_evidence_document,
     job_evidence_document,
@@ -14,6 +17,7 @@ from backend.ai.match_evidence import (
 )
 from backend.ai.match_policy import DIMENSION_SCORE_FIELDS, materialize_match_citations
 from backend.ai.models import AIExecution
+from backend.jobs.manual_identity import stable_manual_platform_job_id
 from backend.models import Job
 from backend.repositories.job_repository import JobRepository
 from backend.repositories.profile_repository import ProfileRepository
@@ -28,7 +32,10 @@ class JobService:
 
     @staticmethod
     def _analysis_is_verified(job: Any) -> bool:
-        return getattr(job, "_analysis_receipt_verified", False) is True
+        return bool(
+            getattr(job, "_analysis_receipt_verified", False) is True
+            or getattr(job, "_external_analysis_receipt_verified", False) is True
+        )
 
     def _validate_and_mark_analysis_receipt(
         self,
@@ -87,6 +94,10 @@ class JobService:
             job._analysis_receipt_verified = True
         except MatchAttestationError:
             job._analysis_receipt_verified = False
+        job._external_analysis_receipt_verified = bool(
+            not job._analysis_receipt_verified
+            and is_external_agent_match_attested(self.db, job, user_id)
+        )
         return job
 
     def _mark_analysis_receipt(self, job: Any, user_id: int) -> Any:
@@ -159,25 +170,6 @@ class JobService:
         # Untrusted rows remain visible as unanalyzed jobs, but their raw score can never
         # move them ahead of a receipt-verified result or change their relative order.
         return [*trusted, *untrusted]
-
-    @staticmethod
-    def _stable_manual_platform_job_id(user_id: int, job_dict: Dict[str, Any]) -> str:
-        """Return a stable identifier in a server-owned, per-user namespace.
-
-        Manual listings are private user input rather than shared provider data.  Including
-        the authenticated user id in the one-way fingerprint prevents two users who save the
-        same URL from being attached to the same mutable ``ScrapedJob`` row.  The caller must
-        never use a client-supplied platform id for the ``manual`` platform.
-        """
-        fingerprint_parts = [
-            f"user:{user_id}",
-            "platform:manual",
-            str(job_dict.get("title") or "").strip().lower(),
-            str(job_dict.get("company") or "").strip().lower(),
-            str(job_dict.get("external_url") or "").strip().lower(),
-        ]
-        digest = hashlib.sha256("|".join(fingerprint_parts).encode("utf-8")).hexdigest()
-        return f"manual-{digest[:24]}"
 
     def _attach_application_links(
         self, user_id: int, jobs: list[Job]
@@ -263,10 +255,18 @@ class JobService:
         if platform == "manual":
             # Manual ids are always derived server-side.  Ignoring a spoofed client id is
             # essential: otherwise a user could deliberately collide with another user's row.
-            platform_job_id = self._stable_manual_platform_job_id(user_id, job_dict)
+            platform_job_id = stable_manual_platform_job_id(
+                user_id,
+                title=str(job_dict.get("title") or ""),
+                company=str(job_dict.get("company") or ""),
+                external_url=job_dict.get("external_url"),
+            )
         else:
-            platform_job_id = supplied_platform_job_id or self._stable_manual_platform_job_id(
-                user_id, {**job_dict, "platform": "manual"}
+            platform_job_id = supplied_platform_job_id or stable_manual_platform_job_id(
+                user_id,
+                title=str(job_dict.get("title") or ""),
+                company=str(job_dict.get("company") or ""),
+                external_url=job_dict.get("external_url"),
             )
 
         scraped_fields = {

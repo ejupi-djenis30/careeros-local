@@ -203,6 +203,20 @@ def _convert_to_version(data: bytes, version: int) -> bytes:
             ):
                 row.pop(field, None)
     removed_tables = []
+    if version < 8:
+        removed_tables.extend(
+            ["campaigns", "campaign_applications", "campaign_artifacts"]
+        )
+    if version < 7:
+        removed_tables.extend(
+            ["agent_work_requests", "agent_proposals", "application_packet_artifacts"]
+        )
+        for name in ("resume_drafts", "resume_versions"):
+            for row in payload["tables"][name]:
+                for field in ("template_id", "template_version", "locale"):
+                    row.pop(field, None)
+        for row in payload["tables"]["source_documents"]:
+            row.pop("source_role", None)
     if version < 6:
         removed_tables.append("application_dossier_drafts")
     if version < 3:
@@ -289,7 +303,7 @@ def test_v6_archive_restores_ai_audit_and_v5_v4_v3_v2_v1_remain_compatible(
     assert exported.status_code == 200, exported.text
     with zipfile.ZipFile(BytesIO(exported.content)) as archive:
         manifest = json.loads(archive.read("manifest.json"))
-    assert manifest["format_version"] == 6
+    assert manifest["format_version"] == 8
     assert manifest["record_counts"]["ai_executions"] == 1
     assert manifest["record_counts"]["preference_signals"] == 1
 
@@ -361,7 +375,7 @@ def test_v6_archive_restores_ai_audit_and_v5_v4_v3_v2_v1_remain_compatible(
     assert restored_v1.json()["restored_records"]["ai_executions"] == 0
 
 
-@pytest.mark.parametrize("format_version", [1, 2, 3, 4, 5, 6])
+@pytest.mark.parametrize("format_version", [1, 2, 3, 4, 5, 6, 7])
 @pytest.mark.parametrize(
     "archived_timestamp",
     ["2026-07-22T12:15:00+02:00", "2026-07-22T10:15:00"],
@@ -381,11 +395,7 @@ def test_archive_versions_normalize_legacy_timestamps_to_aware_utc(
     assert exported.status_code == 200, exported.text
     _delete_profile(client, auth_headers)
 
-    archive = (
-        exported.content
-        if format_version == 6
-        else _convert_to_version(exported.content, format_version)
-    )
+    archive = _convert_to_version(exported.content, format_version)
     archive = _with_profile_created_at(archive, archived_timestamp)
     restored = client.post(
         "/api/v1/portability/restore",

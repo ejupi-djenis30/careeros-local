@@ -45,7 +45,7 @@
     "pretest:coverage": "npm run preflight:node",
     "test:coverage": "node --test ../scripts/check_node_version.test.mjs && vitest run --coverage && npm run test:licenses",
     "pretest:e2e": "npm run preflight:node",
-    "test:e2e": "npm run test:pages && npm run test:agenda-responsive && npm run test:login-quality && npm run test:agent-access-quality && npm run test:shell-responsive",
+    "test:e2e": "npm run test:pages && npm run test:agenda-responsive && npm run test:login-quality && npm run test:agent-access-quality && npm run test:agent-work-quality && npm run test:application-materials && npm run test:shell-responsive",
     "prebrand:icons": "npm run preflight:node",
     "brand:icons": "tauri icon public/careeros.svg --output src-tauri/icons",
     "preicons:build": "npm run preflight:node",
@@ -62,6 +62,10 @@
     "test:login-quality": "node e2e/login-quality.mjs",
     "pretest:agent-access-quality": "npm run preflight:node",
     "test:agent-access-quality": "node e2e/agent-access-quality.mjs",
+    "pretest:agent-work-quality": "npm run preflight:node",
+    "test:agent-work-quality": "node e2e/agent-work-quality.mjs",
+    "pretest:application-materials": "npm run preflight:node",
+    "test:application-materials": "node e2e/application-materials-journey.mjs",
     "pretest:shell-responsive": "npm run preflight:node",
     "test:shell-responsive": "node e2e/workspace-shell-responsive.mjs",
     "pretest:licenses": "npm run preflight:node",
@@ -101,6 +105,7 @@
     "vitest": "^4.0.18"
   },
   "overrides": {
+    "js-yaml": "5.2.2",
     "minimatch": "10.2.5",
     "postcss": "8.5.23"
   }

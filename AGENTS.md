@@ -4,11 +4,21 @@ This repository is CareerOS Local, a privacy-sensitive desktop application. Thes
 
 ## Non-negotiable product boundaries
 
-1. Keep career data, generated documents, model weights, prompts, and inference local. Do not add cloud AI, telemetry, remote error reporting, or silent downloads.
-2. Vault editing, manual records, portability, existing documents and deterministic application readiness must remain usable without a model. Any workflow presented as AI analysis, matching, tailoring, coaching or recommendation must require a ready local model and fail closed; heuristic output must never masquerade as completed AI analysis. AI output is advisory, evidence-bound, schema-validated, and never written as a confirmed fact without explicit user confirmation.
+1. Keep career data and generated documents canonical locally. Keep local-model inference local. Permit explicitly disclosed, scoped Codex / Claude Code MCP client workflows per constitution 2.0.0; do not add direct cloud-AI clients, provider API keys, telemetry, remote error reporting, silent downloads or automatic external fallback.
+2. Vault editing, manual records, portability, existing documents and deterministic application readiness must remain usable without a model. AI analysis, matching, tailoring, coaching or recommendation requires a ready local model or an explicitly authorized external-agent workflow; it completes only after evidence/schema/revision validation. Heuristics never masquerade as AI. Agents submit proposals, never confirm facts, approve/publish materials or send applications. Existing read-only grants do not acquire new authority.
 3. Accept inference endpoints only on loopback or the explicit local-container allowlist. Never weaken this validation for convenience.
 4. Preserve manifest verification, path containment, archive limits, atomic writes, and the desktop vault lock.
 5. Never log access tokens, desktop session tokens, prompts, resume content, source documents, model output, or personal profile fields.
+6. External MCP clients working with the open desktop must use its authenticated loopback bridge, preserving the exclusive vault lock. No second writable vault process.
+
+## Implementation delegation for feature 002
+
+The owner initially required the coordinating agent to author complete Spec Kit artifacts before
+code and delegate implementation to Antigravity or `gpt-5.3-codex-spark`. On 2026-09-13 the owner
+explicitly authorized the coordinating agent and its Codex subagents to continue implementation
+directly after both delegated engines exhausted their quotas. Keep independent review and full
+verification; do not change the reference directory `../Career` or copy personal content from it
+into fixtures or documentation.
 
 ## Spec-driven workflow
 

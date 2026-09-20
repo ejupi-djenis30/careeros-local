@@ -217,6 +217,51 @@ async def test_health_probes_bypass_writer_while_private_requests_still_drain() 
 
 
 @pytest.mark.asyncio
+async def test_agent_bridge_body_reception_does_not_hold_global_reader() -> None:
+    gate = VaultActivityGate()
+    receive_started = asyncio.Event()
+    release_body = asyncio.Event()
+
+    async def inner(scope, receive, send) -> None:
+        message = await receive()
+        assert message["type"] == "http.request"
+        await send({"type": "http.response.start", "status": 401, "headers": []})
+        await send({"type": "http.response.body", "body": b"denied"})
+
+    middleware = VaultActivityMiddleware(inner, path_prefix="/api/v1", gate=gate)
+    messages: list[dict] = []
+
+    async def receive() -> dict:
+        receive_started.set()
+        await release_body.wait()
+        return {"type": "http.request", "body": b"{}", "more_body": False}
+
+    async def send(message: dict) -> None:
+        messages.append(message)
+
+    async with gate.writer():
+        request = asyncio.create_task(
+            middleware(
+                {
+                    "type": "http",
+                    "method": "POST",
+                    "path": "/api/v1/agent-bridge/work-requests/"
+                    "c2b535fa-92b0-4f51-b0fa-d204d80a1001/result",
+                    "headers": [],
+                },
+                receive,
+                send,
+            )
+        )
+        await asyncio.wait_for(receive_started.wait(), timeout=0.2)
+        assert gate._readers == 0
+        release_body.set()
+        await asyncio.wait_for(request, timeout=0.2)
+
+    assert messages[0]["status"] == 401
+
+
+@pytest.mark.asyncio
 async def test_nonblocking_probe_reader_is_atomic_with_waiting_writer() -> None:
     gate = VaultActivityGate()
     writer_acquired = asyncio.Event()

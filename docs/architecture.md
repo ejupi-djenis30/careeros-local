@@ -1,7 +1,8 @@
 # Architecture
 
 CareerOS Local is a Tauri 2 desktop application with a React UI, a bundled FastAPI sidecar, SQLite,
-content-addressed local assets, and a managed llama.cpp runtime required for analysis workflows.
+content-addressed local assets, and a managed llama.cpp runtime required for built-in local analysis
+workflows. Owner-created external-agent work uses a separate MCP proposal boundary.
 
 ```mermaid
 flowchart LR
@@ -11,8 +12,11 @@ flowchart LR
   DOMAIN --> DOSSIER["Append-only tasks + verifiable dossiers"]
   DOMAIN --> DB["SQLite Career Vault"]
   DOMAIN --> FILES["Atomic local assets"]
-  CLIENT["Codex / Claude Code / shell"] -->|"stdio + bearer grant"| AUTOMATION["Read-only automation facade"]
-  AUTOMATION --> DOMAIN
+  CLIENT["Codex / Claude Code"] -->|"stdio + grant bearer"| MCP["Installed workspace MCP"]
+  MCP -->|"authenticated loopback bridge"| API
+  API --> WORK["Bounded work queue + proposal review"]
+  WORK --> DOMAIN
+  LEGACY["Offline read-only CLI/MCP"] -->|"query-only + vault lease"| DB
   API --> SEARCH["Search pipeline"]
   SEARCH --> AI["Strict local-AI orchestrator"]
   AI --> RETRIEVAL["Local evidence retrieval"]
@@ -24,62 +28,75 @@ flowchart LR
 
 ## Automation boundary
 
-`backend/automation` provides one least-privilege facade for both the `careeros` CLI and the MCP
-server. It does not call the desktop sidecar's loopback HTTP API or reuse the desktop session
-token. Instead, the process configures the existing vault from the operating-system
-application-data directory, verifies the Alembic head, acquires `desktop_instance_lease`,
-authenticates a bearer grant and opens a fresh SQLAlchemy session for each read. The read engine
-opens the SQLite file with URI `mode=ro`, applies `PRAGMA query_only=ON` and verifies that pragma on
-every connection before exposing the session.
+`backend/agent_work` owns durable requests, frozen context, proposal history, review state and
+acceptance orchestration. Owner routes under `/api/v1/agent-work` use the normal authenticated
+desktop session. Exact routes under `/api/v1/agent-bridge` use only a dedicated automation bearer
+and enforce loopback transport, canonical Host/origin behavior, fixed methods, bounded bodies and
+`Cache-Control: no-store`. The transport layer does not decide domain mutations: accepted
+discoveries go through search/application services, analyses through the job contract, and
+materials through resume and dossier draft services.
 
-Only `authorize` may migrate an older vault, and it does so while the desktop app is closed.
-Ordinary CLI reads and MCP startup fail with `migration_required` rather than changing the schema.
-A CLI command holds the lease for its operation. MCP acquires it for bootstrap, releases it while
-idle, then reacquires it for each tool call. This keeps the established single-writer rule without
-forcing the desktop to remain closed for the life of an agent session. Grant authorization and
-revocation use a separate, password-confirmed write path; MCP exposes neither operation.
+The installed `careeros-mcp` executable is a console process in the packaged backend runtime. It
+speaks MCP over standard input/output and calls the loopback bridge; it has no network listener,
+desktop bearer, database engine or direct filesystem authority. Its two workspace scopes are
+`context:read` and `proposals:write`. It registers exactly six tools:
 
-An automation grant belongs to exactly one CareerOS user. It stores a label, allowed scopes,
-expiry and revocation time alongside a SHA-256 digest of a randomly generated bearer token. The
-raw token is returned once at authorization and is never persisted. Authentication rejects
-missing, malformed, unknown, expired or revoked tokens before constructing the facade. A restore
-revokes existing grants; complete vault deletion removes them.
+| Tool | Contract |
+| --- | --- |
+| `get_agent_status` | Active scopes, contract version and queue counts |
+| `list_work_requests` | Owner/grant-bound metadata, offset 0..1000 and limit 1..50 |
+| `get_work_context` | Frozen context up to 64 KiB with revision bindings and digest |
+| `submit_work_result` | Strict discover/analyze/materials DTO up to 256 KiB; idempotent receipt |
+| `get_work_result` | Owned submission and review state |
+| `list_resume_templates` | Content-free immutable preset metadata |
 
-The four scopes map to a fixed tool set:
+Submission is accurately annotated as a non-destructive write; the other tools are read-only.
+Unknown arguments and schema fields fail. Request text and advert evidence are data, never
+instructions that can extend tool authority. There are no tools for approval, fact confirmation,
+publication, transmission, grant management, arbitrary files, SQL, shell execution, backup,
+erasure or direct network search.
 
-| Scope | MCP tools | Returned data |
-| --- | --- | --- |
-| `system:read` | `get_status`, `get_local_model_status` | Version, schema, enabled scopes/tools and content-free local-model readiness |
-| `career:read` | `get_career_summary` | Profile presence, revision, completeness, issue count and fact-family counts |
-| `resume:read` | `get_resume_catalog` | Bounded draft and published-version metadata |
-| `applications:read` | `list_applications`, `get_application_readiness`, `get_application_agenda` | Bounded application projections, deterministic preflight checks and follow-ups |
+The desktop publishes a small connection descriptor only after the sidecar is ready and while the
+desktop lease is owned. Publication uses a private directory, strict permissions and atomic
+replacement. The descriptor has one fixed schema containing a canonical loopback `/api/v1` URL,
+instance/process identity, process start identity and a short renewed expiry; it contains no token.
+Both publisher and reader reject traversal, links/reparse points, hard links, alternate streams,
+unexpected fields, duplicate JSON keys, unsafe permissions, dead/reused processes and oversized or
+non-loopback values. Shutdown removes only the descriptor belonging to that instance. The MCP
+client rereads it before operations and replaces its HTTP pool when the instance or port changes.
 
-The MCP process uses only standard input/output. It registers tools allowed by the authenticated
-scope set and marks them read-only, non-destructive, idempotent and closed-world. Those annotations
-help clients present the tools correctly; scope checks in the facade are the enforcement boundary.
-There is no socket listener and no mutation, document export, backup/restore, erasure, arbitrary
-file, SQL, free-form prompt or network-search tool.
+A token-free Tauri command gives the renderer only the installed console path, descriptor path,
+fixed arguments, token environment-variable name, Codex TOML and Claude JSON. The renderer
+validates that exact six-field response and reconstructs both configurations before displaying
+them. It never receives the backend bootstrap secret. `CAREEROS_MCP_TOKEN` is inherited from the
+client's launch environment; it is absent from both generated configurations and the descriptor.
 
-Tool DTOs deliberately omit resume and source-document bodies, dedicated contact records, prompts,
-artifact bytes, access tokens and local storage paths. User-authored labels, company names,
-locations and task titles remain visible within their authorized scope and may contain sensitive
-text. Lists and time windows have fixed upper bounds. The
-unauthenticated `doctor` setup command is separate from the tool facade and intentionally reports
-the resolved data directory so a local operator can diagnose configuration.
+Each work request binds one owner, one active grant, explicit instructions, selected fact IDs,
+target records, template metadata, immutable context and all relevant input revisions. Submission
+revalidates the grant, request state, digest, result schema, evidence membership, source quotes,
+`fit-v1` policy and idempotency key. Acceptance performs another live revision check and uses a
+database compare-and-swap before any domain write. A stale, expired, revoked, foreign, conflicting
+or unsupported result leaves the pending request available for a corrected submission. External
+output remains advisory until the owner accepts it in the desktop.
 
-MCP startup requires `--acknowledge-agent-disclosure` because the connected client controls what
-happens after a result leaves the process over stdio. Ordinary vault reads make no outbound or
-cloud request. `get_local_model_status` may make a content-free HTTP readiness probe only to the
-configured, allowlisted local-runtime endpoint. This is loopback by default; container deployments
-may explicitly allow a single-label runtime alias. The probe sends no Vault content or prompt.
-Codex, Claude Code or another client may still include returned private metadata in a remote
-request. Before every tool read, MCP obtains the vault lease and authenticates the bearer token
-again. An expired or revoked grant fails on the next call; a grant whose identity or scopes changed
-requires a new MCP session. If the desktop owns the lease, the tool returns `vault_busy`.
+The source-checkout developer mode uses the same six-tool server with an explicit canonical
+`--desktop-url`. The installed mode uses `--connection-file`. The older `--data-dir` mode remains
+a separate read-only compatibility path: it configures the app-data vault, verifies the Alembic
+head, takes `desktop_instance_lease`, authenticates one of the four original read scopes and opens
+SQLite with URI `mode=ro` plus verified `PRAGMA query_only=ON`. Its seven original bounded
+metadata/readiness tools remain unchanged. `--data-dir`, `--desktop-url` and `--connection-file`
+are mutually exclusive.
+
+The raw grant bearer is returned once after password confirmation and explicit external-disclosure
+acknowledgement; only its SHA-256 digest is persisted. Every bridge operation revalidates account,
+grant identity, scopes, expiry, revocation, ownership and maintenance state. Restore strips live
+grant authority and complete erasure removes owned records. The connected MCP client can send
+selected results to its own model provider, so this boundary controls what CareerOS releases but
+does not claim that an external model is local.
 
 ## Native boundary
 
-Rust allocates an ephemeral IPv4 loopback port, generates a desktop session secret, and starts the bundled backend without a visible terminal. The child runs from its packaged runtime directory with an explicit operating-system and accelerator environment allowlist; ambient application secrets, Python import paths, dynamic-loader overrides, and unrelated configuration are not inherited. A fixed readiness deadline terminates an unready child so the bounded supervisor can retry, while executable and data paths must remain regular, non-reparse filesystem entries. The root response is static and does not touch SQLite. `/health/live` is a pure asynchronous process probe; `/health/ready` makes a non-blocking activity-gate attempt and verifies the joined managed-runtime worker, so a long vault writer cannot freeze the supervisor. Lifespan shutdown stops the scheduler before snapshotting or cancelling tasks, then waits for managed-runtime startup/worker termination within the native sidecar drain bound. Tauri capabilities permit only required core, native open-dialog, scoped file-read, and safe URL-opening commands; renderer shell execution and developer tools are denied. Backup writes stay inside a dedicated Rust command that opens its own save dialog.
+Rust allocates an ephemeral IPv4 loopback port, generates a desktop session secret, and starts the bundled backend without a visible terminal. The one-folder runtime also includes a separate console-subsystem MCP executable because a Windows GUI executable cannot provide reliable stdio. The child runs from its packaged runtime directory with an explicit operating-system and accelerator environment allowlist; ambient application secrets, Python import paths, dynamic-loader overrides, and unrelated configuration are not inherited. A fixed readiness deadline terminates an unready child so the bounded supervisor can retry, while executable and data paths must remain regular, non-reparse filesystem entries. The root response is static and does not touch SQLite. `/health/live` is a pure asynchronous process probe; `/health/ready` makes a non-blocking activity-gate attempt and verifies the joined managed-runtime worker, so a long vault writer cannot freeze the supervisor. Lifespan shutdown stops the scheduler before snapshotting or cancelling tasks, then waits for managed-runtime startup/worker termination within the native sidecar drain bound. Tauri capabilities permit only required core, native open-dialog, scoped file-read, safe URL opening and the token-free MCP setup command; renderer shell execution and developer tools are denied. Backup writes stay inside a dedicated Rust command that opens its own save dialog.
 
 ## Domain and persistence
 
@@ -178,10 +195,14 @@ The mutable working copy lives separately in `application_dossier_drafts`, with 
 application and its own compare-and-swap revision. Autosave never advances the application
 timeline. A save binds the draft to the owned application and resume version, and an atomic
 conditional update prevents a stale editor from overwriting newer content. Publishing from the
-workspace verifies that the submitted content is the publishable projection of that exact draft
-revision, then adds the immutable event and deletes the draft in the same commit. Direct API
-publication remains compatible only when no working draft exists. Archive format v6 includes these
-rows; restore validates required fields, content, revisions and relationships before writing.
+workspace verifies the complete saved content against that exact draft revision and selected CV,
+then adds an immutable schema 3 event and packet artifact in one commit. The packet includes the
+reviewed letter PDF/DOCX, offline email, answers, attachment checklist, evidence and provenance;
+CareerOS does not transmit it. A durable journal preserves committed bytes across uncertain commit
+acknowledgements and cleanup failures. Schema 3 downloads validate the stored artifact identity and
+manifest and never fall back to legacy reconstruction. Schema 1/2 events retain their historical
+byte-stable reconstruction. Archive format v7 includes these rows and exact packet bytes; restore
+validates required fields, content, revisions, ownership, hashes and relationships before writing.
 
 ## Local AI
 
@@ -317,8 +338,11 @@ Archive format v4 added accepted local-analysis receipts, per-row output fingerp
 candidate/job input bindings to the search, application, coaching, and AI-audit data covered by
 earlier versions. Format v5 adds shared-listing observation metadata, durable search completion
 receipts, and the Application logical-opportunity identity. Format v6 adds mutable application
-dossier drafts. Versions 1–5 remain readable; each export identifies its current format so an older
-decoder rejects it instead of interpreting a changed row shape as an earlier version. Because
+dossier drafts. Format v7 adds agent requests/proposals, template selections, material provenance,
+packet artifact ownership and the exact schema 3 ZIP bytes. Versions 1–6 remain readable; each
+export identifies its current format so an older decoder rejects it instead of interpreting a
+changed row shape as an earlier version. Restored work is terminal/inactive and restored grants,
+proposal authority and live acceptance authority are removed. Because
 portable ZIP checksums prove integrity but not the identity of the system that
 produced an analysis, restored analysis from every unsigned archive version is quarantined
 losslessly and hidden until CareerOS re-runs it with the current local contract. Historical

@@ -37,6 +37,15 @@ class ResumeDraft(Base, TimestampMixin):
     profile_revision: Mapped[int] = mapped_column(Integer, nullable=False)
     title: Mapped[str] = mapped_column(String(200), nullable=False)
     template_kind: Mapped[Literal["ats", "photo"]] = mapped_column(String(20), nullable=False)
+    template_id: Mapped[str] = mapped_column(
+        String(64), nullable=False, default="software-en", server_default="software-en"
+    )
+    template_version: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=1, server_default="1"
+    )
+    locale: Mapped[str] = mapped_column(
+        String(8), nullable=False, default="en", server_default="en"
+    )
     section_config: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False, default=dict)
     selected_fact_ids: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list)
     content_overrides: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False, default=dict)
@@ -73,6 +82,15 @@ class ResumeVersion(Base):
     profile_revision: Mapped[int] = mapped_column(Integer, nullable=False)
     selected_fact_ids: Mapped[list[str]] = mapped_column(JSON, nullable=False)
     template_kind: Mapped[Literal["ats", "photo"]] = mapped_column(String(20), nullable=False)
+    template_id: Mapped[str] = mapped_column(
+        String(64), nullable=False, default="software-en", server_default="software-en"
+    )
+    template_version: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=1, server_default="1"
+    )
+    locale: Mapped[str] = mapped_column(
+        String(8), nullable=False, default="en", server_default="en"
+    )
     renderer_version: Mapped[str] = mapped_column(String(30), nullable=False)
     published_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     quality_report: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)

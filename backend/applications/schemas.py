@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 from typing import Any, Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from backend.jobs.urls import normalize_job_url
 
@@ -123,6 +123,12 @@ def _validate_bounded_json(value: Any) -> None:
         raise ValueError("payload must be valid JSON") from exc
     if len(encoded) > MAX_EVENT_PAYLOAD_BYTES:
         raise ValueError(f"payload exceeds {MAX_EVENT_PAYLOAD_BYTES} bytes")
+
+
+def validate_application_event_payload(value: Any) -> None:
+    """Validate the bounded-JSON contract used by ordinary timeline events."""
+
+    _validate_bounded_json(value)
 
 
 class ManualJobSnapshot(BaseModel):
@@ -407,6 +413,92 @@ class DossierDraftRequirementEvidence(BaseModel):
         return normalized
 
 
+def _default_letter_formats() -> list[Literal["pdf", "docx"]]:
+    return ["pdf", "docx"]
+
+
+class LetterOptions(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    preset_id: str = Field(default="software-en", max_length=64)
+    template_version: int = Field(default=1, ge=1)
+    locale: Literal["en", "de"] = "en"
+    recipient: str | None = Field(default=None, max_length=500)
+    subject: str | None = Field(default=None, max_length=500)
+    date: str | None = Field(default=None, max_length=100)
+    formats: list[Literal["pdf", "docx"]] = Field(
+        default_factory=_default_letter_formats, min_length=1, max_length=2
+    )
+
+    @model_validator(mode="after")
+    def validate_presentation(self):
+        from backend.resumes.templates import get_template_preset
+
+        preset = get_template_preset(self.preset_id, self.template_version)
+        if "locale" not in self.model_fields_set:
+            self.locale = preset.locale
+        if self.locale != preset.locale or len(set(self.formats)) != len(self.formats):
+            raise ValueError("Letter template locale or selected formats are inconsistent")
+        for value in (self.subject, self.date):
+            if value and any(ord(c) < 32 or ord(c) == 127 for c in value):
+                raise ValueError("Letter field contains invalid controls")
+        return self
+
+
+class EmailDraft(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    mode: Literal["short", "motivational"] = Field(default="short")
+    recipient: str | None = Field(default=None, max_length=320)
+    subject: str = Field(default="", max_length=500)
+    body: str = Field(default="", max_length=20_000)
+    attachment_names: list[str] = Field(default_factory=list, max_length=20)
+
+    @field_validator("subject", "recipient")
+    @classmethod
+    def valid_email_header(cls, value: str | None) -> str | None:
+        if value and any(ord(c) < 32 or ord(c) == 127 for c in value):
+            raise ValueError("Email header contains invalid controls")
+        return value
+
+    @field_validator("attachment_names")
+    @classmethod
+    def canonical_attachment_names(cls, values: list[str]) -> list[str]:
+        if len(set(values)) != len(values):
+            raise ValueError("Attachment names must be unique")
+        for value in values:
+            if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,127}", value) or ".." in value:
+                raise ValueError("Attachment name is not a canonical packet filename")
+        return values
+
+
+class GenerationProvenance(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    source: Literal["manual", "external-agent", "local-model"] = "manual"
+    request_id: UUID | None = None
+    grant_id: UUID | None = None
+    input_digest: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    payload_digest: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    generated_at: AwareDatetime | None = None
+
+
+class MaterialEvidenceClaim(BaseModel):
+    """One cited career assertion present in a letter, email or answer."""
+
+    model_config = ConfigDict(extra="forbid")
+    id: str = Field(min_length=1, max_length=100, pattern=r"^[A-Za-z0-9][A-Za-z0-9_.:-]*$")
+    text: str = Field(min_length=1, max_length=4000)
+    fact_ids: list[UUID] = Field(min_length=1, max_length=20)
+
+    @field_validator("fact_ids")
+    @classmethod
+    def unique_evidence(cls, values: list[UUID]) -> list[UUID]:
+        if len(set(values)) != len(values):
+            raise ValueError("Material evidence references must be unique")
+        return values
+
+
 class ApplicationDossierDraftContent(BaseModel):
     """Incomplete, user-authored dossier state suitable for durable autosave."""
 
@@ -419,9 +511,15 @@ class ApplicationDossierDraftContent(BaseModel):
         min_length=1,
         max_length=25,
     )
+    letter_options: LetterOptions | None = None
+    email_draft: EmailDraft | None = None
+    generation_provenance: GenerationProvenance | None = None
+    evidence_claims: list[MaterialEvidenceClaim] = Field(default_factory=list, max_length=100)
 
     @model_validator(mode="after")
     def bound_aggregate_size(self):
+        if len({item.id for item in self.evidence_claims}) != len(self.evidence_claims):
+            raise ValueError("Material claim identities must be unique")
         for name, rows in (
             ("answer", self.answers),
             ("checklist", self.checklist),
@@ -458,15 +556,29 @@ class ApplicationDossierDraftPut(BaseModel):
 
     expected_revision: int | None = Field(default=None, ge=1)
     expected_application_revision: int = Field(ge=1)
-    resume_version_id: UUID
+    resume_version_id: UUID | None = None
+    resume_draft_id: UUID | None = None
+    expected_resume_draft_revision: int | None = Field(default=None, ge=1)
     content: ApplicationDossierDraftContent
+
+    @model_validator(mode="after")
+    def exactly_one_binding(self):
+        if (self.resume_version_id is None) == (self.resume_draft_id is None):
+            raise ValueError("Provide exactly one of resume_version_id or resume_draft_id")
+        if self.resume_draft_id is not None and self.expected_resume_draft_revision is None:
+            raise ValueError("A resume draft binding requires its expected revision")
+        if self.resume_version_id is not None and self.expected_resume_draft_revision is not None:
+            raise ValueError("A version binding cannot include a resume draft revision")
+        return self
 
 
 class ApplicationDossierDraftResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     application_id: str
-    resume_version_id: str
+    resume_version_id: str | None = None
+    resume_draft_id: str | None = None
+    resume_draft_revision: int | None = None
     application_revision: int = Field(ge=1)
     revision: int = Field(ge=1)
     content: ApplicationDossierDraftContent
@@ -479,10 +591,15 @@ class ApplicationDossierCreate(BaseModel):
 
     expected_revision: int = Field(ge=1)
     expected_draft_revision: int | None = Field(default=None, ge=1)
+    resume_version_id: UUID | None = None
     cover_letter: str | None = Field(default=None, max_length=30_000)
     answers: list[DossierAnswer] = Field(default_factory=list, max_length=25)
     checklist: list[DossierChecklistItem] = Field(default_factory=list, max_length=50)
     requirement_matrix: list[DossierRequirementEvidence] = Field(min_length=1, max_length=25)
+    letter_options: LetterOptions | None = None
+    email_draft: EmailDraft | None = None
+    generation_provenance: GenerationProvenance | None = None
+    evidence_claims: list[MaterialEvidenceClaim] = Field(default_factory=list, max_length=100)
 
     @field_validator("cover_letter")
     @classmethod
@@ -492,6 +609,8 @@ class ApplicationDossierCreate(BaseModel):
 
     @model_validator(mode="after")
     def bound_aggregate_size(self):
+        if len({item.id for item in self.evidence_claims}) != len(self.evidence_claims):
+            raise ValueError("Material claim identities must be unique")
         evidence_ids = [
             fact_id for row in self.requirement_matrix for fact_id in row.evidence_fact_ids
         ]
@@ -669,6 +788,11 @@ class ApplicationSummary(BaseModel):
     latest_event_at: datetime
     updated_at: datetime
     next_action: ApplicationNextAction | None = None
+    campaign_id: str | None = None
+    source_application_id: str | None = None
+    campaign_priority: str | None = None
+    campaign_platform: str | None = None
+    campaign_category: str | None = None
 
 
 class ReadinessEvidence(BaseModel):

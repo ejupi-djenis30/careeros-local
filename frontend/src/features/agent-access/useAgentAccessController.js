@@ -14,6 +14,7 @@ export function useAgentAccessController(t) {
     const [refreshRevision, setRefreshRevision] = useState(0);
     const [label, setLabel] = useState("");
     const [scopes, setScopes] = useState(["system:read"]);
+    const [acknowledgeExternalDisclosure, setAcknowledgeExternalDisclosure] = useState(false);
     const [lifetimeDays, setLifetimeDays] = useState("30");
     const [password, setPassword] = useState("");
     const [creating, setCreating] = useState(false);
@@ -105,6 +106,7 @@ export function useAgentAccessController(t) {
                 scopes,
                 lifetime_days: Number(lifetimeDays),
                 password: submittedPassword,
+                acknowledge_external_disclosure: acknowledgeExternalDisclosure,
             });
             if (!mountedRef.current || issuance.abandoned) {
                 tokenRef.current = null;
@@ -128,6 +130,7 @@ export function useAgentAccessController(t) {
             ]);
             setLabel("");
             setScopes(["system:read"]);
+            setAcknowledgeExternalDisclosure(false);
             setLifetimeDays("30");
         } catch (error) {
             if (mountedRef.current) {
@@ -225,6 +228,7 @@ export function useAgentAccessController(t) {
     return {
         state: {
             activeCount,
+            acknowledgeExternalDisclosure,
             copyMessage,
             createMessage,
             creating,
@@ -255,6 +259,7 @@ export function useAgentAccessController(t) {
             retryLoad,
             revokeGrant,
             setLabel,
+            setAcknowledgeExternalDisclosure,
             setLifetimeDays,
             setPassword,
             setRevokePassword,

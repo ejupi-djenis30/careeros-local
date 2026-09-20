@@ -16,9 +16,21 @@ const readiness = vi.fn();
 const addEvent = vi.fn();
 const resumeList = vi.fn();
 const resumeGet = vi.fn();
+const campaignList = vi.fn();
+const campaignPreview = vi.fn();
+const campaignImport = vi.fn();
+const campaignContext = vi.fn();
+const campaignDownload = vi.fn();
 
 vi.mock("../../services/applications", () => ({ ApplicationService: { list: (...args) => list(...args), agenda: (...args) => agenda(...args), get: (...args) => get(...args), create: (...args) => create(...args), readiness: (...args) => readiness(...args), downloadReadiness: vi.fn(), updatePreparation: vi.fn(), addEvent: (...args) => addEvent(...args), getDossierDraft: vi.fn().mockResolvedValue(null) } }));
 vi.mock("../../services/resumes", () => ({ ResumeService: { list: (...args) => resumeList(...args), get: (...args) => resumeGet(...args) } }));
+vi.mock("../../services/campaigns", () => ({ CampaignService: {
+    list: (...args) => campaignList(...args),
+    preview: (...args) => campaignPreview(...args),
+    importArchive: (...args) => campaignImport(...args),
+    applicationContext: (...args) => campaignContext(...args),
+    downloadArtifact: (...args) => campaignDownload(...args),
+} }));
 vi.mock("../../context/ToastContext", () => ({ useToast: () => ({ showToast }) }));
 
 function summary(id, title, company = "Local Co") {
@@ -58,6 +70,22 @@ describe("ApplicationsPage", () => {
         addEvent.mockResolvedValue(application());
         resumeList.mockResolvedValue([]);
         resumeGet.mockResolvedValue({ title: "ATS Resume", versions: [] });
+        campaignList.mockResolvedValue([]);
+        campaignContext.mockRejectedValue({ status: 404 });
+        campaignPreview.mockResolvedValue({
+            fingerprint: "a".repeat(64), suggested_name: "Legacy application campaign",
+            suggested_profile_name: "Fictional Candidate", tracker_rows: 4,
+            dossier_count: 3, matched_count: 2, tracker_only_count: 2,
+            dossier_only_count: 1, logical_application_count: 5, artifact_count: 16,
+            expanded_bytes: 12345, status_counts: { Applied: 1 },
+            credential_rows_omitted: 0, warnings: [], sample: [], requires_profile_name: false,
+        });
+        campaignImport.mockResolvedValue({
+            campaign_id: "11111111-1111-4111-8111-111111111111",
+            created: true,
+            application_count: 5,
+        });
+        campaignDownload.mockResolvedValue({ blob: new Blob(["artifact"]), filename: "cv.pdf" });
         readiness.mockResolvedValue({
             status: "blocked", completeness_score: 10, blocker_count: 8, warning_count: 0,
             fingerprint: "a".repeat(64), checks: [],
@@ -193,6 +221,7 @@ describe("ApplicationsPage", () => {
         expect(close).toHaveFocus();
         expect(background).toHaveAttribute("inert");
         expect(background).toHaveAttribute("aria-hidden", "true");
+        expect(container).toHaveAttribute("inert");
         expect(document.body.style.overflow).toBe("hidden");
         await assertAccessible(dialog);
 
@@ -210,6 +239,7 @@ describe("ApplicationsPage", () => {
         await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
         expect(background).not.toHaveAttribute("inert");
         expect(background).not.toHaveAttribute("aria-hidden");
+        expect(container).not.toHaveAttribute("inert");
         expect(document.body.style.overflow).toBe("scroll");
         expect(trigger).toHaveFocus();
     });
@@ -280,5 +310,87 @@ describe("ApplicationsPage", () => {
         await user.keyboard("{Escape}");
         await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
         expect(trigger).toHaveFocus();
+    });
+
+    it("filters imported campaign summaries and shows their inert materials in application detail", async () => {
+        const user = userEvent.setup();
+        const importedId = "44444444-4444-4444-8444-444444444444";
+        list.mockResolvedValue([
+            {
+                ...summary(importedId, "Backend Engineer", "Acme Corp"),
+                current_stage: "applied",
+                campaign_id: "11111111-1111-4111-8111-111111111111",
+                source_application_id: "APP-001",
+                campaign_priority: "High",
+                campaign_platform: "LinkedIn",
+                campaign_category: "Engineering",
+            },
+            summary("55555555-5555-4555-8555-555555555555", "Manual Designer"),
+        ]);
+        campaignList.mockResolvedValue([{
+            id: "11111111-1111-4111-8111-111111111111",
+            name: "Spring search",
+            summary: { application_count: 5 },
+        }]);
+        get.mockResolvedValue(application({
+            id: importedId,
+            current_stage: "applied",
+            job_snapshot: { title: "Backend Engineer", company: "Acme Corp" },
+        }));
+        campaignContext.mockResolvedValue({
+            campaign_id: "11111111-1111-4111-8111-111111111111",
+            campaign_name: "Spring search",
+            application_id: importedId,
+            source_application_id: "APP-001",
+            tracker_record: { Notes: "Historical <b>plain text</b>" },
+            provenance: { sources: ["tracker", "dossier"] },
+            artifact_groups: {},
+        });
+
+        render(<MemoryRouter initialEntries={["/applications"]}><ApplicationsPage /></MemoryRouter>);
+        expect(await screen.findByRole("button", { name: /Backend Engineer/i })).toBeVisible();
+        expect(screen.getByRole("button", { name: /Manual Designer/i })).toBeVisible();
+
+        await user.selectOptions(screen.getByLabelText("Campagna"), "11111111-1111-4111-8111-111111111111");
+        expect(screen.getByRole("button", { name: /Backend Engineer/i })).toBeVisible();
+        expect(screen.queryByRole("button", { name: /Manual Designer/i })).toBeNull();
+        expect(screen.getByText("Attive").nextElementSibling).toHaveTextContent("1");
+        await user.type(screen.getByLabelText("Cerca nelle candidature"), "LinkedIn");
+        expect(screen.getByRole("button", { name: /Backend Engineer/i })).toBeVisible();
+        await user.clear(screen.getByLabelText("Cerca nelle candidature"));
+        await user.type(screen.getByLabelText("Cerca nelle candidature"), "Engineering");
+        expect(screen.getByRole("button", { name: /Backend Engineer/i })).toBeVisible();
+        await user.clear(screen.getByLabelText("Cerca nelle candidature"));
+        await user.type(screen.getByLabelText("Cerca nelle candidature"), "missing");
+        expect(screen.queryByRole("button", { name: /Backend Engineer/i })).toBeNull();
+        expect(screen.getByText("Attive").nextElementSibling).toHaveTextContent("0");
+        await user.clear(screen.getByLabelText("Cerca nelle candidature"));
+        await user.click(screen.getByRole("button", { name: /Backend Engineer/i }));
+
+        const dialog = await screen.findByRole("dialog", { name: "Backend Engineer" });
+        expect(await within(dialog).findByRole("heading", { name: "Materiali campagna" })).toBeVisible();
+        expect(within(dialog).getByText("Historical <b>plain text</b>")).toBeVisible();
+        expect(dialog.querySelector("b")).toBeNull();
+    });
+
+    it("refreshes campaigns and the board after a confirmed import", async () => {
+        const user = userEvent.setup();
+        list.mockResolvedValue([]);
+        render(<MemoryRouter initialEntries={["/applications"]}><ApplicationsPage /></MemoryRouter>);
+        await screen.findByRole("button", { name: "Scegli archivio campagna" });
+        await user.upload(
+            screen.getByLabelText("Archivio ZIP della campagna"),
+            new File(["PK"], "campaign.zip", { type: "application/zip" }),
+        );
+        await screen.findByRole("heading", { name: "Anteprima campagna" });
+        await user.click(screen.getByRole("button", { name: /Importa 5 candidature/ }));
+
+        await waitFor(() => expect(campaignImport).toHaveBeenCalledTimes(1));
+        await waitFor(() => expect(list).toHaveBeenCalledTimes(2));
+        expect(campaignList).toHaveBeenCalledTimes(2);
+        expect(showToast).toHaveBeenCalledWith(
+            { messageKey: "applications.campaignImported", values: { count: 5 } },
+            "success",
+        );
     });
 });

@@ -145,13 +145,21 @@ def test_agent_access_runtime_and_static_schemas_share_secret_and_bound_contract
         "career:read",
         "resume:read",
         "applications:read",
+        "context:read",
+        "proposals:write",
     ]
 
     runtime_issue = runtime_schemas["GrantIssueRequest"]
     static_issue = static_schemas["AutomationGrantIssue"]
     assert set(runtime_issue["required"]) == set(static_issue["required"])
     assert runtime_issue["additionalProperties"] is static_issue["additionalProperties"] is False
-    for field in ("label", "scopes", "lifetime_days", "password"):
+    for field in (
+        "label",
+        "scopes",
+        "lifetime_days",
+        "password",
+        "acknowledge_external_disclosure",
+    ):
         runtime_field = runtime_issue["properties"][field]
         static_field = static_issue["properties"][field]
         for bound in (

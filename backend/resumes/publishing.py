@@ -27,11 +27,9 @@ from backend.resumes.storage import (
     write_resume_publication_journal,
 )
 
-# Persist an artifact-format revision independently from the canvas schema.  The
-# 3.0.1 renderer canonicalizes PDF/DOCX metadata and ZIP containers, so keeping
-# the previous value would make byte-different publications indistinguishable in
-# readiness exports and audit evidence.
-RENDERER_VERSION = "careeros-canvas-3.0.1"
+# New semantic layouts, localized headings and Unicode fonts change published
+# bytes. Keep this revision independent of the canvas schema and old artifacts.
+RENDERER_VERSION = "careeros-canvas-4.0.0"
 
 
 def _lock_publish_state(
@@ -107,8 +105,12 @@ def _snapshot(
             "github": profile.github,
         },
         "resume": {
+            "draft_revision": draft.revision,
             "title": draft.title,
             "template_kind": draft.template_kind,
+            "template_id": getattr(draft, "template_id", "software-en") or "software-en",
+            "template_version": getattr(draft, "template_version", 1) or 1,
+            "locale": getattr(draft, "locale", "en") or "en",
             "section_config": draft.section_config,
             "content_overrides": draft.content_overrides,
             "canvas_document": draft.canvas_document,
@@ -149,7 +151,14 @@ def publish_draft(
         snapshot, ensure_ascii=False, sort_keys=True, separators=(",", ":")
     ).encode("utf-8")
     snapshot_sha256 = hashlib.sha256(snapshot_json).hexdigest()
-    if draft.template_kind == "ats":
+    from backend.resumes.templates import resolve_template_defaults
+
+    preset, _ = resolve_template_defaults(
+        template_id=getattr(draft, "template_id", None),
+        template_kind=draft.template_kind,
+        locale=getattr(draft, "locale", None),
+    )
+    if preset.layout == "ats":
         pdf, docx = render_ats_pdf(snapshot), render_ats_docx(snapshot)
     else:
         pdf, docx = (
@@ -157,17 +166,38 @@ def publish_draft(
             render_photo_docx(snapshot, photo_bytes),
         )
     content = build_content(snapshot)
+    required_text: list[str] = [content.display_name]
+    if content.headline:
+        required_text.append(content.headline)
+    if content.contact_line:
+        for item in content.contact_line.split(" | "):
+            if item.strip():
+                required_text.append(item.strip())
+    if content.summary:
+        required_text.append(content.summary)
+    for section in content.sections:
+        for entry in section.entries:
+            if entry.title:
+                required_text.append(entry.title)
+            if entry.subtitle:
+                required_text.append(entry.subtitle)
+            if entry.date_range:
+                required_text.append(entry.date_range)
+            if entry.description:
+                required_text.append(entry.description)
+            for bullet in entry.bullets:
+                if bullet.strip():
+                    required_text.append(bullet.strip())
+
     quality = validate_resume_artifacts(
         pdf=pdf,
         docx=docx,
         required_headings=content.required_headings,
-        required_text=[
-            content.display_name,
-            *(entry.title for section in content.sections for entry in section.entries),
-        ],
+        required_text=required_text,
         template_kind=draft.template_kind,
         expect_photo=photo_bytes is not None,
         columns=int((draft.canvas_document or {}).get("style", {}).get("columns", 1)),
+        page_budget=preset.page_budget,
     )
     draft, profile = _lock_publish_state(
         db,
@@ -198,6 +228,9 @@ def publish_draft(
         profile_revision=profile.revision,
         selected_fact_ids=list(draft.selected_fact_ids),
         template_kind=draft.template_kind,
+        template_id=getattr(draft, "template_id", "software-en") or "software-en",
+        template_version=getattr(draft, "template_version", 1) or 1,
+        locale=getattr(draft, "locale", "en") or "en",
         renderer_version=RENDERER_VERSION,
         published_at=published_at,
         quality_report=quality,

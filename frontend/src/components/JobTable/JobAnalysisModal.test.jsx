@@ -28,6 +28,40 @@ const verifiedJob = {
     },
 };
 
+const externalDimensions = ["role", "requirements", "language", "location", "contract", "freshness"];
+const externalJob = {
+    ...verifiedJob,
+    analysis_verified: false,
+    external_analysis_verified: true,
+    analysis_provenance: "external_agent_proposal",
+    analysis_model_id: "Claude Code · sonnet",
+    analysis_contract_version: "1.0",
+    affinity_analysis: "External Agent Analysis: strong_fit (Score: 92)",
+    analysis_structured: {
+        recommendation: "strong_fit",
+        scores: {
+            ...Object.fromEntries(externalDimensions.map((dimension) => [
+                dimension,
+                { score: 92, explanation: `${dimension} supported` },
+            ])),
+            overall_score: 92,
+        },
+        gates: externalDimensions.map((dimension) => ({
+            dimension,
+            status: "eligible",
+            reason: `${dimension} requirement supported`,
+            fact_ids: ["11111111-1111-4111-8111-111111111111"],
+            quote_references: ["Python"],
+            unknowns: [],
+        })),
+        claims: [{
+            claim_text: "Built evidence-bound Python services",
+            quote_text: "Python",
+            fact_ids: ["11111111-1111-4111-8111-111111111111"],
+        }],
+    },
+};
+
 function ModalHarness() {
     const [job, setJob] = useState(null);
     return (
@@ -67,9 +101,30 @@ describe("JobAnalysisModal", () => {
             />
         );
 
-        expect(screen.getByText(/No validated local-model evidence/i)).toBeInTheDocument();
+        expect(screen.getByText(/No verified analysis/i)).toBeInTheDocument();
         expect(screen.queryByText("The role matches verified platform work.")).not.toBeInTheDocument();
         expect(screen.queryByText("92%")).not.toBeInTheDocument();
         expect(screen.queryByText("“Production Python”")).not.toBeInTheDocument();
+    });
+
+    it("renders only separately attested external analysis with gates, scores and claims", () => {
+        const { rerender } = render(
+            <JobAnalysisModal job={externalJob} onClose={vi.fn()} />
+        );
+
+        expect(screen.getByText("External agent proposal")).toBeInTheDocument();
+        expect(screen.getByText("Claude Code · sonnet")).toBeInTheDocument();
+        expect(screen.getByText("Built evidence-bound Python services")).toBeInTheDocument();
+        expect(screen.getByText("role requirement supported")).toBeInTheDocument();
+        expect(screen.getAllByText("92%").length).toBeGreaterThan(1);
+
+        rerender(
+            <JobAnalysisModal
+                job={{ ...externalJob, external_analysis_verified: false }}
+                onClose={vi.fn()}
+            />
+        );
+        expect(screen.getByText(/No verified analysis/i)).toBeInTheDocument();
+        expect(screen.queryByText("Built evidence-bound Python services")).not.toBeInTheDocument();
     });
 });

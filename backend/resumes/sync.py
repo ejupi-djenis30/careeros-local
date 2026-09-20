@@ -22,11 +22,12 @@ def _fact_ids(section: CanvasSection | None) -> list[str]:
 def _by_fact(section: CanvasSection | None) -> dict[str, CanvasBlock]:
     if section is None:
         return {}
-    return {
-        block.fact_ids[0]: block
-        for block in section.blocks
-        if block.fact_ids and block.kind == "fact"
-    }
+    mapping: dict[str, CanvasBlock] = {}
+    for block in section.blocks:
+        if block.fact_ids and block.kind == "fact":
+            for fact_id in block.fact_ids:
+                mapping[fact_id] = block
+    return mapping
 
 
 def plan_sync(
@@ -75,9 +76,18 @@ def plan_sync(
     return CanvasSyncPlan(sections=changes, preserved_manual_fields=list(dict.fromkeys(preserved)))
 
 
-def _merge_block(old: CanvasBlock, new: CanvasBlock) -> CanvasBlock:
+def _merge_block(
+    old: CanvasBlock, new: CanvasBlock, allowed_fact_ids: set[str] | None = None
+) -> CanvasBlock:
     data = new.model_dump(mode="json")
     old_content = old.content.model_dump(mode="json")
+    # Preserve block identity and multi-evidence career facts
+    data["id"] = old.id
+    if allowed_fact_ids is not None:
+        retained_old = [fid for fid in old.fact_ids if fid in allowed_fact_ids]
+    else:
+        retained_old = list(old.fact_ids)
+    data["fact_ids"] = list(dict.fromkeys(list(new.fact_ids) + retained_old))
     for field in old.manual_fields:
         data["content"][field] = old_content[field]
     data["manual_fields"] = list(old.manual_fields)
@@ -90,32 +100,43 @@ def _merge_section(old: CanvasSection | None, new: CanvasSection | None) -> Canv
     if new is None:
         if old is None:
             return None
-        ungrounded = [block for block in old.blocks if block.kind == "fact" and not block.fact_ids]
+        ungrounded = [
+            block
+            for block in old.blocks
+            if block.kind == "manual" or (block.kind == "fact" and not block.fact_ids)
+        ]
         return old.model_copy(update={"blocks": ungrounded}) if ungrounded else None
     if old is None:
         return new
     new_by_fact = _by_fact(new)
-    merged_by_fact = {
-        fact_id: _merge_block(old_block, new_by_fact[fact_id])
-        for fact_id, old_block in _by_fact(old).items()
-        if fact_id in new_by_fact
-    }
+    allowed_fact_ids = set(new_by_fact.keys())
     ordered: list[CanvasBlock] = []
-    used: set[str] = set()
+    used_new_fact_ids: set[str] = set()
+
     for old_block in old.blocks:
-        fact_id = old_block.fact_ids[0] if old_block.fact_ids else None
-        if old_block.kind == "fact" and not fact_id:
+        if old_block.kind == "manual" or (old_block.kind == "fact" and not old_block.fact_ids):
             ordered.append(old_block)
-        elif fact_id and fact_id in merged_by_fact:
-            ordered.append(merged_by_fact[fact_id])
-            used.add(fact_id)
+            continue
+        matching_new: CanvasBlock | None = None
+        for fact_id in old_block.fact_ids:
+            if fact_id in new_by_fact:
+                matching_new = new_by_fact[fact_id]
+                break
+        if matching_new is not None:
+            ordered.append(_merge_block(old_block, matching_new, allowed_fact_ids=allowed_fact_ids))
+            used_new_fact_ids.update(ordered[-1].fact_ids)
         elif old_block.kind in {"identity", "summary"} and new.blocks:
-            ordered.append(_merge_block(old_block, new.blocks[0]))
-            used.update(new.blocks[0].fact_ids)
+            ordered.append(
+                _merge_block(old_block, new.blocks[0], allowed_fact_ids=allowed_fact_ids)
+            )
+            used_new_fact_ids.update(new.blocks[0].fact_ids)
+
     for block in new.blocks:
-        fact_id = block.fact_ids[0] if block.fact_ids else None
-        if fact_id not in used and block.kind == "fact":
-            ordered.append(block)
+        if block.kind == "fact":
+            primary_id = block.fact_ids[0] if block.fact_ids else None
+            if primary_id and primary_id not in used_new_fact_ids:
+                ordered.append(block)
+
     if not ordered:
         ordered = list(new.blocks)
     return CanvasSection(

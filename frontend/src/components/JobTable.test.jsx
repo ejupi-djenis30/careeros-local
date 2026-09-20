@@ -146,13 +146,17 @@ describe('JobTable', () => {
         fireEvent.click(viewBtns[1] || viewBtns[0]);
 
         expect(mockRecordView).toHaveBeenCalledWith('1');
-        expect(screen.getByText('Local match analysis')).toBeInTheDocument();
+        expect(
+            screen.getByRole('dialog', { name: 'Verified match analysis' })
+        ).toBeInTheDocument();
         expect(screen.getByText('Great fit because...')).toBeInTheDocument();
 
         const closeBtn = screen.getByText('Close');
         fireEvent.click(closeBtn);
 
-        expect(screen.queryByText('Local match analysis')).not.toBeInTheDocument();
+        expect(
+            screen.queryByRole('dialog', { name: 'Verified match analysis' })
+        ).not.toBeInTheDocument();
     });
 
     it('shows validated local-model provenance and inspectable citations', () => {
@@ -209,12 +213,15 @@ describe('JobTable', () => {
         const viewBtns = screen.getAllByTitle('View match analysis');
         fireEvent.click(viewBtns[0]); // Mobile variant is rendered first
 
-        expect(screen.getByText('Local match analysis')).toBeInTheDocument();
+        expect(
+            screen.getByRole('dialog', { name: 'Verified match analysis' })
+        ).toBeInTheDocument();
 
-        const xIcon = document.querySelector('.bi-x-lg');
-        fireEvent.click(xIcon.closest('button'));
+        fireEvent.click(screen.getByRole('button', { name: 'Close match analysis' }));
 
-        expect(screen.queryByText('Local match analysis')).not.toBeInTheDocument();
+        expect(
+            screen.queryByRole('dialog', { name: 'Verified match analysis' })
+        ).not.toBeInTheDocument();
     });
 
     it('logs recordView failures instead of swallowing them silently', async () => {

@@ -1,4 +1,4 @@
-import { Link } from "react-router";
+import { Link, useInRouterContext, useSearchParams } from "react-router";
 import { useI18n } from "../../i18n/useI18n";
 import { ResumeFactSelector } from "./ResumeFactSelector";
 import { ResumeVersions } from "./ResumeVersions";
@@ -10,11 +10,21 @@ import { useResumeStudio } from "./useResumeStudio";
 import { translateMessage } from "../../i18n/runtime";
 
 export function ResumeStudioPage() {
+    return useInRouterContext() ? <RoutedResumeStudio /> : <ResumeStudioContent />;
+}
+
+function RoutedResumeStudio() {
+    const [searchParams] = useSearchParams();
+    return <ResumeStudioContent key={searchParams.get("resumeId") || "library"} requestedResumeId={searchParams.get("resumeId")} />;
+}
+
+function ResumeStudioContent({ requestedResumeId = null }) {
     const { t } = useI18n();
-    const studio = useResumeStudio();
+    const studio = useResumeStudio({ requestedResumeId });
     const { profile, resumes, draft, dirty, loading, busy, error, profileMissing } = studio;
     if (loading) return <div className="page-loader" role="status"><span className="spinner-border" /><span>{t("resume.loading")}</span></div>;
     if (profileMissing) return <div className="state-panel"><i className="bi bi-person-vcard" /><h2>{t("resume.profileFirst")}</h2><p>{t("resume.profileFirstCopy")}</p><Link className="button button--primary" to="/profile">{t("resume.openVault")}</Link></div>;
+    if (studio.targetUnavailable) return <div className="state-panel" role="status"><h2>{t("dossier.resumeTargetUnavailable")}</h2><p>{t("dossier.resumeTargetUnavailableCopy")}</p><Link className="button button--primary" to="/resumes">{t("dossier.openResumeLibrary")}</Link></div>;
     if (!profile || !draft) return <div className="state-panel state-panel--danger"><h2>{t("resume.unavailable")}</h2><p>{translateMessage(error, t)}</p><button className="button button--secondary" onClick={studio.initialize}>{t("profile.retry")}</button></div>;
     return (
         <div className="resume-studio">

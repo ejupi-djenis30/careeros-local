@@ -1,29 +1,47 @@
 from datetime import datetime
-from typing import Literal
+from typing import Annotated, Literal
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, field_validator, model_validator
+
+StrictNonNegativeInt = Annotated[int, Field(ge=0, strict=True)]
 
 
 class ArchiveEntry(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     path: str = Field(min_length=1, max_length=1024)
     sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
-    byte_size: int = Field(ge=0)
+    byte_size: StrictNonNegativeInt
 
     @field_validator("path")
     @classmethod
     def safe_member_path(cls, value: str) -> str:
-        if value.startswith(("/", "\\")) or "\\" in value or ".." in value.split("/"):
+        if (
+            value == "manifest.json"
+            or value.startswith(("/", "\\"))
+            or "\\" in value
+            or ".." in value.split("/")
+        ):
             raise ValueError("archive member path is unsafe")
         return value
 
 
 class ArchiveManifest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     format: Literal["careeros-portable-archive"]
-    format_version: Literal[1, 2, 3, 4, 5, 6]
-    created_at: datetime
+    format_version: Literal[1, 2, 3, 4, 5, 6, 7, 8]
+    created_at: AwareDatetime
     owner_scope: Literal["career-vault"]
-    record_counts: dict[str, int]
-    entries: list[ArchiveEntry]
+    record_counts: dict[str, StrictNonNegativeInt]
+    entries: list[ArchiveEntry] = Field(min_length=1, max_length=19_999)
+
+    @model_validator(mode="after")
+    def unique_entry_paths(self) -> "ArchiveManifest":
+        paths = [entry.path for entry in self.entries]
+        if len(paths) != len(set(paths)):
+            raise ValueError("archive manifest entry paths must be unique")
+        return self
 
 
 class RestoreResponse(BaseModel):

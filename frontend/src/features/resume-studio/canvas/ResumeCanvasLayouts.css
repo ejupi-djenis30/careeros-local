@@ -1,0 +1,42 @@
+.resume-layout--swiss-photo .resume-sidebar-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 29fr) minmax(0, 71fr);
+    gap: 9mm;
+}
+.resume-layout--swiss-photo .resume-sidebar-career {
+    border-left: 1pt solid var(--canvas-accent);
+    padding-left: 4.5mm;
+}
+.resume-layout--swiss-photo .canvas-profile-photo {
+    position: static;
+    display: block;
+    margin-bottom: 5mm;
+}
+.resume-layout--swiss-photo.has-photo .canvas-section--identity {
+    min-height: 0;
+    padding: 0;
+}
+.resume-layout--swiss-photo .canvas-section:first-child,
+.resume-layout--swiss-photo .canvas-section:first-child .canvas-inline {
+    text-align: left;
+}
+.resume-layout--swiss-photo .resume-sidebar-career .canvas-inline--title {
+    font-size: 1em;
+    letter-spacing: normal;
+}
+.resume-layout--swiss-operational .resume-canvas-sections {
+    column-count: 1;
+}
+.resume-layout--swiss-operational .canvas-section:not(.canvas-section--identity):not(.canvas-section--summary) {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 3fr);
+    gap: 4mm;
+    align-items: start;
+}
+.resume-layout--swiss-operational .canvas-section:not(.canvas-section--identity):not(.canvas-section--summary) > .canvas-section__blocks {
+    border-left: 1pt solid var(--canvas-accent);
+    padding-left: 4mm;
+}
+.resume-layout--swiss-operational .canvas-section__controls {
+    grid-column: 1 / -1;
+}

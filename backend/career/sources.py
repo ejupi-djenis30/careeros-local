@@ -1,6 +1,7 @@
 import hashlib
 import uuid
 from pathlib import Path
+from typing import cast
 
 from sqlalchemy.orm import Session
 
@@ -10,8 +11,14 @@ from backend.career.asset_publication import (
     write_asset_publication_journal,
 )
 from backend.career.models import CareerAsset, SourceDocument
+from backend.career.reference_parsing import bound_review_messages, parse_goal_preferences
 from backend.career.repository import CareerProfileRepository
-from backend.career.schemas import SourceDocumentResponse, SourceFactCandidate
+from backend.career.schemas import (
+    PreferenceCandidate,
+    SourceDocumentResponse,
+    SourceFactCandidate,
+    SourceRole,
+)
 from backend.career.source_parsing import (
     PreparedSourceDocument,
     SourceImportError,
@@ -38,7 +45,47 @@ def _response(
     source: SourceDocument,
     *,
     candidates: list[SourceFactCandidate] | tuple[SourceFactCandidate, ...] | None = None,
+    preference_candidates: list[PreferenceCandidate] | tuple[PreferenceCandidate, ...] | None = None,
+    review_notes: list[str] | tuple[str, ...] | None = None,
+    warnings: list[str] | tuple[str, ...] | None = None,
 ) -> SourceDocumentResponse:
+    source_role: SourceRole = cast(
+        SourceRole, getattr(source, "source_role", "profile") or "profile"
+    )
+    if candidates is not None:
+        cands = list(candidates)
+    elif source_role == "profile":
+        cands = fact_candidates(source.extracted_text)
+    else:
+        cands = []
+
+    if preference_candidates is not None:
+        pref_cands = list(preference_candidates)
+    elif source_role == "goals":
+        parsed_prefs, auto_notes, auto_warns = parse_goal_preferences(source.extracted_text)
+        pref_cands = parsed_prefs
+        if review_notes is None:
+            review_notes = auto_notes
+        if warnings is None:
+            warnings = auto_warns
+    else:
+        pref_cands = []
+
+    if review_notes is None:
+        if source_role == "narrative":
+            review_notes = [
+                "Narrative reference retained for manual review; narrative text does not generate career facts automatically."
+            ]
+        elif source_role == "template_reference":
+            review_notes = [
+                "Template reference retained for layout guidance; presentation text does not establish career facts."
+            ]
+        else:
+            review_notes = []
+
+    if warnings is None:
+        warnings = []
+
     return SourceDocumentResponse(
         id=source.id,
         asset_id=source.asset.id,
@@ -47,11 +94,13 @@ def _response(
         sha256=source.asset.sha256,
         byte_size=source.asset.byte_size,
         document_type=source.document_type,
+        source_role=source_role,
         extracted_characters=len(source.extracted_text),
         text_preview=source.extracted_text[:4000],
-        candidates=list(candidates)
-        if candidates is not None
-        else fact_candidates(source.extracted_text),
+        candidates=cands,
+        preference_candidates=pref_cands,
+        review_notes=bound_review_messages(list(review_notes), label="review notes"),
+        warnings=bound_review_messages(list(warnings), label="warnings"),
         created_at=source.created_at,
     )
 
@@ -81,7 +130,19 @@ def persist_prepared_source_document(
         .first()
     )
     if existing:
-        response = _response(existing)
+        if existing.source_role != prepared.source_role:
+            db.rollback()
+            raise SourceImportError(
+                f"A source document with identical content already exists with role '{existing.source_role}'. "
+                f"Conflicting role reuse is not permitted."
+            )
+        response = _response(
+            existing,
+            candidates=prepared.candidates,
+            preference_candidates=prepared.preference_candidates,
+            review_notes=prepared.review_notes,
+            warnings=prepared.warnings,
+        )
         db.rollback()
         return response
 
@@ -119,6 +180,7 @@ def persist_prepared_source_document(
             profile_id=profile_id,
             asset_id=asset.id,
             document_type=prepared.document_type,
+            source_role=prepared.source_role,
             extracted_text=prepared.extracted_text,
             extracted_text_sha256=hashlib.sha256(
                 prepared.extracted_text.encode("utf-8")
@@ -126,7 +188,13 @@ def persist_prepared_source_document(
         )
         db.add(source)
         db.flush()
-        response = _response(source, candidates=prepared.candidates)
+        response = _response(
+            source,
+            candidates=prepared.candidates,
+            preference_candidates=prepared.preference_candidates,
+            review_notes=prepared.review_notes,
+            warnings=prepared.warnings,
+        )
         db.commit()
     except Exception as persist_error:
         db.rollback()
@@ -146,7 +214,13 @@ def persist_prepared_source_document(
                 .one_or_none()
             )
             if committed is not None:
-                recovered = _response(committed, candidates=prepared.candidates)
+                recovered = _response(
+                    committed,
+                    candidates=prepared.candidates,
+                    preference_candidates=prepared.preference_candidates,
+                    review_notes=prepared.review_notes,
+                    warnings=prepared.warnings,
+                )
                 db.rollback()
                 return recovered
         except Exception:
@@ -172,6 +246,12 @@ def import_source_document(
     filename: str,
     media_type: str,
     data: bytes,
+    source_role: str = "profile",
 ) -> SourceDocumentResponse:
-    prepared = prepare_source_document(filename=filename, media_type=media_type, data=data)
+    prepared = prepare_source_document(
+        filename=filename,
+        media_type=media_type,
+        data=data,
+        source_role=source_role,
+    )
     return persist_prepared_source_document(db, user_id=user_id, prepared=prepared)

@@ -5,7 +5,7 @@ from docx import Document as create_document
 from docx.enum.section import WD_SECTION
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.oxml.ns import qn
-from docx.shared import Inches, Pt
+from docx.shared import Inches, Mm, Pt
 from reportlab.lib.colors import HexColor
 from reportlab.lib.enums import TA_CENTER
 from reportlab.lib.pagesizes import A4
@@ -30,6 +30,8 @@ from backend.resumes.renderers.base import (
     _canonicalize_docx,
     _configure_docx,
 )
+from backend.resumes.renderers.fonts import ensure_unicode_font_registered
+from backend.resumes.renderers.links import add_docx_hyperlink, format_pdf_link, is_safe_url
 
 
 def _text(value: str) -> str:
@@ -41,14 +43,7 @@ def _pdf_styles(content: ResumeContent) -> dict[str, ParagraphStyle]:
     base_size = float(style.get("base_font_size", 9))
     line_height = float(style.get("line_height", 1.3))
     spacing = float(style.get("section_spacing", 8))
-    font_names = {
-        "Helvetica": ("Helvetica", "Helvetica-Bold", "Helvetica-Oblique"),
-        "Arial": ("Helvetica", "Helvetica-Bold", "Helvetica-Oblique"),
-        "Georgia": ("Times-Roman", "Times-Bold", "Times-Italic"),
-    }
-    normal, bold, italic = font_names.get(
-        str(style.get("font_family", "Helvetica")), font_names["Helvetica"]
-    )
+    normal, bold, italic = ensure_unicode_font_registered()
     base = getSampleStyleSheet()
     body = ParagraphStyle(
         "PhotoBody",
@@ -123,7 +118,9 @@ def _pdf_styles(content: ResumeContent) -> dict[str, ParagraphStyle]:
     }
 
 
-def _section_flowables(section, styles: dict[str, ParagraphStyle]) -> list[Flowable]:
+def _section_flowables(
+    section, styles: dict[str, ParagraphStyle], *, group_entries: bool = True
+) -> list[Flowable]:
     result: list[Flowable] = [Paragraph(_text(section.heading), styles["section"])]
     for entry in section.entries:
         flowables: list[Flowable] = []
@@ -133,13 +130,18 @@ def _section_flowables(section, styles: dict[str, ParagraphStyle]) -> list[Flowa
         flowables.append(Paragraph(_text(entry.title), styles["title"]))
         metadata = " | ".join(value for value in (entry.subtitle, entry.date_range) if value)
         if metadata:
-            flowables.append(Paragraph(_text(metadata), styles["meta"]))
+            flowables.append(
+                Paragraph(
+                    " | ".join(format_pdf_link(part) for part in metadata.split(" | ")),
+                    styles["meta"],
+                )
+            )
         if entry.description:
             flowables.append(Paragraph(_text(entry.description), styles["body"]))
         flowables.extend(
             Paragraph(f"&bull;&nbsp;{_text(bullet)}", styles["bullet"]) for bullet in entry.bullets
         )
-        if entry.layout.get("keep_together", True):
+        if group_entries and entry.layout.get("keep_together", True):
             result.append(KeepTogether(flowables))
         else:
             result.extend(flowables)
@@ -174,7 +176,17 @@ def render_two_column_pdf(snapshot: dict, photo: bytes | None) -> bytes:
     if content.headline:
         story.append(Paragraph(_text(content.headline), styles["headline"]))
     if content.contact_line:
-        story.append(Paragraph(_text(content.contact_line), styles["contact"]))
+        accent = str(content.style.get("accent_color", "#1E3A8A"))
+        parts = []
+        for item in content.contact_line.split(" | "):
+            cleaned = item.strip()
+            if not cleaned:
+                continue
+            if is_safe_url(cleaned):
+                parts.append(format_pdf_link(cleaned, cleaned, accent))
+            else:
+                parts.append(_text(cleaned))
+        story.append(Paragraph(" | ".join(parts), styles["contact"]))
     if content.summary:
         story.append(Paragraph(_text(content.summary_heading), styles["section"]))
         story.append(Paragraph(_text(content.summary), styles["body"]))
@@ -201,15 +213,25 @@ def _add_header(document, content: ResumeContent, photo: bytes | None) -> None:
     paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
     run = paragraph.add_run(content.display_name)
     run.bold = True
+    run.font.name = "Arial"
     run.font.size = Pt(20)
     if content.headline:
         paragraph = document.add_paragraph(content.headline)
         paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
     if content.contact_line:
-        paragraph = document.add_paragraph(content.contact_line)
+        paragraph = document.add_paragraph()
         paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
-        for run in paragraph.runs:
-            run.font.size = Pt(8.5)
+        paragraph.paragraph_format.space_after = Pt(5)
+        parts = [p.strip() for p in content.contact_line.split(" | ") if p.strip()]
+        for i, part in enumerate(parts):
+            if is_safe_url(part):
+                add_docx_hyperlink(paragraph, part, part, font_size_pt=8.5)
+            else:
+                r = paragraph.add_run(part)
+                r.font.size = Pt(8.5)
+            if i < len(parts) - 1:
+                sep = paragraph.add_run(" | ")
+                sep.font.size = Pt(8.5)
     if content.summary:
         _add_docx_heading(document, content.summary_heading)
         document.add_paragraph(content.summary)
@@ -221,6 +243,13 @@ def render_two_column_docx(snapshot: dict, photo: bytes | None) -> bytes:
     _configure_docx(document, content.display_name, content.style)
     _add_header(document, content, photo)
     section = document.add_section(WD_SECTION.CONTINUOUS)
+    section.page_width = Mm(210)
+    section.page_height = Mm(297)
+    margin_inches = float(content.style.get("margin_mm", 15)) / 25.4
+    section.top_margin = Inches(margin_inches)
+    section.bottom_margin = Inches(margin_inches)
+    section.left_margin = Inches(margin_inches)
+    section.right_margin = Inches(margin_inches)
     columns = section._sectPr.xpath("./w:cols")[0]
     columns.set(qn("w:num"), "2")
     columns.set(qn("w:space"), "360")

@@ -195,7 +195,7 @@ async def inspect_portable_archive(
 ) -> ArchiveInspection:
     data = await _bounded_archive_bytes(file)
     try:
-        return inspect_archive(db, user_id, data)
+        return await run_in_threadpool(inspect_archive, db, user_id, data)
     except ArchiveConflictError as exc:
         db.rollback()
         raise HTTPException(

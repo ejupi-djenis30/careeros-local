@@ -2,6 +2,15 @@ import { configureApiRuntime } from "../lib/client";
 
 const LOOPBACK_API_PATTERN = /^http:\/\/127\.0\.0\.1:([1-9][0-9]{0,4})\/api\/v1$/;
 const APP_VERSION_PATTERN = /^(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/;
+const ABSOLUTE_PATH_PATTERN = /^(?:[A-Za-z]:[\\/]|\\\\[^\\/]+[\\/][^\\/]+|\/)/;
+const MCP_SETUP_KEYS = [
+    "args",
+    "claudeJson",
+    "codexToml",
+    "command",
+    "connectionFile",
+    "tokenEnvironmentVariable",
+];
 const READINESS_PROBE_TIMEOUT_MS = 2_000;
 
 export function isDesktopShell() {
@@ -25,6 +34,89 @@ function validateBootstrap(payload) {
         throw new Error("Native bootstrap returned an invalid application version");
     }
     return payload;
+}
+
+function isSafeAbsolutePath(value) {
+    const hasControlCharacter = typeof value === "string" && [...value].some((character) => {
+        const codePoint = character.codePointAt(0);
+        return codePoint <= 31 || codePoint === 127;
+    });
+    return (
+        typeof value === "string"
+        && value.length > 0
+        && value.length <= 32_767
+        && ABSOLUTE_PATH_PATTERN.test(value)
+        && !hasControlCharacter
+    );
+}
+
+function hasExactKeys(value, keys) {
+    return (
+        value !== null
+        && typeof value === "object"
+        && !Array.isArray(value)
+        && Object.keys(value).sort().join("\n") === [...keys].sort().join("\n")
+    );
+}
+
+function validateMcpSetup(payload) {
+    if (!hasExactKeys(payload, MCP_SETUP_KEYS)) {
+        throw new Error("Native MCP setup response is invalid");
+    }
+    if (!isSafeAbsolutePath(payload.command) || !isSafeAbsolutePath(payload.connectionFile)) {
+        throw new Error("Native MCP setup returned an invalid installed path");
+    }
+    const expectedArgs = [
+        "--connection-file",
+        payload.connectionFile,
+        "--acknowledge-agent-disclosure",
+    ];
+    if (
+        !Array.isArray(payload.args)
+        || payload.args.length !== expectedArgs.length
+        || payload.args.some((argument, index) => argument !== expectedArgs[index])
+    ) {
+        throw new Error("Native MCP setup returned invalid launcher arguments");
+    }
+    if (payload.tokenEnvironmentVariable !== "CAREEROS_MCP_TOKEN") {
+        throw new Error("Native MCP setup returned an invalid token variable");
+    }
+    const expectedCodexToml = (
+        "[mcp_servers.careeros]\n"
+        + `command = ${JSON.stringify(payload.command)}\n`
+        + `args = ${JSON.stringify(expectedArgs)}\n`
+        + 'env_vars = ["CAREEROS_MCP_TOKEN"]\n'
+    );
+    if (payload.codexToml !== expectedCodexToml) {
+        throw new Error("Native MCP setup returned an invalid Codex configuration");
+    }
+    let claudeConfiguration;
+    try {
+        claudeConfiguration = JSON.parse(payload.claudeJson);
+    } catch {
+        throw new Error("Native MCP setup returned invalid Claude JSON");
+    }
+    const servers = claudeConfiguration?.mcpServers;
+    const careeros = servers?.careeros;
+    if (
+        !hasExactKeys(claudeConfiguration, ["mcpServers"])
+        || !hasExactKeys(servers, ["careeros"])
+        || !hasExactKeys(careeros, ["args", "command"])
+        || careeros.command !== payload.command
+        || !Array.isArray(careeros.args)
+        || careeros.args.length !== expectedArgs.length
+        || careeros.args.some((argument, index) => argument !== expectedArgs[index])
+    ) {
+        throw new Error("Native MCP setup returned an invalid Claude configuration");
+    }
+    return Object.freeze({
+        command: payload.command,
+        args: Object.freeze([...expectedArgs]),
+        connectionFile: payload.connectionFile,
+        tokenEnvironmentVariable: payload.tokenEnvironmentVariable,
+        codexToml: payload.codexToml,
+        claudeJson: payload.claudeJson,
+    });
 }
 
 function cancellationError() {
@@ -167,6 +259,14 @@ export async function reportDesktopReady() {
     return Boolean(await invoke("desktop_frontend_ready"));
 }
 
+export async function getDesktopMcpSetup({ signal } = {}) {
+    if (!isDesktopShell()) return null;
+    const { invoke } = await import("@tauri-apps/api/core");
+    const payload = await waitForOperation(invoke("desktop_mcp_setup"), signal);
+    throwIfCancelled(signal);
+    return validateMcpSetup(payload);
+}
+
 const BACKUP_FILTER = [{ name: "CareerOS Local backup", extensions: ["zip"] }];
 const SHA256_PATTERN = /^[0-9a-f]{64}$/;
 
@@ -225,4 +325,33 @@ export async function openBackupWithNativeDialog({ title = "Open CareerOS Local 
     const bytes = await readFile(selected);
     const filename = selected.split(/[\\/]/).pop() || "careeros-backup.zip";
     return new File([bytes], filename, { type: "application/zip" });
+}
+
+const CAMPAIGN_FILTER = [{ name: "CareerOS campaign", extensions: ["zip"] }];
+let nativeCampaignDialogOpen = false;
+
+export async function openCampaignWithNativeDialog({ title = "Open CareerOS campaign" } = {}) {
+    if (!isDesktopShell()) return null;
+    if (nativeCampaignDialogOpen) return null;
+    nativeCampaignDialogOpen = true;
+    try {
+        const [{ open }, { readFile }] = await Promise.all([
+            import("@tauri-apps/plugin-dialog"),
+            import("@tauri-apps/plugin-fs"),
+        ]);
+        const selected = await open({
+            title,
+            multiple: false,
+            directory: false,
+            filters: CAMPAIGN_FILTER,
+        });
+        if (!selected || Array.isArray(selected)) return null;
+        const bytes = await readFile(selected);
+        const filename = selected.split(/[\\/]/).pop() || "campaign.zip";
+        const file = new File([bytes], filename, { type: "application/zip" });
+        delete file.path;
+        return file;
+    } finally {
+        nativeCampaignDialogOpen = false;
+    }
 }

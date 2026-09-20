@@ -130,4 +130,20 @@ describe("ResumeCanvas", () => {
         await user.keyboard("{Enter}");
         expect(screen.getByText("Claim senza fonte")).toBeInTheDocument();
     });
+
+    it("places identity in the Swiss sidebar and keeps career edits connected to their original section", () => {
+        const onChange = vi.fn();
+        const { container, rerender } = render(<ResumeCanvas document={resumeDraft().canvas_document} templateKind="photo" templateLayout="swiss-photo" photoUrl="blob:normalized" onChange={onChange} />);
+        expect(container.querySelector(".resume-sidebar-identity .canvas-section--identity")).not.toBeNull();
+        expect(container.querySelector(".resume-sidebar-identity img")).not.toBeNull();
+        expect(container.querySelector(".resume-sidebar-career .canvas-section--experience")).not.toBeNull();
+        expect(container.querySelector(".resume-sidebar-career .canvas-section--identity")).toBeNull();
+        expect(screen.queryByText("Colonne")).not.toBeInTheDocument();
+        fireEvent.change(screen.getByLabelText("Titolo sezione experience"), { target: { value: "Selected work" } });
+        expect(onChange.mock.calls.at(-1)[0].sections.find((section) => section.kind === "experience").title).toBe("Selected work");
+
+        rerender(<ResumeCanvas document={resumeDraft().canvas_document} templateKind="photo" templateLayout="swiss-operational" onChange={onChange} />);
+        expect(container.querySelector(".resume-layout--swiss-operational .resume-canvas-sections")).not.toBeNull();
+        expect(container.querySelector(".resume-sidebar-grid")).toBeNull();
+    });
 });

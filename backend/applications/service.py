@@ -1,22 +1,22 @@
-import hashlib
 import json
 import uuid
 from datetime import datetime, timezone
 from typing import Any, Literal, cast
 
 from pydantic import ValidationError
-from sqlalchemy import delete, or_, update
+from sqlalchemy import or_
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from backend.applications.dossier_service import ApplicationDossierService
+from backend.applications.exceptions import (
+    ApplicationConflictError,
+    ApplicationNotFoundError,
+    ApplicationValidationError,
+)
 from backend.applications.exports import (
-    MAX_DOSSIER_ARTIFACT_BYTES,
-    MAX_DOSSIER_EVENT_BYTES,
     CalendarExportError,
     DossierBundle,
-    DossierSizeError,
-    build_dossier_bundle,
-    canonical_json,
     export_task_calendar,
 )
 from backend.applications.models import (
@@ -29,7 +29,6 @@ from backend.applications.readiness_export import ReadinessExport, export_readin
 from backend.applications.schemas import (
     ApplicationCreate,
     ApplicationDossierCreate,
-    ApplicationDossierDraftContent,
     ApplicationDossierDraftPut,
     ApplicationDossierDraftResponse,
     ApplicationDossierSummary,
@@ -48,9 +47,9 @@ from backend.applications.snapshots import (
     sanitize_application_snapshot,
     snapshot_from_job,
 )
+from backend.campaigns.models import CampaignApplication
 from backend.db.types import aware_utc
 from backend.models import Job
-from backend.resumes.artifact_policy import read_verified_resume_artifact
 from backend.resumes.models import ResumeDraft, ResumeVersion
 
 TRANSITIONS = {
@@ -71,18 +70,6 @@ APPLICATION_MILESTONE_STAGES = frozenset(
     {"applied", "screening", "interview", "offer", "accepted", "rejected"}
 )
 _APPLICATION_TERMINAL_STAGES = frozenset({"withdrawn", "archived"})
-
-
-class ApplicationNotFoundError(LookupError):
-    pass
-
-
-class ApplicationConflictError(RuntimeError):
-    pass
-
-
-class ApplicationValidationError(ValueError):
-    pass
 
 
 class ApplicationService:
@@ -786,40 +773,18 @@ class ApplicationService:
         user_id: int,
         application_id: str,
     ) -> ApplicationDossierDraftResponse | None:
-        application = self._application(user_id, application_id)
-        draft = (
-            self.db.query(ApplicationDossierDraft)
-            .filter(ApplicationDossierDraft.application_id == application.id)
-            .one_or_none()
-        )
-        if draft is None:
-            return None
-        return ApplicationDossierDraftResponse.model_validate(draft)
+        return ApplicationDossierService(self.db).get_dossier_draft(user_id, application_id)
 
-    def _ensure_current_dossier_draft_binding(
+    def mutate_dossier_draft_flush_only(
         self,
         user_id: int,
         application_id: str,
-        application_revision: int,
-        resume_version_id: str,
-    ) -> None:
-        current = (
-            self.db.query(Application.revision, Application.resume_version_id)
-            .filter(
-                Application.id == application_id,
-                Application.user_id == user_id,
-            )
-            .one_or_none()
+        data: ApplicationDossierDraftPut,
+    ) -> ApplicationDossierDraft:
+        """Focused flush-only mutation seam for outer transaction orchestrators."""
+        return ApplicationDossierService(self.db).mutate_dossier_draft_flush_only(
+            user_id, application_id, data
         )
-        if (
-            current is None
-            or current.revision != application_revision
-            or current.resume_version_id != resume_version_id
-        ):
-            self.db.rollback()
-            raise ApplicationConflictError(
-                "The application or linked resume changed while this dossier draft was saving"
-            )
 
     def put_dossier_draft(
         self,
@@ -827,96 +792,7 @@ class ApplicationService:
         application_id: str,
         data: ApplicationDossierDraftPut,
     ) -> ApplicationDossierDraftResponse:
-        application = self._application(user_id, application_id)
-        if application.revision != data.expected_application_revision:
-            raise ApplicationConflictError(
-                "The application changed while this dossier draft was being edited"
-            )
-        resume_version_id = str(data.resume_version_id)
-        if application.resume_version_id != resume_version_id:
-            raise ApplicationConflictError(
-                "The linked resume changed while this dossier draft was being edited"
-            )
-        self._resume_version(user_id, resume_version_id)
-        content = data.content.model_dump(mode="json")
-        now = datetime.now(timezone.utc)
-
-        if data.expected_revision is None:
-            existing = (
-                self.db.query(ApplicationDossierDraft.application_id)
-                .filter(ApplicationDossierDraft.application_id == application.id)
-                .first()
-            )
-            if existing is not None:
-                raise ApplicationConflictError(
-                    "The dossier draft already exists; reload before saving"
-                )
-            draft = ApplicationDossierDraft(
-                application_id=application.id,
-                resume_version_id=resume_version_id,
-                application_revision=application.revision,
-                revision=1,
-                content=content,
-                created_at=now,
-                updated_at=now,
-            )
-            self.db.add(draft)
-            try:
-                self.db.flush()
-            except IntegrityError as exc:
-                self.db.rollback()
-                raise ApplicationConflictError(
-                    "The application, linked resume or dossier draft changed while saving"
-                ) from exc
-            self._ensure_current_dossier_draft_binding(
-                user_id,
-                application.id,
-                application.revision,
-                resume_version_id,
-            )
-            self.db.commit()
-        else:
-            try:
-                result = self.db.execute(
-                    update(ApplicationDossierDraft)
-                    .where(
-                        ApplicationDossierDraft.application_id == application.id,
-                        ApplicationDossierDraft.revision == data.expected_revision,
-                    )
-                    .values(
-                        resume_version_id=resume_version_id,
-                        application_revision=application.revision,
-                        revision=data.expected_revision + 1,
-                        content=content,
-                        updated_at=now,
-                    )
-                    .execution_options(synchronize_session=False)
-                )
-            except IntegrityError as exc:
-                self.db.rollback()
-                raise ApplicationConflictError(
-                    "The linked resume or dossier draft changed while saving"
-                ) from exc
-            if getattr(result, "rowcount", 0) != 1:
-                self.db.rollback()
-                raise ApplicationConflictError(
-                    "The dossier draft changed in another editor; reload before saving"
-                )
-            self._ensure_current_dossier_draft_binding(
-                user_id,
-                application.id,
-                application.revision,
-                resume_version_id,
-            )
-            self.db.commit()
-
-        self.db.expire_all()
-        stored = (
-            self.db.query(ApplicationDossierDraft)
-            .filter(ApplicationDossierDraft.application_id == application.id)
-            .one()
-        )
-        return ApplicationDossierDraftResponse.model_validate(stored)
+        return ApplicationDossierService(self.db).put_dossier_draft(user_id, application_id, data)
 
     def delete_dossier_draft(
         self,
@@ -924,119 +800,28 @@ class ApplicationService:
         application_id: str,
         expected_revision: int,
     ) -> None:
-        application = self._application(user_id, application_id)
-        result = self.db.execute(
-            delete(ApplicationDossierDraft).where(
-                ApplicationDossierDraft.application_id == application.id,
-                ApplicationDossierDraft.revision == expected_revision,
-            )
+        return ApplicationDossierService(self.db).delete_dossier_draft(
+            user_id, application_id, expected_revision
         )
-        if getattr(result, "rowcount", 0) != 1:
-            self.db.rollback()
-            existing = (
-                self.db.query(ApplicationDossierDraft.application_id)
-                .filter(ApplicationDossierDraft.application_id == application.id)
-                .first()
-            )
-            if existing is None:
-                raise ApplicationNotFoundError("Application dossier draft not found")
-            raise ApplicationConflictError(
-                "The dossier draft changed in another editor; reload before deleting"
-            )
-        self.db.commit()
 
-    @staticmethod
-    def _publishable_draft_content(
-        content: dict[str, Any],
-    ) -> dict[str, Any]:
-        try:
-            draft = ApplicationDossierDraftContent.model_validate(content)
-        except ValidationError as exc:
-            raise ApplicationValidationError("The stored dossier draft is invalid") from exc
+    def publish_dossier(
+        self, user_id: int, application_id: str, data: ApplicationDossierCreate
+    ) -> ApplicationResponse:
+        return ApplicationDossierService(self.db).publish_dossier(
+            user_id, application_id, data, application_service_helper=self
+        )
 
-        answers: list[dict[str, str]] = []
-        for answer_row in draft.answers:
-            question = answer_row.question.strip()
-            answer = answer_row.answer.strip()
-            if bool(question) != bool(answer):
-                raise ApplicationValidationError(
-                    "Complete both fields in every dossier answer before publishing"
-                )
-            if question:
-                answers.append({"question": question, "answer": answer})
+    def dossier_bundle(self, user_id: int, application_id: str, dossier_id: str) -> DossierBundle:
+        return ApplicationDossierService(self.db).dossier_bundle(
+            user_id, application_id, dossier_id, application_service_helper=self
+        )
 
-        checklist: list[dict[str, Any]] = []
-        for checklist_row in draft.checklist:
-            label = checklist_row.label.strip()
-            if checklist_row.completed and not label:
-                raise ApplicationValidationError(
-                    "Completed dossier checklist items require a label"
-                )
-            if label:
-                checklist.append({"label": label, "completed": checklist_row.completed})
-
-        requirement_matrix: list[dict[str, Any]] = []
-        for requirement_row in draft.requirement_matrix:
-            requirement = requirement_row.requirement.strip()
-            if not requirement or not requirement_row.evidence_fact_ids:
-                raise ApplicationValidationError(
-                    "Every dossier requirement needs text and confirmed evidence"
-                )
-            requirement_matrix.append(
-                {
-                    "requirement": requirement,
-                    "evidence_fact_ids": [
-                        str(fact_id) for fact_id in requirement_row.evidence_fact_ids
-                    ],
-                }
-            )
-        return {
-            "cover_letter": (draft.cover_letter or "").strip() or None,
-            "answers": answers,
-            "checklist": checklist,
-            "requirement_matrix": requirement_matrix,
-        }
-
-    @staticmethod
-    def _requested_dossier_content(data: ApplicationDossierCreate) -> dict[str, Any]:
-        return {
-            "cover_letter": data.cover_letter,
-            "answers": [item.model_dump(mode="json") for item in data.answers],
-            "checklist": [item.model_dump(mode="json") for item in data.checklist],
-            "requirement_matrix": [
-                item.model_dump(mode="json") for item in data.requirement_matrix
-            ],
-        }
-
-    @staticmethod
-    def _verified_resume_artifacts(version: ResumeVersion) -> dict[str, tuple[bytes, str]]:
-        artifacts: dict[str, tuple[bytes, str]] = {}
-        for artifact in version.artifacts:
-            if artifact.format not in {"pdf", "docx"}:
-                continue
-            if (
-                isinstance(artifact.byte_size, bool)
-                or not isinstance(artifact.byte_size, int)
-                or artifact.byte_size <= 0
-                or artifact.byte_size > MAX_DOSSIER_ARTIFACT_BYTES
-            ):
-                raise ApplicationValidationError(
-                    f"The stored {artifact.format.upper()} resume artifact exceeds the dossier limit"
-                )
-            try:
-                data = read_verified_resume_artifact(
-                    artifact.storage_path,
-                    expected_sha256=artifact.sha256,
-                    expected_size=artifact.byte_size,
-                )
-            except (OSError, ValueError) as exc:
-                raise ApplicationValidationError(
-                    f"The stored {artifact.format.upper()} resume artifact failed verification"
-                ) from exc
-            artifacts[artifact.format] = (data, artifact.media_type)
-        if not artifacts:
-            raise ApplicationValidationError("The linked resume has no verified export artifact")
-        return artifacts
+    def dossier_artifact(
+        self, user_id: int, application_id: str, dossier_id: str, filename: str
+    ) -> tuple[bytes, str, str]:
+        return ApplicationDossierService(self.db).dossier_artifact(
+            user_id, application_id, dossier_id, filename, application_service_helper=self
+        )
 
     def _bundle_from_dossier(
         self,
@@ -1045,234 +830,9 @@ class ApplicationService:
         dossier_id: str,
         dossier: dict,
     ) -> DossierBundle:
-        version = self._resume_version(user_id, dossier.get("resume_version_id"))
-        if version is None:
-            raise ApplicationValidationError("The dossier resume version is unavailable")
-        try:
-            bundle = build_dossier_bundle(
-                dossier_id=dossier_id,
-                version_number=dossier["version_number"],
-                application_revision=dossier["application_revision"],
-                application_id=application.id,
-                created_at=dossier["created_at"],
-                role=dossier["role"],
-                resume_version_id=version.id,
-                readiness=dossier["readiness"],
-                cover_letter=dossier.get("cover_letter"),
-                answers=dossier.get("answers") or [],
-                checklist=dossier.get("checklist") or [],
-                requirement_matrix=dossier.get("requirement_matrix") or [],
-                evidence_catalog=(
-                    dossier.get("evidence_catalog")
-                    if dossier.get("schema_version") == "2.0"
-                    else None
-                ),
-                resume_artifacts=self._verified_resume_artifacts(version),
-            )
-        except (DossierSizeError, TypeError, ValueError) as exc:
-            raise ApplicationValidationError(str(exc)) from exc
-        if (
-            dossier.get("manifest_sha256") != bundle.manifest_sha256
-            or dossier.get("manifest") != bundle.manifest
-        ):
-            raise ApplicationValidationError("Dossier manifest integrity check failed")
-        return bundle
-
-    def publish_dossier(
-        self, user_id: int, application_id: str, data: ApplicationDossierCreate
-    ) -> ApplicationResponse:
-        application = self._application(user_id, application_id)
-        if application.revision != data.expected_revision:
-            raise ApplicationConflictError(
-                f"Expected revision {data.expected_revision}, current revision is {application.revision}"
-            )
-        draft = (
-            self.db.query(ApplicationDossierDraft)
-            .filter(ApplicationDossierDraft.application_id == application.id)
-            .one_or_none()
+        return ApplicationDossierService(self.db).bundle_from_dossier(
+            user_id, application, dossier_id, dossier
         )
-        if draft is None and data.expected_draft_revision is not None:
-            raise ApplicationConflictError("The dossier draft no longer exists")
-        if draft is not None:
-            if (
-                data.expected_draft_revision is None
-                or draft.revision != data.expected_draft_revision
-            ):
-                raise ApplicationConflictError(
-                    "The dossier draft changed in another editor; reload before publishing"
-                )
-            if (
-                draft.application_revision != application.revision
-                or draft.resume_version_id != application.resume_version_id
-            ):
-                raise ApplicationConflictError(
-                    "Save the dossier draft against the current application before publishing"
-                )
-            if self._publishable_draft_content(draft.content) != (
-                self._requested_dossier_content(data)
-            ):
-                raise ApplicationConflictError(
-                    "The published dossier does not match the saved draft"
-                )
-        readiness = ApplicationReadinessService(self.db).build(user_id, application)
-        if readiness.blocker_count:
-            raise ApplicationValidationError(
-                "Resolve the application readiness blockers before publishing a dossier"
-            )
-        version = self._resume_version(user_id, application.resume_version_id)
-        if version is None:
-            raise ApplicationValidationError("Link a published resume before creating a dossier")
-        if not bool((version.quality_report or {}).get("passed")):
-            raise ApplicationValidationError("The linked resume did not pass its quality checks")
-        selected_ids = {str(value) for value in (version.selected_fact_ids or [])}
-        snapshot_facts = (version.snapshot or {}).get("facts") or []
-        facts_by_id = {
-            str(fact.get("id")): fact
-            for fact in snapshot_facts
-            if isinstance(fact, dict)
-            and fact.get("verification_status") == "confirmed"
-            and str(fact.get("id")) in selected_ids
-        }
-        requirement_matrix: list[dict] = []
-        all_evidence_ids = [
-            str(fact_id) for row in data.requirement_matrix for fact_id in row.evidence_fact_ids
-        ]
-        missing = [fact_id for fact_id in set(all_evidence_ids) if fact_id not in facts_by_id]
-        if missing:
-            raise ApplicationValidationError(
-                "Every dossier evidence reference must be a confirmed fact in the linked resume"
-            )
-        for row in data.requirement_matrix:
-            evidence_fact_ids = [str(fact_id) for fact_id in row.evidence_fact_ids]
-            requirement_matrix.append(
-                {
-                    "requirement": row.requirement.strip(),
-                    "evidence_fact_ids": evidence_fact_ids,
-                }
-            )
-        try:
-            evidence_catalog = {
-                fact_id: {
-                    "fact_id": fact_id,
-                    "fact_type": facts_by_id[fact_id].get("fact_type"),
-                    "verification_status": "confirmed",
-                    "snapshot": facts_by_id[fact_id],
-                    "sha256": hashlib.sha256(canonical_json(facts_by_id[fact_id])).hexdigest(),
-                }
-                for fact_id in sorted(set(all_evidence_ids))
-            }
-        except (TypeError, ValueError) as exc:
-            raise ApplicationValidationError(
-                "A selected evidence fact cannot be serialized safely"
-            ) from exc
-        now = datetime.now(timezone.utc)
-        dossier_id = str(uuid.uuid4())
-        version_number = len(self._dossier_summaries(application)) + 1
-        snapshot = application.job_snapshot or {}
-        dossier: dict[str, Any] = {
-            "schema_version": "2.0",
-            "version_number": version_number,
-            "application_revision": data.expected_revision + 1,
-            "resume_version_id": version.id,
-            "created_at": now.isoformat(),
-            "readiness_fingerprint": readiness.fingerprint,
-            "role": {
-                "title": str(snapshot.get("title") or "Untitled role"),
-                "company": str(snapshot.get("company") or "Unknown company"),
-                "location": snapshot.get("location"),
-            },
-            "readiness": {
-                "score_kind": readiness.score_kind,
-                "status": readiness.status,
-                "completeness_score": readiness.completeness_score,
-                "fingerprint": readiness.fingerprint,
-            },
-            "cover_letter": data.cover_letter,
-            "answers": [answer.model_dump(mode="json") for answer in data.answers],
-            "checklist": [item.model_dump(mode="json") for item in data.checklist],
-            "requirement_matrix": requirement_matrix,
-            "evidence_catalog": evidence_catalog,
-        }
-        artifacts = self._verified_resume_artifacts(version)
-        try:
-            initial_bundle = build_dossier_bundle(
-                dossier_id=dossier_id,
-                version_number=version_number,
-                application_revision=data.expected_revision + 1,
-                application_id=application.id,
-                created_at=dossier["created_at"],
-                role=dossier["role"],
-                resume_version_id=version.id,
-                readiness=dossier["readiness"],
-                cover_letter=dossier["cover_letter"],
-                answers=dossier["answers"],
-                checklist=dossier["checklist"],
-                requirement_matrix=dossier["requirement_matrix"],
-                evidence_catalog=dossier["evidence_catalog"],
-                resume_artifacts=artifacts,
-            )
-        except (DossierSizeError, TypeError, ValueError) as exc:
-            raise ApplicationValidationError(str(exc)) from exc
-        dossier["manifest"] = initial_bundle.manifest
-        dossier["manifest_sha256"] = initial_bundle.manifest_sha256
-        event_payload = {"schema_version": "2.0", "dossier": dossier}
-        try:
-            event_size = len(canonical_json(event_payload))
-        except (TypeError, ValueError) as exc:
-            raise ApplicationValidationError("Dossier event is not valid JSON") from exc
-        if event_size > MAX_DOSSIER_EVENT_BYTES:
-            raise ApplicationValidationError(
-                f"Dossier event exceeds the {MAX_DOSSIER_EVENT_BYTES}-byte limit"
-            )
-        if draft is not None:
-            consumed = self.db.execute(
-                delete(ApplicationDossierDraft)
-                .where(
-                    ApplicationDossierDraft.id == draft.id,
-                    ApplicationDossierDraft.revision == draft.revision,
-                    ApplicationDossierDraft.application_revision == draft.application_revision,
-                    ApplicationDossierDraft.resume_version_id == draft.resume_version_id,
-                )
-                .execution_options(synchronize_session=False)
-            )
-            if getattr(consumed, "rowcount", 0) != 1:
-                self.db.rollback()
-                raise ApplicationConflictError(
-                    "The dossier draft changed in another editor; reload before publishing"
-                )
-        self._advance_revision(application, data.expected_revision, now)
-        self.db.add(
-            ApplicationEvent(
-                id=dossier_id,
-                application_id=application.id,
-                event_type="dossier_published",
-                stage=None,
-                occurred_at=now,
-                note=None,
-                payload=event_payload,
-                created_at=now,
-            )
-        )
-        self.db.commit()
-        self.db.expire_all()
-        return self._response(self._application(user_id, application_id))
-
-    def dossier_bundle(self, user_id: int, application_id: str, dossier_id: str) -> DossierBundle:
-        application = self._application(user_id, application_id)
-        event = next(
-            (
-                item
-                for item in application.events
-                if item.id == dossier_id and item.event_type == "dossier_published"
-            ),
-            None,
-        )
-        if event is None:
-            raise ApplicationNotFoundError("Application dossier not found")
-        dossier = (event.payload or {}).get("dossier")
-        if not isinstance(dossier, dict):
-            raise ApplicationValidationError("Application dossier is invalid")
-        return self._bundle_from_dossier(user_id, application, dossier_id, dossier)
 
     def list(self, user_id: int, *, offset: int = 0, limit: int = 200) -> list[ApplicationSummary]:
         rows = (
@@ -1291,8 +851,14 @@ class ApplicationService:
                 Application.next_action_title,
                 Application.next_action_at,
                 Application.next_action_priority,
+                CampaignApplication.campaign_id,
+                CampaignApplication.source_application_id,
+                CampaignApplication.priority,
+                CampaignApplication.platform,
+                CampaignApplication.category,
             )
             .filter(Application.user_id == user_id)
+            .outerjoin(CampaignApplication, CampaignApplication.application_id == Application.id)
             .order_by(Application.updated_at.desc(), Application.id.asc())
             .offset(offset)
             .limit(limit)
@@ -1334,6 +900,11 @@ class ApplicationService:
                     latest_event_at=latest_event_at,
                     updated_at=updated_at,
                     next_action=next_action,
+                    campaign_id=item.campaign_id,
+                    source_application_id=item.source_application_id,
+                    campaign_priority=item.priority,
+                    campaign_platform=item.platform,
+                    campaign_category=item.category,
                 )
             )
         return summaries

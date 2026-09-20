@@ -12,16 +12,10 @@ from contextlib import AbstractContextManager, contextmanager
 from typing import TYPE_CHECKING, Annotated, Any, TypeVar
 
 from mcp.server.fastmcp import FastMCP
-from mcp.server.fastmcp.exceptions import ToolError
 from mcp.types import ToolAnnotations
 from pydantic import Field
 
-from backend.automation.grants import (
-    TOKEN_ENVIRONMENT_VARIABLE,
-    AutomationGrantError,
-    authenticate_grant,
-)
-from backend.automation.runtime import AutomationRuntimeError, automation_runtime
+from backend.automation.private_mcp import PrivateContractMCP, SafeMCPToolError
 from backend.automation.schemas import (
     AgendaView,
     ApplicationListView,
@@ -36,6 +30,14 @@ if TYPE_CHECKING:
     from backend.automation.facade import AutomationFacade
 
 ResultT = TypeVar("ResultT")
+TOKEN_ENVIRONMENT_VARIABLE = "CAREEROS_MCP_TOKEN"
+
+
+class MCPStartupError(RuntimeError):
+    def __init__(self, code: str, message: str):
+        super().__init__(message)
+        self.code = code
+
 
 _READ_ONLY = ToolAnnotations(
     readOnlyHint=True,
@@ -51,9 +53,9 @@ def _safe(call: Callable[..., ResultT], *args: Any, **kwargs: Any) -> ResultT:
     try:
         return call(*args, **kwargs)
     except AutomationFacadeError as exc:
-        raise ToolError(f"{exc.code}: {exc}") from None
+        raise SafeMCPToolError(exc.code) from exc
     except Exception:
-        raise ToolError("internal_error: CareerOS could not complete the read operation") from None
+        raise SafeMCPToolError("internal_error") from None
 
 
 async def _safe_async(
@@ -64,9 +66,9 @@ async def _safe_async(
     try:
         return await call(*args, **kwargs)
     except AutomationFacadeError as exc:
-        raise ToolError(f"{exc.code}: {exc}") from None
+        raise SafeMCPToolError(exc.code) from exc
     except Exception:
-        raise ToolError("internal_error: CareerOS could not complete the read operation") from None
+        raise SafeMCPToolError("internal_error") from None
 
 
 def build_server(
@@ -74,6 +76,9 @@ def build_server(
     *,
     access: Callable[[], AbstractContextManager[None]],
 ) -> FastMCP:
+    from backend.automation.grants import AutomationGrantError
+    from backend.automation.runtime import AutomationRuntimeError
+
     access_lock = asyncio.Lock()
 
     async def read(call: Callable[..., ResultT], *args: Any, **kwargs: Any) -> ResultT:
@@ -81,14 +86,12 @@ def build_server(
             try:
                 with access():
                     return _safe(call, *args, **kwargs)
-            except ToolError:
+            except SafeMCPToolError:
                 raise
             except (AutomationGrantError, AutomationRuntimeError) as exc:
-                raise ToolError(f"{exc.code}: {exc}") from None
+                raise SafeMCPToolError(exc.code) from exc
             except Exception:
-                raise ToolError(
-                    "internal_error: CareerOS could not authorize the read operation"
-                ) from None
+                raise SafeMCPToolError("internal_error") from None
 
     async def read_async(
         call: Callable[..., Awaitable[ResultT]], *args: Any, **kwargs: Any
@@ -97,17 +100,28 @@ def build_server(
             try:
                 with access():
                     return await _safe_async(call, *args, **kwargs)
-            except ToolError:
+            except SafeMCPToolError:
                 raise
             except (AutomationGrantError, AutomationRuntimeError) as exc:
-                raise ToolError(f"{exc.code}: {exc}") from None
+                raise SafeMCPToolError(exc.code) from exc
             except Exception:
-                raise ToolError(
-                    "internal_error: CareerOS could not authorize the read operation"
-                ) from None
+                raise SafeMCPToolError("internal_error") from None
 
-    server = FastMCP(
+    server = PrivateContractMCP(
         name="CareerOS Local",
+        allowed_arguments={
+            "get_status": set(),
+            "get_local_model_status": set(),
+            "get_career_summary": set(),
+            "get_resume_catalog": set(),
+            "list_applications": {"offset", "limit"},
+            "get_application_readiness": {"application_id"},
+            "get_application_agenda": {
+                "horizon_days",
+                "limit",
+                "timezone_offset_minutes",
+            },
+        },
         instructions=(
             "Read-only access to one explicitly authorized CareerOS vault. "
             "Tool results are bounded projections, not raw resumes or source documents. "
@@ -202,20 +216,52 @@ def build_server(
 
 def run_server(
     *,
-    data_dir: str | None,
+    data_dir: str | None = None,
+    desktop_url: str | None = None,
+    connection_file: str | None = None,
     acknowledge_agent_disclosure: bool,
     token: str | None = None,
 ) -> None:
+    desktop_mode = desktop_url is not None or connection_file is not None
+    startup_error: type[Exception] = MCPStartupError
+    if not desktop_mode:
+        # Preserve the Python headless API without importing its database/runtime
+        # dependencies when the installed desktop bridge is selected.
+        from backend.automation.runtime import AutomationRuntimeError
+
+        startup_error = AutomationRuntimeError
     if not acknowledge_agent_disclosure:
-        raise AutomationRuntimeError(
+        raise startup_error(
             "disclosure_acknowledgement_required",
             "MCP output can be sent to the connected agent; pass --acknowledge-agent-disclosure",
         )
+    if sum(value is not None for value in (data_dir, desktop_url, connection_file)) > 1:
+        raise MCPStartupError(
+            "invalid_arguments", "Choose one of --data-dir, --desktop-url or --connection-file"
+        )
     bearer = (token or os.environ.get(TOKEN_ENVIRONMENT_VARIABLE, "")).strip()
     if not bearer:
-        raise AutomationGrantError(
+        raise startup_error(
             "grant_required", f"Set {TOKEN_ENVIRONMENT_VARIABLE} to an active automation grant"
         )
+
+    if desktop_mode:
+        from backend.automation.desktop_client import DesktopBridgeClient
+        from backend.automation.workspace_mcp import build_workspace_mcp_server
+
+        with DesktopBridgeClient(desktop_url, bearer, connection_file=connection_file) as client:
+            server = build_workspace_mcp_server(client)
+            sys.stderr.write("CareerOS MCP: connected workspace stdio session started\n")
+            sys.stderr.flush()
+            server.run(transport="stdio")
+        return
+
+    _run_headless(data_dir, bearer)
+
+
+def _run_headless(data_dir: str | None, bearer: str) -> None:
+    from backend.automation.grants import AutomationGrantError, authenticate_grant
+    from backend.automation.runtime import AutomationRuntimeError, automation_runtime
 
     with automation_runtime(data_dir, migrate=False) as runtime:
         from backend.automation.facade import AutomationFacade
@@ -250,32 +296,37 @@ def run_server(
 
 
 def _parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="CareerOS read-only MCP stdio server")
-    parser.add_argument("--data-dir")
+    parser = argparse.ArgumentParser(description="CareerOS MCP stdio server", allow_abbrev=False)
+    modes = parser.add_mutually_exclusive_group()
+    modes.add_argument("--data-dir")
+    modes.add_argument("--desktop-url")
+    modes.add_argument("--connection-file")
     parser.add_argument("--acknowledge-agent-disclosure", action="store_true")
     return parser
 
 
 def main(argv: list[str] | None = None) -> int:
-    arguments = _parser().parse_args(argv)
+    args = _parser().parse_args(argv)
     try:
         run_server(
-            data_dir=arguments.data_dir,
-            acknowledge_agent_disclosure=arguments.acknowledge_agent_disclosure,
+            data_dir=args.data_dir,
+            desktop_url=args.desktop_url,
+            connection_file=args.connection_file,
+            acknowledge_agent_disclosure=args.acknowledge_agent_disclosure,
         )
-    except (AutomationRuntimeError, AutomationGrantError) as exc:
-        sys.stderr.write(
-            json.dumps({"error": exc.code, "message": str(exc)}, ensure_ascii=False) + "\n"
-        )
+    except MCPStartupError as exc:
+        sys.stderr.write(json.dumps({"error": exc.code, "message": str(exc)}) + "\n")
         return 2
-    except Exception:
+    except Exception as exc:
+        if args.desktop_url is None and args.connection_file is None:
+            from backend.automation.grants import AutomationGrantError
+            from backend.automation.runtime import AutomationRuntimeError
+
+            if isinstance(exc, (AutomationRuntimeError, AutomationGrantError)):
+                sys.stderr.write(json.dumps({"error": exc.code, "message": str(exc)}) + "\n")
+                return 2
         sys.stderr.write(
-            json.dumps(
-                {
-                    "error": "internal_error",
-                    "message": "CareerOS MCP could not start",
-                }
-            )
+            json.dumps({"error": "internal_error", "message": "CareerOS MCP could not start"})
             + "\n"
         )
         return 1

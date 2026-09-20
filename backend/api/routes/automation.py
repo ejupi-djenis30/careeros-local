@@ -270,6 +270,7 @@ def create_automation_grant(
             label=payload.label,
             scopes=tuple(payload.scopes),
             lifetime=timedelta(days=payload.lifetime_days),
+            acknowledged_disclosure=payload.acknowledge_external_disclosure,
         )
     except AutomationGrantError as exc:
         raise _grant_error(exc) from exc

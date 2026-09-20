@@ -12,6 +12,7 @@ export function AgentAccessDisclosure({ activeCount, t }) {
                 <p>{t("agentAccess.disclosureCopy")}</p>
                 <ul>
                     <li><i className="bi bi-eye" aria-hidden="true" />{t("agentAccess.readOnly")}</li>
+                    <li><i className="bi bi-robot" aria-hidden="true" />{t("agentAccess.proposalsOnly")}</li>
                     <li><i className="bi bi-hdd" aria-hidden="true" />{t("agentAccess.localBoundary")}</li>
                     <li><i className="bi bi-door-closed" aria-hidden="true" />{t("agentAccess.leaseBoundary")}</li>
                     <li>

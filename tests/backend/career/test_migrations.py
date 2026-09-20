@@ -510,3 +510,100 @@ def test_legacy_heuristic_analysis_is_quarantined_and_not_restored(monkeypatch):
     finally:
         engine.dispose()
         temporary.cleanup()
+
+
+def test_source_document_role_migration_preserves_rows_and_round_trips(monkeypatch):
+    temporary = TemporaryDirectory()
+    database_path = Path(temporary.name) / "migration_source_role.db"
+    database_url = f"sqlite:///{database_path.as_posix()}"
+    monkeypatch.setattr(settings, "DATABASE_URL", database_url)
+    config = _alembic_config(database_url)
+
+    command.upgrade(config, "b1c2d3e4f5a6")
+    engine = sa.create_engine(database_url)
+    try:
+        with engine.begin() as connection:
+            connection.execute(
+                sa.text(
+                    "INSERT INTO users (id, username, hashed_password) "
+                    "VALUES (101, 'role-user', 'hash-101')"
+                )
+            )
+            connection.execute(
+                sa.text(
+                    "INSERT INTO candidate_profiles (id, user_id, revision, display_name, location, work_authorization, preferences) "
+                    "VALUES ('prof-101', 101, 1, 'Role Test User', '{}', '[]', '{}')"
+                )
+            )
+            connection.execute(
+                sa.text(
+                    "INSERT INTO career_assets (id, profile_id, kind, original_name, media_type, sha256, byte_size, storage_path, normalized) "
+                    "VALUES ('asset-101', 'prof-101', 'source_document', 'old.txt', 'text/plain', 'hash101', 12, 'assets/ha/hash101', 0)"
+                )
+            )
+            connection.execute(
+                sa.text(
+                    "INSERT INTO source_documents (id, profile_id, asset_id, document_type, extracted_text, extracted_text_sha256) "
+                    "VALUES ('src-101', 'prof-101', 'asset-101', 'text', 'Old source', 'text-hash-101')"
+                )
+            )
+
+        # Upgrade to b2c3d4e5f6a7 (adds source_role)
+        command.upgrade(config, "b2c3d4e5f6a7")
+        inspector = sa.inspect(engine)
+        columns = {c["name"]: c for c in inspector.get_columns("source_documents")}
+        assert "source_role" in columns
+
+        with engine.connect() as connection:
+            row = connection.execute(
+                sa.text("SELECT id, source_role FROM source_documents WHERE id = 'src-101'")
+            ).one()
+            assert row == ("src-101", "profile"), "Old uploads must default source_role to 'profile'"
+
+        # Insert second record with explicit role
+        with engine.begin() as connection:
+            connection.execute(
+                sa.text(
+                    "INSERT INTO career_assets (id, profile_id, kind, original_name, media_type, sha256, byte_size, storage_path, normalized) "
+                    "VALUES ('asset-102', 'prof-101', 'source_document', 'goal.md', 'text/markdown', 'hash102', 15, 'assets/ha/hash102', 0)"
+                )
+            )
+            connection.execute(
+                sa.text(
+                    "INSERT INTO source_documents (id, profile_id, asset_id, document_type, source_role, extracted_text, extracted_text_sha256) "
+                    "VALUES ('src-102', 'prof-101', 'asset-102', 'text', 'goals', 'Target roles: Architect', 'text-hash-102')"
+                )
+            )
+
+        with engine.connect() as connection:
+            assert connection.scalar(sa.text("SELECT count(*) FROM source_documents")) == 2
+            role = connection.scalar(sa.text("SELECT source_role FROM source_documents WHERE id = 'src-102'"))
+            assert role == "goals"
+        with pytest.raises(sa.exc.IntegrityError):
+            with engine.begin() as connection:
+                connection.execute(
+                    sa.text(
+                        "UPDATE source_documents SET source_role = 'invented' WHERE id = 'src-102'"
+                    )
+                )
+
+        # Downgrade back to b1c2d3e4f5a6
+        command.downgrade(config, "b1c2d3e4f5a6")
+        inspector_down = sa.inspect(engine)
+        cols_down = {c["name"] for c in inspector_down.get_columns("source_documents")}
+        assert "source_role" not in cols_down
+        with engine.connect() as connection:
+            assert connection.scalar(sa.text("SELECT count(*) FROM source_documents")) == 2
+
+        # Re-upgrade to b2c3d4e5f6a7
+        command.upgrade(config, "b2c3d4e5f6a7")
+        inspector_reup = sa.inspect(engine)
+        cols_reup = {c["name"] for c in inspector_reup.get_columns("source_documents")}
+        assert "source_role" in cols_reup
+        with engine.connect() as connection:
+            assert connection.scalar(sa.text("SELECT count(*) FROM source_documents")) == 2
+            roles = connection.execute(sa.text("SELECT source_role FROM source_documents")).scalars().all()
+            assert all(r == "profile" for r in roles)
+    finally:
+        engine.dispose()
+        temporary.cleanup()

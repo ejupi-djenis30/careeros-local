@@ -19,6 +19,23 @@ the source document and enter the editor as **Imported**, never **Confirmed**. S
 candidates, choose **Review imported facts**, inspect their fields and provenance, change the status
 only for facts you have checked, then save the Career Vault. This path does not use the model.
 
+Choose the source role before importing a Career-style reference:
+
+- **Career profile** extracts reviewable fact candidates. They remain imported and unconfirmed.
+- **Narrative and storytelling** retains prose for manual review and does not turn it into facts.
+- **Career goals and preferences** accepts explicit `key: value` entries such as target roles,
+  languages, locations, work modes, contract types, workload bounds, remote-only, maximum commute,
+  availability date and notice period. Unknown or invalid values are explained and omitted.
+- **Template and style reference** records presentation guidance without treating its wording as
+  career evidence.
+
+Each import handles one file you selected; CareerOS never scans a directory recursively. Preference
+candidates start unselected. The review explains that list values merge with the current profile
+while one accepted scalar replaces its current value. Conflicting scalars require one explicit
+choice, and the whole combined preference record is validated before the editor changes. Saving the
+Career Vault remains a separate owner action. Keep the original `Profile.md`, `Storytelling.md` and
+`Goal.md` files as your source records; CareerOS stores contained copies without modifying them.
+
 ## Prepare local analysis
 
 The desktop app manages its default llama.cpp-compatible runtime and verifies the selected model
@@ -50,6 +67,19 @@ the same job review table. You can also capture a role directly from **Applicati
 not want it in the discovery list. Manual captures use a server-derived, per-user identifier: a
 client-supplied manual platform id is ignored, retries are idempotent, and another user's identical
 URL cannot share the same private listing row.
+
+## Choose a reusable CV template
+
+Resume Studio offers nine presets: international Software and Cloud/Platform in English; Swiss
+Software and Infrastructure in English and German; and Logistics, Retail and Operational in
+German. They use three actual layouts: single-column photo-free ATS, Swiss photo, and Swiss
+operational. Filter the gallery by family, language or layout and preview the selected local facts
+before applying a preset.
+
+Changing a preset changes presentation and declared locale. It preserves approved text, selected
+evidence and manual overrides, and it does not translate content silently. If the new layout does
+not accept the current photo setting, CareerOS explains the incompatibility. Publish only after
+reviewing the local PDF and DOCX preview; older published versions keep their original bytes.
 
 ## Operate the application
 
@@ -124,15 +154,11 @@ authenticated, so keep them in an encrypted location you control.
 
 ## Connect a coding agent
 
-Install a CareerOS wheel into a dedicated Python environment as described in the
-[main README](../README.md#use-careeros-from-codex-or-claude-code). The wheel is separate from the
-desktop installers; do not assume it is a GitHub Release asset unless that release lists both the
-wheel and its reviewed `requirements.lock`. Install the lock with `--require-hashes`, then install
-the wheel with `--no-deps`, exactly as shown in the README. Open **Agent access** from the Career
-workspace, give the client a recognizable label, leave only the scopes it needs, choose a short
-expiry and enter your current CareerOS password. System status is selected first because it
-contains no career content. Resume and application scopes disclose useful private metadata, so
-enable them deliberately.
+Keep the installed desktop open. Its native bundle contains the console MCP bridge; no separate
+Python or source checkout is needed for this path. Open **Agent access**, give the client a
+recognizable label, select **Detailed work context** (`context:read`) and **Submit proposals**
+(`proposals:write`), choose a short expiry, acknowledge external disclosure and enter the current
+CareerOS password.
 
 CareerOS shows the bearer once. Copy it only when you are ready to save it in the operating
 system's credential manager, then dismiss the panel. The page cannot recover it later. Its Codex
@@ -142,18 +168,23 @@ session must end, it waits for the response and revokes any completed grant befo
 If the operating system or process closes the window before that cleanup can finish, reopen
 **Agent access** on the next launch and revoke every new grant whose token you did not save.
 
-Close CareerOS before asking the agent to read the Vault. The MCP server opens no network listener,
-cannot edit data and makes no outbound or cloud request for ordinary vault reads. Model status may
-make a content-free HTTP readiness probe to the configured, allowlisted local-runtime endpoint.
-This is loopback by default; container deployments may explicitly allow a single-label runtime
-alias. The connected client may still send selected results to its own provider, so review that
-provider's policy before connecting it. Return to **Agent access** to inspect expiry or revoke a
-grant after use; revocation asks for the password again. If repeated failed checks pause new grants,
-CareerOS stops checking revoke passwords for the lockout window. The signed-in desktop session may
-still revoke a grant owned by that account, but it cannot create another one until the window ends.
-The register always keeps every active grant and the 100 most recent inactive transitions. Older
-inactive rows are removed after a successful create or first revocation; an old retained identifier
-can therefore return `grant_not_found` after it leaves that window.
+Copy the token-free Codex TOML or Claude JSON shown on the same page into the client's user-level
+MCP configuration, start that client from the token-bearing environment, and leave CareerOS open.
+The installed launcher reads the private connection descriptor and follows desktop restarts without
+putting a session token or an ephemeral port in client configuration.
+
+Open **Agent Workspace** and create a **Discover**, **Analyze** or **Materials** request. Select the
+grant, include only the facts and target records needed, and copy the request prompt into the client.
+The agent lists the queue, fetches the frozen context, treats source text as untrusted, submits one
+schema-validated proposal and asks you to review it in CareerOS. Accept or reject it in the app.
+Acceptance rechecks current revisions and uses the normal domain services; it never confirms a new
+fact, publishes a document, sends an email or applies to a job automatically.
+
+The connected client may send selected context to its own provider. Return to **Agent access** to
+inspect expiry or revoke the grant after use. The older wheel-based read-only interface remains
+available for scripts and recovery; only that `--data-dir` mode requires the desktop to be closed.
+See the [complete Codex and Claude Code guide](agent-workspace.md) for installed and developer
+configuration, the six workspace tools, packet generation and failure behavior.
 
 ## Private by default
 

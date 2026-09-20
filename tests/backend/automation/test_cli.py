@@ -46,6 +46,35 @@ def test_client_config_uses_environment_reference_and_absolute_data_dir(
     assert TOKEN_PREFIX not in json.dumps(payload)
 
 
+def test_cli_forwards_explicit_developer_desktop_url_to_workspace_mcp(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured: dict[str, object] = {}
+
+    def capture_server(**kwargs: object) -> None:
+        captured.update(kwargs)
+
+    monkeypatch.setattr(mcp_server, "run_server", capture_server)
+
+    assert (
+        cli.main(
+            [
+                "mcp",
+                "serve",
+                "--desktop-url",
+                "http://127.0.0.1:8000/api/v1",
+                "--acknowledge-agent-disclosure",
+            ]
+        )
+        == 0
+    )
+    assert captured == {
+        "data_dir": None,
+        "desktop_url": "http://127.0.0.1:8000/api/v1",
+        "acknowledge_agent_disclosure": True,
+    }
+
+
 def test_mcp_server_requires_explicit_disclosure_acknowledgement() -> None:
     with pytest.raises(AutomationRuntimeError) as raised:
         run_server(
@@ -78,6 +107,295 @@ def test_standalone_mcp_redacts_unexpected_startup_failure(
     assert sensitive_token not in diagnostics
     assert sensitive_path not in diagnostics
     assert "Traceback" not in diagnostics
+
+
+def test_campaign_parser_requires_explicit_owner_fingerprint_and_write_acknowledgement() -> None:
+    parser = cli._parser()
+    arguments = parser.parse_args(
+        [
+            "campaign",
+            "import",
+            "campaign.zip",
+            "--username",
+            "owner",
+            "--expected-fingerprint",
+            "a" * 64,
+            "--acknowledge-local-vault-write",
+        ]
+    )
+
+    assert arguments.campaign_command == "import"
+    assert arguments.username == "owner"
+    assert arguments.expected_fingerprint == "a" * 64
+    assert arguments.acknowledge_local_vault_write is True
+
+    with pytest.raises(SystemExit):
+        parser.parse_args(["campaign", "import", "campaign.zip", "--username", "owner"])
+
+
+def test_campaign_preview_is_side_effect_free_and_emits_bounded_json(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys,
+) -> None:
+    from tests.backend.campaigns.fixture_builder import build_fictional_campaign_zip
+
+    archive = tmp_path / "campaign.zip"
+    archive.write_bytes(build_fictional_campaign_zip(credentials_count=2))
+
+    def runtime_must_not_start(*_args, **_kwargs):
+        raise AssertionError("preview must not open the vault runtime")
+
+    monkeypatch.setattr(cli, "automation_runtime", runtime_must_not_start)
+
+    assert cli.main(["campaign", "preview", str(archive)]) == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert len(payload["fingerprint"]) == 64
+    assert payload["credential_rows_omitted"] == 2
+    assert payload["logical_application_count"] >= 1
+    assert "password" not in json.dumps(payload).lower()
+
+
+def test_campaign_import_requires_acknowledgement_before_reading_archive(capsys) -> None:
+    exit_code = cli.main(
+        [
+            "campaign",
+            "import",
+            "missing-private-path.zip",
+            "--username",
+            "owner",
+            "--expected-fingerprint",
+            "a" * 64,
+        ]
+    )
+    payload = json.loads(capsys.readouterr().err)
+
+    assert exit_code == 2
+    assert payload == {
+        "error": "campaign_write_acknowledgement_required",
+        "message": "Campaign import requires --acknowledge-local-vault-write",
+    }
+    assert "missing-private-path" not in json.dumps(payload)
+
+
+def test_campaign_import_registers_resume_foreign_key_targets_in_fresh_process() -> None:
+    code = """
+from backend.models.base_model import Base
+from backend.automation.cli import _load_campaign_persistence_models
+assert "resume_versions" not in Base.metadata.tables
+assert "resume_drafts" not in Base.metadata.tables
+_load_campaign_persistence_models()
+assert "resume_versions" in Base.metadata.tables
+assert "resume_drafts" in Base.metadata.tables
+"""
+    result = subprocess.run(
+        [sys.executable, "-c", code],
+        cwd=Path(__file__).resolve().parents[3],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr
+
+
+def test_campaign_import_binds_explicit_account_and_confirmed_fingerprint(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys,
+) -> None:
+    from backend.campaigns import service as campaign_service
+
+    archive = tmp_path / "campaign.zip"
+    archive.write_bytes(b"fictional archive bytes")
+    db = object()
+    captured: dict[str, object] = {}
+
+    @contextlib.contextmanager
+    def test_runtime(_data_dir, *, migrate, write_access):
+        assert migrate is True
+        assert write_access is True
+
+        @contextlib.contextmanager
+        def session_factory():
+            yield db
+
+        yield SimpleNamespace(session_factory=session_factory)
+
+    def fake_import(_db, **kwargs):
+        assert _db is db
+        captured.update(kwargs)
+        return {"campaign_id": "campaign-1", "created": True}
+
+    monkeypatch.setattr(cli, "automation_runtime", test_runtime)
+    monkeypatch.setattr(cli, "_campaign_user", lambda _db, username: SimpleNamespace(id=17))
+    monkeypatch.setattr(campaign_service, "import_campaign", fake_import)
+
+    exit_code = cli.main(
+        [
+            "campaign",
+            "import",
+            str(archive),
+            "--username",
+            "explicit-owner",
+            "--expected-fingerprint",
+            "b" * 64,
+            "--name",
+            "September search",
+            "--profile-display-name",
+            "Fictional Candidate",
+            "--acknowledge-local-vault-write",
+        ]
+    )
+    payload = json.loads(capsys.readouterr().out)
+
+    assert exit_code == 0
+    assert payload == {"campaign_id": "campaign-1", "created": True}
+    assert captured["user_id"] == 17
+    assert captured["archive_bytes"] == b"fictional archive bytes"
+    assert captured["expected_fingerprint"] == "b" * 64
+    assert captured["campaign_name"] == "September search"
+    assert captured["profile_display_name"] == "Fictional Candidate"
+
+
+def test_campaign_read_is_owner_scoped_and_uses_read_only_runtime(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys,
+) -> None:
+    from backend.campaigns import api_service
+
+    db = object()
+
+    @contextlib.contextmanager
+    def test_runtime(_data_dir, *, migrate):
+        assert migrate is False
+
+        @contextlib.contextmanager
+        def session_factory():
+            yield db
+
+        yield SimpleNamespace(session_factory=session_factory)
+
+    monkeypatch.setattr(cli, "automation_runtime", test_runtime)
+    monkeypatch.setattr(cli, "_campaign_user", lambda _db, username: SimpleNamespace(id=23))
+    monkeypatch.setattr(
+        api_service,
+        "list_campaigns",
+        lambda _db, user_id: [{"id": "campaign-owner-23", "owner": user_id}],
+    )
+
+    assert cli.main(["campaign", "list", "--username", "owner-23"]) == 0
+    assert json.loads(capsys.readouterr().out) == [{"id": "campaign-owner-23", "owner": 23}]
+
+
+def test_campaign_submission_record_requires_explicit_write_acknowledgement(capsys) -> None:
+    exit_code = cli.main(
+        [
+            "campaign",
+            "record-submission",
+            "campaign-1",
+            "APP-001",
+            "--username",
+            "owner",
+            "--expected-revision",
+            "4",
+            "--channel",
+            "Test portal",
+            "--confirmation",
+            "Submission received",
+            "--resume-sha256",
+            "a" * 64,
+        ]
+    )
+
+    assert exit_code == 2
+    assert json.loads(capsys.readouterr().err) == {
+        "error": "campaign_submission_acknowledgement_required",
+        "message": "Recording a submission requires --acknowledge-submission-record-write",
+    }
+
+
+def test_campaign_submission_record_is_owner_scoped_and_evidence_bound(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys,
+) -> None:
+    from backend.applications import service as application_service
+
+    db = object()
+    captured: dict[str, object] = {}
+    application = SimpleNamespace(id="application-7", current_stage="preparing", revision=7)
+
+    @contextlib.contextmanager
+    def test_runtime(_data_dir, *, migrate, write_access):
+        assert migrate is False
+        assert write_access is True
+
+        @contextlib.contextmanager
+        def session_factory():
+            yield db
+
+        yield SimpleNamespace(session_factory=session_factory)
+
+    class FakeApplicationService:
+        def __init__(self, database):
+            assert database is db
+
+        def append_event(self, user_id, application_id, event):
+            captured.update(
+                user_id=user_id,
+                application_id=application_id,
+                event=event,
+            )
+            return SimpleNamespace(id=application_id, current_stage="applied", revision=8)
+
+    def campaign_application(_db, **kwargs):
+        assert _db is db
+        captured.update(kwargs)
+        return SimpleNamespace(application=application)
+
+    monkeypatch.setattr(cli, "automation_runtime", test_runtime)
+    monkeypatch.setattr(cli, "_campaign_user", lambda _db, username: SimpleNamespace(id=29))
+    monkeypatch.setattr(cli, "_campaign_application", campaign_application)
+    monkeypatch.setattr(application_service, "ApplicationService", FakeApplicationService)
+
+    exit_code = cli.main(
+        [
+            "campaign",
+            "record-submission",
+            "campaign-1",
+            "APP-001",
+            "--username",
+            "explicit-owner",
+            "--expected-revision",
+            "7",
+            "--channel",
+            "Official ATS",
+            "--confirmation",
+            "Application received",
+            "--resume-sha256",
+            "a" * 64,
+            "--cover-letter-sha256",
+            "b" * 64,
+            "--acknowledge-submission-record-write",
+        ]
+    )
+    payload = json.loads(capsys.readouterr().out)
+
+    assert exit_code == 0
+    assert payload["created"] is True
+    assert payload["stage"] == "applied"
+    assert captured["user_id"] == 29
+    assert captured["campaign_id"] == "campaign-1"
+    assert captured["source_application_id"] == "APP-001"
+    event = captured["event"]
+    assert event.expected_revision == 7
+    assert event.stage == "applied"
+    assert event.payload == {
+        "cover_letter_sha256": "b" * 64,
+        "external_confirmation": "Application received",
+        "resume_sha256": "a" * 64,
+        "submission_channel": "Official ATS",
+    }
 
 
 def test_authorize_requires_an_explicit_least_privilege_scope() -> None:
@@ -147,6 +465,7 @@ def test_authorize_authenticates_account_and_binds_requested_scope(
         label="Codex read access",
         days=7,
         scope=["system:read"],
+        acknowledge_external_disclosure=False,
     )
 
     monkeypatch.setattr(cli.getpass, "getpass", lambda _prompt: "wrong-password")
@@ -166,6 +485,55 @@ def test_authorize_authenticates_account_and_binds_requested_scope(
     assert grant.scope_set() == {"system:read"}
     assert payload["grant"]["scopes"] == ["system:read"]
     assert payload["token"].startswith(TOKEN_PREFIX)
+
+
+def test_authorize_workspace_scopes_requires_and_propagates_disclosure(
+    db_session, test_user, monkeypatch, capsys
+) -> None:
+    @contextlib.contextmanager
+    def test_runtime(_data_dir, *, migrate, write_access):
+        assert migrate is True
+        assert write_access is True
+        yield SimpleNamespace(session_factory=lambda: db_session)
+
+    monkeypatch.setattr(cli, "automation_runtime", test_runtime)
+    monkeypatch.setattr(cli.getpass, "getpass", lambda _prompt: "Globalpass1")
+    arguments = argparse.Namespace(
+        data_dir=None,
+        username=test_user.username,
+        label="Claude workspace access",
+        days=1,
+        scope=["context:read", "proposals:write"],
+        acknowledge_external_disclosure=False,
+    )
+
+    with pytest.raises(AutomationGrantError) as raised:
+        cli._authorize(arguments)
+    assert raised.value.code == "disclosure_required"
+    assert db_session.query(AutomationGrant).count() == 0
+
+    arguments.acknowledge_external_disclosure = True
+    cli._authorize(arguments)
+    payload = json.loads(capsys.readouterr().out)
+    grant = db_session.query(AutomationGrant).one()
+    assert grant.scope_set() == {"context:read", "proposals:write"}
+    assert payload["grant"]["scopes"] == ["context:read", "proposals:write"]
+
+
+def test_authorize_parser_exposes_explicit_external_disclosure_flag() -> None:
+    arguments = cli._parser().parse_args(
+        [
+            "authorize",
+            "--username",
+            "owner",
+            "--label",
+            "Workspace access",
+            "--scope",
+            "context:read",
+            "--acknowledge-external-disclosure",
+        ]
+    )
+    assert arguments.acknowledge_external_disclosure is True
 
 
 def test_doctor_reports_corrupt_schema_and_short_secret_without_false_readiness(

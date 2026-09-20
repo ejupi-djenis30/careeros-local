@@ -20,6 +20,7 @@ function focusableChildren(dialog) {
 export function ApplicationDetailDialog({
     application,
     resumeVersions,
+    resumeDrafts,
     resumeMetadataStatus,
     onRetryResumeMetadata,
     onChanged,
@@ -40,9 +41,14 @@ export function ApplicationDetailDialog({
         const hadInert = background?.hasAttribute("inert") ?? false;
         const previousAriaHidden = background?.getAttribute("aria-hidden") ?? null;
         const previousOverflow = document.body.style.overflow;
+        const portalRoot = dialogRef.current?.parentElement;
+        const siblings = Array.from(document.body.children)
+            .filter((element) => element !== portalRoot)
+            .map((element) => ({ element, hadInert: element.hasAttribute("inert") }));
 
         background?.setAttribute("inert", "");
         background?.setAttribute("aria-hidden", "true");
+        siblings.forEach(({ element }) => element.setAttribute("inert", ""));
         document.body.style.overflow = "hidden";
         const initialFocus = dialogRef.current?.querySelector("[data-dialog-initial-focus]");
         (initialFocus ?? dialogRef.current)?.focus({ preventScroll: true });
@@ -60,7 +66,7 @@ export function ApplicationDetailDialog({
             if (!first || !last) {
                 event.preventDefault();
                 dialogRef.current?.focus();
-            } else if (!dialogRef.current?.contains(document.activeElement)) {
+            } else if (document.activeElement === dialogRef.current || !dialogRef.current?.contains(document.activeElement)) {
                 event.preventDefault();
                 (event.shiftKey ? last : first).focus();
             } else if (event.shiftKey && document.activeElement === first) {
@@ -75,6 +81,9 @@ export function ApplicationDetailDialog({
         return () => {
             document.removeEventListener("keydown", handleKeyDown);
             document.body.style.overflow = previousOverflow;
+            siblings.forEach(({ element, hadInert: wasInert }) => {
+                if (!wasInert) element.removeAttribute("inert");
+            });
             if (background) {
                 if (!hadInert) background.removeAttribute("inert");
                 if (previousAriaHidden === null) background.removeAttribute("aria-hidden");
@@ -97,6 +106,7 @@ export function ApplicationDetailDialog({
             <ApplicationDetail
                 application={application}
                 resumeVersions={resumeVersions}
+                resumeDrafts={resumeDrafts}
                 resumeMetadataStatus={resumeMetadataStatus}
                 onRetryResumeMetadata={onRetryResumeMetadata}
                 onChanged={onChanged}

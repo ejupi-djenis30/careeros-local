@@ -60,6 +60,9 @@ export const ApplicationService = {
     downloadDossier(id, dossierId) {
         return ApiClient.download(`/applications/${encodeURIComponent(id)}/dossiers/${encodeURIComponent(dossierId)}/download`);
     },
+    downloadDossierArtifact(id, dossierId, filename) {
+        return ApiClient.download(`/applications/${encodeURIComponent(id)}/dossiers/${encodeURIComponent(dossierId)}/artifacts/${encodeURIComponent(filename)}`);
+    },
     readiness(id, options = {}) {
         return ApiClient.get(`/applications/${encodeURIComponent(id)}/readiness`, options.signal, options);
     },

@@ -6,6 +6,7 @@ import { createTranslator } from "./runtime";
 const SHARED_COPY_KEYS = new Set([
     "agentAccess.client.claude",
     "agentAccess.client.codex",
+    "agentWork.revisionNumber",
     "canvas.zoom",
     "data.privacy",
     "fact.type.link",

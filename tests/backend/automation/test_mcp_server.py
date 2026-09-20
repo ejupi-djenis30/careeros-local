@@ -81,6 +81,7 @@ async def test_official_client_negotiates_lists_and_calls_typed_tools(
         }
         for tool in response.tools:
             assert tool.outputSchema is not None
+            assert tool.inputSchema.get("additionalProperties") is False
             assert tool.annotations is not None
             assert tool.annotations.readOnlyHint is True
             assert tool.annotations.destructiveHint is False
@@ -193,3 +194,26 @@ async def test_expected_facade_error_keeps_its_stable_code(db_session, test_user
     assert result.isError is True
     assert "application_not_found" in str(result.content)
     assert "internal_error" not in str(result.content)
+
+
+@pytest.mark.asyncio
+async def test_headless_mcp_rejects_extra_or_malformed_arguments_without_echo(
+    db_session, test_user
+) -> None:
+    private = "synthetic-private-input-must-not-echo"
+    server = _server(test_user.id, frozenset({"applications:read"}))
+
+    async with create_connected_server_and_client_session(
+        server,
+        read_timeout_seconds=timedelta(seconds=5),
+        raise_exceptions=True,
+    ) as session:
+        extra = await session.call_tool(
+            "list_applications", {"limit": 1, private: private}
+        )
+        malformed = await session.call_tool("list_applications", {"limit": private})
+
+    for result in (extra, malformed):
+        assert result.isError is True
+        assert "invalid_result" in str(result.content)
+        assert private not in str(result.content)

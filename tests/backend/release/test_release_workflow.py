@@ -241,7 +241,9 @@ def test_runtime_version_files_and_frontend_engine_are_exactly_bounded() -> None
         "tauri:dev",
         "test",
         "test:agent-access-quality",
+        "test:agent-work-quality",
         "test:agenda-responsive",
+        "test:application-materials",
         "test:coverage",
         "test:e2e",
         "test:icons",
@@ -263,6 +265,7 @@ def test_runtime_version_files_and_frontend_engine_are_exactly_bounded() -> None
 
 def test_native_build_forwards_locked_and_consumes_metadata_portably() -> None:
     text = WORKFLOW.read_text(encoding="utf-8")
+    native = text[text.index("  native:") : text.index("  assemble-release:")]
 
     assert text.count("cargo metadata --manifest-path frontend/src-tauri/Cargo.toml") == 2
     assert text.count("--locked --format-version 1") == 2
@@ -275,6 +278,12 @@ def test_native_build_forwards_locked_and_consumes_metadata_portably() -> None:
     ) not in text
     assert "python -m scripts.verify_sidecar_build" in text
     assert "python scripts/verify_sidecar_build.py" not in text
+    assert "shell: bash\n        run: >-\n          python scripts/smoke_packaged_mcp.py" in native
+    assert '--binary "$CAREEROS_SIDECAR_BINARY"' in native
+    assert '--mcp-binary "$CAREEROS_MCP_BINARY"' in native
+    assert native.index("Verify native sidecar architecture") < native.index(
+        "Exercise packaged MCP across desktop restarts"
+    ) < native.index("Build native installers from Cargo.lock")
 
 
 def test_source_built_cryptography_uses_verified_static_openssl() -> None:

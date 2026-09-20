@@ -2,16 +2,33 @@ from __future__ import annotations
 
 import json
 import logging
+import math
 from datetime import UTC, date, datetime
 from types import SimpleNamespace
 from typing import Any, cast
 from uuid import UUID
 
-from sqlalchemy import JSON, Date, DateTime, or_, text, update
+from sqlalchemy import (
+    JSON,
+    Boolean,
+    Date,
+    DateTime,
+    Float,
+    Integer,
+    String,
+    Text,
+    or_,
+    text,
+    update,
+)
 from sqlalchemy.exc import IntegrityError, StatementError
 from sqlalchemy.orm import Session
 
-from backend.applications.models import Application
+from backend.agent_work.models import AgentProposal, AgentWorkRequest
+from backend.ai.models import AIExecution
+from backend.applications.exports import MAX_DOSSIER_BUNDLE_BYTES
+from backend.applications.models import Application, ApplicationPacketArtifact
+from backend.applications.packet_storage import packet_artifact_path, reconcile_packet_journals
 from backend.applications.schemas import ApplicationDossierDraftContent
 from backend.applications.service import (
     ApplicationService,
@@ -19,6 +36,7 @@ from backend.applications.service import (
 )
 from backend.applications.snapshots import sanitize_application_snapshot
 from backend.automation.models import AutomationGrant
+from backend.campaigns.models import Campaign, CampaignApplication, CampaignArtifact
 from backend.career.deletion import (
     _enable_sqlite_secure_delete,
     _exclusive_restore_journal_paths,
@@ -26,6 +44,7 @@ from backend.career.deletion import (
 )
 from backend.career.models import CandidateProfile, CareerAsset
 from backend.core.config import settings
+from backend.core.json_safety import strict_json_loads
 from backend.db.types import UTCDateTime, aware_utc
 from backend.desktop.lifecycle import VaultLockTimeout, desktop_vault_lock
 from backend.models import Job, ScrapedJob, SearchProfile, User
@@ -40,6 +59,7 @@ from backend.portability.archive import (
     _json_value,
     _validated_members,
 )
+from backend.portability.campaigns import validate_campaign_records
 from backend.portability.journal import (
     RestoreJournalError,
     atomic_restore_write,
@@ -53,7 +73,9 @@ from backend.portability.manifest import (
     expected_tables,
     sha256,
 )
+from backend.portability.packets import validate_packet_bytes, validate_packet_records
 from backend.portability.schemas import ArchiveManifest, RestoreResponse
+from backend.portability.workspace import validate_workspace_records
 from backend.resumes.artifact_policy import MAX_RESUME_ARTIFACT_BYTES
 from backend.resumes.models import ResumeArtifact, ResumeDraft, ResumeVersion
 from backend.search.receipt import (
@@ -69,7 +91,7 @@ from backend.workflows.models import WorkflowRun
 
 logger = logging.getLogger(__name__)
 
-FILE_TABLES = frozenset({"career_assets", "resume_artifacts"})
+FILE_TABLES = frozenset({"career_assets", "resume_artifacts", "application_packet_artifacts"})
 USER_SCOPED_TABLES = frozenset(
     {
         "candidate_profiles",
@@ -78,6 +100,9 @@ USER_SCOPED_TABLES = frozenset(
         "applications",
         "workflow_runs",
         "ai_executions",
+        "agent_work_requests",
+        "agent_proposals",
+        "campaigns",
     }
 )
 
@@ -173,9 +198,10 @@ def _quarantine_unverified_analysis(
         if field in row and (row.get(field) is not None or field == "worth_applying")
     }
     prior_snapshot = row.get("analysis_legacy_snapshot")
+    analysis_version = 7 if format_version >= 7 else format_version
     snapshot: dict[str, Any] = {
         "schema_version": "1.0",
-        "reason": f"unsigned_v{format_version}_analysis_requires_revalidation",
+        "reason": f"unsigned_v{analysis_version}_analysis_requires_revalidation",
         "analysis": preserved,
     }
     if prior_snapshot is not None:
@@ -197,19 +223,108 @@ def _decode_row(model: type[Any], row: dict[str, Any]) -> dict[str, Any]:
     decoded = dict(row)
     for key, value in list(decoded.items()):
         column_type = columns[key].type
-        if value is None:
-            continue
         if isinstance(column_type, (DateTime, UTCDateTime)) and isinstance(value, str):
             try:
                 decoded[key] = datetime.fromisoformat(value.replace("Z", "+00:00"))
             except ValueError as exc:
                 raise ArchiveError(f"Invalid timestamp in {model.__tablename__}.{key}") from exc
+            if isinstance(column_type, UTCDateTime) and decoded[key].tzinfo is None:
+                decoded[key] = decoded[key].replace(tzinfo=UTC)
         elif isinstance(column_type, Date) and isinstance(value, str):
             try:
                 decoded[key] = date.fromisoformat(value)
             except ValueError as exc:
                 raise ArchiveError(f"Invalid date in {model.__tablename__}.{key}") from exc
+        _validate_column_value(model, columns[key], decoded[key])
     return decoded
+
+
+def _validate_json_value(value: Any, *, depth: int = 0) -> None:
+    if depth > 64:
+        raise ArchiveError("Archive JSON data exceeds the nesting limit")
+    if value is None or isinstance(value, (str, bool, int)):
+        return
+    if isinstance(value, float):
+        if not math.isfinite(value):
+            raise ArchiveError("Archive JSON data contains a non-finite number")
+        return
+    if isinstance(value, list):
+        for item in value:
+            _validate_json_value(item, depth=depth + 1)
+        return
+    if isinstance(value, dict):
+        if not all(isinstance(key, str) for key in value):
+            raise ArchiveError("Archive JSON object keys must be strings")
+        for item in value.values():
+            _validate_json_value(item, depth=depth + 1)
+        return
+    raise ArchiveError("Archive JSON data contains an unsupported value")
+
+
+def _validate_column_value(model: type[Any], column: Any, value: Any) -> None:
+    label = f"{model.__tablename__}.{column.name}"
+    if (
+        model.__tablename__ in FILE_TABLES
+        and column.name == "byte_size"
+        and (type(value) is not int or value <= 0)
+    ):
+        raise ArchiveError("Archive file size metadata is invalid")
+    if value is None:
+        if not column.nullable:
+            raise ArchiveError(f"Archive {label} cannot be null")
+        return
+    column_type = column.type
+    if isinstance(column_type, Boolean):
+        valid = type(value) is bool
+    elif isinstance(column_type, Integer):
+        valid = type(value) is int
+    elif isinstance(column_type, Float):
+        valid = type(value) in {int, float} and math.isfinite(float(value))
+    elif isinstance(column_type, (String, Text)):
+        valid = isinstance(value, str)
+        maximum = getattr(column_type, "length", None)
+        if valid and isinstance(maximum, int) and len(value) > maximum:
+            raise ArchiveError(f"Archive {label} exceeds its length limit")
+    elif isinstance(column_type, (DateTime, UTCDateTime)):
+        valid = isinstance(value, datetime)
+        if valid and isinstance(column_type, UTCDateTime) and value.tzinfo is None:
+            raise ArchiveError(f"Archive {label} must include a timezone")
+    elif isinstance(column_type, Date):
+        valid = isinstance(value, date) and not isinstance(value, datetime)
+    elif isinstance(column_type, JSON):
+        _validate_json_value(value)
+        valid = True
+    else:
+        valid = True
+    if not valid:
+        raise ArchiveError(f"Archive {label} has an invalid value type")
+    if column.name in {"revision", "content_revision", "application_revision"} and (
+        type(value) is not int or value < 1
+    ):
+        raise ArchiveError(f"Archive {label} must be a positive integer")
+
+
+def _validate_current_row_shape(
+    table_name: str,
+    model: type[Any],
+    row: Any,
+    *,
+    format_version: int,
+) -> None:
+    if format_version != CURRENT_ARCHIVE_VERSION or not isinstance(row, dict):
+        return
+    expected = {column.name for column in model.__table__.columns}
+    if table_name in USER_SCOPED_TABLES:
+        expected.discard("user_id")
+    if table_name == "search_profiles":
+        expected.difference_update(SEARCH_PROFILE_RUNTIME_FIELDS)
+    missing = expected - set(row)
+    unknown = set(row) - expected
+    if missing or unknown:
+        raise ArchiveError(
+            f"Archive {table_name} row shape is invalid; "
+            f"missing={sorted(missing)}, unsupported={sorted(unknown)}"
+        )
 
 
 def _normalize_search_receipt_row(row: dict[str, Any]) -> None:
@@ -389,6 +504,10 @@ def _validate_portable_foreign_keys(
             for foreign_key in column.foreign_keys:
                 target_table = archive_table_by_database_table.get(foreign_key.column.table.name)
                 if target_table is None:
+                    if table_name == "agent_work_requests" and column.name == "bound_grant_id":
+                        if any(row.get(column.name) is not None for row in decoded[table_name]):
+                            raise ArchiveError("Archive cannot restore active agent authority")
+                        continue
                     if (
                         foreign_key.column.table.name == "users"
                         and column.name == "user_id"
@@ -429,15 +548,31 @@ def _validate_application_dossier_drafts(
     application_revisions = {str(row["id"]): row.get("revision") for row in decoded["applications"]}
     claimed_applications: set[str] = set()
     for row in decoded["application_dossier_drafts"]:
-        required_ids = {
-            field: row.get(field) for field in ("id", "application_id", "resume_version_id")
-        }
+        required_ids = {field: row.get(field) for field in ("id", "application_id")}
         if any(not isinstance(value, str) or not value.strip() for value in required_ids.values()):
             raise ArchiveError("Archive dossier draft relationship is invalid")
         application_id = cast(str, required_ids["application_id"])
         if application_id in claimed_applications:
             raise ArchiveError("Archive contains duplicate dossier drafts for one application")
         claimed_applications.add(application_id)
+        version_id, resume_id = row.get("resume_version_id"), row.get("resume_draft_id")
+        if (version_id is None) == (resume_id is None):
+            raise ArchiveError("Archive dossier draft binding is invalid")
+        bound_revision = row.get("resume_draft_revision")
+        if resume_id is not None:
+            resume = next(
+                (item for item in decoded["resume_drafts"] if item["id"] == resume_id), None
+            )
+            if (
+                type(bound_revision) is not int
+                or bound_revision < 1
+                or resume is None
+                or type(resume.get("revision")) is not int
+                or bound_revision > resume["revision"]
+            ):
+                raise ArchiveError("Archive dossier resume revision is invalid")
+        elif bound_revision is not None:
+            raise ArchiveError("Archive published dossier cannot bind a draft revision")
         draft_revision = row.get("revision")
         application_revision = row.get("application_revision")
         current_application_revision = application_revisions.get(application_id)
@@ -462,9 +597,9 @@ def _validate_application_dossier_drafts(
         ):
             raise ArchiveError("Archive dossier draft timestamp is invalid")
         try:
-            row["content"] = ApplicationDossierDraftContent.model_validate(
-                row.get("content")
-            ).model_dump(mode="json")
+            # Validate without inserting today's optional defaults into saved
+            # material or changing its historical provenance representation.
+            ApplicationDossierDraftContent.model_validate(row.get("content"))
         except (TypeError, ValueError) as exc:
             raise ArchiveError("Archive dossier draft content is invalid") from exc
 
@@ -516,9 +651,11 @@ def _decode_payload(
     dict[str, dict[str, Any]],
 ]:
     try:
-        payload = json.loads(members[PAYLOAD_MEMBER])
-    except (KeyError, json.JSONDecodeError, UnicodeDecodeError) as exc:
+        payload = strict_json_loads(members[PAYLOAD_MEMBER])
+    except (KeyError, json.JSONDecodeError, UnicodeDecodeError, ValueError) as exc:
         raise ArchiveError("The archive payload is invalid") from exc
+    if not isinstance(payload, dict) or set(payload) != {"tables", "file_bindings"}:
+        raise ArchiveError("The archive payload structure is invalid")
     tables = payload.get("tables")
     bindings = payload.get("file_bindings")
     if not isinstance(tables, dict) or not isinstance(bindings, list):
@@ -548,11 +685,29 @@ def _decode_payload(
                 else row
                 for row in raw_rows
             ]
+        for row in raw_rows:
+            _validate_current_row_shape(
+                table_name,
+                model,
+                row,
+                format_version=manifest.format_version,
+            )
         decoded[table_name] = [_decode_row(model, row) for row in raw_rows]
         _validate_canonical_string_primary_keys(table_name, model, decoded[table_name])
         _assert_unique_archive_ids(table_name, decoded[table_name])
         if enforce_destination_ids and table_name not in REMAPPABLE_TABLES:
             _assert_ids_available(db, model, decoded[table_name])
+    for row in decoded["agent_work_requests"]:
+        row["bound_grant_id"] = None
+    for row in decoded["agent_proposals"]:
+        row["submitting_grant_id"] = None
+    try:
+        validate_workspace_records(decoded, manifest.format_version)
+        validate_packet_records(decoded)
+        if manifest.format_version >= 8:
+            validate_campaign_records(decoded, manifest.format_version)
+    except (TypeError, ValueError) as exc:
+        raise ArchiveError("Archive workspace records are invalid") from exc
     for row in decoded["search_profiles"]:
         _normalize_search_receipt_row(row)
     for row in decoded["jobs"]:
@@ -567,20 +722,22 @@ def _decode_payload(
         # Portable archives are integrity-checksummed, not authenticated. Even if the linked
         # Job and AIExecution were forged consistently, their embedded application projection
         # cannot cross the restore boundary as trusted analysis.
+        match_version = 7 if manifest.format_version >= 7 else manifest.format_version
         row["job_snapshot"] = sanitize_application_snapshot(
             snapshot,
             quarantine_reason=(
-                f"unsigned_v{manifest.format_version}_application_match_requires_revalidation"
+                f"unsigned_v{match_version}_application_match_requires_revalidation"
             ),
         )
     # Archive checksums detect corruption, not authorship. Assistant messages and their execution
     # rows can be forged together, so imported advice cannot be displayed as current validated
     # output. Preserve it in explicit, non-rendered quarantine instead of deleting user history.
+    coach_version = 7 if manifest.format_version >= 7 else manifest.format_version
     for row in decoded["coach_messages"]:
         if row.get("role") == "assistant":
             row["generation_metadata"] = _quarantined_coach_metadata(
                 row.get("generation_metadata"),
-                reason=f"unsigned_v{manifest.format_version}_coach_output_requires_revalidation",
+                reason=f"unsigned_v{coach_version}_coach_output_requires_revalidation",
             )
     preference_state = _decode_preference_state(manifest.format_version, tables)
     _validate_search_relationships(manifest.format_version, decoded)
@@ -608,6 +765,10 @@ def _assert_empty_vault(db: Session, user_id: int, format_version: int) -> None:
         (Job, Job.user_id, "job history"),
         (Application, Application.user_id, "application history"),
         (WorkflowRun, WorkflowRun.user_id, "workflow history"),
+        (AIExecution, AIExecution.user_id, "AI execution history"),
+        (AgentWorkRequest, AgentWorkRequest.user_id, "agent work history"),
+        (AgentProposal, AgentProposal.user_id, "agent proposal history"),
+        (Campaign, Campaign.user_id, "campaign workspace"),
     )
     for model, user_column, label in checks:
         if db.query(model).filter(user_column == user_id).first() is not None:
@@ -624,6 +785,8 @@ def _canonical_file_storage_path(
     table_name: str,
     record: dict[str, Any],
     decoded: dict[str, list[dict[str, Any]]],
+    *,
+    format_version: int = CURRENT_ARCHIVE_VERSION,
 ) -> str:
     """Derive storage ownership from trusted schema relationships, never archive paths."""
 
@@ -645,6 +808,10 @@ def _canonical_file_storage_path(
             if record.get("normalized") is not True or record.get("media_type") != "image/jpeg":
                 raise ArchiveError("Archive profile photo metadata is invalid")
             return f"assets/photos/{digest[:2]}/{digest}.jpg"
+        if kind == "campaign_document":
+            if format_version < 8 or record.get("normalized") is not False:
+                raise ArchiveError("Archive campaign document metadata is invalid")
+            return f"assets/campaign/{digest[:2]}/{digest}"
         raise ArchiveError("Archive contains an unsupported managed asset kind")
 
     if table_name == "resume_artifacts":
@@ -686,6 +853,16 @@ def _canonical_file_storage_path(
             raise ArchiveError("Archive resume artifact relationship is invalid")
         return f"resumes/{profile_id}/{version_id}/{digest}.{artifact_format}"
 
+    if table_name == "application_packet_artifacts":
+        try:
+            return packet_artifact_path(
+                application_id=record["application_id"],
+                dossier_id=record["dossier_id"],
+                sha256=digest,
+            )
+        except (KeyError, ValueError, TypeError) as exc:
+            raise ArchiveError("Archive packet identity is invalid") from exc
+
     raise ArchiveError("Archive contains an unsupported managed file table")
 
 
@@ -694,18 +871,21 @@ def _prepare_file_writes(
     bindings: list[dict[str, Any]],
     members: dict[str, bytes],
     *,
+    format_version: int = CURRENT_ARCHIVE_VERSION,
     create_data_root: bool = True,
 ) -> list[tuple[str, bytes]]:
     records = {
         (table_name, str(row.get("id"))): row
         for table_name in FILE_TABLES
-        for row in decoded[table_name]
+        for row in decoded.get(table_name, [])
     }
     actual_keys: set[tuple[str, str]] = set()
     writes: list[tuple[str, bytes]] = []
     for binding in bindings:
         if not isinstance(binding, dict):
             raise ArchiveError("Archive file binding is invalid")
+        if set(binding) != {"table", "record_id", "storage_path", "member"}:
+            raise ArchiveError("Archive file binding fields are invalid")
         table_value = binding.get("table")
         record_value = binding.get("record_id")
         member_value = binding.get("member")
@@ -727,6 +907,8 @@ def _prepare_file_writes(
         maximum_size = (
             settings.MAX_UPLOAD_FILE_SIZE
             if table_name == "career_assets"
+            else MAX_DOSSIER_BUNDLE_BYTES
+            if table_name == "application_packet_artifacts"
             else MAX_RESUME_ARTIFACT_BYTES
         )
         if (
@@ -739,7 +921,17 @@ def _prepare_file_writes(
         file_data = members[member]
         if sha256(file_data) != record.get("sha256") or len(file_data) != byte_size:
             raise ArchiveError("Archived file does not match its database record")
-        canonical_path = _canonical_file_storage_path(table_name, record, decoded)
+        if table_name == "application_packet_artifacts":
+            try:
+                validate_packet_bytes(record, file_data, decoded)
+            except (OSError, ValueError) as exc:
+                raise ArchiveError("Archived packet failed verification") from exc
+        canonical_path = _canonical_file_storage_path(
+            table_name,
+            record,
+            decoded,
+            format_version=format_version,
+        )
         if record.get("storage_path") != canonical_path:
             raise ArchiveError("Archive storage path is not canonical for its record")
         try:
@@ -799,6 +991,16 @@ def _prepare_row(
             else None
         )
         row["scraped_job_id"] = application_logical_identity_map[archived_application_id]
+    if table_name == "agent_work_requests":
+        archived_target = row.get("target_job_id")
+        row["target_job_id"] = job_id_map[archived_target] if archived_target is not None else None
+        row["bound_grant_id"] = None
+        if row["state"] in {"queued", "returned"}:
+            row["state"] = "canceled"
+            row["error_code"] = "restored_without_authority"
+            row["revision"] += 1
+    if table_name == "agent_proposals":
+        row["submitting_grant_id"] = None
     if table_name == "workflow_runs":
         row["lease_owner"] = None
         row["lease_expires_at"] = None
@@ -838,6 +1040,35 @@ def _shared_listing_content(record: ScrapedJob | dict[str, Any]) -> dict[str, An
         for column in ScrapedJob.__table__.columns
         if column.name not in ignored
     }
+
+
+def _assert_shared_catalog_compatible(
+    db: Session, decoded: dict[str, list[dict[str, Any]]]
+) -> None:
+    archived_by_key = {
+        (str(row.get("platform")), str(row.get("platform_job_id"))): row
+        for row in decoded.get("scraped_jobs", [])
+    }
+    platform_ids: dict[str, list[str]] = {}
+    for platform, platform_job_id in archived_by_key:
+        platform_ids.setdefault(platform, []).append(platform_job_id)
+    for platform, identifiers in platform_ids.items():
+        for start in range(0, len(identifiers), 400):
+            existing_rows = (
+                db.query(ScrapedJob)
+                .filter(
+                    ScrapedJob.platform == platform,
+                    ScrapedJob.platform_job_id.in_(identifiers[start : start + 400]),
+                )
+                .all()
+            )
+            for existing in existing_rows:
+                key = (str(existing.platform), str(existing.platform_job_id))
+                archived = archived_by_key[key]
+                if _shared_listing_content(existing) != _shared_listing_content(archived):
+                    raise ArchiveConflictError(
+                        "A shared scraped listing already exists with different public content"
+                    )
 
 
 def _restore_search_records(
@@ -1101,6 +1332,19 @@ def _restored_file_bindings(
             bindings.setdefault(storage_path, set()).add((digest, byte_size))
         for storage_path, digest, byte_size in (
             db.query(
+                ApplicationPacketArtifact.storage_path,
+                ApplicationPacketArtifact.sha256,
+                ApplicationPacketArtifact.byte_size,
+            )
+            .join(Application, ApplicationPacketArtifact.application_id == Application.id)
+            .filter(
+                Application.user_id == user_id, ApplicationPacketArtifact.storage_path.in_(batch)
+            )
+            .all()
+        ):
+            bindings.setdefault(storage_path, set()).add((digest, byte_size))
+        for storage_path, digest, byte_size in (
+            db.query(
                 ResumeArtifact.storage_path,
                 ResumeArtifact.sha256,
                 ResumeArtifact.byte_size,
@@ -1181,6 +1425,29 @@ def _restore_commit_was_published(
             raise RestoreCleanupPendingError("Restored database file bindings are incomplete")
         if not _file_destinations_available(writes):
             raise RestoreCleanupPendingError("Restored durable files are incomplete")
+
+        if decoded.get("campaigns"):
+            actual_campaign_count = (
+                verification.query(Campaign).filter(Campaign.user_id == user_id).count()
+            )
+            if actual_campaign_count != len(decoded["campaigns"]):
+                raise RestoreCleanupPendingError("Restore campaign records disagree with the commit")
+            actual_app_count = (
+                verification.query(CampaignApplication)
+                .join(Campaign, CampaignApplication.campaign_id == Campaign.id)
+                .filter(Campaign.user_id == user_id)
+                .count()
+            )
+            if actual_app_count != len(decoded.get("campaign_applications", [])):
+                raise RestoreCleanupPendingError("Restore campaign applications disagree with the commit")
+            actual_art_count = (
+                verification.query(CampaignArtifact)
+                .join(Campaign, CampaignArtifact.campaign_id == Campaign.id)
+                .filter(Campaign.user_id == user_id)
+                .count()
+            )
+            if actual_art_count != len(decoded.get("campaign_artifacts", [])):
+                raise RestoreCleanupPendingError("Restore campaign artifacts disagree with the commit")
 
         journal = read_restore_journal(user_id)
         if journal is not None and (
@@ -1346,6 +1613,14 @@ def restore_archive(db: Session, user_id: int, data: bytes) -> RestoreResponse:
     try:
         with desktop_vault_lock():
             manifest, members = _validated_members(data)
+            if db.new or db.dirty or db.deleted:
+                raise ArchiveError("Restore requires committed vault state")
+            db.rollback()
+            if db.get_bind().dialect.name == "sqlite":
+                db.connection().exec_driver_sql("BEGIN IMMEDIATE")
+            else:
+                db.query(User).filter(User.id == user_id).with_for_update().one()
+            reconcile_packet_journals(db)
             _assert_empty_vault(db, user_id, manifest.format_version)
             (
                 decoded,
@@ -1353,7 +1628,13 @@ def restore_archive(db: Session, user_id: int, data: bytes) -> RestoreResponse:
                 preference_state,
                 application_projection_contract,
             ) = _decode_payload(db, manifest, members)
-            writes = _prepare_file_writes(decoded, bindings, members)
+            _assert_shared_catalog_compatible(db, decoded)
+            writes = _prepare_file_writes(
+                decoded,
+                bindings,
+                members,
+                format_version=manifest.format_version,
+            )
             _restore_transaction(
                 db,
                 user_id,

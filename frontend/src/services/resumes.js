@@ -1,6 +1,9 @@
 import { ApiClient } from "../lib/client";
 
 export const ResumeService = {
+    listTemplates(options = {}) {
+        return ApiClient.get("/resumes/templates", undefined, options);
+    },
     list(options = {}) {
         return ApiClient.get("/resumes", undefined, options);
     },

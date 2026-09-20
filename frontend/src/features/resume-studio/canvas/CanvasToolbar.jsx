@@ -1,6 +1,6 @@
 import { useI18n } from "../../../i18n/useI18n";
 
-export function CanvasToolbar({ state, templateKind, dispatch, onAddClaim, zoom, onZoom, pageCount }) {
+export function CanvasToolbar({ state, templateKind, templateLayout, dispatch, onAddClaim, zoom, onZoom, pageCount }) {
     const { t } = useI18n();
     const style = state.present.style;
     const setStyle = (field, value) => dispatch({ type: "SET_STYLE", field, value });
@@ -18,7 +18,7 @@ export function CanvasToolbar({ state, templateKind, dispatch, onAddClaim, zoom,
             <label><span>{t("canvas.margins", { value: style.margin_mm })}</span><input type="range" min="10" max="30" value={style.margin_mm} onChange={(event) => setStyle("margin_mm", Number(event.target.value))} /></label>
             <label><span>{t("canvas.accent")}</span><input aria-label={t("canvas.accentColor")} type="color" value={style.accent_color} onChange={(event) => setStyle("accent_color", event.target.value)} /></label>
             <label><span>{t("canvas.zoom", { value: Math.round(zoom * 100) })}</span><input aria-label={t("canvas.zoomControl")} type="range" min="0.5" max="1.5" step="0.05" value={zoom} onChange={(event) => onZoom(Number(event.target.value))} /></label>
-            {templateKind === "photo" && <label><span>{t("canvas.columns")}</span><select value={style.columns} onChange={(event) => setStyle("columns", Number(event.target.value))}><option value="1">{t("canvas.one")}</option><option value="2">{t("canvas.two")}</option></select></label>}
+            {templateKind === "photo" && !templateLayout && <label><span>{t("canvas.columns")}</span><select value={style.columns} onChange={(event) => setStyle("columns", Number(event.target.value))}><option value="1">{t("canvas.one")}</option><option value="2">{t("canvas.two")}</option></select></label>}
             {templateKind === "ats" && <span className="canvas-toolbar__badge"><i className="bi bi-shield-check" /> {t("canvas.atsBadge")}</span>}
             <span className={`canvas-toolbar__badge ${pageCount > 3 ? "is-warning" : ""}`} aria-live="polite"><i className="bi bi-file-earmark" /> {pageCount} {pageCount === 1 ? t("canvas.page") : t("canvas.pages")}</span>
         </div>

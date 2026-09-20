@@ -19,6 +19,7 @@ from backend.ai.match_policy import DIMENSION_SCORE_FIELDS, materialize_match_ci
 from backend.ai.models import AIExecution
 from backend.core.config import settings
 from backend.core.diagnostics import FailureCode, diagnose_failure, log_failure
+from backend.jobs.catalog_observation import apply_catalog_observation
 from backend.jobs.urls import normalize_job_url
 from backend.models import Job, ScrapedJob
 from backend.repositories.job_repository import JobRepository
@@ -385,55 +386,14 @@ class SearchPipelinePersistence:
             raise RuntimeError("Scraped job upsert did not return a persisted catalog record")
 
         if not created:
-            stored_fingerprint = getattr(existing_sj, "content_fingerprint", None)
-            if not isinstance(stored_fingerprint, str) or not stored_fingerprint.strip():
-                stored_fingerprint = None
-            content_changed = bool(stored_fingerprint and stored_fingerprint != content_fingerprint)
-            if stored_fingerprint is None:
-                content_changed = any(
-                    getattr(existing_sj, field, None) != value
-                    for field, value in refresh_fields.items()
-                    if field in {"title", "company", "description", "location", "workload"}
-                )
-
-            first_seen_at = getattr(existing_sj, "first_seen_at", None)
-            if not isinstance(first_seen_at, datetime):
-                created_at = getattr(existing_sj, "created_at", None)
-                existing_sj.first_seen_at = (
-                    created_at if isinstance(created_at, datetime) else observed_at
-                )
-            existing_sj.last_seen_at = observed_at
-
-            stored_revision = getattr(existing_sj, "content_revision", 1)
-            if (
-                isinstance(stored_revision, bool)
-                or not isinstance(stored_revision, int)
-                or stored_revision < 1
-            ):
-                stored_revision = 1
-            existing_sj.content_revision = stored_revision
-
-            last_changed_at = getattr(existing_sj, "last_changed_at", None)
-            if not isinstance(last_changed_at, datetime):
-                existing_sj.last_changed_at = existing_sj.first_seen_at
-
-            for field, value in refresh_fields.items():
-                setattr(existing_sj, field, value)
-            if content_changed:
-                existing_sj.content_revision = stored_revision + 1
-                existing_sj.last_changed_at = observed_at
-                self._clear_normalization(existing_sj)
-                for field, value in normalized_bootstrap.items():
-                    setattr(existing_sj, field, value)
-                metadata = dict(cast(Dict[str, Any] | None, existing_sj.normalized_metadata) or {})
-                metadata["content_changed_at"] = observed_at.isoformat()
-                existing_sj.normalized_metadata = metadata
-            else:
-                for field, value in normalized_bootstrap.items():
-                    if getattr(existing_sj, field, None) is None and value is not None:
-                        setattr(existing_sj, field, value)
-            if not existing_sj.normalization_status:
-                existing_sj.normalization_status = "provider_bootstrap"
+            content_changed = apply_catalog_observation(
+                existing_sj,
+                seen_at=observed_at,
+                refresh_fields=refresh_fields,
+                content_fingerprint=content_fingerprint,
+                normalized_bootstrap=normalized_bootstrap,
+                clear_normalization=self._clear_normalization,
+            )
 
         setattr(listing, "_scraped_job_id", existing_sj.id)
         setattr(
