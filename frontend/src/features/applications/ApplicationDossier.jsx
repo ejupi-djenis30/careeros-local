@@ -2,81 +2,17 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { saveBlob } from "../../lib/download";
 import { ApplicationService } from "../../services/applications";
 import { CareerService } from "../../services/career";
-import { factTitle } from "../career-profile/profileModel";
+import { DossierFields } from "./DossierFields";
+import { DossierMaterials } from "./DossierMaterials";
+import { DossierTarget } from "./DossierTarget";
+import { DossierArtifacts } from "./DossierArtifacts";
+import { LIMITS, requirementRow, answerRow, checklistRow, blankForm, draftContent, formFromDraft, draftBinding, publishContent } from "./dossierModel";
 import { useI18n } from "../../i18n/useI18n";
 
-let fallbackRowId = 0;
-function rowId() {
-    if (globalThis.crypto?.randomUUID) return globalThis.crypto.randomUUID();
-    fallbackRowId += 1;
-    return `dossier-row-${fallbackRowId}`;
-}
-
-const requirementRow = () => ({ id: rowId(), requirement: "", evidenceFactIds: [] });
-const answerRow = () => ({ id: rowId(), question: "", answer: "" });
-const checklistRow = () => ({ id: rowId(), label: "", completed: false });
-const blankForm = () => ({
-    requirements: [requirementRow()],
-    coverLetter: "",
-    answers: [answerRow()],
-    checklist: [checklistRow()],
-});
-const trim = (value) => value.trim();
-const LIMITS = Object.freeze({
-    requirements: 25,
-    evidencePerRequirement: 10,
-    evidenceLinks: 100,
-    uniqueFacts: 50,
-    answers: 25,
-    checklist: 50,
-    coverLetter: 30000,
-});
 const AUTOSAVE_DELAY_MS = 650;
+const trim = (value) => value.trim();
 
-function draftContent({ requirements, coverLetter, answers, checklist }) {
-    return {
-        cover_letter: coverLetter || null,
-        answers: answers.map((row) => ({
-            client_id: row.id,
-            question: row.question,
-            answer: row.answer,
-        })),
-        checklist: checklist.map((row) => ({
-            client_id: row.id,
-            label: row.label,
-            completed: row.completed,
-        })),
-        requirement_matrix: requirements.map((row) => ({
-            client_id: row.id,
-            requirement: row.requirement,
-            evidence_fact_ids: row.evidenceFactIds,
-        })),
-    };
-}
-
-function formFromDraft(draft) {
-    const content = draft?.content || {};
-    return {
-        requirements: (content.requirement_matrix || []).map((row) => ({
-            id: row.client_id,
-            requirement: row.requirement,
-            evidenceFactIds: row.evidence_fact_ids,
-        })),
-        coverLetter: content.cover_letter || "",
-        answers: (content.answers || []).map((row) => ({
-            id: row.client_id,
-            question: row.question,
-            answer: row.answer,
-        })),
-        checklist: (content.checklist || []).map((row) => ({
-            id: row.client_id,
-            label: row.label,
-            completed: row.completed,
-        })),
-    };
-}
-
-export function ApplicationDossier({ application, resumeVersions = [], resumeMetadataStatus = "ready", onRetryResumeMetadata, onChanged }) {
+export function ApplicationDossier({ application, resumeVersions = [], resumeDrafts = [], resumeMetadataStatus = "ready", onRetryResumeMetadata, onChanged }) {
     const { t } = useI18n();
     const initial = useMemo(() => blankForm(), []);
     const [facts, setFacts] = useState([]);
@@ -84,12 +20,18 @@ export function ApplicationDossier({ application, resumeVersions = [], resumeMet
     const [coverLetter, setCoverLetter] = useState(initial.coverLetter);
     const [answers, setAnswers] = useState(initial.answers);
     const [checklist, setChecklist] = useState(initial.checklist);
+    const [letterOptions, setLetterOptions] = useState(null);
+    const [emailDraft, setEmailDraft] = useState(null);
+    const [evidenceClaims, setEvidenceClaims] = useState([]);
+    const [generationProvenance, setGenerationProvenance] = useState(null);
+    const [binding, setBinding] = useState(() => draftBinding(null, application));
+    const [publishVersionId, setPublishVersionId] = useState("");
+    const [incomingDraft, setIncomingDraft] = useState(null);
     const [busy, setBusy] = useState("");
     const [error, setError] = useState("");
     const [profileStatus, setProfileStatus] = useState("loading");
     const [profileLoadRevision, setProfileLoadRevision] = useState(0);
     const [evidenceNotice, setEvidenceNotice] = useState("");
-    const [draftResumeVersionId, setDraftResumeVersionId] = useState(application.resume_version_id);
     const [draftStatus, setDraftStatus] = useState("loading");
     const [draftRevision, setDraftRevision] = useState(null);
     const [draftLoadedFor, setDraftLoadedFor] = useState("");
@@ -101,7 +43,15 @@ export function ApplicationDossier({ application, resumeVersions = [], resumeMet
     const currentFingerprintRef = useRef("");
     const savePromiseRef = useRef(null);
 
-    const linkedVersion = resumeVersions.find((version) => version.id === application.resume_version_id);
+    useEffect(() => {
+        activeApplicationRef.current = application.id;
+        return () => { activeApplicationRef.current = ""; };
+    }, [application.id]);
+
+    const hasBinding = Boolean(binding.resume_draft_id || binding.resume_version_id);
+    const linkedVersion = binding.resume_draft_id
+        ? resumeDrafts.find((draft) => draft.id === binding.resume_draft_id)
+        : resumeVersions.find((version) => version.id === application.resume_version_id);
     const eligibleFacts = useMemo(() => {
         const selected = new Set(linkedVersion?.selected_fact_ids || []);
         return facts.filter((fact) => selected.has(fact.id) && fact.verification_status === "confirmed");
@@ -115,12 +65,12 @@ export function ApplicationDossier({ application, resumeVersions = [], resumeMet
     const uniqueEvidenceIds = new Set(selectedEvidenceIds);
     const staleEvidenceCount = selectedEvidenceIds.filter((factId) => !eligibleFactIds.has(factId)).length;
     const currentDraftContent = useMemo(
-        () => draftContent({ requirements, coverLetter, answers, checklist }),
-        [requirements, coverLetter, answers, checklist],
+        () => draftContent({ requirements, coverLetter, answers, checklist, letterOptions, emailDraft, evidenceClaims, generationProvenance }),
+        [requirements, coverLetter, answers, checklist, letterOptions, emailDraft, evidenceClaims, generationProvenance],
     );
     const currentDraftFingerprint = useMemo(
-        () => JSON.stringify(currentDraftContent),
-        [currentDraftContent],
+        () => JSON.stringify({ content: currentDraftContent, binding }),
+        [currentDraftContent, binding],
     );
     useEffect(() => {
         currentFingerprintRef.current = currentDraftFingerprint;
@@ -131,7 +81,29 @@ export function ApplicationDossier({ application, resumeVersions = [], resumeMet
         setCoverLetter(form.coverLetter);
         setAnswers(form.answers.length ? form.answers : [answerRow()]);
         setChecklist(form.checklist.length ? form.checklist : [checklistRow()]);
+        setLetterOptions(form.letterOptions);
+        setEmailDraft(form.emailDraft);
+        setEvidenceClaims(form.evidenceClaims);
+        setGenerationProvenance(form.generationProvenance);
     }, []);
+
+    const installDraft = useCallback((draft) => {
+        const form = draft ? formFromDraft(draft) : blankForm();
+        if (!form.answers.length) form.answers = [answerRow()];
+        if (!form.checklist.length) form.checklist = [checklistRow()];
+        const nextBinding = draftBinding(draft, application);
+        applyForm(form);
+        setBinding(nextBinding);
+        setPublishVersionId("");
+        draftRevisionRef.current = draft?.revision ?? null;
+        savedFingerprintRef.current = JSON.stringify({ content: draftContent(form), binding: nextBinding });
+        savedApplicationRevisionRef.current = draft?.application_revision ?? application.revision;
+        setDraftRevision(draft?.revision ?? null);
+        setDraftLoadedFor(application.id);
+        setDraftStatus(draft ? "saved" : "empty");
+        setIncomingDraft(null);
+        setBusy("");
+    }, [application, applyForm]);
 
     useEffect(() => {
         const controller = new AbortController();
@@ -165,16 +137,7 @@ export function ApplicationDossier({ application, resumeVersions = [], resumeMet
             })
             .then((draft) => {
                 if (controller.signal.aborted || activeApplicationRef.current !== applicationId) return;
-                const form = draft ? formFromDraft(draft) : blankForm();
-                applyForm(form);
-                const fingerprint = JSON.stringify(draftContent(form));
-                draftRevisionRef.current = draft?.revision ?? null;
-                savedFingerprintRef.current = fingerprint;
-                savedApplicationRevisionRef.current = draft?.application_revision ?? application.revision;
-                setDraftRevision(draft?.revision ?? null);
-                setDraftResumeVersionId(draft?.resume_version_id ?? application.resume_version_id);
-                setDraftLoadedFor(applicationId);
-                setDraftStatus(draft ? "saved" : "empty");
+                installDraft(draft);
             })
             .catch(() => {
                 if (controller.signal.aborted || activeApplicationRef.current !== applicationId) return;
@@ -191,15 +154,16 @@ export function ApplicationDossier({ application, resumeVersions = [], resumeMet
         applyForm,
         draftLoadAttempt,
         draftLoadedFor,
+        installDraft,
     ]);
 
     useEffect(() => {
         if (profileStatus !== "ready" || resumeMetadataStatus !== "ready" || !linkedVersion
-            || draftResumeVersionId === application.resume_version_id) return;
+            || binding.resume_draft_id || binding.resume_version_id === application.resume_version_id) return;
         const applicationId = application.id;
         Promise.resolve().then(() => {
             if (activeApplicationRef.current !== applicationId) return;
-            setDraftResumeVersionId(application.resume_version_id);
+            setBinding({ resume_version_id: application.resume_version_id });
             setRequirements((current) => current.map((row) => ({
                 ...row,
                 evidenceFactIds: row.evidenceFactIds.filter((factId) => eligibleFactIds.has(factId)),
@@ -211,7 +175,7 @@ export function ApplicationDossier({ application, resumeVersions = [], resumeMet
     }, [
         application.id,
         application.resume_version_id,
-        draftResumeVersionId,
+        binding,
         eligibleFactIds,
         linkedVersion,
         profileStatus,
@@ -228,6 +192,7 @@ export function ApplicationDossier({ application, resumeVersions = [], resumeMet
                 // A new explicit retry is allowed after the prior attempt settles.
             }
         }
+        if (activeApplicationRef.current !== application.id) throw new DOMException("Aborted", "AbortError");
         const alreadyCurrent = savedFingerprintRef.current === fingerprint
             && savedApplicationRevisionRef.current === application.revision
             && draftRevisionRef.current !== null;
@@ -237,7 +202,7 @@ export function ApplicationDossier({ application, resumeVersions = [], resumeMet
         const operation = ApplicationService.saveDossierDraft(application.id, {
             expected_revision: draftRevisionRef.current,
             expected_application_revision: application.revision,
-            resume_version_id: application.resume_version_id,
+            ...binding,
             content,
         });
         savePromiseRef.current = operation;
@@ -248,7 +213,6 @@ export function ApplicationDossier({ application, resumeVersions = [], resumeMet
             savedFingerprintRef.current = fingerprint;
             savedApplicationRevisionRef.current = stored.application_revision;
             setDraftRevision(stored.revision);
-            setDraftResumeVersionId(stored.resume_version_id);
             setDraftStatus(
                 currentFingerprintRef.current === fingerprint ? "saved" : "unsaved",
             );
@@ -263,14 +227,14 @@ export function ApplicationDossier({ application, resumeVersions = [], resumeMet
         }
     }, [
         application.id,
-        application.resume_version_id,
         application.revision,
+        binding,
     ]);
 
     useEffect(() => {
         if (
             draftLoadedFor !== application.id
-            || !application.resume_version_id
+            || !hasBinding || busy || incomingDraft
             || ["loading", "saving", "save-error", "load-error", "conflict"].includes(
                 draftStatus,
             )
@@ -293,6 +257,9 @@ export function ApplicationDossier({ application, resumeVersions = [], resumeMet
         draftLoadedFor,
         draftStatus,
         saveDraftSnapshot,
+        hasBinding,
+        busy,
+        incomingDraft,
     ]);
 
     const retryProfile = () => {
@@ -321,6 +288,7 @@ export function ApplicationDossier({ application, resumeVersions = [], resumeMet
 
     const requirementsReady = resumeMetadataStatus === "ready"
         && Boolean(linkedVersion)
+        && (!binding.resume_draft_id || Boolean(publishVersionId))
         && profileStatus === "ready"
         && draftLoadedFor === application.id
         && staleEvidenceCount === 0
@@ -344,10 +312,12 @@ export function ApplicationDossier({ application, resumeVersions = [], resumeMet
         setDraftStatus("saving");
         try {
             const serverDraft = await ApplicationService.getDossierDraft(application.id);
+            if (activeApplicationRef.current !== application.id) return;
             draftRevisionRef.current = serverDraft?.revision ?? null;
             setDraftRevision(serverDraft?.revision ?? null);
             await saveDraftSnapshot(currentDraftContent, currentDraftFingerprint);
         } catch (draftError) {
+            if (activeApplicationRef.current !== application.id) return;
             setDraftStatus(draftError.status === 409 ? "conflict" : "save-error");
         }
     };
@@ -360,9 +330,10 @@ export function ApplicationDossier({ application, resumeVersions = [], resumeMet
                 application.id,
                 draftRevisionRef.current,
             );
+            if (activeApplicationRef.current !== application.id) return;
             const form = blankForm();
             applyForm(form);
-            const fingerprint = JSON.stringify(draftContent(form));
+            const fingerprint = JSON.stringify({ content: draftContent(form), binding });
             draftRevisionRef.current = null;
             savedFingerprintRef.current = fingerprint;
             savedApplicationRevisionRef.current = application.revision;
@@ -370,9 +341,10 @@ export function ApplicationDossier({ application, resumeVersions = [], resumeMet
             setDraftStatus("empty");
             setError("");
         } catch (deleteError) {
+            if (activeApplicationRef.current !== application.id) return;
             setDraftStatus(deleteError.status === 409 ? "conflict" : "save-error");
         } finally {
-            setBusy("");
+            if (activeApplicationRef.current === application.id) setBusy("");
         }
     };
 
@@ -394,38 +366,65 @@ export function ApplicationDossier({ application, resumeVersions = [], resumeMet
                 currentDraftContent,
                 currentDraftFingerprint,
             );
+            if (activeApplicationRef.current !== application.id) return;
             const updated = await ApplicationService.publishDossier(application.id, {
                 expected_revision: application.revision,
                 expected_draft_revision: savedRevision,
-                cover_letter: trim(coverLetter) || null,
-                answers: answers.filter((row) => trim(row.question) && trim(row.answer)).map((row) => ({ question: trim(row.question), answer: trim(row.answer) })),
-                checklist: checklist.filter((row) => trim(row.label)).map((row) => ({ label: trim(row.label), completed: row.completed })),
-                requirement_matrix: requirements.map((row) => ({ requirement: trim(row.requirement), evidence_fact_ids: row.evidenceFactIds })),
+                ...(binding.resume_draft_id ? { resume_version_id: publishVersionId } : {}),
+                ...publishContent(currentDraftContent),
             });
+            if (activeApplicationRef.current !== application.id) return;
             const form = blankForm();
             applyForm(form);
             draftRevisionRef.current = null;
-            savedFingerprintRef.current = JSON.stringify(draftContent(form));
+            const nextBinding = draftBinding(null, updated);
+            setBinding(nextBinding);
+            savedFingerprintRef.current = JSON.stringify({ content: draftContent(form), binding: nextBinding });
             savedApplicationRevisionRef.current = updated.revision;
             setDraftRevision(null);
             setDraftStatus("empty");
             onChanged(updated);
         } catch (dossierError) {
+            if (activeApplicationRef.current !== application.id) return;
             setError(dossierError.status === 409 ? t("applicationDetail.conflict") : dossierError.message);
         } finally {
-            setBusy("");
+            if (activeApplicationRef.current === application.id) setBusy("");
         }
     };
 
-    const download = async (dossier) => {
+    const download = async (dossier, filename) => {
         setBusy(dossier.id);
         setError("");
         try {
-            saveBlob(await ApplicationService.downloadDossier(application.id, dossier.id));
+            const downloaded = filename
+                ? await ApplicationService.downloadDossierArtifact(application.id, dossier.id, filename)
+                : await ApplicationService.downloadDossier(application.id, dossier.id);
+            if (activeApplicationRef.current === application.id) saveBlob(downloaded);
         } catch (downloadError) {
+            if (activeApplicationRef.current !== application.id) return;
             setError(downloadError.message);
         } finally {
-            setBusy("");
+            if (activeApplicationRef.current === application.id) setBusy("");
+        }
+    };
+
+    const refreshDraft = async () => {
+        setBusy("refresh");
+        setError("");
+        const fingerprint = currentDraftFingerprint;
+        const wasDirty = fingerprint !== savedFingerprintRef.current;
+        try {
+            if (savePromiseRef.current) await savePromiseRef.current;
+            if (activeApplicationRef.current !== application.id) return;
+            const draft = await ApplicationService.getDossierDraft(application.id);
+            if (activeApplicationRef.current !== application.id) return;
+            if (wasDirty || currentFingerprintRef.current !== fingerprint) setIncomingDraft({ draft });
+            else installDraft(draft);
+            onRetryResumeMetadata?.();
+        } catch (refreshError) {
+            if (activeApplicationRef.current === application.id) setError(refreshError.message);
+        } finally {
+            if (activeApplicationRef.current === application.id) setBusy("");
         }
     };
 
@@ -445,43 +444,27 @@ export function ApplicationDossier({ application, resumeVersions = [], resumeMet
         <section className="application-operations" aria-labelledby="dossier-title">
             <header><div><span>{t("dossier.kicker")}</span><h3 id="dossier-title">{t("dossier.title")}</h3></div><i className="bi bi-shield-check" aria-hidden="true" /></header>
             <p>{t("dossier.copy")}</p>
+            <DossierTarget {...{ application, binding, resumeDrafts, resumeVersions, publishVersionId }}
+                busy={Boolean(busy) || draftStatus === "loading" || draftStatus === "saving"}
+                onBindingChange={(next) => { setBinding(next); setPublishVersionId(""); }}
+                onPublishVersionChange={setPublishVersionId} onRefresh={refreshDraft}
+                onRequest={(event) => { if (savedFingerprintRef.current !== currentFingerprintRef.current) { event.preventDefault(); setError(t("dossier.saveBeforeRequest")); } }} />
+            {incomingDraft && <div className="inline-alert" role="alert"><p>{t("dossier.incomingDraft")}</p>
+                <button type="button" className="button button--secondary" onClick={() => installDraft(incomingDraft.draft)}>{t("dossier.loadIncoming")}</button>
+                <button type="button" className="button button--ghost" onClick={() => setIncomingDraft(null)}>{t("dossier.keepEditing")}</button>
+            </div>}
             {error && <div className="inline-alert inline-alert--danger" role="alert">{error}</div>}
             {evidenceNotice && <div className="inline-alert" role="status" aria-live="polite">{evidenceNotice}</div>}
-            {application.resume_version_id && <div className={`dossier-save-status dossier-save-status--${draftStatus}`} role={draftStatusIsError ? "alert" : "status"} aria-live="polite"><span><i className={`bi ${draftStatus === "saved" ? "bi-device-ssd-fill" : draftStatusIsError ? "bi-exclamation-triangle" : "bi-device-ssd"}`} aria-hidden="true" /> {t(draftStatusKey)}</span><div>{draftStatus === "load-error" && <button type="button" className="button button--ghost" onClick={() => setDraftLoadAttempt((value) => value + 1)}>{t("dossier.retryDraftLoad")}</button>}{draftStatus === "save-error" && <button type="button" className="button button--ghost" onClick={retryDraftSave}>{t("dossier.retryDraftSave")}</button>}{draftStatus === "conflict" && <button type="button" className="button button--ghost" onClick={keepLocalDraftAfterConflict}>{t("dossier.keepLocalDraft")}</button>}{draftRevision !== null && <button type="button" className="button button--ghost" disabled={Boolean(busy) || draftStatus === "saving"} onClick={discardDraft}>{t("dossier.discardDraft")}</button>}</div></div>}
-            {application.resume_version_id && resumeMetadataStatus === "error" && <div className="inline-alert inline-alert--danger" role="alert"><span>{t("dossier.resumeMetadataError")}</span> <button type="button" className="button button--secondary" onClick={onRetryResumeMetadata}>{t("dossier.retryResumeMetadata")}</button></div>}
+            {hasBinding && <div className={`dossier-save-status dossier-save-status--${draftStatus}`} role={draftStatusIsError ? "alert" : "status"} aria-live="polite"><span><i className={`bi ${draftStatus === "saved" ? "bi-device-ssd-fill" : draftStatusIsError ? "bi-exclamation-triangle" : "bi-device-ssd"}`} aria-hidden="true" /> {t(draftStatusKey)}</span><div>{draftStatus === "load-error" && <button type="button" className="button button--ghost" onClick={() => setDraftLoadAttempt((value) => value + 1)}>{t("dossier.retryDraftLoad")}</button>}{draftStatus === "save-error" && <button type="button" className="button button--ghost" onClick={retryDraftSave}>{t("dossier.retryDraftSave")}</button>}{draftStatus === "conflict" && <button type="button" className="button button--ghost" onClick={keepLocalDraftAfterConflict}>{t("dossier.keepLocalDraft")}</button>}{draftRevision !== null && <button type="button" className="button button--ghost" disabled={Boolean(busy) || draftStatus === "saving"} onClick={discardDraft}>{t("dossier.discardDraft")}</button>}</div></div>}
+            {hasBinding && resumeMetadataStatus === "error" && <div className="inline-alert inline-alert--danger" role="alert"><span>{t("dossier.resumeMetadataError")}</span> <button type="button" className="button button--secondary" onClick={onRetryResumeMetadata}>{t("dossier.retryResumeMetadata")}</button></div>}
             {profileStatus === "error" && <div className="inline-alert inline-alert--danger" role="alert"><span>{t("dossier.profileLoadError")}</span> <button type="button" className="button button--secondary" onClick={retryProfile}>{t("dossier.retryProfile")}</button></div>}
-            {(application.dossiers || []).length > 0 && <div className="dossier-versions">{application.dossiers.map((dossier) => <article key={dossier.id}><div><strong>{t("dossier.version", { version: dossier.version_number })}</strong><span>{t("dossier.requirements", { count: dossier.requirement_count })} · {t("dossier.checklist", { complete: dossier.completed_checklist, total: dossier.checklist_total })}</span><code>{dossier.manifest_sha256.slice(0, 12)}</code></div><button type="button" className="button button--secondary" disabled={Boolean(busy)} onClick={() => download(dossier)}><i className="bi bi-file-earmark-zip" /> {t("dossier.download")}</button></article>)}</div>}
-            {!application.resume_version_id ? <div className="empty-inline"><p>{t("dossier.resumeRequired")}</p></div> : (
+            <DossierArtifacts application={application} busy={Boolean(busy)} onDownload={download} />
+            {!hasBinding ? <div className="empty-inline"><p>{t("dossier.resumeRequired")}</p></div> : (
                 <form className="dossier-form" onSubmit={publish} aria-busy={draftStatus === "loading" || draftStatus === "saving"}>
-                    <fieldset className="dossier-form__workspace" disabled={draftStatus === "loading" || draftStatus === "load-error"}>
+                    <fieldset className="dossier-form__workspace" disabled={Boolean(busy) || draftStatus === "loading" || draftStatus === "load-error"}>
                         <legend className="visually-hidden">{t("dossier.workspace")}</legend>
-                        <p id="dossier-limits" className="dossier-disclaimer">{t("dossier.limits")}</p>
-                        <section className="dossier-builder" aria-labelledby="dossier-requirements-title">
-                            <div className="dossier-builder__heading"><h4 id="dossier-requirements-title">{t("dossier.requirementsSection")}</h4><button type="button" className="button button--secondary" aria-describedby="dossier-limits" disabled={requirements.length >= LIMITS.requirements} onClick={() => setRequirements((current) => [...current, requirementRow()])}><i className="bi bi-plus-lg" aria-hidden="true" /> {t("dossier.addRequirement")}</button></div>
-                            {requirements.map((row, index) => <fieldset className="dossier-row" key={row.id}>
-                                <legend>{t("dossier.requirementNumber", { index: index + 1 })}</legend>
-                                <label className="field-stack"><span>{t("dossier.requirementLabel", { index: index + 1 })}</span><textarea className="form-control" rows="2" value={row.requirement} onChange={(event) => updateRequirement(row.id, "requirement", event.target.value)} required maxLength="2000" placeholder={t("dossier.requirementPlaceholder")} /></label>
-                                <fieldset className="dossier-evidence"><legend>{t("dossier.evidence")}</legend><small id={`dossier-evidence-limit-${row.id}`}>{t("dossier.evidenceLimit", { count: LIMITS.evidencePerRequirement })}</small>{resumeMetadataStatus === "loading" ? <p role="status">{t("dossier.resumeMetadataLoading")}</p> : resumeMetadataStatus === "error" ? null : !linkedVersion ? <p>{t("dossier.resumeMetadataMissing")}</p> : profileStatus === "loading" ? <p role="status">{t("dossier.loadingEvidence")}</p> : profileStatus === "ready" && eligibleFacts.length ? eligibleFacts.map((fact) => <label key={fact.id} className="check-line"><input type="checkbox" aria-label={t("dossier.evidenceFor", { fact: factTitle(fact), index: index + 1 })} aria-describedby={`dossier-evidence-limit-${row.id}`} checked={row.evidenceFactIds.includes(fact.id)} disabled={evidenceSelectionDisabled(row, fact.id)} onChange={() => toggleFact(row.id, fact.id)} /><span>{factTitle(fact)}</span><small>{t(`fact.type.${fact.fact_type}`)}</small></label>) : profileStatus === "ready" ? <p>{t("dossier.noEvidence")}</p> : null}</fieldset>
-                                {requirements.length > 1 && <button type="button" className="button button--ghost dossier-row__remove" aria-label={t("dossier.removeRequirement", { index: index + 1 })} onClick={() => removeRow(setRequirements, row.id)}><i className="bi bi-trash3" aria-hidden="true" /> {t("dossier.remove")}</button>}
-                            </fieldset>)}
-                        </section>
-                        <label className="field-stack"><span>{t("dossier.coverLetter")}</span><textarea className="form-control" rows="5" value={coverLetter} onChange={(event) => setCoverLetter(event.target.value)} maxLength={LIMITS.coverLetter} /></label>
-                        <section className="dossier-builder" aria-labelledby="dossier-answers-title">
-                            <div className="dossier-builder__heading"><h4 id="dossier-answers-title">{t("dossier.answersSection")}</h4><button type="button" className="button button--secondary" aria-describedby="dossier-limits" disabled={answers.length >= LIMITS.answers} onClick={() => setAnswers((current) => [...current, answerRow()])}><i className="bi bi-plus-lg" aria-hidden="true" /> {t("dossier.addAnswer")}</button></div>
-                            {answers.map((row, index) => <fieldset className="dossier-row" key={row.id}>
-                                <legend>{t("dossier.answerNumber", { index: index + 1 })}</legend>
-                                <div className="form-grid form-grid--2"><label className="field-stack"><span>{t("dossier.questionLabel", { index: index + 1 })}</span><input className="form-control" value={row.question} onChange={(event) => updateAnswer(row.id, "question", event.target.value)} maxLength="1000" /></label><label className="field-stack"><span>{t("dossier.answerLabel", { index: index + 1 })}</span><textarea className="form-control" rows="2" value={row.answer} onChange={(event) => updateAnswer(row.id, "answer", event.target.value)} maxLength="20000" /></label></div>
-                                {answers.length > 1 && <button type="button" className="button button--ghost dossier-row__remove" aria-label={t("dossier.removeAnswer", { index: index + 1 })} onClick={() => removeRow(setAnswers, row.id)}><i className="bi bi-trash3" aria-hidden="true" /> {t("dossier.remove")}</button>}
-                            </fieldset>)}
-                        </section>
-                        <section className="dossier-builder" aria-labelledby="dossier-checklist-title">
-                            <div className="dossier-builder__heading"><h4 id="dossier-checklist-title">{t("dossier.checklistSection")}</h4><button type="button" className="button button--secondary" aria-describedby="dossier-limits" disabled={checklist.length >= LIMITS.checklist} onClick={() => setChecklist((current) => [...current, checklistRow()])}><i className="bi bi-plus-lg" aria-hidden="true" /> {t("dossier.addChecklist")}</button></div>
-                            {checklist.map((row, index) => <fieldset className="dossier-row dossier-checkline" key={row.id}>
-                                <legend>{t("dossier.checklistNumber", { index: index + 1 })}</legend>
-                                <label className="field-stack"><span>{t("dossier.checklistLabel", { index: index + 1 })}</span><input className="form-control" value={row.label} onChange={(event) => updateChecklist(row.id, "label", event.target.value)} maxLength="500" /></label><label className="check-line"><input type="checkbox" checked={row.completed} onChange={(event) => updateChecklist(row.id, "completed", event.target.checked)} /> {t("dossier.complete")}</label>
-                                {checklist.length > 1 && <button type="button" className="button button--ghost dossier-row__remove" aria-label={t("dossier.removeChecklist", { index: index + 1 })} onClick={() => removeRow(setChecklist, row.id)}><i className="bi bi-trash3" aria-hidden="true" /> {t("dossier.remove")}</button>}
-                            </fieldset>)}
-                        </section>
+                        <DossierFields {...{ requirements, setRequirements, coverLetter, setCoverLetter, answers, setAnswers, checklist, setChecklist, updateRequirement, toggleFact, updateAnswer, updateChecklist, removeRow, resumeMetadataStatus, linkedVersion, profileStatus, eligibleFacts, evidenceSelectionDisabled }} />
+                        <DossierMaterials {...{ letterOptions, setLetterOptions, emailDraft, setEmailDraft, evidenceClaims, setEvidenceClaims, generationProvenance, eligibleFacts }} defaultTemplate={linkedVersion} />
                         <button className="button button--primary" disabled={Boolean(busy) || !requirementsReady}>{busy === "publish" ? t("dossier.publishing") : t("dossier.publish")}</button>
                         <small className="dossier-disclaimer">{t("dossier.disclaimer")}</small>
                     </fieldset>

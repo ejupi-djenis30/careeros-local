@@ -58,16 +58,32 @@ def normalize_photo(data: bytes) -> tuple[bytes, int, int]:
 
 
 def render_photo_pdf(snapshot: dict, photo: bytes | None) -> bytes:
-    if (snapshot.get("resume", {}).get("canvas_document") or {}).get("style", {}).get(
-        "columns"
-    ) == 2:
+    from backend.resumes.renderers.semantic_layout import render_swiss_pdf
+    from backend.resumes.templates import resolve_template_defaults
+
+    resume = snapshot.get("resume", {})
+    preset, _ = resolve_template_defaults(
+        template_id=resume.get("template_id"),
+        template_kind=resume.get("template_kind"),
+    )
+    if resume.get("template_id"):
+        return render_swiss_pdf(snapshot, photo, operational=preset.layout == "swiss-operational")
+    if (resume.get("canvas_document") or {}).get("style", {}).get("columns") == 2:
         return render_two_column_pdf(snapshot, photo)
     return render_pdf(snapshot, photo=photo)
 
 
 def render_photo_docx(snapshot: dict, photo: bytes | None) -> bytes:
-    if (snapshot.get("resume", {}).get("canvas_document") or {}).get("style", {}).get(
-        "columns"
-    ) == 2:
+    from backend.resumes.renderers.semantic_layout import render_swiss_docx
+    from backend.resumes.templates import resolve_template_defaults
+
+    resume = snapshot.get("resume", {})
+    preset, _ = resolve_template_defaults(
+        template_id=resume.get("template_id"),
+        template_kind=resume.get("template_kind"),
+    )
+    if resume.get("template_id"):
+        return render_swiss_docx(snapshot, photo, operational=preset.layout == "swiss-operational")
+    if (resume.get("canvas_document") or {}).get("style", {}).get("columns") == 2:
         return render_two_column_docx(snapshot, photo)
     return render_docx(snapshot, photo=photo)

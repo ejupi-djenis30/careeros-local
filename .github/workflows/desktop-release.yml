@@ -401,6 +401,12 @@ jobs:
         run: python -m scripts.verify_sidecar_build
       - name: Exercise packaged backend lifecycle
         run: python -m pytest tests/desktop/test_packaged_lifecycle.py -q
+      - name: Exercise packaged MCP across desktop restarts
+        shell: bash
+        run: >-
+          python scripts/smoke_packaged_mcp.py
+          --binary "$CAREEROS_SIDECAR_BINARY"
+          --mcp-binary "$CAREEROS_MCP_BINARY"
       - name: Build native installers from Cargo.lock
         uses: tauri-apps/tauri-action@1deb371b0cd8bd54025b384f1cd735e725c4060f # v1.0.0
         with:

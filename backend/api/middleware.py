@@ -171,6 +171,8 @@ class PrivatePathNoStoreMiddleware:
 class VaultActivityMiddleware:
     """Hold a reader permit for private requests outside maintenance writers."""
 
+    _SELF_MANAGED_PREFIXES = ("/agent-bridge",)
+
     _MAINTENANCE_REQUESTS = frozenset(
         {
             ("DELETE", "/career-profile"),
@@ -202,6 +204,15 @@ class VaultActivityMiddleware:
             return
         relative_path = path[len(self._path_prefix) :] or "/"
         request_key = (str(scope.get("method", "GET")).upper(), relative_path)
+        if any(
+            relative_path == prefix or relative_path.startswith(prefix + "/")
+            for prefix in self._SELF_MANAGED_PREFIXES
+        ):
+            # Bridge POST bodies are parsed before FastAPI dependencies run. Its
+            # authentication dependency acquires the reader only after bounded
+            # body reception, so an unauthenticated slow sender cannot pin it.
+            await self.app(scope, receive, send)
+            return
         if request_key in self._MAINTENANCE_REQUESTS or request_key in self._PROBE_REQUESTS:
             await self.app(scope, receive, send)
             return

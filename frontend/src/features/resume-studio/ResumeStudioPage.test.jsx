@@ -5,6 +5,7 @@ import { careerProfile, EXPERIENCE_ID, FACT_ID, GOAL_ID, resumeDraft, RESUME_ID 
 import { renderWithItalian as render } from "../../test/renderWithI18n";
 import { assertAccessible } from "../../test/accessibility";
 import { ResumeStudioPage } from "./ResumeStudioPage";
+import { MemoryRouter } from "react-router";
 
 const create = vi.fn();
 const publish = vi.fn();
@@ -37,6 +38,16 @@ describe("ResumeStudioPage", () => {
         compareVersions.mockResolvedValue({ left_name: "Alpha", right_name: "Beta", profile_changes: [], resume_changes: ["title"], added_fact_ids: [], removed_fact_ids: [], changed_fact_ids: [] });
         restoreVersion.mockResolvedValue(resumeDraft({ revision: 2 }));
         get.mockResolvedValue(resumeDraft({ versions: [{ id: "v1", name: "Candidatura Alpha", version_number: 1, semantic_version: "1.0.0", profile_revision: 3, selected_fact_ids: [FACT_ID], template_kind: "ats", renderer_version: "1", published_at: "2026-01-03T10:00:00Z", quality_report: { passed: true, page_count: 1 }, artifacts: [] }] }));
+    });
+
+    it("shows an explicit library fallback for an unavailable dossier CV link", async () => {
+        const user = userEvent.setup();
+        render(<MemoryRouter initialEntries={["/resumes?resumeId=invalid"]}><ResumeStudioPage /></MemoryRouter>);
+        expect(await screen.findByRole("heading", { name: "La bozza CV richiesta non è disponibile" })).toBeInTheDocument();
+        expect(get).not.toHaveBeenCalled();
+        expect(screen.queryByRole("button", { name: "Pubblica PDF + DOCX" })).not.toBeInTheDocument();
+        await user.click(screen.getByRole("link", { name: "Apri la raccolta CV" }));
+        expect(await screen.findByRole("button", { name: "Pubblica PDF + DOCX" })).toBeInTheDocument();
     });
 
     it("persists a fact selection before publishing verified artifacts", async () => {

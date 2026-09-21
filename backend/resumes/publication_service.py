@@ -39,10 +39,13 @@ class ResumePublicationService:
             {
                 "title": draft.title,
                 "template_kind": draft.template_kind,
+                "template_id": draft.template_id,
+                "template_version": draft.template_version,
+                "locale": draft.locale,
                 "section_config": draft.section_config,
                 "selected_fact_ids": draft.selected_fact_ids,
                 "content_overrides": draft.content_overrides,
-                "photo_asset_id": draft.photo_asset_id,
+                "photo_asset_id": draft.photo_asset_id if draft.template_kind == "photo" else None,
                 "canvas_document": draft.canvas_document or None,
             }
         )
@@ -60,7 +63,11 @@ class ResumePublicationService:
         except ValueError as exc:
             raise ResumeValidationError(str(exc)) from exc
         draft.canvas_document = canvas.model_dump(mode="json")
-        photo = self.drafts.photo(profile, draft.photo_asset_id) if draft.photo_asset_id else None
+        photo = (
+            self.drafts.photo(profile, draft.photo_asset_id)
+            if draft.template_kind == "photo" and draft.photo_asset_id
+            else None
+        )
         photo_bytes = None
         if photo:
             try:
@@ -148,6 +155,13 @@ class ResumePublicationService:
                 "expected_revision": expected_revision,
                 "title": resume.get("title", current.title),
                 "template_kind": resume.get("template_kind", version.template_kind),
+                "template_id": resume.get(
+                    "template_id", getattr(version, "template_id", "software-en")
+                ),
+                "template_version": resume.get(
+                    "template_version", getattr(version, "template_version", 1)
+                ),
+                "locale": resume.get("locale", getattr(version, "locale", "en")),
                 "section_config": resume.get("section_config", {}),
                 "selected_fact_ids": snapshot.get("selected_fact_ids", []),
                 "content_overrides": resume.get("content_overrides", {}),
@@ -155,11 +169,9 @@ class ResumePublicationService:
                 "photo_asset_id": photo.get("asset_id"),
             }
         )
-        restored = self.drafts.update(user_id, draft_id, data)
-        persisted = self.drafts.draft(user_id, draft_id)
-        persisted.generation_context = resume.get("generation_context", {})
-        self.db.commit()
-        return self.drafts.get(user_id, restored.id)
+        return self.drafts.update(
+            user_id, draft_id, data, generation_context=resume.get("generation_context", {})
+        )
 
     def artifact(self, user_id: int, artifact_id: str) -> tuple[ResumeArtifact, bytes, str]:
         result = (

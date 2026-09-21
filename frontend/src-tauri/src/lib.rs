@@ -89,6 +89,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             backup::desktop_save_verified_backup,
             commands::desktop_bootstrap,
+            commands::desktop_mcp_setup,
             commands::desktop_frontend_ready
         ])
         .setup(|app| {

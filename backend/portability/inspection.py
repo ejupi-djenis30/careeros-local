@@ -8,6 +8,7 @@ from backend.portability.manifest import sha256
 from backend.portability.restore import (
     _assert_decoded_ids_available,
     _assert_empty_vault,
+    _assert_shared_catalog_compatible,
     _decode_payload,
     _file_destinations_available,
     _prepare_file_writes,
@@ -47,6 +48,7 @@ def inspect_archive(
                 decoded,
                 bindings,
                 members,
+                format_version=manifest.format_version,
                 create_data_root=False,
             )
 
@@ -56,11 +58,22 @@ def inspect_archive(
             ]
             if any(
                 manifest.record_counts.get(name, 0)
-                for name in ("jobs", "coach_messages", "ai_executions")
+                for name in (
+                    "jobs",
+                    "coach_messages",
+                    "ai_executions",
+                    "agent_work_requests",
+                    "agent_proposals",
+                )
             ):
                 warning_codes.append("ai_output_requires_revalidation")
 
             restorable = True
+            try:
+                _assert_shared_catalog_compatible(db, decoded)
+            except ArchiveConflictError:
+                restorable = False
+                warning_codes.append("restore_target_conflict")
             try:
                 _assert_empty_vault(db, user_id, manifest.format_version)
             except ArchiveConflictError:

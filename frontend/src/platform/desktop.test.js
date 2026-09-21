@@ -10,12 +10,39 @@ vi.mock("@tauri-apps/plugin-fs", () => ({ readFile }));
 import { resetApiRuntime } from "../lib/client";
 import {
     bootstrapDesktop,
+    getDesktopMcpSetup,
     isDesktopShell,
     openBackupWithNativeDialog,
+    openCampaignWithNativeDialog,
     reportDesktopReady,
     saveBackupWithNativeDialog,
     sha256Hex,
 } from "./desktop";
+
+function validMcpSetup() {
+    const command = "C:\\Program Files\\CareerOS\\careeros-mcp.exe";
+    const connectionFile = "C:\\Users\\DemoUser\\AppData\\Roaming\\CareerOS\\mcp\\connection.json";
+    const args = [
+        "--connection-file",
+        connectionFile,
+        "--acknowledge-agent-disclosure",
+    ];
+    return {
+        command,
+        args,
+        connectionFile,
+        tokenEnvironmentVariable: "CAREEROS_MCP_TOKEN",
+        codexToml: (
+            "[mcp_servers.careeros]\n"
+            + `command = ${JSON.stringify(command)}\n`
+            + `args = ${JSON.stringify(args)}\n`
+            + 'env_vars = ["CAREEROS_MCP_TOKEN"]\n'
+        ),
+        claudeJson: JSON.stringify({
+            mcpServers: { careeros: { command, args } },
+        }, null, 2),
+    };
+}
 
 describe("desktop bootstrap", () => {
     async function archive(value = "portable archive") {
@@ -41,7 +68,59 @@ describe("desktop bootstrap", () => {
         await expect(bootstrapDesktop()).resolves.toEqual({ desktop: false, state: "browser" });
         expect(invoke).not.toHaveBeenCalled();
         await expect(reportDesktopReady()).resolves.toBe(false);
+        await expect(getDesktopMcpSetup()).resolves.toBeNull();
         expect(invoke).not.toHaveBeenCalled();
+    });
+
+    it("returns only the verified installed MCP launcher configuration", async () => {
+        window.__TAURI_INTERNALS__ = {};
+        const payload = validMcpSetup();
+        invoke.mockResolvedValue(payload);
+
+        const configuration = await getDesktopMcpSetup();
+
+        expect(invoke).toHaveBeenCalledWith("desktop_mcp_setup");
+        expect(configuration).toEqual(payload);
+        expect(Object.keys(configuration).sort()).toEqual(Object.keys(payload).sort());
+        expect(configuration.codexToml).not.toContain("careeros_mcp_v1_");
+        expect(configuration.claudeJson).not.toContain("CAREEROS_MCP_TOKEN");
+        expect(Object.isFrozen(configuration)).toBe(true);
+        expect(Object.isFrozen(configuration.args)).toBe(true);
+    });
+
+    it.each([
+        ["unexpected secret-bearing field", (payload) => ({ ...payload, sessionToken: "secret" })],
+        ["relative launcher", (payload) => ({ ...payload, command: "careeros-mcp.exe" })],
+        ["changed arguments", (payload) => ({ ...payload, args: ["--desktop-url", "http://127.0.0.1"] })],
+        ["changed Codex table", (payload) => ({ ...payload, codexToml: `${payload.codexToml}token = "secret"\n` })],
+        ["extra Claude setting", (payload) => ({
+            ...payload,
+            claudeJson: JSON.stringify({
+                mcpServers: {
+                    careeros: {
+                        command: payload.command,
+                        args: payload.args,
+                        env: { CAREEROS_MCP_TOKEN: "secret" },
+                    },
+                },
+            }),
+        })],
+    ])("rejects a native MCP response with %s", async (_label, mutate) => {
+        window.__TAURI_INTERNALS__ = {};
+        invoke.mockResolvedValue(mutate(validMcpSetup()));
+
+        await expect(getDesktopMcpSetup()).rejects.toThrow(/native MCP setup/i);
+    });
+
+    it("cancels a pending native MCP setup when its UI owner unmounts", async () => {
+        window.__TAURI_INTERNALS__ = {};
+        invoke.mockReturnValue(new Promise(() => {}));
+        const owner = new AbortController();
+
+        const pending = getDesktopMcpSetup({ signal: owner.signal });
+        owner.abort();
+
+        await expect(pending).rejects.toMatchObject({ name: "AbortError" });
     });
 
     it("reports a committed frontend tree through the native bridge", async () => {
@@ -191,6 +270,30 @@ describe("desktop bootstrap", () => {
         )).toBe("backup.zip");
         expect(selected.name).toBe("backup.zip");
         expect(selected.type).toBe("application/zip");
+    });
+
+    it("reads one explicitly selected campaign ZIP without retaining its native path", async () => {
+        window.__TAURI_INTERNALS__ = {};
+        open.mockResolvedValue("C:/Users/DemoUser/Private Search/campaign-source.zip");
+        readFile.mockResolvedValue(new Uint8Array([80, 75, 3, 4]));
+
+        const selected = await openCampaignWithNativeDialog({
+            title: "Import local campaign",
+        });
+
+        expect(open).toHaveBeenCalledWith({
+            title: "Import local campaign",
+            multiple: false,
+            directory: false,
+            filters: [{ name: "CareerOS campaign", extensions: ["zip"] }],
+        });
+        expect(readFile).toHaveBeenCalledWith(
+            "C:/Users/DemoUser/Private Search/campaign-source.zip",
+        );
+        expect(selected).toBeInstanceOf(File);
+        expect(selected.name).toBe("campaign-source.zip");
+        expect(selected.type).toBe("application/zip");
+        expect(selected.path).toBeUndefined();
     });
 
     it("rejects a server checksum mismatch before invoking the native writer", async () => {

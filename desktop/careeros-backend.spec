@@ -61,7 +61,7 @@ datas += collect_project_files(PROJECT_ROOT / "backend" / "migrations", "backend
 datas += collect_project_files(PROJECT_ROOT / "backend" / "data", "backend/data")
 for package in ("alembic", "docx", "reportlab"):
     datas += collect_data_files(package)
-for distribution in ("alembic", "fastapi", "pydantic", "uvicorn"):
+for distribution in ("alembic", "fastapi", "pydantic", "uvicorn", "mcp"):
     datas += copy_metadata(distribution)
 
 hidden_imports = sorted(
@@ -149,8 +149,32 @@ else:
         codesign_identity=None,
         entitlements_file=None,
     )
+    # The same verified one-folder runtime serves two distinct subsystem entry
+    # points. Keep PyInstaller's runtime hooks and replace only the main script.
+    if sum(entry[0] == "backend_main" for entry in analysis.scripts) != 1:
+        raise ValueError("Cannot identify the backend entry point for the separate MCP console")
+    mcp_scripts = [entry for entry in analysis.scripts if entry[0] != "backend_main"]
+    mcp_scripts.append(("mcp_main", str(PROJECT_ROOT / "desktop" / "mcp_main.py"), "PYSOURCE"))
+    mcp_executable = EXE(
+        python_archive,
+        mcp_scripts,
+        [],
+        exclude_binaries=True,
+        name="careeros-mcp",
+        debug=False,
+        bootloader_ignore_signals=False,
+        strip=False,
+        upx=False,
+        console=True,
+        disable_windowed_traceback=False,
+        argv_emulation=False,
+        target_arch=None,
+        codesign_identity=None,
+        entitlements_file=None,
+    )
     bundle = COLLECT(
         executable,
+        mcp_executable,
         analysis.binaries,
         analysis.datas,
         strip=False,

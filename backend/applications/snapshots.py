@@ -49,7 +49,10 @@ def _verified_match(job: Any) -> dict[str, Any]:
 def snapshot_match_is_current(snapshot: Mapping[str, Any], job: Any) -> bool:
     """Return whether a snapshot is the exact projection of a verified current match."""
 
-    if getattr(job, "analysis_verified", False) is not True:
+    if not (
+        getattr(job, "analysis_verified", False) is True
+        or getattr(job, "external_analysis_verified", False) is True
+    ):
         return False
     match = snapshot.get("match")
     if not isinstance(match, Mapping):

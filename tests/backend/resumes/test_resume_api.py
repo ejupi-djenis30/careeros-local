@@ -108,7 +108,7 @@ def test_ats_resume_publishes_text_extractable_immutable_artifacts(
         assert published.status_code == 201, published.text
         version = published.json()
         assert version["semantic_version"] == "1.0.0"
-        assert version["renderer_version"] == "careeros-canvas-3.0.1"
+        assert version["renderer_version"] == "careeros-canvas-4.0.0"
         assert version["quality_report"]["layout"] == "single-column"
         assert version["quality_report"]["pdf_image_count"] == 0
         assert {item["format"] for item in version["artifacts"]} == {"pdf", "docx"}

@@ -18,7 +18,7 @@ function errorMessage(error) {
         : { message: error?.message || String(error) };
 }
 
-export function useResumeStudio() {
+export function useResumeStudio({ requestedResumeId = null } = {}) {
     const { showToast } = useToast();
     const { t } = useI18n();
     const [profile, setProfile] = useState(null);
@@ -29,6 +29,7 @@ export function useResumeStudio() {
     const [busy, setBusy] = useState("");
     const [error, setError] = useState(null);
     const [profileMissing, setProfileMissing] = useState(false);
+    const [targetUnavailable, setTargetUnavailable] = useState(false);
     const [generationGoalId, setGenerationGoalId] = useState("");
     const [syncPreview, setSyncPreview] = useState(null);
     const [syncSelection, setSyncSelection] = useState([]);
@@ -67,7 +68,11 @@ export function useResumeStudio() {
         initializationRequest.current = { controller, id: requestId };
         const requestOptions = { signal: controller.signal };
         const profileRequest = Promise.resolve()
-            .then(() => CareerService.getProfile({ ...requestOptions, suppressGlobalError: true }))
+            .then(() => {
+                if (controller.signal.aborted) return null;
+                setLoading(true);
+                return CareerService.getProfile({ ...requestOptions, suppressGlobalError: true });
+            })
             .then((value) => ({ value }))
             .catch((requestError) => ({ error: requestError }));
         const resumesRequest = Promise.resolve().then(() => ResumeService.list(requestOptions));
@@ -76,10 +81,24 @@ export function useResumeStudio() {
             .then(([profileResult, loadedResumes]) => {
                 if (profileResult.error) return { profileError: profileResult.error };
                 const loadedProfile = profileResult.value;
+                const hasTarget = requestedResumeId !== null;
+                const validTarget = typeof requestedResumeId === "string"
+                    && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(requestedResumeId);
+                const target = hasTarget && validTarget
+                    ? loadedResumes.find((resume) => resume.id.toLowerCase() === requestedResumeId.toLowerCase())
+                    : null;
+                if (hasTarget && !target) return { loadedProfile, loadedResumes, loadedDraft: null, targetUnavailable: true };
                 const draftRequest = loadedResumes.length
-                    ? ResumeService.get(loadedResumes[0].id, requestOptions)
+                    ? ResumeService.get(target?.id || loadedResumes[0].id, requestOptions)
                     : Promise.resolve(freshDraft(loadedProfile.facts));
-                return Promise.resolve(draftRequest).then((loadedDraft) => ({ loadedDraft, loadedProfile, loadedResumes }));
+                return Promise.resolve(draftRequest)
+                    .then((loadedDraft) => ({ loadedDraft, loadedProfile, loadedResumes }))
+                    .catch((requestError) => {
+                        if (hasTarget && requestError instanceof ApiError && requestError.status === 404) {
+                            return { loadedProfile, loadedResumes, loadedDraft: null, targetUnavailable: true };
+                        }
+                        throw requestError;
+                    });
             })
             .then((result) => {
                 if (controller.signal.aborted || initializationRequest.current.id !== requestId) return;
@@ -94,7 +113,11 @@ export function useResumeStudio() {
                     setResumes(result.loadedResumes);
                     setGenerationGoalId(result.loadedProfile.goals?.find((goal) => goal.is_primary)?.id || result.loadedProfile.goals?.[0]?.id || "");
                     setProfileMissing(false);
+                    setTargetUnavailable(Boolean(result.targetUnavailable));
                     setDraft(result.loadedDraft);
+                    setDirty(false);
+                    setSyncPreview(null);
+                    setVersionComparison(null);
                     setError(null);
                 }
                 setLoading(false);
@@ -106,12 +129,13 @@ export function useResumeStudio() {
                 setLoading(false);
                 initializationRequest.current.controller = null;
             });
-    }, [freshDraft]);
+    }, [freshDraft, requestedResumeId]);
 
     const initialize = useCallback(() => {
         setLoading(true);
         setError(null);
         setProfileMissing(false);
+        setTargetUnavailable(false);
         return requestInitialization();
     }, [requestInitialization]);
 
@@ -295,5 +319,5 @@ export function useResumeStudio() {
         return () => window.clearTimeout(timer);
     }, [busy, dirty, draft]);
 
-    return { profile, resumes, draft, dirty, loading, busy, error, profileMissing, generationGoalId, syncPreview, syncSelection, versionName, versionComparison, autosaveState, initialize, loadDraft, changeDraft, startNew, save, publish, generateFromProfile, duplicate, promoteClaim, reviewSync, applySync, uploadPhoto, remove, compareVersions, restoreVersion, setGenerationGoalId, setSyncSelection, setVersionName, closeSync: () => setSyncPreview(null), setError };
+    return { profile, resumes, draft, dirty, loading, busy, error, profileMissing, targetUnavailable, generationGoalId, syncPreview, syncSelection, versionName, versionComparison, autosaveState, initialize, loadDraft, changeDraft, startNew, save, publish, generateFromProfile, duplicate, promoteClaim, reviewSync, applySync, uploadPhoto, remove, compareVersions, restoreVersion, setGenerationGoalId, setSyncSelection, setVersionName, closeSync: () => setSyncPreview(null), setError };
 }

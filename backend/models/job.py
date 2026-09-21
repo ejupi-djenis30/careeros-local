@@ -226,6 +226,15 @@ class Job(BaseModel, TimestampMixin):
         """Transient API trust bit set only after the linked receipt is checked."""
         return bool(getattr(self, "_analysis_receipt_verified", False))
 
+    @property
+    def external_analysis_verified(self) -> bool:
+        """Transient trust bit for an accepted, still-current external proposal."""
+        return bool(getattr(self, "_external_analysis_receipt_verified", False))
+
+    @external_analysis_verified.setter
+    def external_analysis_verified(self, value: bool) -> None:
+        self._external_analysis_receipt_verified = bool(value)
+
     # Red flags detected in job description (Phase 4)
     red_flags = Column(JSON, nullable=True)  # list of flag strings / {type, description} dicts
 

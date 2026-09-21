@@ -278,4 +278,103 @@ describe("CareerProfilePage", () => {
 
         expect(signal.aborted).toBe(true);
     });
+
+    it("applies accepted preference candidates to the editor draft without auto-saving", async () => {
+        const user = userEvent.setup();
+        uploadSource.mockResolvedValueOnce({
+            id: "src-goals",
+            original_name: "Goal.md",
+            source_role: "goals",
+            extracted_characters: 60,
+            sha256: "b".repeat(64),
+            text_preview: "Target roles: Principal Engineer\nWorkload min: 80",
+            candidates: [],
+            preference_candidates: [
+                {
+                    candidate_id: "c".repeat(64),
+                    field: "target_roles",
+                    value: ["Principal Engineer"],
+                    source_locator: "line:1",
+                    excerpt: "Target roles: Principal Engineer",
+                },
+                {
+                    candidate_id: "d".repeat(64),
+                    field: "workload_min",
+                    value: 80,
+                    source_locator: "line:2",
+                    excerpt: "Workload min: 80",
+                },
+            ],
+            review_notes: [],
+            warnings: [],
+        });
+
+        render(<CareerProfilePage />);
+        await screen.findByLabelText("Nome visualizzato");
+
+        // Select goals role in the importer
+        const roleSelect = screen.getByLabelText("Ruolo del documento sorgente");
+        await user.selectOptions(roleSelect, "goals");
+
+        const file = new File(["goals"], "Goal.md", { type: "text/markdown" });
+        await user.upload(screen.getByLabelText("Documento sorgente"), file);
+        await user.click(screen.getByRole("button", { name: "Importa localmente" }));
+
+        expect(await screen.findByText("Candidati preferenze")).toBeInTheDocument();
+        const candidate = screen.getByRole("checkbox", { name: /Ruoli desiderati: Principal Engineer/ });
+        await user.click(candidate);
+        await user.click(screen.getByRole("button", { name: "Accetta 1 preferenze selezionate" }));
+
+        expect(screen.getByRole("status")).toHaveTextContent("1 preferenza/e applicata/e alla bozza del profilo.");
+        // Ensure not auto-saved
+        expect(saveProfile).not.toHaveBeenCalled();
+
+        // Explicitly save the profile
+        await user.click(screen.getByRole("button", { name: "Salva Career Vault" }));
+        await waitFor(() => expect(saveProfile).toHaveBeenCalledTimes(1));
+        const savedPayload = saveProfile.mock.calls[0][0];
+        expect(savedPayload.preferences.target_roles).toContain("Principal Engineer");
+    });
+
+    it("prevents candidate acceptance while an older profile save is pending", async () => {
+        const user = userEvent.setup();
+        let finishSave;
+        saveProfile.mockImplementationOnce(() => new Promise((resolve) => {
+            finishSave = resolve;
+        }));
+        uploadSource.mockResolvedValueOnce({
+            id: "src-goals",
+            original_name: "Goal.md",
+            source_role: "goals",
+            extracted_characters: 30,
+            sha256: "f".repeat(64),
+            text_preview: "Target roles: Logistics",
+            candidates: [],
+            preference_candidates: [{
+                candidate_id: "e".repeat(64),
+                field: "target_roles",
+                value: ["Logistics"],
+                source_locator: "line:1",
+                excerpt: "Target roles: Logistics",
+            }],
+            review_notes: [],
+            warnings: [],
+        });
+        render(<CareerProfilePage />);
+        await screen.findByLabelText("Nome visualizzato");
+        await user.selectOptions(screen.getByLabelText("Ruolo del documento sorgente"), "goals");
+        await user.upload(
+            screen.getByLabelText("Documento sorgente"),
+            new File(["goals"], "Goal.md", { type: "text/markdown" }),
+        );
+        await user.click(screen.getByRole("button", { name: "Importa localmente" }));
+        const candidate = await screen.findByRole("checkbox", { name: /Ruoli desiderati: Logistics/ });
+        await user.clear(screen.getByLabelText("Titolo professionale"));
+        await user.type(screen.getByLabelText("Titolo professionale"), "Changed title");
+        await user.click(screen.getByRole("button", { name: "Salva Career Vault" }));
+
+        expect(candidate).toBeDisabled();
+        finishSave(careerProfile({ revision: 4, headline: "Changed title" }));
+        await waitFor(() => expect(candidate).toBeEnabled());
+    });
 });

@@ -193,6 +193,10 @@ impl BackendLifecycle {
         }
     }
 
+    pub fn mcp_setup(&self) -> Result<crate::commands::DesktopMcpSetup, String> {
+        crate::commands::mcp_setup_paths(&self.executable_path, &self.data_directory)
+    }
+
     fn set_phase(&self, phase: BackendPhase) {
         self.snapshot
             .lock()

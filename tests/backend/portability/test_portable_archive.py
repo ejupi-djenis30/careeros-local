@@ -70,7 +70,7 @@ def _reauthenticated_headers(client, username: str) -> dict[str, str]:
     return {"Authorization": f"Bearer {login.json()['access_token']}"}
 
 
-def test_v6_archive_version_is_outside_the_frozen_v5_decoder_contract():
+def test_current_archive_version_is_outside_the_frozen_v5_decoder_contract():
     frozen_v5_supported_versions = frozenset({1, 2, 3, 4, 5})
 
     def decode_with_frozen_v5_contract(format_version: int) -> int:
@@ -78,9 +78,9 @@ def test_v6_archive_version_is_outside_the_frozen_v5_decoder_contract():
             raise ValueError(f"Archive version {format_version} is not supported by the v5 decoder")
         return format_version
 
-    assert CURRENT_ARCHIVE_VERSION == 6
-    assert SUPPORTED_ARCHIVE_VERSIONS == frozenset({1, 2, 3, 4, 5, 6})
-    with pytest.raises(ValueError, match="Archive version 6 is not supported"):
+    assert CURRENT_ARCHIVE_VERSION == 8
+    assert SUPPORTED_ARCHIVE_VERSIONS == frozenset(range(1, 9))
+    with pytest.raises(ValueError, match="Archive version 8 is not supported"):
         decode_with_frozen_v5_contract(CURRENT_ARCHIVE_VERSION)
 
 
@@ -533,7 +533,7 @@ APPLICATION_PROJECTION_FIELDS = {
 def _rewrite_application_projection_fixture(
     archive_data: bytes,
     *,
-    format_version: int = 6,
+    format_version: int = 8,
     remove_projections: bool = False,
     projection_overrides: dict | None = None,
 ) -> bytes:
@@ -569,6 +569,20 @@ def _rewrite_application_projection_fixture(
                 row.pop(field, None)
 
     removed_tables: list[str] = []
+    if format_version < 8:
+        removed_tables.extend(
+            ["campaigns", "campaign_applications", "campaign_artifacts"]
+        )
+    if format_version < 7:
+        removed_tables.extend(
+            ["agent_work_requests", "agent_proposals", "application_packet_artifacts"]
+        )
+        for name in ("resume_drafts", "resume_versions"):
+            for row in payload["tables"][name]:
+                for field in ("template_id", "template_version", "locale"):
+                    row.pop(field, None)
+        for row in payload["tables"]["source_documents"]:
+            row.pop("source_role", None)
     if format_version < 6:
         removed_tables.append("application_dossier_drafts")
     if format_version < 3:
@@ -614,6 +628,15 @@ def _rewrite_legacy_v3_private_and_runtime_fields(archive_data: bytes, source_qu
         files = {name: source.read(name) for name in source.namelist()}
     payload = json.loads(files["payload.json"])
     payload["tables"].pop("application_dossier_drafts")
+    for table in (
+        "agent_work_requests",
+        "agent_proposals",
+        "application_packet_artifacts",
+        "campaigns",
+        "campaign_applications",
+        "campaign_artifacts",
+    ):
+        payload["tables"].pop(table, None)
     for row in payload["tables"]["jobs"]:
         for field in (
             "source_query",
@@ -643,6 +666,15 @@ def _rewrite_legacy_v3_private_and_runtime_fields(archive_data: bytes, source_qu
     manifest = json.loads(files["manifest.json"])
     manifest["format_version"] = 3
     manifest["record_counts"].pop("application_dossier_drafts")
+    for table in (
+        "agent_work_requests",
+        "agent_proposals",
+        "application_packet_artifacts",
+        "campaigns",
+        "campaign_applications",
+        "campaign_artifacts",
+    ):
+        manifest["record_counts"].pop(table, None)
     payload_entry = next(entry for entry in manifest["entries"] if entry["path"] == "payload.json")
     payload_entry["byte_size"] = len(files["payload.json"])
     payload_entry["sha256"] = hashlib.sha256(files["payload.json"]).hexdigest()
@@ -661,6 +693,15 @@ def _rewrite_legacy_v3_heuristic_match(archive_data: bytes) -> bytes:
         files = {name: source.read(name) for name in source.namelist()}
     payload = json.loads(files["payload.json"])
     payload["tables"].pop("application_dossier_drafts")
+    for table in (
+        "agent_work_requests",
+        "agent_proposals",
+        "application_packet_artifacts",
+        "campaigns",
+        "campaign_applications",
+        "campaign_artifacts",
+    ):
+        payload["tables"].pop(table, None)
     for field in (
         "analysis_provenance",
         "analysis_model_id",
@@ -699,6 +740,15 @@ def _rewrite_legacy_v3_heuristic_match(archive_data: bytes) -> bytes:
     manifest = json.loads(files["manifest.json"])
     manifest["format_version"] = 3
     manifest["record_counts"].pop("application_dossier_drafts")
+    for table in (
+        "agent_work_requests",
+        "agent_proposals",
+        "application_packet_artifacts",
+        "campaigns",
+        "campaign_applications",
+        "campaign_artifacts",
+    ):
+        manifest["record_counts"].pop(table, None)
     payload_entry = next(entry for entry in manifest["entries"] if entry["path"] == "payload.json")
     payload_entry["byte_size"] = len(files["payload.json"])
     payload_entry["sha256"] = hashlib.sha256(files["payload.json"]).hexdigest()
@@ -1532,7 +1582,7 @@ def test_export_delete_restore_round_trip(
     } == {key: value for key, value in expected_message.items() if key != "generation_metadata"}
     assert restored_message["generation_metadata"] == {
         "provenance": "quarantined",
-        "quarantine_reason": "unsigned_v6_coach_output_requires_revalidation",
+        "quarantine_reason": "unsigned_v7_coach_output_requires_revalidation",
         "source_generation_metadata": {"local": True},
     }
     assert payload_after == expected_payload
@@ -1867,7 +1917,7 @@ def test_v6_restore_preserves_but_hides_self_checksummed_forged_coach_advice(
     assert assistant.content == "Forged authoritative executive advice."
     assert assistant.generation_metadata == {
         "provenance": "quarantined",
-        "quarantine_reason": "unsigned_v6_coach_output_requires_revalidation",
+        "quarantine_reason": "unsigned_v7_coach_output_requires_revalidation",
         "source_generation_metadata": {
             "provenance": "local_model_validated",
             "contract_version": "1.0.0",
@@ -1925,7 +1975,7 @@ def test_v6_verified_coach_round_trip_preserves_record_but_requires_revalidation
     assert assistant.model_id == "ollama-local/verified-coach"
     assert assistant.generation_metadata["provenance"] == "quarantined"
     assert assistant.generation_metadata["quarantine_reason"] == (
-        "unsigned_v6_coach_output_requires_revalidation"
+        "unsigned_v7_coach_output_requires_revalidation"
     )
     source_metadata = assistant.generation_metadata["source_generation_metadata"]
     assert source_metadata["execution_id"] == execution_id
@@ -1965,7 +2015,7 @@ def test_v6_round_trip_remaps_search_ids_and_preserves_application_job(
     with zipfile.ZipFile(BytesIO(exported.content)) as archive:
         manifest = json.loads(archive.read("manifest.json"))
         payload = json.loads(archive.read("payload.json"))
-    assert manifest["format_version"] == 6
+    assert manifest["format_version"] == 8
     expected_search_counts = {
         "search_profiles": 1,
         "scraped_jobs": 1,
@@ -2070,7 +2120,7 @@ def test_v6_round_trip_remaps_search_ids_and_preserves_application_job(
         "analysis": None,
         "worth_applying": None,
         "receipt_verified": False,
-        "quarantine_reason": "unsigned_v6_application_match_requires_revalidation",
+        "quarantine_reason": "unsigned_v7_application_match_requires_revalidation",
     }
     assert "affinity_analysis" not in restored_application.job_snapshot
     assert all(getattr(restored_profile, field) is None for field in runtime_fields)

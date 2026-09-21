@@ -1,8 +1,9 @@
 from datetime import datetime
-from typing import Any, Dict, List, Literal, Optional
+from typing import Any, Dict, List, Literal, Optional, Union
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from backend.agent_work.schemas import UUID_PATTERN, AnalysisClaim, WorkGate, WorkScores
 from backend.ai.attestation import is_persisted_match_payload_valid
 from backend.applications.schemas import ApplicationStage
 from backend.jobs.urls import normalize_job_url
@@ -151,6 +152,21 @@ class JobAnalysisStructured(BaseModel):
     evidence_citations: List[JobAnalysisCitation] = Field(min_length=1, max_length=7)
 
 
+class ExternalAgentAnalysisStructured(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    recommendation: Literal["strong_fit", "consider", "weak_fit", "insufficient_evidence"]
+    gates: list[WorkGate] = Field(min_length=6, max_length=6)
+    claims: list[AnalysisClaim] = Field(min_length=1, max_length=50)
+    scores: WorkScores
+    source: Literal["external_agent"]
+    request_id: str = Field(pattern=UUID_PATTERN)
+    proposal_id: str = Field(pattern=UUID_PATTERN)
+    grant_id: str | None = Field(pattern=UUID_PATTERN)
+    input_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
+    payload_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
+
+
 class JobResponse(JobBase):
     model_config = ConfigDict(from_attributes=True)
 
@@ -194,7 +210,9 @@ class JobResponse(JobBase):
     location_match_score: Optional[float] = None
     transferability_score: Optional[float] = None
     qualification_gap_score: Optional[float] = None
-    analysis_structured: Optional[JobAnalysisStructured] = None
+    analysis_structured: Optional[Union[JobAnalysisStructured, ExternalAgentAnalysisStructured]] = (
+        None
+    )
     analysis_provenance: Optional[str] = None
     analysis_model_id: Optional[str] = None
     analysis_contract_version: Optional[str] = None
@@ -206,6 +224,7 @@ class JobResponse(JobBase):
     analysis_input_fingerprint: Optional[str] = None
     red_flags: Optional[List[str]] = None
     analysis_verified: bool = False
+    external_analysis_verified: bool = False
     created_at: datetime
     updated_at: Optional[datetime] = None
     first_seen_at: datetime
@@ -226,23 +245,49 @@ class JobResponse(JobBase):
             and self.analysis_validated_at is not None
             and is_persisted_match_payload_valid(self)
         )
+        self.external_analysis_verified = bool(
+            self.external_analysis_verified
+            and self.analysis_provenance == "external_agent_proposal"
+            and isinstance(self.analysis_structured, ExternalAgentAnalysisStructured)
+            and self.analysis_validated_at is not None
+            and self.analysis_contract_version == "1.0"
+            and self.analysis_execution_id is None
+        )
         if not self.analysis_verified:
-            self.affinity_score = None
-            self.affinity_analysis = None
-            self.worth_applying = False
-            self.skill_match_score = None
-            self.experience_match_score = None
-            self.intent_match_score = None
-            self.language_match_score = None
-            self.location_match_score = None
-            self.transferability_score = None
-            self.qualification_gap_score = None
-            self.analysis_structured = None
-            self.analysis_provenance = None
-            self.analysis_model_id = None
-            self.analysis_contract_version = None
-            self.analysis_validated_at = None
-            self.analysis_execution_id = None
+            if self.external_analysis_verified and isinstance(
+                self.analysis_structured, ExternalAgentAnalysisStructured
+            ):
+                from backend.agent_work.validation import eligibility, fit_score
+
+                self.affinity_score = float(fit_score(self.analysis_structured.scores))
+                self.worth_applying = eligibility(
+                    self.analysis_structured.gates
+                ) == "eligible" and self.analysis_structured.recommendation in {
+                    "strong_fit",
+                    "consider",
+                }
+                self.analysis_execution_id = None
+                self.intent_match_score = None
+                self.transferability_score = None
+                self.qualification_gap_score = None
+                self.red_flags = None
+            else:
+                self.affinity_score = None
+                self.affinity_analysis = None
+                self.worth_applying = False
+                self.skill_match_score = None
+                self.experience_match_score = None
+                self.intent_match_score = None
+                self.language_match_score = None
+                self.location_match_score = None
+                self.transferability_score = None
+                self.qualification_gap_score = None
+                self.analysis_structured = None
+                self.analysis_provenance = None
+                self.analysis_model_id = None
+                self.analysis_contract_version = None
+                self.analysis_validated_at = None
+                self.analysis_execution_id = None
             self.analysis_output_fingerprint = None
             self.analysis_execution_row_index = None
             self.analysis_row_fingerprint = None

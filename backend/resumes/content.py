@@ -191,9 +191,13 @@ def _apply_override(entry: ResumeEntry, override: dict[str, Any] | None) -> Resu
 
 
 def _build_canvas_content(snapshot: dict[str, Any], canvas: dict[str, Any]) -> ResumeContent:
-    profile = snapshot["profile"]
     identity = next(
-        (section for section in canvas["sections"] if section["kind"] == "identity"), None
+        (
+            section
+            for section in canvas["sections"]
+            if section["kind"] == "identity" and section.get("visible", True)
+        ),
+        None,
     )
     identity_block = next(
         (block for block in (identity or {}).get("blocks", []) if block.get("visible", True)),
@@ -246,8 +250,8 @@ def _build_canvas_content(snapshot: dict[str, Any], canvas: dict[str, Any]) -> R
                 )
             )
     return ResumeContent(
-        display_name=identity_content.get("title") or profile["display_name"],
-        headline=identity_content.get("subtitle") or profile.get("headline", ""),
+        display_name=identity_content.get("title", ""),
+        headline=identity_content.get("subtitle", ""),
         contact_line=identity_content.get("description", ""),
         summary=summary,
         summary_heading=(summary_section or {}).get("title", "PROFILE"),
@@ -256,7 +260,7 @@ def _build_canvas_content(snapshot: dict[str, Any], canvas: dict[str, Any]) -> R
     )
 
 
-def build_content(snapshot: dict[str, Any]) -> ResumeContent:
+def _build_content(snapshot: dict[str, Any]) -> ResumeContent:
     profile = snapshot["profile"]
     resume = snapshot["resume"]
     config = resume["section_config"]
@@ -297,4 +301,39 @@ def build_content(snapshot: dict[str, Any]) -> ResumeContent:
         contact_line=" | ".join(contact),
         summary=profile.get("summary", "") if config.get("include_summary") else "",
         sections=sections,
+    )
+
+
+def build_content(snapshot: dict[str, Any]) -> ResumeContent:
+    from dataclasses import replace
+
+    from backend.resumes.templates import (
+        SECTION_HEADINGS_DE,
+        SECTION_HEADINGS_EN,
+        resolve_template_defaults,
+    )
+
+    content = _build_content(snapshot)
+    resume = snapshot["resume"]
+    if not resume.get("template_id"):
+        return content
+    preset, locale = resolve_template_defaults(
+        resume["template_id"], resume.get("template_version"), resume.get("locale")
+    )
+    headings = SECTION_HEADINGS_DE if locale == "de" else SECTION_HEADINGS_EN
+    sections = [
+        replace(section, heading=headings.get(section.key, section.heading))
+        if section.heading
+        in {SECTION_HEADINGS_EN.get(section.key), SECTION_HEADINGS_DE.get(section.key)}
+        else section
+        for section in content.sections
+    ]
+    summary_heading = content.summary_heading
+    if summary_heading in {"PROFILE", "KURZPROFIL"}:
+        summary_heading = headings["summary"]
+    return replace(
+        content,
+        sections=sections,
+        summary_heading=summary_heading,
+        style={**preset.preview_style, **content.style},
     )

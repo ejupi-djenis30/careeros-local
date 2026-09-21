@@ -46,3 +46,58 @@ def test_desktop_session_rejects_ambiguous_duplicate_headers() -> None:
             response = client.get("/private", headers=duplicate)
             assert response.status_code == 403
             assert response.json() == {"detail": "Desktop session authorization failed"}
+
+
+def test_desktop_session_allows_only_fixed_bridge_operations() -> None:
+    token = "t" * 43
+    app = FastAPI()
+    app.add_middleware(
+        DesktopSessionMiddleware,
+        token=token,
+        exempt_path_prefix="/api/v1/agent-bridge",
+    )
+
+    @app.get("/api/v1/agent-bridge/status")
+    def bridge_status() -> dict[str, bool]:
+        return {"bridge": True}
+
+    @app.get("/api/v1/owner")
+    def owner() -> dict[str, bool]:
+        return {"owner": True}
+
+    with TestClient(app, client=("127.0.0.1", 50000)) as client:
+        # Bridge route should succeed without X-CareerOS-Session
+        res = client.get("/api/v1/agent-bridge/status")
+        assert res.status_code == 200
+        assert res.json() == {"bridge": True}
+
+        # Non-exempt route should fail without X-CareerOS-Session
+        res = client.get("/api/v1/owner")
+        assert res.status_code == 403
+
+        # Non-exempt route should succeed with X-CareerOS-Session
+        res = client.get("/api/v1/owner", headers={"X-CareerOS-Session": token})
+        assert res.status_code == 200
+
+
+def test_bridge_prefix_does_not_exempt_unknown_routes_methods_or_origins():
+    app = FastAPI()
+    app.add_middleware(
+        DesktopSessionMiddleware, token="t" * 43, exempt_path_prefix="/api/v1/agent-bridge"
+    )
+    with TestClient(app, client=("127.0.0.1", 50000)) as client:
+        for method, path in [
+            ("DELETE", "status"),
+            ("POST", "status"),
+            ("GET", "admin"),
+            ("POST", "work-requests/not-a-uuid/result"),
+        ]:
+            response = client.request(method, "/api/v1/agent-bridge/" + path)
+            assert response.status_code == 403
+            assert "no-store" in response.headers["cache-control"]
+        assert (
+            client.get(
+                "/api/v1/agent-bridge/status", headers={"Origin": "https://example.com"}
+            ).status_code
+            == 403
+        )

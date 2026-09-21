@@ -1,28 +1,37 @@
-import { SCOPES } from "./agentAccessModel";
+import { READ_ONLY_SCOPES, WORKSPACE_SCOPES } from "./agentAccessModel";
 
 function ScopePicker({ scopes, disabled, onToggle, t }) {
+    const renderScopeItem = (scope) => (
+        <label
+            key={scope}
+            className={`agent-scope-option ${scopes.includes(scope) ? "is-selected" : ""}`}
+        >
+            <input
+                type="checkbox"
+                checked={scopes.includes(scope)}
+                onChange={() => onToggle(scope)}
+            />
+            <span>
+                <strong>{t(`agentAccess.scope.${scope}.title`)}</strong>
+                <small>{t(`agentAccess.scope.${scope}.copy`)}</small>
+            </span>
+            <code>{scope}</code>
+        </label>
+    );
+
     return (
         <fieldset className="agent-scope-picker" disabled={disabled}>
             <legend>{t("agentAccess.scopes")}</legend>
             <p>{t("agentAccess.scopesCopy")}</p>
             <div>
-                {SCOPES.map((scope) => (
-                    <label
-                        key={scope}
-                        className={`agent-scope-option ${scopes.includes(scope) ? "is-selected" : ""}`}
-                    >
-                        <input
-                            type="checkbox"
-                            checked={scopes.includes(scope)}
-                            onChange={() => onToggle(scope)}
-                        />
-                        <span>
-                            <strong>{t(`agentAccess.scope.${scope}.title`)}</strong>
-                            <small>{t(`agentAccess.scope.${scope}.copy`)}</small>
-                        </span>
-                        <code>{scope}</code>
-                    </label>
-                ))}
+                {READ_ONLY_SCOPES.map(renderScopeItem)}
+            </div>
+            <div className="agent-scope-group-divider">
+                <span className="agent-scope-group-title">{t("agentAccess.workspaceScopesTitle")}</span>
+                <p className="agent-scope-group-copy">{t("agentAccess.workspaceScopesNotice")}</p>
+            </div>
+            <div>
+                {WORKSPACE_SCOPES.map(renderScopeItem)}
             </div>
         </fieldset>
     );
@@ -31,6 +40,7 @@ function ScopePicker({ scopes, disabled, onToggle, t }) {
 export function AgentGrantForm({ state, actions, issueButtonRef, t }) {
     const registryUnavailable = state.loading || Boolean(state.loadError);
     const locked = Boolean(state.issued) || registryUnavailable;
+    const needsExternalDisclosure = state.scopes.some((scope) => WORKSPACE_SCOPES.includes(scope));
 
     return (
         <section className="surface-section agent-grant-form" aria-labelledby="agent-grant-title">
@@ -80,6 +90,21 @@ export function AgentGrantForm({ state, actions, issueButtonRef, t }) {
                     onToggle={actions.toggleScope}
                     t={t}
                 />
+                {needsExternalDisclosure && (
+                    <label className="agent-disclosure-acknowledgement">
+                        <input
+                            type="checkbox"
+                            checked={state.acknowledgeExternalDisclosure}
+                            onChange={(event) => actions.setAcknowledgeExternalDisclosure(event.target.checked)}
+                            disabled={locked}
+                            required
+                        />
+                        <span>
+                            <strong>{t("agentAccess.externalDisclosureTitle")}</strong>
+                            <small>{t("agentAccess.externalDisclosureCopy")}</small>
+                        </span>
+                    </label>
+                )}
                 <label className="field-stack">
                     <span>{t("agentAccess.password")}</span>
                     <input
@@ -103,7 +128,7 @@ export function AgentGrantForm({ state, actions, issueButtonRef, t }) {
                     ref={issueButtonRef}
                     className="button button--primary"
                     type="submit"
-                    disabled={state.creating || locked || state.scopes.length === 0}
+                    disabled={state.creating || locked || state.scopes.length === 0 || (needsExternalDisclosure && !state.acknowledgeExternalDisclosure)}
                 >
                     <i className="bi bi-key" aria-hidden="true" />
                     {state.creating ? t("agentAccess.issuing") : t("agentAccess.issue")}

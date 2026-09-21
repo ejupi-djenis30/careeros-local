@@ -10,6 +10,7 @@ from types import SimpleNamespace
 import pytest
 from sqlalchemy import update
 
+from backend.applications.dossier_drafts import DossierDraftService
 from backend.applications.exports import DossierSizeError
 from backend.applications.models import (
     Application,
@@ -1421,7 +1422,7 @@ def test_application_dossier_is_versioned_and_zip_manifest_is_verifiable(
         assert application_record["readiness"]["score_kind"] == "preflight_completeness"
         assert "prediction" not in json.dumps(application_record).casefold()
         evidence_record = json.loads(archive.read("requirement-evidence.json"))
-        assert evidence_record["schema_version"] == "2.0"
+        assert evidence_record["schema_version"] == "3.0"
         assert len(evidence_record["evidence_catalog"]) == 1
         assert evidence_record["requirements"] == [
             {
@@ -1435,7 +1436,7 @@ def test_application_dossier_is_versioned_and_zip_manifest_is_verifiable(
         db_session.query(ApplicationEvent).filter(ApplicationEvent.id == dossier["id"]).one()
     )
     persisted_dossier = dossier_event.payload["dossier"]
-    assert persisted_dossier["schema_version"] == "2.0"
+    assert persisted_dossier["schema_version"] == "3.0"
     assert len(persisted_dossier["evidence_catalog"]) == 1
     listing = client.get("/api/v1/applications", headers=auth_headers).json()[0]
     stored = _assert_application_projections(
@@ -1858,7 +1859,7 @@ def test_dossier_draft_rolls_back_if_application_changes_after_the_write_starts(
     version = db_session.get(ResumeVersion, version_id)
     evidence_id = str(version.selected_fact_ids[0])
     endpoint = f"/api/v1/applications/{application_id}/dossier-draft"
-    ensure_binding = ApplicationService._ensure_current_dossier_draft_binding
+    ensure_binding = DossierDraftService._ensure_current_dossier_draft_binding
 
     def interleave_application_change(
         service,
@@ -1883,7 +1884,7 @@ def test_dossier_draft_rolls_back_if_application_changes_after_the_write_starts(
         )
 
     monkeypatch.setattr(
-        ApplicationService,
+        DossierDraftService,
         "_ensure_current_dossier_draft_binding",
         interleave_application_change,
     )
@@ -2131,7 +2132,7 @@ def test_failed_dossier_publication_preserves_the_saved_draft(
     def fail_bundle(**_kwargs):
         raise DossierSizeError("simulated local bundle failure")
 
-    monkeypatch.setattr("backend.applications.service.build_dossier_bundle", fail_bundle)
+    monkeypatch.setattr("backend.applications.dossier_materials.build_dossier_bundle", fail_bundle)
     failed = client.post(
         f"/api/v1/applications/{application_id}/dossiers",
         json={

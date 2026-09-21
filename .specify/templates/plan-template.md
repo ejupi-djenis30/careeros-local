@@ -41,7 +41,9 @@
 *GATE: Must pass before Phase 0 research. Re-check after Phase 1 design.*
 
 - Native installer requires no developer tooling and owns all child-process lifecycle.
-- AI inference is local-only, grounded, schema-constrained and covered by offline evaluations.
+- Local inference remains local; external MCP intelligence requires explicit disclosure, scoped
+  context/proposal authority, revision binding and desktop-owned writes. Both paths are grounded,
+  schema-constrained and covered by offline contract/evaluation fixtures.
 - Vault changes include migration, backup, portability and upgrade evidence.
 - Desktop IPC, loopback transport, navigation and logs preserve the privacy boundary.
 - Tests, packaging, SBOM, vulnerability scan and artifact smoke tests are release gates.

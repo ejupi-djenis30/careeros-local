@@ -348,3 +348,29 @@ def download_application_dossier(
             "X-Content-Type-Options": "nosniff",
         },
     )
+
+
+@router.get("/{application_id}/dossiers/{dossier_id}/artifacts/{filename}")
+def download_application_document(
+    application_id: UUID,
+    dossier_id: UUID,
+    filename: str,
+    user_id: int = Depends(get_current_user_id),
+    db: Session = Depends(get_db),
+) -> Response:
+    try:
+        content, media_type, digest = ApplicationService(db).dossier_artifact(
+            user_id, str(application_id), str(dossier_id), filename
+        )
+    except (ApplicationNotFoundError, ApplicationValidationError) as exc:
+        raise _http_error(exc) from exc
+    return Response(
+        content=content,
+        media_type=media_type,
+        headers={
+            **PRIVATE_NO_STORE_HEADERS,
+            "Content-Disposition": f'attachment; filename="careeros-{dossier_id}-{filename}"',
+            "X-Content-SHA256": digest,
+            "X-Content-Type-Options": "nosniff",
+        },
+    )

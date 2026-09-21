@@ -122,6 +122,12 @@ class Application(Base, TimestampMixin):
         uselist=False,
         lazy="selectin",
     )
+    packet_artifacts: Mapped[list[ApplicationPacketArtifact]] = relationship(
+        "ApplicationPacketArtifact",
+        back_populates="application",
+        cascade="all, delete-orphan",
+        lazy="selectin",
+    )
 
 
 class ApplicationDossierDraft(Base, TimestampMixin):
@@ -146,6 +152,15 @@ class ApplicationDossierDraft(Base, TimestampMixin):
             "revision >= 1",
             name="ck_dossier_draft_revision",
         ),
+        CheckConstraint(
+            "(resume_draft_id IS NOT NULL AND resume_version_id IS NULL) OR (resume_draft_id IS NULL AND resume_version_id IS NOT NULL)",
+            name="ck_dossier_draft_binding",
+        ),
+        CheckConstraint(
+            "(resume_draft_id IS NOT NULL AND resume_draft_revision IS NOT NULL AND resume_draft_revision >= 1) OR "
+            "(resume_draft_id IS NULL AND resume_draft_revision IS NULL)",
+            name="ck_dossier_draft_binding_revision",
+        ),
     )
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
@@ -154,12 +169,19 @@ class ApplicationDossierDraft(Base, TimestampMixin):
         ForeignKey("applications.id", ondelete="CASCADE"),
         nullable=False,
     )
-    resume_version_id: Mapped[str] = mapped_column(
+    resume_version_id: Mapped[str | None] = mapped_column(
         String(36),
         ForeignKey("resume_versions.id", ondelete="CASCADE"),
-        nullable=False,
+        nullable=True,
         index=True,
     )
+    resume_draft_id: Mapped[str | None] = mapped_column(
+        String(36),
+        ForeignKey("resume_drafts.id", ondelete="CASCADE"),
+        nullable=True,
+        index=True,
+    )
+    resume_draft_revision: Mapped[int | None] = mapped_column(Integer, nullable=True)
     application_revision: Mapped[int] = mapped_column(Integer, nullable=False)
     revision: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
     content: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
@@ -167,6 +189,39 @@ class ApplicationDossierDraft(Base, TimestampMixin):
     application: Mapped[Application] = relationship(
         "Application",
         back_populates="dossier_draft",
+    )
+
+
+class ApplicationPacketArtifact(Base):
+    """Durable, byte-immutable storage record for an enhanced 3.0 dossier packet."""
+
+    __tablename__ = "application_packet_artifacts"
+    __table_args__ = (
+        UniqueConstraint(
+            "application_id",
+            "dossier_id",
+            name="uq_application_packet_artifact_dossier",
+        ),
+        Index("ix_application_packet_artifacts_app_dossier", "application_id", "dossier_id"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    application_id: Mapped[str] = mapped_column(
+        String(36),
+        ForeignKey("applications.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    dossier_id: Mapped[str] = mapped_column(String(36), nullable=False, index=True)
+    storage_path: Mapped[str] = mapped_column(String(500), nullable=False)
+    sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    byte_size: Mapped[int] = mapped_column(Integer, nullable=False)
+    media_type: Mapped[str] = mapped_column(String(100), nullable=False, default="application/zip")
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime(), nullable=False, default=_utcnow)
+
+    application: Mapped[Application] = relationship(
+        "Application",
+        back_populates="packet_artifacts",
     )
 
 
@@ -219,3 +274,8 @@ class ApplicationEvent(Base):
 @event.listens_for(ApplicationEvent, "before_update")
 def _application_events_are_immutable(_mapper, _connection, _target) -> None:
     raise ValueError("Application timeline events are append-only")
+
+
+@event.listens_for(ApplicationPacketArtifact, "before_update")
+def _application_packets_are_immutable(_mapper, _connection, _target) -> None:
+    raise ValueError("Published application packet bindings are immutable")

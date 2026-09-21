@@ -7,8 +7,9 @@ import { ApplicationReadiness } from "./ApplicationReadiness";
 import { ApplicationPreparationForm } from "./ApplicationPreparationForm";
 import { ApplicationTasks } from "./ApplicationTasks";
 import { ApplicationDossier } from "./ApplicationDossier";
+import { CampaignMaterials } from "./CampaignMaterials";
 
-export function ApplicationDetail({ application, resumeVersions = [], resumeMetadataStatus = "ready", onRetryResumeMetadata, onChanged, onClose, dialogRef }) {
+export function ApplicationDetail({ application, resumeVersions = [], resumeDrafts = [], resumeMetadataStatus = "ready", onRetryResumeMetadata, onChanged, onClose, dialogRef }) {
     const { language, t } = useI18n();
     const locale = language === "it" ? "it-IT" : "en-GB";
     const stageLabels = getStageLabels(t);
@@ -51,10 +52,15 @@ export function ApplicationDetail({ application, resumeVersions = [], resumeMeta
         <div ref={dialogRef} className="application-detail" role="dialog" aria-modal="true" aria-labelledby="application-detail-title" aria-describedby="application-detail-summary" tabIndex="-1">
             <header><div><span className={`stage-badge stage-badge--${application.current_stage}`}>{stageLabels[application.current_stage]}</span><h2 id="application-detail-title">{snapshot.title || t("applicationDetail.fallbackTitle")}</h2><p id="application-detail-summary">{snapshot.company}{snapshot.location ? ` · ${snapshot.location}` : ""}</p></div><button type="button" className="icon-button" data-dialog-initial-focus onClick={onClose} aria-label={t("applicationDetail.close")}><i className="bi bi-x-lg" /></button></header>
             <div className="application-snapshot"><div><i className="bi bi-camera" /><span><strong>{t("applicationDetail.snapshot")}</strong><small>{t("applicationDetail.snapshotCopy")}</small></span></div>{url && <a className="button button--secondary" href={url} target="_blank" rel="noopener noreferrer">{t("applicationDetail.openSource")} <i className="bi bi-box-arrow-up-right" /></a>}</div>
+            <nav className="dossier-section-links" aria-label={t("dossier.sectionNavigation")}>
+                <a href="#dossier-title">{t("dossier.materialsTitle")}</a>
+                <a href="#timeline-title">{t("applicationDetail.timeline")}</a>
+            </nav>
             {editingPreparation && <ApplicationPreparationForm key={application.revision} application={application} resumeVersions={resumeVersions} onUpdated={onChanged} onClose={() => setEditingPreparation(false)} />}
+            <ApplicationDossier key={application.id} resumeDrafts={resumeDrafts} application={application} resumeVersions={resumeVersions} resumeMetadataStatus={resumeMetadataStatus} onRetryResumeMetadata={onRetryResumeMetadata} onChanged={onChanged} />
             <ApplicationReadiness applicationId={application.id} applicationRevision={application.revision} onEditPreparation={() => setEditingPreparation(true)} />
             <ApplicationTasks application={application} onChanged={onChanged} />
-            <ApplicationDossier application={application} resumeVersions={resumeVersions} resumeMetadataStatus={resumeMetadataStatus} onRetryResumeMetadata={onRetryResumeMetadata} onChanged={onChanged} />
+            <CampaignMaterials applicationId={application.id} />
             {error && <div className="inline-alert inline-alert--danger" role="alert">{error}</div>}
             <form className="application-event-form" onSubmit={submit}>
                 <h3>{t("applicationDetail.addEvent")}</h3>

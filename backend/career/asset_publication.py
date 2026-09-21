@@ -37,7 +37,7 @@ _JOURNAL_FIELDS = {
     "sha256",
     "storage_path",
 }
-_KINDS = {"profile_photo", "source_document"}
+_KINDS = {"campaign_document", "profile_photo", "source_document"}
 
 
 @dataclass(frozen=True, slots=True)
@@ -68,6 +68,8 @@ def _expected_storage_path(kind: str, sha256: str) -> str:
         return f"assets/{sha256[:2]}/{sha256}"
     if kind == "profile_photo":
         return f"assets/photos/{sha256[:2]}/{sha256}.jpg"
+    if kind == "campaign_document":
+        return f"assets/campaign/{sha256[:2]}/{sha256}"
     raise ValueError("Invalid asset publication kind")
 
 

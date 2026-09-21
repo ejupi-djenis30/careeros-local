@@ -28,6 +28,7 @@ from backend.resumes.schemas import (
     ResumeVersionLinkOption,
     ResumeVersionResponse,
     ResumeVersionRestore,
+    TemplatePresetResponse,
 )
 from backend.resumes.service import (
     ResumeConflictError,
@@ -35,6 +36,7 @@ from backend.resumes.service import (
     ResumeService,
     ResumeValidationError,
 )
+from backend.resumes.templates import list_template_presets
 from backend.storage.atomic import StorageWriteError
 
 router = APIRouter()
@@ -48,6 +50,15 @@ def _http_error(exc: Exception) -> HTTPException:
     if isinstance(exc, ResumeConflictError):
         return HTTPException(status_code=409, detail=str(exc))
     return HTTPException(status_code=422, detail=str(exc))
+
+
+@router.get("/templates", response_model=list[TemplatePresetResponse])
+def get_resume_templates(
+    _user_id: int = Depends(get_current_user_id),
+) -> list[TemplatePresetResponse]:
+    return [
+        TemplatePresetResponse.model_validate(preset.__dict__) for preset in list_template_presets()
+    ]
 
 
 @router.get("", response_model=list[ResumeSummary])

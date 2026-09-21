@@ -27,6 +27,7 @@ from backend.api.middleware import (
     VaultActivityMiddleware,
     is_private_path,
 )
+from backend.campaigns.archive_policy import MAX_COMPRESSED_BYTES
 from backend.career.activity import vault_activity_gate
 from backend.core.config import settings
 from backend.core.diagnostics import (
@@ -260,6 +261,8 @@ app.add_middleware(
         ("POST", f"{settings.API_V1_STR}/portability/restore"): (
             settings.PORTABLE_ARCHIVE_REQUEST_BODY_MAX_BYTES
         ),
+        ("POST", f"{settings.API_V1_STR}/campaigns/preview"): MAX_COMPRESSED_BYTES + 1024 * 1024,
+        ("POST", f"{settings.API_V1_STR}/campaigns/import"): MAX_COMPRESSED_BYTES + 1024 * 1024,
     },
 )
 
@@ -283,6 +286,7 @@ if desktop_runtime.enabled:
     app.add_middleware(
         DesktopSessionMiddleware,
         token=desktop_runtime.session_token,
+        exempt_path_prefix=f"{settings.API_V1_STR}/agent-bridge",
     )
 
 app.add_middleware(

@@ -79,7 +79,7 @@ def test_saved_canvas_drives_pdf_docx_order_visibility_and_ats_quality(
             assert text.index("EDUCATION") < text.index("EXPERIENCE")
 
 
-def test_photo_canvas_uses_normalized_preview_and_two_column_pdf_docx(
+def test_photo_canvas_uses_normalized_preview_and_semantic_sidebar_pdf_docx(
     client, auth_headers, saved_detailed_profile, monkeypatch
 ):
     with TemporaryDirectory() as directory:
@@ -140,6 +140,7 @@ def test_photo_canvas_uses_normalized_preview_and_two_column_pdf_docx(
         ).content
         page = PdfReader(BytesIO(pdf_bytes)).pages[0]
         heading_x: list[float] = []
+        identity_x: list[float] = []
 
         def capture_heading(text, current_matrix, text_matrix, _font, _size):
             if any(heading in text for heading in ("EXPERIENCE", "EDUCATION", "SKILLS")):
@@ -149,16 +150,19 @@ def test_photo_canvas_uses_normalized_preview_and_two_column_pdf_docx(
                     + float(current_matrix[4])
                 )
                 heading_x.append(x_position)
+            if saved_detailed_profile["display_name"] in text:
+                identity_x.append(float(text_matrix[4]) + float(current_matrix[4]))
 
         page.extract_text(visitor_text=capture_heading)
         page_width = float(page.mediabox.width)
-        assert min(heading_x) < page_width * 0.35
-        assert max(heading_x) > page_width * 0.45
+        assert identity_x and max(identity_x) < page_width * 0.35
+        assert heading_x and min(heading_x) > page_width * 0.35
+        assert max(heading_x) - min(heading_x) < 1
 
         docx_bytes = client.get(
             f"/api/v1/resume-artifacts/{artifacts['docx']['id']}", headers=auth_headers
         ).content
         with ZipFile(BytesIO(docx_bytes)) as archive:
             document_xml = archive.read("word/document.xml").decode("utf-8")
-        assert "<w:cols" in document_xml
-        assert 'w:num="2"' in document_xml
+        assert "<w:tbl>" in document_xml
+        assert document_xml.count("<w:gridCol ") == 2

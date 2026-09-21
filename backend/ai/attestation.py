@@ -227,3 +227,79 @@ def is_persisted_match_payload_valid(analysis: object) -> bool:
     except MatchAttestationError:
         return False
     return True
+
+
+def is_external_agent_provenance(analysis: object) -> bool:
+    """Return whether this object has self-reported external agent analysis provenance."""
+    provenance = _value(analysis, "analysis_provenance")
+    return provenance in ("external_agent_proposal", "external_agent")
+
+
+def is_external_agent_match_attested(db: Any, analysis: object, user_id: int) -> bool:
+    """Verify an accepted owned external proposal independently of local-model receipts.
+
+    Historical grant labels are provenance, never live read/write authority. A
+    changed profile, advert or selected fact invalidates the displayed assessment.
+    """
+    from backend.agent_work.context import compute_payload_digest
+    from backend.agent_work.errors import AgentWorkError
+    from backend.agent_work.guards import require_current_inputs
+    from backend.agent_work.models import AgentProposal, AgentWorkRequest
+    from backend.agent_work.schemas import AnalysisProposalPayload
+    from backend.agent_work.validation import eligibility, fit_score, validate_proposal_payload
+
+    if _value(analysis, "analysis_provenance") != "external_agent_proposal":
+        return False
+    structured = _mapping(_value(analysis, "analysis_structured"))
+    if structured is None or structured.get("source") != "external_agent":
+        return False
+    request = (
+        db.query(AgentWorkRequest)
+        .filter_by(
+            id=structured.get("request_id"),
+            user_id=user_id,
+            state="accepted",
+            work_kind="analyze",
+            target_job_id=_value(analysis, "id"),
+        )
+        .first()
+    )
+    if request is None or request.accepted_receipt is None:
+        return False
+    proposal = (
+        db.query(AgentProposal)
+        .filter_by(id=structured.get("proposal_id"), request_id=request.id, user_id=user_id)
+        .first()
+    )
+    if proposal is None or request.accepted_receipt.get("proposal_id") != proposal.id:
+        return False
+    try:
+        payload = AnalysisProposalPayload.model_validate(proposal.payload)
+        validate_proposal_payload(request, payload)
+        require_current_inputs(db, request)
+        if compute_payload_digest(payload.model_dump(mode="json")) != proposal.payload_digest:
+            return False
+        expected = {
+            "recommendation": payload.recommendation,
+            "gates": [gate.model_dump(mode="json") for gate in payload.gates],
+            "claims": [claim.model_dump(mode="json") for claim in payload.claims],
+            "scores": payload.scores.model_dump(mode="json"),
+            "source": "external_agent",
+            "request_id": request.id,
+            "proposal_id": proposal.id,
+            "grant_id": proposal.submitting_grant_id,
+            "input_digest": request.input_digest,
+            "payload_digest": proposal.payload_digest,
+        }
+        return bool(
+            structured == expected
+            and _value(analysis, "affinity_score") == fit_score(payload.scores)
+            and _value(analysis, "worth_applying")
+            == (
+                eligibility(payload.gates) == "eligible"
+                and payload.recommendation in {"strong_fit", "consider"}
+            )
+            and _value(analysis, "analysis_execution_id") is None
+        )
+    except (AgentWorkError, ValidationError, ValueError, TypeError):
+        return False

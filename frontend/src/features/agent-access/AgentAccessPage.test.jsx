@@ -91,6 +91,7 @@ describe("AgentAccessPage", () => {
             scopes: ["system:read", "career:read"],
             lifetime_days: 30,
             password: "CurrentPassword1",
+            acknowledge_external_disclosure: false,
         });
         expect(screen.getByLabelText("New agent token")).toHaveValue(token);
         expect(clipboardWrite).not.toHaveBeenCalled();
@@ -106,6 +107,35 @@ describe("AgentAccessPage", () => {
         expect(createGrantButton).toBeEnabled();
         expect(createGrantButton).toHaveFocus();
         storageWrite.mockRestore();
+    });
+
+    it("requires explicit external disclosure acknowledgement for workspace scopes", async () => {
+        const user = userEvent.setup();
+        AutomationService.issueGrant.mockResolvedValue({
+            grant: { ...grant, scopes: ["system:read", "context:read"] },
+            token,
+            token_environment_variable: "CAREEROS_MCP_TOKEN",
+        });
+        renderPage();
+        await screen.findByText("No grants issued");
+
+        await user.click(screen.getByRole("checkbox", { name: /Detailed context/ }));
+        const acknowledgement = screen.getByRole("checkbox", {
+            name: /I understand where selected context may go/,
+        });
+        expect(screen.getByRole("button", { name: "Create grant" })).toBeDisabled();
+        await user.click(acknowledgement);
+        await user.type(screen.getByLabelText("Client label"), "Context grant");
+        await user.type(screen.getByLabelText(/Current CareerOS password/), "CurrentPassword1");
+        await user.click(screen.getByRole("button", { name: "Create grant" }));
+
+        await waitFor(() => expect(AutomationService.issueGrant).toHaveBeenCalledWith({
+            label: "Context grant",
+            scopes: ["system:read", "context:read"],
+            lifetime_days: 30,
+            password: "CurrentPassword1",
+            acknowledge_external_disclosure: true,
+        }));
     });
 
     it("requires the current password to revoke an active grant", async () => {

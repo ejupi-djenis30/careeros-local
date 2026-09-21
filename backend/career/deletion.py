@@ -7,9 +7,16 @@ from pathlib import Path
 from sqlalchemy import exists, text
 from sqlalchemy.orm import Session
 
+from backend.agent_work.models import AgentProposal, AgentWorkRequest
 from backend.ai.models import AIExecution
-from backend.applications.models import Application, ApplicationDossierDraft
+from backend.applications.models import (
+    Application,
+    ApplicationDossierDraft,
+    ApplicationPacketArtifact,
+)
+from backend.applications.packet_storage import packet_artifact_path, reconcile_packet_journals
 from backend.automation.models import AutomationGrant
+from backend.campaigns.models import Campaign, CampaignApplication, CampaignArtifact
 from backend.career.asset_publication import reconcile_asset_publication_journals
 from backend.career.models import CandidateProfile, CareerAsset
 from backend.core.diagnostics import FailureCode, diagnose_failure, log_failure
@@ -140,6 +147,7 @@ def _foreign_profile_storage_paths(
     """
 
     foreign: set[str] = set()
+    profile = db.get(CandidateProfile, profile_id)
     ordered_paths = sorted(candidate_paths)
     for offset in range(0, len(ordered_paths), 500):
         batch = ordered_paths[offset : offset + 500]
@@ -163,6 +171,16 @@ def _foreign_profile_storage_paths(
                 ResumeDraft.profile_id != profile_id,
             )
             .distinct()
+            .all()
+        )
+        foreign.update(
+            storage_path
+            for (storage_path,) in db.query(ApplicationPacketArtifact.storage_path)
+            .join(Application, ApplicationPacketArtifact.application_id == Application.id)
+            .filter(
+                ApplicationPacketArtifact.storage_path.in_(batch),
+                Application.user_id != (profile.user_id if profile else -1),
+            )
             .all()
         )
     return foreign
@@ -232,9 +250,67 @@ def _exclusive_restore_journal_paths(db: Session, user_id: int) -> set[str]:
             )
             .first()
         )
-        if shared_asset is None and shared_artifact is None:
+        shared_packet = (
+            db.query(ApplicationPacketArtifact.id)
+            .join(Application, ApplicationPacketArtifact.application_id == Application.id)
+            .filter(
+                ApplicationPacketArtifact.storage_path == storage_path,
+                Application.user_id != user_id,
+            )
+            .first()
+        )
+        if shared_asset is None and shared_artifact is None and shared_packet is None:
             exclusive.add(storage_path)
     return exclusive
+
+
+def _exclusive_packet_paths(db: Session, user_id: int) -> set[str]:
+    paths = set()
+    for record in (
+        db.query(ApplicationPacketArtifact)
+        .join(Application, ApplicationPacketArtifact.application_id == Application.id)
+        .filter(Application.user_id == user_id)
+        .all()
+    ):
+        if record.storage_path != packet_artifact_path(
+            application_id=record.application_id, dossier_id=record.dossier_id, sha256=record.sha256
+        ):
+            raise VaultDeletionError("Packet storage ownership is inconsistent")
+        # Check all managed file families before deleting durable bytes.
+        foreign = (
+            (
+                db.query(ApplicationPacketArtifact.id)
+                .join(Application, ApplicationPacketArtifact.application_id == Application.id)
+                .filter(
+                    ApplicationPacketArtifact.storage_path == record.storage_path,
+                    Application.user_id != user_id,
+                )
+                .first()
+            )
+            or (
+                db.query(CareerAsset.id)
+                .join(CandidateProfile)
+                .filter(
+                    CareerAsset.storage_path == record.storage_path,
+                    CandidateProfile.user_id != user_id,
+                )
+                .first()
+            )
+            or (
+                db.query(ResumeArtifact.id)
+                .join(ResumeVersion)
+                .join(ResumeDraft)
+                .join(CandidateProfile)
+                .filter(
+                    ResumeArtifact.storage_path == record.storage_path,
+                    CandidateProfile.user_id != user_id,
+                )
+                .first()
+            )
+        )
+        if not foreign:
+            paths.add(record.storage_path)
+    return paths
 
 
 def _validated_user_id(user_id: int) -> int:
@@ -600,6 +676,9 @@ def _deletion_commit_was_published(
                 verification.query(WorkflowRun.id).filter(WorkflowRun.user_id == user_id),
                 verification.query(AIExecution.id).filter(AIExecution.user_id == user_id),
                 verification.query(AutomationGrant.id).filter(AutomationGrant.user_id == user_id),
+                verification.query(AgentWorkRequest.id).filter(AgentWorkRequest.user_id == user_id),
+                verification.query(AgentProposal.id).filter(AgentProposal.user_id == user_id),
+                verification.query(Campaign.id).filter(Campaign.user_id == user_id),
             )
         )
         if exclusive_scraped_job_ids:
@@ -671,7 +750,9 @@ def delete_complete_vault(
                 # The writer reservation prevents a publisher from creating a
                 # new claim while crash-left asset journals are resolved.
                 reconcile_asset_publication_journals(db)
+            reconcile_packet_journals(db)
             paths = _exclusive_storage_paths(db, profile.id) if profile else set()
+            paths.update(_exclusive_packet_paths(db, validated_user_id))
             if profile is not None:
                 publication_paths, foreign_recovery_paths = (
                     _exclusive_resume_publication_journal_paths(
@@ -753,6 +834,31 @@ def delete_complete_vault(
                 .filter(AutomationGrant.user_id == validated_user_id)
                 .count(),
                 "auth_sessions": 0,
+                "agent_work_requests": db.query(AgentWorkRequest)
+                .filter(AgentWorkRequest.user_id == validated_user_id)
+                .count(),
+                "agent_proposals": db.query(AgentProposal)
+                .filter(AgentProposal.user_id == validated_user_id)
+                .count(),
+                "application_packet_artifacts": db.query(ApplicationPacketArtifact)
+                .join(Application)
+                .filter(Application.user_id == validated_user_id)
+                .count(),
+                "campaigns": db.query(Campaign)
+                .filter(Campaign.user_id == validated_user_id)
+                .count(),
+                "campaign_applications": (
+                    db.query(CampaignApplication)
+                    .join(Campaign, CampaignApplication.campaign_id == Campaign.id)
+                    .filter(Campaign.user_id == validated_user_id)
+                    .count()
+                ),
+                "campaign_artifacts": (
+                    db.query(CampaignArtifact)
+                    .join(Campaign, CampaignArtifact.campaign_id == Campaign.id)
+                    .filter(Campaign.user_id == validated_user_id)
+                    .count()
+                ),
                 "files": 0,
                 "model_files": 0,
                 "model_bytes": 0,
@@ -760,6 +866,25 @@ def delete_complete_vault(
             staged = _stage_files(paths, operation_id)
             counts["files"] = len(staged)
 
+            db.query(CampaignArtifact).filter(
+                CampaignArtifact.campaign_id.in_(
+                    db.query(Campaign.id).filter(Campaign.user_id == validated_user_id)
+                )
+            ).delete(synchronize_session=False)
+            db.query(CampaignApplication).filter(
+                CampaignApplication.campaign_id.in_(
+                    db.query(Campaign.id).filter(Campaign.user_id == validated_user_id)
+                )
+            ).delete(synchronize_session=False)
+            db.query(Campaign).filter(Campaign.user_id == validated_user_id).delete(
+                synchronize_session=False
+            )
+            db.query(AgentProposal).filter(AgentProposal.user_id == validated_user_id).delete(
+                synchronize_session=False
+            )
+            db.query(AgentWorkRequest).filter(AgentWorkRequest.user_id == validated_user_id).delete(
+                synchronize_session=False
+            )
             db.query(AutomationGrant).filter(AutomationGrant.user_id == validated_user_id).delete(
                 synchronize_session=False
             )

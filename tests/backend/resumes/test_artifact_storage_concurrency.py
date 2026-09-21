@@ -2,7 +2,7 @@ import os
 import subprocess
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
-from threading import Event, Lock, get_ident
+from threading import Barrier, Event, Lock, get_ident
 
 import pytest
 from sqlalchemy import create_engine, event
@@ -113,6 +113,42 @@ def _publish(factory, user_id: int, draft_id: str) -> int:
         drafts = ResumeDraftService(session)
         published = ResumePublicationService(session, drafts).publish(user_id, draft_id)
         return published.version_number
+
+
+def test_two_connections_cannot_overwrite_same_draft_revision(tmp_path, monkeypatch):
+    from backend.resumes.exceptions import ResumeConflictError
+    from backend.resumes.schemas import ResumeDraftUpdate
+
+    engine, factory, _directory, user_id, draft_id = _sqlite_vault(tmp_path, monkeypatch)
+    ready = Barrier(2)
+
+    def update(title):
+        with factory() as session:
+            service = ResumeDraftService(session)
+            draft = service.get(user_id, draft_id)
+            payload = draft.model_dump()
+            payload.update(expected_revision=draft.revision, title=title)
+            ready.wait(timeout=10)
+            try:
+                return service.update(
+                    user_id, draft_id, ResumeDraftUpdate.model_validate(payload)
+                ).title
+            except ResumeConflictError:
+                session.rollback()
+                return None
+
+    try:
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            first = executor.submit(update, "First writer")
+            second = executor.submit(update, "Second writer")
+            results = [first.result(timeout=15), second.result(timeout=15)]
+        assert results.count(None) == 1
+        with factory() as session:
+            draft = session.get(ResumeDraft, draft_id)
+            assert draft.revision == 2
+            assert draft.title == next(result for result in results if result)
+    finally:
+        engine.dispose()
 
 
 def test_two_sqlite_connections_serialize_publication_version_numbers(

@@ -1,8 +1,10 @@
 """Import every persistence model exactly once for SQLAlchemy metadata discovery."""
 
+from backend.agent_work import models as agent_work_models
 from backend.ai import models as ai_models
 from backend.applications import models as application_models
 from backend.automation import models as automation_models
+from backend.campaigns import models as campaign_models
 from backend.career import coach_models as coach_models
 from backend.career import models as career_models
 from backend.models import auth_session as auth_session_models
@@ -13,9 +15,11 @@ from backend.resumes import models as resume_models
 from backend.workflows import models as workflow_models
 
 __all__ = [
+    "agent_work_models",
     "ai_models",
     "application_models",
     "automation_models",
+    "campaign_models",
     "career_models",
     "coach_models",
     "auth_session_models",

@@ -8,13 +8,18 @@ from typing import Any
 
 from sqlalchemy.orm import Session
 
+from backend.agent_work.models import AgentProposal, AgentWorkRequest
 from backend.ai.models import AIExecution
+from backend.applications.exports import MAX_DOSSIER_BUNDLE_BYTES
 from backend.applications.models import (
     Application,
     ApplicationDossierDraft,
     ApplicationEvent,
+    ApplicationPacketArtifact,
 )
+from backend.applications.packet_storage import reconcile_packet_journals
 from backend.applications.snapshots import sanitize_application_snapshot
+from backend.campaigns.models import Campaign, CampaignApplication, CampaignArtifact
 from backend.career.coach_models import CoachConversation, CoachMessage
 from backend.career.models import (
     CandidateProfile,
@@ -24,6 +29,7 @@ from backend.career.models import (
     SourceDocument,
 )
 from backend.core.config import settings
+from backend.core.json_safety import strict_json_loads
 from backend.desktop.lifecycle import desktop_vault_lock
 from backend.models import Job, ScrapedJob, SearchProfile, User
 from backend.portability.manifest import (
@@ -68,10 +74,16 @@ EXPORT_MODELS: list[tuple[str, type[Any]]] = [
     ("applications", Application),
     ("application_dossier_drafts", ApplicationDossierDraft),
     ("application_events", ApplicationEvent),
+    ("application_packet_artifacts", ApplicationPacketArtifact),
+    ("agent_work_requests", AgentWorkRequest),
+    ("agent_proposals", AgentProposal),
     ("coach_conversations", CoachConversation),
     ("coach_messages", CoachMessage),
     ("workflow_runs", WorkflowRun),
     ("ai_executions", AIExecution),
+    ("campaigns", Campaign),
+    ("campaign_applications", CampaignApplication),
+    ("campaign_artifacts", CampaignArtifact),
 ]
 MODEL_BY_TABLE = dict(EXPORT_MODELS)
 
@@ -148,7 +160,7 @@ def _job_row_for_export(job: Job, *, omit: set[str]) -> dict[str, Any]:
     # A legacy quarantine may itself contain raw prose. It is local audit state, not a
     # portable claim, and must not leave the vault even when the current row is valid.
     row["analysis_legacy_snapshot"] = None
-    if job.analysis_verified:
+    if job.analysis_verified or getattr(job, "external_analysis_verified", False):
         return row
     for field in JOB_ANALYSIS_EXPORT_FIELDS:
         if field in row:
@@ -264,10 +276,31 @@ def _queries(db: Session, user_id: int) -> dict[str, list[Any]]:
         "applications": applications,
         "application_dossier_drafts": application_dossier_drafts,
         "application_events": application_events,
+        "application_packet_artifacts": db.query(ApplicationPacketArtifact)
+        .join(Application, ApplicationPacketArtifact.application_id == Application.id)
+        .filter(Application.user_id == user_id)
+        .all(),
+        "agent_work_requests": db.query(AgentWorkRequest)
+        .filter(AgentWorkRequest.user_id == user_id)
+        .all(),
+        "agent_proposals": db.query(AgentProposal).filter(AgentProposal.user_id == user_id).all(),
         "coach_conversations": conversations,
         "coach_messages": messages,
         "workflow_runs": workflows,
         "ai_executions": executions,
+        "campaigns": db.query(Campaign).filter(Campaign.user_id == user_id).all(),
+        "campaign_applications": (
+            db.query(CampaignApplication)
+            .join(Campaign, CampaignApplication.campaign_id == Campaign.id)
+            .filter(Campaign.user_id == user_id)
+            .all()
+        ),
+        "campaign_artifacts": (
+            db.query(CampaignArtifact)
+            .join(Campaign, CampaignArtifact.campaign_id == Campaign.id)
+            .filter(Campaign.user_id == user_id)
+            .all()
+        ),
         "preference_signals": [user],
     }
 
@@ -291,9 +324,15 @@ def _consistent_export_snapshot(db: Session) -> Iterator[None]:
     db.rollback()
     bind = db.get_bind()
     if bind.dialect.name == "sqlite":
+        db.connection().exec_driver_sql("BEGIN IMMEDIATE")
+        try:
+            reconcile_packet_journals(db)
+        finally:
+            db.rollback()
         db.connection().exec_driver_sql("BEGIN")
     else:
         db.connection(execution_options={"isolation_level": "REPEATABLE READ"})
+        reconcile_packet_journals(db)
     try:
         yield
     finally:
@@ -325,6 +364,9 @@ def export_archive(db: Session, user_id: int) -> bytes:
             "applications",
             "workflow_runs",
             "ai_executions",
+            "agent_work_requests",
+            "agent_proposals",
+            "campaigns",
         }
         for table_name, _model in EXPORT_MODELS:
             omit = {"user_id"} if table_name in user_scoped else set()
@@ -348,6 +390,14 @@ def export_archive(db: Session, user_id: int) -> bytes:
                     tables[table_name].append(row)
             else:
                 tables[table_name] = [_row(item, omit=omit) for item in rows[table_name]]
+            if table_name in {"agent_work_requests", "agent_proposals"}:
+                authority_field = (
+                    "bound_grant_id"
+                    if table_name == "agent_work_requests"
+                    else "submitting_grant_id"
+                )
+                for row in tables[table_name]:
+                    row[authority_field] = None
         owner = rows["preference_signals"][0]
         tables["preference_signals"] = [
             {
@@ -356,6 +406,21 @@ def export_archive(db: Session, user_id: int) -> bytes:
             }
         ]
 
+        # Enforce archive-local ownership even if an inconsistent database row
+        # was introduced outside the domain services.
+        from backend.portability.campaigns import validate_campaign_records
+        from backend.portability.packets import validate_packet_records
+        from backend.portability.restore import _validate_portable_foreign_keys
+        from backend.portability.workspace import validate_workspace_records
+
+        _validate_portable_foreign_keys(CURRENT_ARCHIVE_VERSION, tables)
+        try:
+            validate_workspace_records(tables, CURRENT_ARCHIVE_VERSION)
+            validate_packet_records(tables)
+            validate_campaign_records(tables, CURRENT_ARCHIVE_VERSION)
+        except (TypeError, ValueError) as exc:
+            raise ArchiveError("Workspace records failed backup verification") from exc
+
         bindings: list[dict[str, str]] = []
         file_specs: list[tuple[str, str, Any, int]] = []
         file_bytes = 0
@@ -363,10 +428,17 @@ def export_archive(db: Session, user_id: int) -> bytes:
         for table_name, directory, records in (
             ("career_assets", "career-assets", rows["career_assets"]),
             ("resume_artifacts", "resume-artifacts", rows["resume_artifacts"]),
+            (
+                "application_packet_artifacts",
+                "application-packets",
+                rows["application_packet_artifacts"],
+            ),
         ):
             maximum_size = (
                 settings.MAX_UPLOAD_FILE_SIZE
                 if table_name == "career_assets"
+                else MAX_DOSSIER_BUNDLE_BYTES
+                if table_name == "application_packet_artifacts"
                 else MAX_RESUME_ARTIFACT_BYTES
             )
             for record in records:
@@ -404,6 +476,13 @@ def export_archive(db: Session, user_id: int) -> bytes:
                 )
             except (OSError, ValueError) as exc:
                 raise ArchiveError("A stored private file failed backup verification") from exc
+            if table_name == "application_packet_artifacts":
+                from backend.portability.packets import validate_packet_bytes
+
+                try:
+                    validate_packet_bytes(_row(record), data, tables)
+                except (OSError, ValueError) as exc:
+                    raise ArchiveError("A stored packet failed backup verification") from exc
             file_members[member] = data
             bindings.append(
                 {
@@ -491,13 +570,21 @@ def _validated_members(data: bytes) -> tuple[ArchiveManifest, dict[str, bytes]]:
         if MANIFEST_MEMBER not in names:
             raise ArchiveError("The archive manifest is missing")
         try:
-            manifest = ArchiveManifest.model_validate_json(archive.read(MANIFEST_MEMBER))
+            manifest = ArchiveManifest.model_validate(
+                strict_json_loads(archive.read(MANIFEST_MEMBER))
+            )
         except Exception as exc:
             raise ArchiveError("The archive manifest is invalid") from exc
         try:
             validate_manifest_compatibility(manifest)
         except ValueError as exc:
             raise ArchiveError(str(exc)) from exc
+        if len(manifest.entries) != len(infos) - 1 or 1 + len(manifest.entries) > (
+            settings.PORTABLE_ARCHIVE_MAX_MEMBERS
+        ):
+            raise ArchiveError("The archive manifest exceeds the configured member limit")
+        if sum(manifest.record_counts.values()) > settings.PORTABLE_ARCHIVE_MAX_RECORDS:
+            raise ArchiveError("The archive manifest contains too many records")
         expected = {entry.path for entry in manifest.entries} | {MANIFEST_MEMBER}
         if expected != set(names):
             raise ArchiveError("Archive members do not match the manifest")

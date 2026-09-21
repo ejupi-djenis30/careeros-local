@@ -159,7 +159,11 @@ class ResumeCanvasDocument(BaseModel):
 
 
 class GenerationContext(BaseModel):
-    mode: Literal["deterministic", "local-model-assisted"] = "deterministic"
+    mode: Literal["deterministic", "local-model-assisted", "external-agent"] = "deterministic"
+    request_id: str | None = Field(default=None, min_length=36, max_length=36)
+    grant_id: str | None = Field(default=None, min_length=36, max_length=36)
+    input_digest: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    payload_digest: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
     generated_at: str | None = None
     source_profile_revision: int = Field(ge=1)
     career_goal_id: str | None = None
@@ -168,7 +172,7 @@ class GenerationContext(BaseModel):
     reason_codes: list[str] = Field(default_factory=list, max_length=100)
     claim_evidence_map: dict[str, list[str]] = Field(default_factory=dict)
 
-    @field_validator("career_goal_id")
+    @field_validator("career_goal_id", "request_id", "grant_id")
     @classmethod
     def validate_goal_id(cls, value: str | None) -> str | None:
         return canonical_uuid(value) if value else None

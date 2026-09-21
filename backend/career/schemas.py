@@ -196,6 +196,28 @@ class CareerProfileSummary(BaseModel):
     updated_at: datetime
 
 
+SourceRole = Literal["profile", "narrative", "goals", "template_reference"]
+PreferenceField = Literal[
+    "target_roles",
+    "preferred_locations",
+    "preferred_languages",
+    "preferred_work_modes",
+    "contract_types",
+    "workload_min",
+    "workload_max",
+    "remote_only",
+    "hard_max_distance_km",
+    "available_from",
+    "notice_period_days",
+]
+VALID_SOURCE_ROLES: tuple[SourceRole, ...] = (
+    "profile",
+    "narrative",
+    "goals",
+    "template_reference",
+)
+
+
 class SourceFactCandidate(BaseModel):
     candidate_id: str = Field(pattern=r"^[0-9a-f]{64}$")
     fact_type: FactType
@@ -214,6 +236,20 @@ class SourceFactCandidate(BaseModel):
         return self
 
 
+class PreferenceCandidate(BaseModel):
+    candidate_id: str = Field(pattern=r"^[0-9a-f]{64}$")
+    field: PreferenceField
+    value: Any
+    source_locator: str = Field(min_length=1, max_length=255)
+    excerpt: str = Field(min_length=1, max_length=1000)
+
+    @model_validator(mode="after")
+    def validate_preference_value(self) -> "PreferenceCandidate":
+        validated = CareerPreferences.model_validate({self.field: self.value})
+        self.value = validated.model_dump(mode="json")[self.field]
+        return self
+
+
 class SourceDocumentResponse(BaseModel):
     id: str
     asset_id: str
@@ -222,7 +258,11 @@ class SourceDocumentResponse(BaseModel):
     sha256: str
     byte_size: int
     document_type: str
+    source_role: SourceRole = "profile"
     extracted_characters: int
     text_preview: str = Field(max_length=4000)
     candidates: list[SourceFactCandidate] = Field(default_factory=list, max_length=24)
+    preference_candidates: list[PreferenceCandidate] = Field(default_factory=list, max_length=24)
+    review_notes: list[str] = Field(default_factory=list, max_length=50)
+    warnings: list[str] = Field(default_factory=list, max_length=50)
     created_at: datetime

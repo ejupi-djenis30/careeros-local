@@ -47,6 +47,35 @@ def test_only_exact_current_verified_match_survives_snapshot_sanitization():
     }
 
 
+def test_exact_current_externally_verified_match_survives_snapshot_sanitization():
+    job = _verified_job()
+    job.analysis_verified = False
+    job.external_analysis_verified = True
+    job.analysis_execution_id = None
+    job.analysis_row_fingerprint = None
+    safe = sanitize_application_snapshot(
+        {
+            "title": "Platform Engineer",
+            "match": {
+                "score": 84,
+                "analysis": "Receipt-verified summary",
+                "worth_applying": True,
+            },
+        },
+        verified_job=job,
+        quarantine_reason="unverified",
+    )
+
+    assert safe["match"] == {
+        "score": 84,
+        "analysis": "Receipt-verified summary",
+        "worth_applying": True,
+        "receipt_verified": True,
+        "execution_id": None,
+        "row_fingerprint": None,
+    }
+
+
 def test_stale_match_is_replaced_even_when_linked_job_is_verified():
     safe = sanitize_application_snapshot(
         {

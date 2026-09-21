@@ -11,11 +11,13 @@ const noticesPath = resolve(repositoryRoot, "THIRD_PARTY_NOTICES.txt");
 const budgets = Object.freeze({
     entryRaw: 350_000,
     entryGzip: 112_000,
-    selectedLocaleRaw: 82_000,
-    selectedLocaleGzip: 26_000,
+    // Feature-local messages remain in one independently loaded locale chunk.
+    // These caps include the complete agent-work and dossier review vocabulary.
+    selectedLocaleRaw: 90_000,
+    selectedLocaleGzip: 29_000,
     lifecycleCssRaw: 23_000,
     lifecycleCssGzip: 6_200,
-    initialRaw: 440_000,
+    initialRaw: 445_000,
     initialGzip: 140_000,
     authenticatedWorkspaceCssRaw: 445_000,
     authenticatedWorkspaceCssGzip: 73_500,

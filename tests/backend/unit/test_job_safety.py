@@ -5,6 +5,10 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from pydantic import ValidationError
 
+from backend.jobs.manual_identity import (
+    canonical_manual_identity_url,
+    stable_manual_platform_job_id,
+)
 from backend.jobs.matching import deterministic_job_prefilter
 from backend.jobs.urls import UnsafeJobUrlError, normalize_job_url
 from backend.models import ScrapedJob
@@ -46,6 +50,62 @@ def test_job_schema_normalizes_safe_urls_and_rejects_unsafe_application_url():
             external_url="https://example.test/jobs/1",
             application_url="data:text/html,unsafe",
         )
+
+
+def test_manual_identity_canonicalizes_host_and_fragment_but_preserves_path_case():
+    base = stable_manual_platform_job_id(
+        7,
+        title="Original title",
+        company="Example",
+        external_url="HTTPS://Example.TEST/jobs/ABC#apply",
+    )
+    renamed = stable_manual_platform_job_id(
+        7,
+        title="Updated title",
+        company="Renamed company",
+        external_url="https://example.test/jobs/ABC",
+    )
+    different_path = stable_manual_platform_job_id(
+        7,
+        title="Updated title",
+        company="Renamed company",
+        external_url="https://example.test/jobs/abc",
+    )
+    other_user = stable_manual_platform_job_id(
+        8,
+        title="Original title",
+        company="Example",
+        external_url="https://example.test/jobs/ABC",
+    )
+    assert base == renamed
+    assert different_path != base
+    assert other_user != base
+
+
+def test_manual_identity_canonicalizes_default_port_query_tracking_and_trailing_slash():
+    assert canonical_manual_identity_url(
+        "https://Example.TEST:443/jobs/ABC/?b=Two&utm_source=mail&a=One#apply"
+    ) == "https://example.test/jobs/ABC?a=One&b=Two"
+    equivalent = stable_manual_platform_job_id(
+        7,
+        title="Original",
+        company="Example",
+        external_url="https://example.test:443/jobs/ABC/?b=Two&utm_medium=email&a=One",
+    )
+    reordered = stable_manual_platform_job_id(
+        7,
+        title="Renamed",
+        company="Renamed",
+        external_url="https://EXAMPLE.TEST/jobs/ABC?a=One&b=Two#details",
+    )
+    different_value_case = stable_manual_platform_job_id(
+        7,
+        title="Original",
+        company="Example",
+        external_url="https://example.test/jobs/ABC?a=one&b=Two",
+    )
+    assert equivalent == reordered
+    assert different_value_case != equivalent
 
 
 def test_changed_job_snapshot_clears_stale_normalization_and_keeps_raw_metadata():

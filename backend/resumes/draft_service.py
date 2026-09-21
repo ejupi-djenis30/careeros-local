@@ -62,7 +62,7 @@ class ResumeDraftService:
         query = self._owned_draft_query(user_id, draft_id)
         if self.db.get_bind().dialect.name != "sqlite":
             query = query.with_for_update()
-        return query.first()
+        return query.populate_existing().first()
 
     def _begin_sqlite_write(self) -> None:
         self.db.rollback()
@@ -70,7 +70,17 @@ class ResumeDraftService:
             self.db.execute(sql_text("BEGIN IMMEDIATE"))
 
     def validate_selection(self, profile: CandidateProfile, data: Any) -> list[CareerFact]:
-        if data.template_kind == "photo" and not data.photo_asset_id:
+        from backend.resumes.templates import resolve_template_defaults
+
+        preset, _ = resolve_template_defaults(
+            getattr(data, "template_id", None),
+            getattr(data, "template_version", None),
+            getattr(data, "locale", None),
+            getattr(data, "template_kind", None),
+        )
+        if preset.photo_policy == "forbidden" and data.photo_asset_id:
+            raise ResumeValidationError("ATS resumes cannot reference a photo")
+        if getattr(preset, "photo_policy", None) == "required" and not data.photo_asset_id:
             raise ResumeValidationError("Photo resumes require a normalized profile photo")
         facts = (
             self.db.query(CareerFact)
@@ -126,6 +136,11 @@ class ResumeDraftService:
         return [by_id[fact_id] for fact_id in ids if fact_id in by_id]
 
     def response(self, profile: CandidateProfile, draft: ResumeDraft) -> ResumeDraftResponse:
+        from backend.resumes.templates import resolve_template_defaults
+
+        preset, _ = resolve_template_defaults(
+            draft.template_id, draft.template_version, draft.locale, draft.template_kind
+        )
         facts = self.ordered_facts(profile, list(draft.selected_fact_ids))
         canvas = normalize_canvas(
             draft.canvas_document,
@@ -143,6 +158,10 @@ class ResumeDraftService:
                 "profile_revision": draft.profile_revision,
                 "title": draft.title,
                 "template_kind": draft.template_kind,
+                "template_layout": preset.layout,
+                "template_id": getattr(draft, "template_id", "software-en") or "software-en",
+                "template_version": getattr(draft, "template_version", 1) or 1,
+                "locale": getattr(draft, "locale", "en") or "en",
                 "section_config": draft.section_config,
                 "selected_fact_ids": draft.selected_fact_ids,
                 "content_overrides": draft.content_overrides,
@@ -170,8 +189,18 @@ class ResumeDraftService:
         self.db.refresh(draft)
         return self.response(profile, draft)
 
-    def update(self, user_id: int, draft_id: str, data: ResumeDraftUpdate) -> ResumeDraftResponse:
-        draft = self.draft(user_id, draft_id)
+    def update(
+        self,
+        user_id: int,
+        draft_id: str,
+        data: ResumeDraftUpdate,
+        *,
+        generation_context: dict | None = None,
+    ) -> ResumeDraftResponse:
+        self._begin_sqlite_write()
+        draft = self._locked_owned_draft(user_id, draft_id)
+        if draft is None or is_resume_delete_pending(draft.generation_context):
+            raise ResumeNotFoundError("Resume draft not found")
         if draft.revision != data.expected_revision:
             raise ResumeConflictError(
                 f"Expected revision {data.expected_revision}, current revision is {draft.revision}"
@@ -179,6 +208,8 @@ class ResumeDraftService:
         profile = self.profile(user_id)
         facts = self.validate_selection(profile, data)
         apply_draft_data(draft, data, facts, profile)
+        if generation_context is not None:
+            draft.generation_context = deepcopy(generation_context)
         draft.revision += 1
         self.db.commit()
         self.db.expire_all()
@@ -207,6 +238,9 @@ class ResumeDraftService:
                 revision=draft.revision,
                 title=draft.title,
                 template_kind=draft.template_kind,
+                template_id=getattr(draft, "template_id", "software-en") or "software-en",
+                template_version=getattr(draft, "template_version", 1) or 1,
+                locale=getattr(draft, "locale", "en") or "en",
                 selected_fact_count=len(draft.selected_fact_ids),
                 latest_version=draft.versions[0].semantic_version if draft.versions else None,
                 updated_at=draft.updated_at,
@@ -243,6 +277,11 @@ class ResumeDraftService:
         ]
 
     def generate(self, user_id: int, data: ResumeGenerate) -> ResumeDraftResponse:
+        from backend.resumes.templates import resolve_template_defaults
+
+        preset, _ = resolve_template_defaults(
+            data.template_id, data.template_version, data.locale, data.template_kind
+        )
         profile = self.profile(user_id)
         goal = None
         if data.career_goal_id:
@@ -276,14 +315,17 @@ class ResumeDraftService:
         result = generate_resume(
             profile,
             profile.facts,
-            template_kind=data.template_kind,
+            template_kind=preset.template_kind,
             goal=goal,
             target_job_id=data.target_job_id,
             target_snapshot=target_snapshot,
         )
         create_data = ResumeDraftCreate(
             title=data.title,
-            template_kind=data.template_kind,
+            template_kind=preset.template_kind,
+            template_id=data.template_id,
+            template_version=data.template_version,
+            locale=data.locale,
             section_config=result.section_config,
             selected_fact_ids=result.selected_fact_ids,
             canvas_document=result.canvas,
@@ -311,6 +353,9 @@ class ResumeDraftService:
             profile_revision=source.profile_revision,
             title=data.title or f"{source.title} · copia",
             template_kind=source.template_kind,
+            template_id=source.template_id,
+            template_version=source.template_version,
+            locale=source.locale,
             section_config=deepcopy(source.section_config),
             selected_fact_ids=list(source.selected_fact_ids),
             content_overrides=deepcopy(source.content_overrides),

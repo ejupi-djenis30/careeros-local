@@ -11,6 +11,7 @@ import "./workspace-bootstrap.css";
 
 const ApplicationsPage = lazy(() => import("../features/applications/ApplicationsPage").then((module) => ({ default: module.ApplicationsPage })));
 const AgentAccessPage = lazy(() => import("../features/agent-access/AgentAccessPage").then((module) => ({ default: module.AgentAccessPage })));
+const AgentWorkPage = lazy(() => import("../features/agent-work/AgentWorkPage").then((module) => ({ default: module.AgentWorkPage })));
 const CareerProfilePage = lazy(() => import("../features/career-profile/CareerProfilePage").then((module) => ({ default: module.CareerProfilePage })));
 const WorkspaceHomePage = lazy(() => import("../features/home/WorkspaceHomePage").then((module) => ({ default: module.WorkspaceHomePage })));
 const CareerCoachPage = lazy(() => import("../features/local-coach/CareerCoachPage").then((module) => ({ default: module.CareerCoachPage })));
@@ -63,13 +64,14 @@ export function AuthenticatedWorkspace() {
                             <Route path="/profile" element={<CareerProfilePage />} />
                             <Route path="/resumes" element={<ResumeStudioPage />} />
                             <Route path="/applications" element={<ApplicationsPage />} />
+                            <Route path="/agent-work" element={<AgentWorkPage />} />
                             <Route path="/agent-access" element={<AgentAccessPage />} />
                             <Route path="/coach" element={<RequiredLocalAnalysis><CareerCoachPage /></RequiredLocalAnalysis>} />
                             <Route path="/jobs" element={<JobsPage />} />
                             <Route path="/search" element={<RequiredLocalAnalysis><NewSearchPage /></RequiredLocalAnalysis>} />
                             <Route path="/new" element={<Navigate to="/search" replace />} />
                             <Route path="/schedules" element={<SchedulesPage />} />
-                            <Route path="/history" element={<RequiredLocalAnalysis><HistoryPage /></RequiredLocalAnalysis>} />
+                            <Route path="/history" element={<HistoryPage />} />
                             <Route path="/progress" element={<ProgressPage />} />
                             <Route path="*" element={<Navigate to="/" replace />} />
                         </Routes>

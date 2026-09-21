@@ -122,7 +122,12 @@ describe('MobileJobCard', () => {
     });
 
     it('hides every analysis-derived field when the result is not verified', () => {
-        const unverifiedJob = { ...mockJob, analysis_verified: false };
+        const unverifiedJob = {
+            ...mockJob,
+            analysis_verified: false,
+            external_analysis_verified: false,
+            analysis_provenance: "external_agent_proposal",
+        };
         render(<MobileJobCard job={unverifiedJob} isGlobalView={false} {...mockHandlers} />);
 
         expect(screen.queryByText('85%')).not.toBeInTheDocument();

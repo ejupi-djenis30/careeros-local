@@ -6,7 +6,7 @@ from io import BytesIO
 from docx import Document as create_document
 from docx.document import Document as DocxDocument
 from docx.enum.text import WD_ALIGN_PARAGRAPH
-from docx.shared import Inches, Pt
+from docx.shared import Inches, Mm, Pt, RGBColor
 from reportlab.lib.colors import HexColor
 from reportlab.lib.enums import TA_CENTER
 from reportlab.lib.pagesizes import A4
@@ -30,6 +30,8 @@ from backend.resumes.artifact_policy import (
     ensure_resume_artifact_size,
 )
 from backend.resumes.content import ResumeContent, build_content
+from backend.resumes.renderers.fonts import ensure_unicode_font_registered
+from backend.resumes.renderers.links import add_docx_hyperlink, format_pdf_link, is_safe_url
 
 _DOCX_TIMESTAMP = (1980, 1, 1, 0, 0, 0)
 _DOCUMENT_TIMESTAMP = datetime(2000, 1, 1, tzinfo=timezone.utc)
@@ -49,13 +51,7 @@ def render_pdf(snapshot: dict, *, photo: bytes | None = None) -> bytes:
     line_height = float(style.get("line_height", 1.3))
     spacing = float(style.get("section_spacing", 8))
     accent = str(style.get("accent_color", "#111827"))
-    requested_font = str(style.get("font_family", "Helvetica"))
-    font_names = {
-        "Helvetica": ("Helvetica", "Helvetica-Bold", "Helvetica-Oblique"),
-        "Arial": ("Helvetica", "Helvetica-Bold", "Helvetica-Oblique"),
-        "Georgia": ("Times-Roman", "Times-Bold", "Times-Italic"),
-    }
-    normal_font, bold_font, italic_font = font_names.get(requested_font, font_names["Helvetica"])
+    normal_font, bold_font, italic_font = ensure_unicode_font_registered()
     output = BytesIO()
     document = SimpleDocTemplate(
         output,
@@ -156,7 +152,16 @@ def render_pdf(snapshot: dict, *, photo: bytes | None = None) -> bytes:
     if content.headline:
         story.append(Paragraph(_paragraph_text(content.headline), headline_style))
     if content.contact_line:
-        story.append(Paragraph(_paragraph_text(content.contact_line), contact_style))
+        contact_parts: list[str] = []
+        for item in content.contact_line.split(" | "):
+            cleaned = item.strip()
+            if not cleaned:
+                continue
+            if is_safe_url(cleaned):
+                contact_parts.append(format_pdf_link(cleaned, cleaned, accent))
+            else:
+                contact_parts.append(_paragraph_text(cleaned))
+        story.append(Paragraph(" | ".join(contact_parts), contact_style))
     if content.summary:
         story.append(Paragraph(_paragraph_text(content.summary_heading), section_style))
         story.append(Paragraph(_paragraph_text(content.summary), body_style))
@@ -170,9 +175,18 @@ def render_pdf(snapshot: dict, *, photo: bytes | None = None) -> bytes:
             if spacing_before:
                 flowables.append(Spacer(1, spacing_before))
             flowables.append(Paragraph(_paragraph_text(entry.title), entry_title_style))
-            metadata = " | ".join(value for value in (entry.subtitle, entry.date_range) if value)
-            if metadata:
-                flowables.append(Paragraph(_paragraph_text(metadata), meta_style))
+            meta_parts: list[str] = []
+            if entry.subtitle:
+                for sub in entry.subtitle.split(" | "):
+                    c_sub = sub.strip()
+                    if is_safe_url(c_sub):
+                        meta_parts.append(format_pdf_link(c_sub, c_sub, accent))
+                    else:
+                        meta_parts.append(_paragraph_text(c_sub))
+            if entry.date_range:
+                meta_parts.append(_paragraph_text(entry.date_range))
+            if meta_parts:
+                flowables.append(Paragraph(" | ".join(meta_parts), meta_style))
             if entry.description:
                 flowables.append(Paragraph(_paragraph_text(entry.description), body_style))
             for bullet in entry.bullets:
@@ -187,6 +201,8 @@ def render_pdf(snapshot: dict, *, photo: bytes | None = None) -> bytes:
 
 def _configure_docx(document: DocxDocument, title: str, style: dict) -> None:
     section = document.sections[0]
+    section.page_width = Mm(210)
+    section.page_height = Mm(297)
     margin_inches = float(style.get("margin_mm", 16.5)) / 25.4
     section.top_margin = Inches(margin_inches)
     section.bottom_margin = Inches(margin_inches)
@@ -196,6 +212,16 @@ def _configure_docx(document: DocxDocument, title: str, style: dict) -> None:
     normal.font.name = str(style.get("font_family", "Arial"))
     normal.font.size = Pt(float(style.get("base_font_size", 9.5)))
     normal.paragraph_format.space_after = Pt(2)
+    normal.paragraph_format.line_spacing = float(style.get("line_height", 1.3))
+    heading = document.styles["Heading 2"]
+    heading.font.name = normal.font.name
+    heading.font.size = Pt(float(style.get("base_font_size", 9.5)) + 1)
+    heading.font.bold = True
+    heading.font.color.rgb = RGBColor.from_string(
+        str(style.get("accent_color", "#111827")).lstrip("#")
+    )
+    heading.paragraph_format.space_before = Pt(float(style.get("section_spacing", 8)))
+    heading.paragraph_format.space_after = Pt(3)
     properties = document.core_properties
     properties.title = title
     properties.author = "CareerOS Local"
@@ -248,13 +274,7 @@ def _canonicalize_docx(data: bytes) -> bytes:
 
 
 def _add_docx_heading(document: DocxDocument, text: str) -> None:
-    paragraph = document.add_paragraph()
-    paragraph.paragraph_format.space_before = Pt(8)
-    paragraph.paragraph_format.space_after = Pt(3)
-    run = paragraph.add_run(text)
-    run.bold = True
-    run.font.name = "Arial"
-    run.font.size = Pt(10)
+    document.add_paragraph(text, style="Heading 2")
 
 
 def _add_docx_entry(document: DocxDocument, entry) -> None:
@@ -269,13 +289,27 @@ def _add_docx_entry(document: DocxDocument, entry) -> None:
     run.bold = True
     run.font.name = "Arial"
     run.font.size = Pt(9.5)
-    metadata = " | ".join(value for value in (entry.subtitle, entry.date_range) if value)
-    if metadata:
-        paragraph = document.add_paragraph(metadata)
-        paragraph.paragraph_format.space_after = Pt(1)
-        for run in paragraph.runs:
-            run.italic = True
-            run.font.size = Pt(8.5)
+    meta_parts = (
+        [p.strip() for p in entry.subtitle.split(" | ") if p.strip()] if entry.subtitle else []
+    )
+    if meta_parts or entry.date_range:
+        p_meta = document.add_paragraph()
+        p_meta.paragraph_format.space_after = Pt(1)
+        for i, part in enumerate(meta_parts):
+            if is_safe_url(part):
+                add_docx_hyperlink(p_meta, part, part, font_size_pt=8.5)
+            else:
+                r = p_meta.add_run(part)
+                r.italic = True
+                r.font.size = Pt(8.5)
+            if i < len(meta_parts) - 1 or entry.date_range:
+                sep = p_meta.add_run(" | ")
+                sep.italic = True
+                sep.font.size = Pt(8.5)
+        if entry.date_range:
+            rd = p_meta.add_run(entry.date_range)
+            rd.italic = True
+            rd.font.size = Pt(8.5)
     if entry.description:
         document.add_paragraph(entry.description)
     for bullet in entry.bullets:
@@ -303,11 +337,19 @@ def render_docx(snapshot: dict, *, photo: bytes | None = None) -> bytes:
         paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
         paragraph.paragraph_format.space_after = Pt(1)
     if content.contact_line:
-        paragraph = document.add_paragraph(content.contact_line)
+        paragraph = document.add_paragraph()
         paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
         paragraph.paragraph_format.space_after = Pt(5)
-        for run in paragraph.runs:
-            run.font.size = Pt(8.5)
+        parts = [p.strip() for p in content.contact_line.split(" | ") if p.strip()]
+        for i, part in enumerate(parts):
+            if is_safe_url(part):
+                add_docx_hyperlink(paragraph, part, part, font_size_pt=8.5)
+            else:
+                r = paragraph.add_run(part)
+                r.font.size = Pt(8.5)
+            if i < len(parts) - 1:
+                sep = paragraph.add_run(" | ")
+                sep.font.size = Pt(8.5)
     if content.summary:
         _add_docx_heading(document, content.summary_heading)
         document.add_paragraph(content.summary)

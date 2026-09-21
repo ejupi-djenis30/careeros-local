@@ -1,4 +1,6 @@
+import hashlib
 import json
+from datetime import datetime, timezone
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
@@ -18,6 +20,137 @@ def _config(database_url: str) -> Config:
     config.set_main_option("script_location", str(PROJECT_ROOT / "backend" / "migrations"))
     config.set_main_option("sqlalchemy.url", database_url)
     return config
+
+
+def test_preset_migration_backfills_both_kinds_without_changing_history(monkeypatch, tmp_path):
+    database_url = f"sqlite:///{(tmp_path / 'presets.db').as_posix()}"
+    monkeypatch.setattr(settings, "DATABASE_URL", database_url)
+    config = _config(database_url)
+    command.upgrade(config, "b0c1d2e3f4a5")
+    engine = sa.create_engine(database_url)
+    metadata = sa.MetaData()
+    metadata.reflect(engine)
+    original = b"historical immutable artifact bytes"
+    artifact_path = tmp_path / "historical.pdf"
+    artifact_path.write_bytes(original)
+    snapshot = {"schema_version": 1, "resume": {"template_kind": "photo"}, "private": "synthetic"}
+    snapshot_hash = hashlib.sha256(json.dumps(snapshot).encode()).hexdigest()
+    try:
+        with engine.begin() as connection:
+            connection.execute(
+                metadata.tables["users"]
+                .insert()
+                .values(id=1, username="preset-owner", hashed_password="test-only")
+            )
+            connection.execute(
+                metadata.tables["candidate_profiles"]
+                .insert()
+                .values(
+                    id="profile",
+                    user_id=1,
+                    revision=1,
+                    display_name="Synthetic",
+                    headline="",
+                    summary="",
+                    location={},
+                    work_authorization={},
+                    preferences={},
+                )
+            )
+            for kind in ("ats", "photo"):
+                connection.execute(
+                    metadata.tables["resume_drafts"]
+                    .insert()
+                    .values(
+                        id=kind,
+                        profile_id="profile",
+                        revision=1,
+                        profile_revision=1,
+                        title=kind,
+                        template_kind=kind,
+                        section_config={},
+                        selected_fact_ids=[],
+                        content_overrides={},
+                        canvas_document={},
+                        generation_context={},
+                    )
+                )
+                connection.execute(
+                    metadata.tables["resume_versions"]
+                    .insert()
+                    .values(
+                        id=kind,
+                        draft_id=kind,
+                        version_number=1,
+                        semantic_version="1.0.0",
+                        name="Historical",
+                        snapshot=snapshot,
+                        snapshot_sha256=snapshot_hash,
+                        profile_revision=1,
+                        selected_fact_ids=[],
+                        template_kind=kind,
+                        renderer_version="historical-renderer",
+                        published_at=datetime.now(timezone.utc),
+                        quality_report={},
+                    )
+                )
+            connection.execute(
+                metadata.tables["resume_artifacts"]
+                .insert()
+                .values(
+                    id="artifact",
+                    version_id="photo",
+                    format="pdf",
+                    media_type="application/pdf",
+                    sha256=hashlib.sha256(original).hexdigest(),
+                    byte_size=len(original),
+                    storage_path=artifact_path.as_posix(),
+                    created_at=datetime.now(timezone.utc),
+                )
+            )
+            raw_snapshot = connection.scalar(
+                sa.text("SELECT snapshot FROM resume_versions WHERE id='photo'")
+            )
+        for cycle in range(2):
+            if cycle:
+                command.downgrade(config, "b0c1d2e3f4a5")
+            command.upgrade(config, "b1c2d3e4f5a6")
+            with engine.connect() as connection:
+                for table in ("resume_drafts", "resume_versions"):
+                    rows = connection.execute(
+                        sa.text(
+                            f"SELECT template_kind, template_id, template_version, locale FROM {table} ORDER BY template_kind"
+                        )
+                    ).all()
+                    assert rows == [
+                        ("ats", "software-en", 1, "en"),
+                        ("photo", "swiss-software-en", 1, "en"),
+                    ]
+                assert (
+                    connection.scalar(
+                        sa.text("SELECT snapshot FROM resume_versions WHERE id='photo'")
+                    )
+                    == raw_snapshot
+                )
+                assert (
+                    connection.scalar(
+                        sa.text("SELECT snapshot_sha256 FROM resume_versions WHERE id='photo'")
+                    )
+                    == snapshot_hash
+                )
+                assert (
+                    connection.scalar(
+                        sa.text("SELECT renderer_version FROM resume_versions WHERE id='photo'")
+                    )
+                    == "historical-renderer"
+                )
+                assert (
+                    connection.scalar(sa.text("SELECT sha256 FROM resume_artifacts"))
+                    == hashlib.sha256(original).hexdigest()
+                )
+            assert artifact_path.read_bytes() == original
+    finally:
+        engine.dispose()
 
 
 def test_canvas_migration_preserves_legacy_drafts_and_round_trips(monkeypatch):

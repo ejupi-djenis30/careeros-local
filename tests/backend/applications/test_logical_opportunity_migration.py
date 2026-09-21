@@ -257,7 +257,8 @@ def test_logical_opportunity_migration_backfills_and_round_trips(
 
     command.upgrade(config, "head")
     script = ScriptDirectory.from_config(config)
-    assert script.get_heads() == ["a9b0c1d2e3f4"]
+    assert len(script.get_heads()) == 1
+    assert "c5d6e7f8a9b0" in [r.revision for r in script.walk_revisions()]
 
     round_trip_metadata = sa.MetaData()
     round_trip_applications = sa.Table(
@@ -284,17 +285,27 @@ def test_logical_opportunity_migration_backfills_and_round_trips(
         column["name"]: column
         for column in dossier_inspector.get_columns("application_dossier_drafts")
     }
-    assert set(dossier_columns) == {
+    expected_columns = {
         "id",
         "application_id",
         "resume_version_id",
+        "resume_draft_id",
+        "resume_draft_revision",
         "application_revision",
         "revision",
         "content",
         "created_at",
         "updated_at",
     }
-    assert all(not column["nullable"] for column in dossier_columns.values())
+    assert set(dossier_columns) == expected_columns
+    assert not dossier_columns["id"]["nullable"]
+    assert not dossier_columns["application_id"]["nullable"]
+    assert not dossier_columns["application_revision"]["nullable"]
+    assert not dossier_columns["revision"]["nullable"]
+    assert not dossier_columns["content"]["nullable"]
+    assert dossier_columns["resume_version_id"]["nullable"]
+    assert dossier_columns["resume_draft_id"]["nullable"]
+    assert dossier_columns["resume_draft_revision"]["nullable"]
     assert {
         constraint["name"]: tuple(constraint["column_names"])
         for constraint in dossier_inspector.get_unique_constraints("application_dossier_drafts")

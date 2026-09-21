@@ -846,6 +846,7 @@ def run_server(configured: ConfiguredDesktop) -> None:
     import uvicorn
 
     from backend.api.routes.desktop import desktop_shutdown_controller
+    from desktop.connection_publication import connection_publication
 
     server_configuration = uvicorn.Config(
         "backend.main:app",
@@ -873,7 +874,14 @@ def run_server(configured: ConfiguredDesktop) -> None:
         shutdown_complete=shutdown_complete,
     )
     try:
-        with desktop_shutdown_controller.bind(request_shutdown):
+        with (
+            desktop_shutdown_controller.bind(request_shutdown),
+            connection_publication(
+                server,
+                configured.arguments.data_dir,
+                f"http://127.0.0.1:{configured.arguments.port}/api/v1",
+            ),
+        ):
             server.run()
     finally:
         shutdown_complete.set()

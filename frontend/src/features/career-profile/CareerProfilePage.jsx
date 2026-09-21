@@ -12,11 +12,14 @@ import { IdentityEditor } from "./IdentityEditor";
 import { PreferencesEditor } from "./PreferencesEditor";
 import { SourceImporter } from "./SourceImporter";
 import { emptyProfile, profileCompleteness, profileDraftToWrite, profileResponseToDraft } from "./profileModel";
+import { tReference } from "./referenceMessages";
+import { mergePreferenceCandidates, PreferenceCandidateError } from "./preferenceCandidates";
 
 export function CareerProfilePage() {
     const { user } = useAuth();
     const { showToast } = useToast();
-    const { t } = useI18n();
+    const { t, language } = useI18n();
+    const tr = (key, vars) => tReference(key, language, vars);
     const location = useLocation();
     const [profile, setProfile] = useState(null);
     const [profileOrigin, setProfileOrigin] = useState("unknown");
@@ -113,7 +116,12 @@ export function CareerProfilePage() {
         if (!dirty && profile.analysis) return profile.analysis.completeness_score;
         return profileCompleteness(profile);
     }, [dirty, profile]);
-    const update = (next) => { setProfile(next); setDirty(true); setConflict(false); };
+    const update = (next) => {
+        setProfile(next);
+        setDirty(true);
+        setConflict(false);
+        setError("");
+    };
 
     const acceptSourceCandidates = (document, candidates) => {
         const existing = new Set(profile.facts.map((fact) => (
@@ -184,9 +192,41 @@ export function CareerProfilePage() {
         }
     };
 
+    const acceptSourcePreferences = (_document, preferenceCandidates) => {
+        if (!preferenceCandidates || preferenceCandidates.length === 0) return 0;
+        let nextPrefs;
+        try {
+            nextPrefs = mergePreferenceCandidates(profile.preferences, preferenceCandidates);
+        } catch (preferenceError) {
+            if (preferenceError instanceof PreferenceCandidateError) {
+                const messageKey = {
+                    workload: "source.prefConflictWorkload",
+                    remote: "source.prefConflictRemote",
+                    scalarConflict: "source.prefConflictScalar",
+                    limit: "source.prefLimit",
+                }[preferenceError.code] || "source.prefInvalid";
+                setError(tr(messageKey, { field: tr(`source.prefField.${preferenceError.field}`) }));
+            } else {
+                setError(tr("source.prefInvalid", { field: tr("source.preferenceCandidates") }));
+            }
+            return 0;
+        }
+
+        update({ ...profile, preferences: nextPrefs });
+        return preferenceCandidates.length;
+    };
+
     const reviewImportedFacts = () => {
         window.requestAnimationFrame(() => {
             const heading = document.getElementById("facts-title");
+            heading?.scrollIntoView?.({ behavior: "smooth", block: "start" });
+            heading?.focus({ preventScroll: true });
+        });
+    };
+
+    const reviewAcceptedPreferences = () => {
+        window.requestAnimationFrame(() => {
+            const heading = document.getElementById("preferences-title");
             heading?.scrollIntoView?.({ behavior: "smooth", block: "start" });
             heading?.focus({ preventScroll: true });
         });
@@ -201,8 +241,10 @@ export function CareerProfilePage() {
             firstRun={sourceFirst && profileOrigin === "missing"}
             sectionNumber={sourceFirst ? null : "04"}
             onAcceptCandidates={acceptSourceCandidates}
+            onAcceptPreferences={acceptSourcePreferences}
             onPrepareImport={prepareSourceImport}
             onReviewAccepted={reviewImportedFacts}
+            onReviewAcceptedPreferences={reviewAcceptedPreferences}
         />
     );
     const factsEditor = <FactsEditor key={`facts-${profile.expected_revision}`} facts={profile.facts} analysis={profile.analysis} onChange={(facts) => update({ ...profile, facts })} />;
@@ -221,7 +263,12 @@ export function CareerProfilePage() {
                 <dl className="revision-meta"><div><dt>{t("profile.revision")}</dt><dd>{profile.expected_revision}</dd></div><div><dt>{t("profile.facts")}</dt><dd>{profile.facts.length}</dd></div><div><dt>{t("profile.goals")}</dt><dd>{profile.goals.length}</dd></div></dl>
             </aside>
 
-            <div className="profile-editor">
+            <fieldset
+                className="profile-editor"
+                disabled={saving}
+                aria-busy={saving ? "true" : undefined}
+                style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}
+            >
                 {error && <div className={`inline-alert ${conflict ? "inline-alert--warning" : "inline-alert--danger"}`} role="alert"><div><strong>{conflict ? t("profile.otherSession") : t("profile.saveFailed")}</strong><span>{error}</span></div>{conflict && <button type="button" className="button button--secondary" onClick={load}>{t("profile.reload")}</button>}</div>}
                 {sourceFirst && sourceImporter}
                 <IdentityEditor profile={profile} onChange={update} />
@@ -230,7 +277,7 @@ export function CareerProfilePage() {
                 <PreferencesEditor preferences={profile.preferences} jobSources={jobSources} onChange={(preferences) => update({ ...profile, preferences })} />
                 {!sourceFirst && factsEditor}
                 {!sourceFirst && sourceImporter}
-            </div>
+            </fieldset>
 
             <div className="save-dock" aria-live="polite">
                 <div><span className={`save-dock__dot ${dirty ? "is-dirty" : ""}`} /><span>{dirty ? t("profile.unsaved") : t("profile.saved")}</span></div>

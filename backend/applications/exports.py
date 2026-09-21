@@ -78,6 +78,14 @@ def build_dossier_bundle(
     requirement_matrix: list[dict[str, Any]],
     evidence_catalog: dict[str, dict[str, Any]] | None = None,
     resume_artifacts: dict[str, tuple[bytes, str]],
+    schema_version: str | None = None,
+    letter_artifacts: dict[str, tuple[bytes, str]] | None = None,
+    email_artifacts: dict[str, tuple[bytes, str]] | None = None,
+    source_advert: dict[str, Any] | None = None,
+    letter_options: dict[str, Any] | None = None,
+    email_draft_metadata: dict[str, Any] | None = None,
+    generation_provenance: dict[str, Any] | None = None,
+    evidence_claims: list[dict[str, Any]] | None = None,
 ) -> DossierBundle:
     """Build a byte-stable application dossier and its canonical manifest."""
 
@@ -86,6 +94,8 @@ def build_dossier_bundle(
     unsupported_formats = set(resume_artifacts) - set(RESUME_ARTIFACT_MEDIA_TYPES)
     if unsupported_formats:
         raise ValueError("A dossier contains an unsupported resume artifact format")
+
+    is_v3 = schema_version == "3.0"
 
     files: dict[str, tuple[bytes, str]] = {
         "application.json": (
@@ -104,7 +114,7 @@ def build_dossier_bundle(
         "requirement-evidence.json": (
             canonical_json(
                 {
-                    "schema_version": "2.0",
+                    "schema_version": "3.0" if is_v3 else "2.0",
                     "requirements": requirement_matrix,
                     "evidence_catalog": evidence_catalog,
                 }
@@ -130,6 +140,46 @@ def build_dossier_bundle(
             )
         files[f"resume.{artifact_format}"] = (data, media_type)
 
+    if is_v3:
+        if letter_artifacts:
+            for file_name, (data, media_type) in sorted(letter_artifacts.items()):
+                allowed = {
+                    "cover_letter.pdf": RESUME_ARTIFACT_MEDIA_TYPES["pdf"],
+                    "cover_letter.docx": RESUME_ARTIFACT_MEDIA_TYPES["docx"],
+                }
+                if (
+                    file_name not in allowed
+                    or media_type != allowed[file_name]
+                    or not isinstance(data, bytes)
+                ):
+                    raise ValueError("Unsupported letter artifact")
+                if len(data) > MAX_DOSSIER_ARTIFACT_BYTES:
+                    raise DossierSizeError(
+                        f"Letter artifact exceeds {MAX_DOSSIER_ARTIFACT_BYTES} bytes"
+                    )
+                files[file_name] = (data, media_type)
+        if email_artifacts:
+            for file_name, (data, media_type) in sorted(email_artifacts.items()):
+                allowed = {
+                    "email_draft.eml": "message/rfc822",
+                    "email_checklist.txt": "text/plain; charset=utf-8",
+                }
+                if (
+                    file_name not in allowed
+                    or media_type != allowed[file_name]
+                    or not isinstance(data, bytes)
+                ):
+                    raise ValueError("Unsupported email artifact")
+                if len(data) > MAX_DOSSIER_ARTIFACT_BYTES:
+                    raise DossierSizeError(
+                        f"Email artifact exceeds {MAX_DOSSIER_ARTIFACT_BYTES} bytes"
+                    )
+                files[file_name] = (data, media_type)
+        if source_advert:
+            files["source_advert.json"] = (canonical_json(source_advert), "application/json")
+        if evidence_claims:
+            files["material-evidence.json"] = (canonical_json(evidence_claims), "application/json")
+
     raw_file_bytes = sum(len(data) for data, _media_type in files.values())
     if raw_file_bytes > MAX_DOSSIER_BUNDLE_BYTES:
         raise DossierSizeError(
@@ -145,8 +195,9 @@ def build_dossier_bundle(
         }
         for path, (data, media_type) in sorted(files.items())
     ]
-    manifest = {
-        "schema_version": "2.0" if evidence_catalog is not None else "1.0",
+    effective_schema = "3.0" if is_v3 else ("2.0" if evidence_catalog is not None else "1.0")
+    manifest: dict[str, Any] = {
+        "schema_version": effective_schema,
         "kind": "careeros_application_dossier",
         "dossier_id": dossier_id,
         "version_number": version_number,
@@ -156,6 +207,13 @@ def build_dossier_bundle(
         "created_at": created_at,
         "entries": entries,
     }
+    if is_v3:
+        if letter_options:
+            manifest["letter_options"] = letter_options
+        if email_draft_metadata:
+            manifest["email_draft"] = email_draft_metadata
+        if generation_provenance:
+            manifest["generation_provenance"] = generation_provenance
     manifest_data = canonical_json(manifest)
     if len(manifest_data) > MAX_DOSSIER_MANIFEST_BYTES:
         raise DossierSizeError(

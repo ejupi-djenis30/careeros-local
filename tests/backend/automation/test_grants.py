@@ -300,3 +300,57 @@ def test_parallel_revocation_is_idempotent(
     with pytest.raises(AutomationGrantError) as rejected:
         authenticate_grant(db_session, token)
     assert rejected.value.code == "revoked_grant"
+
+
+def test_external_agent_scopes_require_explicit_disclosure(db_session, test_user) -> None:
+    # 1. Attempting to issue context:read without disclosure fails
+    with pytest.raises(AutomationGrantError) as exc:
+        issue_grant(
+            db_session,
+            user_id=test_user.id,
+            label="Agent without disclosure",
+            scopes=("context:read",),
+            acknowledged_disclosure=False,
+        )
+    assert exc.value.code == "disclosure_required"
+
+    # 2. Attempting to issue proposals:write without disclosure fails
+    with pytest.raises(AutomationGrantError) as exc:
+        issue_grant(
+            db_session,
+            user_id=test_user.id,
+            label="Agent write without disclosure",
+            scopes=("proposals:write",),
+            acknowledged_disclosure=False,
+        )
+    assert exc.value.code == "disclosure_required"
+
+    # 3. Issuing with acknowledged_disclosure succeeds
+    view, token = issue_grant(
+        db_session,
+        user_id=test_user.id,
+        label="Authorized external agent",
+        scopes=("context:read", "proposals:write"),
+        acknowledged_disclosure=True,
+    )
+    assert "context:read" in view.scopes
+    assert "proposals:write" in view.scopes
+
+    principal = authenticate_grant(db_session, token)
+    assert principal.allows("context:read") is True
+    assert principal.allows("proposals:write") is True
+    assert principal.allows("system:read") is False
+
+
+def test_old_grant_does_not_gain_external_agent_authority(db_session, test_user) -> None:
+    view, token = issue_grant(
+        db_session,
+        user_id=test_user.id,
+        label="Legacy read-only",
+        scopes=("system:read", "career:read"),
+    )
+    principal = authenticate_grant(db_session, token)
+    assert principal.allows("system:read") is True
+    assert principal.allows("career:read") is True
+    assert principal.allows("context:read") is False
+    assert principal.allows("proposals:write") is False

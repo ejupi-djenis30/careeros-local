@@ -26,6 +26,10 @@ All notable changes to CareerOS Local are documented here. The format follows
 
 ### Fixed
 
+- Offline campaign imports now register the resume persistence models before writing application
+  rows, so SQLAlchemy can resolve the application's resume foreign keys in an isolated CLI process.
+  Idempotent verification also follows the content-addressed source document that is deliberately
+  reused across campaigns instead of requiring a second, fingerprint-specific document row.
 - Asset-publication recovery now recognizes a journal unlinked by a concurrent committed writer
   during the stable descriptor read, while continuing to fail closed if the path exists or was
   replaced. Cross-profile content-addressed writes therefore converge without weakening journal

@@ -7,6 +7,7 @@ from typing import Any
 from sqlalchemy import (
     JSON,
     Boolean,
+    CheckConstraint,
     Date,
     DateTime,
     Float,
@@ -102,6 +103,12 @@ class CareerAsset(Base, TimestampMixin):
 
 class SourceDocument(Base, TimestampMixin):
     __tablename__ = "source_documents"
+    __table_args__ = (
+        CheckConstraint(
+            "source_role IN ('profile', 'narrative', 'goals', 'template_reference')",
+            name="ck_source_documents_source_role",
+        ),
+    )
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
     profile_id: Mapped[str] = mapped_column(
@@ -114,6 +121,9 @@ class SourceDocument(Base, TimestampMixin):
         String(36), ForeignKey("career_assets.id", ondelete="CASCADE"), nullable=False, unique=True
     )
     document_type: Mapped[str] = mapped_column(String(40), nullable=False)
+    source_role: Mapped[str] = mapped_column(
+        String(40), nullable=False, default="profile", server_default="profile"
+    )
     extracted_text: Mapped[str] = mapped_column(Text, nullable=False, default="")
     extracted_text_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
 

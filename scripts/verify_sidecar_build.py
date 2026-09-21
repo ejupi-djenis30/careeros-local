@@ -175,7 +175,7 @@ def _contained_manifest_binary(payload: dict[str, object], expected_target: str)
     return binary
 
 
-def _verify_windows_subsystem(binary: Path, expected_target: str) -> None:
+def _verify_windows_subsystem(binary: Path, expected_target: str, *, console: bool = False) -> None:
     if "windows" not in expected_target:
         return
     import pefile  # type: ignore[import-untyped]
@@ -190,8 +190,10 @@ def _verify_windows_subsystem(binary: Path, expected_target: str) -> None:
             )
         # IMAGE_SUBSYSTEM_WINDOWS_GUI: the packaged sidecar must never create a
         # console window behind the native application.
-        if image.OPTIONAL_HEADER.Subsystem != 2:
-            raise RuntimeError("Packaged Windows sidecar is not a windowed executable")
+        if image.OPTIONAL_HEADER.Subsystem != (3 if console else 2):
+            raise RuntimeError(
+                "Packaged Windows executable has the wrong console/windowed subsystem"
+            )
     finally:
         image.close()
 
@@ -241,11 +243,21 @@ def main() -> int:
     _verify_runtime_tree(runtime_root)
     _verify_cryptography_linkage(runtime_root, expected)
     _verify_windows_subsystem(binary, expected)
+    mcp_binary = runtime_directory / (
+        "careeros-mcp.exe" if "windows" in expected else "careeros-mcp"
+    )
+    if _is_link_like(mcp_binary) or not mcp_binary.is_file():
+        raise RuntimeError("Prepared runtime is missing its regular MCP console executable")
+    _verify_windows_subsystem(mcp_binary, expected, console=True)
+    from scripts.build_backend_sidecar import smoke_mcp_help
+
+    smoke_mcp_help(mcp_binary)
     github_environment = Path(os.environ["GITHUB_ENV"])
     if "\r" in str(binary) or "\n" in str(binary):
         raise RuntimeError("Prepared sidecar path is unsafe for GITHUB_ENV")
     with github_environment.open("a", encoding="utf-8", newline="\n") as destination:
         destination.write(f"CAREEROS_SIDECAR_BINARY={binary}\n")
+        destination.write(f"CAREEROS_MCP_BINARY={mcp_binary}\n")
     return 0
 
 

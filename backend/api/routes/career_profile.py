@@ -1,4 +1,14 @@
-from fastapi import APIRouter, Depends, File, Header, HTTPException, Request, Response, UploadFile
+from fastapi import (
+    APIRouter,
+    Depends,
+    File,
+    Form,
+    Header,
+    HTTPException,
+    Request,
+    Response,
+    UploadFile,
+)
 from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 from starlette.concurrency import run_in_threadpool
@@ -173,6 +183,7 @@ async def delete_profile(
 async def upload_source(
     request: Request,
     file: UploadFile = File(...),
+    source_role: str = Form("profile"),
     user_id: int = Depends(get_current_user_id),
     db: Session = Depends(get_db),
 ) -> SourceDocumentResponse:
@@ -183,6 +194,7 @@ async def upload_source(
             filename=file.filename or "source",
             media_type=file.content_type or "application/octet-stream",
             data=data,
+            source_role=source_role,
         )
         return persist_prepared_source_document(db, user_id=user_id, prepared=prepared)
     except SourceImportError as exc:
@@ -191,6 +203,8 @@ async def upload_source(
             status_code = 413
         elif "Supported source formats" in str(exc):
             status_code = 415
+        elif "already exists with role" in str(exc):
+            status_code = 409
         else:
             status_code = 422
         raise HTTPException(status_code=status_code, detail=str(exc)) from exc

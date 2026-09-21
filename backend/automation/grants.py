@@ -16,6 +16,7 @@ from sqlalchemy.sql.elements import ColumnElement
 from backend.automation.models import AutomationGrant
 from backend.automation.schemas import (
     ALL_AUTOMATION_SCOPES,
+    EXTENDED_AUTOMATION_SCOPES,
     AutomationScope,
     GrantView,
     normalize_grant_label,
@@ -57,7 +58,7 @@ def normalize_scopes(values: list[str] | tuple[str, ...]) -> tuple[AutomationSco
     requested = set(values)
     allowed = set(ALL_AUTOMATION_SCOPES)
     if not requested or not requested.issubset(allowed):
-        raise AutomationGrantError("invalid_scopes", "Choose one or more supported read scopes")
+        raise AutomationGrantError("invalid_scopes", "Choose one or more supported scopes")
     return tuple(scope for scope in ALL_AUTOMATION_SCOPES if scope in requested)
 
 
@@ -133,6 +134,7 @@ def issue_grant(
     label: str,
     scopes: list[str] | tuple[str, ...],
     lifetime: timedelta = timedelta(days=30),
+    acknowledged_disclosure: bool = False,
 ) -> tuple[GrantView, str]:
     try:
         normalized_label = normalize_grant_label(label)
@@ -146,6 +148,14 @@ def issue_grant(
             "invalid_lifetime", "Grant lifetime must be 5 minutes to 365 days"
         )
     normalized_scopes = normalize_scopes(scopes)
+    if (
+        any(scope in EXTENDED_AUTOMATION_SCOPES for scope in normalized_scopes)
+        and not acknowledged_disclosure
+    ):
+        raise AutomationGrantError(
+            "disclosure_required",
+            "Issuing external agent scopes requires acknowledging the agent data disclosure",
+        )
     now = datetime.now(UTC)
     with _GRANT_MUTATION_LOCK:
         lifecycle_state = db.query(User.vault_lifecycle_state).filter(User.id == user_id).scalar()
