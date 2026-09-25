@@ -279,6 +279,9 @@ These commands never submit applications or send files. `campaign list` and `cam
 owner-scoped reads. Import and `record-submission` are explicit local-vault writes and cannot run
 alongside the desktop's writable vault process. `record-submission` only records a submission that
 the portal has already confirmed; it never contacts an employer.
+In `campaign list` and `campaign show`, `summary.status_counts` is the historical tracker-import
+snapshot (`summary_scope: import_snapshot`). `campaign show` also returns `live_stage_counts` for
+the entire current campaign, independent of display filters or pagination.
 
 <details>
 <summary>Hash-locked installation of the legacy wheel interface</summary>

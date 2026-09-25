@@ -9,3 +9,5 @@
 - [x] T007 Run focused and full validation gates.
 - [x] T008 Exercise preview/import/list/show against the closed local vault and record aggregate
       evidence only.
+- [x] T009 Expose import-summary scope and independently calculated live stage counts in read models.
+- [x] T010 Test stage changes after import and run focused and release validation before closing the task.

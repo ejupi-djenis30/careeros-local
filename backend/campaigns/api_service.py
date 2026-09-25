@@ -8,7 +8,7 @@ from pathlib import Path, PurePosixPath
 from typing import Any
 from urllib.parse import quote
 
-from sqlalchemy import or_
+from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 
 from backend.applications.models import Application
@@ -45,6 +45,7 @@ def _summary(campaign: Campaign) -> dict[str, Any]:
         "source_fingerprint": campaign.source_fingerprint,
         "tracker_sha256": campaign.tracker_sha256,
         "summary": campaign.summary,
+        "summary_scope": "import_snapshot",
         "created_at": campaign.created_at.isoformat(),
         "updated_at": campaign.updated_at.isoformat(),
     }
@@ -99,6 +100,19 @@ def campaign_detail(
         )
     )
     total = base.count()
+    live_stage_counts = {
+        stage: count
+        for stage, count in (
+            db.query(Application.current_stage, func.count(Application.id))
+            .join(CampaignApplication, CampaignApplication.application_id == Application.id)
+            .filter(
+                CampaignApplication.campaign_id == campaign.id,
+                Application.user_id == user_id,
+            )
+            .group_by(Application.current_stage)
+            .all()
+        )
+    }
     if query:
         needle = f"%{query.strip().lower()}%"
         base = base.filter(
@@ -124,6 +138,7 @@ def campaign_detail(
     return {
         **_summary(campaign),
         "total_application_count": total,
+        "live_stage_counts": live_stage_counts,
         "filtered_application_count": filtered,
         "offset": offset,
         "limit": limit,

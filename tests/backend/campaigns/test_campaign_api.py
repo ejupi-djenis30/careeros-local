@@ -206,6 +206,7 @@ def test_campaign_import_is_created_then_idempotent_and_projects_application_lin
     assert campaign["id"] == imported["campaign_id"]
     assert campaign["name"] == "Spring 2026 Search"
     assert campaign["summary"]["application_count"] == 5
+    assert campaign["summary_scope"] == "import_snapshot"
     serialized = json.dumps(campaign, sort_keys=True)
     assert "tracker_record" not in serialized
     assert "provenance" not in serialized
@@ -284,6 +285,8 @@ def test_campaign_detail_filters_searches_and_paginates_bounded_projections(
     body = detail.json()
     assert body["id"] == imported["campaign_id"]
     assert body["total_application_count"] == 5
+    assert body["summary_scope"] == "import_snapshot"
+    assert sum(body["live_stage_counts"].values()) == 5
     assert body["filtered_application_count"] == 5
     assert len(body["applications"]) == 5
     assert body["offset"] == 0
@@ -298,6 +301,7 @@ def test_campaign_detail_filters_searches_and_paginates_bounded_projections(
     filtered_body = filtered.json()
     assert filtered_body["total_application_count"] == 5
     assert filtered_body["filtered_application_count"] == 1
+    assert filtered_body["live_stage_counts"] == body["live_stage_counts"]
     assert [item["source_application_id"] for item in filtered_body["applications"]] == [
         "APP-001"
     ]
@@ -332,6 +336,35 @@ def test_campaign_detail_filters_searches_and_paginates_bounded_projections(
         "archived",
     ):
         assert client.get(f"{base}?stage={stage}", headers=auth_headers).status_code == 200
+
+
+def test_campaign_detail_separates_import_statuses_from_live_stage_changes(
+    client,
+    auth_headers,
+    db_session,
+    campaign_archive: bytes,
+) -> None:
+    _preview_body, imported = _preview_and_import(client, auth_headers, campaign_archive)
+    base = f"/api/v1/campaigns/{imported['campaign_id']}"
+    before = client.get(base, headers=auth_headers).json()
+    link = (
+        db_session.query(CampaignApplication)
+        .filter(
+            CampaignApplication.campaign_id == imported["campaign_id"],
+            CampaignApplication.source_application_id == "APP-001",
+        )
+        .one()
+    )
+    assert link.application.current_stage == "applied"
+    link.application.current_stage = "screening"
+    db_session.commit()
+
+    after = client.get(f"{base}?stage=screening&limit=1", headers=auth_headers).json()
+    assert after["summary_scope"] == "import_snapshot"
+    assert after["summary"]["status_counts"] == before["summary"]["status_counts"]
+    assert after["live_stage_counts"].get("applied", 0) == before["live_stage_counts"]["applied"] - 1
+    assert after["live_stage_counts"]["screening"] == before["live_stage_counts"].get("screening", 0) + 1
+    assert sum(after["live_stage_counts"].values()) == after["total_application_count"]
 
 
 def test_application_campaign_context_preserves_tracker_and_groups_artifacts(
