@@ -9,7 +9,7 @@ import json
 import os
 import re
 import sys
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -40,7 +40,9 @@ def _emit(value: Any, *, stream: Any | None = None) -> None:
     # This is the CLI's structured response channel, not application logging. All
     # call sites return public or already-redacted data; bearer issuance has a
     # separate one-time output path in _emit_authorized_grant.
-    serialized = json.dumps(value, ensure_ascii=False, indent=2, sort_keys=True)
+    # JSON escapes preserve Unicode values after decoding while keeping the wire
+    # output writable on Windows terminals configured for a legacy code page.
+    serialized = json.dumps(value, ensure_ascii=True, indent=2, sort_keys=True)
     destination.write(serialized + "\n")  # lgtm[py/clear-text-logging-sensitive-data]
     destination.flush()
 
@@ -56,7 +58,7 @@ def _emit_authorized_grant(grant: Any, token: str) -> None:
     # This is the explicit authorization response, not a log entry. The token is
     # never persisted in clear text and every other diagnostic path stays redacted.
     # codeql[py/clear-text-logging-sensitive-data]
-    sys.stdout.write(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n")
+    sys.stdout.write(json.dumps(payload, ensure_ascii=True, indent=2, sort_keys=True) + "\n")
     sys.stdout.flush()
 
 
@@ -214,6 +216,7 @@ def _campaign_read(arguments: argparse.Namespace) -> None:
                         priority=arguments.priority,
                         limit=arguments.limit,
                         offset=arguments.offset,
+                        review_decision=arguments.review_decision,
                     )
                 except CampaignApiNotFound as exc:
                     raise AutomationRuntimeError(
@@ -338,6 +341,192 @@ def _campaign_record_submission(arguments: argparse.Namespace) -> None:
                     "stage": updated.current_stage,
                 }
     _emit(result)
+
+
+def _campaign_record_outcome(arguments: argparse.Namespace) -> None:
+    """Record a sourced rejection after an external application, without contacting anyone."""
+    if not arguments.acknowledge_outcome_record_write:
+        raise AutomationRuntimeError(
+            "campaign_outcome_acknowledgement_required",
+            "Recording an outcome requires --acknowledge-outcome-record-write",
+        )
+    evidence = arguments.evidence.strip()
+    try:
+        source_date = date.fromisoformat(arguments.source_date)
+    except ValueError as exc:
+        raise AutomationRuntimeError(
+            "campaign_outcome_evidence_invalid",
+            "Outcome evidence is missing or exceeds the local boundary",
+        ) from exc
+    if (
+        arguments.expected_revision < 1
+        or not 20 <= len(evidence) <= 1_000
+        or any(ord(character) < 32 or ord(character) == 127 for character in evidence)
+        or source_date > datetime.now(UTC).date() + timedelta(days=1)
+    ):
+        raise AutomationRuntimeError(
+            "campaign_outcome_evidence_invalid",
+            "Outcome evidence is missing or exceeds the local boundary",
+        )
+
+    with automation_runtime(arguments.data_dir, migrate=False, write_access=True) as runtime:
+        from backend.applications.exceptions import (
+            ApplicationConflictError,
+            ApplicationValidationError,
+        )
+        from backend.applications.schemas import ApplicationEventCreate
+        from backend.applications.service import ApplicationService
+
+        with runtime.session_factory() as db:
+            user = _campaign_user(db, arguments.username)
+            link = _campaign_application(
+                db,
+                user_id=user.id,
+                campaign_id=arguments.campaign_id,
+                source_application_id=arguments.source_application_id,
+            )
+            application = link.application
+            if application.current_stage == "rejected":
+                result = {
+                    "application_id": application.id,
+                    "campaign_id": arguments.campaign_id,
+                    "created": False,
+                    "revision": application.revision,
+                    "source_application_id": arguments.source_application_id,
+                    "stage": application.current_stage,
+                }
+            else:
+                if application.current_stage not in {"applied", "screening", "interview", "offer"}:
+                    raise AutomationRuntimeError(
+                        "campaign_outcome_not_post_submission",
+                        "Only submitted applications can receive a rejection outcome",
+                    )
+                recorded_at = datetime.now(UTC)
+                try:
+                    updated = ApplicationService(db).append_event(
+                        user.id,
+                        application.id,
+                        ApplicationEventCreate(
+                            expected_revision=arguments.expected_revision,
+                            event_type="stage",
+                            stage="rejected",
+                            occurred_at=recorded_at,
+                            note=evidence,
+                            payload={
+                                "campaign_outcome_v1": {
+                                    "outcome": "rejected",
+                                    "source_kind": arguments.source_kind,
+                                    "source_date": source_date.isoformat(),
+                                }
+                            },
+                        ),
+                    )
+                except (ApplicationConflictError, ApplicationValidationError) as exc:
+                    raise AutomationRuntimeError(
+                        "campaign_outcome_record_failed",
+                        "CareerOS could not record the verified outcome",
+                    ) from exc
+                result = {
+                    "application_id": updated.id,
+                    "campaign_id": arguments.campaign_id,
+                    "created": True,
+                    "recorded_at": recorded_at.isoformat(),
+                    "revision": updated.revision,
+                    "source_application_id": arguments.source_application_id,
+                    "stage": updated.current_stage,
+                }
+    _emit(result)
+
+
+def _campaign_record_review(arguments: argparse.Namespace) -> None:
+    """Record a sourced pre-submission decision without changing application stage."""
+    if not arguments.acknowledge_review_record_write:
+        raise AutomationRuntimeError(
+            "campaign_review_acknowledgement_required",
+            "Recording a review requires --acknowledge-review-record-write",
+        )
+
+    from backend.jobs.urls import normalize_job_url
+
+    reason = arguments.reason.strip()
+    next_action = (arguments.next_action or "").strip()
+    if (
+        arguments.expected_revision < 1
+        or not 8 <= len(reason) <= 1_000
+        or any(ord(character) < 32 or ord(character) == 127 for character in reason)
+        or (arguments.decision == "hold" and not 5 <= len(next_action) <= 500)
+        or (arguments.decision != "hold" and next_action)
+        or any(ord(character) < 32 or ord(character) == 127 for character in next_action)
+    ):
+        raise AutomationRuntimeError(
+            "campaign_review_evidence_invalid",
+            "Review evidence is missing or exceeds the local boundary",
+        )
+    try:
+        source_url = normalize_job_url(arguments.source_url, required=True)
+    except ValueError as exc:
+        raise AutomationRuntimeError(
+            "campaign_review_evidence_invalid",
+            "Review evidence is missing or exceeds the local boundary",
+        ) from exc
+
+    with automation_runtime(arguments.data_dir, migrate=False, write_access=True) as runtime:
+        from backend.applications.exceptions import (
+            ApplicationConflictError,
+            ApplicationValidationError,
+        )
+        from backend.applications.schemas import ApplicationEventCreate
+        from backend.applications.service import ApplicationService
+
+        with runtime.session_factory() as db:
+            user = _campaign_user(db, arguments.username)
+            link = _campaign_application(
+                db,
+                user_id=user.id,
+                campaign_id=arguments.campaign_id,
+                source_application_id=arguments.source_application_id,
+            )
+            application = link.application
+            if application.current_stage not in {"saved", "preparing"}:
+                raise AutomationRuntimeError(
+                    "campaign_review_not_pre_submission",
+                    "Only saved or preparing applications can receive a campaign review",
+                )
+            occurred_at = datetime.now(UTC)
+            try:
+                updated = ApplicationService(db).append_event(
+                    user.id,
+                    application.id,
+                    ApplicationEventCreate(
+                        expected_revision=arguments.expected_revision,
+                        event_type="note",
+                        occurred_at=occurred_at,
+                        note=reason,
+                        payload={
+                            "campaign_review_v1": {
+                                "decision": arguments.decision,
+                                "source_url": source_url,
+                                "next_action": next_action or None,
+                            }
+                        },
+                    ),
+                )
+            except (ApplicationConflictError, ApplicationValidationError) as exc:
+                raise AutomationRuntimeError(
+                    "campaign_review_record_failed",
+                    "CareerOS could not record the review decision",
+                ) from exc
+    _emit(
+        {
+            "application_id": updated.id,
+            "campaign_id": arguments.campaign_id,
+            "decision": arguments.decision,
+            "reviewed_at": occurred_at.isoformat(),
+            "revision": updated.revision,
+            "source_application_id": arguments.source_application_id,
+            "stage": updated.current_stage,
+        }
+    )
 
 
 def _authorize(arguments: argparse.Namespace) -> None:
@@ -527,6 +716,9 @@ def _parser() -> argparse.ArgumentParser:
     campaign_show.add_argument("--query")
     campaign_show.add_argument("--stage")
     campaign_show.add_argument("--priority")
+    campaign_show.add_argument(
+        "--review-decision", choices=("none", "hold", "excluded", "cleared")
+    )
     campaign_show.add_argument("--offset", type=int, default=0)
     campaign_show.add_argument("--limit", type=int, default=50)
     record_submission = campaign_commands.add_parser(
@@ -542,6 +734,31 @@ def _parser() -> argparse.ArgumentParser:
     record_submission.add_argument("--resume-sha256", required=True)
     record_submission.add_argument("--cover-letter-sha256")
     record_submission.add_argument("--acknowledge-submission-record-write", action="store_true")
+    record_outcome = campaign_commands.add_parser(
+        "record-outcome",
+        help="Record a source-verified rejection after submission without contacting the employer",
+    )
+    record_outcome.add_argument("campaign_id")
+    record_outcome.add_argument("source_application_id")
+    record_outcome.add_argument("--username", required=True)
+    record_outcome.add_argument("--expected-revision", type=int, required=True)
+    record_outcome.add_argument("--source-kind", choices=("email", "portal"), required=True)
+    record_outcome.add_argument("--source-date", required=True)
+    record_outcome.add_argument("--evidence", required=True)
+    record_outcome.add_argument("--acknowledge-outcome-record-write", action="store_true")
+    record_review = campaign_commands.add_parser(
+        "record-review",
+        help="Record a sourced hold/exclusion/clear decision without submitting",
+    )
+    record_review.add_argument("campaign_id")
+    record_review.add_argument("source_application_id")
+    record_review.add_argument("--username", required=True)
+    record_review.add_argument("--expected-revision", type=int, required=True)
+    record_review.add_argument("--decision", choices=("hold", "excluded", "cleared"), required=True)
+    record_review.add_argument("--reason", required=True)
+    record_review.add_argument("--source-url", required=True)
+    record_review.add_argument("--next-action")
+    record_review.add_argument("--acknowledge-review-record-write", action="store_true")
 
     mcp = subparsers.add_parser("mcp", help="Serve MCP or print client configuration")
     mcp_commands = mcp.add_subparsers(dest="mcp_command", required=True)
@@ -574,6 +791,10 @@ def main(argv: list[str] | None = None) -> int:
             _campaign_import(arguments)
         elif arguments.command == "campaign" and arguments.campaign_command == "record-submission":
             _campaign_record_submission(arguments)
+        elif arguments.command == "campaign" and arguments.campaign_command == "record-outcome":
+            _campaign_record_outcome(arguments)
+        elif arguments.command == "campaign" and arguments.campaign_command == "record-review":
+            _campaign_record_review(arguments)
         elif arguments.command == "campaign":
             _campaign_read(arguments)
         elif arguments.command == "mcp" and arguments.mcp_command == "serve":

@@ -268,17 +268,42 @@ careeros --data-dir "C:\absolute\app-data" campaign import "C:\absolute\campaign
   --acknowledge-local-vault-write
 careeros --data-dir "C:\absolute\app-data" campaign list --username <local-account>
 careeros --data-dir "C:\absolute\app-data" campaign show <campaign-id> `
-  --username <local-account> --query APP-20260920 --limit 250
+  --username <local-account> --query APP-20260920 --limit 200
+careeros --data-dir "C:\absolute\app-data" campaign show <campaign-id> `
+  --username <local-account> --stage preparing --review-decision excluded
+careeros --data-dir "C:\absolute\app-data" campaign record-review <campaign-id> `
+  <source-application-id> --username <local-account> --expected-revision <revision> `
+  --decision hold --reason "Official listing does not confirm the office location" `
+  --source-url "https://jobs.example.org/roles/123" `
+  --next-action "Verify the normal workplace with the employer" `
+  --acknowledge-review-record-write
 careeros --data-dir "C:\absolute\app-data" campaign record-submission <campaign-id> `
   <source-application-id> --username <local-account> --expected-revision <revision> `
   --channel <portal> --confirmation <portal-confirmation> --resume-sha256 <sha256> `
   --acknowledge-submission-record-write
+careeros --data-dir "C:\absolute\app-data" campaign record-outcome <campaign-id> `
+  <source-application-id> --username <local-account> --expected-revision <revision> `
+  --source-kind email --source-date 2026-09-01 `
+  --evidence "Recruiting email names this role and declines the application" `
+  --acknowledge-outcome-record-write
 ```
 
 These commands never submit applications or send files. `campaign list` and `campaign show` are
-owner-scoped reads. Import and `record-submission` are explicit local-vault writes and cannot run
-alongside the desktop's writable vault process. `record-submission` only records a submission that
-the portal has already confirmed; it never contacts an employer.
+owner-scoped reads. Import, `record-review`, `record-submission`, and `record-outcome` are explicit local-vault writes
+and cannot run alongside the desktop's writable vault process. `record-review` appends an
+evidence-backed `hold`, `excluded`, or `cleared` decision to a saved/preparing application's
+timeline without changing its stage. A hold requires a concrete next action, but does not yet
+create a scheduled agenda task. `cleared` removes the recorded review block; it is not a readiness
+or fit certification. `campaign show` displays the latest review separately as `review`.
+Use `--review-decision none|hold|excluded|cleared` to inspect one current review class;
+filtering happens before `--offset`/`--limit` and updates `filtered_application_count`.
+`none` only means that no valid review decision is recorded, not that a vacancy is eligible
+or ready to send. Combine it with `--stage` to inspect a particular pipeline stage.
+`record-submission` only records a submission that the portal has already confirmed; it never
+contacts an employer.
+`record-outcome` appends a sourced `rejected` stage only after an application reached a
+post-submission stage. The source date is evidence metadata; the immutable event timestamp is
+the time CareerOS recorded the correction. It does not send a reply to the employer.
 In `campaign list` and `campaign show`, `summary.status_counts` is the historical tracker-import
 snapshot (`summary_scope: import_snapshot`). `campaign show` also returns `live_stage_counts` for
 the entire current campaign, independent of display filters or pagination.
