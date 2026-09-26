@@ -33,3 +33,15 @@ Validation evidence will record:
 - Owner-scoped `campaign show --query APP-20260920` returned exactly the 20 new application IDs.
 - PDF QA: 40 of 40 PDFs are one-page A4 documents with selectable text; every page was rendered
   with Poppler and visually reviewed in five contact sheets.
+
+## Evidence — 25 September 2026 (live stage-count clarification)
+
+- Fictional campaign API suite: 14 passed, including an imported `applied` application later moved
+  to `screening`; the historical import counts remained unchanged while live counts changed.
+- Ruff and mypy: passed for the changed backend and full backend respectively.
+- On the owner-scoped local vault, `campaign show` returned import `Preparing: 10` alongside live
+  `applied: 3`, `preparing: 7`; no personal content was copied into the repository.
+- Frontend: 616 Vitest tests plus Node/license/icon tests passed; ESLint and production build passed.
+- Rust: formatting, clippy with warnings denied, and 28 unit tests passed.
+- Alembic: upgrade, one-revision downgrade, and re-upgrade passed on an isolated temporary database.
+- Full backend suite: 2,797 passed, 17 skipped, 1 warning in 945.62 seconds.

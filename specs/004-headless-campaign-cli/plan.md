@@ -7,9 +7,13 @@
    explicit write acknowledgement, resolve the exact username, and call `import_campaign` with the
    confirmed fingerprint.
 4. Run list/show through the existing read-only runtime and owner-scoped campaign API service.
+   Label the persisted summary as an import snapshot and calculate separate live stage counts for
+   detail from owned campaign applications before applying display filters; do not mutate or
+   reinterpret the archive summary.
 5. Convert expected campaign/input failures to stable `AutomationRuntimeError` codes so paths,
    credentials, and tracebacks cannot escape.
-6. Add parser, dispatch, preview, import, owner-scope, and redaction tests using fictional data.
+6. Add parser, dispatch, preview, import, owner-scope, redaction, and post-import stage-drift
+   tests using fictional data.
 7. Run focused tests, formatting/type/security checks, then the repository release gates required
    by `AGENTS.md`.
 

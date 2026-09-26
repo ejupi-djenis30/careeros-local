@@ -343,14 +343,12 @@ async function runTest() {
                 assert(await dialog.isVisible(), "Review dialog must open");
 
                 // 5. Verify vacancy details and source link in proposal
-                assert(
-                    await page.getByText("Lead Cloud Platform Architect").first().isVisible(),
-                    "Vacancy title must be shown in proposal",
-                );
-                assert(
-                    await page.getByText("Alpine Cloud Solutions").first().isVisible(),
-                    "Employer must be shown in proposal",
-                );
+                const vacancyTitle = dialog.getByText("Lead Cloud Platform Architect").first();
+                await vacancyTitle.waitFor({ state: "visible" });
+                assert(await vacancyTitle.isVisible(), "Vacancy title must be shown in proposal");
+                const employerName = dialog.getByText("Alpine Cloud Solutions").first();
+                await employerName.waitFor({ state: "visible" });
+                assert(await employerName.isVisible(), "Employer must be shown in proposal");
 
                 // 6. Check dialog accessibility
                 const dialogViolations = await accessibilityViolations(page, baseUrl);

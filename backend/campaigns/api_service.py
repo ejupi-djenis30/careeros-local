@@ -8,7 +8,7 @@ from pathlib import Path, PurePosixPath
 from typing import Any
 from urllib.parse import quote
 
-from sqlalchemy import or_
+from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 
 from backend.applications.models import Application
@@ -16,6 +16,7 @@ from backend.campaigns.models import Campaign, CampaignApplication, CampaignArti
 from backend.campaigns.service_helpers import to_json_safe
 from backend.career.models import CandidateProfile, CareerAsset
 from backend.core.config import settings
+from backend.jobs.urls import normalize_job_url
 from backend.storage.atomic import read_verified
 
 
@@ -45,6 +46,7 @@ def _summary(campaign: Campaign) -> dict[str, Any]:
         "source_fingerprint": campaign.source_fingerprint,
         "tracker_sha256": campaign.tracker_sha256,
         "summary": campaign.summary,
+        "summary_scope": "import_snapshot",
         "created_at": campaign.created_at.isoformat(),
         "updated_at": campaign.updated_at.isoformat(),
     }
@@ -63,6 +65,47 @@ def list_campaigns(db: Session, user_id: int) -> list[dict[str, Any]]:
 
 def _application_projection(link: CampaignApplication) -> dict[str, Any]:
     app = link.application
+    review: dict[str, Any] | None = None
+    if app.current_stage in {"saved", "preparing"}:
+        for event in reversed(app.events):
+            payload = event.payload if isinstance(event.payload, dict) else {}
+            value = payload.get("campaign_review_v1")
+            if event.event_type != "note" or not isinstance(value, dict):
+                continue
+            decision = value.get("decision")
+            if decision not in {"hold", "excluded", "cleared"}:
+                continue
+            reason = event.note
+            source_url = value.get("source_url")
+            next_action = value.get("next_action")
+            if not isinstance(reason, str) or not 8 <= len(reason) <= 1_000:
+                continue
+            if reason != reason.strip() or any(ord(char) < 32 or ord(char) == 127 for char in reason):
+                continue
+            if not isinstance(source_url, str):
+                continue
+            try:
+                if normalize_job_url(source_url) != source_url:
+                    continue
+            except ValueError:
+                continue
+            if decision == "hold":
+                if not isinstance(next_action, str) or not 5 <= len(next_action) <= 500:
+                    continue
+                if next_action != next_action.strip() or any(
+                    ord(char) < 32 or ord(char) == 127 for char in next_action
+                ):
+                    continue
+            elif next_action is not None:
+                continue
+            review = {
+                "decision": decision,
+                "reason": reason,
+                "source_url": source_url,
+                "next_action": next_action,
+                "reviewed_at": event.occurred_at.isoformat(),
+            }
+            break
     return {
         "id": app.id,
         "source_application_id": link.source_application_id,
@@ -74,6 +117,7 @@ def _application_projection(link: CampaignApplication) -> dict[str, Any]:
         "priority": link.priority,
         "platform": link.platform,
         "category": link.category,
+        "review": review,
         "updated_at": app.updated_at.isoformat(),
     }
 
@@ -88,6 +132,7 @@ def campaign_detail(
     priority: str | None,
     limit: int,
     offset: int,
+    review_decision: str | None = None,
 ) -> dict[str, Any]:
     campaign = _campaign(db, user_id, campaign_id)
     base = (
@@ -99,6 +144,19 @@ def campaign_detail(
         )
     )
     total = base.count()
+    live_stage_counts = {
+        stage: count
+        for stage, count in (
+            db.query(Application.current_stage, func.count(Application.id))
+            .join(CampaignApplication, CampaignApplication.application_id == Application.id)
+            .filter(
+                CampaignApplication.campaign_id == campaign.id,
+                Application.user_id == user_id,
+            )
+            .group_by(Application.current_stage)
+            .all()
+        )
+    }
     if query:
         needle = f"%{query.strip().lower()}%"
         base = base.filter(
@@ -114,20 +172,38 @@ def campaign_detail(
         base = base.filter(CampaignApplication.application.has(current_stage=stage))
     if priority:
         base = base.filter(CampaignApplication.priority == priority)
-    filtered = base.count()
-    rows = (
-        base.order_by(CampaignApplication.source_order.asc())
-        .offset(offset)
-        .limit(limit)
-        .all()
-    )
+    if review_decision is None:
+        filtered = base.count()
+        rows = (
+            base.order_by(CampaignApplication.source_order.asc())
+            .offset(offset)
+            .limit(limit)
+            .all()
+        )
+        applications = [_application_projection(row) for row in rows]
+    else:
+        # Review events are validated by the projection, including malformed historical notes
+        # and superseding decisions. Apply the filter before pagination without a second,
+        # weaker interpretation of the event JSON in SQL.
+        filtered = 0
+        applications = []
+        for row in base.order_by(CampaignApplication.source_order.asc()).yield_per(50):
+            item = _application_projection(row)
+            review = item["review"]
+            decision = review["decision"] if review is not None else "none"
+            if decision != review_decision:
+                continue
+            if filtered >= offset and len(applications) < limit:
+                applications.append(item)
+            filtered += 1
     return {
         **_summary(campaign),
         "total_application_count": total,
+        "live_stage_counts": live_stage_counts,
         "filtered_application_count": filtered,
         "offset": offset,
         "limit": limit,
-        "applications": [_application_projection(row) for row in rows],
+        "applications": applications,
     }
 
 

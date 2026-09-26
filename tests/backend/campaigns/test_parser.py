@@ -5,12 +5,13 @@ from __future__ import annotations
 import io
 import zipfile
 from dataclasses import FrozenInstanceError
-from datetime import date
+from datetime import date, datetime, timezone
 from typing import Any
 
 import pytest
 
 from backend.campaigns.archive_policy import ArchivePolicyError
+from backend.campaigns.import_planner import plan_campaign_import
 from backend.campaigns.parser import parse_campaign_workspace
 from backend.campaigns.parser_types import (
     ParsedApplication,
@@ -68,6 +69,44 @@ def test_parse_campaign_workspace_structure_and_bindings() -> None:
     root_artifacts = [a for a in parsed.artifacts if not a.relative_path.startswith("application-packets/")]
     for ra in root_artifacts:
         assert ra.source_application_id is None
+
+
+def test_dossier_only_bulleted_vacancy_metadata_is_projected() -> None:
+    archive = build_fictional_campaign_zip(
+        members={
+            "application-packets/dossier-only-001/vacancy.md": (
+                "# Vacancy record — APP-20260911-001\n\n"
+                "- **Company:** Fictional Foods AG\n"
+                "- **Role:** Production employee, night shift\n"
+                "- **Location:** Zurich\n"
+                "- **Vacancy URL:** https://jobs.example.org/night-shift\n"
+            )
+        }
+    )
+    parsed = parse_campaign_workspace(archive)
+    application = next(
+        item for item in parsed.applications if item.source_application_id == "dossier-only-001"
+    )
+    assert application.title == "Production employee, night shift"
+    assert application.company == "Fictional Foods AG"
+    assert application.location == "Zurich"
+    assert application.category is None
+    assert application.job_posting_url == "https://jobs.example.org/night-shift"
+    assert application.provenance["sources"] == ("dossier",)
+
+    planned = plan_campaign_import(
+        parsed,
+        datetime(2026, 9, 25, tzinfo=timezone.utc),
+        identity_scope="fictional-owner",
+    )
+    snapshot = next(
+        item.job_snapshot
+        for item in planned.applications
+        if item.source_application_id == "dossier-only-001"
+    )
+    assert snapshot["location"] == "Zurich"
+    assert snapshot["external_url"] == "https://jobs.example.org/night-shift"
+    assert "application_url" not in snapshot
 
 
 def test_preview_parity_between_direct_and_parsed() -> None:

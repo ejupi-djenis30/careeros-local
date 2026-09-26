@@ -160,11 +160,17 @@ def parse_campaign_workspace(
         vacancy_member = next((m for m in art_list if m.canonical_path.endswith("/vacancy.md")), None)
         title = "Untitled role"
         company = "Unknown company"
+        location = None
+        category = None
+        job_posting_url = None
         if vacancy_member:
             try:
                 parsed_v = parse_vacancy_markdown(vacancy_member.raw_bytes.decode("utf-8"))
                 title = parsed_v.title
                 company = parsed_v.company
+                location = parsed_v.location
+                category = parsed_v.category
+                job_posting_url = parsed_v.url
             except (UnicodeDecodeError, ValueError):
                 pass
 
@@ -174,11 +180,11 @@ def parse_campaign_workspace(
                 source_order=base_order + d_idx,
                 title=title,
                 company=company,
-                location=None,
+                location=location,
                 source_status=None,
                 priority=None,
                 platform=None,
-                category=None,
+                category=category,
                 outcome=None,
                 found_at=None,
                 applied_at=None,
@@ -187,7 +193,7 @@ def parse_campaign_workspace(
                 next_action=None,
                 notes=None,
                 platform_url=None,
-                job_posting_url=None,
+                job_posting_url=job_posting_url,
                 url=None,
                 tracker_record=freeze_value({}),
                 provenance=freeze_value({"sources": ("dossier",), "packet_dir": d_id}),

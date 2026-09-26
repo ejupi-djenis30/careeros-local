@@ -45,3 +45,30 @@ def test_parse_vacancy_markdown_defaults_without_inventing_evidence():
     assert result.location is None
     assert result.url is None
     assert result.category is None
+
+
+def test_parse_bulleted_metadata_under_placeholder_heading():
+    content = (
+        "# Vacancy record — APP-20260911-001\n\n"
+        "- **Company:** Fictional Foods AG\n"
+        "- **Role:** Production employee, night shift\n"
+        "- **Vacancy URL:** https://jobs.example.org/night-shift\n"
+        "- **Location:** Zurich\n"
+        "- **Category:** Production\n"
+    )
+    result = parse_vacancy_markdown(content)
+    assert result.title == "Production employee, night shift"
+    assert result.company == "Fictional Foods AG"
+    assert result.location == "Zurich"
+    assert result.category == "Production"
+    assert result.url == "https://jobs.example.org/night-shift"
+
+
+def test_parse_regular_worksite_from_dossier_metadata():
+    content = (
+        "# Backend Software Engineer\n\n"
+        "- **Company:** Fictional Grid AG\n"
+        "- **Regular worksite:** Brugg, Aargau\n"
+    )
+    result = parse_vacancy_markdown(content)
+    assert result.location == "Brugg, Aargau"

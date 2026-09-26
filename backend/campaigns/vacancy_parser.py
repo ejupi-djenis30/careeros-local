@@ -16,14 +16,17 @@ class ParsedVacancy:
     raw_markdown: str
 
 
-def _clean_match(m: re.Match | None) -> str | None:
-    if not m:
-        return None
-    val = m.group(1).strip()
-    # Strip markdown brackets or bold markers
-    val = re.sub(r"^\*+|\*+$", "", val).strip()
-    val = re.sub(r"^\[|\]$", "", val).strip()
-    return val or None
+def _labeled_value(lines: list[str], names: set[str]) -> str | None:
+    """Read explicit Markdown metadata, including list bullets and bold labels."""
+    for line in lines:
+        line = re.sub(r"^[-*+]\s+", "", line)
+        label, separator, value = line.partition(":")
+        if not separator or label.strip(" *").casefold() not in names:
+            continue
+        clean = value.strip(" *").strip()
+        if clean:
+            return clean
+    return None
 
 
 def parse_vacancy_markdown(text: str) -> ParsedVacancy:
@@ -35,27 +38,24 @@ def parse_vacancy_markdown(text: str) -> ParsedVacancy:
     url: str | None = None
     category: str | None = None
 
-    # Title heuristics: H1 header first, then Role / Title prefixes
+    # A real H1 is authoritative, but imported packet placeholders carry only an ID.
     for line in lines:
         if line.startswith("# ") and not line.startswith("##"):
             title = line[2:].strip()
             title = re.sub(r"^\[|\]$", "", title).strip()
             break
-    if not title:
-        m = re.search(r"^(?:\*\*|\*|)?(?:Role|Job Title|Title|Posizione)(?:\*\*|\*|)?\s*:\s*(.+)$", text, re.M | re.I)
-        title = _clean_match(m)
+    explicit_title = _labeled_value(lines, {"role", "job title", "title", "posizione"})
+    if not title or re.fullmatch(r"Vacancy record\s*[-–—]\s*APP-[A-Za-z0-9-]+", title, re.I):
+        title = explicit_title or title
 
-    m = re.search(r"^(?:\*\*|\*|)?(?:Company|Azienda|Employer)(?:\*\*|\*|)?\s*:\s*(.+)$", text, re.M | re.I)
-    company = _clean_match(m)
-
-    m = re.search(r"^(?:\*\*|\*|)?(?:Location|Luogo|Sede|City)(?:\*\*|\*|)?\s*:\s*(.+)$", text, re.M | re.I)
-    location = _clean_match(m)
-
-    m = re.search(r"^(?:\*\*|\*|)?(?:Category|Job Category|Categoria)(?:\*\*|\*|)?\s*:\s*(.+)$", text, re.M | re.I)
-    category = _clean_match(m)
-
-    m = re.search(r"^(?:\*\*|\*|)?(?:URL|Job URL|Link|Application URL)(?:\*\*|\*|)?\s*:\s*(.+)$", text, re.M | re.I)
-    url = _clean_match(m)
+    company = _labeled_value(lines, {"company", "azienda", "employer"})
+    location = _labeled_value(
+        lines, {"location", "regular worksite", "luogo", "sede", "city"}
+    )
+    category = _labeled_value(lines, {"category", "job category", "categoria"})
+    url = _labeled_value(
+        lines, {"url", "job url", "vacancy url", "posting url", "application url", "link"}
+    )
     if not url:
         # Check for markdown link [Label](https://...)
         m_link = re.search(r"\[.*?\]\((https?://[^\s\)]+)\)", text, re.I)

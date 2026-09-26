@@ -7,12 +7,15 @@ import io
 import json
 import uuid
 import zipfile
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from urllib.parse import quote
 
 import pytest
 
 from backend.applications.models import Application
+from backend.applications.schemas import ApplicationEventCreate
+from backend.applications.service import ApplicationService
 from backend.campaigns.models import Campaign, CampaignApplication, CampaignArtifact
 from backend.career.models import CandidateProfile, CareerAsset, SourceDocument
 from backend.main import app
@@ -206,6 +209,7 @@ def test_campaign_import_is_created_then_idempotent_and_projects_application_lin
     assert campaign["id"] == imported["campaign_id"]
     assert campaign["name"] == "Spring 2026 Search"
     assert campaign["summary"]["application_count"] == 5
+    assert campaign["summary_scope"] == "import_snapshot"
     serialized = json.dumps(campaign, sort_keys=True)
     assert "tracker_record" not in serialized
     assert "provenance" not in serialized
@@ -284,6 +288,8 @@ def test_campaign_detail_filters_searches_and_paginates_bounded_projections(
     body = detail.json()
     assert body["id"] == imported["campaign_id"]
     assert body["total_application_count"] == 5
+    assert body["summary_scope"] == "import_snapshot"
+    assert sum(body["live_stage_counts"].values()) == 5
     assert body["filtered_application_count"] == 5
     assert len(body["applications"]) == 5
     assert body["offset"] == 0
@@ -298,6 +304,7 @@ def test_campaign_detail_filters_searches_and_paginates_bounded_projections(
     filtered_body = filtered.json()
     assert filtered_body["total_application_count"] == 5
     assert filtered_body["filtered_application_count"] == 1
+    assert filtered_body["live_stage_counts"] == body["live_stage_counts"]
     assert [item["source_application_id"] for item in filtered_body["applications"]] == [
         "APP-001"
     ]
@@ -318,6 +325,7 @@ def test_campaign_detail_filters_searches_and_paginates_bounded_projections(
     assert client.get(f"{base}?limit=201", headers=auth_headers).status_code == 422
     assert client.get(f"{base}?stage=unknown", headers=auth_headers).status_code == 422
     assert client.get(f"{base}?priority=unknown", headers=auth_headers).status_code == 422
+    assert client.get(f"{base}?review_decision=unknown", headers=auth_headers).status_code == 422
     assert client.get(f"{base}?query={'x' * 201}", headers=auth_headers).status_code == 422
     for stage in (
         "saved",
@@ -332,6 +340,226 @@ def test_campaign_detail_filters_searches_and_paginates_bounded_projections(
         "archived",
     ):
         assert client.get(f"{base}?stage={stage}", headers=auth_headers).status_code == 200
+
+
+def test_campaign_detail_projects_latest_review_without_changing_stage(
+    client, auth_headers, db_session, campaign_archive: bytes
+) -> None:
+    _preview_body, imported = _preview_and_import(client, auth_headers, campaign_archive)
+    campaign_id = imported["campaign_id"]
+    link = (
+        db_session.query(CampaignApplication)
+        .filter(
+            CampaignApplication.campaign_id == campaign_id,
+            CampaignApplication.source_application_id == "APP-003",
+        )
+        .one()
+    )
+    application = link.application
+    assert application.current_stage == "preparing"
+    original_revision = application.revision
+    service = ApplicationService(db_session)
+    first = service.append_event(
+        application.user_id,
+        application.id,
+        ApplicationEventCreate(
+            expected_revision=original_revision,
+            event_type="note",
+            occurred_at=datetime.now(UTC) - timedelta(minutes=1),
+            note="Office location is not confirmed by the vacancy.",
+            payload={
+                "campaign_review_v1": {
+                    "decision": "hold",
+                    "source_url": "https://jobs.example.org/roles/123",
+                    "next_action": "Ask the employer for the normal office address",
+                }
+            },
+        ),
+    )
+    detail = client.get(
+        f"/api/v1/campaigns/{campaign_id}?query=APP-003", headers=auth_headers
+    )
+    assert detail.status_code == 200
+    row = detail.json()["applications"][0]
+    assert row["stage"] == "preparing"
+    assert row["revision"] == first.revision
+    assert row["review"] == {
+        "decision": "hold",
+        "reason": "Office location is not confirmed by the vacancy.",
+        "source_url": "https://jobs.example.org/roles/123",
+        "next_action": "Ask the employer for the normal office address",
+        "reviewed_at": row["review"]["reviewed_at"],
+    }
+
+    cleared = service.append_event(
+        application.user_id,
+        application.id,
+        ApplicationEventCreate(
+            expected_revision=first.revision,
+            event_type="note",
+            occurred_at=datetime.now(UTC),
+            note="Official vacancy confirms the Zurich office.",
+            payload={
+                "campaign_review_v1": {
+                    "decision": "cleared",
+                    "source_url": "https://jobs.example.org/roles/123",
+                    "next_action": None,
+                }
+            },
+        ),
+    )
+    later = client.get(
+        f"/api/v1/campaigns/{campaign_id}?query=APP-003", headers=auth_headers
+    ).json()["applications"][0]
+    assert later["revision"] == cleared.revision
+    assert later["stage"] == "preparing"
+    assert later["review"]["decision"] == "cleared"
+    assert later["review"]["reason"] == "Official vacancy confirms the Zurich office."
+
+    service.append_event(
+        application.user_id,
+        application.id,
+        ApplicationEventCreate(
+            expected_revision=cleared.revision,
+            event_type="note",
+            occurred_at=datetime.now(UTC) + timedelta(seconds=1),
+            note="Untrusted malformed review payload.",
+            payload={
+                "campaign_review_v1": {
+                    "decision": "hold",
+                    "source_url": "file:///private/source",
+                    "next_action": "Wait for evidence",
+                }
+            },
+        ),
+    )
+    after_invalid = client.get(
+        f"/api/v1/campaigns/{campaign_id}?query=APP-003", headers=auth_headers
+    ).json()["applications"][0]
+    assert after_invalid["review"] == later["review"]
+
+
+def test_campaign_detail_filters_current_reviews_before_pagination(
+    client, auth_headers, db_session, campaign_archive: bytes
+) -> None:
+    _preview_body, imported = _preview_and_import(client, auth_headers, campaign_archive)
+    campaign_id = imported["campaign_id"]
+    base = f"/api/v1/campaigns/{campaign_id}"
+    service = ApplicationService(db_session)
+    for source_id in ("APP-003", "APP-004"):
+        link = (
+            db_session.query(CampaignApplication)
+            .filter(
+                CampaignApplication.campaign_id == campaign_id,
+                CampaignApplication.source_application_id == source_id,
+            )
+            .one()
+        )
+        application = link.application
+        service.append_event(
+            application.user_id,
+            application.id,
+            ApplicationEventCreate(
+                expected_revision=application.revision,
+                event_type="note",
+                occurred_at=datetime.now(UTC),
+                note="Official vacancy needs a further location check.",
+                payload={
+                    "campaign_review_v1": {
+                        "decision": "hold",
+                        "source_url": "https://jobs.example.org/roles/123",
+                        "next_action": "Check the normal workplace with the employer",
+                    }
+                },
+            ),
+        )
+
+    first_page = client.get(
+        f"{base}?review_decision=hold&priority=Low&limit=1&offset=0",
+        headers=auth_headers,
+    ).json()
+    second_page = client.get(
+        f"{base}?review_decision=hold&priority=Low&limit=1&offset=1",
+        headers=auth_headers,
+    ).json()
+    assert first_page["filtered_application_count"] == 2
+    assert second_page["filtered_application_count"] == 2
+    assert [item["source_application_id"] for item in first_page["applications"]] == ["APP-003"]
+    assert [item["source_application_id"] for item in second_page["applications"]] == ["APP-004"]
+    assert first_page["live_stage_counts"] == second_page["live_stage_counts"]
+
+    preparing = client.get(
+        f"{base}?review_decision=hold&stage=preparing", headers=auth_headers
+    ).json()
+    assert preparing["filtered_application_count"] == 1
+    assert preparing["applications"][0]["source_application_id"] == "APP-003"
+    unreviewed = client.get(f"{base}?review_decision=none", headers=auth_headers).json()
+    assert unreviewed["filtered_application_count"] == 3
+    assert client.get(
+        f"{base}?review_decision=none&query=APP-003", headers=auth_headers
+    ).json()["filtered_application_count"] == 0
+
+    link = (
+        db_session.query(CampaignApplication)
+        .filter(
+            CampaignApplication.campaign_id == campaign_id,
+            CampaignApplication.source_application_id == "APP-003",
+        )
+        .one()
+    )
+    application = link.application
+    service.append_event(
+        application.user_id,
+        application.id,
+        ApplicationEventCreate(
+            expected_revision=application.revision,
+            event_type="note",
+            occurred_at=datetime.now(UTC) + timedelta(seconds=1),
+            note="Official vacancy confirms the required location.",
+            payload={
+                "campaign_review_v1": {
+                    "decision": "cleared",
+                    "source_url": "https://jobs.example.org/roles/123",
+                    "next_action": None,
+                }
+            },
+        ),
+    )
+    assert client.get(
+        f"{base}?review_decision=cleared", headers=auth_headers
+    ).json()["filtered_application_count"] == 1
+    assert client.get(
+        f"{base}?review_decision=hold", headers=auth_headers
+    ).json()["filtered_application_count"] == 1
+
+
+def test_campaign_detail_separates_import_statuses_from_live_stage_changes(
+    client,
+    auth_headers,
+    db_session,
+    campaign_archive: bytes,
+) -> None:
+    _preview_body, imported = _preview_and_import(client, auth_headers, campaign_archive)
+    base = f"/api/v1/campaigns/{imported['campaign_id']}"
+    before = client.get(base, headers=auth_headers).json()
+    link = (
+        db_session.query(CampaignApplication)
+        .filter(
+            CampaignApplication.campaign_id == imported["campaign_id"],
+            CampaignApplication.source_application_id == "APP-001",
+        )
+        .one()
+    )
+    assert link.application.current_stage == "applied"
+    link.application.current_stage = "screening"
+    db_session.commit()
+
+    after = client.get(f"{base}?stage=screening&limit=1", headers=auth_headers).json()
+    assert after["summary_scope"] == "import_snapshot"
+    assert after["summary"]["status_counts"] == before["summary"]["status_counts"]
+    assert after["live_stage_counts"].get("applied", 0) == before["live_stage_counts"]["applied"] - 1
+    assert after["live_stage_counts"]["screening"] == before["live_stage_counts"].get("screening", 0) + 1
+    assert sum(after["live_stage_counts"].values()) == after["total_application_count"]
 
 
 def test_application_campaign_context_preserves_tracker_and_groups_artifacts(

@@ -127,6 +127,7 @@ def campaign_detail_route(
     query: str | None = Query(default=None, max_length=200),
     stage: str | None = None,
     priority: str | None = None,
+    review_decision: str | None = None,
     limit: int = Query(default=200, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
     user_id: int = Depends(get_current_user_id),
@@ -149,8 +150,22 @@ def campaign_detail_route(
         raise _safe_error(422, "invalid_filter", "Campaign filter is invalid")
     if priority is not None and priority not in valid_priorities:
         raise _safe_error(422, "invalid_filter", "Campaign filter is invalid")
+    if review_decision is not None and review_decision not in {
+        "none", "hold", "excluded", "cleared"
+    }:
+        raise _safe_error(422, "invalid_filter", "Campaign filter is invalid")
     try:
-        return campaign_detail(db, user_id, campaign_id, query=query, stage=stage, priority=priority, limit=limit, offset=offset)
+        return campaign_detail(
+            db,
+            user_id,
+            campaign_id,
+            query=query,
+            stage=stage,
+            priority=priority,
+            review_decision=review_decision,
+            limit=limit,
+            offset=offset,
+        )
     except CampaignApiNotFound:
         raise _not_found() from None
 

@@ -46,6 +46,12 @@ Acceptance scenarios:
 As the local vault owner, I can list campaigns for the explicitly named account and inspect one
 campaign's owner-scoped detail as JSON without the desktop UI.
 
+The persisted `summary.status_counts` describes the imported tracker snapshot, not current
+application stages. List and detail responses must label that scope explicitly. Detail responses
+must also include owner-scoped live stage counts across the whole campaign, independent of query,
+stage, priority, and pagination filters, so an operator can distinguish import history from the
+current pipeline after recording submissions.
+
 ## Security and privacy constraints
 
 - The command is an offline local-vault maintenance boundary; it never starts the HTTP server,

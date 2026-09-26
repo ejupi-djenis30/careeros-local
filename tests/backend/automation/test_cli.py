@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import contextlib
+import io
 import json
 import os
 import sqlite3
@@ -21,6 +22,15 @@ from backend.automation.mcp_server import run_server
 from backend.automation.models import AutomationGrant
 from backend.automation.runtime import AutomationRuntimeError
 from backend.services.auth import DUMMY_PASSWORD_HASH
+
+
+def test_json_output_is_safe_on_legacy_windows_code_pages() -> None:
+    raw = io.BytesIO()
+    destination = io.TextIOWrapper(raw, encoding="cp1252", write_through=True)
+
+    cli._emit({"company": "Code Compass 🧭"}, stream=destination)
+
+    assert json.loads(raw.getvalue().decode("cp1252")) == {"company": "Code Compass 🧭"}
 
 
 def test_client_config_uses_environment_reference_and_absolute_data_dir(
@@ -396,6 +406,327 @@ def test_campaign_submission_record_is_owner_scoped_and_evidence_bound(
         "resume_sha256": "a" * 64,
         "submission_channel": "Official ATS",
     }
+
+
+def _outcome_args(*extra: str) -> list[str]:
+    return [
+        "campaign",
+        "record-outcome",
+        "campaign-1",
+        "APP-001",
+        "--username",
+        "explicit-owner",
+        "--expected-revision",
+        "7",
+        "--source-kind",
+        "email",
+        "--source-date",
+        "2020-09-01",
+        "--evidence",
+        "Recruiting team email names this exact role and declines the application.",
+        *extra,
+    ]
+
+
+def test_campaign_outcome_requires_acknowledgement_and_valid_evidence(capsys) -> None:
+    assert cli.main(_outcome_args()) == 2
+    assert json.loads(capsys.readouterr().err)["error"] == (
+        "campaign_outcome_acknowledgement_required"
+    )
+    arguments = _outcome_args("--acknowledge-outcome-record-write")
+    arguments[arguments.index("--source-date") + 1] = "not-a-date"
+    assert cli.main(arguments) == 2
+    assert json.loads(capsys.readouterr().err)["error"] == "campaign_outcome_evidence_invalid"
+
+
+def test_campaign_outcome_records_sourced_rejection_without_external_action(
+    monkeypatch: pytest.MonkeyPatch, capsys
+) -> None:
+    from backend.applications import service as application_service
+
+    db = object()
+    captured: dict[str, object] = {}
+    application = SimpleNamespace(id="application-7", current_stage="applied", revision=7)
+
+    @contextlib.contextmanager
+    def test_runtime(_data_dir, *, migrate, write_access):
+        assert migrate is False
+        assert write_access is True
+
+        @contextlib.contextmanager
+        def session_factory():
+            yield db
+
+        yield SimpleNamespace(session_factory=session_factory)
+
+    class FakeApplicationService:
+        def __init__(self, database):
+            assert database is db
+
+        def append_event(self, user_id, application_id, event):
+            captured.update(user_id=user_id, application_id=application_id, event=event)
+            return SimpleNamespace(id=application_id, current_stage="rejected", revision=8)
+
+    def campaign_application(_db, **kwargs):
+        assert _db is db
+        captured.update(kwargs)
+        return SimpleNamespace(application=application)
+
+    monkeypatch.setattr(cli, "automation_runtime", test_runtime)
+    monkeypatch.setattr(cli, "_campaign_user", lambda _db, username: SimpleNamespace(id=29))
+    monkeypatch.setattr(cli, "_campaign_application", campaign_application)
+    monkeypatch.setattr(application_service, "ApplicationService", FakeApplicationService)
+
+    assert cli.main(_outcome_args("--acknowledge-outcome-record-write")) == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["stage"] == "rejected"
+    assert payload["revision"] == 8
+    assert captured["user_id"] == 29
+    assert captured["campaign_id"] == "campaign-1"
+    assert captured["source_application_id"] == "APP-001"
+    event = captured["event"]
+    assert event.expected_revision == 7
+    assert event.event_type == "stage"
+    assert event.stage == "rejected"
+    assert event.payload == {
+        "campaign_outcome_v1": {
+            "outcome": "rejected",
+            "source_kind": "email",
+            "source_date": "2020-09-01",
+        }
+    }
+
+
+def test_campaign_outcome_rejects_pre_submission_stage(
+    monkeypatch: pytest.MonkeyPatch, capsys
+) -> None:
+    db = object()
+
+    @contextlib.contextmanager
+    def test_runtime(_data_dir, *, migrate, write_access):
+        @contextlib.contextmanager
+        def session_factory():
+            yield db
+
+        yield SimpleNamespace(session_factory=session_factory)
+
+    monkeypatch.setattr(cli, "automation_runtime", test_runtime)
+    monkeypatch.setattr(cli, "_campaign_user", lambda _db, username: SimpleNamespace(id=29))
+    monkeypatch.setattr(
+        cli,
+        "_campaign_application",
+        lambda _db, **_kwargs: SimpleNamespace(
+            application=SimpleNamespace(id="application-7", current_stage="preparing", revision=7)
+        ),
+    )
+    assert cli.main(_outcome_args("--acknowledge-outcome-record-write")) == 2
+    assert json.loads(capsys.readouterr().err)["error"] == (
+        "campaign_outcome_not_post_submission"
+    )
+
+
+def _review_args(*extra: str) -> list[str]:
+    return [
+        "campaign",
+        "record-review",
+        "campaign-1",
+        "APP-003",
+        "--username",
+        "explicit-owner",
+        "--expected-revision",
+        "7",
+        "--decision",
+        "hold",
+        "--reason",
+        "Official posting does not state the required workplace.",
+        "--source-url",
+        "https://jobs.example.org/roles/123",
+        "--next-action",
+        "Verify the office address with the employer",
+        *extra,
+    ]
+
+
+def test_campaign_show_accepts_only_known_review_filters() -> None:
+    parser = cli._parser()
+    for decision in ("none", "hold", "excluded", "cleared"):
+        arguments = parser.parse_args(
+            [
+                "campaign", "show", "campaign-1", "--username", "explicit-owner",
+                "--review-decision", decision,
+            ]
+        )
+        assert arguments.review_decision == decision
+    with pytest.raises(SystemExit):
+        parser.parse_args(
+            [
+                "campaign", "show", "campaign-1", "--username", "explicit-owner",
+                "--review-decision", "ready",
+            ]
+        )
+
+
+def test_campaign_review_requires_acknowledgement_before_opening_vault(capsys) -> None:
+    assert cli.main(_review_args()) == 2
+    assert json.loads(capsys.readouterr().err) == {
+        "error": "campaign_review_acknowledgement_required",
+        "message": "Recording a review requires --acknowledge-review-record-write",
+    }
+
+
+@pytest.mark.parametrize(
+    ("replacement", "expected_error"),
+    [
+        ({"reason": "short"}, "campaign_review_evidence_invalid"),
+        ({"source_url": "file:///private/cv.pdf"}, "campaign_review_evidence_invalid"),
+        ({"next_action": ""}, "campaign_review_evidence_invalid"),
+        ({"decision": "excluded"}, "campaign_review_evidence_invalid"),
+        ({"reason": "Invalid\nreview note"}, "campaign_review_evidence_invalid"),
+        ({"expected_revision": "0"}, "campaign_review_evidence_invalid"),
+    ],
+)
+def test_campaign_review_rejects_invalid_evidence_before_vault(
+    replacement: dict[str, str], expected_error: str, capsys
+) -> None:
+    arguments = _review_args("--acknowledge-review-record-write")
+    for key, value in replacement.items():
+        arguments[arguments.index("--" + key.replace("_", "-")) + 1] = value
+    assert cli.main(arguments) == 2
+    assert json.loads(capsys.readouterr().err)["error"] == expected_error
+
+
+def test_campaign_review_is_owner_scoped_revisioned_and_does_not_submit(
+    monkeypatch: pytest.MonkeyPatch, capsys
+) -> None:
+    from backend.applications import service as application_service
+
+    db = object()
+    captured: dict[str, object] = {}
+    application = SimpleNamespace(id="application-7", current_stage="preparing", revision=7)
+
+    @contextlib.contextmanager
+    def test_runtime(_data_dir, *, migrate, write_access):
+        assert migrate is False
+        assert write_access is True
+
+        @contextlib.contextmanager
+        def session_factory():
+            yield db
+
+        yield SimpleNamespace(session_factory=session_factory)
+
+    class FakeApplicationService:
+        def __init__(self, database):
+            assert database is db
+
+        def append_event(self, user_id, application_id, event):
+            captured.update(user_id=user_id, application_id=application_id, event=event)
+            return SimpleNamespace(id=application_id, current_stage="preparing", revision=8)
+
+    def campaign_application(_db, **kwargs):
+        assert _db is db
+        captured.update(kwargs)
+        return SimpleNamespace(application=application)
+
+    monkeypatch.setattr(cli, "automation_runtime", test_runtime)
+    monkeypatch.setattr(cli, "_campaign_user", lambda _db, username: SimpleNamespace(id=29))
+    monkeypatch.setattr(cli, "_campaign_application", campaign_application)
+    monkeypatch.setattr(application_service, "ApplicationService", FakeApplicationService)
+
+    assert cli.main(_review_args("--acknowledge-review-record-write")) == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["stage"] == "preparing"
+    assert payload["decision"] == "hold"
+    assert payload["revision"] == 8
+    assert captured["user_id"] == 29
+    assert captured["campaign_id"] == "campaign-1"
+    assert captured["source_application_id"] == "APP-003"
+    event = captured["event"]
+    assert event.expected_revision == 7
+    assert event.event_type == "note"
+    assert event.stage is None
+    assert event.payload == {
+        "campaign_review_v1": {
+            "decision": "hold",
+            "source_url": "https://jobs.example.org/roles/123",
+            "next_action": "Verify the office address with the employer",
+        }
+    }
+
+
+def test_campaign_review_rejects_post_submission_without_appending(
+    monkeypatch: pytest.MonkeyPatch, capsys
+) -> None:
+    db = object()
+
+    @contextlib.contextmanager
+    def test_runtime(_data_dir, *, migrate, write_access):
+        @contextlib.contextmanager
+        def session_factory():
+            yield db
+
+        yield SimpleNamespace(session_factory=session_factory)
+
+    monkeypatch.setattr(cli, "automation_runtime", test_runtime)
+    monkeypatch.setattr(cli, "_campaign_user", lambda _db, username: SimpleNamespace(id=29))
+    monkeypatch.setattr(
+        cli,
+        "_campaign_application",
+        lambda _db, **_kwargs: SimpleNamespace(
+            application=SimpleNamespace(id="application-7", current_stage="applied", revision=7)
+        ),
+    )
+    assert cli.main(_review_args("--acknowledge-review-record-write")) == 2
+    assert json.loads(capsys.readouterr().err)["error"] == "campaign_review_not_pre_submission"
+
+
+def test_campaign_review_redacts_stale_revision_and_foreign_link(
+    monkeypatch: pytest.MonkeyPatch, capsys
+) -> None:
+    from backend.applications import service as application_service
+    from backend.applications.exceptions import ApplicationConflictError
+
+    db = object()
+
+    @contextlib.contextmanager
+    def test_runtime(_data_dir, *, migrate, write_access):
+        @contextlib.contextmanager
+        def session_factory():
+            yield db
+
+        yield SimpleNamespace(session_factory=session_factory)
+
+    class StaleApplicationService:
+        def __init__(self, database):
+            assert database is db
+
+        def append_event(self, user_id, application_id, event):
+            raise ApplicationConflictError("private current revision: 99")
+
+    monkeypatch.setattr(cli, "automation_runtime", test_runtime)
+    monkeypatch.setattr(cli, "_campaign_user", lambda _db, username: SimpleNamespace(id=29))
+    monkeypatch.setattr(application_service, "ApplicationService", StaleApplicationService)
+    monkeypatch.setattr(
+        cli,
+        "_campaign_application",
+        lambda _db, **_kwargs: SimpleNamespace(
+            application=SimpleNamespace(id="application-7", current_stage="saved", revision=99)
+        ),
+    )
+    assert cli.main(_review_args("--acknowledge-review-record-write")) == 2
+    diagnostics = capsys.readouterr().err
+    assert json.loads(diagnostics)["error"] == "campaign_review_record_failed"
+    assert "private" not in diagnostics
+
+    def foreign_link(_db, **_kwargs):
+        raise AutomationRuntimeError(
+            "campaign_application_unavailable",
+            "The campaign application is unavailable for the named account",
+        )
+
+    monkeypatch.setattr(cli, "_campaign_application", foreign_link)
+    assert cli.main(_review_args("--acknowledge-review-record-write")) == 2
+    assert json.loads(capsys.readouterr().err)["error"] == "campaign_application_unavailable"
 
 
 def test_authorize_requires_an_explicit_least_privilege_scope() -> None:
