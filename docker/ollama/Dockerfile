@@ -68,7 +68,7 @@ RUN mkdir /out \
         sha256sum /out/ollama; \
     } > /out/BUILD_PROVENANCE.txt
 
-FROM ollama/ollama:0.33.3@sha256:32931b46719f673c05fdbaa81ccb26da18ea4a1c57590a754874ab28ba269eb2
+FROM ollama/ollama:0.34.3@sha256:7ab595e4ead391f6818c7215297781282babe0701f6d9a9f8862ac591360a58b
 
 ENV HOME=/var/lib/ollama
 
