@@ -14,7 +14,7 @@ SQLAlchemy==2.0.51
 greenlet==3.5.4
 alembic==1.18.5
 
-PyJWT==2.13.0
+PyJWT==2.15.0
 bcrypt==5.0.0
 
 httpx[http2]==0.28.1
