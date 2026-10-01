@@ -18,7 +18,7 @@ keywords = ["career", "local-first", "privacy", "cli", "mcp", "tauri", "fastapi"
 dependencies = [
     "APScheduler==3.11.3",
     "Pillow==12.3.0",
-    "PyJWT==2.13.0",
+    "PyJWT==2.15.0",
     "SQLAlchemy==2.0.51",
     "alembic==1.18.5",
     "bcrypt==5.0.0",
