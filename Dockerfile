@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1.7
 
-FROM python:3.12.14-alpine3.23@sha256:167bc85084c9df34480efc26b4528fb68feaa8a79183b5658952137025b6f061
+FROM python:3.12.15-alpine3.23@sha256:1fd55c2f838c4f76262f9eeed899ff9168ea96ac383c61667d6f204325e1f169
 
 ARG CAREEROS_BUILD_REVISION=unknown
 
