@@ -1,11 +1,15 @@
 # Specification: Consolidate all work into main
 
-Date: 2026-10-17. Status: signed baseline integrated; UI source locally verified.
+Date: 2026-10-17. Status: signed UI baseline integrated; extended refactor in progress.
 Owner request: integrate all branches into main, remove branches, clean the
 project and make the combined application work.
 Follow-up request: continue the refactor, cleanup and correction of confirmed
 anomalies after the verified main integration.
 Further request: continue the refactor including the UI, from signed main cdc91c1.
+Current request: continue refactoring and extended cleanup from signed main cc8c9dd.
+PR #117 completed the previous UI cycle: its reviewed source and signed main have
+the same tree; post-merge CI passed eight jobs and CodeQL four. Main was the sole
+branch and the worktree clean before this new cycle.
 
 ## Outcomes
 
@@ -29,6 +33,15 @@ Further request: continue the refactor including the UI, from signed main cdc91c
    Preserve newer selections and drafts across delayed operations, keep filtered
    projections coherent, and provide accessible dialogs and content-free error
    diagnostics without changing career truth, appearance or agent authority.
+7. Decompose the oversized deterministic match-evidence implementation into
+   focused modules while preserving the existing public interface, catalog
+   version, canonical fingerprints, complete evidence and fail-closed rules.
+8. Preserve unsaved profile edits during internal navigation and reflect confirmed
+   resume mutations immediately, even when a subsequent read fails. Keep newer
+   drafts/selections, translated feedback and explicit human fact confirmation.
+9. Refuse successful source-document reuse when the existing owned asset has
+   missing/corrupt bytes or invalid metadata. Healthy duplicates stay idempotent;
+   failure never silently repairs storage or changes career records.
 
 ## Requirements
 
@@ -113,6 +126,35 @@ Further request: continue the refactor including the UI, from signed main cdc91c
   different active filter/page context. Reconcile the current projection through
   its current query, retaining existing error, toast and undo behavior without
   injecting a record that does not satisfy the active filter.
+- FR-018 Match-evidence decomposition must preserve all current classifications,
+  multilingual literals, quote ordering/identifiers, canonical hashes, coverage
+  metadata and explicit public catalog-version behavior. Keep the compatibility
+  facade and each new production module below 300 lines. Deterministic evidence
+  extraction never becomes completed AI analysis or an alternative inference path.
+- FR-019 A dirty career-profile editor must guard internal route navigation as
+  well as page unload. Cancelling preserves the current route and draft; explicit
+  acceptance permits navigation. Clean editors do not prompt, and saving or
+  discarding clears the guard. Preserve browser and desktop routing behavior.
+- FR-020 Resume mutation acknowledgements must reconcile confirmed deletion,
+  revision and claim state before optional catalog/profile reads. A read failure
+  must preserve the acknowledgement, communicate that refresh failed separately
+  from the write and allow retry without repeating the mutation. Delayed results
+  must not overwrite newer selections or edits; current fact-confirmation and
+  export/publication boundaries remain mandatory.
+- FR-021 Reusing an imported source document must validate the owned source/asset
+  relationship, supported metadata, contained path and stored digest/length before
+  returning success. Missing, corrupt or inconsistent stored data produces a
+  bounded import error without overwrite, new rows or profile revision changes.
+  Preserve healthy idempotency, conflicting-role rejection, shared-file ownership,
+  publication serialization and commit-recovery behavior.
+- FR-022 Native build-generated JSON schemas must retain the generator's canonical
+  bytes across build and commit hooks. Any formatting exemption must be limited
+  to the three reproduced generated schema paths, preserving all schema values,
+  capability restrictions and all other source formatting/security checks.
+- FR-023 The resume template selector must display translated action/selection
+  labels in English and Italian, both with and without a selected preset. Missing
+  message keys must never appear as visible control text; preserve explicit
+  template selection and all existing draft/content semantics.
 
 ## Success criteria
 
@@ -157,6 +199,29 @@ Further request: continue the refactor including the UI, from signed main cdc91c
   cannot overwrite a later selection or clear a newly reopened form/draft.
 - SC-015 A delayed dismiss/undo from filter A after switching to B preserves B's
   valid rows/counts, with current-query reconciliation and error controls covered.
+- SC-016 Existing evidence/attestation/grounding/matching and search persistence
+  contracts pass after decomposition. A synthetic multilingual differential corpus
+  produces identical complete documents and fingerprints against the preserved
+  baseline; compare moved logic and literal values independently. A changed public
+  catalog version still invalidates fingerprints, without weakening validation.
+- SC-017 Actual routed profile tests cover denied/accepted navigation, clean
+  navigation, save/discard, unload and StrictMode cleanup with synthetic data.
+  Cancelling an internal transition leaves all edited values available.
+- SC-018 Resume regressions cover successful deletion or claim confirmation
+  followed by catalog/profile read failure, accurate revision/selection and
+  refresh retry, plus actual mutation failure and selection/draft changes while
+  requests are pending. No automatic write retry or implicit confirmation occurs.
+- SC-019 Real source-import regressions cover healthy reuse, missing bytes,
+  same-length corruption, invalid length/metadata/path and foreign relationships.
+  Rejected reuse leaves file bytes, source/asset inventory and both accounts'
+  profile revisions unchanged; valid imports and existing rollback/ambiguous-commit
+  contracts still pass.
+- SC-020 Real Tauri generation and commit-hook verification leave all native
+  inputs unchanged on a repeated run. Independently prove the three canonical
+  schema changes remove only the final LF and preserve parsed JSON values.
+- SC-021 Actual template-selector DOM tests cover both languages and selected/
+  empty preset states. A real production-build browser check confirms readable
+  labels at mobile/desktop widths, with unchanged locale/bundle budgets.
 
 ## Governing constraints
 

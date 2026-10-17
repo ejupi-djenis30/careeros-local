@@ -273,6 +273,102 @@ describe("useResumeStudio asynchronous document ownership", () => {
         expect(result.current.dirty).toBe(true);
     });
 
+    it("retires a confirmed deletion before a failed catalog read and retries only reads", async () => {
+        const { result } = await openStudio();
+        ResumeService.remove.mockResolvedValue(undefined);
+        ResumeService.list.mockRejectedValueOnce(new Error("Catalog unavailable"));
+        await act(async () => { await result.current.remove(); });
+        expect(result.current.draft.id).toBeNull();
+        expect(result.current.resumes.map((item) => item.id)).not.toContain(RESUME_ID);
+        expect(result.current.refreshPending).toBe(true);
+        expect(result.current.error).toBeNull();
+        ResumeService.list.mockResolvedValueOnce([otherDraft()]);
+        await act(async () => { await result.current.retryRefresh(); });
+        expect(result.current.draft.id).toBe(OTHER_ID);
+        expect(result.current.refreshPending).toBe(false);
+        expect(ResumeService.remove).toHaveBeenCalledTimes(1);
+    });
+
+    it("preserves edits after a deletion acknowledgement through catalog retry and creates instead of updating the deleted ID", async () => {
+        const { result } = await openStudio();
+        ResumeService.remove.mockResolvedValue(undefined);
+        ResumeService.list.mockRejectedValueOnce(new Error("Catalog unavailable"));
+        await act(async () => { await result.current.remove(); });
+        act(() => result.current.changeDraft({ title: "New local work" }));
+        ResumeService.list.mockResolvedValue([otherDraft()]);
+        await act(async () => { await result.current.retryRefresh(); });
+        expect(result.current.draft).toMatchObject({ id: null, title: "New local work" });
+        await act(async () => { await vi.advanceTimersByTimeAsync(1_000); });
+        expect(ResumeService.create).toHaveBeenCalledWith(expect.objectContaining({ title: "New local work" }), REQUEST_OPTIONS);
+        expect(ResumeService.update).not.toHaveBeenCalled();
+        expect(ResumeService.remove).toHaveBeenCalledTimes(1);
+    });
+
+    it("adopts a confirmed promotion revision despite profile failure and preserves newer edits during read retry", async () => {
+        const { result } = await openStudio();
+        ResumeService.promoteClaim.mockResolvedValue(resumeDraft({ revision: 2 }));
+        CareerService.getProfile.mockRejectedValueOnce(new Error("Profile unavailable"));
+        await act(async () => { await result.current.promoteClaim("block"); });
+        expect(result.current.draft.revision).toBe(2);
+        expect(result.current.profileRefreshPending).toBe(true);
+        expect(result.current.error).toBeNull();
+        expect(showToast).toHaveBeenCalledWith({ messageKey: "resume.promotedToast" }, "success");
+        act(() => result.current.changeDraft({ title: "Later local edit" }));
+        CareerService.getProfile.mockResolvedValueOnce(careerProfile({ revision: 4 }));
+        await act(async () => { await result.current.retryRefresh(); });
+        expect(result.current.profile.revision).toBe(4);
+        expect(result.current.draft).toMatchObject({ revision: 2, title: "Later local edit" });
+        expect(result.current.profileRefreshPending).toBe(false);
+        await act(async () => { await vi.advanceTimersByTimeAsync(1_000); });
+        expect(ResumeService.update).toHaveBeenCalledWith(RESUME_ID, expect.objectContaining({ expected_revision: 2 }), REQUEST_OPTIONS);
+        expect(ResumeService.promoteClaim).toHaveBeenCalledTimes(1);
+    });
+
+    it.each(["delete", "promote"])("retains the original document on an actual %s failure without claiming a pending refresh", async (action) => {
+        const { result } = await openStudio();
+        const service = action === "delete" ? ResumeService.remove : ResumeService.promoteClaim;
+        service.mockRejectedValueOnce(new Error("Write unavailable"));
+        await act(async () => { await (action === "delete" ? result.current.remove() : result.current.promoteClaim("block")); });
+        expect(result.current.draft).toMatchObject({ id: RESUME_ID, revision: 1 });
+        expect(result.current.error).toEqual({ message: "Write unavailable" });
+        expect(result.current.refreshPending).toBe(false);
+        expect(service).toHaveBeenCalledTimes(1);
+    });
+
+    it("does not apply a promotion refresh after a newer document is selected and retries shared data without changing that selection", async () => {
+        const { result } = await openStudio();
+        const pending = deferred();
+        ResumeService.promoteClaim.mockResolvedValue(resumeDraft({ revision: 2 }));
+        CareerService.getProfile.mockReturnValueOnce(pending.promise);
+        let promoting;
+        act(() => { promoting = result.current.promoteClaim("block"); });
+        await act(async () => { await Promise.resolve(); });
+        expect(result.current.draft.revision).toBe(2);
+        await act(async () => { await result.current.loadDraft(OTHER_ID); });
+        await act(async () => { pending.resolve(careerProfile({ revision: 2 })); await promoting; });
+        expect(result.current.draft.id).toBe(OTHER_ID);
+        expect(result.current.profile.revision).toBe(3);
+        expect(result.current.profileRefreshPending).toBe(true);
+        CareerService.getProfile.mockResolvedValueOnce(careerProfile({ revision: 4 }));
+        await act(async () => { await result.current.retryRefresh(); });
+        expect(result.current.draft.id).toBe(OTHER_ID);
+        expect(result.current.profile.revision).toBe(4);
+        expect(ResumeService.promoteClaim).toHaveBeenCalledTimes(1);
+    });
+
+    it("does not select a deletion successor over a subsequently generated draft", async () => {
+        const { result } = await openStudio();
+        ResumeService.remove.mockResolvedValue(undefined);
+        ResumeService.list.mockRejectedValueOnce(new Error("Catalog unavailable"));
+        await act(async () => { await result.current.remove(); });
+        ResumeService.generate.mockResolvedValue(resumeDraft({ id: "new-generated", revision: 1 }));
+        ResumeService.list.mockResolvedValue([otherDraft()]);
+        await act(async () => { await result.current.generateFromProfile(); });
+        await act(async () => { await result.current.retryRefresh(); });
+        expect(result.current.draft.id).toBe("new-generated");
+        expect(ResumeService.remove).toHaveBeenCalledTimes(1);
+    });
+
     it("initializes successfully through StrictMode effect cleanup and replay", async () => {
         let view;
         await act(async () => {

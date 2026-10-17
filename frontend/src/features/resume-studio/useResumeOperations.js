@@ -38,6 +38,7 @@ export function useResumeOperations({ setBusy, setError, errorMessage }) {
             && active.current.request === controller;
         const request = {
             isCurrent,
+            isSessionCurrent: () => active.current.mounted && active.current.session === session,
             signal: controller.signal,
             options: { signal: controller.signal, suppressGlobalError: true },
         };

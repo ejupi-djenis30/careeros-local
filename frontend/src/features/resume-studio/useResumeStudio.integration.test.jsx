@@ -52,4 +52,44 @@ describe("resume request error ownership through the API client", () => {
             window.removeEventListener(CAREEROS_API_ERROR_EVENT, globalError);
         }
     });
+
+    it.each(["delete", "promote"])("keeps an acknowledged %s and its failed reconciliation local through the actual API client", async (action) => {
+        vi.spyOn(window, "confirm").mockReturnValue(true);
+        const globalError = vi.fn();
+        let committed = false;
+        let readsRecovered = false;
+        window.addEventListener(CAREEROS_API_ERROR_EVENT, globalError);
+        const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation((url, options) => {
+            if (options.method === "DELETE") {
+                committed = true;
+                return Promise.resolve(new Response(null, { status: 204 }));
+            }
+            if (options.method === "POST") {
+                committed = true;
+                return Promise.resolve(json(resumeDraft({ revision: 2 })));
+            }
+            if (url.endsWith("/career-profile")) return Promise.resolve(committed && action === "promote" && !readsRecovered
+                ? json({ detail: "Synthetic profile unavailable" }, 503) : json(careerProfile()));
+            if (url.endsWith("/resumes")) return Promise.resolve(committed && action === "delete" && !readsRecovered
+                ? json({ detail: "Synthetic catalog unavailable" }, 503) : json(committed && action === "delete" ? [] : [resumeDraft()]));
+            return Promise.resolve(json(resumeDraft()));
+        });
+        let view;
+        try {
+            await act(async () => { view = renderHook(() => useResumeStudio()); });
+            await act(async () => { await (action === "delete" ? view.result.current.remove() : view.result.current.promoteClaim("synthetic-block")); });
+            expect(view.result.current.refreshPending).toBe(true);
+            if (action === "delete") expect(view.result.current.draft.id).toBeNull();
+            else expect(view.result.current.draft.revision).toBe(2);
+            expect(globalError).not.toHaveBeenCalled();
+            readsRecovered = true;
+            await act(async () => { await view.result.current.retryRefresh(); });
+            expect(view.result.current.refreshPending).toBe(false);
+            expect(fetchMock.mock.calls.filter(([, options]) => ["DELETE", "POST"].includes(options.method))).toHaveLength(1);
+            expect(globalError).not.toHaveBeenCalled();
+        } finally {
+            view?.unmount();
+            window.removeEventListener(CAREEROS_API_ERROR_EVENT, globalError);
+        }
+    });
 });

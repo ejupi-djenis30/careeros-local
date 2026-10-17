@@ -18,12 +18,13 @@ const update = vi.fn();
 const promoteClaim = vi.fn();
 const compareVersions = vi.fn();
 const restoreVersion = vi.fn();
+const remove = vi.fn();
 const getProfile = vi.fn();
 const showToast = vi.fn();
 const REQUEST_OPTIONS = expect.objectContaining({ signal: expect.any(AbortSignal), suppressGlobalError: true });
 
 vi.mock("../../services/career", () => ({ CareerService: { getProfile: (...args) => getProfile(...args), uploadPhoto: vi.fn() } }));
-vi.mock("../../services/resumes", () => ({ ResumeService: { list: (...args) => list(...args), get: (...args) => get(...args), create: (...args) => create(...args), generate: (...args) => generate(...args), duplicate: (...args) => duplicate(...args), promoteClaim: (...args) => promoteClaim(...args), sync: (...args) => sync(...args), update: (...args) => update(...args), publish: (...args) => publish(...args), compareVersions: (...args) => compareVersions(...args), restoreVersion: (...args) => restoreVersion(...args), remove: vi.fn(), downloadArtifact: vi.fn() } }));
+vi.mock("../../services/resumes", () => ({ ResumeService: { list: (...args) => list(...args), get: (...args) => get(...args), create: (...args) => create(...args), generate: (...args) => generate(...args), duplicate: (...args) => duplicate(...args), promoteClaim: (...args) => promoteClaim(...args), sync: (...args) => sync(...args), update: (...args) => update(...args), publish: (...args) => publish(...args), compareVersions: (...args) => compareVersions(...args), restoreVersion: (...args) => restoreVersion(...args), remove: (...args) => remove(...args), downloadArtifact: vi.fn() } }));
 vi.mock("../../context/ToastContext", () => ({ useToast: () => ({ showToast }) }));
 
 describe("ResumeStudioPage", () => {
@@ -31,6 +32,7 @@ describe("ResumeStudioPage", () => {
         vi.clearAllMocks();
         getProfile.mockResolvedValue(careerProfile());
         list.mockResolvedValue([]);
+        remove.mockResolvedValue(undefined);
         create.mockResolvedValue(resumeDraft());
         generate.mockResolvedValue(resumeDraft());
         update.mockImplementation((_id, data) => Promise.resolve(resumeDraft({ revision: 2, canvas_document: data.canvas_document })));
@@ -39,6 +41,21 @@ describe("ResumeStudioPage", () => {
         compareVersions.mockResolvedValue({ left_name: "Alpha", right_name: "Beta", profile_changes: [], resume_changes: ["title"], added_fact_ids: [], removed_fact_ids: [], changed_fact_ids: [] });
         restoreVersion.mockResolvedValue(resumeDraft({ revision: 2 }));
         get.mockResolvedValue(resumeDraft({ versions: [{ id: "v1", name: "Candidatura Alpha", version_number: 1, semantic_version: "1.0.0", profile_revision: 3, selected_fact_ids: [FACT_ID], template_kind: "ats", renderer_version: "1", published_at: "2026-01-03T10:00:00Z", quality_report: { passed: true, page_count: 1 }, artifacts: [] }] }));
+    });
+
+    it("offers a read-only retry after a confirmed deletion without retaining the deleted library entry", async () => {
+        const confirm = vi.spyOn(window, "confirm").mockReturnValue(true);
+        list.mockResolvedValueOnce([resumeDraft()]).mockRejectedValueOnce(new Error("Synthetic catalog unavailable"));
+        try {
+            render(<ResumeStudioPage />);
+            await userEvent.click(await screen.findByRole("button", { name: "Elimina CV" }));
+            expect(await screen.findByText("Operazione riuscita; ricarica i dati.")).toBeInTheDocument();
+            expect(screen.queryByText("Synthetic catalog unavailable")).not.toBeInTheDocument();
+            list.mockResolvedValue([]);
+            await userEvent.click(screen.getByRole("button", { name: "Riprova", exact: true }));
+            await waitFor(() => expect(screen.queryByText("Operazione riuscita; ricarica i dati.")).not.toBeInTheDocument());
+            expect(remove).toHaveBeenCalledTimes(1);
+        } finally { confirm.mockRestore(); list.mockReset(); }
     });
 
     it("shows an explicit library fallback for an unavailable dossier CV link", async () => {

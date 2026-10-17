@@ -1,6 +1,7 @@
 # Independent consistency analysis: Consolidate all work into main
 
-Date: 2026-10-17. Status: signed baseline integrated; UI source locally verified.
+Date: 2026-10-17. Status: signed PR #117 baseline integrated; extended source
+verification, independent review and integration hand-off complete under T034.
 Constitution 2.0.1 remains unchanged.
 
 The primary agent reviewed history, protection and validation evidence. Separate
@@ -10,8 +11,8 @@ assessment of evidence, not approval to skip outstanding checks or publish.
 
 ## Traceability
 
-All seventeen functional requirements and fifteen success criteria have task coverage;
-all thirty-two tasks map to requirements. Coverage means an implementation/verification
+All twenty-three functional requirements and twenty-one success criteria have task coverage;
+all thirty-nine tasks map to requirements. Coverage means an implementation/verification
 task exists, rather than asserting every outcome has already passed.
 
 | Item | Implementation / evidence tasks | Current evidence |
@@ -21,8 +22,8 @@ task exists, rather than asserting every outcome has already passed.
 | FR-003 | T004, T005, T012, T013 | Current-auth provider API/UI; consent, bounded transport, independently checked credential mask and proposal authority retained |
 | FR-004 | T004, T021 | Fresh migration, provider-only version-9 portability, strict commit identity and rollback/isolation tests |
 | FR-005 | T006, T007, T014–T021 | Initial dependency/image/action gates passed; automated follow-up locks, provenance, no-telemetry preservation and deterministic ORM fixture verification |
-| FR-006 | T001, T010, T018, T032 | Baseline including PR #116 is signed and exact-tree verified; the new UI head still requires its own protected checks, merge proof and recovery-backed ref cleanup |
-| FR-007 | T008, T009, T012 | Exact passed, failed, interrupted, pending and skipped checks in validation.md |
+| FR-006 | T001, T010, T018, T019, T032, T034 | PR #117 signed main cc8c9dd has the reviewed source tree and successful post-merge checks; this extended cycle requires its own protected integration and recovery-backed cleanup |
+| FR-007 | T008, T009, T012, T026, T032, T034 | Exact passed, failed, interrupted, pending and skipped checks in validation.md |
 | FR-008 | T011 | OS-temporary test evidence, private-data boundaries and final cleanup inventory |
 | FR-009 | T022, T026 | Real Uvicorn Config/ASGI trace in both startup orders, content-free idempotent server/access events and copied exception-cache protection; ten focused passes and independent review |
 | FR-010 | T024, T026 | Acknowledged create/update/delete/toggle/import state applied before refresh; actual returned imported rows retained; focused red/green and complete frontend checks pass |
@@ -33,11 +34,17 @@ task exists, rather than asserting every outcome has already passed.
 | FR-015 | T029, T032 | Shared topmost modal ownership, nested/out-of-order cleanup and native browser focus/inert tests; measured appearance restored, independent review and final aggregate gates pass |
 | FR-016 | T030, T032 | Identity/revision reconciliation, cancelled pending detail reads and generation-bound creation forms; independent review and 43 combined application/jobs tests pass |
 | FR-017 | T031, T032 | Current filter/page reconciliation for dismiss/undo/reactivation; stale counts, foreign rows, retries and unmount regressions independently reviewed |
-| SC-001 | T001, T003, T009 | Original tips and content decisions recorded; eight complete verified recovery bundles preserve baseline history |
+| FR-018 / SC-016 | T033, T034 | Facade 124 lines, internal modules at most 256; 291 existing passes, 540 implementation-owner and 384 independent complete-pair comparisons, AST/literal/configuration and real wheel verification |
+| FR-019 / SC-017 | T035, T034 | Real browser/hash routers, deny/accept/save/unload/forced logout and StrictMode; four native-browser cases retain drafts and correct navigation |
+| FR-020 / SC-018 | T036, T034 | Confirmed deletion/claim revision precedes reads; six browser cases and real API-client regressions retain acknowledgement, newer work and GET-only retry |
+| FR-021 / SC-019 | T037, T034 | Eighteen real integrity regressions and 69 focused passes; contained owned-source reads, unchanged bytes/rows/revisions and original publication/recovery logic |
+| FR-022 / SC-020 | T038, T034 | Exactly three final-LF changes, identical JSON values and narrow EOF exemption; repeated native commands pass with zero input changes |
+| FR-023 / SC-021 | T039, T034 | Four RED-to-GREEN selector DOM cases, exact feature-local translations and two actual-build label/geometry cases; final frontend coverage/lint/build pass |
+| SC-001 | T001, T003, T009, T018, T019, T034 | Original tips and content decisions plus completed PR #117 recovery ledger preserved; new-cycle bundles precede publication/ref cleanup |
 | SC-002 | T004, T005, T008, T012, T024, T032 | PR #116 Windows baseline: backend 2,965 passes/17 skips/82.06% combined coverage, four performance tests, frontend 698 tests, eight browser/API groups, Rust 28 tests and migration roundtrip pass. New UI aggregate gates remain separate |
 | SC-003 | T004, T008, T021 | Fresh migration roundtrip passed; strict archive, provider-only and timestamp identity cases covered |
 | SC-004 | T006–T009, T012, T018–T020 | Initial source/image/native/remote gates passed; exact follow-up audit/privacy/test results remain required |
-| SC-005 | T010, T011, T032 | Signed baseline main, exact-tree verification and branch cleanup complete; new UI work remains isolated pending its own protected integration and final inventory |
+| SC-005 | T010, T011, T032, T034 | Signed PR #117 main, exact-tree verification and branch cleanup complete; extended work remains isolated pending its own protected integration and final inventory |
 | SC-006 | T004, T005, T011 | No personal fixtures; deterministic manual/provider/backup flows work without inference |
 | SC-007 | T022, T026 | Ten passing real-configuration/cache/privacy regressions retain only safe diagnostics; no private test values printed |
 | SC-008 | T024, T026 | Create/update/delete/toggle/import refresh failures, retries, write errors, cancellation and UI single-flight covered |
@@ -49,7 +56,7 @@ task exists, rather than asserting every outcome has already passed.
 | SC-014 | T030, T032 | Selection, revision, close-with-pending-read, creation acknowledgement and close/reopen form races fail before correction and pass after it |
 | SC-015 | T031, T032 | Cross-query dismiss/undo, duplicate refresh, post-unmount acknowledgements and same-query dismissed rows have meaningful regressions |
 
-The six specified outcomes and ten numbered plan decisions are represented.
+The nine specified outcomes and eleven numbered plan decisions are represented.
 All eight constitution principles remain applicable: local canonical ownership,
 validated local/authorized-agent analysis, truthful proposals, recoverable durable
 storage, explicit module boundaries, measurable delivery, secure distribution and
@@ -124,7 +131,7 @@ This is the pre-publication source assessment. The new PR's mandatory checks,
 signed-main exact-tree proof and final branch inventory are recorded separately
 in PR metadata and durable private Git recovery evidence; none is claimed early.
 
-## Current UI verification disposition
+## Historical UI verification snapshot before PR #117
 
 The read-only UI consistency assessment finds no uncovered requirement,
 contradictory authority or duplicate task. T027–T031 cover the five reproduced
@@ -151,3 +158,33 @@ ledger; no source checkbox establishes FR-006, FR-008 or SC-005 early.
 Backend, native, dependency and
 migration inputs are unchanged; their signed baseline evidence remains distinct
 from the affected-contract and protected checks required for this UI cycle.
+
+## Extended refactor findings and current disposition
+
+Independent implementation/artifact review finds 100% coverage of all 44 FR/SC
+items across 39 tasks, no orphan/duplicate requirement and no constitution
+conflict. All eleven plan decisions and eight governing principles are covered.
+The following new findings are resolved by the existing phase-seven tasks;
+aggregate execution and protected integration remain tracked under T034.
+
+| ID | Severity | Finding | Disposition |
+| --- | --- | --- | --- |
+| A26 | Medium | Deterministic evidence implementation combines 1,734 lines of vocabulary, parsing, catalogs and document assembly | T033: stable 124-line facade, acyclic focused modules at most 256 lines, unchanged literals/functions/configuration behavior and complete synthetic outputs |
+| A27 | High | Internal navigation bypasses the dirty-profile unload guard | T035: actual router/native-dialog regressions retain the draft on cancellation; clean/save/accept, hash/back and forced-lock behavior verified |
+| A28 | High | Confirmed resume deletion/claim mutation is hidden or regressed by a failed follow-up read | T036: acknowledgement precedes optional reads, accurate translated warning and GET-only retry, current session/draft ownership preserved |
+| A29 | High | Duplicate source import claims success for missing/corrupt bytes or invalid metadata | T037: owned relationship, metadata, canonical path and digest/length validated before acknowledgement; eighteen integrity cases and original recovery controls pass |
+| A30 | Low | Build and commit hook disagree on three generated schema final LFs | T038: exact generator bytes and narrowly scoped formatting exemption; unchanged JSON/capabilities and stable repeated native checks |
+| A31 | Medium | Resume selector exposes absent message keys in both supported languages | T039: four feature-local translations, four real selected/empty DOM regressions and two corrected production-browser captures pass |
+
+Final UI source passes 778 tests/113 files, lint/runtime/license/icon checks and
+unchanged build budgets; native, migration, static, performance, ordinary wheel
+layout and desktop checks pass with exact limitations in validation.md. The
+corrected complete backend passes 2,983 tests with 17 skips and 82.12% combined
+branch-aware coverage. Its strict global wrapper returns 1 for exactly the two
+known UI-only changes; pytest returns 0 and independent attestation proves
+identical Python/native/configuration/dependency inputs. Final affected UI gates
+run on both changed files. No failed, interrupted or unsupported harness
+execution is reclassified as a pass. T034 source verification is complete;
+protected publication, main signature/tree and recovery-backed cleanup remain
+subsequent execution in the PR/private recovery ledger. No new implementation
+task or constitution exception is justified.

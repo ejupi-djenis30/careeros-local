@@ -7,6 +7,7 @@ import { useI18n } from "../../i18n/useI18n";
 import { newResumeDraft, resumeWritePayload } from "./resumeModel";
 import { loadResumeWorkspace, mergeResumeResponse } from "./resumeWorkspace";
 import { useResumeOperations } from "./useResumeOperations";
+import { useResumeAcknowledgements } from "./useResumeAcknowledgements";
 
 function localizedError(messageKey) {
     const error = new Error(messageKey);
@@ -200,25 +201,11 @@ export function useResumeStudio({ requestedResumeId = null } = {}) {
             if (request.isCurrent()) showToast({ messageKey: "resume.duplicatedToast" }, "success");
         });
     };
-    const promoteClaim = async (blockId) => {
-        const sequence = changeSequence.current;
-        return run("promote-claim", async (request) => {
-            const saved = await persist(request, sequence);
-            if (!request.isCurrent()) return;
-            const response = await ResumeService.promoteClaim(saved.id, {
-                expected_revision: saved.revision,
-                expected_profile_revision: profile.revision,
-                block_id: blockId,
-            }, request.options);
-            if (!request.isCurrent()) return;
-            const refreshedProfile = await CareerService.getProfile({ signal: request.signal, suppressGlobalError: true });
-            if (!request.isCurrent()) return;
-            setProfile(refreshedProfile);
-            applySavedResponse(response, sequence, request);
-            await refreshList(request);
-            if (request.isCurrent()) showToast({ messageKey: "resume.promotedToast" }, "success");
-        });
-    };
+    const acknowledgements = useResumeAcknowledgements({
+        run, profile, draft, changeSequence, persist, applySavedResponse, installDraft,
+        freshDraft, setDraft, setDirty, setAutosaveState, setResumes, setProfile,
+        setError, setVersionComparison, showToast, t,
+    });
     const reviewSync = async () => {
         const sequence = changeSequence.current;
         return run("sync-preview", async (request) => {
@@ -247,29 +234,6 @@ export function useResumeStudio({ requestedResumeId = null } = {}) {
             if (!request.isCurrent()) return;
             changeDraft({ photo_asset_id: asset.id });
             showToast({ messageKey: "resume.photoToast" }, "success");
-        });
-    };
-    const remove = async () => {
-        if (!draft.id || !window.confirm(t("resume.removeConfirm", { title: draft.title }))) return;
-        const sequence = changeSequence.current;
-        await run("delete", async (request) => {
-            await ResumeService.remove(draft.id, request.options);
-            if (!request.isCurrent()) return;
-            const next = await ResumeService.list(request.options);
-            if (!request.isCurrent()) return;
-            const response = next.length
-                ? await ResumeService.get(next[0].id, request.options)
-                : freshDraft(profile.facts);
-            if (!request.isCurrent()) return;
-            setResumes(next);
-            if (sequence === changeSequence.current) installDraft(response);
-            else {
-                // Keep edits made after deletion started as a new unsaved draft.
-                setDraft((current) => request.isCurrent()
-                    ? { ...current, id: null, revision: null, versions: [] } : current);
-                setDirty(true);
-                setAutosaveState("pending");
-            }
         });
     };
     const compareVersions = async (versionIds) => run("compare-versions", async (request) => {
@@ -316,5 +280,5 @@ export function useResumeStudio({ requestedResumeId = null } = {}) {
         return () => window.clearTimeout(timer);
     }, [applySavedResponse, busy, dirty, draft, refreshList, run]);
 
-    return { profile, resumes, draft, dirty, loading, busy, error, profileMissing, targetUnavailable, generationGoalId, syncPreview, syncSelection, versionName, versionComparison, autosaveState, initialize, loadDraft, changeDraft, startNew, save, publish, generateFromProfile, duplicate, promoteClaim, reviewSync, applySync, uploadPhoto, remove, compareVersions, restoreVersion, setGenerationGoalId, setSyncSelection, setVersionName, closeSync: () => setSyncPreview(null), setError };
+    return { ...acknowledgements, profile, resumes, draft, dirty, loading, busy, error, profileMissing, targetUnavailable, generationGoalId, syncPreview, syncSelection, versionName, versionComparison, autosaveState, initialize, loadDraft, changeDraft, startNew, save, publish, generateFromProfile, duplicate, reviewSync, applySync, uploadPhoto, compareVersions, restoreVersion, setGenerationGoalId, setSyncSelection, setVersionName, closeSync: () => setSyncPreview(null), setError };
 }

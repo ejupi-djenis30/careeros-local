@@ -1,5 +1,7 @@
 export const TEMPLATE_MESSAGES = Object.freeze({
     en: {
+        "template.templateLabel": "Template",
+        "template.switchTemplate": "Choose template",
         "template.close": "Close template gallery",
         "template.loading": "Loading templates…",
         "template.loadError": "Templates could not be loaded. Retry when CareerOS is available.",
@@ -40,6 +42,8 @@ export const TEMPLATE_MESSAGES = Object.freeze({
         "template.family.operational": "Operations & Technical",
     },
     it: {
+        "template.templateLabel": "Modello",
+        "template.switchTemplate": "Scegli modello",
         "template.close": "Chiudi galleria modelli",
         "template.loading": "Caricamento modelli…",
         "template.loadError": "Impossibile caricare i modelli. Riprova quando CareerOS è disponibile.",
