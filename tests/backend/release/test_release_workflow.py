@@ -282,9 +282,11 @@ def test_native_build_forwards_locked_and_consumes_metadata_portably() -> None:
     assert "shell: bash\n        run: >-\n          python scripts/smoke_packaged_mcp.py" in native
     assert '--binary "$CAREEROS_SIDECAR_BINARY"' in native
     assert '--mcp-binary "$CAREEROS_MCP_BINARY"' in native
-    assert native.index("Verify native sidecar architecture") < native.index(
-        "Exercise packaged MCP across desktop restarts"
-    ) < native.index("Build native installers from Cargo.lock")
+    assert (
+        native.index("Verify native sidecar architecture")
+        < native.index("Exercise packaged MCP across desktop restarts")
+        < native.index("Build native installers from Cargo.lock")
+    )
 
 
 def test_source_built_cryptography_uses_verified_static_openssl() -> None:
@@ -603,8 +605,11 @@ def test_release_contract_jobs_install_the_locked_parser_dependencies() -> None:
     text = WORKFLOW.read_text(encoding="utf-8")
     assemble = text[text.index("  assemble-release:") : text.index("  attest-publish:")]
     publisher = text[text.index("  attest-publish:") :]
+    agent_smoke = text[text.index("  agent-smoke:") : text.index("  native:")]
     install = "python -m pip install --require-hashes --requirement requirements-tooling.lock"
 
+    assert install in agent_smoke
+    assert agent_smoke.index(install) < agent_smoke.index("python scripts/smoke_agent_wheel.py")
     assert install in assemble
     assert install in publisher
     assert publisher.index("scripts.verify_release_source") < publisher.index(install)

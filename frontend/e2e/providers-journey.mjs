@@ -1,7 +1,7 @@
 /** Real authenticated provider API and browser journey with all acquisition offline. */
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
@@ -17,7 +17,7 @@ const artifacts = await mkdtemp(join(tmpdir(), "careeros-provider-qa-"));
 const services = [];
 const pause = (ms) => new Promise((done) => setTimeout(done, ms));
 const username = "synthetic_provider_owner";
-const password = "SyntheticProvider2026!";
+const password = `${randomUUID()}Aa1!`;
 let browser;
 let page;
 let stage = "initialization";

@@ -326,9 +326,14 @@ jobs:
             provenance=/usr/share/doc/careeros-local-ollama/BUILD_PROVENANCE.txt
             test -s "$provenance"
             test -s /usr/lib/ollama/GO_LICENSE
-            grep --fixed-strings "go1.27.1" "$provenance"
-            grep --extended-regexp 'golang.org/x/crypto[[:space:]]+v0[.]55[.]0' "$provenance"
-            grep --extended-regexp 'golang.org/x/net[[:space:]]+v0[.]57[.]0' "$provenance"
+            grep --fixed-strings "go1.27.2" "$provenance"
+            grep --extended-regexp 'golang.org/x/crypto[[:space:]]+v0[.]57[.]0' "$provenance"
+            grep --extended-regexp 'golang.org/x/net[[:space:]]+v0[.]60[.]0' "$provenance"
+            for package in libssl3t64 openssl; do
+              installed_version="$(dpkg-query --show --showformat="\${Version}" "$package")"
+              dpkg --compare-versions "$installed_version" ge "3.0.13-0ubuntu3.16"
+              grep --fixed-strings "runtime_package=$package version=$installed_version" "$provenance"
+            done
           '
           container_id="$(docker run --detach --init \
             --read-only \

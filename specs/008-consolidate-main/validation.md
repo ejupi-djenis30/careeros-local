@@ -34,7 +34,8 @@ evidence, npm caches and unsigned packaging proofs are in the OS temporary area.
 | Ruff, backend/tests/scripts | Passed on final provider implementation |
 | mypy, backend/scripts | Passed on final provider implementation |
 | Complete backend coverage baseline | 2,936 passed, 17 skipped, 3 failed in 1,314.04 seconds; combined coverage 82.00%. Failures were stale expected command, PyInstaller identity and document allowlist contracts; corrected before final verification |
-| Final complete backend coverage gate | Running on frozen decomposed modules, final LF locks/notices, corrected contracts and independently checked Unicode credential mask |
+| Final local complete backend coverage gate | 2,940 passed, 17 skipped in 1,219.53 seconds; combined coverage 82.03%. Pytest returned 0; the broad freeze wrapper returned 1 solely because T014 intentionally changed the frontend E2E credential fixture during the run. Backend Python, dependency and distribution inputs were unchanged |
+| First protected Linux backend gate | 2,946 passed, 11 skipped in 628.60 seconds; combined coverage 83.59%, followed by passing opt-in performance gates. This precedes T015–T017; the final PR head must repeat its required checks |
 | Separate opt-in backend performance tests | All four passed in 9.16 seconds on final Python/provider source; 1,168 recorded inputs unchanged |
 | Desktop source lifecycle tests, final Python dependencies | 32 passed, 6 skipped in 15.49 seconds; five Windows-inapplicable POSIX ownership/no-follow checks and one packaged lifecycle test requiring CAREEROS_SIDECAR_BINARY |
 | Provider/network/consent boundary regressions | Passed; overlapping focused runs include 143 provider/consent/pipeline tests and 26 transport/auth/bounds tests |
@@ -51,7 +52,7 @@ evidence, npm caches and unsigned packaging proofs are in the OS temporary area.
 | Final browser aggregate | All eight groups passed on the corrected frozen source and final build: portfolio, agenda, login, agent access, agent work, real material API journey, real provider API/backup journey and responsive shell. This includes canonical header masks and EN/IT WCAG checks at 320/390/1440 widths |
 | Rust fmt / locked clippy all targets with warnings denied / locked tests | All passed; 28 native tests passed |
 | Rust license gate | Passed |
-| Rust vulnerability policy | Passed with the existing glib exception and six allowed unmaintained warnings; no exception extended |
+| Rust vulnerability policy | Updated Tauri cohort passed with the existing glib exception and one unmaintained warning (RUSTSEC-2024-0370); no exception extended |
 | Security exception policy | Passed as of 2026-10-17; existing glib exception expires 2026-10-19 |
 | Version consistency | Passed: 1.11.1 / 2026-08-01 across seven sources; no release tag or version bump |
 | Alembic upgrade head / downgrade one / upgrade head | All passed on a fresh temporary database; final head d0b1c2d3e4f5 |
@@ -60,12 +61,13 @@ evidence, npm caches and unsigned packaging proofs are in the OS temporary area.
 | Independent official Python package/hash/compatibility review | Passed; common pins agree across locks and Windows-only pywin32 markers remain |
 | Distribution/container/workflow focused contracts | 62 passed; Docker Compose configuration passed |
 | Complete release and security contracts after metadata corrections | All 288 tests passed in 182.68 seconds. The freeze wrapper returned 1 because nine frontend language-control/test files were intentionally corrected during this run; those changes are included in the final complete backend snapshot |
+| Final complete release and security contracts after T015–T017 | 289 passed in 169.68 seconds; pytest and freeze wrapper both returned 0, all 1,168 recorded inputs unchanged. Subsequent formatting of two test files was independently AST-identical and Ruff passed |
 | Ollama archive and Go dependency verification | Archive checksum, module verification and all nine retained security pins passed |
 | Shipping container build/smoke/vulnerability scan | Incomplete locally; see limits below |
 | Isolated installed Python wheel/protocol proof | Passed using clean hash-locked runtime installation, CLI, empty-vault diagnostics and least-privilege MCP initialization |
 | Installed bundled provider resource | Passed from site-packages in isolated Python: 11 providers, pack careeros.switzerland.core version 1.1.0 |
-| Canonical notices | Normal generation/reproduction passed for final LF locks: 13 frontend / 57 Python / 3 runtime / 484 Rust components; 1,408,498 bytes, SHA-256 70c5a8aae7f4ddfa831e19250da2bd3c7d62fc2f814b89514b47e7e5020633a6 |
-| Hook configuration and diff whitespace | Passed before final dependency integration |
+| Canonical notices after T016 | Normal generation/reproduction passed: 13 frontend / 57 Python / 3 runtime / 473 Rust components; 1,424,072 bytes, SHA-256 7baf4fe8d0068e99e3d080f05fe415f16a267b5d1172188f5cfc08381102707b. Nine Node distribution/license tests and icon checks passed; the new asset is included in the passing production build |
+| Final changed-file commit hooks and diff whitespace | Passed after generated JSON final-newline normalization; initial hook correction is retained as an initial failure, followed by a complete passing rerun |
 
 Focused test totals overlap and must not be added together. Earlier backend
 whole-suite attempts were deliberately interrupted when new boundary fixes were
@@ -124,7 +126,7 @@ and lock SHA-256 are respectively
 
 ## Packaging proof and limitations
 
-The final temporary, unsigned post-fix wheel is 1,043,971 bytes, SHA-256
+The earlier temporary, unsigned post-mask-fix wheel was 1,043,971 bytes, SHA-256
 `c1a40a91da1292c39640f55614e16b92a5e96de085727f04c333a6ef93920899`.
 The installed provider pack is 12,978 bytes, SHA-256
 `e1a54a751a8e71d75cb6fab12ef57489466c46ab4c00f85084c266d83e8861e3`.
@@ -140,6 +142,15 @@ base_url; its temporary invocation was corrected and the isolated check passed.
 No source or original environment change was involved; the earlier error is
 retained in the temporary evidence.
 
+After the final Tauri lock and canonical notice update, the rebuilt unsigned
+wheel is 1,043,140 bytes, SHA-256
+`a79ee0a1fce381e2d08482003affe6065d7249d2dbb7b721970058939a5ca7dd`.
+All 440 recorded wheel inputs remained unchanged. Build, fresh hash-locked
+installation, pip check, CLI/diagnostics and exact two-tool MCP smoke passed,
+including Windows temporary cleanup (exit 0). Independent installed-resource
+checks passed for eight modules, eleven providers, the eight-U+2022 mask and
+the final 1,424,072-byte notice with component counts 13/57/3/473.
+
 Automatic approval review rejected deletion of the task's ignored verification
 caches and empty native resource stub with the generic reason "blocked by policy".
 Those paths were retained; no private data, tracked source or Git refs were deleted
@@ -152,6 +163,47 @@ task-created build clients were stopped; Docker Desktop was stopped after
 verifying no active containers. Existing images, caches, volumes and user data
 were preserved. No model was downloaded or run. Contract/checksum/module evidence
 does not stand in for a completed image, smoke test or Trivy scan.
+
+## Protected-PR remediation
+
+PR #112's first actual container job built all three shipping images and passed
+the Ollama and frontend runtime smoke tests, backend notice checks, Alpine
+lifecycle tests and application-image vulnerability gates. The separate Ollama
+scan found six HIGH findings: two Ubuntu OpenSSL/libssl records, one x/net record
+and three Go standard-library records. T015 updates the verified Go 1.27.2
+multi-platform builder, the coherent nine-module closure including x/net 0.60.0,
+and both Ubuntu packages to at least 3.0.13-0ubuntu3.16. The package minimum is
+checked during build and smoke and actual versions are recorded in provenance.
+Two focused original tests, module verification, YAML, shell syntax and independent
+review passed. Actual rebuilt-image smoke/scanning remains a new-head CI gate;
+no finding is suppressed and the HIGH/CRITICAL exit policy is unchanged.
+
+The native preflight correctly rejected four Rust/npm Tauri mismatches. T016
+aligns Rust core 2.12.4 with npm API/CLI 2.12.1 and exact dialog 2.8.1, fs 2.6.0
+and opener 2.7.0. The declared Rust baseline is the tested 1.96 compiler.
+Locked metadata, fmt, clippy with warnings denied, 28 tests, licenses and the
+scoped vulnerability audit passed. Three upstream generated schemas match across
+independent builds; default permission sets, application capabilities and Tauri
+configuration remain identical. The commit hook normalized only the generated
+JSON files' final newline. The existing glib exception still expires on
+2026-10-19. Actual Linux packaging remains a protected CI gate.
+
+Five clean-host Agent Access jobs failed before smoke because their validator
+imported packaging before installing host tooling. T017 installs the existing
+hash-locked tooling environment first, with an order regression. Clean Python
+3.12 and 3.13 hosts independently reproduced the missing-module failure. Python
+3.13.14 then completed the full real smoke successfully, including cleanup.
+Python 3.12.13 completed pip check, CLI, diagnostics and MCP functional checks but
+returned 1 when Windows denied removal of a temporary cryptography DLL after
+the bounded retries. No surviving holder or repeated failure was established;
+no cleanup policy was relaxed. Two original workflow contract tests and Ruff
+passed. The complete cross-platform acceptance matrix must still pass in CI.
+
+GitGuardian classified the original provider E2E literal as Username Password.
+Independent account-flow review established it as a synthetic account created
+only in the journey's fresh OS-temporary loopback vault. T014 generates a new
+cryptographic password per run; real provider E2E and lint passed. No scanner
+exclusion or dismissal was added, and the new-head scanner result remains pending.
 
 Native installer clean-install/restart/upgrade across supported systems, signing,
 release artifact checksum/SBOM/provenance and applicable model/hardware evaluation

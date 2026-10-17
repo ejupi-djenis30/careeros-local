@@ -44,3 +44,21 @@
   journey, assert the wire value independently of its production constant, and
   compare all moved constants/literals against the preserved pre-split source;
   repeat affected provider, packaging and final gates (FR-003, FR-007; SC-002, SC-004).
+- [x] T014 Replace the provider journey's hardcoded synthetic account password
+  with cryptographically generated per-run credentials, verify the real journey
+  and lint, and retain exact independent GitGuardian classification/check results
+  without scanner exclusions (FR-005, FR-007; SC-004, SC-006).
+- [ ] T015 Remediate the six HIGH findings from the real shipping Ollama image
+  scan with verified Go 1.27.2, golang.org/x/net 0.60.0 and patched Ubuntu OpenSSL;
+  preserve all existing module pins, provenance, cloud restrictions and strict
+  scanner policy, update matching contracts, and repeat image/build/scan evidence
+  (FR-005, FR-007; SC-004).
+- [ ] T016 Align the Rust Tauri core/plugins with their updated npm counterparts
+  according to official minor/exact-version contracts, regenerate Cargo.lock,
+  declare the actual supported Rust baseline, reproduce notices and repeat native,
+  license, vulnerability and package checks without broadening capabilities or
+  the existing glib exception (FR-005, FR-007; SC-004).
+- [x] T017 Bootstrap the release agent-smoke host with the existing hash-locked
+  tooling environment before importing its validator; reproduce the missing-
+  packaging failure on a clean host and verify the fix and matrix ordering
+  without relying on runner-preinstalled packages (FR-005, FR-007; SC-004).

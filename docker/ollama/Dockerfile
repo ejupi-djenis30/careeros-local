@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1.7
 
-FROM golang:1.27.1-bookworm@sha256:648f440f42a0958804efb24df176f806f9d353b41f1c0627f666428e40310f6b AS build
+FROM golang:1.27.2-bookworm@sha256:5cf287a799e6b94384bad13d16b14904c531f51ba65792237e122ce42b392f61 AS build
 
 ARG TARGETARCH
 ENV CGO_ENABLED=1 \
@@ -24,28 +24,28 @@ WORKDIR /src
 # The source revision is the exact commit behind Ollama 0.34.3. These are the
 # compatible fixed versions selected from the current advisory data; every
 # resolved version is asserted before compiling the replacement executable.
-RUN test "$(go env GOVERSION)" = "go1.27.1" \
+RUN test "$(go env GOVERSION)" = "go1.27.2" \
     && go get \
         github.com/buger/jsonparser@v1.1.2 \
-        golang.org/x/crypto@v0.55.0 \
+        golang.org/x/crypto@v0.57.0 \
         golang.org/x/image@v0.45.0 \
-        golang.org/x/mod@v0.40.0 \
-        golang.org/x/net@v0.57.0 \
-        golang.org/x/sync@v0.22.0 \
-        golang.org/x/sys@v0.47.0 \
-        golang.org/x/term@v0.45.0 \
-        golang.org/x/text@v0.41.0 \
+        golang.org/x/mod@v0.41.0 \
+        golang.org/x/net@v0.60.0 \
+        golang.org/x/sync@v0.23.0 \
+        golang.org/x/sys@v0.48.0 \
+        golang.org/x/term@v0.46.0 \
+        golang.org/x/text@v0.42.0 \
     && go mod tidy \
     && go mod verify \
     && test "$(go list -m -f '{{.Version}}' github.com/buger/jsonparser)" = "v1.1.2" \
-    && test "$(go list -m -f '{{.Version}}' golang.org/x/crypto)" = "v0.55.0" \
+    && test "$(go list -m -f '{{.Version}}' golang.org/x/crypto)" = "v0.57.0" \
     && test "$(go list -m -f '{{.Version}}' golang.org/x/image)" = "v0.45.0" \
-    && test "$(go list -m -f '{{.Version}}' golang.org/x/mod)" = "v0.40.0" \
-    && test "$(go list -m -f '{{.Version}}' golang.org/x/net)" = "v0.57.0" \
-    && test "$(go list -m -f '{{.Version}}' golang.org/x/sync)" = "v0.22.0" \
-    && test "$(go list -m -f '{{.Version}}' golang.org/x/sys)" = "v0.47.0" \
-    && test "$(go list -m -f '{{.Version}}' golang.org/x/term)" = "v0.45.0" \
-    && test "$(go list -m -f '{{.Version}}' golang.org/x/text)" = "v0.41.0"
+    && test "$(go list -m -f '{{.Version}}' golang.org/x/mod)" = "v0.41.0" \
+    && test "$(go list -m -f '{{.Version}}' golang.org/x/net)" = "v0.60.0" \
+    && test "$(go list -m -f '{{.Version}}' golang.org/x/sync)" = "v0.23.0" \
+    && test "$(go list -m -f '{{.Version}}' golang.org/x/sys)" = "v0.48.0" \
+    && test "$(go list -m -f '{{.Version}}' golang.org/x/term)" = "v0.46.0" \
+    && test "$(go list -m -f '{{.Version}}' golang.org/x/text)" = "v0.42.0"
 
 RUN mkdir /out \
     && go build -trimpath -buildmode=pie \
@@ -63,7 +63,7 @@ RUN mkdir /out \
             'source=https://github.com/ollama/ollama' \
             'source_revision=6383a0fa9cbf97494b847226e189f6e36b401a08' \
             'source_archive_sha256=cfd3168b67445cdb0418892ccdbccb1348921f570e025695be52ffb2fe894d90' \
-            'builder=golang:1.27.1-bookworm@sha256:648f440f42a0958804efb24df176f806f9d353b41f1c0627f666428e40310f6b'; \
+            'builder=golang:1.27.2-bookworm@sha256:5cf287a799e6b94384bad13d16b14904c531f51ba65792237e122ce42b392f61'; \
         go version -m /out/ollama; \
         sha256sum /out/ollama; \
     } > /out/BUILD_PROVENANCE.txt
@@ -92,6 +92,20 @@ LABEL org.opencontainers.image.title="CareerOS Local Ollama runtime" \
 COPY --from=build --chmod=0755 /out/ollama /usr/bin/ollama
 COPY --from=build /out/GO_LICENSE /usr/lib/ollama/GO_LICENSE
 COPY --from=build /out/BUILD_PROVENANCE.txt /usr/share/doc/careeros-local-ollama/BUILD_PROVENANCE.txt
+
+# Patch the matched Ubuntu runtime as well as the rebuilt Go executable.
+# Verify a minimum fixed release while accepting newer vendor security updates.
+RUN set -eu; \
+    apt-get update; \
+    apt-get install --yes --no-install-recommends --only-upgrade \
+        libssl3t64 openssl; \
+    for package in libssl3t64 openssl; do \
+        installed_version="$(dpkg-query --show --showformat='${Version}' "$package")"; \
+        dpkg --compare-versions "$installed_version" ge '3.0.13-0ubuntu3.16'; \
+        printf 'runtime_package=%s version=%s\n' "$package" "$installed_version" \
+            >> /usr/share/doc/careeros-local-ollama/BUILD_PROVENANCE.txt; \
+    done; \
+    rm -rf /var/lib/apt/lists/*
 
 WORKDIR /var/lib/ollama
 USER 10001:10001

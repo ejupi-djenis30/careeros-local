@@ -149,7 +149,7 @@ test("binds the distributable third-party notices to every dependency lock", asy
         frontend: 13,
         python: 57,
         runtime: 3,
-        rust: 484,
+        rust: 473,
     });
     const pythonVersions = new Map(
         manifest.components

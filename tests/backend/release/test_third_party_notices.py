@@ -126,7 +126,7 @@ def test_repository_notice_is_lock_bound_complete_and_approved() -> None:
         "frontend": 13,
         "python": 57,
         "runtime": 3,
-        "rust": 484,
+        "rust": 473,
     }
     identities = {
         (component["ecosystem"], component["name"], component["version"])
@@ -183,7 +183,7 @@ def test_extracted_package_requires_the_exact_notice_once(tmp_path: Path) -> Non
     path, manifest = find_packaged_notice(package)
 
     assert path == notice
-    assert manifest["componentCounts"]["rust"] == 484
+    assert manifest["componentCounts"]["rust"] == 473
 
     duplicate = package / "nested" / NOTICE_NAME.lower()
     duplicate.parent.mkdir()

@@ -25,6 +25,9 @@ All notable changes to CareerOS Local are documented here. The format follows
   with their page and selected interface language, within the existing frontend byte budgets.
 - Load the authenticated data router after login, preserving browser and desktop deep links and
   unsaved-change guards while reducing the initial application download within existing budgets.
+- Align the Rust Tauri core and desktop plugins with the updated JavaScript packages; regenerate
+  the native lock, schemas and legal notices while preserving application permissions. Native
+  builds declare the tested Rust 1.96 baseline.
 - Regenerated hash-locked production, development and packaging environments for 15 Python updates:
   FastAPI 0.141.1, Uvicorn 0.54.0, SQLAlchemy 2.1.1, greenlet 3.5.6, Alembic 1.20.0,
   Pydantic 2.13.5, pydantic-settings 2.15.0, python-dotenv 1.2.3, pytest-mock 3.16.0,
@@ -34,7 +37,7 @@ All notable changes to CareerOS Local are documented here. The format follows
 ### Security
 
 - Replaced the expired Ollama exception inventory with a local image definition built from the
-  checksum-pinned 0.34.3 source and digest-pinned Go 1.27.1 toolchain. The replacement executable
+  checksum-pinned 0.34.3 source and digest-pinned Go 1.27.2 toolchain. The replacement executable
   and digest-pinned upstream native payload both use Ollama 0.34.3. The build verifies the patched
   Go module graph, regenerates licensing and embeds provenance, while CI runs the real service,
   emits an SBOM and gates every HIGH/CRITICAL finding without an ignore file. The persistent model

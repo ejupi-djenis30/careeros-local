@@ -33,6 +33,20 @@ remain mandatory. Main protections remain in force.
    Preserve generated legal text bytes, including upstream trailing whitespace;
    exclude this verified generated asset from whitespace-only hook rewrites while
    retaining the strict generator/digest/license checks.
+   Synthetic browser accounts use fresh cryptographically generated per-run
+   passwords, reused consistently within their temporary-vault journey. Avoid
+   hardcoded credential pairs and scanner exclusions; retain containment, loopback
+   binding, authenticated behavior and cleanup. No service credentials are used.
+   The real image scan identified six fixable HIGH findings: upgrade its Go
+   toolchain to verified 1.27.2, x/net to 0.60.0 and Ubuntu OpenSSL/libssl to at
+   least 3.0.13-0ubuntu3.16. Keep the source pin set, graph/provenance checks,
+   local/cloud restrictions and zero-ignore HIGH/CRITICAL gate coherent.
+   Native Tauri core must share the npm API minor and plugins the exact npm
+   versions. Resolve the matching Rust cohort and truthful compiler baseline,
+   regenerate its lock/notices, and repeat native/license/audit checks. Preserve
+   capabilities and the existing narrowly approved glib scope/expiry.
+   Release agent-smoke hosts must install the already hash-locked tooling closure
+   before importing validation modules, rather than rely on preinstalled packaging.
 5. Keep integrated branch provenance in the work branch history and in a manifest.
    Main's signed linear policy and squash-only repository configuration require
    the allowed PR integration path, followed by remote verification and branch
