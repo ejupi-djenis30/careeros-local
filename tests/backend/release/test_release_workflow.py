@@ -180,8 +180,8 @@ def test_required_check_name_and_versioned_toolchains_are_stable() -> None:
         'RUST_VERSION: "1.96.0"',
         'GH_CLI_VERSION: "2.94.0"',
         "actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0",
-        "actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1",
-        "actions/attest@f7c74d28b9d84cb8768d0b8ca14a4bac6ef463e6 # v4.2.0",
+        "actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2",
+        "actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2",
         "tauri-apps/tauri-action@1deb371b0cd8bd54025b384f1cd735e725c4060f # v1.0.0",
     ):
         assert exact in text
@@ -250,6 +250,7 @@ def test_runtime_version_files_and_frontend_engine_are_exactly_bounded() -> None
         "test:licenses",
         "test:login-quality",
         "test:pages",
+        "test:providers",
         "test:shell-responsive",
         "test:watch",
     }
@@ -281,9 +282,11 @@ def test_native_build_forwards_locked_and_consumes_metadata_portably() -> None:
     assert "shell: bash\n        run: >-\n          python scripts/smoke_packaged_mcp.py" in native
     assert '--binary "$CAREEROS_SIDECAR_BINARY"' in native
     assert '--mcp-binary "$CAREEROS_MCP_BINARY"' in native
-    assert native.index("Verify native sidecar architecture") < native.index(
-        "Exercise packaged MCP across desktop restarts"
-    ) < native.index("Build native installers from Cargo.lock")
+    assert (
+        native.index("Verify native sidecar architecture")
+        < native.index("Exercise packaged MCP across desktop restarts")
+        < native.index("Build native installers from Cargo.lock")
+    )
 
 
 def test_source_built_cryptography_uses_verified_static_openssl() -> None:
@@ -602,8 +605,11 @@ def test_release_contract_jobs_install_the_locked_parser_dependencies() -> None:
     text = WORKFLOW.read_text(encoding="utf-8")
     assemble = text[text.index("  assemble-release:") : text.index("  attest-publish:")]
     publisher = text[text.index("  attest-publish:") :]
+    agent_smoke = text[text.index("  agent-smoke:") : text.index("  native:")]
     install = "python -m pip install --require-hashes --requirement requirements-tooling.lock"
 
+    assert install in agent_smoke
+    assert agent_smoke.index(install) < agent_smoke.index("python scripts/smoke_agent_wheel.py")
     assert install in assemble
     assert install in publisher
     assert publisher.index("scripts.verify_release_source") < publisher.index(install)

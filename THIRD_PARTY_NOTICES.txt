@@ -7,10 +7,10 @@ which covers the CareerOS Local project itself.
 ----- BEGIN CAREEROS THIRD-PARTY MANIFEST -----
 {
   "componentCounts": {
-    "frontend": 12,
-    "python": 55,
+    "frontend": 13,
+    "python": 57,
     "runtime": 3,
-    "rust": 484
+    "rust": 473
   },
   "components": [
     {
@@ -26,15 +26,27 @@ which covers the CareerOS Local project itself.
     },
     {
       "ecosystem": "frontend",
+      "license": "MIT",
+      "name": "@remix-run/route-pattern",
+      "selectedLicenses": [],
+      "source": "node_modules/@remix-run/route-pattern",
+      "textIds": [
+        "d6baf87f30d13d2d7770c18c858e7a31fa7ceede4bc9469a50f03dbafe455cb4"
+      ],
+      "version": "0.22.1"
+    },
+    {
+      "ecosystem": "frontend",
       "license": "Apache-2.0 OR MIT",
       "name": "@tauri-apps/api",
       "selectedLicenses": [],
       "source": "node_modules/@tauri-apps/api",
       "textIds": [
+        "5e834fe9788c524210deda859c46a550ffa5aa0cba9ea0572f0d81120e97c008",
         "9dd42ea92cff2ede5cd477cbfcce051b2d0115c0ac7f368ee88cb545055dff1d",
         "bb28c48e3e078166e91cfc2b6db7ffebb8a0973b9e23b3df060561292d8d69ec"
       ],
-      "version": "2.11.1"
+      "version": "2.12.1"
     },
     {
       "ecosystem": "frontend",
@@ -45,7 +57,7 @@ which covers the CareerOS Local project itself.
       "textIds": [
         "9c1db6b7e7eb83e1cb2af973b5df2bdc63651ede0f38506ab98dfa0940487759"
       ],
-      "version": "2.7.2"
+      "version": "2.8.1"
     },
     {
       "ecosystem": "frontend",
@@ -56,7 +68,7 @@ which covers the CareerOS Local project itself.
       "textIds": [
         "9c1db6b7e7eb83e1cb2af973b5df2bdc63651ede0f38506ab98dfa0940487759"
       ],
-      "version": "2.5.1"
+      "version": "2.6.0"
     },
     {
       "ecosystem": "frontend",
@@ -67,7 +79,7 @@ which covers the CareerOS Local project itself.
       "textIds": [
         "9c1db6b7e7eb83e1cb2af973b5df2bdc63651ede0f38506ab98dfa0940487759"
       ],
-      "version": "2.5.4"
+      "version": "2.7.0"
     },
     {
       "ecosystem": "frontend",
@@ -111,7 +123,7 @@ which covers the CareerOS Local project itself.
       "textIds": [
         "da6d3703ed11cbe42bd212c725957c98da23cbff1998c05fa4b3d976d1a58e93"
       ],
-      "version": "19.2.8"
+      "version": "19.3.1"
     },
     {
       "ecosystem": "frontend",
@@ -122,7 +134,7 @@ which covers the CareerOS Local project itself.
       "textIds": [
         "da6d3703ed11cbe42bd212c725957c98da23cbff1998c05fa4b3d976d1a58e93"
       ],
-      "version": "19.2.8"
+      "version": "19.3.1"
     },
     {
       "ecosystem": "frontend",
@@ -133,7 +145,7 @@ which covers the CareerOS Local project itself.
       "textIds": [
         "77c9ee6a9c5d5782fb0c50b50d101189116314c14f7df0a1b0d385fc96a7ba49"
       ],
-      "version": "8.3.0"
+      "version": "8.4.0"
     },
     {
       "ecosystem": "frontend",
@@ -144,7 +156,7 @@ which covers the CareerOS Local project itself.
       "textIds": [
         "da6d3703ed11cbe42bd212c725957c98da23cbff1998c05fa4b3d976d1a58e93"
       ],
-      "version": "0.27.0"
+      "version": "0.28.0"
     },
     {
       "ecosystem": "python",
@@ -155,7 +167,7 @@ which covers the CareerOS Local project itself.
       "textIds": [
         "6e68d94a03a0e3e327ddf3e86d1ebedc14eece3922022618fc246a36296fd0cc"
       ],
-      "version": "1.18.5"
+      "version": "1.20.0"
     },
     {
       "ecosystem": "python",
@@ -311,7 +323,7 @@ which covers the CareerOS Local project itself.
       "textIds": [
         "4ec89ffc81485b97fec584b2d4a961032eeffe834453894fd9c1274906cc744e"
       ],
-      "version": "0.140.7"
+      "version": "0.141.1"
     },
     {
       "ecosystem": "python",
@@ -323,7 +335,7 @@ which covers the CareerOS Local project itself.
         "769831d6e5dfaf2c20802faccff1fafb4c2025dd8f6253dfa47fcad59d4d0979",
         "e5ff3c23c110e494cd7d736c10fd96d462457bafeca310840db6527298c7d46b"
       ],
-      "version": "3.5.4"
+      "version": "3.5.6"
     },
     {
       "ecosystem": "python",
@@ -368,6 +380,17 @@ which covers the CareerOS Local project itself.
         "fdcb59154c74cbaba16a11242f7740bea9f23d6feb5547917d8c5f94a80392a5"
       ],
       "version": "1.0.9"
+    },
+    {
+      "ecosystem": "python",
+      "license": "BSD-3-Clause",
+      "name": "httpx",
+      "selectedLicenses": [],
+      "source": "requirements.lock",
+      "textIds": [
+        "4ec59d544f12b5f539a3a716fd321ac58ccd8030b465221f2c880200cdf28d8d"
+      ],
+      "version": "0.28.1"
     },
     {
       "ecosystem": "python",
@@ -477,7 +500,7 @@ which covers the CareerOS Local project itself.
       "textIds": [
         "5e13dbbc1d120fc2a03cecde7c91424ae2d7de11b63d58ded2f4431e261ee50d"
       ],
-      "version": "1.28.1"
+      "version": "1.30.0"
     },
     {
       "ecosystem": "python",
@@ -523,7 +546,7 @@ which covers the CareerOS Local project itself.
       "textIds": [
         "a9e186f3ca16b5eef84318e7a701721351a00cb7b8ae3a4394b67b49e3529ef3"
       ],
-      "version": "2.13.4"
+      "version": "2.13.5"
     },
     {
       "ecosystem": "python",
@@ -534,7 +557,7 @@ which covers the CareerOS Local project itself.
       "textIds": [
         "2afdd30d54b4d62b6f488a6bcc1546e84ec5061f13f4209c03d012348783795a"
       ],
-      "version": "2.46.4"
+      "version": "2.46.5"
     },
     {
       "ecosystem": "python",
@@ -545,7 +568,18 @@ which covers the CareerOS Local project itself.
       "textIds": [
         "eb355a753e020346d33d83bf9769135b89fc610568ac531a01c295bcee7fd998"
       ],
-      "version": "2.14.2"
+      "version": "2.15.0"
+    },
+    {
+      "ecosystem": "python",
+      "license": "MIT",
+      "name": "pyjwt",
+      "selectedLicenses": [],
+      "source": "requirements.lock",
+      "textIds": [
+        "797a7a20231d4c433e9f1911db1731d06b5828b98f499819a034f7c0f56f5ce5"
+      ],
+      "version": "2.15.1"
     },
     {
       "ecosystem": "python",
@@ -556,7 +590,7 @@ which covers the CareerOS Local project itself.
       "textIds": [
         "a97ac230e5f33ef10a5367a850eb01f91f1a0b064e34742c7794d2294557f524"
       ],
-      "version": "6.16.1"
+      "version": "6.21.0"
     },
     {
       "ecosystem": "python",
@@ -578,7 +612,7 @@ which covers the CareerOS Local project itself.
       "textIds": [
         "80619b7049f08c81683ad0e01f08f257a840652dd71ee83146d36658c7d2c2b9"
       ],
-      "version": "1.2.2"
+      "version": "1.2.3"
     },
     {
       "ecosystem": "python",
@@ -658,7 +692,7 @@ which covers the CareerOS Local project itself.
       "textIds": [
         "e862bb5b904fb5513c3e14288d7a25a12eb0ecc7847a0a965d310e9a955e7cb9"
       ],
-      "version": "2.0.51"
+      "version": "2.1.1"
     },
     {
       "ecosystem": "python",
@@ -747,7 +781,7 @@ which covers the CareerOS Local project itself.
       "textIds": [
         "efe1acf3e62fb99c288b0ec73e5a773b7268ef4320fe757ea994214e4b63c371"
       ],
-      "version": "0.51.0"
+      "version": "0.54.0"
     },
     {
       "ecosystem": "python",
@@ -789,9 +823,9 @@ which covers the CareerOS Local project itself.
       "selectedLicenses": [],
       "source": "requirements-tooling.lock",
       "textIds": [
-        "dcf75fdb959db1e3b41c0f8505069d2ece781b5ec6b3d0a4d30975cfc6580245"
+        "0598064c7d2718e38d7914a7d08343b2fa008e3bea9ebba2aa7a6ffa5900dd64"
       ],
-      "version": "6.21.0"
+      "version": "6.22.3"
     },
     {
       "ecosystem": "rust",
@@ -835,7 +869,7 @@ which covers the CareerOS Local project itself.
       "textIds": [
         "c0c56f26d9c051cac4d200c34c84e7ae9aaa853e01a982a1df08b09931e518ae"
       ],
-      "version": "2.0.4"
+      "version": "3.0.0"
     },
     {
       "ecosystem": "rust",
@@ -848,7 +882,7 @@ which covers the CareerOS Local project itself.
       "textIds": [
         "c0c56f26d9c051cac4d200c34c84e7ae9aaa853e01a982a1df08b09931e518ae"
       ],
-      "version": "0.2.4"
+      "version": "0.3.0"
     },
     {
       "ecosystem": "rust",
@@ -1120,6 +1154,21 @@ which covers the CareerOS Local project itself.
     },
     {
       "ecosystem": "rust",
+      "license": "MIT OR Apache-2.0",
+      "name": "base64",
+      "selectedLicenses": [
+        "MIT"
+      ],
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "textIds": [
+        "143368af9701a24ebaf89fe5310ad8116ca71e8e99f17415c0dd893f6a256ae4",
+        "ab499c75a0f0da8e0fe83bf9ba3a27e5c39705310f07107c6c66b69958d2401c",
+        "f9c4c77baa3828004ee54b8a4f2db2e88ed44a6237a493965bf551fac0fcb62d"
+      ],
+      "version": "0.23.1"
+    },
+    {
+      "ecosystem": "rust",
       "license": "Apache-2.0 OR MIT",
       "name": "bit-set",
       "selectedLicenses": [
@@ -1235,7 +1284,7 @@ which covers the CareerOS Local project itself.
         "c0c56f26d9c051cac4d200c34c84e7ae9aaa853e01a982a1df08b09931e518ae",
         "f9c4c77baa3828004ee54b8a4f2db2e88ed44a6237a493965bf551fac0fcb62d"
       ],
-      "version": "8.0.4"
+      "version": "9.0.0"
     },
     {
       "ecosystem": "rust",
@@ -1249,7 +1298,7 @@ which covers the CareerOS Local project itself.
         "c0c56f26d9c051cac4d200c34c84e7ae9aaa853e01a982a1df08b09931e518ae",
         "f9c4c77baa3828004ee54b8a4f2db2e88ed44a6237a493965bf551fac0fcb62d"
       ],
-      "version": "5.0.3"
+      "version": "6.0.1"
     },
     {
       "ecosystem": "rust",
@@ -1409,7 +1458,7 @@ which covers the CareerOS Local project itself.
         "6742bd3e9c2035522b00ddd9a7c76f09e7ed89491a6750d56db2c062d9251b65",
         "f9c4c77baa3828004ee54b8a4f2db2e88ed44a6237a493965bf551fac0fcb62d"
       ],
-      "version": "0.22.3"
+      "version": "1.0.1"
     },
     {
       "ecosystem": "rust",
@@ -1452,7 +1501,7 @@ which covers the CareerOS Local project itself.
         "ebaac853b53fec0ed475796f533ce676912a4df9ad9d8a621fa76d5060591e10",
         "f9c4c77baa3828004ee54b8a4f2db2e88ed44a6237a493965bf551fac0fcb62d"
       ],
-      "version": "0.7.3"
+      "version": "0.14.0"
     },
     {
       "ecosystem": "rust",
@@ -1690,7 +1739,7 @@ which covers the CareerOS Local project itself.
       "textIds": [
         "fab3dd6bdab226f1c08630b1dd917e11fcb4ec5e1e020e2c16f83a0a13863e85"
       ],
-      "version": "0.36.0"
+      "version": "0.37.0"
     },
     {
       "ecosystem": "rust",
@@ -1703,7 +1752,7 @@ which covers the CareerOS Local project itself.
       "textIds": [
         "fab3dd6bdab226f1c08630b1dd917e11fcb4ec5e1e020e2c16f83a0a13863e85"
       ],
-      "version": "0.6.1"
+      "version": "0.7.1"
     },
     {
       "ecosystem": "rust",
@@ -1718,22 +1767,7 @@ which covers the CareerOS Local project itself.
         "f9c4c77baa3828004ee54b8a4f2db2e88ed44a6237a493965bf551fac0fcb62d",
         "fd80a26fbb3f644af1fa994134446702932968519797227e07a1368dea80f0bc"
       ],
-      "version": "0.8.0"
-    },
-    {
-      "ecosystem": "rust",
-      "license": "Apache-2.0 OR MIT",
-      "name": "ctor-proc-macro",
-      "selectedLicenses": [
-        "MIT"
-      ],
-      "source": "registry+https://github.com/rust-lang/crates.io-index",
-      "textIds": [
-        "a8ad31b1c3f40dca5a84119351b8fa8ddc868edd77fad8a8ebf6d8f2d16fa4ae",
-        "f9c4c77baa3828004ee54b8a4f2db2e88ed44a6237a493965bf551fac0fcb62d",
-        "fd80a26fbb3f644af1fa994134446702932968519797227e07a1368dea80f0bc"
-      ],
-      "version": "0.0.7"
+      "version": "1.0.13"
     },
     {
       "ecosystem": "rust",
@@ -1863,7 +1897,7 @@ which covers the CareerOS Local project itself.
         "6a2e0ade09a7d5f816f11566fee2b151b32235a7fad52b41d49cce96f833c1a9",
         "f9c4c77baa3828004ee54b8a4f2db2e88ed44a6237a493965bf551fac0fcb62d"
       ],
-      "version": "6.0.0"
+      "version": "7.0.0"
     },
     {
       "ecosystem": "rust",
@@ -1946,7 +1980,7 @@ which covers the CareerOS Local project itself.
         "9766e5d58cae9d457057c7cdb2cde8bf357624329c1e5cc50ca9210149b77aed",
         "f9c4c77baa3828004ee54b8a4f2db2e88ed44a6237a493965bf551fac0fcb62d"
       ],
-      "version": "0.27.0"
+      "version": "0.28.0"
     },
     {
       "ecosystem": "rust",
@@ -1993,36 +2027,6 @@ which covers the CareerOS Local project itself.
         "fab3dd6bdab226f1c08630b1dd917e11fcb4ec5e1e020e2c16f83a0a13863e85"
       ],
       "version": "0.3.5"
-    },
-    {
-      "ecosystem": "rust",
-      "license": "Apache-2.0 OR MIT",
-      "name": "dtor",
-      "selectedLicenses": [
-        "MIT"
-      ],
-      "source": "registry+https://github.com/rust-lang/crates.io-index",
-      "textIds": [
-        "a8ad31b1c3f40dca5a84119351b8fa8ddc868edd77fad8a8ebf6d8f2d16fa4ae",
-        "f9c4c77baa3828004ee54b8a4f2db2e88ed44a6237a493965bf551fac0fcb62d",
-        "fd80a26fbb3f644af1fa994134446702932968519797227e07a1368dea80f0bc"
-      ],
-      "version": "0.3.0"
-    },
-    {
-      "ecosystem": "rust",
-      "license": "Apache-2.0 OR MIT",
-      "name": "dtor-proc-macro",
-      "selectedLicenses": [
-        "MIT"
-      ],
-      "source": "registry+https://github.com/rust-lang/crates.io-index",
-      "textIds": [
-        "a8ad31b1c3f40dca5a84119351b8fa8ddc868edd77fad8a8ebf6d8f2d16fa4ae",
-        "f9c4c77baa3828004ee54b8a4f2db2e88ed44a6237a493965bf551fac0fcb62d",
-        "fd80a26fbb3f644af1fa994134446702932968519797227e07a1368dea80f0bc"
-      ],
-      "version": "0.0.6"
     },
     {
       "ecosystem": "rust",
@@ -2912,7 +2916,7 @@ which covers the CareerOS Local project itself.
         "86dd7f026f916daf7511e39951ad8ea8cf55a8db67ae64060dacf829761c18f3",
         "f9c4c77baa3828004ee54b8a4f2db2e88ed44a6237a493965bf551fac0fcb62d"
       ],
-      "version": "0.38.0"
+      "version": "0.39.0"
     },
     {
       "ecosystem": "rust",
@@ -3221,7 +3225,7 @@ which covers the CareerOS Local project itself.
         "270b0d81891aa44c7e8726cf9432dade9556a01c848bacd2f3ef839c9c1a1859",
         "f9c4c77baa3828004ee54b8a4f2db2e88ed44a6237a493965bf551fac0fcb62d"
       ],
-      "version": "0.19.0"
+      "version": "0.22.0"
     },
     {
       "ecosystem": "rust",
@@ -3395,7 +3399,7 @@ which covers the CareerOS Local project itself.
         "a8ad31b1c3f40dca5a84119351b8fa8ddc868edd77fad8a8ebf6d8f2d16fa4ae",
         "f9c4c77baa3828004ee54b8a4f2db2e88ed44a6237a493965bf551fac0fcb62d"
       ],
-      "version": "3.0.1"
+      "version": "4.2.0"
     },
     {
       "ecosystem": "rust",
@@ -3410,7 +3414,7 @@ which covers the CareerOS Local project itself.
         "7320e6a3fa91141a06764cf2f24e7d32679f2bdd58e50daa647939fb612e817f",
         "f9c4c77baa3828004ee54b8a4f2db2e88ed44a6237a493965bf551fac0fcb62d"
       ],
-      "version": "0.6.3"
+      "version": "0.7.1"
     },
     {
       "ecosystem": "rust",
@@ -3425,7 +3429,7 @@ which covers the CareerOS Local project itself.
         "dd57ede7eb6b56bc60b7c69f4b701b5550b9b5a1f4f47b98f26758ed74743f82",
         "f9c4c77baa3828004ee54b8a4f2db2e88ed44a6237a493965bf551fac0fcb62d"
       ],
-      "version": "0.7.0"
+      "version": "0.8.3"
     },
     {
       "ecosystem": "rust",
@@ -3585,7 +3589,7 @@ which covers the CareerOS Local project itself.
         "86dd7f026f916daf7511e39951ad8ea8cf55a8db67ae64060dacf829761c18f3",
         "f9c4c77baa3828004ee54b8a4f2db2e88ed44a6237a493965bf551fac0fcb62d"
       ],
-      "version": "0.38.0"
+      "version": "0.39.0"
     },
     {
       "ecosystem": "rust",
@@ -3676,7 +3680,7 @@ which covers the CareerOS Local project itself.
         "2ab5537b8c0cb1d475e2145b6a7994b04e7c71e6e5bd836f7f9c47c221a5ad9a",
         "f9c4c77baa3828004ee54b8a4f2db2e88ed44a6237a493965bf551fac0fcb62d"
       ],
-      "version": "0.19.3"
+      "version": "0.20.0"
     },
     {
       "ecosystem": "rust",
@@ -3690,6 +3694,19 @@ which covers the CareerOS Local project itself.
         "f9c4c77baa3828004ee54b8a4f2db2e88ed44a6237a493965bf551fac0fcb62d"
       ],
       "version": "0.9.0"
+    },
+    {
+      "ecosystem": "rust",
+      "license": "MIT OR Apache-2.0",
+      "name": "ndk-context",
+      "selectedLicenses": [
+        "MIT"
+      ],
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "textIds": [
+        "f9c4c77baa3828004ee54b8a4f2db2e88ed44a6237a493965bf551fac0fcb62d"
+      ],
+      "version": "0.1.1"
     },
     {
       "ecosystem": "rust",
@@ -4892,7 +4909,7 @@ which covers the CareerOS Local project itself.
       "textIds": [
         "fab3dd6bdab226f1c08630b1dd917e11fcb4ec5e1e020e2c16f83a0a13863e85"
       ],
-      "version": "0.36.1"
+      "version": "0.38.0"
     },
     {
       "ecosystem": "rust",
@@ -5338,6 +5355,23 @@ which covers the CareerOS Local project itself.
     },
     {
       "ecosystem": "rust",
+      "license": "MIT OR Apache-2.0 OR Zlib",
+      "name": "static_vcruntime",
+      "selectedLicenses": [
+        "MIT"
+      ],
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "textIds": [
+        "748c208045a6f00734dbc85a1c0e401c9a25e1f83fc756e99916750dbd2469a7",
+        "b9290e9d37bc53272ff4f3fb392c1762169fc0a8b797d164803049c81eacb48c",
+        "c1ff532091cac33bdecedf7268ff4f9bc3ddcffba494249fb723033e9e782f1a",
+        "e3ba223bb1423f0aad8c3dfce0fe3148db48926d41e6fbc3afbbf5ff9e1c89cb",
+        "f9c4c77baa3828004ee54b8a4f2db2e88ed44a6237a493965bf551fac0fcb62d"
+      ],
+      "version": "3.0.0"
+    },
+    {
+      "ecosystem": "rust",
       "license": "MIT OR Apache-2.0",
       "name": "string_cache",
       "selectedLicenses": [
@@ -5393,7 +5427,7 @@ which covers the CareerOS Local project itself.
         "f3c3e9f4febe81ff14ccc233c344e6e60051290d1c1e5a2c670d63cc3608a5bb",
         "f9c4c77baa3828004ee54b8a4f2db2e88ed44a6237a493965bf551fac0fcb62d"
       ],
-      "version": "1.0.7"
+      "version": "1.0.9"
     },
     {
       "ecosystem": "rust",
@@ -5480,7 +5514,7 @@ which covers the CareerOS Local project itself.
         "a8ad31b1c3f40dca5a84119351b8fa8ddc868edd77fad8a8ebf6d8f2d16fa4ae",
         "bb28c48e3e078166e91cfc2b6db7ffebb8a0973b9e23b3df060561292d8d69ec"
       ],
-      "version": "0.35.3"
+      "version": "0.37.1"
     },
     {
       "ecosystem": "rust",
@@ -5491,9 +5525,12 @@ which covers the CareerOS Local project itself.
       ],
       "source": "registry+https://github.com/rust-lang/crates.io-index",
       "textIds": [
+        "143368af9701a24ebaf89fe5310ad8116ca71e8e99f17415c0dd893f6a256ae4",
+        "8f96817f33d08e1248cec9eb99fa8407c246d0c5a27f971aa4feada07634a3b4",
+        "ca52f53b2ee0b6a96d77d8ae0cb1b4624080dd0274c97f1cece24efaf4e145f2",
         "f9c4c77baa3828004ee54b8a4f2db2e88ed44a6237a493965bf551fac0fcb62d"
       ],
-      "version": "0.1.3"
+      "version": "0.1.4"
     },
     {
       "ecosystem": "rust",
@@ -5523,7 +5560,7 @@ which covers the CareerOS Local project itself.
         "bb28c48e3e078166e91cfc2b6db7ffebb8a0973b9e23b3df060561292d8d69ec",
         "f9c4c77baa3828004ee54b8a4f2db2e88ed44a6237a493965bf551fac0fcb62d"
       ],
-      "version": "2.11.5"
+      "version": "2.12.4"
     },
     {
       "ecosystem": "rust",
@@ -5538,7 +5575,7 @@ which covers the CareerOS Local project itself.
         "bb28c48e3e078166e91cfc2b6db7ffebb8a0973b9e23b3df060561292d8d69ec",
         "f9c4c77baa3828004ee54b8a4f2db2e88ed44a6237a493965bf551fac0fcb62d"
       ],
-      "version": "2.6.3"
+      "version": "2.7.3"
     },
     {
       "ecosystem": "rust",
@@ -5553,7 +5590,7 @@ which covers the CareerOS Local project itself.
         "bb28c48e3e078166e91cfc2b6db7ffebb8a0973b9e23b3df060561292d8d69ec",
         "f9c4c77baa3828004ee54b8a4f2db2e88ed44a6237a493965bf551fac0fcb62d"
       ],
-      "version": "2.6.3"
+      "version": "2.7.3"
     },
     {
       "ecosystem": "rust",
@@ -5568,7 +5605,7 @@ which covers the CareerOS Local project itself.
         "bb28c48e3e078166e91cfc2b6db7ffebb8a0973b9e23b3df060561292d8d69ec",
         "f9c4c77baa3828004ee54b8a4f2db2e88ed44a6237a493965bf551fac0fcb62d"
       ],
-      "version": "2.6.3"
+      "version": "2.7.3"
     },
     {
       "ecosystem": "rust",
@@ -5581,7 +5618,7 @@ which covers the CareerOS Local project itself.
       "textIds": [
         "f9c4c77baa3828004ee54b8a4f2db2e88ed44a6237a493965bf551fac0fcb62d"
       ],
-      "version": "2.6.3"
+      "version": "2.7.2"
     },
     {
       "ecosystem": "rust",
@@ -5597,7 +5634,7 @@ which covers the CareerOS Local project itself.
         "bb28c48e3e078166e91cfc2b6db7ffebb8a0973b9e23b3df060561292d8d69ec",
         "f9c4c77baa3828004ee54b8a4f2db2e88ed44a6237a493965bf551fac0fcb62d"
       ],
-      "version": "2.7.1"
+      "version": "2.8.1"
     },
     {
       "ecosystem": "rust",
@@ -5613,7 +5650,7 @@ which covers the CareerOS Local project itself.
         "bb28c48e3e078166e91cfc2b6db7ffebb8a0973b9e23b3df060561292d8d69ec",
         "f9c4c77baa3828004ee54b8a4f2db2e88ed44a6237a493965bf551fac0fcb62d"
       ],
-      "version": "2.5.1"
+      "version": "2.6.0"
     },
     {
       "ecosystem": "rust",
@@ -5629,7 +5666,7 @@ which covers the CareerOS Local project itself.
         "bb28c48e3e078166e91cfc2b6db7ffebb8a0973b9e23b3df060561292d8d69ec",
         "f9c4c77baa3828004ee54b8a4f2db2e88ed44a6237a493965bf551fac0fcb62d"
       ],
-      "version": "2.5.4"
+      "version": "2.7.0"
     },
     {
       "ecosystem": "rust",
@@ -5676,7 +5713,7 @@ which covers the CareerOS Local project itself.
         "bb28c48e3e078166e91cfc2b6db7ffebb8a0973b9e23b3df060561292d8d69ec",
         "f9c4c77baa3828004ee54b8a4f2db2e88ed44a6237a493965bf551fac0fcb62d"
       ],
-      "version": "2.11.3"
+      "version": "2.12.2"
     },
     {
       "ecosystem": "rust",
@@ -5691,7 +5728,7 @@ which covers the CareerOS Local project itself.
         "bb28c48e3e078166e91cfc2b6db7ffebb8a0973b9e23b3df060561292d8d69ec",
         "f9c4c77baa3828004ee54b8a4f2db2e88ed44a6237a493965bf551fac0fcb62d"
       ],
-      "version": "2.11.4"
+      "version": "2.12.2"
     },
     {
       "ecosystem": "rust",
@@ -5706,7 +5743,7 @@ which covers the CareerOS Local project itself.
         "bb28c48e3e078166e91cfc2b6db7ffebb8a0973b9e23b3df060561292d8d69ec",
         "f9c4c77baa3828004ee54b8a4f2db2e88ed44a6237a493965bf551fac0fcb62d"
       ],
-      "version": "2.9.3"
+      "version": "2.10.2"
     },
     {
       "ecosystem": "rust",
@@ -5958,21 +5995,6 @@ which covers the CareerOS Local project itself.
         "a8ad31b1c3f40dca5a84119351b8fa8ddc868edd77fad8a8ebf6d8f2d16fa4ae",
         "f9c4c77baa3828004ee54b8a4f2db2e88ed44a6237a493965bf551fac0fcb62d"
       ],
-      "version": "0.9.12+spec-1.1.0"
-    },
-    {
-      "ecosystem": "rust",
-      "license": "MIT OR Apache-2.0",
-      "name": "toml",
-      "selectedLicenses": [
-        "MIT"
-      ],
-      "source": "registry+https://github.com/rust-lang/crates.io-index",
-      "textIds": [
-        "6efb0476a1cc085077ed49357026d8c173bf33017278ef440f222fb9cbcb66e6",
-        "a8ad31b1c3f40dca5a84119351b8fa8ddc868edd77fad8a8ebf6d8f2d16fa4ae",
-        "f9c4c77baa3828004ee54b8a4f2db2e88ed44a6237a493965bf551fac0fcb62d"
-      ],
       "version": "1.1.3+spec-1.1.0"
     },
     {
@@ -5989,21 +6011,6 @@ which covers the CareerOS Local project itself.
         "f9c4c77baa3828004ee54b8a4f2db2e88ed44a6237a493965bf551fac0fcb62d"
       ],
       "version": "0.6.3"
-    },
-    {
-      "ecosystem": "rust",
-      "license": "MIT OR Apache-2.0",
-      "name": "toml_datetime",
-      "selectedLicenses": [
-        "MIT"
-      ],
-      "source": "registry+https://github.com/rust-lang/crates.io-index",
-      "textIds": [
-        "6efb0476a1cc085077ed49357026d8c173bf33017278ef440f222fb9cbcb66e6",
-        "a8ad31b1c3f40dca5a84119351b8fa8ddc868edd77fad8a8ebf6d8f2d16fa4ae",
-        "f9c4c77baa3828004ee54b8a4f2db2e88ed44a6237a493965bf551fac0fcb62d"
-      ],
-      "version": "0.7.5+spec-1.1.0"
     },
     {
       "ecosystem": "rust",
@@ -6207,7 +6214,7 @@ which covers the CareerOS Local project itself.
         "44181d1db740d9841dbe6d7fa1963a23067f335567127fc15a9d050476af71a6",
         "f9c4c77baa3828004ee54b8a4f2db2e88ed44a6237a493965bf551fac0fcb62d"
       ],
-      "version": "0.24.1"
+      "version": "0.25.1"
     },
     {
       "ecosystem": "rust",
@@ -6270,71 +6277,6 @@ which covers the CareerOS Local project itself.
     },
     {
       "ecosystem": "rust",
-      "license": "MIT/Apache-2.0",
-      "name": "unic-char-property",
-      "selectedLicenses": [
-        "MIT"
-      ],
-      "source": "registry+https://github.com/rust-lang/crates.io-index",
-      "textIds": [
-        "f9c4c77baa3828004ee54b8a4f2db2e88ed44a6237a493965bf551fac0fcb62d"
-      ],
-      "version": "0.9.0"
-    },
-    {
-      "ecosystem": "rust",
-      "license": "MIT/Apache-2.0",
-      "name": "unic-char-range",
-      "selectedLicenses": [
-        "MIT"
-      ],
-      "source": "registry+https://github.com/rust-lang/crates.io-index",
-      "textIds": [
-        "f9c4c77baa3828004ee54b8a4f2db2e88ed44a6237a493965bf551fac0fcb62d"
-      ],
-      "version": "0.9.0"
-    },
-    {
-      "ecosystem": "rust",
-      "license": "MIT/Apache-2.0",
-      "name": "unic-common",
-      "selectedLicenses": [
-        "MIT"
-      ],
-      "source": "registry+https://github.com/rust-lang/crates.io-index",
-      "textIds": [
-        "f9c4c77baa3828004ee54b8a4f2db2e88ed44a6237a493965bf551fac0fcb62d"
-      ],
-      "version": "0.9.0"
-    },
-    {
-      "ecosystem": "rust",
-      "license": "MIT/Apache-2.0",
-      "name": "unic-ucd-ident",
-      "selectedLicenses": [
-        "MIT"
-      ],
-      "source": "registry+https://github.com/rust-lang/crates.io-index",
-      "textIds": [
-        "f9c4c77baa3828004ee54b8a4f2db2e88ed44a6237a493965bf551fac0fcb62d"
-      ],
-      "version": "0.9.0"
-    },
-    {
-      "ecosystem": "rust",
-      "license": "MIT/Apache-2.0",
-      "name": "unic-ucd-version",
-      "selectedLicenses": [
-        "MIT"
-      ],
-      "source": "registry+https://github.com/rust-lang/crates.io-index",
-      "textIds": [
-        "f9c4c77baa3828004ee54b8a4f2db2e88ed44a6237a493965bf551fac0fcb62d"
-      ],
-      "version": "0.9.0"
-    },
-    {
-      "ecosystem": "rust",
       "license": "(MIT OR Apache-2.0) AND Unicode-3.0",
       "name": "unicode-ident",
       "selectedLicenses": [
@@ -6394,7 +6336,7 @@ which covers the CareerOS Local project itself.
         "5cf1c9dc617e4cad7fa03181ff893601ad5243aa3be527ef39034e1cd6377676",
         "f9c4c77baa3828004ee54b8a4f2db2e88ed44a6237a493965bf551fac0fcb62d"
       ],
-      "version": "0.3.0"
+      "version": "0.6.0"
     },
     {
       "ecosystem": "rust",
@@ -6653,6 +6595,21 @@ which covers the CareerOS Local project itself.
     {
       "ecosystem": "rust",
       "license": "MIT OR Apache-2.0",
+      "name": "web-time",
+      "selectedLicenses": [
+        "MIT"
+      ],
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "textIds": [
+        "485215d5d9408bdaed32850aac9e7e3f7b2cca1af0c6a7d8c39c9a5bb83a7af1",
+        "f428305bbf2e70fbd807af0f3c7ac1b7acfb95311640f451e9d2e48db6d7e96b",
+        "f9c4c77baa3828004ee54b8a4f2db2e88ed44a6237a493965bf551fac0fcb62d"
+      ],
+      "version": "1.1.0"
+    },
+    {
+      "ecosystem": "rust",
+      "license": "MIT OR Apache-2.0",
       "name": "web_atoms",
       "selectedLicenses": [
         "MIT"
@@ -6704,7 +6661,7 @@ which covers the CareerOS Local project itself.
       "textIds": [
         "f9c4c77baa3828004ee54b8a4f2db2e88ed44a6237a493965bf551fac0fcb62d"
       ],
-      "version": "0.38.2"
+      "version": "0.39.1"
     },
     {
       "ecosystem": "rust",
@@ -6730,7 +6687,7 @@ which covers the CareerOS Local project itself.
       "textIds": [
         "f9c4c77baa3828004ee54b8a4f2db2e88ed44a6237a493965bf551fac0fcb62d"
       ],
-      "version": "0.38.2"
+      "version": "0.39.1"
     },
     {
       "ecosystem": "rust",
@@ -6802,7 +6759,7 @@ which covers the CareerOS Local project itself.
         "7ccef0d35e8507fa02d7e904a5277d62723f9ec576d52f6a865cab7b4dbf12ad",
         "f9c4c77baa3828004ee54b8a4f2db2e88ed44a6237a493965bf551fac0fcb62d"
       ],
-      "version": "0.6.0"
+      "version": "0.8.1"
     },
     {
       "ecosystem": "rust",
@@ -6817,7 +6774,7 @@ which covers the CareerOS Local project itself.
         "cb3b46a575dd9b39f881706288addc2e61e94c54658993da30cee083c0bb336f",
         "f9c4c77baa3828004ee54b8a4f2db2e88ed44a6237a493965bf551fac0fcb62d"
       ],
-      "version": "0.61.3"
+      "version": "0.62.2"
     },
     {
       "ecosystem": "rust",
@@ -6832,22 +6789,7 @@ which covers the CareerOS Local project itself.
         "cb3b46a575dd9b39f881706288addc2e61e94c54658993da30cee083c0bb336f",
         "f9c4c77baa3828004ee54b8a4f2db2e88ed44a6237a493965bf551fac0fcb62d"
       ],
-      "version": "0.2.0"
-    },
-    {
-      "ecosystem": "rust",
-      "license": "MIT OR Apache-2.0",
-      "name": "windows-core",
-      "selectedLicenses": [
-        "MIT"
-      ],
-      "source": "registry+https://github.com/rust-lang/crates.io-index",
-      "textIds": [
-        "3d4ada4e04d153d74f5bc4e5e6aebd12ef20077716529c36089dc07f14fd0dcf",
-        "cb3b46a575dd9b39f881706288addc2e61e94c54658993da30cee083c0bb336f",
-        "f9c4c77baa3828004ee54b8a4f2db2e88ed44a6237a493965bf551fac0fcb62d"
-      ],
-      "version": "0.61.2"
+      "version": "0.3.2"
     },
     {
       "ecosystem": "rust",
@@ -6877,7 +6819,7 @@ which covers the CareerOS Local project itself.
         "cb3b46a575dd9b39f881706288addc2e61e94c54658993da30cee083c0bb336f",
         "f9c4c77baa3828004ee54b8a4f2db2e88ed44a6237a493965bf551fac0fcb62d"
       ],
-      "version": "0.2.1"
+      "version": "0.3.2"
     },
     {
       "ecosystem": "rust",
@@ -6922,21 +6864,6 @@ which covers the CareerOS Local project itself.
         "cb3b46a575dd9b39f881706288addc2e61e94c54658993da30cee083c0bb336f",
         "f9c4c77baa3828004ee54b8a4f2db2e88ed44a6237a493965bf551fac0fcb62d"
       ],
-      "version": "0.1.3"
-    },
-    {
-      "ecosystem": "rust",
-      "license": "MIT OR Apache-2.0",
-      "name": "windows-link",
-      "selectedLicenses": [
-        "MIT"
-      ],
-      "source": "registry+https://github.com/rust-lang/crates.io-index",
-      "textIds": [
-        "3d4ada4e04d153d74f5bc4e5e6aebd12ef20077716529c36089dc07f14fd0dcf",
-        "cb3b46a575dd9b39f881706288addc2e61e94c54658993da30cee083c0bb336f",
-        "f9c4c77baa3828004ee54b8a4f2db2e88ed44a6237a493965bf551fac0fcb62d"
-      ],
       "version": "0.2.1"
     },
     {
@@ -6952,22 +6879,7 @@ which covers the CareerOS Local project itself.
         "cb3b46a575dd9b39f881706288addc2e61e94c54658993da30cee083c0bb336f",
         "f9c4c77baa3828004ee54b8a4f2db2e88ed44a6237a493965bf551fac0fcb62d"
       ],
-      "version": "0.2.0"
-    },
-    {
-      "ecosystem": "rust",
-      "license": "MIT OR Apache-2.0",
-      "name": "windows-result",
-      "selectedLicenses": [
-        "MIT"
-      ],
-      "source": "registry+https://github.com/rust-lang/crates.io-index",
-      "textIds": [
-        "3d4ada4e04d153d74f5bc4e5e6aebd12ef20077716529c36089dc07f14fd0dcf",
-        "cb3b46a575dd9b39f881706288addc2e61e94c54658993da30cee083c0bb336f",
-        "f9c4c77baa3828004ee54b8a4f2db2e88ed44a6237a493965bf551fac0fcb62d"
-      ],
-      "version": "0.3.4"
+      "version": "0.3.1"
     },
     {
       "ecosystem": "rust",
@@ -6983,21 +6895,6 @@ which covers the CareerOS Local project itself.
         "f9c4c77baa3828004ee54b8a4f2db2e88ed44a6237a493965bf551fac0fcb62d"
       ],
       "version": "0.4.1"
-    },
-    {
-      "ecosystem": "rust",
-      "license": "MIT OR Apache-2.0",
-      "name": "windows-strings",
-      "selectedLicenses": [
-        "MIT"
-      ],
-      "source": "registry+https://github.com/rust-lang/crates.io-index",
-      "textIds": [
-        "3d4ada4e04d153d74f5bc4e5e6aebd12ef20077716529c36089dc07f14fd0dcf",
-        "cb3b46a575dd9b39f881706288addc2e61e94c54658993da30cee083c0bb336f",
-        "f9c4c77baa3828004ee54b8a4f2db2e88ed44a6237a493965bf551fac0fcb62d"
-      ],
-      "version": "0.4.2"
     },
     {
       "ecosystem": "rust",
@@ -7132,7 +7029,7 @@ which covers the CareerOS Local project itself.
         "cb3b46a575dd9b39f881706288addc2e61e94c54658993da30cee083c0bb336f",
         "f9c4c77baa3828004ee54b8a4f2db2e88ed44a6237a493965bf551fac0fcb62d"
       ],
-      "version": "0.1.0"
+      "version": "0.2.1"
     },
     {
       "ecosystem": "rust",
@@ -7520,20 +7417,6 @@ which covers the CareerOS Local project itself.
         "cb5aedb296c5246d1f22e9099f925a65146f9f0d6b4eebba97fd27a6cdbbab2d",
         "f9c4c77baa3828004ee54b8a4f2db2e88ed44a6237a493965bf551fac0fcb62d"
       ],
-      "version": "0.7.15"
-    },
-    {
-      "ecosystem": "rust",
-      "license": "MIT",
-      "name": "winnow",
-      "selectedLicenses": [
-        "MIT"
-      ],
-      "source": "registry+https://github.com/rust-lang/crates.io-index",
-      "textIds": [
-        "cb5aedb296c5246d1f22e9099f925a65146f9f0d6b4eebba97fd27a6cdbbab2d",
-        "f9c4c77baa3828004ee54b8a4f2db2e88ed44a6237a493965bf551fac0fcb62d"
-      ],
       "version": "1.0.4"
     },
     {
@@ -7593,7 +7476,7 @@ which covers the CareerOS Local project itself.
         "f73041468536d0b5fd1a6610fa3f317e3dc6cf9a0c0591a5529d6556a0d8a2c3",
         "f9c4c77baa3828004ee54b8a4f2db2e88ed44a6237a493965bf551fac0fcb62d"
       ],
-      "version": "0.55.1"
+      "version": "0.57.0"
     },
     {
       "ecosystem": "rust",
@@ -7849,10 +7732,10 @@ which covers the CareerOS Local project itself.
   "sourceLocks": {
     ".native-python-version": "f8faecf2505680716c6279bf2cdec3d5a5ba2ba852f0d7df45d51ac1ce8d9ade",
     ".python-version": "aa0d6581054e6e4ff3f91839deca7a854ad37221b8784d060b42d0f847ff1a3b",
-    "frontend/package-lock.json": "b25854d842f7720236616819a7518be1846cc5d6f99da2e804f34458532dfd80",
-    "frontend/src-tauri/Cargo.lock": "65518ed518708dc8bf0a8f2a0123cf9425109977f3baf883c16b3dabb69a1a19",
-    "requirements-tooling.lock": "35ada80421dc0e6b88497c782d180e5b7db8dd3266cc4e2d92b1e8a88042250d",
-    "requirements.lock": "36fe6fe4c5c4eed4e4803a113ee3e9957ed3c372ac5ac824fe548a8669b22c40",
+    "frontend/package-lock.json": "bb88e6c7b25928c12a677640f654d3e5239685466246aa25bf430cbc7d9cec6c",
+    "frontend/src-tauri/Cargo.lock": "968585ac02371b626e7d06984e1c308b531a9846ae7c8d1227ac6a4890493bd4",
+    "requirements-tooling.lock": "f62fcdd99e65ec2e337457aebcb0391be841c7c2c7ad7d069f3b8276f27466b6",
+    "requirements.lock": "b81ed4ec928c4059a9ee28a75977264e3c24e245ea23c5f048d6ffc9a246813d",
     "third_party/licenses/cpython-3.13.14/LICENSE": "78b12c3a81360b357002334f0e70ea0e92eebf7a9b358805c03c48484945f3bb"
   },
   "texts": [
@@ -7879,7 +7762,14 @@ which covers the CareerOS Local project itself.
       "id": "02b6448337b757772d90e5f31caaa0f9e6afaad2221c01771d0a3deaa4d4196c",
       "sha256": "02b6448337b757772d90e5f31caaa0f9e6afaad2221c01771d0a3deaa4d4196c",
       "sources": [
-        "rust:tao@0.35.3/LICENSE.spdx"
+        "rust:tao@0.37.1/LICENSE.spdx"
+      ]
+    },
+    {
+      "id": "0598064c7d2718e38d7914a7d08343b2fa008e3bea9ebba2aa7a6ffa5900dd64",
+      "sha256": "0598064c7d2718e38d7914a7d08343b2fa008e3bea9ebba2aa7a6ffa5900dd64",
+      "sources": [
+        "runtime:pyinstaller@6.22.3/COPYING.txt"
       ]
     },
     {
@@ -8021,7 +7911,7 @@ which covers the CareerOS Local project itself.
       "id": "135bd40d7e81207369801d42a130c337371322df59687bf986fb8216352d71b6",
       "sha256": "135bd40d7e81207369801d42a130c337371322df59687bf986fb8216352d71b6",
       "sources": [
-        "rust:muda@0.19.3/LICENSE.spdx"
+        "rust:muda@0.20.0/LICENSE.spdx"
       ]
     },
     {
@@ -8040,6 +7930,7 @@ which covers the CareerOS Local project itself.
         "rust:autocfg@1.5.1/LICENSE-APACHE",
         "rust:base64@0.21.7/LICENSE-APACHE",
         "rust:base64@0.22.1/LICENSE-APACHE",
+        "rust:base64@0.23.1/LICENSE-APACHE",
         "rust:bitflags@1.3.2/LICENSE-APACHE",
         "rust:bitflags@2.13.1/LICENSE-APACHE",
         "rust:blocking@1.6.2/LICENSE-APACHE",
@@ -8072,7 +7963,7 @@ which covers the CareerOS Local project itself.
         "rust:heck@0.4.1/LICENSE-APACHE",
         "rust:heck@0.5.0/LICENSE-APACHE",
         "rust:hermit-abi@0.5.2/LICENSE-APACHE",
-        "rust:html5ever@0.38.0/LICENSE-APACHE",
+        "rust:html5ever@0.39.0/LICENSE-APACHE",
         "rust:httparse@1.10.1/LICENSE-APACHE",
         "rust:idna@1.1.0/LICENSE-APACHE",
         "rust:idna_adapter@1.2.2/LICENSE-APACHE",
@@ -8080,14 +7971,14 @@ which covers the CareerOS Local project itself.
         "rust:indexmap@2.14.0/LICENSE-APACHE",
         "rust:jni@0.21.1/LICENSE-APACHE",
         "rust:js-sys@0.3.103/LICENSE-APACHE",
-        "rust:keyboard-types@0.7.0/LICENSE-APACHE",
+        "rust:keyboard-types@0.8.3/LICENSE-APACHE",
         "rust:libappindicator@0.9.0/LICENSE-APACHE",
         "rust:linux-raw-sys@0.12.1/LICENSE-APACHE",
         "rust:lock_api@0.4.14/LICENSE-APACHE",
         "rust:log@0.4.33/LICENSE-APACHE",
-        "rust:markup5ever@0.38.0/LICENSE-APACHE",
+        "rust:markup5ever@0.39.0/LICENSE-APACHE",
         "rust:mime@0.3.17/LICENSE-APACHE",
-        "rust:muda@0.19.3/LICENSE-APACHE",
+        "rust:muda@0.20.0/LICENSE-APACHE",
         "rust:num-traits@0.2.19/LICENSE-APACHE",
         "rust:once_cell@1.21.4/LICENSE-APACHE",
         "rust:ordered-stream@0.2.0/LICENSE-APACHE",
@@ -8118,10 +8009,11 @@ which covers the CareerOS Local project itself.
         "rust:string_cache_codegen@0.6.1/LICENSE-APACHE",
         "rust:syn@1.0.109/LICENSE-APACHE",
         "rust:system-deps@6.2.2/LICENSE-APACHE",
+        "rust:tao-macros@0.1.4/LICENSE-APACHE",
         "rust:tempfile@3.27.0/LICENSE-APACHE",
         "rust:tendril@0.5.1/LICENSE-APACHE",
         "rust:toml_datetime@0.6.3/LICENSE-APACHE",
-        "rust:tray-icon@0.24.1/LICENSE-APACHE",
+        "rust:tray-icon@0.25.1/LICENSE-APACHE",
         "rust:unicode-segmentation@1.13.3/LICENSE-APACHE",
         "rust:url@2.5.8/LICENSE-APACHE",
         "rust:uuid@1.24.0/LICENSE-APACHE",
@@ -8135,9 +8027,9 @@ which covers the CareerOS Local project itself.
         "rust:wasm-bindgen@0.2.126/LICENSE-APACHE",
         "rust:web-sys@0.3.103/LICENSE-APACHE",
         "rust:web_atoms@0.2.5/LICENSE-APACHE",
-        "rust:window-vibrancy@0.6.0/LICENSE-APACHE",
+        "rust:window-vibrancy@0.8.1/LICENSE-APACHE",
         "rust:wit-bindgen@0.57.1/LICENSE-APACHE",
-        "rust:wry@0.55.1/LICENSE-APACHE"
+        "rust:wry@0.57.0/LICENSE-APACHE"
       ]
     },
     {
@@ -8409,7 +8301,7 @@ which covers the CareerOS Local project itself.
       "id": "270b0d81891aa44c7e8726cf9432dade9556a01c848bacd2f3ef839c9c1a1859",
       "sha256": "270b0d81891aa44c7e8726cf9432dade9556a01c848bacd2f3ef839c9c1a1859",
       "sources": [
-        "rust:infer@0.19.0/LICENSE"
+        "rust:infer@0.22.0/LICENSE"
       ]
     },
     {
@@ -8444,22 +8336,22 @@ which covers the CareerOS Local project itself.
       "id": "2ab5537b8c0cb1d475e2145b6a7994b04e7c71e6e5bd836f7f9c47c221a5ad9a",
       "sha256": "2ab5537b8c0cb1d475e2145b6a7994b04e7c71e6e5bd836f7f9c47c221a5ad9a",
       "sources": [
-        "rust:muda@0.19.3/LICENSE-MIT",
-        "rust:tray-icon@0.24.1/LICENSE-MIT"
+        "rust:muda@0.20.0/LICENSE-MIT",
+        "rust:tray-icon@0.25.1/LICENSE-MIT"
       ]
     },
     {
       "id": "2afdd30d54b4d62b6f488a6bcc1546e84ec5061f13f4209c03d012348783795a",
       "sha256": "2afdd30d54b4d62b6f488a6bcc1546e84ec5061f13f4209c03d012348783795a",
       "sources": [
-        "python:pydantic-core@2.46.4/LICENSE"
+        "python:pydantic-core@2.46.5/LICENSE"
       ]
     },
     {
       "id": "2bc107bdc18a74263d20bdefdb8073e17bc1a01b6b374dc5835683a33ee5ba7d",
       "sha256": "2bc107bdc18a74263d20bdefdb8073e17bc1a01b6b374dc5835683a33ee5ba7d",
       "sources": [
-        "rust:jsonptr@0.6.3/LICENSE-MIT"
+        "rust:jsonptr@0.7.1/LICENSE-MIT"
       ]
     },
     {
@@ -8481,7 +8373,7 @@ which covers the CareerOS Local project itself.
       "sha256": "2efd6a447c8c5d5f27b34282a9b2bfa999b2c56b450cb25e336553da6eb0d1cd",
       "sources": [
         "rust:dirs-sys@0.5.0/LICENSE-APACHE",
-        "rust:dirs@6.0.0/LICENSE-APACHE"
+        "rust:dirs@7.0.0/LICENSE-APACHE"
       ]
     },
     {
@@ -8593,25 +8485,21 @@ which covers the CareerOS Local project itself.
       "id": "3d180008e36922a4e8daec11c34c7af264fed5962d07924aea928c38e8663c94",
       "sha256": "3d180008e36922a4e8daec11c34c7af264fed5962d07924aea928c38e8663c94",
       "sources": [
-        "rust:brotli@8.0.4/LICENSE.MIT"
+        "rust:brotli@9.0.0/LICENSE.MIT"
       ]
     },
     {
       "id": "3d4ada4e04d153d74f5bc4e5e6aebd12ef20077716529c36089dc07f14fd0dcf",
       "sha256": "3d4ada4e04d153d74f5bc4e5e6aebd12ef20077716529c36089dc07f14fd0dcf",
       "sources": [
-        "rust:windows-collections@0.2.0/license-mit",
-        "rust:windows-core@0.61.2/license-mit",
+        "rust:windows-collections@0.3.2/license-mit",
         "rust:windows-core@0.62.2/license-mit",
-        "rust:windows-future@0.2.1/license-mit",
+        "rust:windows-future@0.3.2/license-mit",
         "rust:windows-implement@0.60.2/license-mit",
         "rust:windows-interface@0.59.3/license-mit",
-        "rust:windows-link@0.1.3/license-mit",
         "rust:windows-link@0.2.1/license-mit",
-        "rust:windows-numerics@0.2.0/license-mit",
-        "rust:windows-result@0.3.4/license-mit",
+        "rust:windows-numerics@0.3.1/license-mit",
         "rust:windows-result@0.4.1/license-mit",
-        "rust:windows-strings@0.4.2/license-mit",
         "rust:windows-strings@0.5.1/license-mit",
         "rust:windows-sys@0.45.0/license-mit",
         "rust:windows-sys@0.59.0/license-mit",
@@ -8620,9 +8508,9 @@ which covers the CareerOS Local project itself.
         "rust:windows-targets@0.42.2/license-mit",
         "rust:windows-targets@0.52.6/license-mit",
         "rust:windows-targets@0.53.5/license-mit",
-        "rust:windows-threading@0.1.0/license-mit",
+        "rust:windows-threading@0.2.1/license-mit",
         "rust:windows-version@0.1.7/license-mit",
-        "rust:windows@0.61.3/license-mit",
+        "rust:windows@0.62.2/license-mit",
         "rust:windows_aarch64_gnullvm@0.42.2/license-mit",
         "rust:windows_aarch64_gnullvm@0.52.6/license-mit",
         "rust:windows_aarch64_gnullvm@0.53.1/license-mit",
@@ -8748,7 +8636,7 @@ which covers the CareerOS Local project itself.
       "id": "44181d1db740d9841dbe6d7fa1963a23067f335567127fc15a9d050476af71a6",
       "sha256": "44181d1db740d9841dbe6d7fa1963a23067f335567127fc15a9d050476af71a6",
       "sources": [
-        "rust:tray-icon@0.24.1/LICENSE.spdx"
+        "rust:tray-icon@0.25.1/LICENSE.spdx"
       ]
     },
     {
@@ -8788,6 +8676,13 @@ which covers the CareerOS Local project itself.
       ]
     },
     {
+      "id": "485215d5d9408bdaed32850aac9e7e3f7b2cca1af0c6a7d8c39c9a5bb83a7af1",
+      "sha256": "485215d5d9408bdaed32850aac9e7e3f7b2cca1af0c6a7d8c39c9a5bb83a7af1",
+      "sources": [
+        "rust:web-time@1.1.0/LICENSE-APACHE"
+      ]
+    },
+    {
       "id": "489a8e1108509ed98a37bb983e11e0f7e1d31f0bd8f99a79c8448e7ff37d07ea",
       "sha256": "489a8e1108509ed98a37bb983e11e0f7e1d31f0bd8f99a79c8448e7ff37d07ea",
       "sources": [
@@ -8802,10 +8697,17 @@ which covers the CareerOS Local project itself.
       ]
     },
     {
+      "id": "4ec59d544f12b5f539a3a716fd321ac58ccd8030b465221f2c880200cdf28d8d",
+      "sha256": "4ec59d544f12b5f539a3a716fd321ac58ccd8030b465221f2c880200cdf28d8d",
+      "sources": [
+        "python:httpx@0.28.1/LICENSE.md"
+      ]
+    },
+    {
       "id": "4ec89ffc81485b97fec584b2d4a961032eeffe834453894fd9c1274906cc744e",
       "sha256": "4ec89ffc81485b97fec584b2d4a961032eeffe834453894fd9c1274906cc744e",
       "sources": [
-        "python:fastapi@0.140.7/LICENSE"
+        "python:fastapi@0.141.1/LICENSE"
       ]
     },
     {
@@ -8925,14 +8827,21 @@ which covers the CareerOS Local project itself.
       "id": "5cf1c9dc617e4cad7fa03181ff893601ad5243aa3be527ef39034e1cd6377676",
       "sha256": "5cf1c9dc617e4cad7fa03181ff893601ad5243aa3be527ef39034e1cd6377676",
       "sources": [
-        "rust:urlpattern@0.3.0/LICENSE"
+        "rust:urlpattern@0.6.0/LICENSE"
       ]
     },
     {
       "id": "5e13dbbc1d120fc2a03cecde7c91424ae2d7de11b63d58ded2f4431e261ee50d",
       "sha256": "5e13dbbc1d120fc2a03cecde7c91424ae2d7de11b63d58ded2f4431e261ee50d",
       "sources": [
-        "python:mcp@1.28.1/LICENSE"
+        "python:mcp@1.30.0/LICENSE"
+      ]
+    },
+    {
+      "id": "5e834fe9788c524210deda859c46a550ffa5aa0cba9ea0572f0d81120e97c008",
+      "sha256": "5e834fe9788c524210deda859c46a550ffa5aa0cba9ea0572f0d81120e97c008",
+      "sources": [
+        "frontend:@tauri-apps/api@2.12.1/LICENSE.spdx"
       ]
     },
     {
@@ -8960,7 +8869,7 @@ which covers the CareerOS Local project itself.
       "id": "617b85f62a4f1b6a62d3d9f28f6d7003b7f68a70b7675a8174bbcc68401ac62d",
       "sha256": "617b85f62a4f1b6a62d3d9f28f6d7003b7f68a70b7675a8174bbcc68401ac62d",
       "sources": [
-        "rust:window-vibrancy@0.6.0/LICENSE-MIT"
+        "rust:window-vibrancy@0.8.1/LICENSE-MIT"
       ]
     },
     {
@@ -9064,7 +8973,7 @@ which covers the CareerOS Local project itself.
       "id": "6742bd3e9c2035522b00ddd9a7c76f09e7ed89491a6750d56db2c062d9251b65",
       "sha256": "6742bd3e9c2035522b00ddd9a7c76f09e7ed89491a6750d56db2c062d9251b65",
       "sources": [
-        "rust:cargo_toml@0.22.3/LICENSE"
+        "rust:cargo_toml@1.0.1/LICENSE"
       ]
     },
     {
@@ -9086,7 +8995,7 @@ which covers the CareerOS Local project itself.
       "sha256": "6a2e0ade09a7d5f816f11566fee2b151b32235a7fad52b41d49cce96f833c1a9",
       "sources": [
         "rust:dirs-sys@0.5.0/LICENSE-MIT",
-        "rust:dirs@6.0.0/LICENSE-MIT"
+        "rust:dirs@7.0.0/LICENSE-MIT"
       ]
     },
     {
@@ -9132,7 +9041,7 @@ which covers the CareerOS Local project itself.
       "id": "6e68d94a03a0e3e327ddf3e86d1ebedc14eece3922022618fc246a36296fd0cc",
       "sha256": "6e68d94a03a0e3e327ddf3e86d1ebedc14eece3922022618fc246a36296fd0cc",
       "sources": [
-        "python:alembic@1.18.5/LICENSE"
+        "python:alembic@1.20.0/LICENSE"
       ]
     },
     {
@@ -9142,9 +9051,7 @@ which covers the CareerOS Local project itself.
         "rust:serde_spanned@0.6.9/LICENSE-MIT",
         "rust:serde_spanned@1.1.1/LICENSE-MIT",
         "rust:toml@0.8.2/LICENSE-MIT",
-        "rust:toml@0.9.12+spec-1.1.0/LICENSE-MIT",
         "rust:toml@1.1.3+spec-1.1.0/LICENSE-MIT",
-        "rust:toml_datetime@0.7.5+spec-1.1.0/LICENSE-MIT",
         "rust:toml_datetime@1.1.1+spec-1.1.0/LICENSE-MIT",
         "rust:toml_edit@0.19.15/LICENSE-MIT",
         "rust:toml_edit@0.20.2/LICENSE-MIT",
@@ -9157,7 +9064,7 @@ which covers the CareerOS Local project itself.
       "id": "7320e6a3fa91141a06764cf2f24e7d32679f2bdd58e50daa647939fb612e817f",
       "sha256": "7320e6a3fa91141a06764cf2f24e7d32679f2bdd58e50daa647939fb612e817f",
       "sources": [
-        "rust:jsonptr@0.6.3/LICENSE-APACHE"
+        "rust:jsonptr@0.7.1/LICENSE-APACHE"
       ]
     },
     {
@@ -9173,6 +9080,13 @@ which covers the CareerOS Local project itself.
       "sources": [
         "rust:is-docker@0.2.0/LICENSE",
         "rust:is-wsl@0.4.0/LICENSE"
+      ]
+    },
+    {
+      "id": "748c208045a6f00734dbc85a1c0e401c9a25e1f83fc756e99916750dbd2469a7",
+      "sha256": "748c208045a6f00734dbc85a1c0e401c9a25e1f83fc756e99916750dbd2469a7",
+      "sources": [
+        "rust:static_vcruntime@3.0.0/LICENSE-MIT"
       ]
     },
     {
@@ -9216,14 +9130,14 @@ which covers the CareerOS Local project itself.
       "id": "769831d6e5dfaf2c20802faccff1fafb4c2025dd8f6253dfa47fcad59d4d0979",
       "sha256": "769831d6e5dfaf2c20802faccff1fafb4c2025dd8f6253dfa47fcad59d4d0979",
       "sources": [
-        "python:greenlet@3.5.4/LICENSE"
+        "python:greenlet@3.5.6/LICENSE"
       ]
     },
     {
       "id": "77c9ee6a9c5d5782fb0c50b50d101189116314c14f7df0a1b0d385fc96a7ba49",
       "sha256": "77c9ee6a9c5d5782fb0c50b50d101189116314c14f7df0a1b0d385fc96a7ba49",
       "sources": [
-        "frontend:react-router@8.3.0/LICENSE.md"
+        "frontend:react-router@8.4.0/LICENSE.md"
       ]
     },
     {
@@ -9231,6 +9145,13 @@ which covers the CareerOS Local project itself.
       "sha256": "78b12c3a81360b357002334f0e70ea0e92eebf7a9b358805c03c48484945f3bb",
       "sources": [
         "runtime:cpython@3.13.14/third_party/licenses/cpython-3.13.14/LICENSE"
+      ]
+    },
+    {
+      "id": "797a7a20231d4c433e9f1911db1731d06b5828b98f499819a034f7c0f56f5ce5",
+      "sha256": "797a7a20231d4c433e9f1911db1731d06b5828b98f499819a034f7c0f56f5ce5",
+      "sources": [
+        "python:pyjwt@2.15.1/LICENSE"
       ]
     },
     {
@@ -9275,7 +9196,7 @@ which covers the CareerOS Local project itself.
       "id": "7ccef0d35e8507fa02d7e904a5277d62723f9ec576d52f6a865cab7b4dbf12ad",
       "sha256": "7ccef0d35e8507fa02d7e904a5277d62723f9ec576d52f6a865cab7b4dbf12ad",
       "sources": [
-        "rust:window-vibrancy@0.6.0/LICENSE.spdx"
+        "rust:window-vibrancy@0.8.1/LICENSE.spdx"
       ]
     },
     {
@@ -9297,7 +9218,7 @@ which covers the CareerOS Local project itself.
       "id": "80619b7049f08c81683ad0e01f08f257a840652dd71ee83146d36658c7d2c2b9",
       "sha256": "80619b7049f08c81683ad0e01f08f257a840652dd71ee83146d36658c7d2c2b9",
       "sources": [
-        "python:python-dotenv@1.2.2/LICENSE"
+        "python:python-dotenv@1.2.3/LICENSE"
       ]
     },
     {
@@ -9369,8 +9290,8 @@ which covers the CareerOS Local project itself.
       "id": "86dd7f026f916daf7511e39951ad8ea8cf55a8db67ae64060dacf829761c18f3",
       "sha256": "86dd7f026f916daf7511e39951ad8ea8cf55a8db67ae64060dacf829761c18f3",
       "sources": [
-        "rust:html5ever@0.38.0/LICENSE-MIT",
-        "rust:markup5ever@0.38.0/LICENSE-MIT",
+        "rust:html5ever@0.39.0/LICENSE-MIT",
+        "rust:markup5ever@0.39.0/LICENSE-MIT",
         "rust:web_atoms@0.2.5/LICENSE-MIT"
       ]
     },
@@ -9385,7 +9306,7 @@ which covers the CareerOS Local project itself.
       "id": "87f7527b1066337751f7f4d717089bf514ff8f7ee7d66c4c5b891b09e744ec11",
       "sha256": "87f7527b1066337751f7f4d717089bf514ff8f7ee7d66c4c5b891b09e744ec11",
       "sources": [
-        "rust:json-patch@3.0.1/LICENSE-MIT"
+        "rust:json-patch@4.2.0/LICENSE-MIT"
       ]
     },
     {
@@ -9479,6 +9400,13 @@ which covers the CareerOS Local project itself.
       ]
     },
     {
+      "id": "8f96817f33d08e1248cec9eb99fa8407c246d0c5a27f971aa4feada07634a3b4",
+      "sha256": "8f96817f33d08e1248cec9eb99fa8407c246d0c5a27f971aa4feada07634a3b4",
+      "sources": [
+        "rust:tao-macros@0.1.4/LICENSE.spdx"
+      ]
+    },
+    {
       "id": "8fc2b568133516e46845d2147917adeee1648e70ae9ab5ed6c5417afef4ce855",
       "sha256": "8fc2b568133516e46845d2147917adeee1648e70ae9ab5ed6c5417afef4ce855",
       "sources": [
@@ -9512,7 +9440,7 @@ which covers the CareerOS Local project itself.
       "id": "9766e5d58cae9d457057c7cdb2cde8bf357624329c1e5cc50ca9210149b77aed",
       "sha256": "9766e5d58cae9d457057c7cdb2cde8bf357624329c1e5cc50ca9210149b77aed",
       "sources": [
-        "rust:dom_query@0.27.0/LICENSE"
+        "rust:dom_query@0.28.0/LICENSE"
       ]
     },
     {
@@ -9540,12 +9468,12 @@ which covers the CareerOS Local project itself.
       "id": "9c1db6b7e7eb83e1cb2af973b5df2bdc63651ede0f38506ab98dfa0940487759",
       "sha256": "9c1db6b7e7eb83e1cb2af973b5df2bdc63651ede0f38506ab98dfa0940487759",
       "sources": [
-        "frontend:@tauri-apps/plugin-dialog@2.7.2/LICENSE.spdx",
-        "frontend:@tauri-apps/plugin-fs@2.5.1/LICENSE.spdx",
-        "frontend:@tauri-apps/plugin-opener@2.5.4/LICENSE.spdx",
-        "rust:tauri-plugin-dialog@2.7.1/LICENSE.spdx",
-        "rust:tauri-plugin-fs@2.5.1/LICENSE.spdx",
-        "rust:tauri-plugin-opener@2.5.4/LICENSE.spdx",
+        "frontend:@tauri-apps/plugin-dialog@2.8.1/LICENSE.spdx",
+        "frontend:@tauri-apps/plugin-fs@2.6.0/LICENSE.spdx",
+        "frontend:@tauri-apps/plugin-opener@2.7.0/LICENSE.spdx",
+        "rust:tauri-plugin-dialog@2.8.1/LICENSE.spdx",
+        "rust:tauri-plugin-fs@2.6.0/LICENSE.spdx",
+        "rust:tauri-plugin-opener@2.7.0/LICENSE.spdx",
         "rust:tauri-plugin-shell@2.3.5/LICENSE.spdx",
         "rust:tauri-plugin-single-instance@2.4.3/LICENSE.spdx"
       ]
@@ -9561,18 +9489,18 @@ which covers the CareerOS Local project itself.
       "id": "9dd42ea92cff2ede5cd477cbfcce051b2d0115c0ac7f368ee88cb545055dff1d",
       "sha256": "9dd42ea92cff2ede5cd477cbfcce051b2d0115c0ac7f368ee88cb545055dff1d",
       "sources": [
-        "frontend:@tauri-apps/api@2.11.1/LICENSE_MIT",
-        "rust:tauri-build@2.6.3/LICENSE_MIT",
-        "rust:tauri-codegen@2.6.3/LICENSE_MIT",
-        "rust:tauri-macros@2.6.3/LICENSE_MIT",
-        "rust:tauri-plugin-dialog@2.7.1/LICENSE_MIT",
-        "rust:tauri-plugin-fs@2.5.1/LICENSE_MIT",
-        "rust:tauri-plugin-opener@2.5.4/LICENSE_MIT",
+        "frontend:@tauri-apps/api@2.12.1/LICENSE-MIT",
+        "rust:tauri-build@2.7.3/LICENSE-MIT",
+        "rust:tauri-codegen@2.7.3/LICENSE-MIT",
+        "rust:tauri-macros@2.7.3/LICENSE-MIT",
+        "rust:tauri-plugin-dialog@2.8.1/LICENSE_MIT",
+        "rust:tauri-plugin-fs@2.6.0/LICENSE_MIT",
+        "rust:tauri-plugin-opener@2.7.0/LICENSE_MIT",
         "rust:tauri-plugin-shell@2.3.5/LICENSE_MIT",
-        "rust:tauri-runtime-wry@2.11.4/LICENSE_MIT",
-        "rust:tauri-runtime@2.11.3/LICENSE_MIT",
-        "rust:tauri-utils@2.9.3/LICENSE_MIT",
-        "rust:tauri@2.11.5/LICENSE_MIT"
+        "rust:tauri-runtime-wry@2.12.2/LICENSE-MIT",
+        "rust:tauri-runtime@2.12.2/LICENSE-MIT",
+        "rust:tauri-utils@2.10.2/LICENSE-MIT",
+        "rust:tauri@2.12.4/LICENSE-MIT"
       ]
     },
     {
@@ -9650,25 +9578,20 @@ which covers the CareerOS Local project itself.
       "sha256": "a8ad31b1c3f40dca5a84119351b8fa8ddc868edd77fad8a8ebf6d8f2d16fa4ae",
       "sources": [
         "rust:crc32fast@1.5.0/LICENSE-APACHE",
-        "rust:ctor-proc-macro@0.0.7/LICENSE-APACHE",
-        "rust:ctor@0.8.0/LICENSE-APACHE",
+        "rust:ctor@1.0.13/LICENSE-APACHE",
         "rust:dpi@0.1.2/LICENSE",
-        "rust:dtor-proc-macro@0.0.6/LICENSE-APACHE",
-        "rust:dtor@0.3.0/LICENSE-APACHE",
         "rust:foreign-types-macros@0.2.3/LICENSE-APACHE",
         "rust:foreign-types-shared@0.3.1/LICENSE-APACHE",
         "rust:foreign-types@0.5.0/LICENSE-APACHE",
         "rust:hex@0.4.3/LICENSE-APACHE",
         "rust:jni-sys@0.3.1/LICENSE-APACHE",
         "rust:jni-sys@0.4.1/LICENSE-APACHE",
-        "rust:json-patch@3.0.1/LICENSE-APACHE",
+        "rust:json-patch@4.2.0/LICENSE-APACHE",
         "rust:serde_spanned@0.6.9/LICENSE-APACHE",
         "rust:serde_spanned@1.1.1/LICENSE-APACHE",
-        "rust:tao@0.35.3/LICENSE",
+        "rust:tao@0.37.1/LICENSE",
         "rust:toml@0.8.2/LICENSE-APACHE",
-        "rust:toml@0.9.12+spec-1.1.0/LICENSE-APACHE",
         "rust:toml@1.1.3+spec-1.1.0/LICENSE-APACHE",
-        "rust:toml_datetime@0.7.5+spec-1.1.0/LICENSE-APACHE",
         "rust:toml_datetime@1.1.1+spec-1.1.0/LICENSE-APACHE",
         "rust:toml_edit@0.19.15/LICENSE-APACHE",
         "rust:toml_edit@0.20.2/LICENSE-APACHE",
@@ -9682,14 +9605,21 @@ which covers the CareerOS Local project itself.
       "id": "a97ac230e5f33ef10a5367a850eb01f91f1a0b064e34742c7794d2294557f524",
       "sha256": "a97ac230e5f33ef10a5367a850eb01f91f1a0b064e34742c7794d2294557f524",
       "sources": [
-        "python:pypdf@6.16.1/LICENSE"
+        "python:pypdf@6.21.0/LICENSE"
       ]
     },
     {
       "id": "a9e186f3ca16b5eef84318e7a701721351a00cb7b8ae3a4394b67b49e3529ef3",
       "sha256": "a9e186f3ca16b5eef84318e7a701721351a00cb7b8ae3a4394b67b49e3529ef3",
       "sources": [
-        "python:pydantic@2.13.4/LICENSE"
+        "python:pydantic@2.13.5/LICENSE"
+      ]
+    },
+    {
+      "id": "ab499c75a0f0da8e0fe83bf9ba3a27e5c39705310f07107c6c66b69958d2401c",
+      "sha256": "ab499c75a0f0da8e0fe83bf9ba3a27e5c39705310f07107c6c66b69958d2401c",
+      "sources": [
+        "rust:base64@0.23.1/LICENSE-MIT"
       ]
     },
     {
@@ -9840,10 +9770,17 @@ which covers the CareerOS Local project itself.
       ]
     },
     {
+      "id": "b9290e9d37bc53272ff4f3fb392c1762169fc0a8b797d164803049c81eacb48c",
+      "sha256": "b9290e9d37bc53272ff4f3fb392c1762169fc0a8b797d164803049c81eacb48c",
+      "sources": [
+        "rust:static_vcruntime@3.0.0/LICENSE"
+      ]
+    },
+    {
       "id": "bb28c48e3e078166e91cfc2b6db7ffebb8a0973b9e23b3df060561292d8d69ec",
       "sha256": "bb28c48e3e078166e91cfc2b6db7ffebb8a0973b9e23b3df060561292d8d69ec",
       "sources": [
-        "frontend:@tauri-apps/api@2.11.1/LICENSE_APACHE-2.0",
+        "frontend:@tauri-apps/api@2.12.1/LICENSE-APACHE-2.0",
         "python:packaging@26.2/LICENSE.APACHE",
         "rust-canonical:Apache-2.0/sync_wrapper@1.0.2/LICENSE",
         "rust:fdeflate@0.3.7/LICENSE-APACHE",
@@ -9853,18 +9790,18 @@ which covers the CareerOS Local project itself.
         "rust:pin-project-lite@0.2.17/LICENSE-APACHE",
         "rust:raw-window-handle@0.6.2/LICENSE-APACHE.md",
         "rust:sync_wrapper@1.0.2/LICENSE",
-        "rust:tauri-build@2.6.3/LICENSE_APACHE-2.0",
-        "rust:tauri-codegen@2.6.3/LICENSE_APACHE-2.0",
-        "rust:tauri-macros@2.6.3/LICENSE_APACHE-2.0",
-        "rust:tauri-plugin-dialog@2.7.1/LICENSE_APACHE-2.0",
-        "rust:tauri-plugin-fs@2.5.1/LICENSE_APACHE-2.0",
-        "rust:tauri-plugin-opener@2.5.4/LICENSE_APACHE-2.0",
+        "rust:tauri-build@2.7.3/LICENSE-APACHE-2.0",
+        "rust:tauri-codegen@2.7.3/LICENSE-APACHE-2.0",
+        "rust:tauri-macros@2.7.3/LICENSE-APACHE-2.0",
+        "rust:tauri-plugin-dialog@2.8.1/LICENSE_APACHE-2.0",
+        "rust:tauri-plugin-fs@2.6.0/LICENSE_APACHE-2.0",
+        "rust:tauri-plugin-opener@2.7.0/LICENSE_APACHE-2.0",
         "rust:tauri-plugin-shell@2.3.5/LICENSE_APACHE-2.0",
         "rust:tauri-plugin-single-instance@2.4.3/LICENSE_APACHE-2.0",
-        "rust:tauri-runtime-wry@2.11.4/LICENSE_APACHE-2.0",
-        "rust:tauri-runtime@2.11.3/LICENSE_APACHE-2.0",
-        "rust:tauri-utils@2.9.3/LICENSE_APACHE-2.0",
-        "rust:tauri@2.11.5/LICENSE_APACHE-2.0",
+        "rust:tauri-runtime-wry@2.12.2/LICENSE-APACHE-2.0",
+        "rust:tauri-runtime@2.12.2/LICENSE-APACHE-2.0",
+        "rust:tauri-utils@2.10.2/LICENSE-APACHE-2.0",
+        "rust:tauri@2.12.4/LICENSE-APACHE-2.0",
         "rust:time-core@0.1.9/LICENSE-Apache",
         "rust:time-macros@0.2.31/LICENSE-Apache",
         "rust:time@0.3.53/LICENSE-Apache"
@@ -9883,7 +9820,7 @@ which covers the CareerOS Local project itself.
       "id": "bbff99cfea30e0ed6e260eadbea125ca2f8134d4f1c0b562c942506f95fe15a5",
       "sha256": "bbff99cfea30e0ed6e260eadbea125ca2f8134d4f1c0b562c942506f95fe15a5",
       "sources": [
-        "rust:swift-rs@1.0.7/LICENSE-APACHE"
+        "rust:swift-rs@1.0.9/LICENSE-APACHE"
       ]
     },
     {
@@ -9904,10 +9841,17 @@ which covers the CareerOS Local project itself.
       "id": "c0c56f26d9c051cac4d200c34c84e7ae9aaa853e01a982a1df08b09931e518ae",
       "sha256": "c0c56f26d9c051cac4d200c34c84e7ae9aaa853e01a982a1df08b09931e518ae",
       "sources": [
-        "rust-canonical:BSD-3-Clause/alloc-no-stdlib@2.0.4/LICENSE",
-        "rust:alloc-no-stdlib@2.0.4/LICENSE",
-        "rust:brotli-decompressor@5.0.3/LICENSE",
-        "rust:brotli@8.0.4/LICENSE.BSD-3-Clause"
+        "rust-canonical:BSD-3-Clause/alloc-no-stdlib@3.0.0/LICENSE",
+        "rust:alloc-no-stdlib@3.0.0/LICENSE",
+        "rust:brotli-decompressor@6.0.1/LICENSE",
+        "rust:brotli@9.0.0/LICENSE.BSD-3-Clause"
+      ]
+    },
+    {
+      "id": "c1ff532091cac33bdecedf7268ff4f9bc3ddcffba494249fb723033e9e782f1a",
+      "sha256": "c1ff532091cac33bdecedf7268ff4f9bc3ddcffba494249fb723033e9e782f1a",
+      "sources": [
+        "rust:static_vcruntime@3.0.0/LICENSE-ZLIB"
       ]
     },
     {
@@ -9942,6 +9886,13 @@ which covers the CareerOS Local project itself.
       ]
     },
     {
+      "id": "ca52f53b2ee0b6a96d77d8ae0cb1b4624080dd0274c97f1cece24efaf4e145f2",
+      "sha256": "ca52f53b2ee0b6a96d77d8ae0cb1b4624080dd0274c97f1cece24efaf4e145f2",
+      "sources": [
+        "rust:tao-macros@0.1.4/LICENSE-MIT"
+      ]
+    },
+    {
       "id": "cac35c02686e5d04a5a7140bfb3b36e73aed496656e891102e428886d7930318",
       "sha256": "cac35c02686e5d04a5a7140bfb3b36e73aed496656e891102e428886d7930318",
       "sources": [
@@ -9959,18 +9910,14 @@ which covers the CareerOS Local project itself.
       "id": "cb3b46a575dd9b39f881706288addc2e61e94c54658993da30cee083c0bb336f",
       "sha256": "cb3b46a575dd9b39f881706288addc2e61e94c54658993da30cee083c0bb336f",
       "sources": [
-        "rust:windows-collections@0.2.0/license-apache-2.0",
-        "rust:windows-core@0.61.2/license-apache-2.0",
+        "rust:windows-collections@0.3.2/license-apache-2.0",
         "rust:windows-core@0.62.2/license-apache-2.0",
-        "rust:windows-future@0.2.1/license-apache-2.0",
+        "rust:windows-future@0.3.2/license-apache-2.0",
         "rust:windows-implement@0.60.2/license-apache-2.0",
         "rust:windows-interface@0.59.3/license-apache-2.0",
-        "rust:windows-link@0.1.3/license-apache-2.0",
         "rust:windows-link@0.2.1/license-apache-2.0",
-        "rust:windows-numerics@0.2.0/license-apache-2.0",
-        "rust:windows-result@0.3.4/license-apache-2.0",
+        "rust:windows-numerics@0.3.1/license-apache-2.0",
         "rust:windows-result@0.4.1/license-apache-2.0",
-        "rust:windows-strings@0.4.2/license-apache-2.0",
         "rust:windows-strings@0.5.1/license-apache-2.0",
         "rust:windows-sys@0.45.0/license-apache-2.0",
         "rust:windows-sys@0.59.0/license-apache-2.0",
@@ -9979,9 +9926,9 @@ which covers the CareerOS Local project itself.
         "rust:windows-targets@0.42.2/license-apache-2.0",
         "rust:windows-targets@0.52.6/license-apache-2.0",
         "rust:windows-targets@0.53.5/license-apache-2.0",
-        "rust:windows-threading@0.1.0/license-apache-2.0",
+        "rust:windows-threading@0.2.1/license-apache-2.0",
         "rust:windows-version@0.1.7/license-apache-2.0",
-        "rust:windows@0.61.3/license-apache-2.0",
+        "rust:windows@0.62.2/license-apache-2.0",
         "rust:windows_aarch64_gnullvm@0.42.2/license-apache-2.0",
         "rust:windows_aarch64_gnullvm@0.52.6/license-apache-2.0",
         "rust:windows_aarch64_gnullvm@0.53.1/license-apache-2.0",
@@ -10020,7 +9967,6 @@ which covers the CareerOS Local project itself.
       "sha256": "cb5aedb296c5246d1f22e9099f925a65146f9f0d6b4eebba97fd27a6cdbbab2d",
       "sources": [
         "rust:winnow@0.5.40/LICENSE-MIT",
-        "rust:winnow@0.7.15/LICENSE-MIT",
         "rust:winnow@1.0.4/LICENSE-MIT"
       ]
     },
@@ -10061,6 +10007,13 @@ which covers the CareerOS Local project itself.
       ]
     },
     {
+      "id": "d6baf87f30d13d2d7770c18c858e7a31fa7ceede4bc9469a50f03dbafe455cb4",
+      "sha256": "d6baf87f30d13d2d7770c18c858e7a31fa7ceede4bc9469a50f03dbafe455cb4",
+      "sources": [
+        "frontend:@remix-run/route-pattern@0.22.1/LICENSE"
+      ]
+    },
+    {
       "id": "d99ab209aeb16aad2c25c90ffd83c1a981e290ffff76a420a2ab03e03f041b8c",
       "sha256": "d99ab209aeb16aad2c25c90ffd83c1a981e290ffff76a420a2ab03e03f041b8c",
       "sources": [
@@ -10086,9 +10039,9 @@ which covers the CareerOS Local project itself.
       "id": "da6d3703ed11cbe42bd212c725957c98da23cbff1998c05fa4b3d976d1a58e93",
       "sha256": "da6d3703ed11cbe42bd212c725957c98da23cbff1998c05fa4b3d976d1a58e93",
       "sources": [
-        "frontend:react-dom@19.2.8/LICENSE",
-        "frontend:react@19.2.8/LICENSE",
-        "frontend:scheduler@0.27.0/LICENSE"
+        "frontend:react-dom@19.3.1/LICENSE",
+        "frontend:react@19.3.1/LICENSE",
+        "frontend:scheduler@0.28.0/LICENSE"
       ]
     },
     {
@@ -10130,17 +10083,10 @@ which covers the CareerOS Local project itself.
       ]
     },
     {
-      "id": "dcf75fdb959db1e3b41c0f8505069d2ece781b5ec6b3d0a4d30975cfc6580245",
-      "sha256": "dcf75fdb959db1e3b41c0f8505069d2ece781b5ec6b3d0a4d30975cfc6580245",
-      "sources": [
-        "runtime:pyinstaller@6.21.0/COPYING.txt"
-      ]
-    },
-    {
       "id": "dd57ede7eb6b56bc60b7c69f4b701b5550b9b5a1f4f47b98f26758ed74743f82",
       "sha256": "dd57ede7eb6b56bc60b7c69f4b701b5550b9b5a1f4f47b98f26758ed74743f82",
       "sources": [
-        "rust:keyboard-types@0.7.0/LICENSE-MIT"
+        "rust:keyboard-types@0.8.3/LICENSE-MIT"
       ]
     },
     {
@@ -10176,7 +10122,8 @@ which covers the CareerOS Local project itself.
       "id": "e3ba223bb1423f0aad8c3dfce0fe3148db48926d41e6fbc3afbbf5ff9e1c89cb",
       "sha256": "e3ba223bb1423f0aad8c3dfce0fe3148db48926d41e6fbc3afbbf5ff9e1c89cb",
       "sources": [
-        "rust:bytemuck@1.25.1/LICENSE-APACHE"
+        "rust:bytemuck@1.25.1/LICENSE-APACHE",
+        "rust:static_vcruntime@3.0.0/LICENSE-APACHE"
       ]
     },
     {
@@ -10198,7 +10145,7 @@ which covers the CareerOS Local project itself.
       "id": "e5ff3c23c110e494cd7d736c10fd96d462457bafeca310840db6527298c7d46b",
       "sha256": "e5ff3c23c110e494cd7d736c10fd96d462457bafeca310840db6527298c7d46b",
       "sources": [
-        "python:greenlet@3.5.4/LICENSE.PSF"
+        "python:greenlet@3.5.6/LICENSE.PSF"
       ]
     },
     {
@@ -10212,7 +10159,7 @@ which covers the CareerOS Local project itself.
       "id": "e862bb5b904fb5513c3e14288d7a25a12eb0ecc7847a0a965d310e9a955e7cb9",
       "sha256": "e862bb5b904fb5513c3e14288d7a25a12eb0ecc7847a0a965d310e9a955e7cb9",
       "sources": [
-        "python:sqlalchemy@2.0.51/LICENSE"
+        "python:sqlalchemy@2.1.1/LICENSE"
       ]
     },
     {
@@ -10248,7 +10195,7 @@ which covers the CareerOS Local project itself.
       "id": "eb355a753e020346d33d83bf9769135b89fc610568ac531a01c295bcee7fd998",
       "sha256": "eb355a753e020346d33d83bf9769135b89fc610568ac531a01c295bcee7fd998",
       "sources": [
-        "python:pydantic-settings@2.14.2/LICENSE"
+        "python:pydantic-settings@2.15.0/LICENSE"
       ]
     },
     {
@@ -10269,7 +10216,7 @@ which covers the CareerOS Local project itself.
       "id": "ebaac853b53fec0ed475796f533ce676912a4df9ad9d8a621fa76d5060591e10",
       "sha256": "ebaac853b53fec0ed475796f533ce676912a4df9ad9d8a621fa76d5060591e10",
       "sources": [
-        "rust:cfb@0.7.3/LICENSE"
+        "rust:cfb@0.14.0/LICENSE"
       ]
     },
     {
@@ -10298,7 +10245,7 @@ which covers the CareerOS Local project itself.
       "id": "ef88893533af22ffbb68ceef0724ba1389518df26165a34f3c99ad30b884df4f",
       "sha256": "ef88893533af22ffbb68ceef0724ba1389518df26165a34f3c99ad30b884df4f",
       "sources": [
-        "rust:wry@0.55.1/LICENSE-MIT"
+        "rust:wry@0.57.0/LICENSE-MIT"
       ]
     },
     {
@@ -10312,7 +10259,7 @@ which covers the CareerOS Local project itself.
       "id": "efe1acf3e62fb99c288b0ec73e5a773b7268ef4320fe757ea994214e4b63c371",
       "sha256": "efe1acf3e62fb99c288b0ec73e5a773b7268ef4320fe757ea994214e4b63c371",
       "sources": [
-        "python:uvicorn@0.51.0/LICENSE.md"
+        "python:uvicorn@0.54.0/LICENSE.md"
       ]
     },
     {
@@ -10358,7 +10305,14 @@ which covers the CareerOS Local project itself.
       "id": "f3c3e9f4febe81ff14ccc233c344e6e60051290d1c1e5a2c670d63cc3608a5bb",
       "sha256": "f3c3e9f4febe81ff14ccc233c344e6e60051290d1c1e5a2c670d63cc3608a5bb",
       "sources": [
-        "rust:swift-rs@1.0.7/LICENSE-MIT"
+        "rust:swift-rs@1.0.9/LICENSE-MIT"
+      ]
+    },
+    {
+      "id": "f428305bbf2e70fbd807af0f3c7ac1b7acfb95311640f451e9d2e48db6d7e96b",
+      "sha256": "f428305bbf2e70fbd807af0f3c7ac1b7acfb95311640f451e9d2e48db6d7e96b",
+      "sources": [
+        "rust:web-time@1.1.0/LICENSE-MIT"
       ]
     },
     {
@@ -10380,7 +10334,7 @@ which covers the CareerOS Local project itself.
       "id": "f73041468536d0b5fd1a6610fa3f317e3dc6cf9a0c0591a5529d6556a0d8a2c3",
       "sha256": "f73041468536d0b5fd1a6610fa3f317e3dc6cf9a0c0591a5529d6556a0d8a2c3",
       "sources": [
-        "rust:wry@0.55.1/LICENSE.spdx"
+        "rust:wry@0.57.0/LICENSE.spdx"
       ]
     },
     {
@@ -10437,9 +10391,9 @@ which covers the CareerOS Local project itself.
       "id": "fab3dd6bdab226f1c08630b1dd917e11fcb4ec5e1e020e2c16f83a0a13863e85",
       "sha256": "fab3dd6bdab226f1c08630b1dd917e11fcb4ec5e1e020e2c16f83a0a13863e85",
       "sources": [
-        "rust-canonical:MPL-2.0/cssparser@0.36.0/LICENSE",
-        "rust:cssparser-macros@0.6.1/LICENSE",
-        "rust:cssparser@0.36.0/LICENSE"
+        "rust-canonical:MPL-2.0/cssparser@0.37.0/LICENSE",
+        "rust:cssparser-macros@0.7.1/LICENSE",
+        "rust:cssparser@0.37.0/LICENSE"
       ]
     },
     {
@@ -10461,10 +10415,7 @@ which covers the CareerOS Local project itself.
       "id": "fd80a26fbb3f644af1fa994134446702932968519797227e07a1368dea80f0bc",
       "sha256": "fd80a26fbb3f644af1fa994134446702932968519797227e07a1368dea80f0bc",
       "sources": [
-        "rust:ctor-proc-macro@0.0.7/LICENSE-MIT",
-        "rust:ctor@0.8.0/LICENSE-MIT",
-        "rust:dtor-proc-macro@0.0.6/LICENSE-MIT",
-        "rust:dtor@0.3.0/LICENSE-MIT",
+        "rust:ctor@1.0.13/LICENSE-MIT",
         "rust:tinyvec@1.12.0/LICENSE-MIT.md"
       ]
     },
@@ -10569,6 +10520,657 @@ PackageDownloadLocation: git+https://github.com/tauri-apps/tao.git
 PackageDownloadLocation: git+ssh://github.com/tauri-apps/tao.git
 Creator: Person: Daniel Thompson-Yvetot
 ----- END THIRD-PARTY TEXT 02b6448337b757772d90e5f31caaa0f9e6afaad2221c01771d0a3deaa4d4196c -----
+
+----- BEGIN THIRD-PARTY TEXT 0598064c7d2718e38d7914a7d08343b2fa008e3bea9ebba2aa7a6ffa5900dd64 -----
+================================
+ The PyInstaller licensing terms
+================================
+ 
+
+Copyright (c) 2010-2023, PyInstaller Development Team
+Copyright (c) 2005-2009, Giovanni Bajo
+Based on previous work under copyright (c) 2002 McMillan Enterprises, Inc.
+
+
+PyInstaller is licensed under the terms of the GNU General Public License
+as published by the Free Software Foundation; either version 2 of the License,
+or (at your option) any later version.
+
+
+Bootloader Exception
+--------------------
+
+In addition to the permissions in the GNU General Public License, the
+authors give you unlimited permission to link or embed compiled bootloader
+and related files into combinations with other programs, and to distribute
+those combinations without any restriction coming from the use of those
+files. (The General Public License restrictions do apply in other respects;
+for example, they cover modification of the files, and distribution when
+not linked into a combined executable.)
+ 
+ 
+Bootloader and Related Files
+----------------------------
+
+Bootloader and related files are files which are embedded within the
+final executable. This includes files in directories:
+
+./bootloader/
+./PyInstaller/loader
+
+
+Run-time Hooks
+----------------------------
+
+Run-time Hooks are a different kind of files embedded within the final
+executable. To ease moving them into a separate repository, or into the
+respective project, these files are now licensed under the Apache License,
+Version 2.0.
+
+Run-time Hooks are in the directory
+./PyInstaller/hooks/rthooks
+
+
+Additional Run-time Modules
+----------------------------------
+
+In addition to run-time hooks, PyInstaller may embed additional run-time
+modules in the final executable. At the time of writing, these include
+the splash-screen module (``pyi_splash``) and modules from utility package
+for run-time hooks (``_pyi_rth_utils``). All these files are licensed under
+the Apache License, Version 2.0, and are located in the following directory:
+
+./PyInstaller/fake-modules
+
+
+The PyInstaller.isolated submodule
+----------------------------------
+
+By request, the PyInstaller.isolated submodule and its corresponding tests are
+additionally licensed with the MIT license so that it may be reused outside of
+PyInstaller under GPL 2.0 or MIT terms and conditions -- whichever is the most
+suitable to the recipient downstream project. Affected files/directories are:
+
+./PyInstaller/isolated/
+./tests/unit/test_isolation.py
+
+
+About the PyInstaller Development Team
+--------------------------------------
+
+The PyInstaller Development Team is the set of contributors
+to the PyInstaller project. A full list with details is kept
+in the documentation directory, in the file
+``doc/CREDITS.rst``.
+
+The core team that coordinates development on GitHub can be found here:
+https://github.com/pyinstaller/pyinstaller.  As of 2021, it consists of:
+
+* Hartmut Goebel
+* Jasper Harrison
+* Bryan Jones
+* Brenainn Woodsend
+* Rok Mandeljc
+
+Our Copyright Policy
+--------------------
+
+PyInstaller uses a shared copyright model. Each contributor maintains copyright
+over their contributions to PyInstaller. But, it is important to note that these
+contributions are typically only changes to the repositories. Thus,
+the PyInstaller source code, in its entirety is not the copyright of any single
+person or institution.  Instead, it is the collective copyright of the entire
+PyInstaller Development Team.  If individual contributors want to maintain
+a record of what changes/contributions they have specific copyright on, they
+should indicate their copyright in the commit message of the change, when they
+commit the change to the PyInstaller repository.
+
+With this in mind, the following banner should be used in any source code file
+to indicate the copyright and license terms:
+
+
+#-----------------------------------------------------------------------------
+# Copyright (c) 2005-2023, PyInstaller Development Team.
+#
+# Distributed under the terms of the GNU General Public License (version 2
+# or later) with exception for distributing the bootloader.
+#
+# The full license is in the file COPYING.txt, distributed with this software.
+#
+# SPDX-License-Identifier: (GPL-2.0-or-later WITH Bootloader-exception)
+#-----------------------------------------------------------------------------
+
+
+For run-time hooks, the following banner should be used:
+
+#-----------------------------------------------------------------------------
+# Copyright (c) 2005-2023, PyInstaller Development Team.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+#
+# The full license is in the file COPYING.txt, distributed with this software.
+#
+# SPDX-License-Identifier: Apache-2.0
+#-----------------------------------------------------------------------------
+
+
+================================
+GNU General Public License
+================================
+
+https://gnu.org/licenses/gpl-2.0.html
+
+
+		    GNU GENERAL PUBLIC LICENSE
+		       Version 2, June 1991
+
+ Copyright (C) 1989, 1991 Free Software Foundation, Inc.
+ 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA
+ Everyone is permitted to copy and distribute verbatim copies
+ of this license document, but changing it is not allowed.
+
+			    Preamble
+
+  The licenses for most software are designed to take away your
+freedom to share and change it.  By contrast, the GNU General Public
+License is intended to guarantee your freedom to share and change free
+software--to make sure the software is free for all its users.  This
+General Public License applies to most of the Free Software
+Foundation's software and to any other program whose authors commit to
+using it.  (Some other Free Software Foundation software is covered by
+the GNU Library General Public License instead.)  You can apply it to
+your programs, too.
+
+  When we speak of free software, we are referring to freedom, not
+price.  Our General Public Licenses are designed to make sure that you
+have the freedom to distribute copies of free software (and charge for
+this service if you wish), that you receive source code or can get it
+if you want it, that you can change the software or use pieces of it
+in new free programs; and that you know you can do these things.
+
+  To protect your rights, we need to make restrictions that forbid
+anyone to deny you these rights or to ask you to surrender the rights.
+These restrictions translate to certain responsibilities for you if you
+distribute copies of the software, or if you modify it.
+
+  For example, if you distribute copies of such a program, whether
+gratis or for a fee, you must give the recipients all the rights that
+you have.  You must make sure that they, too, receive or can get the
+source code.  And you must show them these terms so they know their
+rights.
+
+  We protect your rights with two steps: (1) copyright the software, and
+(2) offer you this license which gives you legal permission to copy,
+distribute and/or modify the software.
+
+  Also, for each author's protection and ours, we want to make certain
+that everyone understands that there is no warranty for this free
+software.  If the software is modified by someone else and passed on, we
+want its recipients to know that what they have is not the original, so
+that any problems introduced by others will not reflect on the original
+authors' reputations.
+
+  Finally, any free program is threatened constantly by software
+patents.  We wish to avoid the danger that redistributors of a free
+program will individually obtain patent licenses, in effect making the
+program proprietary.  To prevent this, we have made it clear that any
+patent must be licensed for everyone's free use or not licensed at all.
+
+  The precise terms and conditions for copying, distribution and
+modification follow.
+
+		    GNU GENERAL PUBLIC LICENSE
+   TERMS AND CONDITIONS FOR COPYING, DISTRIBUTION AND MODIFICATION
+
+  0. This License applies to any program or other work which contains
+a notice placed by the copyright holder saying it may be distributed
+under the terms of this General Public License.  The "Program", below,
+refers to any such program or work, and a "work based on the Program"
+means either the Program or any derivative work under copyright law:
+that is to say, a work containing the Program or a portion of it,
+either verbatim or with modifications and/or translated into another
+language.  (Hereinafter, translation is included without limitation in
+the term "modification".)  Each licensee is addressed as "you".
+
+Activities other than copying, distribution and modification are not
+covered by this License; they are outside its scope.  The act of
+running the Program is not restricted, and the output from the Program
+is covered only if its contents constitute a work based on the
+Program (independent of having been made by running the Program).
+Whether that is true depends on what the Program does.
+
+  1. You may copy and distribute verbatim copies of the Program's
+source code as you receive it, in any medium, provided that you
+conspicuously and appropriately publish on each copy an appropriate
+copyright notice and disclaimer of warranty; keep intact all the
+notices that refer to this License and to the absence of any warranty;
+and give any other recipients of the Program a copy of this License
+along with the Program.
+
+You may charge a fee for the physical act of transferring a copy, and
+you may at your option offer warranty protection in exchange for a fee.
+
+  2. You may modify your copy or copies of the Program or any portion
+of it, thus forming a work based on the Program, and copy and
+distribute such modifications or work under the terms of Section 1
+above, provided that you also meet all of these conditions:
+
+    a) You must cause the modified files to carry prominent notices
+    stating that you changed the files and the date of any change.
+
+    b) You must cause any work that you distribute or publish, that in
+    whole or in part contains or is derived from the Program or any
+    part thereof, to be licensed as a whole at no charge to all third
+    parties under the terms of this License.
+
+    c) If the modified program normally reads commands interactively
+    when run, you must cause it, when started running for such
+    interactive use in the most ordinary way, to print or display an
+    announcement including an appropriate copyright notice and a
+    notice that there is no warranty (or else, saying that you provide
+    a warranty) and that users may redistribute the program under
+    these conditions, and telling the user how to view a copy of this
+    License.  (Exception: if the Program itself is interactive but
+    does not normally print such an announcement, your work based on
+    the Program is not required to print an announcement.)
+
+These requirements apply to the modified work as a whole.  If
+identifiable sections of that work are not derived from the Program,
+and can be reasonably considered independent and separate works in
+themselves, then this License, and its terms, do not apply to those
+sections when you distribute them as separate works.  But when you
+distribute the same sections as part of a whole which is a work based
+on the Program, the distribution of the whole must be on the terms of
+this License, whose permissions for other licensees extend to the
+entire whole, and thus to each and every part regardless of who wrote it.
+
+Thus, it is not the intent of this section to claim rights or contest
+your rights to work written entirely by you; rather, the intent is to
+exercise the right to control the distribution of derivative or
+collective works based on the Program.
+
+In addition, mere aggregation of another work not based on the Program
+with the Program (or with a work based on the Program) on a volume of
+a storage or distribution medium does not bring the other work under
+the scope of this License.
+
+  3. You may copy and distribute the Program (or a work based on it,
+under Section 2) in object code or executable form under the terms of
+Sections 1 and 2 above provided that you also do one of the following:
+
+    a) Accompany it with the complete corresponding machine-readable
+    source code, which must be distributed under the terms of Sections
+    1 and 2 above on a medium customarily used for software interchange; or,
+
+    b) Accompany it with a written offer, valid for at least three
+    years, to give any third party, for a charge no more than your
+    cost of physically performing source distribution, a complete
+    machine-readable copy of the corresponding source code, to be
+    distributed under the terms of Sections 1 and 2 above on a medium
+    customarily used for software interchange; or,
+
+    c) Accompany it with the information you received as to the offer
+    to distribute corresponding source code.  (This alternative is
+    allowed only for noncommercial distribution and only if you
+    received the program in object code or executable form with such
+    an offer, in accord with Subsection b above.)
+
+The source code for a work means the preferred form of the work for
+making modifications to it.  For an executable work, complete source
+code means all the source code for all modules it contains, plus any
+associated interface definition files, plus the scripts used to
+control compilation and installation of the executable.  However, as a
+special exception, the source code distributed need not include
+anything that is normally distributed (in either source or binary
+form) with the major components (compiler, kernel, and so on) of the
+operating system on which the executable runs, unless that component
+itself accompanies the executable.
+
+If distribution of executable or object code is made by offering
+access to copy from a designated place, then offering equivalent
+access to copy the source code from the same place counts as
+distribution of the source code, even though third parties are not
+compelled to copy the source along with the object code.
+
+  4. You may not copy, modify, sublicense, or distribute the Program
+except as expressly provided under this License.  Any attempt
+otherwise to copy, modify, sublicense or distribute the Program is
+void, and will automatically terminate your rights under this License.
+However, parties who have received copies, or rights, from you under
+this License will not have their licenses terminated so long as such
+parties remain in full compliance.
+
+  5. You are not required to accept this License, since you have not
+signed it.  However, nothing else grants you permission to modify or
+distribute the Program or its derivative works.  These actions are
+prohibited by law if you do not accept this License.  Therefore, by
+modifying or distributing the Program (or any work based on the
+Program), you indicate your acceptance of this License to do so, and
+all its terms and conditions for copying, distributing or modifying
+the Program or works based on it.
+
+  6. Each time you redistribute the Program (or any work based on the
+Program), the recipient automatically receives a license from the
+original licensor to copy, distribute or modify the Program subject to
+these terms and conditions.  You may not impose any further
+restrictions on the recipients' exercise of the rights granted herein.
+You are not responsible for enforcing compliance by third parties to
+this License.
+
+  7. If, as a consequence of a court judgment or allegation of patent
+infringement or for any other reason (not limited to patent issues),
+conditions are imposed on you (whether by court order, agreement or
+otherwise) that contradict the conditions of this License, they do not
+excuse you from the conditions of this License.  If you cannot
+distribute so as to satisfy simultaneously your obligations under this
+License and any other pertinent obligations, then as a consequence you
+may not distribute the Program at all.  For example, if a patent
+license would not permit royalty-free redistribution of the Program by
+all those who receive copies directly or indirectly through you, then
+the only way you could satisfy both it and this License would be to
+refrain entirely from distribution of the Program.
+
+If any portion of this section is held invalid or unenforceable under
+any particular circumstance, the balance of the section is intended to
+apply and the section as a whole is intended to apply in other
+circumstances.
+
+It is not the purpose of this section to induce you to infringe any
+patents or other property right claims or to contest validity of any
+such claims; this section has the sole purpose of protecting the
+integrity of the free software distribution system, which is
+implemented by public license practices.  Many people have made
+generous contributions to the wide range of software distributed
+through that system in reliance on consistent application of that
+system; it is up to the author/donor to decide if he or she is willing
+to distribute software through any other system and a licensee cannot
+impose that choice.
+
+This section is intended to make thoroughly clear what is believed to
+be a consequence of the rest of this License.
+
+  8. If the distribution and/or use of the Program is restricted in
+certain countries either by patents or by copyrighted interfaces, the
+original copyright holder who places the Program under this License
+may add an explicit geographical distribution limitation excluding
+those countries, so that distribution is permitted only in or among
+countries not thus excluded.  In such case, this License incorporates
+the limitation as if written in the body of this License.
+
+  9. The Free Software Foundation may publish revised and/or new versions
+of the General Public License from time to time.  Such new versions will
+be similar in spirit to the present version, but may differ in detail to
+address new problems or concerns.
+
+Each version is given a distinguishing version number.  If the Program
+specifies a version number of this License which applies to it and "any
+later version", you have the option of following the terms and conditions
+either of that version or of any later version published by the Free
+Software Foundation.  If the Program does not specify a version number of
+this License, you may choose any version ever published by the Free Software
+Foundation.
+
+  10. If you wish to incorporate parts of the Program into other free
+programs whose distribution conditions are different, write to the author
+to ask for permission.  For software which is copyrighted by the Free
+Software Foundation, write to the Free Software Foundation; we sometimes
+make exceptions for this.  Our decision will be guided by the two goals
+of preserving the free status of all derivatives of our free software and
+of promoting the sharing and reuse of software generally.
+
+			    NO WARRANTY
+
+  11. BECAUSE THE PROGRAM IS LICENSED FREE OF CHARGE, THERE IS NO WARRANTY
+FOR THE PROGRAM, TO THE EXTENT PERMITTED BY APPLICABLE LAW.  EXCEPT WHEN
+OTHERWISE STATED IN WRITING THE COPYRIGHT HOLDERS AND/OR OTHER PARTIES
+PROVIDE THE PROGRAM "AS IS" WITHOUT WARRANTY OF ANY KIND, EITHER EXPRESSED
+OR IMPLIED, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
+MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  THE ENTIRE RISK AS
+TO THE QUALITY AND PERFORMANCE OF THE PROGRAM IS WITH YOU.  SHOULD THE
+PROGRAM PROVE DEFECTIVE, YOU ASSUME THE COST OF ALL NECESSARY SERVICING,
+REPAIR OR CORRECTION.
+
+  12. IN NO EVENT UNLESS REQUIRED BY APPLICABLE LAW OR AGREED TO IN WRITING
+WILL ANY COPYRIGHT HOLDER, OR ANY OTHER PARTY WHO MAY MODIFY AND/OR
+REDISTRIBUTE THE PROGRAM AS PERMITTED ABOVE, BE LIABLE TO YOU FOR DAMAGES,
+INCLUDING ANY GENERAL, SPECIAL, INCIDENTAL OR CONSEQUENTIAL DAMAGES ARISING
+OUT OF THE USE OR INABILITY TO USE THE PROGRAM (INCLUDING BUT NOT LIMITED
+TO LOSS OF DATA OR DATA BEING RENDERED INACCURATE OR LOSSES SUSTAINED BY
+YOU OR THIRD PARTIES OR A FAILURE OF THE PROGRAM TO OPERATE WITH ANY OTHER
+PROGRAMS), EVEN IF SUCH HOLDER OR OTHER PARTY HAS BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.
+
+		     END OF TERMS AND CONDITIONS
+
+================================
+Apache License 2.0
+================================
+
+                                 Apache License
+                           Version 2.0, January 2004
+                        http://www.apache.org/licenses/
+
+   TERMS AND CONDITIONS FOR USE, REPRODUCTION, AND DISTRIBUTION
+
+   1. Definitions.
+
+      "License" shall mean the terms and conditions for use, reproduction,
+      and distribution as defined by Sections 1 through 9 of this document.
+
+      "Licensor" shall mean the copyright owner or entity authorized by
+      the copyright owner that is granting the License.
+
+      "Legal Entity" shall mean the union of the acting entity and all
+      other entities that control, are controlled by, or are under common
+      control with that entity. For the purposes of this definition,
+      "control" means (i) the power, direct or indirect, to cause the
+      direction or management of such entity, whether by contract or
+      otherwise, or (ii) ownership of fifty percent (50%) or more of the
+      outstanding shares, or (iii) beneficial ownership of such entity.
+
+      "You" (or "Your") shall mean an individual or Legal Entity
+      exercising permissions granted by this License.
+
+      "Source" form shall mean the preferred form for making modifications,
+      including but not limited to software source code, documentation
+      source, and configuration files.
+
+      "Object" form shall mean any form resulting from mechanical
+      transformation or translation of a Source form, including but
+      not limited to compiled object code, generated documentation,
+      and conversions to other media types.
+
+      "Work" shall mean the work of authorship, whether in Source or
+      Object form, made available under the License, as indicated by a
+      copyright notice that is included in or attached to the work
+      (an example is provided in the Appendix below).
+
+      "Derivative Works" shall mean any work, whether in Source or Object
+      form, that is based on (or derived from) the Work and for which the
+      editorial revisions, annotations, elaborations, or other modifications
+      represent, as a whole, an original work of authorship. For the purposes
+      of this License, Derivative Works shall not include works that remain
+      separable from, or merely link (or bind by name) to the interfaces of,
+      the Work and Derivative Works thereof.
+
+      "Contribution" shall mean any work of authorship, including
+      the original version of the Work and any modifications or additions
+      to that Work or Derivative Works thereof, that is intentionally
+      submitted to Licensor for inclusion in the Work by the copyright owner
+      or by an individual or Legal Entity authorized to submit on behalf of
+      the copyright owner. For the purposes of this definition, "submitted"
+      means any form of electronic, verbal, or written communication sent
+      to the Licensor or its representatives, including but not limited to
+      communication on electronic mailing lists, source code control systems,
+      and issue tracking systems that are managed by, or on behalf of, the
+      Licensor for the purpose of discussing and improving the Work, but
+      excluding communication that is conspicuously marked or otherwise
+      designated in writing by the copyright owner as "Not a Contribution."
+
+      "Contributor" shall mean Licensor and any individual or Legal Entity
+      on behalf of whom a Contribution has been received by Licensor and
+      subsequently incorporated within the Work.
+
+   2. Grant of Copyright License. Subject to the terms and conditions of
+      this License, each Contributor hereby grants to You a perpetual,
+      worldwide, non-exclusive, no-charge, royalty-free, irrevocable
+      copyright license to reproduce, prepare Derivative Works of,
+      publicly display, publicly perform, sublicense, and distribute the
+      Work and such Derivative Works in Source or Object form.
+
+   3. Grant of Patent License. Subject to the terms and conditions of
+      this License, each Contributor hereby grants to You a perpetual,
+      worldwide, non-exclusive, no-charge, royalty-free, irrevocable
+      (except as stated in this section) patent license to make, have made,
+      use, offer to sell, sell, import, and otherwise transfer the Work,
+      where such license applies only to those patent claims licensable
+      by such Contributor that are necessarily infringed by their
+      Contribution(s) alone or by combination of their Contribution(s)
+      with the Work to which such Contribution(s) was submitted. If You
+      institute patent litigation against any entity (including a
+      cross-claim or counterclaim in a lawsuit) alleging that the Work
+      or a Contribution incorporated within the Work constitutes direct
+      or contributory patent infringement, then any patent licenses
+      granted to You under this License for that Work shall terminate
+      as of the date such litigation is filed.
+
+   4. Redistribution. You may reproduce and distribute copies of the
+      Work or Derivative Works thereof in any medium, with or without
+      modifications, and in Source or Object form, provided that You
+      meet the following conditions:
+
+      (a) You must give any other recipients of the Work or
+          Derivative Works a copy of this License; and
+
+      (b) You must cause any modified files to carry prominent notices
+          stating that You changed the files; and
+
+      (c) You must retain, in the Source form of any Derivative Works
+          that You distribute, all copyright, patent, trademark, and
+          attribution notices from the Source form of the Work,
+          excluding those notices that do not pertain to any part of
+          the Derivative Works; and
+
+      (d) If the Work includes a "NOTICE" text file as part of its
+          distribution, then any Derivative Works that You distribute must
+          include a readable copy of the attribution notices contained
+          within such NOTICE file, excluding those notices that do not
+          pertain to any part of the Derivative Works, in at least one
+          of the following places: within a NOTICE text file distributed
+          as part of the Derivative Works; within the Source form or
+          documentation, if provided along with the Derivative Works; or,
+          within a display generated by the Derivative Works, if and
+          wherever such third-party notices normally appear. The contents
+          of the NOTICE file are for informational purposes only and
+          do not modify the License. You may add Your own attribution
+          notices within Derivative Works that You distribute, alongside
+          or as an addendum to the NOTICE text from the Work, provided
+          that such additional attribution notices cannot be construed
+          as modifying the License.
+
+      You may add Your own copyright statement to Your modifications and
+      may provide additional or different license terms and conditions
+      for use, reproduction, or distribution of Your modifications, or
+      for any such Derivative Works as a whole, provided Your use,
+      reproduction, and distribution of the Work otherwise complies with
+      the conditions stated in this License.
+
+   5. Submission of Contributions. Unless You explicitly state otherwise,
+      any Contribution intentionally submitted for inclusion in the Work
+      by You to the Licensor shall be under the terms and conditions of
+      this License, without any additional terms or conditions.
+      Notwithstanding the above, nothing herein shall supersede or modify
+      the terms of any separate license agreement you may have executed
+      with Licensor regarding such Contributions.
+
+   6. Trademarks. This License does not grant permission to use the trade
+      names, trademarks, service marks, or product names of the Licensor,
+      except as required for reasonable and customary use in describing the
+      origin of the Work and reproducing the content of the NOTICE file.
+
+   7. Disclaimer of Warranty. Unless required by applicable law or
+      agreed to in writing, Licensor provides the Work (and each
+      Contributor provides its Contributions) on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or
+      implied, including, without limitation, any warranties or conditions
+      of TITLE, NON-INFRINGEMENT, MERCHANTABILITY, or FITNESS FOR A
+      PARTICULAR PURPOSE. You are solely responsible for determining the
+      appropriateness of using or redistributing the Work and assume any
+      risks associated with Your exercise of permissions under this License.
+
+   8. Limitation of Liability. In no event and under no legal theory,
+      whether in tort (including negligence), contract, or otherwise,
+      unless required by applicable law (such as deliberate and grossly
+      negligent acts) or agreed to in writing, shall any Contributor be
+      liable to You for damages, including any direct, indirect, special,
+      incidental, or consequential damages of any character arising as a
+      result of this License or out of the use or inability to use the
+      Work (including but not limited to damages for loss of goodwill,
+      work stoppage, computer failure or malfunction, or any and all
+      other commercial damages or losses), even if such Contributor
+      has been advised of the possibility of such damages.
+
+   9. Accepting Warranty or Additional Liability. While redistributing
+      the Work or Derivative Works thereof, You may choose to offer,
+      and charge a fee for, acceptance of support, warranty, indemnity,
+      or other liability obligations and/or rights consistent with this
+      License. However, in accepting such obligations, You may act only
+      on Your own behalf and on Your sole responsibility, not on behalf
+      of any other Contributor, and only if You agree to indemnify,
+      defend, and hold each Contributor harmless for any liability
+      incurred by, or claims asserted against, such Contributor by reason
+      of your accepting any such warranty or additional liability.
+
+   END OF TERMS AND CONDITIONS
+
+   APPENDIX: How to apply the Apache License to your work.
+
+      To apply the Apache License to your work, attach the following
+      boilerplate notice, with the fields enclosed by brackets "[]"
+      replaced with your own identifying information. (Don't include
+      the brackets!)  The text should be enclosed in the appropriate
+      comment syntax for the file format. We also recommend that a
+      file or class name and description of purpose be included on the
+      same "printed page" as the copyright notice for easier
+      identification within third-party archives.
+
+   Copyright [yyyy] [name of copyright owner]
+
+   Licensed under the Apache License, Version 2.0 (the "License");
+   you may not use this file except in compliance with the License.
+   You may obtain a copy of the License at
+
+       http://www.apache.org/licenses/LICENSE-2.0
+
+   Unless required by applicable law or agreed to in writing, software
+   distributed under the License is distributed on an "AS IS" BASIS,
+   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+   See the License for the specific language governing permissions and
+   limitations under the License.
+
+===========
+MIT License
+===========
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+----- END THIRD-PARTY TEXT 0598064c7d2718e38d7914a7d08343b2fa008e3bea9ebba2aa7a6ffa5900dd64 -----
 
 ----- BEGIN THIRD-PARTY TEXT 05f4c1c1e53c325ea27f4f2efeca0634575f8359c1f483205fb270f380cf5e4e -----
 Apache License
@@ -15672,6 +16274,210 @@ The above copyright notice and this permission notice shall be included in all c
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ----- END THIRD-PARTY TEXT 47dc9ff29128ddfb4d6a0435383c9f89120bc374dbcc1dd00b933a0b28aa7865 -----
 
+----- BEGIN THIRD-PARTY TEXT 485215d5d9408bdaed32850aac9e7e3f7b2cca1af0c6a7d8c39c9a5bb83a7af1 -----
+Apache License
+                           Version 2.0, January 2004
+                        http://www.apache.org/licenses/
+
+   TERMS AND CONDITIONS FOR USE, REPRODUCTION, AND DISTRIBUTION
+
+   1. Definitions.
+
+      "License" shall mean the terms and conditions for use, reproduction,
+      and distribution as defined by Sections 1 through 9 of this document.
+
+      "Licensor" shall mean the copyright owner or entity authorized by
+      the copyright owner that is granting the License.
+
+      "Legal Entity" shall mean the union of the acting entity and all
+      other entities that control, are controlled by, or are under common
+      control with that entity. For the purposes of this definition,
+      "control" means (i) the power, direct or indirect, to cause the
+      direction or management of such entity, whether by contract or
+      otherwise, or (ii) ownership of fifty percent (50%) or more of the
+      outstanding shares, or (iii) beneficial ownership of such entity.
+
+      "You" (or "Your") shall mean an individual or Legal Entity
+      exercising permissions granted by this License.
+
+      "Source" form shall mean the preferred form for making modifications,
+      including but not limited to software source code, documentation
+      source, and configuration files.
+
+      "Object" form shall mean any form resulting from mechanical
+      transformation or translation of a Source form, including but
+      not limited to compiled object code, generated documentation,
+      and conversions to other media types.
+
+      "Work" shall mean the work of authorship, whether in Source or
+      Object form, made available under the License, as indicated by a
+      copyright notice that is included in or attached to the work
+      (an example is provided in the Appendix below).
+
+      "Derivative Works" shall mean any work, whether in Source or Object
+      form, that is based on (or derived from) the Work and for which the
+      editorial revisions, annotations, elaborations, or other modifications
+      represent, as a whole, an original work of authorship. For the purposes
+      of this License, Derivative Works shall not include works that remain
+      separable from, or merely link (or bind by name) to the interfaces of,
+      the Work and Derivative Works thereof.
+
+      "Contribution" shall mean any work of authorship, including
+      the original version of the Work and any modifications or additions
+      to that Work or Derivative Works thereof, that is intentionally
+      submitted to Licensor for inclusion in the Work by the copyright owner
+      or by an individual or Legal Entity authorized to submit on behalf of
+      the copyright owner. For the purposes of this definition, "submitted"
+      means any form of electronic, verbal, or written communication sent
+      to the Licensor or its representatives, including but not limited to
+      communication on electronic mailing lists, source code control systems,
+      and issue tracking systems that are managed by, or on behalf of, the
+      Licensor for the purpose of discussing and improving the Work, but
+      excluding communication that is conspicuously marked or otherwise
+      designated in writing by the copyright owner as "Not a Contribution."
+
+      "Contributor" shall mean Licensor and any individual or Legal Entity
+      on behalf of whom a Contribution has been received by Licensor and
+      subsequently incorporated within the Work.
+
+   2. Grant of Copyright License. Subject to the terms and conditions of
+      this License, each Contributor hereby grants to You a perpetual,
+      worldwide, non-exclusive, no-charge, royalty-free, irrevocable
+      copyright license to reproduce, prepare Derivative Works of,
+      publicly display, publicly perform, sublicense, and distribute the
+      Work and such Derivative Works in Source or Object form.
+
+   3. Grant of Patent License. Subject to the terms and conditions of
+      this License, each Contributor hereby grants to You a perpetual,
+      worldwide, non-exclusive, no-charge, royalty-free, irrevocable
+      (except as stated in this section) patent license to make, have made,
+      use, offer to sell, sell, import, and otherwise transfer the Work,
+      where such license applies only to those patent claims licensable
+      by such Contributor that are necessarily infringed by their
+      Contribution(s) alone or by combination of their Contribution(s)
+      with the Work to which such Contribution(s) was submitted. If You
+      institute patent litigation against any entity (including a
+      cross-claim or counterclaim in a lawsuit) alleging that the Work
+      or a Contribution incorporated within the Work constitutes direct
+      or contributory patent infringement, then any patent licenses
+      granted to You under this License for that Work shall terminate
+      as of the date such litigation is filed.
+
+   4. Redistribution. You may reproduce and distribute copies of the
+      Work or Derivative Works thereof in any medium, with or without
+      modifications, and in Source or Object form, provided that You
+      meet the following conditions:
+
+      (a) You must give any other recipients of the Work or
+          Derivative Works a copy of this License; and
+
+      (b) You must cause any modified files to carry prominent notices
+          stating that You changed the files; and
+
+      (c) You must retain, in the Source form of any Derivative Works
+          that You distribute, all copyright, patent, trademark, and
+          attribution notices from the Source form of the Work,
+          excluding those notices that do not pertain to any part of
+          the Derivative Works; and
+
+      (d) If the Work includes a "NOTICE" text file as part of its
+          distribution, then any Derivative Works that You distribute must
+          include a readable copy of the attribution notices contained
+          within such NOTICE file, excluding those notices that do not
+          pertain to any part of the Derivative Works, in at least one
+          of the following places: within a NOTICE text file distributed
+          as part of the Derivative Works; within the Source form or
+          documentation, if provided along with the Derivative Works; or,
+          within a display generated by the Derivative Works, if and
+          wherever such third-party notices normally appear. The contents
+          of the NOTICE file are for informational purposes only and
+          do not modify the License. You may add Your own attribution
+          notices within Derivative Works that You distribute, alongside
+          or as an addendum to the NOTICE text from the Work, provided
+          that such additional attribution notices cannot be construed
+          as modifying the License.
+
+      You may add Your own copyright statement to Your modifications and
+      may provide additional or different license terms and conditions
+      for use, reproduction, or distribution of Your modifications, or
+      for any such Derivative Works as a whole, provided Your use,
+      reproduction, and distribution of the Work otherwise complies with
+      the conditions stated in this License.
+
+   5. Submission of Contributions. Unless You explicitly state otherwise,
+      any Contribution intentionally submitted for inclusion in the Work
+      by You to the Licensor shall be under the terms and conditions of
+      this License, without any additional terms or conditions.
+      Notwithstanding the above, nothing herein shall supersede or modify
+      the terms of any separate license agreement you may have executed
+      with Licensor regarding such Contributions.
+
+   6. Trademarks. This License does not grant permission to use the trade
+      names, trademarks, service marks, or product names of the Licensor,
+      except as required for reasonable and customary use in describing the
+      origin of the Work and reproducing the content of the NOTICE file.
+
+   7. Disclaimer of Warranty. Unless required by applicable law or
+      agreed to in writing, Licensor provides the Work (and each
+      Contributor provides its Contributions) on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or
+      implied, including, without limitation, any warranties or conditions
+      of TITLE, NON-INFRINGEMENT, MERCHANTABILITY, or FITNESS FOR A
+      PARTICULAR PURPOSE. You are solely responsible for determining the
+      appropriateness of using or redistributing the Work and assume any
+      risks associated with Your exercise of permissions under this License.
+
+   8. Limitation of Liability. In no event and under no legal theory,
+      whether in tort (including negligence), contract, or otherwise,
+      unless required by applicable law (such as deliberate and grossly
+      negligent acts) or agreed to in writing, shall any Contributor be
+      liable to You for damages, including any direct, indirect, special,
+      incidental, or consequential damages of any character arising as a
+      result of this License or out of the use or inability to use the
+      Work (including but not limited to damages for loss of goodwill,
+      work stoppage, computer failure or malfunction, or any and all
+      other commercial damages or losses), even if such Contributor
+      has been advised of the possibility of such damages.
+
+   9. Accepting Warranty or Additional Liability. While redistributing
+      the Work or Derivative Works thereof, You may choose to offer,
+      and charge a fee for, acceptance of support, warranty, indemnity,
+      or other liability obligations and/or rights consistent with this
+      License. However, in accepting such obligations, You may act only
+      on Your own behalf and on Your sole responsibility, not on behalf
+      of any other Contributor, and only if You agree to indemnify,
+      defend, and hold each Contributor harmless for any liability
+      incurred by, or claims asserted against, such Contributor by reason
+      of your accepting any such warranty or additional liability.
+
+   END OF TERMS AND CONDITIONS
+
+   APPENDIX: How to apply the Apache License to your work.
+
+      To apply the Apache License to your work, attach the following
+      boilerplate notice, with the fields enclosed by brackets "[]"
+      replaced with your own identifying information. (Don't include
+      the brackets!)  The text should be enclosed in the appropriate
+      comment syntax for the file format. We also recommend that a
+      file or class name and description of purpose be included on the
+      same "printed page" as the copyright notice for easier
+      identification within third-party archives.
+
+   Copyright 2023 dAxpeDDa
+
+   Licensed under the Apache License, Version 2.0 (the "License");
+   you may not use this file except in compliance with the License.
+   You may obtain a copy of the License at
+
+       http://www.apache.org/licenses/LICENSE-2.0
+
+   Unless required by applicable law or agreed to in writing, software
+   distributed under the License is distributed on an "AS IS" BASIS,
+   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+   See the License for the specific language governing permissions and
+   limitations under the License.
+----- END THIRD-PARTY TEXT 485215d5d9408bdaed32850aac9e7e3f7b2cca1af0c6a7d8c39c9a5bb83a7af1 -----
+
 ----- BEGIN THIRD-PARTY TEXT 489a8e1108509ed98a37bb983e11e0f7e1d31f0bd8f99a79c8448e7ff37d07ea -----
 Copyright 2010 Pallets
 
@@ -15730,6 +16536,21 @@ OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR
 IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ----- END THIRD-PARTY TEXT 4cada0bd02ea3692eee6f16400d86c6508bbd3bafb2b65fed0419f36d4f83e8f -----
+
+----- BEGIN THIRD-PARTY TEXT 4ec59d544f12b5f539a3a716fd321ac58ccd8030b465221f2c880200cdf28d8d -----
+Copyright © 2019, [Encode OSS Ltd](https://www.encode.io/).
+All rights reserved.
+
+Redistribution and use in source and binary forms, with or without modification, are permitted provided that the following conditions are met:
+
+* Redistributions of source code must retain the above copyright notice, this list of conditions and the following disclaimer.
+
+* Redistributions in binary form must reproduce the above copyright notice, this list of conditions and the following disclaimer in the documentation and/or other materials provided with the distribution.
+
+* Neither the name of the copyright holder nor the names of its contributors may be used to endorse or promote products derived from this software without specific prior written permission.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+----- END THIRD-PARTY TEXT 4ec59d544f12b5f539a3a716fd321ac58ccd8030b465221f2c880200cdf28d8d -----
 
 ----- BEGIN THIRD-PARTY TEXT 4ec89ffc81485b97fec584b2d4a961032eeffe834453894fd9c1274906cc744e -----
 The MIT License (MIT)
@@ -18502,6 +19323,29 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ----- END THIRD-PARTY TEXT 5e13dbbc1d120fc2a03cecde7c91424ae2d7de11b63d58ded2f4431e261ee50d -----
 
+----- BEGIN THIRD-PARTY TEXT 5e834fe9788c524210deda859c46a550ffa5aa0cba9ea0572f0d81120e97c008 -----
+SPDXVersion: SPDX-2.1
+DataLicense: CC0-1.0
+PackageName: tauri
+DataFormat: SPDXRef-1
+PackageSupplier: Organization: The Tauri Programme in the Commons Conservancy
+PackageHomePage: https://tauri.app
+PackageLicenseDeclared: Apache-2.0
+PackageLicenseDeclared: MIT
+PackageCopyrightText: 2019-2025, The Tauri Programme in the Commons Conservancy
+PackageSummary: <text>Tauri is a rust project that enables developers to make secure
+and small desktop applications using a web frontend.
+                </text>
+PackageComment: <text>The package includes the following libraries; see
+Relationship information.
+                </text>
+Created: 2019-05-20T09:00:00Z
+PackageDownloadLocation: git://github.com/tauri-apps/tauri
+PackageDownloadLocation: git+https://github.com/tauri-apps/tauri.git
+PackageDownloadLocation: git+ssh://github.com/tauri-apps/tauri.git
+Creator: Person: Daniel Thompson-Yvetot
+----- END THIRD-PARTY TEXT 5e834fe9788c524210deda859c46a550ffa5aa0cba9ea0572f0d81120e97c008 -----
+
 ----- BEGIN THIRD-PARTY TEXT 602c4c7482de6479dd2e9793cda275e5e63d773dacd1eca689232ab7008fb4fb -----
 Copyright (c) Individual contributors.
 All rights reserved.
@@ -20757,6 +21601,18 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ----- END THIRD-PARTY TEXT 7377e48a67377f0baa9ccee6425e125eb7b96d5b8e706f4c99479ca4ffa21b77 -----
 
+----- BEGIN THIRD-PARTY TEXT 748c208045a6f00734dbc85a1c0e401c9a25e1f83fc756e99916750dbd2469a7 -----
+MIT License
+
+Copyright (c) 2021 Chris Denton.
+
+Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice (including the next paragraph) shall be included in all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+----- END THIRD-PARTY TEXT 748c208045a6f00734dbc85a1c0e401c9a25e1f83fc756e99916750dbd2469a7 -----
+
 ----- BEGIN THIRD-PARTY TEXT 74f180f4d19f51aede780e1884b37d02c19cbbad872f8ca3b6450288db66e5cd -----
 Copyright 2022 Kirill Chibisov
 
@@ -21382,6 +22238,30 @@ LOSS OF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR
 OTHER TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR
 PERFORMANCE OF THIS SOFTWARE.
 ----- END THIRD-PARTY TEXT 78b12c3a81360b357002334f0e70ea0e92eebf7a9b358805c03c48484945f3bb -----
+
+----- BEGIN THIRD-PARTY TEXT 797a7a20231d4c433e9f1911db1731d06b5828b98f499819a034f7c0f56f5ce5 -----
+The MIT License (MIT)
+
+Copyright (c) 2015-2022 José Padilla
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+----- END THIRD-PARTY TEXT 797a7a20231d4c433e9f1911db1731d06b5828b98f499819a034f7c0f56f5ce5 -----
 
 ----- BEGIN THIRD-PARTY TEXT 799e9ca9d179295ef372f25d3769cdda7d25bb2668add6a6a1e22d1e4c678b8d -----
 MIT License
@@ -22857,6 +23737,28 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ----- END THIRD-PARTY TEXT 8f71659370c5268d9a1dc962a46232540e8fca63462586d8efaa95aab492a208 -----
 
+----- BEGIN THIRD-PARTY TEXT 8f96817f33d08e1248cec9eb99fa8407c246d0c5a27f971aa4feada07634a3b4 -----
+SPDXVersion: SPDX-2.1
+DataLicense: CC0-1.0
+PackageName: tao-macros
+DataFormat: SPDXRef-1
+PackageSupplier: Organization: The Tauri Programme in the Commons Conservancy
+PackageHomePage: https://tauri.app
+PackageLicenseDeclared: Apache-2.0
+PackageLicenseDeclared: MIT
+PackageCopyrightText: 2020-2023, The Tauri Programme in the Commons Conservancy
+PackageSummary: <text>tao-macros is part of Tao, the official, rust-based window manager for Wry.
+                </text>
+PackageComment: <text>The package includes the following libraries; see
+Relationship information.
+                </text>
+Created: 2020-05-20T09:00:00Z
+PackageDownloadLocation: git://github.com/tauri-apps/tao
+PackageDownloadLocation: git+https://github.com/tauri-apps/tao.git
+PackageDownloadLocation: git+ssh://github.com/tauri-apps/tao.git
+Creator: Person: Daniel Thompson-Yvetot
+----- END THIRD-PARTY TEXT 8f96817f33d08e1248cec9eb99fa8407c246d0c5a27f971aa4feada07634a3b4 -----
+
 ----- BEGIN THIRD-PARTY TEXT 8fc2b568133516e46845d2147917adeee1648e70ae9ab5ed6c5417afef4ce855 -----
 BSD 3-Clause License
 
@@ -24099,6 +25001,30 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ----- END THIRD-PARTY TEXT a9e186f3ca16b5eef84318e7a701721351a00cb7b8ae3a4394b67b49e3529ef3 -----
+
+----- BEGIN THIRD-PARTY TEXT ab499c75a0f0da8e0fe83bf9ba3a27e5c39705310f07107c6c66b69958d2401c -----
+The MIT License (MIT)
+
+Copyright (c) 2025 Alice Maz, Marshall Pierce
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+THE SOFTWARE.
+----- END THIRD-PARTY TEXT ab499c75a0f0da8e0fe83bf9ba3a27e5c39705310f07107c6c66b69958d2401c -----
 
 ----- BEGIN THIRD-PARTY TEXT adb48f9ee5be072e48dea05c2a289da330aae14467f7474c4a1f00a81cf8d5ef -----
 Apache License
@@ -25746,6 +26672,10 @@ IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ----- END THIRD-PARTY TEXT b7e650f3fce5c53249d1cdc608b54df156a97edd636cf9d23498d0cfe7aec63e -----
 
+----- BEGIN THIRD-PARTY TEXT b9290e9d37bc53272ff4f3fb392c1762169fc0a8b797d164803049c81eacb48c -----
+MIT OR Apache-2.0 OR Zlib
+----- END THIRD-PARTY TEXT b9290e9d37bc53272ff4f3fb392c1762169fc0a8b797d164803049c81eacb48c -----
+
 ----- BEGIN THIRD-PARTY TEXT bb28c48e3e078166e91cfc2b6db7ffebb8a0973b9e23b3df060561292d8d69ec -----
 Apache License
                            Version 2.0, January 2004
@@ -26215,6 +27145,20 @@ Redistribution and use in source and binary forms, with or without modification,
 THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ----- END THIRD-PARTY TEXT c0c56f26d9c051cac4d200c34c84e7ae9aaa853e01a982a1df08b09931e518ae -----
 
+----- BEGIN THIRD-PARTY TEXT c1ff532091cac33bdecedf7268ff4f9bc3ddcffba494249fb723033e9e782f1a -----
+Copyright (c) 2021 Chris Denton.
+
+This software is provided 'as-is', without any express or implied warranty. In no event will the authors be held liable for any damages arising from the use of this software.
+
+Permission is granted to anyone to use this software for any purpose, including commercial applications, and to alter it and redistribute it freely, subject to the following restrictions:
+
+1. The origin of this software must not be misrepresented; you must not claim that you wrote the original software. If you use this software in a product, an acknowledgment in the product documentation would be appreciated but is not required.
+
+2. Altered source versions must be plainly marked as such, and must not be misrepresented as being the original software.
+
+3. This notice may not be removed or altered from any source distribution.
+----- END THIRD-PARTY TEXT c1ff532091cac33bdecedf7268ff4f9bc3ddcffba494249fb723033e9e782f1a -----
+
 ----- BEGIN THIRD-PARTY TEXT c30152c94a6d75e021adbc52b3a52470366a46edb917e17deae3259251af244c -----
 Copyright Mozilla Foundation
 
@@ -26325,6 +27269,30 @@ OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR
 IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ----- END THIRD-PARTY TEXT c9a75f18b9ab2927829a208fc6aa2cf4e63b8420887ba29cdb265d6619ae82d5 -----
+
+----- BEGIN THIRD-PARTY TEXT ca52f53b2ee0b6a96d77d8ae0cb1b4624080dd0274c97f1cece24efaf4e145f2 -----
+MIT License
+
+Copyright (c) 2022 - Present Tauri Apps Contributors
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+----- END THIRD-PARTY TEXT ca52f53b2ee0b6a96d77d8ae0cb1b4624080dd0274c97f1cece24efaf4e145f2 -----
 
 ----- BEGIN THIRD-PARTY TEXT cac35c02686e5d04a5a7140bfb3b36e73aed496656e891102e428886d7930318 -----
 Copyright (c) 2010 Jonathan Hartley
@@ -26920,6 +27888,30 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ----- END THIRD-PARTY TEXT d5c22aa3118d240e877ad41c5d9fa232f9c77d757d4aac0c2f943afc0a95e0ef -----
 
+----- BEGIN THIRD-PARTY TEXT d6baf87f30d13d2d7770c18c858e7a31fa7ceede4bc9469a50f03dbafe455cb4 -----
+MIT License
+
+Copyright (c) 2025 Shopify Inc.
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+----- END THIRD-PARTY TEXT d6baf87f30d13d2d7770c18c858e7a31fa7ceede4bc9469a50f03dbafe455cb4 -----
+
 ----- BEGIN THIRD-PARTY TEXT d99ab209aeb16aad2c25c90ffd83c1a981e290ffff76a420a2ab03e03f041b8c -----
 Copyright 2011-2017 Lennart Regebro
 
@@ -27123,645 +28115,6 @@ CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
 OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ----- END THIRD-PARTY TEXT dcb95677a02240243187e964f941847d19b17821cf99e5afae684fab328c19bf -----
-
------ BEGIN THIRD-PARTY TEXT dcf75fdb959db1e3b41c0f8505069d2ece781b5ec6b3d0a4d30975cfc6580245 -----
-================================
- The PyInstaller licensing terms
-================================
- 
-
-Copyright (c) 2010-2023, PyInstaller Development Team
-Copyright (c) 2005-2009, Giovanni Bajo
-Based on previous work under copyright (c) 2002 McMillan Enterprises, Inc.
-
-
-PyInstaller is licensed under the terms of the GNU General Public License
-as published by the Free Software Foundation; either version 2 of the License,
-or (at your option) any later version.
-
-
-Bootloader Exception
---------------------
-
-In addition to the permissions in the GNU General Public License, the
-authors give you unlimited permission to link or embed compiled bootloader
-and related files into combinations with other programs, and to distribute
-those combinations without any restriction coming from the use of those
-files. (The General Public License restrictions do apply in other respects;
-for example, they cover modification of the files, and distribution when
-not linked into a combined executable.)
- 
- 
-Bootloader and Related Files
-----------------------------
-
-Bootloader and related files are files which are embedded within the
-final executable. This includes files in directories:
-
-./bootloader/
-./PyInstaller/loader
-
-
-Run-time Hooks
-----------------------------
-
-Run-time Hooks are a different kind of files embedded within the final
-executable. To ease moving them into a separate repository, or into the
-respective project, these files are now licensed under the Apache License,
-Version 2.0.
-
-Run-time Hooks are in the directory
-./PyInstaller/hooks/rthooks
-
-
-The PyInstaller.isolated submodule
-----------------------------------
-
-By request, the PyInstaller.isolated submodule and its corresponding tests are
-additionally licensed with the MIT license so that it may be reused outside of
-PyInstaller under GPL 2.0 or MIT terms and conditions -- whichever is the most
-suitable to the recipient downstream project. Affected files/directories are:
-
-./PyInstaller/isolated/
-./tests/unit/test_isolation.py
-
-
-About the PyInstaller Development Team
---------------------------------------
-
-The PyInstaller Development Team is the set of contributors
-to the PyInstaller project. A full list with details is kept
-in the documentation directory, in the file
-``doc/CREDITS.rst``.
-
-The core team that coordinates development on GitHub can be found here:
-https://github.com/pyinstaller/pyinstaller.  As of 2021, it consists of:
-
-* Hartmut Goebel
-* Jasper Harrison
-* Bryan Jones
-* Brenainn Woodsend
-* Rok Mandeljc
-
-Our Copyright Policy
---------------------
-
-PyInstaller uses a shared copyright model. Each contributor maintains copyright
-over their contributions to PyInstaller. But, it is important to note that these
-contributions are typically only changes to the repositories. Thus,
-the PyInstaller source code, in its entirety is not the copyright of any single
-person or institution.  Instead, it is the collective copyright of the entire
-PyInstaller Development Team.  If individual contributors want to maintain
-a record of what changes/contributions they have specific copyright on, they
-should indicate their copyright in the commit message of the change, when they
-commit the change to the PyInstaller repository.
-
-With this in mind, the following banner should be used in any source code file
-to indicate the copyright and license terms:
-
-
-#-----------------------------------------------------------------------------
-# Copyright (c) 2005-2023, PyInstaller Development Team.
-#
-# Distributed under the terms of the GNU General Public License (version 2
-# or later) with exception for distributing the bootloader.
-#
-# The full license is in the file COPYING.txt, distributed with this software.
-#
-# SPDX-License-Identifier: (GPL-2.0-or-later WITH Bootloader-exception)
-#-----------------------------------------------------------------------------
-
-
-For run-time hooks, the following banner should be used:
-
-#-----------------------------------------------------------------------------
-# Copyright (c) 2005-2023, PyInstaller Development Team.
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-#
-# The full license is in the file COPYING.txt, distributed with this software.
-#
-# SPDX-License-Identifier: Apache-2.0
-#-----------------------------------------------------------------------------
-
-
-================================
-GNU General Public License
-================================
-
-https://gnu.org/licenses/gpl-2.0.html
-
-
-		    GNU GENERAL PUBLIC LICENSE
-		       Version 2, June 1991
-
- Copyright (C) 1989, 1991 Free Software Foundation, Inc.
- 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA
- Everyone is permitted to copy and distribute verbatim copies
- of this license document, but changing it is not allowed.
-
-			    Preamble
-
-  The licenses for most software are designed to take away your
-freedom to share and change it.  By contrast, the GNU General Public
-License is intended to guarantee your freedom to share and change free
-software--to make sure the software is free for all its users.  This
-General Public License applies to most of the Free Software
-Foundation's software and to any other program whose authors commit to
-using it.  (Some other Free Software Foundation software is covered by
-the GNU Library General Public License instead.)  You can apply it to
-your programs, too.
-
-  When we speak of free software, we are referring to freedom, not
-price.  Our General Public Licenses are designed to make sure that you
-have the freedom to distribute copies of free software (and charge for
-this service if you wish), that you receive source code or can get it
-if you want it, that you can change the software or use pieces of it
-in new free programs; and that you know you can do these things.
-
-  To protect your rights, we need to make restrictions that forbid
-anyone to deny you these rights or to ask you to surrender the rights.
-These restrictions translate to certain responsibilities for you if you
-distribute copies of the software, or if you modify it.
-
-  For example, if you distribute copies of such a program, whether
-gratis or for a fee, you must give the recipients all the rights that
-you have.  You must make sure that they, too, receive or can get the
-source code.  And you must show them these terms so they know their
-rights.
-
-  We protect your rights with two steps: (1) copyright the software, and
-(2) offer you this license which gives you legal permission to copy,
-distribute and/or modify the software.
-
-  Also, for each author's protection and ours, we want to make certain
-that everyone understands that there is no warranty for this free
-software.  If the software is modified by someone else and passed on, we
-want its recipients to know that what they have is not the original, so
-that any problems introduced by others will not reflect on the original
-authors' reputations.
-
-  Finally, any free program is threatened constantly by software
-patents.  We wish to avoid the danger that redistributors of a free
-program will individually obtain patent licenses, in effect making the
-program proprietary.  To prevent this, we have made it clear that any
-patent must be licensed for everyone's free use or not licensed at all.
-
-  The precise terms and conditions for copying, distribution and
-modification follow.
-
-		    GNU GENERAL PUBLIC LICENSE
-   TERMS AND CONDITIONS FOR COPYING, DISTRIBUTION AND MODIFICATION
-
-  0. This License applies to any program or other work which contains
-a notice placed by the copyright holder saying it may be distributed
-under the terms of this General Public License.  The "Program", below,
-refers to any such program or work, and a "work based on the Program"
-means either the Program or any derivative work under copyright law:
-that is to say, a work containing the Program or a portion of it,
-either verbatim or with modifications and/or translated into another
-language.  (Hereinafter, translation is included without limitation in
-the term "modification".)  Each licensee is addressed as "you".
-
-Activities other than copying, distribution and modification are not
-covered by this License; they are outside its scope.  The act of
-running the Program is not restricted, and the output from the Program
-is covered only if its contents constitute a work based on the
-Program (independent of having been made by running the Program).
-Whether that is true depends on what the Program does.
-
-  1. You may copy and distribute verbatim copies of the Program's
-source code as you receive it, in any medium, provided that you
-conspicuously and appropriately publish on each copy an appropriate
-copyright notice and disclaimer of warranty; keep intact all the
-notices that refer to this License and to the absence of any warranty;
-and give any other recipients of the Program a copy of this License
-along with the Program.
-
-You may charge a fee for the physical act of transferring a copy, and
-you may at your option offer warranty protection in exchange for a fee.
-
-  2. You may modify your copy or copies of the Program or any portion
-of it, thus forming a work based on the Program, and copy and
-distribute such modifications or work under the terms of Section 1
-above, provided that you also meet all of these conditions:
-
-    a) You must cause the modified files to carry prominent notices
-    stating that you changed the files and the date of any change.
-
-    b) You must cause any work that you distribute or publish, that in
-    whole or in part contains or is derived from the Program or any
-    part thereof, to be licensed as a whole at no charge to all third
-    parties under the terms of this License.
-
-    c) If the modified program normally reads commands interactively
-    when run, you must cause it, when started running for such
-    interactive use in the most ordinary way, to print or display an
-    announcement including an appropriate copyright notice and a
-    notice that there is no warranty (or else, saying that you provide
-    a warranty) and that users may redistribute the program under
-    these conditions, and telling the user how to view a copy of this
-    License.  (Exception: if the Program itself is interactive but
-    does not normally print such an announcement, your work based on
-    the Program is not required to print an announcement.)
-
-These requirements apply to the modified work as a whole.  If
-identifiable sections of that work are not derived from the Program,
-and can be reasonably considered independent and separate works in
-themselves, then this License, and its terms, do not apply to those
-sections when you distribute them as separate works.  But when you
-distribute the same sections as part of a whole which is a work based
-on the Program, the distribution of the whole must be on the terms of
-this License, whose permissions for other licensees extend to the
-entire whole, and thus to each and every part regardless of who wrote it.
-
-Thus, it is not the intent of this section to claim rights or contest
-your rights to work written entirely by you; rather, the intent is to
-exercise the right to control the distribution of derivative or
-collective works based on the Program.
-
-In addition, mere aggregation of another work not based on the Program
-with the Program (or with a work based on the Program) on a volume of
-a storage or distribution medium does not bring the other work under
-the scope of this License.
-
-  3. You may copy and distribute the Program (or a work based on it,
-under Section 2) in object code or executable form under the terms of
-Sections 1 and 2 above provided that you also do one of the following:
-
-    a) Accompany it with the complete corresponding machine-readable
-    source code, which must be distributed under the terms of Sections
-    1 and 2 above on a medium customarily used for software interchange; or,
-
-    b) Accompany it with a written offer, valid for at least three
-    years, to give any third party, for a charge no more than your
-    cost of physically performing source distribution, a complete
-    machine-readable copy of the corresponding source code, to be
-    distributed under the terms of Sections 1 and 2 above on a medium
-    customarily used for software interchange; or,
-
-    c) Accompany it with the information you received as to the offer
-    to distribute corresponding source code.  (This alternative is
-    allowed only for noncommercial distribution and only if you
-    received the program in object code or executable form with such
-    an offer, in accord with Subsection b above.)
-
-The source code for a work means the preferred form of the work for
-making modifications to it.  For an executable work, complete source
-code means all the source code for all modules it contains, plus any
-associated interface definition files, plus the scripts used to
-control compilation and installation of the executable.  However, as a
-special exception, the source code distributed need not include
-anything that is normally distributed (in either source or binary
-form) with the major components (compiler, kernel, and so on) of the
-operating system on which the executable runs, unless that component
-itself accompanies the executable.
-
-If distribution of executable or object code is made by offering
-access to copy from a designated place, then offering equivalent
-access to copy the source code from the same place counts as
-distribution of the source code, even though third parties are not
-compelled to copy the source along with the object code.
-
-  4. You may not copy, modify, sublicense, or distribute the Program
-except as expressly provided under this License.  Any attempt
-otherwise to copy, modify, sublicense or distribute the Program is
-void, and will automatically terminate your rights under this License.
-However, parties who have received copies, or rights, from you under
-this License will not have their licenses terminated so long as such
-parties remain in full compliance.
-
-  5. You are not required to accept this License, since you have not
-signed it.  However, nothing else grants you permission to modify or
-distribute the Program or its derivative works.  These actions are
-prohibited by law if you do not accept this License.  Therefore, by
-modifying or distributing the Program (or any work based on the
-Program), you indicate your acceptance of this License to do so, and
-all its terms and conditions for copying, distributing or modifying
-the Program or works based on it.
-
-  6. Each time you redistribute the Program (or any work based on the
-Program), the recipient automatically receives a license from the
-original licensor to copy, distribute or modify the Program subject to
-these terms and conditions.  You may not impose any further
-restrictions on the recipients' exercise of the rights granted herein.
-You are not responsible for enforcing compliance by third parties to
-this License.
-
-  7. If, as a consequence of a court judgment or allegation of patent
-infringement or for any other reason (not limited to patent issues),
-conditions are imposed on you (whether by court order, agreement or
-otherwise) that contradict the conditions of this License, they do not
-excuse you from the conditions of this License.  If you cannot
-distribute so as to satisfy simultaneously your obligations under this
-License and any other pertinent obligations, then as a consequence you
-may not distribute the Program at all.  For example, if a patent
-license would not permit royalty-free redistribution of the Program by
-all those who receive copies directly or indirectly through you, then
-the only way you could satisfy both it and this License would be to
-refrain entirely from distribution of the Program.
-
-If any portion of this section is held invalid or unenforceable under
-any particular circumstance, the balance of the section is intended to
-apply and the section as a whole is intended to apply in other
-circumstances.
-
-It is not the purpose of this section to induce you to infringe any
-patents or other property right claims or to contest validity of any
-such claims; this section has the sole purpose of protecting the
-integrity of the free software distribution system, which is
-implemented by public license practices.  Many people have made
-generous contributions to the wide range of software distributed
-through that system in reliance on consistent application of that
-system; it is up to the author/donor to decide if he or she is willing
-to distribute software through any other system and a licensee cannot
-impose that choice.
-
-This section is intended to make thoroughly clear what is believed to
-be a consequence of the rest of this License.
-
-  8. If the distribution and/or use of the Program is restricted in
-certain countries either by patents or by copyrighted interfaces, the
-original copyright holder who places the Program under this License
-may add an explicit geographical distribution limitation excluding
-those countries, so that distribution is permitted only in or among
-countries not thus excluded.  In such case, this License incorporates
-the limitation as if written in the body of this License.
-
-  9. The Free Software Foundation may publish revised and/or new versions
-of the General Public License from time to time.  Such new versions will
-be similar in spirit to the present version, but may differ in detail to
-address new problems or concerns.
-
-Each version is given a distinguishing version number.  If the Program
-specifies a version number of this License which applies to it and "any
-later version", you have the option of following the terms and conditions
-either of that version or of any later version published by the Free
-Software Foundation.  If the Program does not specify a version number of
-this License, you may choose any version ever published by the Free Software
-Foundation.
-
-  10. If you wish to incorporate parts of the Program into other free
-programs whose distribution conditions are different, write to the author
-to ask for permission.  For software which is copyrighted by the Free
-Software Foundation, write to the Free Software Foundation; we sometimes
-make exceptions for this.  Our decision will be guided by the two goals
-of preserving the free status of all derivatives of our free software and
-of promoting the sharing and reuse of software generally.
-
-			    NO WARRANTY
-
-  11. BECAUSE THE PROGRAM IS LICENSED FREE OF CHARGE, THERE IS NO WARRANTY
-FOR THE PROGRAM, TO THE EXTENT PERMITTED BY APPLICABLE LAW.  EXCEPT WHEN
-OTHERWISE STATED IN WRITING THE COPYRIGHT HOLDERS AND/OR OTHER PARTIES
-PROVIDE THE PROGRAM "AS IS" WITHOUT WARRANTY OF ANY KIND, EITHER EXPRESSED
-OR IMPLIED, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
-MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  THE ENTIRE RISK AS
-TO THE QUALITY AND PERFORMANCE OF THE PROGRAM IS WITH YOU.  SHOULD THE
-PROGRAM PROVE DEFECTIVE, YOU ASSUME THE COST OF ALL NECESSARY SERVICING,
-REPAIR OR CORRECTION.
-
-  12. IN NO EVENT UNLESS REQUIRED BY APPLICABLE LAW OR AGREED TO IN WRITING
-WILL ANY COPYRIGHT HOLDER, OR ANY OTHER PARTY WHO MAY MODIFY AND/OR
-REDISTRIBUTE THE PROGRAM AS PERMITTED ABOVE, BE LIABLE TO YOU FOR DAMAGES,
-INCLUDING ANY GENERAL, SPECIAL, INCIDENTAL OR CONSEQUENTIAL DAMAGES ARISING
-OUT OF THE USE OR INABILITY TO USE THE PROGRAM (INCLUDING BUT NOT LIMITED
-TO LOSS OF DATA OR DATA BEING RENDERED INACCURATE OR LOSSES SUSTAINED BY
-YOU OR THIRD PARTIES OR A FAILURE OF THE PROGRAM TO OPERATE WITH ANY OTHER
-PROGRAMS), EVEN IF SUCH HOLDER OR OTHER PARTY HAS BEEN ADVISED OF THE
-POSSIBILITY OF SUCH DAMAGES.
-
-		     END OF TERMS AND CONDITIONS
-
-================================
-Apache License 2.0
-================================
-
-                                 Apache License
-                           Version 2.0, January 2004
-                        http://www.apache.org/licenses/
-
-   TERMS AND CONDITIONS FOR USE, REPRODUCTION, AND DISTRIBUTION
-
-   1. Definitions.
-
-      "License" shall mean the terms and conditions for use, reproduction,
-      and distribution as defined by Sections 1 through 9 of this document.
-
-      "Licensor" shall mean the copyright owner or entity authorized by
-      the copyright owner that is granting the License.
-
-      "Legal Entity" shall mean the union of the acting entity and all
-      other entities that control, are controlled by, or are under common
-      control with that entity. For the purposes of this definition,
-      "control" means (i) the power, direct or indirect, to cause the
-      direction or management of such entity, whether by contract or
-      otherwise, or (ii) ownership of fifty percent (50%) or more of the
-      outstanding shares, or (iii) beneficial ownership of such entity.
-
-      "You" (or "Your") shall mean an individual or Legal Entity
-      exercising permissions granted by this License.
-
-      "Source" form shall mean the preferred form for making modifications,
-      including but not limited to software source code, documentation
-      source, and configuration files.
-
-      "Object" form shall mean any form resulting from mechanical
-      transformation or translation of a Source form, including but
-      not limited to compiled object code, generated documentation,
-      and conversions to other media types.
-
-      "Work" shall mean the work of authorship, whether in Source or
-      Object form, made available under the License, as indicated by a
-      copyright notice that is included in or attached to the work
-      (an example is provided in the Appendix below).
-
-      "Derivative Works" shall mean any work, whether in Source or Object
-      form, that is based on (or derived from) the Work and for which the
-      editorial revisions, annotations, elaborations, or other modifications
-      represent, as a whole, an original work of authorship. For the purposes
-      of this License, Derivative Works shall not include works that remain
-      separable from, or merely link (or bind by name) to the interfaces of,
-      the Work and Derivative Works thereof.
-
-      "Contribution" shall mean any work of authorship, including
-      the original version of the Work and any modifications or additions
-      to that Work or Derivative Works thereof, that is intentionally
-      submitted to Licensor for inclusion in the Work by the copyright owner
-      or by an individual or Legal Entity authorized to submit on behalf of
-      the copyright owner. For the purposes of this definition, "submitted"
-      means any form of electronic, verbal, or written communication sent
-      to the Licensor or its representatives, including but not limited to
-      communication on electronic mailing lists, source code control systems,
-      and issue tracking systems that are managed by, or on behalf of, the
-      Licensor for the purpose of discussing and improving the Work, but
-      excluding communication that is conspicuously marked or otherwise
-      designated in writing by the copyright owner as "Not a Contribution."
-
-      "Contributor" shall mean Licensor and any individual or Legal Entity
-      on behalf of whom a Contribution has been received by Licensor and
-      subsequently incorporated within the Work.
-
-   2. Grant of Copyright License. Subject to the terms and conditions of
-      this License, each Contributor hereby grants to You a perpetual,
-      worldwide, non-exclusive, no-charge, royalty-free, irrevocable
-      copyright license to reproduce, prepare Derivative Works of,
-      publicly display, publicly perform, sublicense, and distribute the
-      Work and such Derivative Works in Source or Object form.
-
-   3. Grant of Patent License. Subject to the terms and conditions of
-      this License, each Contributor hereby grants to You a perpetual,
-      worldwide, non-exclusive, no-charge, royalty-free, irrevocable
-      (except as stated in this section) patent license to make, have made,
-      use, offer to sell, sell, import, and otherwise transfer the Work,
-      where such license applies only to those patent claims licensable
-      by such Contributor that are necessarily infringed by their
-      Contribution(s) alone or by combination of their Contribution(s)
-      with the Work to which such Contribution(s) was submitted. If You
-      institute patent litigation against any entity (including a
-      cross-claim or counterclaim in a lawsuit) alleging that the Work
-      or a Contribution incorporated within the Work constitutes direct
-      or contributory patent infringement, then any patent licenses
-      granted to You under this License for that Work shall terminate
-      as of the date such litigation is filed.
-
-   4. Redistribution. You may reproduce and distribute copies of the
-      Work or Derivative Works thereof in any medium, with or without
-      modifications, and in Source or Object form, provided that You
-      meet the following conditions:
-
-      (a) You must give any other recipients of the Work or
-          Derivative Works a copy of this License; and
-
-      (b) You must cause any modified files to carry prominent notices
-          stating that You changed the files; and
-
-      (c) You must retain, in the Source form of any Derivative Works
-          that You distribute, all copyright, patent, trademark, and
-          attribution notices from the Source form of the Work,
-          excluding those notices that do not pertain to any part of
-          the Derivative Works; and
-
-      (d) If the Work includes a "NOTICE" text file as part of its
-          distribution, then any Derivative Works that You distribute must
-          include a readable copy of the attribution notices contained
-          within such NOTICE file, excluding those notices that do not
-          pertain to any part of the Derivative Works, in at least one
-          of the following places: within a NOTICE text file distributed
-          as part of the Derivative Works; within the Source form or
-          documentation, if provided along with the Derivative Works; or,
-          within a display generated by the Derivative Works, if and
-          wherever such third-party notices normally appear. The contents
-          of the NOTICE file are for informational purposes only and
-          do not modify the License. You may add Your own attribution
-          notices within Derivative Works that You distribute, alongside
-          or as an addendum to the NOTICE text from the Work, provided
-          that such additional attribution notices cannot be construed
-          as modifying the License.
-
-      You may add Your own copyright statement to Your modifications and
-      may provide additional or different license terms and conditions
-      for use, reproduction, or distribution of Your modifications, or
-      for any such Derivative Works as a whole, provided Your use,
-      reproduction, and distribution of the Work otherwise complies with
-      the conditions stated in this License.
-
-   5. Submission of Contributions. Unless You explicitly state otherwise,
-      any Contribution intentionally submitted for inclusion in the Work
-      by You to the Licensor shall be under the terms and conditions of
-      this License, without any additional terms or conditions.
-      Notwithstanding the above, nothing herein shall supersede or modify
-      the terms of any separate license agreement you may have executed
-      with Licensor regarding such Contributions.
-
-   6. Trademarks. This License does not grant permission to use the trade
-      names, trademarks, service marks, or product names of the Licensor,
-      except as required for reasonable and customary use in describing the
-      origin of the Work and reproducing the content of the NOTICE file.
-
-   7. Disclaimer of Warranty. Unless required by applicable law or
-      agreed to in writing, Licensor provides the Work (and each
-      Contributor provides its Contributions) on an "AS IS" BASIS,
-      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or
-      implied, including, without limitation, any warranties or conditions
-      of TITLE, NON-INFRINGEMENT, MERCHANTABILITY, or FITNESS FOR A
-      PARTICULAR PURPOSE. You are solely responsible for determining the
-      appropriateness of using or redistributing the Work and assume any
-      risks associated with Your exercise of permissions under this License.
-
-   8. Limitation of Liability. In no event and under no legal theory,
-      whether in tort (including negligence), contract, or otherwise,
-      unless required by applicable law (such as deliberate and grossly
-      negligent acts) or agreed to in writing, shall any Contributor be
-      liable to You for damages, including any direct, indirect, special,
-      incidental, or consequential damages of any character arising as a
-      result of this License or out of the use or inability to use the
-      Work (including but not limited to damages for loss of goodwill,
-      work stoppage, computer failure or malfunction, or any and all
-      other commercial damages or losses), even if such Contributor
-      has been advised of the possibility of such damages.
-
-   9. Accepting Warranty or Additional Liability. While redistributing
-      the Work or Derivative Works thereof, You may choose to offer,
-      and charge a fee for, acceptance of support, warranty, indemnity,
-      or other liability obligations and/or rights consistent with this
-      License. However, in accepting such obligations, You may act only
-      on Your own behalf and on Your sole responsibility, not on behalf
-      of any other Contributor, and only if You agree to indemnify,
-      defend, and hold each Contributor harmless for any liability
-      incurred by, or claims asserted against, such Contributor by reason
-      of your accepting any such warranty or additional liability.
-
-   END OF TERMS AND CONDITIONS
-
-   APPENDIX: How to apply the Apache License to your work.
-
-      To apply the Apache License to your work, attach the following
-      boilerplate notice, with the fields enclosed by brackets "[]"
-      replaced with your own identifying information. (Don't include
-      the brackets!)  The text should be enclosed in the appropriate
-      comment syntax for the file format. We also recommend that a
-      file or class name and description of purpose be included on the
-      same "printed page" as the copyright notice for easier
-      identification within third-party archives.
-
-   Copyright [yyyy] [name of copyright owner]
-
-   Licensed under the Apache License, Version 2.0 (the "License");
-   you may not use this file except in compliance with the License.
-   You may obtain a copy of the License at
-
-       http://www.apache.org/licenses/LICENSE-2.0
-
-   Unless required by applicable law or agreed to in writing, software
-   distributed under the License is distributed on an "AS IS" BASIS,
-   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-   See the License for the specific language governing permissions and
-   limitations under the License.
-
-===========
-MIT License
-===========
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
------ END THIRD-PARTY TEXT dcf75fdb959db1e3b41c0f8505069d2ece781b5ec6b3d0a4d30975cfc6580245 -----
 
 ----- BEGIN THIRD-PARTY TEXT dd57ede7eb6b56bc60b7c69f4b701b5550b9b5a1f4f47b98f26758ed74743f82 -----
 Copyright (c) 2017 Pyfisch
@@ -29030,6 +29383,30 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ----- END THIRD-PARTY TEXT f3c3e9f4febe81ff14ccc233c344e6e60051290d1c1e5a2c670d63cc3608a5bb -----
+
+----- BEGIN THIRD-PARTY TEXT f428305bbf2e70fbd807af0f3c7ac1b7acfb95311640f451e9d2e48db6d7e96b -----
+MIT License
+
+Copyright (c) 2023 dAxpeDDa
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+----- END THIRD-PARTY TEXT f428305bbf2e70fbd807af0f3c7ac1b7acfb95311640f451e9d2e48db6d7e96b -----
 
 ----- BEGIN THIRD-PARTY TEXT f51ac2c59a222f7476ce507ca879960e2b64ea64bb2786eefdbeb7b0b538d1b7 -----
 Copyright (c) 2023 The Rust Project Developers

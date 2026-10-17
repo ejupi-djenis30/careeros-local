@@ -63,6 +63,7 @@ htmlcov/
 .pytest_cache/
 .test-tmp/
 .mypy_cache/
+.ruff_cache/
 coverage.xml
 frontend/coverage/
 coverage/

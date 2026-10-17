@@ -1,12 +1,15 @@
-# ruff: noqa: F401
+"""Compatibility composition and dependency exports for the local AI pipeline.
 
-import asyncio
-import logging
+The explicit re-exports preserve legacy import and monkeypatch paths. Focused
+capabilities own their dependencies; assigning an exported dependency here still
+forwards it to the capabilities that use it.
+"""
+
 import sys
 import types
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict
 
-from tenacity import RetryError, retry, retry_if_exception, stop_after_attempt, wait_exponential
+from tenacity import RetryError
 
 from backend.ai import (
     job_normalization,
@@ -18,55 +21,46 @@ from backend.ai import (
 )
 from backend.ai.job_normalization import JobNormalizationMixin
 from backend.ai.matching import MatchingMixin
-from backend.ai.orchestrator import LocalAIOrchestrator, OrchestrationRequest
+from backend.ai.orchestrator import (
+    LocalAIOrchestrator as LocalAIOrchestrator,
+)
+from backend.ai.orchestrator import (
+    OrchestrationRequest as OrchestrationRequest,
+)
 from backend.ai.planning import PlanningMixin
 from backend.ai.profile_normalization import ProfileNormalizationMixin
 from backend.ai.reranking import RerankingMixin
 from backend.ai.runtime_policy import RuntimePolicyMixin
-from backend.core.config import settings
-from backend.providers.circuit_breaker import CircuitOpenError, CircuitState, circuit_registry
-from backend.providers.llm.factory import get_provider_for_step
-from backend.services.search.prompt_compaction import compact_prompt_text
-from backend.services.search.query_contracts import (
-    compute_plan_input_fingerprint,
-    exact_query_fingerprint,
-    loose_query_fingerprint,
-    normalize_domain,
-    normalize_search_item,
-    sanitize_prompt_text,
+from backend.core.config import settings as settings
+from backend.providers.circuit_breaker import (
+    CircuitOpenError as CircuitOpenError,
 )
-
-logger = logging.getLogger(__name__)
-
-
-def _is_retryable_plan_error(exc: Exception) -> bool:
-    """Return True for transient PLAN-step failures worth retrying."""
-    real_exc = exc
-    if isinstance(exc, RetryError):
-        try:
-            candidate = exc.last_attempt.exception()
-            if isinstance(candidate, Exception):
-                real_exc = candidate
-        except Exception:
-            pass
-
-    if isinstance(real_exc, (asyncio.TimeoutError, TimeoutError, CircuitOpenError)):
-        return True
-
-    error_text = str(real_exc).lower()
-    retryable_fragments = (
-        "rate limit",
-        "timeout",
-        "timed out",
-        "temporar",
-        "connection reset",
-        "connection aborted",
-        "connection error",
-        "502",
-        "503",
-        "504",
-    )
-    return any(fragment in error_text for fragment in retryable_fragments)
+from backend.providers.circuit_breaker import (
+    CircuitState as CircuitState,
+)
+from backend.providers.circuit_breaker import (
+    circuit_registry as circuit_registry,
+)
+from backend.providers.llm.factory import get_provider_for_step as get_provider_for_step
+from backend.services.search.prompt_compaction import compact_prompt_text as compact_prompt_text
+from backend.services.search.query_contracts import (
+    compute_plan_input_fingerprint as compute_plan_input_fingerprint,
+)
+from backend.services.search.query_contracts import (
+    exact_query_fingerprint as exact_query_fingerprint,
+)
+from backend.services.search.query_contracts import (
+    loose_query_fingerprint as loose_query_fingerprint,
+)
+from backend.services.search.query_contracts import (
+    normalize_domain as normalize_domain,
+)
+from backend.services.search.query_contracts import (
+    normalize_search_item as normalize_search_item,
+)
+from backend.services.search.query_contracts import (
+    sanitize_prompt_text as sanitize_prompt_text,
+)
 
 
 def _unwrap_retry_error(exc: Exception) -> tuple[Exception, str]:
@@ -88,10 +82,6 @@ def _unwrap_retry_error(exc: Exception) -> tuple[Exception, str]:
     if status_code:
         msg = f"HTTP {status_code}: {msg}"
     return real_exc, msg
-
-
-def _query_fingerprint(search: Dict[str, Any]) -> str:
-    return exact_query_fingerprint(search)
 
 
 class LLMService(

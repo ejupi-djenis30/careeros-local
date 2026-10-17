@@ -7,6 +7,10 @@ clear verification are easiest to review.
 
 Follow the locked setup in [docs/development.md](docs/development.md). Use Python 3.12 and Node.js
 24 LTS; native desktop work also requires Rust stable and the Tauri prerequisites.
+Release sidecars require the exact interpreter pinned in `.native-python-version`.
+Activate the locked development environment before running pre-commit. Install frontend
+packages and the matching Rust target explicitly during setup; build and lint wrappers
+report missing tools without downloading them.
 
 ## Before opening a pull request
 

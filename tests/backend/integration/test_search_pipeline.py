@@ -15,6 +15,8 @@ from backend.ai.matching import _materialize_match_citations
 from backend.ai.models import AIExecution
 from backend.career.models import CandidateProfile
 from backend.models import Job, ScrapedJob, SearchProfile
+from backend.providers.configuration.schemas import ProviderDocument
+from backend.providers.configuration.service import ProviderConfigurationService
 from backend.services.search_service import SearchService
 from backend.services.search_status import get_status
 
@@ -105,7 +107,25 @@ async def test_run_search_pipeline_persists_catalog_filters_and_refines_jobs(
     service.analysis_readiness_check = AsyncMock(
         return_value=SimpleNamespace(ready=True, error_code=None)
     )
-    service.providers = {"job_room": provider}
+    ProviderConfigurationService(db_session).import_document(
+        test_user.id,
+        ProviderDocument.model_validate({
+            "format_version": 1,
+            "kind": "provider",
+            "provider": {
+                "kind": "native",
+                "adapter_id": "job_room",
+                "key": "job_room",
+                "display_name": "Synthetic integration source",
+            },
+        }),
+        activate=True,
+    )
+    monkeypatch.setattr(
+        "backend.providers.configuration.registry.create_imported_native_provider",
+        lambda **_kwargs: provider,
+    )
+    service.providers = {}
 
     profile_norm = {
         "seniority": "mid",

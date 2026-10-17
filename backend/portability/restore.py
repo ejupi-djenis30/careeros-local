@@ -72,10 +72,16 @@ from backend.portability.manifest import (
     PAYLOAD_MEMBER,
     expected_tables,
     sha256,
+    validate_profile_scope,
 )
 from backend.portability.packets import validate_packet_bytes, validate_packet_records
+from backend.portability.provider_records import (
+    provider_restore_was_published,
+    validate_provider_records,
+)
 from backend.portability.schemas import ArchiveManifest, RestoreResponse
 from backend.portability.workspace import validate_workspace_records
+from backend.providers.configuration.models import JobProviderConfiguration
 from backend.resumes.artifact_policy import MAX_RESUME_ARTIFACT_BYTES
 from backend.resumes.models import ResumeArtifact, ResumeDraft, ResumeVersion
 from backend.search.receipt import (
@@ -95,6 +101,7 @@ FILE_TABLES = frozenset({"career_assets", "resume_artifacts", "application_packe
 USER_SCOPED_TABLES = frozenset(
     {
         "candidate_profiles",
+        "job_provider_configurations",
         "search_profiles",
         "jobs",
         "applications",
@@ -670,8 +677,12 @@ def _decode_payload(
     for name in version_tables:
         if not isinstance(tables[name], list) or len(tables[name]) != manifest.record_counts[name]:
             raise ArchiveError(f"Archive record count mismatch for {name}")
-    if len(tables["candidate_profiles"]) != 1:
-        raise ArchiveError("A portable career archive must contain exactly one profile")
+    try:
+        validate_profile_scope(manifest.format_version, {name: len(rows) for name, rows in tables.items()})
+    except ValueError as exc:
+        raise ArchiveError(str(exc)) from exc
+    if not tables["candidate_profiles"] and bindings:
+        raise ArchiveError("A provider-only archive cannot contain managed file bindings")
 
     decoded: dict[str, list[dict[str, Any]]] = {}
     for table_name, model in EXPORT_MODELS:
@@ -708,6 +719,7 @@ def _decode_payload(
             validate_campaign_records(decoded, manifest.format_version)
     except (TypeError, ValueError) as exc:
         raise ArchiveError("Archive workspace records are invalid") from exc
+    validate_provider_records(decoded)
     for row in decoded["search_profiles"]:
         _normalize_search_receipt_row(row)
     for row in decoded["jobs"]:
@@ -761,6 +773,11 @@ def _assert_decoded_ids_available(db: Session, decoded: dict[str, list[dict[str,
 def _assert_empty_vault(db: Session, user_id: int, format_version: int) -> None:
     checks = (
         (CandidateProfile, CandidateProfile.user_id, "career vault"),
+        (
+            JobProviderConfiguration,
+            JobProviderConfiguration.user_id,
+            "job provider configuration history",
+        ),
         (SearchProfile, SearchProfile.user_id, "search profile history"),
         (Job, Job.user_id, "job history"),
         (Application, Application.user_id, "application history"),
@@ -1372,17 +1389,17 @@ def _restore_commit_was_published(
 ) -> bool:
     """Resolve a lost commit acknowledgement from a fresh authoritative snapshot.
 
-    Every valid archive contains exactly one destination-unique CandidateProfile.
-    Its presence proves that SQLite committed the whole transaction; its absence
-    proves rollback. Before accepting the committed outcome, also require the
+    A destination-unique profile or the complete provider-only inventory proves
+    that SQLite committed the whole transaction. Before accepting it, require the
     lifecycle transition, every same-user file binding, the durable bytes, and
     any surviving journal to agree with the verified archive.
     """
 
     profile_rows = decoded.get("candidate_profiles", [])
-    if len(profile_rows) != 1 or not isinstance(profile_rows[0].get("id"), str):
+    provider_only = not profile_rows and bool(decoded.get("job_provider_configurations"))
+    if not provider_only and (len(profile_rows) != 1 or not isinstance(profile_rows[0].get("id"), str)):
         raise RestoreCleanupPendingError("Restore commit identity is unavailable")
-    expected_profile_id = cast(str, profile_rows[0]["id"])
+    expected_profile_id = cast(str, profile_rows[0]["id"]) if profile_rows else None
     bind = db.get_bind()
     with Session(bind=bind, expire_on_commit=False) as verification:
         if bind.dialect.name == "sqlite":
@@ -1395,13 +1412,23 @@ def _restore_commit_was_published(
             owner_query = owner_query.with_for_update()
             profile_query = profile_query.with_for_update()
         owner = owner_query.one_or_none()
-        profile = profile_query.one_or_none()
-        if profile is None:
+        profile = profile_query.one_or_none() if not provider_only else None
+        if provider_only:
+            try:
+                published = provider_restore_was_published(
+                    verification, user_id, decoded["job_provider_configurations"]
+                )
+            except (ValueError, TypeError) as exc:
+                raise RestoreCleanupPendingError("Restore provider commit identity is inconsistent") from exc
+            if not published:
+                verification.rollback()
+                return False
+        elif profile is None:
             verification.rollback()
             return False
         if (
             owner is None
-            or profile.user_id != user_id
+            or (profile is not None and profile.user_id != user_id)
             or owner.vault_lifecycle_state != VAULT_STATE_READY
             or owner.vault_maintenance_fingerprint is not None
         ):

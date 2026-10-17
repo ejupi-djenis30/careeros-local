@@ -30,7 +30,7 @@ class ArchiveManifest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     format: Literal["careeros-portable-archive"]
-    format_version: Literal[1, 2, 3, 4, 5, 6, 7, 8]
+    format_version: Literal[1, 2, 3, 4, 5, 6, 7, 8, 9]
     created_at: AwareDatetime
     owner_scope: Literal["career-vault"]
     record_counts: dict[str, StrictNonNegativeInt]

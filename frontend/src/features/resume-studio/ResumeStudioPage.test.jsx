@@ -20,6 +20,7 @@ const compareVersions = vi.fn();
 const restoreVersion = vi.fn();
 const getProfile = vi.fn();
 const showToast = vi.fn();
+const REQUEST_OPTIONS = expect.objectContaining({ signal: expect.any(AbortSignal), suppressGlobalError: true });
 
 vi.mock("../../services/career", () => ({ CareerService: { getProfile: (...args) => getProfile(...args), uploadPhoto: vi.fn() } }));
 vi.mock("../../services/resumes", () => ({ ResumeService: { list: (...args) => list(...args), get: (...args) => get(...args), create: (...args) => create(...args), generate: (...args) => generate(...args), duplicate: (...args) => duplicate(...args), promoteClaim: (...args) => promoteClaim(...args), sync: (...args) => sync(...args), update: (...args) => update(...args), publish: (...args) => publish(...args), compareVersions: (...args) => compareVersions(...args), restoreVersion: (...args) => restoreVersion(...args), remove: vi.fn(), downloadArtifact: vi.fn() } }));
@@ -61,7 +62,7 @@ describe("ResumeStudioPage", () => {
 
         await waitFor(() => expect(create).toHaveBeenCalledTimes(1));
         expect(create.mock.calls[0][0]).toMatchObject({ template_kind: "ats", selected_fact_ids: [FACT_ID, EXPERIENCE_ID] });
-        await waitFor(() => expect(publish).toHaveBeenCalledWith(RESUME_ID, "Candidatura Alpha"));
+        await waitFor(() => expect(publish).toHaveBeenCalledWith(RESUME_ID, "Candidatura Alpha", REQUEST_OPTIONS));
         expect(await screen.findByText("Quality gate superato")).toBeInTheDocument();
     });
 
@@ -74,7 +75,7 @@ describe("ResumeStudioPage", () => {
         expect(generate).toHaveBeenCalledWith(expect.objectContaining({
             template_kind: "ats",
             career_goal_id: GOAL_ID,
-        }));
+        }), REQUEST_OPTIONS);
         expect(await screen.findByLabelText("Canvas modificabile del CV")).toBeInTheDocument();
         expect(showToast).toHaveBeenCalledWith({ messageKey: "resume.generatedToast" }, "success");
     });
@@ -104,10 +105,10 @@ describe("ResumeStudioPage", () => {
             expected_revision: 1,
             mode: "apply",
             sections: ["skill"],
-        }));
+        }, REQUEST_OPTIONS));
 
         await user.click(screen.getByRole("button", { name: "Duplica CV" }));
-        await waitFor(() => expect(duplicate).toHaveBeenCalledWith(RESUME_ID, { title: "CV ATS · copia" }));
+        await waitFor(() => expect(duplicate).toHaveBeenCalledWith(RESUME_ID, { title: "CV ATS · copia" }, REQUEST_OPTIONS));
     });
 
     it("persists and promotes a canvas claim into the career profile", async () => {
@@ -127,10 +128,12 @@ describe("ResumeStudioPage", () => {
                     sections: expect.arrayContaining([expect.objectContaining({ kind: "achievement" })]),
                 }),
             }),
+            REQUEST_OPTIONS,
         ));
         await waitFor(() => expect(promoteClaim).toHaveBeenCalledWith(
             RESUME_ID,
             expect.objectContaining({ expected_revision: 2, expected_profile_revision: 3 }),
+            REQUEST_OPTIONS,
         ));
         expect(showToast).toHaveBeenCalledWith({ messageKey: "resume.promotedToast" }, "success");
     });
@@ -149,6 +152,7 @@ describe("ResumeStudioPage", () => {
         await waitFor(() => expect(update).toHaveBeenCalledWith(
             RESUME_ID,
             expect.objectContaining({ title: "CV autosalvato", expected_revision: 1 }),
+            REQUEST_OPTIONS,
         ), { timeout: 3_000 });
         expect(await screen.findByText("Salvato automaticamente")).toBeInTheDocument();
     });
@@ -168,10 +172,10 @@ describe("ResumeStudioPage", () => {
         await user.click(screen.getByLabelText("Seleziona versione Beta"));
         await user.click(screen.getByRole("button", { name: "Confronta 2 versioni" }));
         expect(await screen.findByText("Alpha → Beta")).toBeInTheDocument();
-        expect(compareVersions).toHaveBeenCalledWith("v1", "v2");
+        expect(compareVersions).toHaveBeenCalledWith("v1", "v2", REQUEST_OPTIONS);
 
         await user.click(screen.getAllByRole("button", { name: "Ripristina nella bozza" })[1]);
-        expect(restoreVersion).toHaveBeenCalledWith(RESUME_ID, "v1", 1);
+        expect(restoreVersion).toHaveBeenCalledWith(RESUME_ID, "v1", 1, REQUEST_OPTIONS);
         expect(showToast).toHaveBeenCalledWith({ messageKey: "resume.restoredToast" }, "success");
         confirm.mockRestore();
     });
@@ -185,7 +189,7 @@ describe("ResumeStudioPage", () => {
         publishButton.focus();
         expect(publishButton).toHaveFocus();
         await user.keyboard("{Enter}");
-        await waitFor(() => expect(publish).toHaveBeenCalledWith(RESUME_ID, "Versione CV"));
+        await waitFor(() => expect(publish).toHaveBeenCalledWith(RESUME_ID, "Versione CV", REQUEST_OPTIONS));
     });
 
     it("aborts initialization requests when the studio unmounts", async () => {

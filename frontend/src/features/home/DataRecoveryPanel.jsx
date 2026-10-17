@@ -7,18 +7,10 @@ import {
     verifyArchivePayload,
 } from "../../platform/desktop";
 import { PortabilityService } from "../../services/portability";
+import { saveBlob } from "../../lib/download";
 import { useI18n } from "../../i18n/useI18n";
 import { translateMessage } from "../../i18n/runtime";
 import { BackupInspectionSummary } from "./BackupInspectionSummary";
-
-function browserDownload({ blob, filename }) {
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = filename;
-    link.click();
-    URL.revokeObjectURL(url);
-}
 
 export function DataRecoveryPanel({ hasProfile }) {
     const { t } = useI18n();
@@ -40,7 +32,7 @@ export function DataRecoveryPanel({ hasProfile }) {
                 setMessage({ messageKey: saved ? "data.backupSaved" : "data.saveCancelled" });
             } else {
                 await verifyArchivePayload(archive);
-                browserDownload(archive);
+                saveBlob(archive);
                 setMessage({ messageKey: "data.backupDownloaded" });
             }
         } catch (error) {
@@ -120,7 +112,7 @@ export function DataRecoveryPanel({ hasProfile }) {
             <div className="section-heading"><div><span className="section-kicker">{t("data.privacy")}</span><h2>{t("data.title")}</h2></div><i className="bi bi-shield-lock" /></div>
             <p>{t("data.copy")}</p>
             <div className="data-actions">
-                <button className="button button--secondary" type="button" onClick={backup} disabled={!hasProfile || Boolean(busy)}><i className="bi bi-download" />{busy === "backup" ? t("data.backupBusy") : t("data.backup")}</button>
+                <button className="button button--secondary" type="button" onClick={backup} disabled={Boolean(busy)}><i className="bi bi-download" />{busy === "backup" ? t("data.backupBusy") : t("data.backup")}</button>
                 <button className="button button--secondary" type="button" onClick={chooseBackup} disabled={Boolean(busy)}><i className="bi bi-shield-check" />{busy === "inspect" ? t("data.inspectBusy") : t("data.inspect")}</button>
                 <button className="button button--secondary" type="button" onClick={restore} disabled={hasProfile || !verifiedBackup?.inspection.restorable || Boolean(busy)}><i className="bi bi-upload" />{busy === "restore" ? t("data.restoreBusy") : t("data.restoreVerified")}</button>
                 <input ref={fileInput} className="visually-hidden" type="file" tabIndex={-1} accept=".zip,application/zip" aria-label={t("data.backupFile")} onChange={(event) => inspect(event.target.files?.[0])} />

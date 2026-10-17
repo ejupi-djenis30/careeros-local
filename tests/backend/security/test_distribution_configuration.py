@@ -112,8 +112,8 @@ def test_backend_container_uses_minimal_alpine_runtime_and_drops_build_tooling()
     dockerfile = (ROOT / "Dockerfile").read_text(encoding="utf-8")
 
     assert (
-        "FROM python:3.12.14-alpine3.23@sha256:"
-        "167bc85084c9df34480efc26b4528fb68feaa8a79183b5658952137025b6f061"
+        "FROM python:3.12.15-alpine3.23@sha256:"
+        "1fd55c2f838c4f76262f9eeed899ff9168ea96ac383c61667d6f204325e1f169"
     ) in dockerfile
     assert "addgroup -S -g 10001 careernos" in dockerfile
     assert "adduser -S -D -H -u 10001 -G careernos" in dockerfile
@@ -136,7 +136,7 @@ def test_compose_services_have_bounded_processes_logs_and_segmented_networks() -
         "options": {"max-size": "10m", "max-file": "3"},
     }
 
-    assert services["ollama"]["image"] == "careeros-local-ollama:0.33.3-careeros.1"
+    assert services["ollama"]["image"] == "careeros-local-ollama:0.34.3-careeros.1"
     assert services["ollama"]["build"] == {
         "context": ".",
         "dockerfile": "docker/ollama/Dockerfile",
@@ -146,9 +146,7 @@ def test_compose_services_have_bounded_processes_logs_and_segmented_networks() -
     assert services["ollama"]["depends_on"] == {
         "ollama-volume-init": {"condition": "service_completed_successfully"}
     }
-    assert services["ollama"]["volumes"] == [
-        "ollama_data:/var/lib/ollama/.ollama"
-    ]
+    assert services["ollama"]["volumes"] == ["ollama_data:/var/lib/ollama/.ollama"]
     assert services["ollama"]["pids_limit"] == 512
     assert services["ollama"]["read_only"] is True
     assert services["ollama"]["tmpfs"] == ["/tmp:rw,nosuid,nodev,noexec,size=256m,mode=1777"]
@@ -184,53 +182,85 @@ def test_patched_ollama_source_dependency_graph_and_gate_are_pinned() -> None:
     workflow = (ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
 
     assert (
-        "FROM golang:1.27.1-bookworm@sha256:"
-        "648f440f42a0958804efb24df176f806f9d353b41f1c0627f666428e40310f6b"
+        "FROM golang:1.27.2-bookworm@sha256:"
+        "5cf287a799e6b94384bad13d16b14904c531f51ba65792237e122ce42b392f61"
     ) in dockerfile
     assert (
-        "FROM ollama/ollama:0.33.3@sha256:"
-        "32931b46719f673c05fdbaa81ccb26da18ea4a1c57590a754874ab28ba269eb2"
+        "FROM ollama/ollama:0.34.3@sha256:"
+        "7ab595e4ead391f6818c7215297781282babe0701f6d9a9f8862ac591360a58b"
     ) in dockerfile
     assert (
-        "https://github.com/ollama/ollama/archive/"
-        "b79067b0db7417f20108363bc22adb97f35c966a.tar.gz"
+        "https://github.com/ollama/ollama/archive/6383a0fa9cbf97494b847226e189f6e36b401a08.tar.gz"
     ) in dockerfile
-    assert (
-        "sha256:8f1c4cfe1c687918e00bf9ab6f9966ebd4d727d3d64ccb109b2561afcd347b07"
-    ) in dockerfile
+    assert ("sha256:cfd3168b67445cdb0418892ccdbccb1348921f570e025695be52ffb2fe894d90") in dockerfile
     for module in (
         "github.com/buger/jsonparser@v1.1.2",
-        "golang.org/x/crypto@v0.55.0",
+        "golang.org/x/crypto@v0.57.0",
         "golang.org/x/image@v0.45.0",
-        "golang.org/x/mod@v0.40.0",
-        "golang.org/x/net@v0.57.0",
-        "golang.org/x/sync@v0.22.0",
-        "golang.org/x/sys@v0.47.0",
-        "golang.org/x/term@v0.45.0",
-        "golang.org/x/text@v0.41.0",
+        "golang.org/x/mod@v0.41.0",
+        "golang.org/x/net@v0.60.0",
+        "golang.org/x/sync@v0.23.0",
+        "golang.org/x/sys@v0.48.0",
+        "golang.org/x/term@v0.46.0",
+        "golang.org/x/text@v0.42.0",
     ):
         assert module in dockerfile
+        name, version = module.split("@", 1)
+        assert f'{name})" = "{version}"' in dockerfile
+    assert dockerfile.count('&& test "$(go list -m') == 9
     assert "go mod verify" in dockerfile
     assert "github.com/ollama/ollama/server.mode=release" in dockerfile
+    assert "github.com/ollama/ollama/version.Version=0.34.3-careeros.1" in dockerfile
+    assert 'org.opencontainers.image.version="0.34.3-careeros.1"' in dockerfile
+    assert "source_revision=6383a0fa9cbf97494b847226e189f6e36b401a08" in dockerfile
     assert "go version -m /out/ollama" in dockerfile
     assert "generate_go_license.cmake" in dockerfile
     assert "COPY --from=build /out/GO_LICENSE /usr/lib/ollama/GO_LICENSE" in dockerfile
     assert "HOME=/var/lib/ollama" in dockerfile
     assert "USER 10001:10001" in dockerfile
 
-    assert "OLLAMA_IMAGE: careeros-local-ollama:0.33.3-careeros.1" in workflow
+    assert "OLLAMA_IMAGE: careeros-local-ollama:0.34.3-careeros.1" in workflow
     assert "docker compose build backend frontend ollama" in workflow
     assert "Smoke-test patched Ollama runtime" in workflow
     assert "BUILD_PROVENANCE.txt" in workflow
-    assert "golang.org/x/crypto[[:space:]]+v0[.]55[.]0" in workflow
-    assert "golang.org/x/net[[:space:]]+v0[.]57[.]0" in workflow
+    assert "golang.org/x/crypto[[:space:]]+v0[.]57[.]0" in workflow
+    assert "golang.org/x/net[[:space:]]+v0[.]60[.]0" in workflow
     assert "Gate patched Ollama high and critical vulnerabilities" in workflow
+    gate = workflow[
+        workflow.index(
+            "      - name: Gate patched Ollama high and critical vulnerabilities"
+        ) : workflow.index("      - name: Upload Ollama vulnerability reports")
+    ]
+    assert "--ignore-unfixed" not in gate
+    assert "--exit-code 1" in gate
     assert "--severity HIGH,CRITICAL" in workflow
     assert "ollama-container.cdx.json" in workflow
     assert "--ignorefile" not in workflow
     assert "check_ollama_vulnerability_policy.py" not in workflow
     assert not (ROOT / ".trivyignore.yaml").exists()
     assert not (ROOT / "scripts/check_ollama_vulnerability_policy.py").exists()
+
+
+def test_ollama_runtime_installs_fixed_openssl_and_verifies_minimum() -> None:
+    dockerfile = (ROOT / "docker/ollama/Dockerfile").read_text(encoding="utf-8")
+    workflow = (ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
+    runtime = dockerfile[dockerfile.index("FROM ollama/ollama:") :]
+    patch_step = runtime[runtime.index("RUN set -eu;") : runtime.index("WORKDIR /var/lib/ollama")]
+
+    assert "apt-get update;" in patch_step
+    assert "apt-get install --yes --no-install-recommends --only-upgrade" in patch_step
+    assert "libssl3t64 openssl;" in patch_step
+    assert "for package in libssl3t64 openssl; do" in patch_step
+    assert "dpkg-query --show --showformat='${Version}'" in patch_step
+    assert "dpkg --compare-versions \"$installed_version\" ge '3.0.13-0ubuntu3.16'" in patch_step
+    assert "runtime_package=%s version=%s" in patch_step
+    assert ">> /usr/share/doc/careeros-local-ollama/BUILD_PROVENANCE.txt" in patch_step
+    assert "rm -rf /var/lib/apt/lists/*" in patch_step
+    assert "--allow-unauthenticated" not in runtime
+    assert "--allow-downgrades" not in runtime
+    assert "for package in libssl3t64 openssl; do" in workflow
+    assert 'dpkg --compare-versions "$installed_version" ge "3.0.13-0ubuntu3.16"' in workflow
+    assert '"runtime_package=$package version=$installed_version" "$provenance"' in workflow
 
 
 def test_backend_container_smoke_rediscovers_the_ephemeral_port_after_restart() -> None:

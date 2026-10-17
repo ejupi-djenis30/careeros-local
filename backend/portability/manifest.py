@@ -7,8 +7,8 @@ from typing import Any, Final, Literal
 from backend.portability.schemas import ArchiveManifest
 
 ARCHIVE_FORMAT: Final[Literal["careeros-portable-archive"]] = "careeros-portable-archive"
-CURRENT_ARCHIVE_VERSION: Final = 8
-SUPPORTED_ARCHIVE_VERSIONS: Final = frozenset({1, 2, 3, 4, 5, 6, 7, 8})
+CURRENT_ARCHIVE_VERSION: Final = 9
+SUPPORTED_ARCHIVE_VERSIONS: Final = frozenset({1, 2, 3, 4, 5, 6, 7, 8, 9})
 MANIFEST_MEMBER: Final = "manifest.json"
 PAYLOAD_MEMBER: Final = "payload.json"
 
@@ -50,6 +50,7 @@ V8_TABLES: Final = (
     "campaign_applications",
     "campaign_artifacts",
 )
+V9_TABLES: Final = (*V8_TABLES, "job_provider_configurations")
 TABLES_BY_VERSION: Final = {
     1: frozenset(V1_TABLES),
     2: frozenset(V2_TABLES),
@@ -59,6 +60,7 @@ TABLES_BY_VERSION: Final = {
     6: frozenset(V6_TABLES),
     7: frozenset(V7_TABLES),
     8: frozenset(V8_TABLES),
+    9: frozenset(V9_TABLES),
 }
 
 
@@ -87,4 +89,20 @@ def validate_manifest_compatibility(manifest: ArchiveManifest) -> frozenset[str]
     expected = expected_tables(manifest.format_version)
     if set(manifest.record_counts) != expected:
         raise ValueError("The manifest contains an unsupported record count set")
+    validate_profile_scope(manifest.format_version, manifest.record_counts)
     return expected
+
+
+def validate_profile_scope(format_version: int, counts: dict[str, int]) -> None:
+    """Permit v9 provider-only vaults without inventing a career profile."""
+    profile_count = counts.get("candidate_profiles", 0)
+    if profile_count == 1:
+        return
+    if format_version != 9 or profile_count != 0:
+        raise ValueError("A portable career archive must contain exactly one profile")
+    if counts.get("job_provider_configurations", 0) < 1 or any(
+        count
+        for table, count in counts.items()
+        if table not in {"candidate_profiles", "job_provider_configurations", "preference_signals"}
+    ):
+        raise ValueError("A provider-only archive requires providers and no other domain records")

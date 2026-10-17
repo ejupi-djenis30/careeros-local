@@ -6,7 +6,7 @@ import { canvasReducer, createCanvasState } from "./canvasReducer";
 import { useI18n } from "../../../i18n/useI18n";
 import "./ResumeCanvasLayouts.css";
 
-export function ResumeCanvas({ document, templateKind, templateLayout, onChange, onPromoteClaim, promoting = false, photoUrl = null }) {
+export function ResumeCanvas({ document, templateKind, templateLayout, onChange, onPromoteClaim, promoting = false, mutationBusy = false, photoUrl = null }) {
     const { t } = useI18n();
     const [state, dispatch] = useReducer(canvasReducer, document, createCanvasState);
     const [selection, setSelection] = useState(null);
@@ -70,7 +70,7 @@ export function ResumeCanvas({ document, templateKind, templateLayout, onChange,
     return (
         <div className="resume-canvas-workspace">
             <CanvasToolbar state={state} templateKind={templateKind} templateLayout={templateLayout} dispatch={dispatch} onAddClaim={addClaim} zoom={zoom} onZoom={setZoom} pageCount={pageCount} />
-            <CanvasInspector selected={selected} sectionId={selection?.sectionId} dispatch={dispatch} onPromote={onPromoteClaim} promoting={promoting} />
+            <CanvasInspector selected={selected} sectionId={selection?.sectionId} dispatch={dispatch} onPromote={onPromoteClaim} promoting={promoting} mutationBusy={mutationBusy} />
             <div className="resume-canvas-viewport">
                 <div className="resume-canvas-stage" style={{ width: `${210 * zoom}mm`, minHeight: `${297 * zoom}mm`, "--canvas-accent": state.present.style.accent_color, "--canvas-font": state.present.style.font_family, "--canvas-size": `${state.present.style.base_font_size}pt`, "--canvas-leading": state.present.style.line_height, "--canvas-gap": `${state.present.style.section_spacing}pt`, "--canvas-margin": `${state.present.style.margin_mm}mm`, "--canvas-columns": state.present.style.columns }} aria-label={t("canvas.editable")}>
                 <div ref={paperRef} className={`resume-canvas-paper resume-canvas-paper--${templateKind} ${templateLayout ? `resume-layout--${templateLayout}` : ""} ${photoUrl ? "has-photo" : ""}`} style={{ transform: `scale(${zoom})` }} aria-label={t("canvas.a4")}>

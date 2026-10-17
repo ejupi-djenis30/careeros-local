@@ -1,7 +1,7 @@
 import { createContext } from "react";
 import { getMessages, hasMessages } from "./messageRegistry";
 
-function interpolate(template, variables) {
+export function interpolate(template, variables) {
     return template.replace(/\{(\w+)\}/g, (_match, key) => String(variables[key] ?? `{${key}}`));
 }
 

@@ -10,5 +10,6 @@ requirements.lock text eol=lf
 requirements-tooling.lock text eol=lf
 third_party/licenses/cpython-3.13.14/LICENSE text eol=lf
 LICENSE text eol=lf
-THIRD_PARTY_NOTICES.txt text eol=lf
+# Generated legal material retains upstream whitespace and verified text digests.
+THIRD_PARTY_NOTICES.txt text eol=lf whitespace=-blank-at-eol
 frontend/src-tauri/windows/nsis-hooks.nsh text eol=lf

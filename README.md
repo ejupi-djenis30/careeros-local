@@ -25,7 +25,7 @@ without a model; opportunity matching and coaching require a ready, approved loc
 [Open the portfolio site](https://ejupi-djenis30.github.io/careeros-local/) ·
 [View the Devpost project](https://devpost.com/software/careeros-local) ·
 [View releases](https://github.com/ejupi-djenis30/careeros-local/releases) ·
-[Daily-driver guide](docs/daily-driver.md) · [Architecture](docs/architecture.md) ·
+[Daily-driver guide](docs/daily-driver.md) · [Job-provider guide](docs/job-providers.md) · [Architecture](docs/architecture.md) ·
 [Privacy model](docs/privacy.md)
 
 ## Why CareerOS
@@ -88,6 +88,10 @@ the assets.
 - Provider observations update a revisioned catalog before per-profile deduplication. Analysis and
   normalization results carry the revision they were built from and fail closed if a newer advert
   arrives while local-model work is running.
+- The **Providers** workspace manages owned JSON/HTML sources and explicitly imported native
+  adapters or bundled packs. New sources start disabled; saved network access and one-shot tests
+  require separate owner actions. Configuration, import and backup work without a model. See the
+  [job-provider guide](docs/job-providers.md) for consent, credentials and restore behavior.
 - Job cards resolve their application state in one user-scoped bulk read. Creating a timeline is
   idempotent at both service and database levels, including duplicate provider rows and concurrent
   requests.
@@ -173,8 +177,10 @@ not confirm them for you: accept only accurate candidates, choose **Review impor
 the facts you have checked as confirmed, and save the Career Vault.
 
 Install the listed local model from the same Today page when you are ready to match opportunities.
-Model acquisition requires the displayed license consent and is separate from the CV import. Before
-the first provider search, enable only the job sources you want under Career Vault preferences.
+Model acquisition requires the displayed license consent and is separate from the CV import. Open
+**Providers** in the sidebar, or **Manage providers** in Career Vault preferences, to configure or
+import sources. A new vault has no network providers. Enable only the sources you want before a
+provider search; [testing a source](docs/job-providers.md#network-consent-and-testing) is a separate action.
 
 ## Run locally
 
@@ -369,10 +375,10 @@ screenshots under `docs/assets/`. Full details are in the [demo recording guide]
 .venv\Scripts\python.exe -m mypy backend scripts --ignore-missing-imports --no-error-summary
 .venv\Scripts\python.exe -m pytest tests/backend -q --cov=backend --cov-branch --cov-fail-under=80
 npm --prefix frontend run test:coverage
-npm --prefix frontend run demo:install
-npm --prefix frontend run test:e2e
 npm --prefix frontend run lint
 npm --prefix frontend run build
+npm --prefix frontend run demo:install
+npm --prefix frontend run test:e2e
 cargo fmt --manifest-path frontend/src-tauri/Cargo.toml --check
 cargo clippy --manifest-path frontend/src-tauri/Cargo.toml --locked --all-targets -- -D warnings
 cargo test --manifest-path frontend/src-tauri/Cargo.toml --locked
@@ -395,6 +401,7 @@ collectively to **CareerOS Local contributors**.
 ## Documentation
 
 - [Development guide](docs/development.md)
+- [Job-provider guide](docs/job-providers.md)
 - [Brand system](docs/brand.md)
 - [Demo recording guide](docs/demo.md)
 - [Architecture](docs/architecture.md)

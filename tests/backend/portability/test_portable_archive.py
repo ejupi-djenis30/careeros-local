@@ -78,9 +78,9 @@ def test_current_archive_version_is_outside_the_frozen_v5_decoder_contract():
             raise ValueError(f"Archive version {format_version} is not supported by the v5 decoder")
         return format_version
 
-    assert CURRENT_ARCHIVE_VERSION == 8
-    assert SUPPORTED_ARCHIVE_VERSIONS == frozenset(range(1, 9))
-    with pytest.raises(ValueError, match="Archive version 8 is not supported"):
+    assert CURRENT_ARCHIVE_VERSION == 9
+    assert SUPPORTED_ARCHIVE_VERSIONS == frozenset(range(1, 10))
+    with pytest.raises(ValueError, match="Archive version 9 is not supported"):
         decode_with_frozen_v5_contract(CURRENT_ARCHIVE_VERSION)
 
 
@@ -533,7 +533,7 @@ APPLICATION_PROJECTION_FIELDS = {
 def _rewrite_application_projection_fixture(
     archive_data: bytes,
     *,
-    format_version: int = 8,
+    format_version: int = 9,
     remove_projections: bool = False,
     projection_overrides: dict | None = None,
 ) -> bytes:
@@ -569,6 +569,8 @@ def _rewrite_application_projection_fixture(
                 row.pop(field, None)
 
     removed_tables: list[str] = []
+    if format_version < 9:
+        removed_tables.append("job_provider_configurations")
     if format_version < 8:
         removed_tables.extend(
             ["campaigns", "campaign_applications", "campaign_artifacts"]
@@ -635,6 +637,7 @@ def _rewrite_legacy_v3_private_and_runtime_fields(archive_data: bytes, source_qu
         "campaigns",
         "campaign_applications",
         "campaign_artifacts",
+        "job_provider_configurations",
     ):
         payload["tables"].pop(table, None)
     for row in payload["tables"]["jobs"]:
@@ -673,6 +676,7 @@ def _rewrite_legacy_v3_private_and_runtime_fields(archive_data: bytes, source_qu
         "campaigns",
         "campaign_applications",
         "campaign_artifacts",
+        "job_provider_configurations",
     ):
         manifest["record_counts"].pop(table, None)
     payload_entry = next(entry for entry in manifest["entries"] if entry["path"] == "payload.json")
@@ -700,6 +704,7 @@ def _rewrite_legacy_v3_heuristic_match(archive_data: bytes) -> bytes:
         "campaigns",
         "campaign_applications",
         "campaign_artifacts",
+        "job_provider_configurations",
     ):
         payload["tables"].pop(table, None)
     for field in (
@@ -747,6 +752,7 @@ def _rewrite_legacy_v3_heuristic_match(archive_data: bytes) -> bytes:
         "campaigns",
         "campaign_applications",
         "campaign_artifacts",
+        "job_provider_configurations",
     ):
         manifest["record_counts"].pop(table, None)
     payload_entry = next(entry for entry in manifest["entries"] if entry["path"] == "payload.json")
@@ -2015,7 +2021,7 @@ def test_v6_round_trip_remaps_search_ids_and_preserves_application_job(
     with zipfile.ZipFile(BytesIO(exported.content)) as archive:
         manifest = json.loads(archive.read("manifest.json"))
         payload = json.loads(archive.read("payload.json"))
-    assert manifest["format_version"] == 8
+    assert manifest["format_version"] == 9
     expected_search_counts = {
         "search_profiles": 1,
         "scraped_jobs": 1,

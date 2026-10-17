@@ -5,24 +5,57 @@ All notable changes to CareerOS Local are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- Added the authenticated **Providers** workspace for revisioned JSON/HTML declarations, reviewed
+  native adapters and explicitly imported provider packs. New vaults start with no network sources;
+  saved activation and a bounded, one-shot network test require separate owner consent. Existing
+  MCP grants and proposal-only authority remain unchanged.
+- Added portable archive format 9 for provider configuration, including provider-only vaults.
+  Exports omit configured headers; every restored provider requires fresh network activation.
+  Previous archive formats remain supported without creating synthetic career facts or profiles.
+
+### Changed
+
+- Consolidated resume workspace operations around draft ownership and revision checks. Stale loads,
+  saves, photo responses and errors cannot overwrite another draft or discard newer edits; browser
+  backup downloads share the verified download utility.
+- Removed obsolete duplicate AI paths while retaining strict contracts, required local analysis,
+  evidence validation and the existing proposal review boundary. Provider translations load only
+  with their page and selected interface language, within the existing frontend byte budgets.
+- Load the authenticated data router after login, preserving browser and desktop deep links and
+  unsaved-change guards while reducing the initial application download within existing budgets.
+- Align the Rust Tauri core and desktop plugins with the updated JavaScript packages; regenerate
+  the native lock, schemas and legal notices while preserving application permissions. Native
+  builds declare the tested Rust 1.96 baseline.
+- Regenerated hash-locked production, development and packaging environments for 15 Python updates:
+  FastAPI 0.141.1, Uvicorn 0.54.0, SQLAlchemy 2.1.1, greenlet 3.5.6, Alembic 1.20.0,
+  Pydantic 2.13.5, pydantic-settings 2.15.0, python-dotenv 1.2.3, pytest-mock 3.16.0,
+  httpx2 2.13.1, wheel 0.48.0, Ruff 0.16.9, mypy 2.3.1, pre-commit 4.6.2 and
+  PyInstaller 6.22.3. Packaging metadata and third-party notices use the same reviewed locks.
+
 ### Security
 
-- Replaced the expired Ollama exception inventory with a reproducible local image built from the
-  checksum-pinned 0.33.3 source and digest-pinned Go 1.27.1 toolchain. The build verifies fixed Go
-  module versions, regenerates dependency licensing, embeds provenance and retains the upstream
-  native runtime, while CI runs the real service, emits an SBOM and gates every HIGH/CRITICAL
-  finding without an ignore file. The persistent model server now runs as UID/GID 10001; a
+- Replaced the expired Ollama exception inventory with a local image definition built from the
+  checksum-pinned 0.34.3 source and digest-pinned Go 1.27.2 toolchain. The replacement executable
+  and digest-pinned upstream native payload both use Ollama 0.34.3. The build verifies the patched
+  Go module graph, regenerates licensing and embeds provenance, while CI runs the real service,
+  emits an SBOM and gates every HIGH/CRITICAL finding without an ignore file. The persistent model
+  server now runs as UID/GID 10001; a
   network-disabled, capability-minimal one-shot migrates existing volume ownership before startup.
-- Updated the backend container to the verified Python 3.12.14 Alpine image and apply
-  supported Alpine security updates in both runtime images. Container vulnerability
+- Updated the backend container definition to the digest-pinned Python 3.12.15 Alpine image;
+  both runtime Dockerfiles apply supported Alpine security updates. Container vulnerability
   gates and package SBOMs continue to cover the exact built images.
-- Updated the locked PDF parser to pypdf 6.16.1, HTTP/2 support to h2 4.4.1,
-  cryptography to 50.0.1 and packaging/audit tooling to pip 26.2. These updates remove the
-  newly reported Python dependency advisories without changing local-only application behavior.
-- Updated compatible frontend build/test dependencies, including PostCSS 8.5.23, JS-YAML 4.3.1,
-  Browserslist 4.28.7, humanfs 0.16.8, Undici 7.29.0, brace-expansion 5.0.9 and Nano ID 3.3.18.
-  The full frontend dependency audit is clean, including development tooling; no vulnerability
-  exceptions or audit suppressions were added.
+- Retained reviewed security pins including pypdf 6.21.0, h2 4.4.1, cryptography 50.0.1,
+  pip 26.2, urllib3 2.8.0 and virtualenv 21.13.0, with complete regenerated license notices.
+- Treat every configured provider header as confidential. API responses redact values, imports
+  reject headers, backups exclude them, and changing origin requires explicitly removing or
+  re-entering credentials instead of forwarding preserved secrets to another destination.
+- Updated frontend dependencies and compatible security pins using fresh registry metadata after
+  a stale local npm cache hid published fixes. On 2026-10-17, both full and production-only npm
+  audits report zero findings for the installed lockfile, without audit suppression or relaxed
+  gates. Source validation does not establish installer, multi-OS, signing or artifact-provenance
+  acceptance.
 
 ### Fixed
 

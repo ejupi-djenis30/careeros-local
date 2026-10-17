@@ -1,12 +1,7 @@
-"""Domain slice extracted from the local AI compatibility pipeline."""
+"""Validated local-model matching and bounded critique."""
 
-# ruff: noqa: F401
-
-import asyncio
 import logging
 from typing import Any, Dict, List, Optional
-
-from tenacity import RetryError
 
 from backend.ai.match_evidence import candidate_evidence_document, job_evidence_document
 from backend.ai.match_policy import (
@@ -14,20 +9,9 @@ from backend.ai.match_policy import (
     derive_match_presentation,
     materialize_match_citations,
 )
-from backend.ai.orchestrator import LocalAIOrchestrator, OrchestrationRequest
 from backend.ai.retrieval import EvidenceDocument
-from backend.core.config import settings
 from backend.core.diagnostics import FailureCode, diagnose_failure, log_failure
-from backend.providers.circuit_breaker import CircuitOpenError, CircuitState, circuit_registry
-from backend.providers.llm.factory import get_provider_for_step
-from backend.services.search.query_contracts import (
-    compute_plan_input_fingerprint,
-    exact_query_fingerprint,
-    loose_query_fingerprint,
-    normalize_domain,
-    normalize_search_item,
-    sanitize_prompt_text,
-)
+from backend.services.search.query_contracts import sanitize_prompt_text
 
 logger = logging.getLogger(__name__)
 
@@ -46,61 +30,6 @@ def _materialize_match_citations(
         job=job,
         dimension_scores=dimension_scores,
     )
-
-
-def _is_retryable_plan_error(exc: Exception) -> bool:
-    """Return True for transient PLAN-step failures worth retrying."""
-    real_exc = exc
-    if isinstance(exc, RetryError):
-        try:
-            candidate = exc.last_attempt.exception()
-            if isinstance(candidate, Exception):
-                real_exc = candidate
-        except Exception:
-            pass
-
-    if isinstance(real_exc, (asyncio.TimeoutError, TimeoutError, CircuitOpenError)):
-        return True
-
-    error_text = str(real_exc).lower()
-    retryable_fragments = (
-        "rate limit",
-        "timeout",
-        "timed out",
-        "temporar",
-        "connection reset",
-        "connection aborted",
-        "connection error",
-        "502",
-        "503",
-        "504",
-    )
-    return any(fragment in error_text for fragment in retryable_fragments)
-
-
-def _unwrap_retry_error(exc: Exception) -> tuple[Exception, str]:
-    """Extract the real cause from a tenacity RetryError and format a message.
-
-    Returns (real_exception, formatted_message) where formatted_message
-    includes the HTTP status code when the underlying error is an APIStatusError.
-    """
-    real_exc = exc
-    if isinstance(exc, RetryError):
-        try:
-            candidate = exc.last_attempt.exception()
-            if isinstance(candidate, Exception):
-                real_exc = candidate
-        except Exception:
-            pass
-    status_code = getattr(real_exc, "status_code", None)
-    msg = str(real_exc)
-    if status_code:
-        msg = f"HTTP {status_code}: {msg}"
-    return real_exc, msg
-
-
-def _query_fingerprint(search: Dict[str, Any]) -> str:
-    return exact_query_fingerprint(search)
 
 
 class MatchingMixin:

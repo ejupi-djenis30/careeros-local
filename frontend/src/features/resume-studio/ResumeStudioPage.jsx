@@ -36,7 +36,7 @@ function ResumeStudioContent({ requestedResumeId = null }) {
                 <section className="surface-section"><div className="section-heading"><div><span className="section-kicker">{t("resume.explicitSelection")}</span><h2>{t("resume.factsInResume")} <span>{draft.selected_fact_ids.length}</span></h2></div></div><p className="section-intro">{t("resume.selectionCopy")}</p><ResumeFactSelector facts={profile.facts} selectedIds={draft.selected_fact_ids} onChange={(selected_fact_ids) => studio.changeDraft({ selected_fact_ids })} /></section>
                 <section className="surface-section"><div className="section-heading"><div><span className="section-kicker">{t("resume.immutableVersions")}</span><h2>{t("resume.publications")}</h2></div></div><ResumeVersions versions={draft.versions} comparison={studio.versionComparison} busy={busy} onCompare={studio.compareVersions} onRestore={studio.restoreVersion} onError={studio.setError} /></section>
             </div>
-            <ResumeCanvasPane profile={profile} draft={draft} dirty={dirty} onChange={(canvas_document) => studio.changeDraft({ canvas_document })} onPromoteClaim={studio.promoteClaim} promoting={busy === "promote-claim"} />
+            <ResumeCanvasPane profile={profile} draft={draft} dirty={dirty} onChange={(canvas_document) => studio.changeDraft({ canvas_document })} onPromoteClaim={studio.promoteClaim} promoting={busy === "promote-claim"} mutationBusy={Boolean(busy)} />
         </div>
     );
 }

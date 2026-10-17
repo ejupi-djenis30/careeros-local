@@ -17,12 +17,14 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from packaging.requirements import InvalidRequirement, Requirement
+
 ROOT = Path(__file__).resolve().parents[1]
 NOTICE_NAME = "THIRD_PARTY_NOTICES.txt"
 NOTICE_PATH = ROOT / NOTICE_NAME
 NOTICE_SCHEMA = 1
 MAX_NOTICE_BYTES = 4 * 1024 * 1024
-APPROVED_NOTICE_SHA256 = "1233d7bf11c42b0eddd53d20b860963ee0b25d75056eb65f3588dcbacb77ae1e"
+APPROVED_NOTICE_SHA256 = "7baf4fe8d0068e99e3d080f05fe415f16a267b5d1172188f5cfc08381102707b"
 
 MANIFEST_START = "----- BEGIN CAREEROS THIRD-PARTY MANIFEST -----"
 MANIFEST_END = "----- END CAREEROS THIRD-PARTY MANIFEST -----"
@@ -32,7 +34,7 @@ LEGAL_FILE_PATTERN = re.compile(
     r"^(?:LICENSE|LICENCE|COPYING|NOTICE|COPYRIGHT)(?:[._-].*)?$",
     re.IGNORECASE,
 )
-REQUIREMENT_PATTERN = re.compile(r"^(?P<name>[A-Za-z0-9_.-]+)==(?P<version>[^\s\\;]+)")
+LOCK_HASH_PATTERN = re.compile(r"--hash=sha256:[0-9a-f]{64}")
 CANONICAL_NAME_PATTERN = re.compile(r"[-_.]+")
 NATIVE_CPYTHON_LICENSES = {
     "3.13.14": "third_party/licenses/cpython-3.13.14/LICENSE",
@@ -172,12 +174,26 @@ def _node_inventory(root: Path = ROOT) -> list[dict[str, str]]:
 
 def _locked_python_versions(path: Path) -> dict[str, str]:
     packages: dict[str, str] = {}
-    for line in path.read_text(encoding="utf-8").splitlines():
-        match = REQUIREMENT_PATTERN.match(line)
-        if match is None:
+    for raw_line in path.read_text(encoding="utf-8").splitlines():
+        line = raw_line.strip().removesuffix("\\").rstrip()
+        if not line or line.startswith("#"):
             continue
-        name = _canonical_name(match.group("name"))
-        version = match.group("version")
+        if LOCK_HASH_PATTERN.fullmatch(line):
+            continue
+        try:
+            requirement = Requirement(line)
+        except InvalidRequirement as error:
+            raise RuntimeError(f"Python lock contains a malformed record in {path.name}") from error
+        name = _canonical_name(requirement.name)
+        specifiers = list(requirement.specifier)
+        if (
+            requirement.url is not None
+            or len(specifiers) != 1
+            or specifiers[0].operator != "=="
+            or "*" in specifiers[0].version
+        ):
+            raise RuntimeError(f"Python lock must pin one exact version for {name}")
+        version = specifiers[0].version
         previous = packages.setdefault(name, version)
         if previous != version:
             raise RuntimeError(f"Python lock contains conflicting versions for {name}")
