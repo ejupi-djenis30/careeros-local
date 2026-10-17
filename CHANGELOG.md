@@ -51,7 +51,7 @@ All notable changes to CareerOS Local are documented here. The format follows
   both runtime Dockerfiles apply supported Alpine security updates. Container vulnerability
   gates and package SBOMs continue to cover the exact built images.
 - Retained reviewed security pins including pypdf 6.21.0, h2 4.4.1, cryptography 50.0.1,
-  pip 26.2, urllib3 2.8.0 and virtualenv 21.13.0, with complete regenerated license notices.
+  pip 26.2, urllib3 2.8.0 and virtualenv 21.14.6, with complete regenerated license notices.
 - Treat every configured provider header as confidential. API responses redact values, imports
   reject headers, backups exclude them, and changing origin requires explicitly removing or
   re-entering credentials instead of forwarding preserved secrets to another destination.

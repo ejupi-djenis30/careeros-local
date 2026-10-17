@@ -263,6 +263,21 @@ files changed in this follow-up; the complete T018 frontend lint passed. The
 privacy test's formatting was AST-identical. The final Windows backend coverage
 run has started on frozen non-Markdown source; its result remains pending.
 
+The final updated-runtime material/provider journeys both passed, including
+deterministic document/ZIP downloads, account isolation, revision/consent behavior
+and provider-only backup without a profile. Browser forbidden origins were empty;
+both temporary vaults and child processes were cleaned successfully. Independent
+review found no defect in the vendor-control names, precedence or privacy probes.
+Four final performance tests passed in 9.12 seconds with 1,169 unchanged inputs:
+profile/page/agenda p95 4.277/42.661/87.233 ms (each budget 200 ms), readiness
+p95 21.353 ms and maximum five queries (budget 100 ms/five queries). The final
+SQLite upgrade/downgrade/upgrade succeeded with head d0b1c2d3e4f5, integrity OK
+and zero foreign-key violations. An initial helper asserted an incorrect table
+name after successful migrations; its corrected read-only assertion passed.
+The complete Windows run remains pending. A subsequent documentation-only commit
+corrects a stale virtualenv version reference and records these finished checks;
+its required PR gates must run on that final head. No non-Markdown input changed.
+
 Native installer clean-install/restart/upgrade across supported systems, signing,
 release artifact checksum/SBOM/provenance and applicable model/hardware evaluation
 remain release qualification obligations. None is claimed from source suites or
