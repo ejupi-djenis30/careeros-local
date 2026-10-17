@@ -23,9 +23,10 @@ schema/OpenAPI/function contracts and 186 passing focused regressions. The first
 updated axe run also found a language-label mismatch; its narrow accessibility
 fix passes the final 686-test frontend suite and affected browser flow.
 
-T008/T009 remain open until the final frozen backend and complete browser repeat
-finish. Static/native/migration/audits, four performance gates, notice reproduction
-and clean installed wheel/protocol/resource proof have passed; exact evidence is
+T009 independent analysis is complete. T008 remains open until the final frozen
+backend and applicable protected remote checks finish. All eight browser groups,
+686 frontend tests, static/native/migration/audits, four performance gates, notice
+reproduction and clean post-fix installed wheel/protocol/resource proof passed; exact evidence is
 in validation.md. No interrupted or failed earlier run is counted as a pass.
 T013 is complete: independent pre-split constant/string comparison found exactly
 one encoding defect, the ASCII-escaped fix restores all original literal values,

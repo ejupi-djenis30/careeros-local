@@ -26,7 +26,7 @@
 
 - [ ] T008 Run focused and final combined static/test/coverage/performance/native/
   E2E/migration/license/security checks; fix actual regressions (FR-007; SC-002–SC-004).
-- [ ] T009 Independently review implementation, analyze artifacts, converge remaining
+- [x] T009 Independently review implementation, analyze artifacts, converge remaining
   work and record exact integration/release outcomes (FR-002, FR-007; SC-001, SC-004).
 - [ ] T010 Publish the combined source through main's permitted protected path,
   verify the resulting main content, and delete integrated local/remote branches

@@ -4,6 +4,10 @@ Date: 2026-10-17. Starting main:
 `1e9065f62b4c6da460941e35a6bc3d49fc673ba3`.
 Refactor committed as `6659277` on `codex/production-readiness-refactor`.
 No original branch has been deleted while integration is in progress.
+Combined source is committed as `b6b851e`; ancestry record `3639d7b` retains all
+twelve assessed original tips as ancestors. Its tree was checked equal to the
+reviewed combined source, so recording ancestry did not substitute old content
+for the recovered implementation. Final validation evidence is recorded separately.
 
 The complete original refs/history were saved and `git bundle verify` passed for
 `branches-before-integration.bundle` in the OS temporary directory

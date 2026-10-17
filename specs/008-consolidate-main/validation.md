@@ -3,6 +3,9 @@
 Date: 2026-10-17. Work branch: `codex/production-readiness-refactor`.
 Status: final combined validation in progress; no main merge or branch deletion
 has been represented as complete. No release or signed installer is claimed.
+This source record is captured before protected publication. Subsequent PR check
+results and Git integration operations complete the remaining verification and
+publication tasks; a pending entry below is never presented as a passing check.
 
 ## Scope and review
 
@@ -44,7 +47,7 @@ evidence, npm caches and unsigned packaging proofs are in the OS temporary area.
 | Frontend real API/browser aggregate before final dependency integration | All eight groups passed, including provider-only backup download hashed against the API response |
 | Final frontend dependency integration | Original fresh-cache npm ci installed 272 packages; complete/production audits both passed with zero vulnerabilities; complete peer tree and 13 production licenses passed |
 | Final router build | Lint/build passed after the accessibility fix: entry 266,593 raw / 82,794 gzip bytes; initial 379,402 / 117,598; Italian locale 89,925 raw bytes; original budgets unchanged |
-| Final browser aggregate | Complete eight-group repeat in progress. The first updated run stopped at group five on two axe language-control label/name mismatches; visible EN/IT codes are now included in localized accessible names and covered by regressions |
+| Final browser aggregate | All eight groups passed on the corrected frozen source and final build: portfolio, agenda, login, agent access, agent work, real material API journey, real provider API/backup journey and responsive shell. This includes canonical header masks and EN/IT WCAG checks at 320/390/1440 widths |
 | Rust fmt / locked clippy all targets with warnings denied / locked tests | All passed; 28 native tests passed |
 | Rust license gate | Passed |
 | Rust vulnerability policy | Passed with the existing glib exception and six allowed unmaintained warnings; no exception extended |
@@ -120,8 +123,8 @@ and lock SHA-256 are respectively
 
 ## Packaging proof and limitations
 
-The final temporary, unsigned wheel is 1,043,986 bytes, SHA-256
-`e54c6a09f418773a3430c6d21ee39c043ce1375a849a2c7125a153387af2f224`.
+The final temporary, unsigned post-fix wheel is 1,043,971 bytes, SHA-256
+`c1a40a91da1292c39640f55614e16b92a5e96de085727f04c333a6ef93920899`.
 The installed provider pack is 12,978 bytes, SHA-256
 `e1a54a751a8e71d75cb6fab12ef57489466c46ab4c00f85084c266d83e8861e3`.
 Both checks used an isolated source snapshot and proved imports from installed
@@ -130,6 +133,11 @@ inputs were unchanged. Standard wheel smoke passed the fresh hash-locked install
 pip check, both CLI entrypoints, synthetic empty-vault diagnostics and exactly two
 system-read MCP tools. A second clean install proved the eight separated modules,
 bundled JSON and final installed notice digest in isolated Python.
+The installed mask and redaction helper were independently checked for eight
+U+2022 codepoints. A first resource-proof invocation omitted a required synthetic
+base_url; its temporary invocation was corrected and the isolated check passed.
+No source or original environment change was involved; the earlier error is
+retained in the temporary evidence.
 
 Automatic approval review rejected deletion of the task's ignored verification
 caches and empty native resource stub with the generic reason "blocked by policy".
