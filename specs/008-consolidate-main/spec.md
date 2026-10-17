@@ -1,6 +1,6 @@
 # Specification: Consolidate all work into main
 
-Date: 2026-10-17. Status: state-consistency source verified for protected integration.
+Date: 2026-10-17. Status: POSIX fixture correction and source verification complete; renewed protected CI pending.
 Owner request: integrate all branches into main, remove branches, clean the
 project and make the combined application work.
 Follow-up request: continue the refactor, cleanup and correction of confirmed
@@ -277,6 +277,9 @@ worktree was clean and main was the sole local/remote branch at this follow-up.
   the first result. Empty/nonempty optional-subtitle API cases return valid
   acknowledgements; rollback, ownership and existing explicit-confirmation
   boundaries remain tested.
+  SQLite fixtures must use the canonical private database bootstrap before
+  connecting, so these same cases execute under the existing POSIX containment
+  checks as well as on Windows. A rejected fixture setup is not a passing case.
 
 ## Governing constraints
 

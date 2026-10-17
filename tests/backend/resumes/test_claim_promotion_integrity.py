@@ -16,7 +16,7 @@ from sqlalchemy.orm import sessionmaker
 from backend.api.deps import get_current_user_id, limiter
 from backend.api.routes.resumes import router
 from backend.career.models import CandidateProfile, CareerFact
-from backend.db.base import Base, configure_sqlite_connection, get_db
+from backend.db.base import Base, configure_sqlite_connection, ensure_sqlite_parent, get_db
 from backend.models import User
 from backend.resumes.exceptions import (
     ResumeConflictError,
@@ -39,8 +39,10 @@ class ClaimVault:
 @pytest.fixture
 def claim_vault(tmp_path, monkeypatch):
     monkeypatch.setattr("backend.core.config.settings.DATA_DIR", str(tmp_path / "data"))
+    database_url = "sqlite:///" + (tmp_path / "claims.sqlite").as_posix()
+    ensure_sqlite_parent(database_url)
     engine = create_engine(
-        "sqlite:///" + (tmp_path / "claims.sqlite").as_posix(),
+        database_url,
         connect_args={"check_same_thread": False},
     )
     event.listen(engine, "connect", configure_sqlite_connection)

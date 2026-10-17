@@ -3,13 +3,15 @@
 Date: 2026-10-17. Current outcome: `no_tasks_appended` for state-consistency work.
 
 Independent read-only convergence covers 28 functional requirements, 26 success
-criteria, ten outcomes, twelve plan decisions, eight constitution principles and
-45 mapped tasks. All 54 requirement/criterion entries are covered, with no
+criteria, ten outcomes, thirteen plan decisions, eight constitution principles and
+46 mapped tasks. All 54 requirement/criterion entries are covered, with no
 missing, partial, contradictory or unrequested implementation. T040–T043 and
 T045 implement FR-024–FR-028 / SC-022–SC-026; T044 already covers final source
-verification and the protected-integration hand-off. No additional task is needed.
+verification and the protected-integration hand-off. T046 covers the subsequently
+observed POSIX fixture bootstrap defect and renewed verification. No additional
+task is needed.
 
-The complete frozen backend passes 3,020 tests with 17 skips and 82.31% combined
+On source a66b020, the complete frozen Windows backend passes 3,020 tests with 17 skips and 82.31% combined
 coverage. All four separately enabled performance cases pass. Command and outer
 caller return 0 and all 1,216 source inputs match. Frontend passes 803 tests in
 114 files, with lint/license/runtime checks and unchanged build budgets. Eight
@@ -27,8 +29,17 @@ is recorded subsequently in the PR/private recovery ledger, not inferred from
 source verification. No release, tag, signing claim or new waiver is introduced.
 
 The convergence assessment leaves tasks.md byte-for-byte unchanged. The
-coordinator then records T044 completion and final Markdown checks separately;
+coordinator then records T046 completion and final hook checks separately;
 the source hand-off does not pre-approve future protected integration.
+
+The corrected fixture passes all 33 focused Windows tests, Ruff/format and the
+required backend mypy gate. Independent review proves the exact bootstrap-only
+AST delta, unchanged assertions, 1,215 other source inputs and 44 built assets.
+The optional direct test mypy check retains three pre-existing diagnostics,
+independently reproduced on a66b020. No production validator is relaxed. The
+first Linux CI failure (nine fixture setup errors) and skipped performance step
+remain failures/skips in the evidence. Full Linux CI on the corrected head is
+pending and required before merge; old-head successes do not substitute for it.
 
 ## Historical extended convergence before PR #118
 

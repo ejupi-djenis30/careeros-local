@@ -256,3 +256,13 @@ T044 follows all implementation tasks in this phase. Completion records verified
 source and the integration hand-off; subsequent protected checks, signed-main
 identity and recovery-backed ref cleanup require their actual execution in the
 PR metadata and private recovery ledger.
+
+## Phase 9: Protected Linux fixture correction
+
+- [x] T046 Correct claim_vault to invoke the canonical private SQLite bootstrap
+  before opening its database. Keep the POSIX validator and all promotion
+  assertions unchanged; retain the nine real Linux setup errors. Run focused
+  Windows/static checks, independently attest the single test-only source delta,
+  reconcile artifacts and prepare renewed protected checks. Actual full Linux
+  success on the corrected head remains mandatory before merge (FR-007, FR-028;
+  SC-004, SC-026; Constitution V, VII).

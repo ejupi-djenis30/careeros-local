@@ -20,6 +20,8 @@ The state-consistency follow-up starts from signed main 06fe0e0 and rechecks
 unchanged 2.0.1, especially lifecycle ownership (I), local authority (II/III),
 atomic persistence (V), focused modules (VI) and executable/private diagnostics
 (VII/VIII). These corrections add no authority, dependency or persistent schema.
+The protected-CI fixture correction rechecks V and VII under the same 2.0.1:
+use the existing private SQLite bootstrap and preserve the POSIX validator.
 
 ## Integration design
 
@@ -280,6 +282,18 @@ atomic persistence (V), focused modules (VI) and executable/private diagnostics
     publication, signed-main tree proof, complete recovery bundle and safe ref
     cleanup procedure. Protected remote security/release jobs remain mandatory;
     this work does not publish a release or claim installer signing.
+
+13. Correct the claim-promotion fixture's private SQLite bootstrap after the
+    protected Linux run rejects all nine setups on source a66b020. Reuse
+    ensure_sqlite_parent before create_engine, as existing real SQLite fixtures
+    already do; keep production code, permissions validation and assertions
+    unchanged. Preserve the actual 3,017-pass/11-skip/nine-error execution and
+    skipped performance step. Verify the focused Windows suite and static checks,
+    independently prove only this test input changes outside Markdown, and
+    prepare renewed full protected checks on the new head. The final Linux run
+    must execute all nine cases successfully before merge; previous source/CI
+    results remain attributed to their exact inputs, without a waiver or rerun
+    of the unchanged failing source.
 
 ## Boundaries and size
 

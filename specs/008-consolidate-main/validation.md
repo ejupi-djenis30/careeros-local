@@ -1,8 +1,10 @@
 # Validation evidence: Consolidate all work into main
 
 Date: 2026-10-17. Current branch: `codex/state-consistency-refactor`.
-Status: PR #118 is integrated and verified; state-consistency source gates and
-independent reviews are complete. Protected integration requires its own checks,
+Status: PR #118 is integrated and verified; the state-consistency Windows gates
+passed, then protected Linux CI exposed a new test-fixture bootstrap defect.
+T046 corrects that fixture before renewed protected verification. Integration
+requires successful current-head checks,
 signed-main/tree verification and recovery-backed cleanup, recorded subsequently
 in PR metadata and the durable private Git recovery ledger.
 No production release or installer signing claim. Earlier sections retain the
@@ -1039,3 +1041,41 @@ It appends no task and preserves task bytes; the coordinator records T044's
 completion separately. Protected PR checks, signed-main identity, recovery
 bundles and ref cleanup remain subsequent executions, not inferred passes or a
 production release.
+
+## Protected Linux fixture correction on PR #119
+
+Source a66b020 is preserved in a complete verified recovery bundle. Its CI run
+39061460124 fails the backend step: 3,017 tests pass, 11 skip and nine error during
+claim_vault setup in 722.76 seconds, with 83.86% combined coverage. No promotion
+assertion in those nine cases executes. The subsequent performance step is
+skipped because the test step failed. The other seven CI jobs succeed; CodeQL
+passes four languages and its aggregate check, and Desktop packages passes nine
+jobs with two intentional release-assembly/publication skips. Those successes
+do not make the failing head eligible for merge.
+
+Two independent reviews trace the fixture to create_engine/configure_sqlite_connection
+without the existing ensure_sqlite_parent bootstrap. The POSIX validator rejects
+that newly created database before create_all. The CI traceback does not report
+an actual lstat mode, so no measured permission value is claimed. T046 reuses the
+canonical private bootstrap already used by other real SQLite fixtures; no
+production validator, security assertion or coverage gate is relaxed.
+
+The corrected focused Windows suite passes 33 tests with no skips in 28.44
+seconds. Ruff check and format pass; the required backend mypy command returns
+0 with no output. An additional direct mypy check on the test returns 1 with
+three annotation diagnostics; the original a66b020 test reproduces exactly the
+same messages, shifted by the two added lines. This optional check is not
+reported as passing, and its outer caller's exit 1 is preserved. A report helper
+initially expected a log from the silent successful backend mypy command;
+the missing empty log is recorded and replaced by explicit exit/output metadata,
+without rerunning or reclassifying any check.
+
+The sole non-Markdown delta is this fixture. All other 1,215 frozen inputs and
+44 build assets are unchanged; removing the exact bootstrap delta yields an
+identical module AST, including every assertion. The complete Windows run above
+remains attributed to a66b020, not to this changed fixture. Independent analysis
+and convergence cover 46 tasks, thirteen decisions and all 54 FR/SC entries,
+append no task and preserve task bytes during review. T046 completion records
+the reviewed source hand-off. Renewed full Linux and all protected checks on
+the corrected PR head remain mandatory before merge, and their actual results
+will be recorded in PR metadata and the private recovery ledger.
