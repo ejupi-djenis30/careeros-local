@@ -1,8 +1,10 @@
 # Specification: Consolidate all work into main
 
-Date: 2026-10-17. Status: implementation.
+Date: 2026-10-17. Status: baseline integrated; follow-up locally verified.
 Owner request: integrate all branches into main, remove branches, clean the
 project and make the combined application work.
+Follow-up request: continue the refactor, cleanup and correction of confirmed
+anomalies after the verified main integration.
 
 ## Outcomes
 
@@ -18,6 +20,10 @@ project and make the combined application work.
 4. Main is the sole remaining local and remote branch after successful integration.
    Retain a verified Git bundle before deletion, map every original branch tip to
    its integration decision, and respect protected-main rules and required checks.
+5. Correct independently reproduced post-integration failures in private
+   diagnostics, malformed-archive handling, provider mutation acknowledgement and
+   stored-photo reuse. Preserve the verified baseline and record its completed
+   execution separately from the new work.
 
 ## Requirements
 
@@ -58,6 +64,26 @@ project and make the combined application work.
 - FR-008 Keep personal vaults and ../Career untouched, clean only inventoried
   generated material, preserve development infrastructure, and leave a clean Git
   worktree. No release publication or new release tag is authorized.
+- FR-009 Private diagnostic redaction must cover actual ASGI server logging in
+  desktop and container startup, including non-propagating Uvicorn handlers and
+  exception records. Server configuration must not reinstall an unprotected
+  output path; no raw exception text, traceback or private sentinel is emitted.
+- FR-010 A confirmed provider mutation must immediately update local identifier,
+  revision, enabled state and redacted editor data. A subsequent catalog refresh
+  failure must preserve that acknowledgement and accurately distinguish refresh
+  failure from a failed write. Never repeat a write automatically or retain a
+  deleted provider as the selected saved record. Imported provider packs and
+  user-selected documents retain their confirmed counts through refresh failure
+  without inventing catalog records absent from the server response.
+- FR-011 Reusing a stored profile photo must verify owned normalized metadata and
+  contained bytes against digest and length before claiming upload success or
+  changing the selected photo/profile revision. Missing, corrupt or invalid
+  stored content fails closed without overwriting it; healthy reuse stays
+  idempotent and preserves shared-file and commit-recovery boundaries.
+- FR-012 Malformed ZIP metadata and invalid compressed backup members must produce a bounded archive
+  validation error through inspect and restore. Decoder failures must not escape
+  as internal errors or strand an otherwise ready vault in restore-pending;
+  preserve manifest, path, size, relationship, lock and rollback validation.
 
 ## Success criteria
 
@@ -74,6 +100,19 @@ project and make the combined application work.
   prevent publication/deletion, report the exact blocked action and retain work.
 - SC-006 No private content, secret, temporary command output or silent installer
   is added, and deterministic vault workflows remain usable without inference.
+- SC-007 Real Uvicorn configurations and synthetic ASGI exceptions prove that
+  diagnostic output contains neither private sentinels nor raw tracebacks, while
+  safe content-free diagnostics remain available in supported startup modes.
+- SC-008 Create/update/delete/toggle/import regressions with a successful write followed
+  by a failed catalog read preserve the committed state, redaction and correct
+  next request. Unmount, cancellation and actual write errors remain correctly
+  handled without discarding newer editor data.
+- SC-009 Re-upload regressions reject missing/corrupt/unusable stored-photo
+  metadata without selecting that asset or advancing profile revision. A valid
+  duplicate remains reusable without an extra asset or revision.
+- SC-010 A valid bounded ZIP control remains inspectable/restorable; a corrupted
+  compressed member returns the expected validation response, preserves existing
+  records and leaves or returns the vault to its prior safe lifecycle state.
 
 ## Governing constraints
 

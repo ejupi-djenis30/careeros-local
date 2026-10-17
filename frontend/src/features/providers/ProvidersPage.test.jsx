@@ -138,6 +138,30 @@ describe("ProvidersPage", () => {
         expect(ProviderService.create.mock.calls[0][0].enabled).toBe(false);
     });
 
+    it("keeps editor, catalog and import controls disabled throughout the actual provider write", async () => {
+        let finishWrite;
+        const write = new Promise((resolve) => { finishWrite = resolve; });
+        ProviderService.create.mockReturnValueOnce(write);
+        ProviderService.list.mockResolvedValue({ ...catalog, installed: [installedProvider()] });
+        renderWithI18n(<ProvidersPage />);
+        await fillProvider();
+        fireEvent.submit(screen.getByRole("button", { name: "Save provider" }).closest("form"));
+        await waitFor(() => expect(ProviderService.create).toHaveBeenCalledTimes(1));
+
+        const fields = screen.getByRole("button", { name: "Saving…" }).closest("fieldset");
+        for (const control of fields.querySelectorAll("input, textarea, select, button")) {
+            expect(control).toBeDisabled();
+        }
+        for (const name of ["New provider", "Edit", "Enable network access", "Test", "Delete", "Import pack"]) {
+            expect(screen.getByRole("button", { name })).toBeDisabled();
+        }
+        expect(screen.getByLabelText(/^Provider or provider-pack JSON file/)).toBeDisabled();
+        expect(screen.getByRole("checkbox", { name: /Enable imported providers immediately/ })).toBeDisabled();
+
+        await act(async () => { finishWrite(installedProvider()); await write; });
+        await waitFor(() => expect(screen.getByLabelText("Display name")).toBeEnabled());
+    });
+
     it("requires one-time network consent before testing a disabled source", async () => {
         const consent = vi.spyOn(window, "confirm").mockReturnValue(false);
         ProviderService.list.mockResolvedValue({ ...catalog, installed: [installedProvider()] });
@@ -173,7 +197,7 @@ describe("ProvidersPage", () => {
     });
 
     it("requires explicit activation to import enabled providers", async () => {
-        ProviderService.importPack.mockResolvedValue({ imported: [{ id: "provider-1" }] });
+        ProviderService.importPack.mockResolvedValue({ imported: [installedProvider()] });
         renderWithI18n(<ProvidersPage />);
         await screen.findByRole("button", { name: "Import pack" });
         fireEvent.click(screen.getByRole("checkbox", { name: /Enable imported providers immediately/ }));
@@ -250,7 +274,7 @@ describe("ProvidersPage", () => {
 
     it("imports a pack disabled unless activation is explicitly selected", async () => {
         const user = userEvent.setup();
-        ProviderService.importPack.mockResolvedValue({ imported: [{ id: "provider-1" }] });
+        ProviderService.importPack.mockResolvedValue({ imported: [installedProvider()] });
         renderWithI18n(<ProvidersPage />);
 
         await user.click(await screen.findByRole("button", { name: "Import pack" }));

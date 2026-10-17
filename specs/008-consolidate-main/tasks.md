@@ -24,14 +24,14 @@
 
 ## Phase 3: Verify and finish
 
-- [ ] T008 Run focused and final combined static/test/coverage/performance/native/
+- [x] T008 Run focused and final combined static/test/coverage/performance/native/
   E2E/migration/license/security checks; fix actual regressions (FR-007; SC-002–SC-004).
 - [x] T009 Independently review implementation, analyze artifacts, converge remaining
   work and record exact integration/release outcomes (FR-002, FR-007; SC-001, SC-004).
-- [ ] T010 Publish the combined source through main's permitted protected path,
+- [x] T010 Publish the combined source through main's permitted protected path,
   verify the resulting main content, and delete integrated local/remote branches
   only after preservation and successful integration (FR-006; SC-005).
-- [ ] T011 Clean verified disposable artifacts, retain evidence outside source and
+- [x] T011 Clean verified disposable artifacts, retain evidence outside source and
   report final refs, worktree state and any actual blocker (FR-008; SC-006).
 
 ## Phase 4: Independent analysis remediation
@@ -62,26 +62,66 @@
   tooling environment before importing its validator; reproduce the missing-
   packaging failure on a clean host and verify the fix and matrix ordering
   without relying on runner-preinstalled packages (FR-005, FR-007; SC-004).
-- [ ] T018 Preserve and assess the automated branch created during final cleanup;
+- [x] T018 Preserve and assess the automated branch created during final cleanup;
   integrate compatible Tauri API 2.12.2 and Bootstrap Icons 1.13.2 patches,
   derive icon provenance from installed metadata, reproduce lock-bound notices/
   icons and affected frontend/packaging checks, then
   repeat protected publication and fresh-inventory cleanup without losing
   concurrent work (FR-001, FR-002, FR-005–FR-008; SC-001, SC-004–SC-006).
-- [ ] T019 Preserve and assess the Python update branch from the same automation
+- [x] T019 Preserve and assess the Python update branch from the same automation
   wave; integrate its nine compatible direct updates, regenerate all three
   hash-locked environments and canonical notices, and repeat affected static,
   backend coverage/performance/migration/packaging and protected publication
   checks before final branch deletion (FR-001, FR-002, FR-005–FR-008;
   SC-001, SC-004–SC-006).
-- [ ] T020 Preserve the no-telemetry boundary when adopting FastAPI 0.143: disable
+- [x] T020 Preserve the no-telemetry boundary when adopting FastAPI 0.143: disable
   tracing, metrics, logs, operation spans and auto-configuration explicitly;
   prove ambient providers/environment cannot enable instrumentation or emit
   synthetic private fields, retain no SDK/exporter in production and repeat
   startup/API/privacy and distribution gates (FR-005, FR-007; SC-004, SC-006).
-- [ ] T021 Diagnose and correct the final Windows provider commit-identity
+- [x] T021 Diagnose and correct the final Windows provider commit-identity
   regression with SQLAlchemy 2.1.4. Preserve exact inventory, owner, content and
   timestamp verification; use a faithful restored-state positive fixture, prove
   malformed/partial/foreign/modified states still fail closed, and repeat focused
   rollback and final backend/distribution/protected checks
   (FR-004, FR-005, FR-007; SC-003, SC-004, SC-006).
+
+Baseline completion: T001–T021 are verified against signed main 1b897f0 and its
+successful protected and post-merge checks. Windows: 2,944 passed/17 skipped,
+82.03% coverage; main Linux: 2,950 passed/11 skipped, 83.59%. All six acceptance
+environments and both native package smokes pass. Main was the sole branch and
+the worktree clean. T011 includes the reported exception: automatic review
+blocked deletion of ignored caches/generated directories with "blocked by policy";
+these were retained without bypass. The following phase is new follow-up work.
+
+## Phase 5: Post-integration anomaly corrections
+
+- [x] T022 [P] Protect actual Uvicorn handlers and cached exception formatting
+  under the existing private logging policy for both server/app startup orders;
+  cover real Config and synthetic ASGI/access/error records without private
+  output, external services or changes to safe diagnostics
+  (FR-009; SC-007; Constitution II, VIII).
+- [x] T023 [P] Normalize invalid ZIP metadata and deflate/LZMA decoder failures
+  into bounded ArchiveError responses; prove inspect/restore reject them while
+  preserving records, safe lifecycle state and intended authority, with valid
+  controls and all archive limits retained (FR-004, FR-012; SC-003, SC-010).
+- [x] T024 [P] Apply successful provider write acknowledgements before catalog
+  reconciliation, retaining redacted editor data and current identifiers/
+  revisions through read failures; cover create/update/delete/toggle/import, retries,
+  actual write errors and unmount/stale responses (FR-003, FR-010; SC-002, SC-008).
+- [x] T025 [P] Verify existing normalized profile-photo metadata and stored
+  digest/length before reuse; reject missing, corrupt or unusable assets without
+  changing the selected photo or profile revision, preserving healthy duplicate
+  reuse, shared bytes, containment and rollback (FR-011; SC-009; Constitution V).
+- [x] T026 Record independent review, red/green regressions and proportional
+  final backend/frontend/static/API verification for T022–T025; update analysis,
+  convergence and exact execution evidence, preserving historical failures and
+  cleanup blockers (FR-007, FR-008; SC-004, SC-006).
+
+Follow-up local completion: Windows 2,965 passed/17 skipped, 82.06% combined
+coverage; four performance tests passed separately. Frontend 698 tests, eight
+browser/API groups, Rust 28 tests, static/hooks and fresh migration roundtrip
+pass. All 1,173 source inputs match the frozen baseline; the documented transient
+Tauri final-LF change was restored byte-for-byte. Subsequent protected publication,
+signed-main tree verification and ref cleanup are recorded in PR metadata and the
+durable private Git recovery manifest, without inferring future checks as passing.

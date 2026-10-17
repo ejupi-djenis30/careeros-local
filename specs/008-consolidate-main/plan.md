@@ -6,6 +6,9 @@ Reviewed 2.0.1 unchanged: local data/model boundaries, draft proposals, exclusiv
 desktop vault ownership, explicit consent, evidence/revision validation,
 transactional migrations, contained atomic storage and secret-free diagnostics
 remain mandatory. Main protections remain in force.
+The post-integration audit rechecks the same constitution without amendment.
+Correcting false success, decoder exceptions and server log redaction adds no
+network, agent, inference, storage or publication authority.
 
 ## Integration design
 
@@ -100,6 +103,20 @@ remain mandatory. Main protections remain in force.
    schemas: a shared expected constant must not conceal encoding corruption.
    This removes the need to rely
    on a new module-size exception or infer an owner-approved waiver.
+9. Continue from verified main 1b897f0 on a dedicated codex branch. Reconcile the
+   prior pre-publication task snapshot with signed-tree, CI and recovery evidence
+   before tracking new work. Assign disjoint implementations: Uvicorn logging,
+   portability decoding, provider UI acknowledgement and profile-photo reuse.
+   Route every actual server handler through the existing privacy policy and
+   prevent later startup configuration from replacing it. Translate malformed
+   compressed-member failures at the archive boundary and verify inspect/restore
+   lifecycle behavior. Apply confirmed provider responses before the independent
+   catalog refresh; preserve redacted state and mounted/stale-operation guards.
+   Verify an existing normalized photo with contained digest/length reads before
+   selecting it; fail closed rather than overwrite corrupt immutable bytes.
+   Each correction needs a meaningful red/green regression, an independent
+   review and affected checks. Freeze source before final combined verification;
+   retain exact failures/skips and repeat protected integration and ref cleanup.
 
 ## Boundaries and size
 

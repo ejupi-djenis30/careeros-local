@@ -1,5 +1,12 @@
 # Branch integration ledger
 
+Historical ledger: the original and automated follow-up integrations are complete
+on signed main 1b897f0, with exact reviewed-tree verification, eight verified
+recovery bundles and main as the sole baseline branch. Intermediate pending
+statements below describe their dated execution stage. The owner's subsequent
+anomaly-correction cycle is tracked separately as T022–T026 in tasks.md and
+validation.md; it requires its own affected checks and protected integration.
+
 Date: 2026-10-17. Starting main:
 `1e9065f62b4c6da460941e35a6bc3d49fc673ba3`.
 Refactor first committed locally as `6659277` on `codex/production-readiness-refactor`.

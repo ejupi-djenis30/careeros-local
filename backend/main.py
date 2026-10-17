@@ -61,6 +61,8 @@ def _api_documentation_urls(
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Startup and shutdown logic."""
+    # Uvicorn can configure its own handlers after this module was imported.
+    configure_logging(settings.LOG_LEVEL)
     # Startup: create DB tables
     # Moved to backend/pre_start.py to avoid race conditions with multiple workers
 
