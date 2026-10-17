@@ -1,8 +1,37 @@
 # Convergence evidence: Consolidate all work into main
 
-Date: 2026-10-17. Interim outcome: `tasks_appended` (T012–T021, Phase 4).
+Date: 2026-10-17. Current outcome: `no_tasks_appended` for the follow-up assessment.
 
-The assessment covered eight functional requirements, six success criteria,
+The current assessment covers twelve functional requirements, ten success
+criteria, five outcomes, nine plan decisions and eight constitution principles.
+All twenty-two FR/SC items have task coverage across T001–T026. The original
+integration and T001–T021 are complete on verified signed main 1b897f0; historical
+intermediate execution states below are retained as chronology, not current
+blockers. Its final Windows/Linux, protected checks, exact tree, branch cleanup
+and recovery results are recorded in validation.md.
+
+The owner's continuation request added four confirmed gaps before implementation:
+real server-log privacy, malformed ZIP decoder failures, provider write
+acknowledgement and photo integrity on reuse. Separate convergence assessments
+added T022–T025, with T026 for independent review and final evidence. They add no
+constitution waiver, dependency/schema change, external authority or release.
+All four implementations now have meaningful red/green evidence and independent
+review without material findings. Full frontend, all eight browser/API groups,
+Rust, fresh migration roundtrip and changed-file hooks pass. T026 is complete:
+the frozen Windows backend passes 2,965 tests with 17 skips and 82.06% combined
+coverage, and all four enabled performance tests pass. The final 1,173-input
+guards show zero differences. No additional implementation requirement remains.
+There is no additional unbuilt requirement to append. This convergence operation
+does not change tasks.md; checkbox/evidence reconciliation is separate authorized
+work and follows actual completed checks. Protected publication and ref cleanup
+are assessed against their actual PR checks, signature/tree proof and recovery
+inventory, recorded separately rather than inferred from this source assessment.
+
+## Historical convergence chronology
+
+The earlier assessments appended T012–T021 in Phase 4.
+
+The initial assessment covered eight functional requirements, six success criteria,
 four outcomes, eight plan decisions and all eight constitution principles.
 All fourteen FR/SC items have task coverage. The initial eleven tasks already
 tracked dependency compatibility, full verification, publication and cleanup.

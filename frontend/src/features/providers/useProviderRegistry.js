@@ -45,6 +45,25 @@ export function useProviderRegistry(t) {
     };
     const edit = (value) => { if (!state.current.busy) select(value); };
     const reset = () => edit(emptyProvider());
+    const acknowledge = (saved) => setCatalog((current) => {
+        if (!current) return current;
+        const installed = current.installed.some((value) => value.id === saved.id)
+            ? current.installed.map((value) => value.id === saved.id ? saved : value)
+            : [...current.installed, saved];
+        return { ...current, installed };
+    });
+    const refreshAfterWrite = async (signal, current, messageKey, variables) => {
+        // The write is committed; a catalog read failure must retain its acknowledgement.
+        let refreshFailed = false;
+        try { await load(signal); }
+        catch { refreshFailed = true; }
+        if (current()) {
+            const confirmation = translator.current(messageKey, variables);
+            setMessage(refreshFailed
+                ? `${confirmation} ${translator.current("providers.refreshError")}`
+                : confirmation);
+        }
+    };
     const run = async (operation, fallback) => {
         if (!state.current.mounted || state.current.busy) return;
         state.current.controller?.abort();
@@ -73,8 +92,9 @@ export function useProviderRegistry(t) {
                 ? await ProviderService.update(provider.id, payload, signal)
                 : await ProviderService.create(payload, signal);
             if (!current()) return;
-            await load(signal);
-            if (current()) { select(saved); setMessage(t("providers.saved")); }
+            select(saved);
+            acknowledge(saved);
+            await refreshAfterWrite(signal, current, "providers.saved");
         }, "providers.saveError");
     };
     const test = async (value) => {
@@ -89,8 +109,12 @@ export function useProviderRegistry(t) {
         await run(async (signal, current) => {
             await ProviderService.remove(value.id, value.revision, signal);
             if (!current()) return;
-            await load(signal);
-            if (current() && provider.id === value.id) select(emptyProvider());
+            setCatalog((currentCatalog) => currentCatalog && ({
+                ...currentCatalog,
+                installed: currentCatalog.installed.filter((item) => item.id !== value.id),
+            }));
+            if (provider.id === value.id) select(emptyProvider());
+            await refreshAfterWrite(signal, current, "providers.deleted");
         }, "providers.deleteError");
     };
     const importDocument = async (document, activate, localError) => {
@@ -99,23 +123,25 @@ export function useProviderRegistry(t) {
         await run(async (signal, current) => {
             const result = await ProviderService.importDocument(document, activate, signal);
             if (!current()) return;
-            await load(signal);
-            if (current()) setMessage(t("providers.imported", { count: result.imported.length }));
+            result.imported.forEach(acknowledge);
+            await refreshAfterWrite(signal, current, "providers.imported", { count: result.imported.length });
         }, "providers.importError");
     };
     const importPack = async (packId, activate) => run(async (signal, current) => {
         const result = await ProviderService.importPack(packId, activate, signal);
         if (!current()) return;
-        await load(signal);
-        if (current()) setMessage(t("providers.imported", { count: result.imported.length }));
+        result.imported.forEach(acknowledge);
+        await refreshAfterWrite(signal, current, "providers.imported", { count: result.imported.length });
     }, "providers.importError");
     const toggle = async (value) => run(async (signal, current) => {
         const saved = await ProviderService.setState(value.id, value.revision, !value.enabled, signal);
         if (!current()) return;
-        await load(signal);
-        if (!current()) return;
-        if (provider.id === value.id && saved.adapter_kind !== "native") select(saved);
-        setMessage(t(saved.enabled ? "providers.enabledMessage" : "providers.disabledMessage"));
+        acknowledge(saved);
+        setProvider((currentProvider) => currentProvider.id === saved.id
+            ? { ...currentProvider, enabled: saved.enabled, revision: saved.revision }
+            : currentProvider);
+        await refreshAfterWrite(signal, current,
+            saved.enabled ? "providers.enabledMessage" : "providers.disabledMessage");
     }, "providers.stateError");
 
     return { catalog, provider, setProvider, advanced, setAdvanced, loading, busy, message, testResult,

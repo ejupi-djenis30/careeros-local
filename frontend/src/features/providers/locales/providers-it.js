@@ -102,6 +102,8 @@ export default defineMessages({
         "loadError": "CareerOS non ha potuto caricare il registro provider.",
         "saveError": "CareerOS non ha potuto salvare questo provider.",
         "testError": "Il test limitato del provider non è riuscito.",
+        "deleted": "Provider eliminato.",
+        "refreshError": "Modifiche salvate, ma non è stato possibile aggiornare l’elenco provider.",
         "deleteError": "CareerOS non ha potuto eliminare questo provider.",
         "deleteConfirm": "Eliminare {name}? I lavori già salvati nel Vault non verranno modificati.",
         "testResult": "Esempio test: {count} lavori",

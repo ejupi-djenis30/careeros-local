@@ -102,6 +102,8 @@ export default defineMessages({
         "loadError": "CareerOS could not load the provider registry.",
         "saveError": "CareerOS could not save this provider.",
         "testError": "The bounded provider test failed.",
+        "deleted": "Provider deleted.",
+        "refreshError": "Changes are saved, but the provider list could not be refreshed.",
         "deleteError": "CareerOS could not delete this provider.",
         "deleteConfirm": "Delete {name}? This cannot affect jobs already stored in your Vault.",
         "testResult": "Test sample: {count} jobs",

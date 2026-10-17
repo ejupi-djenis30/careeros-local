@@ -3,12 +3,14 @@ from __future__ import annotations
 import logging
 import re
 from collections.abc import Mapping
+from copy import copy
 from enum import Enum
 from numbers import Number
 from typing import Any
 
 REDACTED = "[redacted]"
 _DIAGNOSTIC_MESSAGE_FACTORY = object()
+_SERVER_EVENT_FACTORY = object()
 _EXCEPTION_TYPE = re.compile(r"^[A-Z][A-Za-z0-9_]{0,63}$")
 _CORRELATION_ID = re.compile(r"^[0-9a-f]{16}$")
 
@@ -123,6 +125,54 @@ def _single_line_log_text(value: str) -> str:
     return _LOG_CONTROL_CHARACTERS.sub(" ", value)
 
 
+class _SealedServerEvent(str):
+    """Mark an event assembled exclusively from bounded server metadata."""
+
+    _event_seal: object
+
+    def __new__(
+        cls,
+        value: str,
+        *,
+        _factory: object | None = None,
+    ) -> _SealedServerEvent:
+        if _factory is not _SERVER_EVENT_FACTORY:
+            raise TypeError("Server events must be created by the privacy filter")
+        instance = super().__new__(cls, value)
+        instance._event_seal = _SERVER_EVENT_FACTORY
+        return instance
+
+
+def _uvicorn_event(record: logging.LogRecord) -> _SealedServerEvent:
+    """Retain only bounded server metadata, never request or exception prose."""
+    event = "asgi_event" if record.name == "uvicorn.asgi" else "server_event"
+    if record.name == "uvicorn.access":
+        event = "http_request"
+        arguments = record.args
+        if isinstance(arguments, tuple) and len(arguments) == 5:
+            _, method, _, _, status = arguments
+            if type(status) is int and 100 <= status <= 599:
+                safe_method = (
+                    method
+                    if type(method) is str
+                    and method
+                    in {
+                        "GET",
+                        "HEAD",
+                        "POST",
+                        "PUT",
+                        "DELETE",
+                        "CONNECT",
+                        "OPTIONS",
+                        "TRACE",
+                        "PATCH",
+                    }
+                    else "OTHER"
+                )
+                event = f"http_request method={safe_method} status={status}"
+    return _SealedServerEvent(event, _factory=_SERVER_EVENT_FACTORY)
+
+
 class PrivacyRedactionFilter(logging.Filter):
     def filter(self, record: logging.LogRecord) -> bool:
         if (
@@ -131,6 +181,16 @@ class PrivacyRedactionFilter(logging.Filter):
             and not record.args
         ):
             return True
+        if (
+            type(record.msg) is _SealedServerEvent
+            and getattr(record.msg, "_event_seal", None) is _SERVER_EVENT_FACTORY
+            and not record.args
+        ):
+            return True
+        if record.name == "uvicorn" or record.name.startswith("uvicorn."):
+            record.msg = _uvicorn_event(record)
+            record.args = ()
+            return True
         record.args = _redact_arguments(record.args)
         record.msg = _single_line_log_text(redact_text(record.getMessage()))
         record.args = ()
@@ -138,6 +198,17 @@ class PrivacyRedactionFilter(logging.Filter):
 
 
 class PrivacyFormatter(logging.Formatter):
+    def format(self, record: logging.LogRecord) -> str:
+        safe_record = copy(record)
+        # A previous handler may have cached a complete, unredacted traceback.
+        # Never trust that cache, or mutate another handler's copy of the record.
+        safe_record.exc_text = (
+            None
+            if safe_record.exc_info
+            else ("exception=[redacted]" if safe_record.exc_text else None)
+        )
+        return super().format(safe_record)
+
     def formatException(self, exc_info) -> str:  # noqa: N802 - stdlib API
         exception_type = getattr(exc_info[0], "__name__", "Exception")
         return f"exception_type={exception_type}"
@@ -155,7 +226,24 @@ def configure_logging(level: str) -> None:
         "%(asctime)s | %(levelname)s | %(name)s | %(message)s",
         datefmt="%Y-%m-%dT%H:%M:%S%z",
     )
-    for handler in root.handlers:
-        handler.setFormatter(formatter)
-        if not any(isinstance(item, PrivacyRedactionFilter) for item in handler.filters):
-            handler.addFilter(PrivacyRedactionFilter())
+    targets = (
+        root,
+        *(
+            logging.getLogger(name)
+            for name in (
+                "uvicorn",
+                "uvicorn.error",
+                "uvicorn.access",
+                "uvicorn.asgi",
+            )
+        ),
+    )
+    seen: set[int] = set()
+    for target in targets:
+        for handler in target.handlers:
+            if id(handler) in seen:
+                continue
+            seen.add(id(handler))
+            handler.setFormatter(formatter)
+            if not any(isinstance(item, PrivacyRedactionFilter) for item in handler.filters):
+                handler.addFilter(PrivacyRedactionFilter())

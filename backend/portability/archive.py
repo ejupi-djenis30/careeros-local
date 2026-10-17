@@ -1,4 +1,6 @@
+import lzma
 import zipfile
+import zlib
 from collections.abc import Iterator
 from contextlib import contextmanager
 from datetime import date, datetime, timezone
@@ -361,7 +363,9 @@ def export_archive(db: Session, user_id: int) -> bytes:
                 CURRENT_ARCHIVE_VERSION, {name: len(records) for name, records in rows.items()}
             )
         except ValueError as exc:
-            raise ArchiveError("There is no complete career vault or provider-only data to export") from exc
+            raise ArchiveError(
+                "There is no complete career vault or provider-only data to export"
+            ) from exc
         if sum(len(records) for records in rows.values()) > settings.PORTABLE_ARCHIVE_MAX_RECORDS:
             raise ArchiveError("The portable archive exceeds the configured record limit")
 
@@ -592,7 +596,7 @@ def _validated_members(data: bytes) -> tuple[ArchiveManifest, dict[str, bytes]]:
         raise ArchiveError("The portable archive is empty or exceeds the size limit")
     try:
         archive = zipfile.ZipFile(BytesIO(data), mode="r")
-    except zipfile.BadZipFile as exc:
+    except (UnicodeDecodeError, zipfile.BadZipFile) as exc:
         raise ArchiveError("The uploaded file is not a valid ZIP archive") from exc
     with archive:
         infos = archive.infolist()
@@ -632,7 +636,15 @@ def _validated_members(data: bytes) -> tuple[ArchiveManifest, dict[str, bytes]]:
         for entry in manifest.entries:
             try:
                 member = archive.read(entry.path)
-            except (EOFError, OSError, RuntimeError, zipfile.BadZipFile) as exc:
+            except (
+                EOFError,
+                OSError,
+                RuntimeError,
+                UnicodeDecodeError,
+                lzma.LZMAError,
+                zipfile.BadZipFile,
+                zlib.error,
+            ) as exc:
                 raise ArchiveError("The archive contains an unreadable member") from exc
             if len(member) != entry.byte_size or sha256(member) != entry.sha256:
                 raise ArchiveError(f"Archive member failed integrity check: {entry.path}")

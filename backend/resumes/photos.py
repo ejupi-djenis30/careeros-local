@@ -82,6 +82,13 @@ def persist_normalized_profile_photo(
         .first()
     )
     if existing is not None:
+        try:
+            load_profile_photo(db, user_id=user_id, asset_id=existing.id)
+        except (ResumeNotFoundError, ResumeValidationError) as exc:
+            db.rollback()
+            raise PhotoValidationError(
+                "The existing normalized photo failed its integrity check"
+            ) from exc
         if profile.photo_asset_id != existing.id:
             profile.photo_asset_id = existing.id
             profile.revision += 1

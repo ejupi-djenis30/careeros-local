@@ -316,3 +316,133 @@ release artifact checksum/SBOM/provenance and applicable model/hardware evaluati
 remain release qualification obligations. None is claimed from source suites or
 the unsigned wheel proof. PR #112's protected checks and signed-main content
 verification passed; the automated follow-up must repeat protected publication.
+
+## Verified integration baseline and post-integration follow-up
+
+The earlier pre-publication snapshot is now complete. PR #115 merged through the
+standard protected API to signed main 1b897f0a1a9fc734a6949859603a0c2c4ceb095a;
+its tree 70b9702cdf804d3817318e5827fcf9fdaea41179 exactly matches tested source
+999f383. Main was the sole local and remote branch, with a clean worktree and no
+open PR or stash. Eight complete Git bundles pass verification; the final bundle
+SHA-256 is cee7a3ce89c779ae8c9bb511e0d7f4d3bbff4d39e7f937a58519589a8e98f8c0.
+The durable local evidence is under .git/careeros-recovery/2026-10-17, with public
+execution evidence in PR #115 and the associated workflows.
+
+Frozen Windows verification completed: 2,944 passed/17 skipped, 1,233.74 seconds,
+82.03% combined coverage with branches, pytest/wrapper exit 0 and no changes to
+1,169 inputs. Four performance skips passed separately; thirteen skips are POSIX
+contracts inapplicable on Windows. Actual main Linux verification completed:
+2,950 passed/11 skipped, 686.29 seconds, 83.59% combined coverage; four performance
+tests passed in 5.65 seconds. Main CI 39030464877 passed all eight jobs and main
+CodeQL 39030464781 passed all four languages. Frontend 686 tests, Rust 28 tests,
+six Agent Access environments and both native package smokes passed. The wheel
+and native candidates are unsigned; no release was published. The existing glib
+exception and its 2026-10-19 expiry were not extended.
+
+Some ignored caches/generated directories and a task-owned OS npm metadata cache
+remain because automatic approval review rejected their deletion with the exact
+reason "blocked by policy". No bypass was attempted. T011 records this disclosed
+cleanup exception rather than claiming that every generated file was removed.
+
+The owner then requested continued refactoring and anomaly correction. T022–T026
+track new work on a dedicated codex branch; the baseline's passing results do not
+substitute for affected follow-up checks. Four bounded defects were reproduced:
+
+- Actual Uvicorn handlers can bypass root-only private logging, and cached
+  exception text can bypass the current privacy formatter. The first probe
+  reported an unattested 0.49.0 environment and is not authoritative. The probe
+  was repeated with exact environment B, Uvicorn metadata/module 0.54.0 matching
+  the hash lock and official wheel; all three leak cases were reproduced without
+  printing private sentinels. Four authoritative regression cases failed before
+  correction. An initial capture attempt mixed two real cache failures with two
+  stdout-capture harness failures and is not counted as four valid red cases.
+  A stronger real Config trace probe then reproduced two additional failures
+  with opaque URL/query/private preformatted server messages. The final policy
+  retains constant server/ASGI events and only allowlisted HTTP method/integer
+  status metadata; sealed events remain idempotent across two handlers. All ten
+  final regressions pass in 14.399 seconds, including real MessageLoggerMiddleware,
+  both startup orders, cached exception text, structured diagnostics and stdio
+  preservation. Independent review finds no material issue.
+- Malformed deflate, LZMA and UTF-8 ZIP metadata escape the archive validation
+  boundary. A real synthetic API restore returned 500 and remained pending;
+  parser/API regression tests reproduced all nine cases before the fix. They all
+  pass after precise decoder exception normalization, with bounded 422 responses,
+  unchanged records/session and ready lifecycle. All 222 portability tests pass
+  in 190.69 seconds; ten guarded inputs are unchanged. Independent review passes.
+- Provider writes succeed but the following failed catalog read discards their
+  acknowledged state. Real hook regressions reproduced five failures before the
+  change. Extended import regressions reproduced two lost-count cases and then
+  two missing-row cases before the correction. Only actual redacted provider
+  rows returned by the server are added to the catalog. The final focused suite
+  passes 38 tests in six files, including pending UI single-flight controls,
+  actual write errors and stale/unmount handling. Independent review passes.
+- Reusing a photo trusts metadata without checking stored bytes or normalized
+  status. Six regressions failed meaningfully before the guard, including actual
+  API 201 instead of 422; a healthy duplicate control passed. After the contained
+  read guard, all seven pass in 4.64 seconds and 23 photo/concurrency/resume API
+  tests pass in 16.37 seconds. Rejection leaves selection/revision unchanged,
+  releases the transaction and does not overwrite missing/corrupt bytes.
+
+Follow-up full frontend verification passes: 698 tests in 105 files, coverage
+82.36% statements / 73.07% branches / 74.26% functions / 87.11% lines; lint,
+Node/license/distribution/icon contracts and production build pass. Build byte
+budgets and the canonical notice remain unchanged. All 430 guarded inputs are
+unchanged. The standard npm coverage command initially wrote ignored reports
+under frontend/coverage; these generated reports were subsequently moved intact
+to its OS-temporary evidence directory after explicit path/ignore/containment
+checks. No report bytes were discarded and the source directory is absent.
+
+All applicable changed-file hooks pass with exact Python B first on PATH:
+whitespace, EOF, conflict/size/debug checks, Ruff over backend/tests/scripts,
+Ruff format, mypy over backend/scripts and frontend lint. YAML skips because
+there is no matching YAML change. No source rewrite occurred. T022's earlier
+mypy invocation on only core/logging.py and main.py reported three attr-defined
+errors resolving the existing configuration.packs module; the ordinary complete
+backend/scripts invocation passes. The subset result is retained as an actual
+failed command rather than described as a successful gate.
+
+All eight browser/API groups pass on exact Python B and Node 24.18.1 in 126.131
+seconds, without rebuild or dependency installation. Both real API journeys pass,
+with zero remaining synthetic vaults. Rust fmt/clippy/test also pass on 1.96.0
+using the existing OS-temporary target cache, locked/offline: 28 tests pass.
+The parallel Tauri build removed only the final LF from three generated tracked
+JSON schemas. Both wrappers correctly reported source-guard failure despite
+passing test commands; neither wrapper is represented as an initial clean pass.
+For each schema, SHA-256 of the generated bytes plus one LF equals its exact
+pre-run hash. After checking both hashes, the coordinator restored only that LF;
+all three files again match the original bytes and Git has no schema diff.
+The original guard failure and the canonical-restoration proof are retained.
+No JSON meaning, permission, capability, dependency or production input changed.
+The complete browser guard reconciles all 1,213 source/dist entries with zero
+final differences; the transient teardown process also exited normally. No Rust
+or browser gate was repeated after proving byte-identical canonical restoration.
+
+The fresh SQLite migration roundtrip also passes on exact Python B:
+upgrade to d0b1c2d3e4f5, downgrade to c0a1b2c3d4e5, then upgrade to head; every
+command exits 0. Integrity is OK and foreign-key violations are zero after each
+phase. The actual table sets match ORM metadata plus alembic_version, with the
+provider table present/absent/present. All 1,173 guarded inputs match both the
+migration run's initial manifest and the frozen backend baseline. Total duration
+is 9.457 seconds; all data and evidence are in the operating-system Temp directory.
+
+Final combined Windows backend verification passes: 2,965 passed, 17 skipped,
+1,265.69 seconds and 82.055818% combined coverage with branches (82.06% rounded,
+minimum 80%). JUnit records 2,982 cases, zero failures and zero errors; pytest
+and wrapper both exit 0. The complete 1,173-input start/end guard has zero
+differences. Thirteen skips are POSIX-only filesystem/locking contracts; four
+are opt-in performance cases and all pass in the separately enabled run.
+
+The four performance tests pass in 9.05 seconds, with zero input differences and
+pytest/wrapper exit 0. Readiness p95 is 15.611 ms with at most five queries
+(budgets 100 ms/five queries). Profile/page/agenda p95 with 10,000 records is
+4.420/43.153/87.007 ms (each budget 200 ms). Deterministic generation and detailed
+resume reads pass their 500/200 ms budgets; those two tests do not print measured
+latencies. Values are from this execution, not copied from the prior baseline.
+
+All four changes have independent review without material findings; the final
+artifact review confirms twelve FR, ten SC, five outcomes, nine plan decisions,
+eight constitution principles and twenty-six tasks with no additional unbuilt
+requirement. T022–T026 are complete. This is a pre-publication source snapshot:
+the new protected PR checks, signed-main exact-tree proof and branch cleanup are
+recorded in PR metadata and durable private Git recovery evidence after actual
+execution. No future CI result, signing qualification or release is claimed here.
