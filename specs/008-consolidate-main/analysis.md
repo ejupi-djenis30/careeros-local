@@ -11,7 +11,7 @@ assessment of evidence, not approval to skip outstanding checks or publish.
 ## Traceability
 
 All eight functional requirements and six success criteria have task coverage;
-all twenty tasks map to requirements. Coverage means an implementation/verification
+all twenty-one tasks map to requirements. Coverage means an implementation/verification
 task exists, rather than asserting every outcome has already passed.
 
 | Item | Implementation / evidence tasks | Current evidence |
@@ -19,14 +19,14 @@ task exists, rather than asserting every outcome has already passed.
 | FR-001 | T001 | Refactor commit, inventory, verified recovery bundle |
 | FR-002 | T002, T003, T009, T012 | Branch equivalence ledger, independent reviews and structural remediation |
 | FR-003 | T004, T005, T012, T013 | Current-auth provider API/UI; consent, bounded transport, independently checked credential mask and proposal authority retained |
-| FR-004 | T004 | Fresh migration, provider-only version-9 portability and rollback/isolation tests |
-| FR-005 | T006, T007, T014–T020 | Initial dependency/image/action gates passed; automated follow-up locks, provenance and no-telemetry preservation are being verified |
+| FR-004 | T004, T021 | Fresh migration, provider-only version-9 portability, strict commit identity and rollback/isolation tests |
+| FR-005 | T006, T007, T014–T021 | Initial dependency/image/action gates passed; automated follow-up locks, provenance, no-telemetry preservation and deterministic ORM fixture verification |
 | FR-006 | T001, T010, T018 | PR #112 merged through the standard API, signed main tree verified identical; automated follow-up and final ref cleanup pending |
 | FR-007 | T008, T009, T012 | Exact passed, failed, interrupted, pending and skipped checks in validation.md |
 | FR-008 | T011 | OS-temporary test evidence, private-data boundaries and final cleanup inventory |
 | SC-001 | T001, T003, T009 | Original tips and content decisions recorded; final bundle still pending |
 | SC-002 | T004, T005, T008, T012 | Final frontend, real-browser, local backend and first Linux backend gates passed; final deployment checks pending |
-| SC-003 | T004, T008 | Fresh migration roundtrip passed; strict archive and provider-only cases covered |
+| SC-003 | T004, T008, T021 | Fresh migration roundtrip passed; strict archive, provider-only and timestamp identity cases covered |
 | SC-004 | T006–T009, T012, T018–T020 | Initial source/image/native/remote gates passed; exact follow-up audit/privacy/test results remain required |
 | SC-005 | T010 | No main merge or branch deletion claimed before protection and content checks pass |
 | SC-006 | T004, T005, T011 | No personal fixtures; deterministic manual/provider/backup flows work without inference |
@@ -55,6 +55,7 @@ accessible interfaces. There is no constitution amendment or new waiver.
 | A12 | Dependabot created a new two-patch branch while the original PRs were closing, so the deletion inventory changed | The deletion guard stopped safely. T018 preserves its exact tip, assesses API 2.12.2/icons 1.13.2, reproduces notices and affected checks, and includes it in protected publication before final cleanup |
 | A13 | The same post-merge automation wave created a nine-update Python branch without regenerated locks | T019 preserves its tip and verifies compatibility, regenerates coherent hash locks/notices and repeats the affected complete backend and protected gates; input-only dependency updates cannot be merged as production-ready |
 | A14 | FastAPI 0.143 introduces telemetry controls whose defaults can activate ambient providers and capture query strings or exception messages | T020 disables all instrumentation/auto-configuration explicitly and tests adversarial ambient configuration before accepting the upgrade; no SDK/exporter or telemetry authority is introduced |
+| A15 | Final Windows coverage exposes a time-dependent provider commit-identity positive fixture: editing its original row invokes an automatic updated_at change | T021 reconstructs the complete decoded row with archived timestamps, exactly like restore. Production identity checks remain unchanged. Deterministic old-fixture red and two isolated timestamp negatives pass after correction; 19 focused tests pass. Final frozen Windows and new-head protected gates remain required |
 
 Backend independent review also found saved-header cross-origin leakage and
 provider-only archive edge cases during implementation. Those were corrected and

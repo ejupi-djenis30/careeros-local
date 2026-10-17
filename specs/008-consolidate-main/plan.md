@@ -24,6 +24,11 @@ remain mandatory. Main protections remain in force.
    profile-owned records are empty and at least one owned provider exists.
    Preserve strict legacy validation and current relationship/path/user binding;
    restore provider-only data without generating a placeholder career profile.
+   Keep ambiguous-commit verification strict across every persisted column,
+   including archived timestamps. Diagnose the final Windows identity regression
+   against the upgraded ORM before changing behavior; reconstruct a faithful
+   restore in positive tests and preserve negative owner/content/inventory/
+   timestamp checks. Repeat focused rollback tests and final backend gates.
    Existing provider header secrets must never be implicitly carried to a new
    origin: changing scheme, canonical hostname or effective port requires removing
    or explicitly re-entering the headers. Same-origin masked edits remain safe.

@@ -39,6 +39,10 @@ project and make the combined application work.
   restorable without synthesizing a profile or career facts. Version 9 may omit
   the profile only when profile-owned relationships are empty and concrete owned
   provider records exist; legacy archive invariants remain unchanged.
+  Commit-outcome verification must compare the complete restored provider
+  inventory, owner, content and timestamps. Positive fixtures must reconstruct
+  the actual restored state, including explicit archived timestamps; ordinary
+  ORM edits must not be mistaken for proof of an identical restore.
 - FR-005 Integrate compatible installable updates with regenerated hash locks and
   complete notices. Keep newer security fixes over obsolete branch pins; do not
   introduce unavailable packages, mismatched runtime binaries, audit suppression

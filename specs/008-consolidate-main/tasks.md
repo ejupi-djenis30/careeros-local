@@ -79,3 +79,9 @@
   prove ambient providers/environment cannot enable instrumentation or emit
   synthetic private fields, retain no SDK/exporter in production and repeat
   startup/API/privacy and distribution gates (FR-005, FR-007; SC-004, SC-006).
+- [ ] T021 Diagnose and correct the final Windows provider commit-identity
+  regression with SQLAlchemy 2.1.4. Preserve exact inventory, owner, content and
+  timestamp verification; use a faithful restored-state positive fixture, prove
+  malformed/partial/foreign/modified states still fail closed, and repeat focused
+  rollback and final backend/distribution/protected checks
+  (FR-004, FR-005, FR-007; SC-003, SC-004, SC-006).

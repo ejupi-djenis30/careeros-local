@@ -1,6 +1,6 @@
 # Convergence evidence: Consolidate all work into main
 
-Date: 2026-10-17. Interim outcome: `tasks_appended` (T012–T020, Phase 4).
+Date: 2026-10-17. Interim outcome: `tasks_appended` (T012–T021, Phase 4).
 
 The assessment covered eight functional requirements, six success criteria,
 four outcomes, eight plan decisions and all eight constitution principles.
@@ -78,6 +78,14 @@ coherent 58/112/21 locks and three zero-finding audits. T020 meaningfully reprod
 with zero afterward. Final static checks and applicable hooks pass. A frozen
 complete Windows backend run and the remaining API/protected gates must finish;
 earlier integration results do not substitute for those changed-dependency gates.
+The frozen Windows run then exposed a time-dependent positive fixture for provider
+restore identity. A separate assessment appended T021: reconstruct the actual
+inserted archive state and retain exact production checks. The old fixture fails
+deterministically when SQLite's update clock differs; the corrected fixture and
+each isolated timestamp negative pass, with 19 focused tests green. The Windows
+run stopped at 48% with exit 1 and no summary, so it is not a completed pass.
+Its 1,169-input guard had zero changes. Linux on the prior head passed 2,949 tests,
+but a complete frozen Windows run and new-head protected checks remain mandatory.
 
 The old unavailable-package inference is withdrawn after independent fresh-cache
 registry checks; historical failed scans are retained as executions, not treated

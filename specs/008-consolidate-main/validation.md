@@ -278,6 +278,39 @@ The complete Windows run remains pending. A subsequent documentation-only commit
 corrects a stale virtualenv version reference and records these finished checks;
 its required PR gates must run on that final head. No non-Markdown input changed.
 
+That Windows run subsequently exposed a time-dependent test fixture in provider
+commit-identity verification. It was interrupted at 48%, exit 1, without a pytest
+completion summary; the 1,169-input guard remained unchanged. It is not a pass.
+The positive fixture edited the original provider, which invokes SQLite's
+automatic updated_at and is not the state of a real archive restore. Production
+correctly rejected the resulting timestamp mismatch. T021 changes only the test:
+delete/flush/insert the complete decoded archived row, including both timestamps,
+as the real restore does. Exact production verification is unchanged. Each new
+timestamp negative changes only one expected field, avoiding clock dependence.
+
+The original fixture failed deterministically with a distinct SQLite update clock
+(one failure in 1.90 seconds; updated_at was the sole content mismatch). The final
+two timestamp cases pass in 2.27 seconds; all 19 provider-only tests pass in 19.40
+seconds, including real API restore and before/after-commit failure handling.
+Ruff and applicable hooks pass. Mypy/frontend hooks skip this test-only change;
+the prior complete static/frontend checks remain recorded separately. Other test
+function ASTs are identical after required Ruff formatting. A new frozen Windows
+coverage run and new-head protected CI must finish before final publication.
+The coordinator's first hook invocation selected system Python 3.14, which lacks
+Ruff, and returned 1. Repeating with the final locked Python environment first
+on PATH passed every applicable hook; YAML, mypy and frontend hooks had no
+matching changed files. No hook rewrote source in either invocation.
+
+Prior head 5459711 passed Linux backend CI (2,949 passed, 11 skipped, 666.53 seconds,
+83.59% combined coverage), all four performance gates, frontend, Rust, containers,
+release supply-chain, CodeQL and six Agent Access acceptance environments. The
+unsigned wheel candidate is 1,042,558 bytes, SHA-256
+`9ee94376d44d27ffdeeedc8e60f31c00468637d106103653ebad3162c51bfaa2`.
+Its notice/lock checksums match the manifest. Rust fmt/clippy pass, all 28 Rust
+tests pass, and license/audit checks retain only the disclosed existing Linux
+exception and unmaintained warning. These executions are tied to that prior head;
+they do not claim the post-T021 protected gates have already run.
+
 Native installer clean-install/restart/upgrade across supported systems, signing,
 release artifact checksum/SBOM/provenance and applicable model/hardware evaluation
 remain release qualification obligations. None is claimed from source suites or

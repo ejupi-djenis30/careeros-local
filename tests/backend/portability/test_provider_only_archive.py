@@ -4,6 +4,7 @@ import copy
 import json
 import uuid
 import zipfile
+from datetime import timedelta
 from io import BytesIO
 
 import pytest
@@ -27,7 +28,11 @@ from tests.backend.providers.configuration.helpers import json_provider_payload
 def provider_only_archive(client, auth_headers, db_session, test_user, tmp_path, monkeypatch):
     monkeypatch.setattr(settings, "DATA_DIR", str(tmp_path))
     assert db_session.query(CandidateProfile).filter_by(user_id=test_user.id).count() == 0
-    created = client.post("/api/v1/job-providers", headers=auth_headers, json=json_provider_payload().model_dump(mode="json"))
+    created = client.post(
+        "/api/v1/job-providers",
+        headers=auth_headers,
+        json=json_provider_payload().model_dump(mode="json"),
+    )
     assert created.status_code == 201, created.text
     exported = client.get("/api/v1/portability/export", headers=auth_headers)
     assert exported.status_code == 200, exported.text
@@ -35,13 +40,18 @@ def provider_only_archive(client, auth_headers, db_session, test_user, tmp_path,
 
 
 def _login(client):
-    response = client.post("/api/v1/auth/login", data={"username": "globaladmin", "password": "Globalpass1"})
+    response = client.post(
+        "/api/v1/auth/login", data={"username": "globaladmin", "password": "Globalpass1"}
+    )
     assert response.status_code == 200, response.text
     return {"Authorization": f"Bearer {response.json()['access_token']}"}
 
 
 def _reset(client, auth_headers):
-    response = client.delete("/api/v1/career-profile", headers={**auth_headers, "X-Confirm-Delete": "DELETE-MY-CAREER-VAULT"})
+    response = client.delete(
+        "/api/v1/career-profile",
+        headers={**auth_headers, "X-Confirm-Delete": "DELETE-MY-CAREER-VAULT"},
+    )
     assert response.status_code == 204, response.text
 
 
@@ -51,10 +61,17 @@ def _rewrite(data, change, *, version=9):
     payload = json.loads(members["payload.json"])
     change(payload)
     if version < 9:
-        payload["tables"] = {name: rows for name, rows in payload["tables"].items() if name in expected_tables(version)}
+        payload["tables"] = {
+            name: rows
+            for name, rows in payload["tables"].items()
+            if name in expected_tables(version)
+        }
     members["payload.json"] = canonical_json(payload)
     manifest = json.loads(members["manifest.json"])
-    manifest.update(format_version=version, record_counts={name: len(rows) for name, rows in payload["tables"].items()})
+    manifest.update(
+        format_version=version,
+        record_counts={name: len(rows) for name, rows in payload["tables"].items()},
+    )
     for entry in manifest["entries"]:
         entry.update(sha256=sha256(members[entry["path"]]), byte_size=len(members[entry["path"]]))
     members["manifest.json"] = canonical_json(manifest)
@@ -65,7 +82,9 @@ def _rewrite(data, change, *, version=9):
     return output.getvalue()
 
 
-def test_real_api_provider_only_export_inspect_reset_restore_creates_no_profile(client, auth_headers, db_session, test_user, provider_only_archive):
+def test_real_api_provider_only_export_inspect_reset_restore_creates_no_profile(
+    client, auth_headers, db_session, test_user, provider_only_archive
+):
     with zipfile.ZipFile(BytesIO(provider_only_archive)) as archive:
         payload = json.loads(archive.read("payload.json"))
         manifest = json.loads(archive.read("manifest.json"))
@@ -77,16 +96,28 @@ def test_real_api_provider_only_export_inspect_reset_restore_creates_no_profile(
     assert "user_id" not in row
     assert row["request_config"]["headers"] == {}
     assert row["enabled"] is False
-    inspect = client.post("/api/v1/portability/inspect", headers=auth_headers, files={"file": ("providers.zip", provider_only_archive)})
+    inspect = client.post(
+        "/api/v1/portability/inspect",
+        headers=auth_headers,
+        files={"file": ("providers.zip", provider_only_archive)},
+    )
     assert inspect.status_code == 200, inspect.text
     assert inspect.json()["compatible"] is True
     assert inspect.json()["restorable"] is False
     _reset(client, auth_headers)
     headers = _login(client)
-    inspect = client.post("/api/v1/portability/inspect", headers=headers, files={"file": ("providers.zip", provider_only_archive)})
+    inspect = client.post(
+        "/api/v1/portability/inspect",
+        headers=headers,
+        files={"file": ("providers.zip", provider_only_archive)},
+    )
     assert inspect.status_code == 200, inspect.text
     assert inspect.json()["restorable"] is True
-    restored = client.post("/api/v1/portability/restore", headers=headers, files={"file": ("providers.zip", provider_only_archive)})
+    restored = client.post(
+        "/api/v1/portability/restore",
+        headers=headers,
+        files={"file": ("providers.zip", provider_only_archive)},
+    )
     assert restored.status_code == 200, restored.text
     assert restored.json()["restored_records"]["candidate_profiles"] == 0
     db_session.expire_all()
@@ -97,15 +128,25 @@ def test_real_api_provider_only_export_inspect_reset_restore_creates_no_profile(
     assert db_session.get(User, test_user.id).vault_lifecycle_state == VAULT_STATE_READY
 
 
-def test_real_api_provider_only_restore_rebinds_only_to_authenticated_destination(client, auth_headers, db_session, test_user, provider_only_archive):
+def test_real_api_provider_only_restore_rebinds_only_to_authenticated_destination(
+    client, auth_headers, db_session, test_user, provider_only_archive
+):
     _reset(client, auth_headers)
-    destination = User(username="provider-backup-destination", hashed_password=get_password_hash("Otherpass1"))
+    destination = User(
+        username="provider-backup-destination", hashed_password=get_password_hash("Otherpass1")
+    )
     db_session.add(destination)
     db_session.commit()
-    login = client.post("/api/v1/auth/login", data={"username": destination.username, "password": "Otherpass1"})
+    login = client.post(
+        "/api/v1/auth/login", data={"username": destination.username, "password": "Otherpass1"}
+    )
     assert login.status_code == 200, login.text
     headers = {"Authorization": f"Bearer {login.json()['access_token']}"}
-    restored = client.post("/api/v1/portability/restore", headers=headers, files={"file": ("providers.zip", provider_only_archive)})
+    restored = client.post(
+        "/api/v1/portability/restore",
+        headers=headers,
+        files={"file": ("providers.zip", provider_only_archive)},
+    )
     assert restored.status_code == 200, restored.text
     db_session.expire_all()
     assert db_session.query(CandidateProfile).count() == 0
@@ -115,13 +156,26 @@ def test_real_api_provider_only_restore_rebinds_only_to_authenticated_destinatio
     assert provider.request_config["headers"] == {}
 
 
-def test_export_refuses_provider_inventory_that_restore_cannot_accept(client, auth_headers, db_session, provider_only_archive):
+def test_export_refuses_provider_inventory_that_restore_cannot_accept(
+    client, auth_headers, db_session, provider_only_archive
+):
     original = db_session.query(JobProviderConfiguration).one()
-    template = {column.name: getattr(original, column.name) for column in JobProviderConfiguration.__table__.columns}
-    db_session.add_all([
-        JobProviderConfiguration(**{**copy.deepcopy(template), "id": str(uuid.uuid4()), "key": f"extra_provider_{index}"})
-        for index in range(50)
-    ])
+    template = {
+        column.name: getattr(original, column.name)
+        for column in JobProviderConfiguration.__table__.columns
+    }
+    db_session.add_all(
+        [
+            JobProviderConfiguration(
+                **{
+                    **copy.deepcopy(template),
+                    "id": str(uuid.uuid4()),
+                    "key": f"extra_provider_{index}",
+                }
+            )
+            for index in range(50)
+        ]
+    )
     db_session.commit()
     assert db_session.query(JobProviderConfiguration).count() == 51
     rejected = client.get("/api/v1/portability/export", headers=auth_headers)
@@ -130,15 +184,21 @@ def test_export_refuses_provider_inventory_that_restore_cannot_accept(client, au
 
 
 @pytest.mark.parametrize("version", range(1, 9))
-def test_legacy_versions_still_reject_archives_without_a_profile(provider_only_archive, db_session, version):
+def test_legacy_versions_still_reject_archives_without_a_profile(
+    provider_only_archive, db_session, version
+):
     archive = _rewrite(provider_only_archive, lambda _payload: None, version=version)
     with pytest.raises(ArchiveError):
         manifest, members = _validated_members(archive)
         _decode_payload(db_session, manifest, members, enforce_destination_ids=False)
 
 
-@pytest.mark.parametrize("corruption", ["empty", "profile_child", "file_binding", "too_many_providers"])
-def test_profileless_archive_rejects_missing_providers_or_unbound_domain_data(provider_only_archive, db_session, corruption):
+@pytest.mark.parametrize(
+    "corruption", ["empty", "profile_child", "file_binding", "too_many_providers"]
+)
+def test_profileless_archive_rejects_missing_providers_or_unbound_domain_data(
+    provider_only_archive, db_session, corruption
+):
     def corrupt(payload):
         if corruption == "empty":
             payload["tables"]["job_provider_configurations"] = []
@@ -149,9 +209,19 @@ def test_profileless_archive_rejects_missing_providers_or_unbound_domain_data(pr
                 for index in range(51)
             ]
         elif corruption == "profile_child":
-            payload["tables"]["career_facts"] = [{"id": str(uuid.uuid4()), "profile_id": str(uuid.uuid4())}]
+            payload["tables"]["career_facts"] = [
+                {"id": str(uuid.uuid4()), "profile_id": str(uuid.uuid4())}
+            ]
         else:
-            payload["file_bindings"] = [{"table": "career_assets", "record_id": str(uuid.uuid4()), "storage_path": "unused", "member": "unused"}]
+            payload["file_bindings"] = [
+                {
+                    "table": "career_assets",
+                    "record_id": str(uuid.uuid4()),
+                    "storage_path": "unused",
+                    "member": "unused",
+                }
+            ]
+
     archive = _rewrite(provider_only_archive, corrupt)
     with pytest.raises(ArchiveError):
         manifest, members = _validated_members(archive)
@@ -159,10 +229,19 @@ def test_profileless_archive_rejects_missing_providers_or_unbound_domain_data(pr
 
 
 @pytest.mark.parametrize("failure", ["before_commit", "after_commit"])
-def test_provider_only_restore_resolves_commit_outcome_without_profile(client, auth_headers, db_session, test_user, provider_only_archive, monkeypatch, failure):
+def test_provider_only_restore_resolves_commit_outcome_without_profile(
+    client, auth_headers, db_session, test_user, provider_only_archive, monkeypatch, failure
+):
     _reset(client, auth_headers)
     authority = db_session.query(AuthSession).filter_by(user_id=test_user.id, revoked_at=None).one()
-    begin_vault_maintenance(db_session, test_user.id, authority.id, VAULT_STATE_RESTORE_PENDING, token_purpose=ACCESS_PURPOSE_SESSION, maintenance_fingerprint=sha256(provider_only_archive))
+    begin_vault_maintenance(
+        db_session,
+        test_user.id,
+        authority.id,
+        VAULT_STATE_RESTORE_PENDING,
+        token_purpose=ACCESS_PURPOSE_SESSION,
+        maintenance_fingerprint=sha256(provider_only_archive),
+    )
     real_commit = db_session.commit
     raised = False
 
@@ -183,11 +262,18 @@ def test_provider_only_restore_resolves_commit_outcome_without_profile(client, a
         assert restored.restored_records["job_provider_configurations"] == 1
     db_session.expire_all()
     assert db_session.query(CandidateProfile).count() == 0
-    assert db_session.query(JobProviderConfiguration).filter_by(user_id=test_user.id).count() == (failure == "after_commit")
-    assert db_session.get(User, test_user.id).vault_lifecycle_state == (VAULT_STATE_READY if failure == "after_commit" else VAULT_STATE_RESTORE_PENDING)
+    assert db_session.query(JobProviderConfiguration).filter_by(user_id=test_user.id).count() == (
+        failure == "after_commit"
+    )
+    assert db_session.get(User, test_user.id).vault_lifecycle_state == (
+        VAULT_STATE_READY if failure == "after_commit" else VAULT_STATE_RESTORE_PENDING
+    )
 
 
-def test_provider_commit_identity_rejects_partial_foreign_or_modified_inventory(db_session, test_user, provider_only_archive):
+@pytest.mark.parametrize("modified_timestamp", ["created_at", "updated_at"])
+def test_provider_commit_identity_rejects_partial_foreign_or_modified_inventory(
+    db_session, test_user, provider_only_archive, modified_timestamp
+):
     manifest, members = _validated_members(provider_only_archive)
     decoded, _, _, _ = _decode_payload(db_session, manifest, members, enforce_destination_ids=False)
     expected = decoded["job_provider_configurations"]
@@ -195,8 +281,12 @@ def test_provider_commit_identity_rejects_partial_foreign_or_modified_inventory(
     # The current original still has a header secret; it is not proof of restored contents.
     with pytest.raises(ValueError, match="contents"):
         provider_restore_was_published(db_session, test_user.id, expected)
-    row.request_config = expected[0]["request_config"]
-    row.enabled = False
+    # Restore inserts the complete archived record, including its original timestamps.
+    # Updating the original instead would generate a different onupdate timestamp.
+    db_session.delete(row)
+    db_session.flush()
+    row = JobProviderConfiguration(**copy.deepcopy(expected[0]), user_id=test_user.id)
+    db_session.add(row)
     db_session.commit()
     assert provider_restore_was_published(db_session, test_user.id, expected) is True
     extra = copy.deepcopy(expected[0])
@@ -208,3 +298,7 @@ def test_provider_commit_identity_rejects_partial_foreign_or_modified_inventory(
     db_session.commit()
     with pytest.raises(ValueError):
         provider_restore_was_published(db_session, foreign.id, expected)
+    modified = copy.deepcopy(expected)
+    modified[0][modified_timestamp] += timedelta(seconds=1)
+    with pytest.raises(ValueError, match="contents"):
+        provider_restore_was_published(db_session, test_user.id, modified)
