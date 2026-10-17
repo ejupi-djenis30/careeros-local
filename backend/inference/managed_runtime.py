@@ -28,6 +28,12 @@ from backend.inference.catalog import (
     load_model_catalog,
 )
 from backend.inference.llama_cpp import LlamaCppProvider
+from backend.inference.startup import (
+    CancellationSignal,
+    StartupLease,
+    StartupOwnership,
+    terminate_process,
+)
 
 RuntimePhase = Literal[
     "idle",
@@ -651,6 +657,7 @@ class ManagedRuntime:
         self.staging_root = self.data_dir / "staging" / "local-model"
         self.download = download
         self._lock = threading.RLock()
+        self._startup = StartupOwnership()
         self._cancelled = threading.Event()
         self._paused = threading.Event()
         self._worker_started = threading.Event()
@@ -735,7 +742,7 @@ class ManagedRuntime:
         root: Path,
         expected_size: int,
         expected_sha256: str,
-        cancelled: threading.Event | None = None,
+        cancelled: CancellationSignal | None = None,
     ) -> None:
         if cancelled is not None and cancelled.is_set():
             raise RuntimeStartCancelled("managed runtime startup was cancelled")
@@ -883,7 +890,7 @@ class ManagedRuntime:
         runtime: RuntimeAsset,
         model_path: Path,
         model: ModelCatalogEntry,
-        cancelled: threading.Event | None,
+        cancelled: CancellationSignal | None,
     ) -> None:
         if cancelled is not None and cancelled.is_set():
             raise RuntimeStartCancelled("managed runtime startup was cancelled")
@@ -1272,57 +1279,58 @@ class ManagedRuntime:
         *,
         cancelled: threading.Event | None = None,
     ) -> ManagedRuntimeSnapshot:
-        catalog = load_model_catalog()
-        selected = model_key or self._model_key or catalog.models[0].key
-        model = catalog.model(selected)
-        runtime = catalog.runtime.assets[current_platform_key()]
-        runtime_dir, executable, model_path = self._paths(model, runtime)
-        self._verify_launch_assets(
-            runtime_dir=runtime_dir,
-            executable=executable,
-            runtime=runtime,
-            model_path=model_path,
-            model=model,
-            cancelled=cancelled,
-        )
-        if cancelled is not None and cancelled.is_set():
-            raise RuntimeStartCancelled("managed runtime startup was cancelled")
-        self.stop()
-        if cancelled is not None and cancelled.is_set():
-            raise RuntimeStartCancelled("managed runtime startup was cancelled")
-        port = _available_loopback_port()
-        api_key = secrets.token_urlsafe(48)
-        endpoint = f"http://127.0.0.1:{port}"
-        command = [
-            str(executable),
-            "--model",
-            str(model_path),
-            "--host",
-            "127.0.0.1",
-            "--port",
-            str(port),
-            "--alias",
-            model.key,
-            "--ctx-size",
-            str(model.recommended_context_tokens),
-            "--parallel",
-            "1",
-        ]
-        runtime_environment = _managed_runtime_environment(api_key)
-        creationflags = (
-            subprocess.CREATE_NO_WINDOW  # type: ignore[attr-defined]
-            if os.name == "nt"
-            else 0
-        )
         with self._lock:
-            if cancelled is not None and cancelled.is_set():
-                raise RuntimeStartCancelled("managed runtime startup was cancelled")
-            self._phase = "starting"
-            self._model_key = selected
-            self._api_key = api_key
-            self._endpoint = endpoint
-            try:
-                self._process = subprocess.Popen(
+            startup = self._startup.begin(cancelled)
+            selected = model_key or self._model_key
+        process: subprocess.Popen[bytes] | None = None
+        phase_started = False
+        try:
+            catalog = load_model_catalog()
+            selected = selected or catalog.models[0].key
+            model = catalog.model(selected)
+            runtime = catalog.runtime.assets[current_platform_key()]
+            runtime_dir, executable, model_path = self._paths(model, runtime)
+            self._verify_launch_assets(
+                runtime_dir=runtime_dir,
+                executable=executable,
+                runtime=runtime,
+                model_path=model_path,
+                model=model,
+                cancelled=startup,
+            )
+            self._stop_current_process(startup=startup)
+            port = _available_loopback_port()
+            api_key = secrets.token_urlsafe(48)
+            endpoint = f"http://127.0.0.1:{port}"
+            command = [
+                str(executable),
+                "--model",
+                str(model_path),
+                "--host",
+                "127.0.0.1",
+                "--port",
+                str(port),
+                "--alias",
+                model.key,
+                "--ctx-size",
+                str(model.recommended_context_tokens),
+                "--parallel",
+                "1",
+            ]
+            runtime_environment = _managed_runtime_environment(api_key)
+            creationflags = (
+                subprocess.CREATE_NO_WINDOW  # type: ignore[attr-defined]
+                if os.name == "nt"
+                else 0
+            )
+            with self._lock:
+                self._require_start_owner(startup)
+                self._phase = "starting"
+                phase_started = True
+                self._model_key = selected
+                self._api_key = api_key
+                self._endpoint = endpoint
+                process = subprocess.Popen(
                     command,
                     stdin=subprocess.DEVNULL,
                     stdout=subprocess.DEVNULL,
@@ -1332,65 +1340,75 @@ class ManagedRuntime:
                     close_fds=True,
                     env=runtime_environment,
                 )
-            except OSError as exc:
-                self._api_key = None
-                self._endpoint = None
-                self._process = None
-                self._phase = "error"
-                self._error_code = "runtime_start_failed"
-                if os.name == "nt" and getattr(exc, "winerror", None) in {577, 1260}:
-                    self._error_code = "runtime_blocked_by_windows_policy"
-                    raise RuntimeBlockedByWindowsPolicy(
-                        "Windows application-control policy blocked the managed runtime"
-                    ) from exc
-                raise
-            except Exception:
-                self._api_key = None
-                self._endpoint = None
-                self._process = None
-                self._phase = "error"
-                self._error_code = "runtime_start_failed"
-                raise
-        if not self._wait_until_healthy(timeout_seconds=45, cancelled=cancelled):
-            exit_code = self._process.poll() if self._process is not None else None
-            self.stop()
-            if cancelled is not None and cancelled.is_set():
-                with self._lock:
-                    self._phase = "idle"
-                    self._error_code = None
-                raise RuntimeStartCancelled("managed runtime startup was cancelled")
+                self._process = process
+            healthy = self._wait_until_healthy(
+                process=process,
+                endpoint=endpoint,
+                timeout_seconds=45,
+                cancelled=startup,
+            )
             with self._lock:
-                self._phase = "error"
-                if os.name == "nt" and exit_code in {-1073740760, 3221226536}:
-                    self._error_code = "runtime_blocked_by_windows_policy"
-                else:
-                    self._error_code = "runtime_start_failed"
-            if self._error_code == "runtime_blocked_by_windows_policy":
+                self._require_start_owner(startup)
+                if self._process is not process:
+                    raise RuntimeStartCancelled("managed runtime startup was cancelled")
+                if not healthy or process.poll() is not None:
+                    exit_code = process.poll()
+                    if os.name == "nt" and exit_code in {-1073740760, 3221226536}:
+                        raise RuntimeBlockedByWindowsPolicy(
+                            "Windows application-control policy blocked the managed runtime"
+                        )
+                    raise RuntimeError("managed llama.cpp failed its health check")
+                self._phase = "ready"
+                self._error_code = None
+                return self.snapshot()
+        except BaseException as error:
+            with self._lock:
+                current = self._startup.matches(startup)
+                was_cancelled = startup.is_set() or not current
+                blocked = isinstance(error, RuntimeBlockedByWindowsPolicy) or (
+                    os.name == "nt"
+                    and isinstance(error, OSError)
+                    and getattr(error, "winerror", None) in {577, 1260}
+                )
+                if current and phase_started:
+                    self._api_key = None
+                    self._endpoint = None
+                    self._phase = "idle" if was_cancelled else "error"
+                    code = (
+                        "runtime_blocked_by_windows_policy" if blocked else "runtime_start_failed"
+                    )
+                    self._error_code = None if was_cancelled else code
+            self._reap_process(process)
+            if was_cancelled:
+                if isinstance(error, RuntimeStartCancelled):
+                    raise
+                raise RuntimeStartCancelled("managed runtime startup was cancelled") from None
+            if blocked and not isinstance(error, RuntimeBlockedByWindowsPolicy):
                 raise RuntimeBlockedByWindowsPolicy(
                     "Windows application-control policy blocked the managed runtime"
-                )
-            raise RuntimeError("managed llama.cpp failed its health check")
-        with self._lock:
-            self._phase = "ready"
-            self._error_code = None
-        return self.snapshot()
+                ) from error
+            raise
+        finally:
+            with self._lock:
+                self._startup.finish(startup)
 
     def _wait_until_healthy(
         self,
         *,
+        process: subprocess.Popen[bytes],
+        endpoint: str,
         timeout_seconds: float,
-        cancelled: threading.Event | None = None,
+        cancelled: CancellationSignal | None = None,
     ) -> bool:
         deadline = time.monotonic() + timeout_seconds
         while time.monotonic() < deadline:
             if cancelled is not None and cancelled.is_set():
                 return False
-            process = self._process
-            if process is None or process.poll() is not None:
+            if process.poll() is not None:
                 return False
             try:
                 with httpx.Client(timeout=1, trust_env=False) as client:
-                    response = client.get(f"{self._endpoint}/health")
+                    response = client.get(f"{endpoint}/health")
                 if response.status_code == 200:
                     return True
             except httpx.HTTPError:
@@ -1399,10 +1417,10 @@ class ManagedRuntime:
         return False
 
     def cancel_startup(self, cancelled: threading.Event) -> None:
-        """Linearize shutdown against the process-spawn critical section."""
-
+        """Invalidate startup before shutdown can race a late process spawn."""
         with self._lock:
             cancelled.set()
+            self._startup.cancel()
 
     def restart(self) -> ManagedRuntimeSnapshot:
         now = time.monotonic()
@@ -1415,27 +1433,30 @@ class ManagedRuntime:
         return self.start()
 
     def stop(self) -> None:
+        self._stop_current_process()
+
+    def _require_start_owner(self, startup: StartupLease) -> None:
+        if not self._startup.owns(startup):
+            raise RuntimeStartCancelled("managed runtime startup was cancelled")
+
+    def _stop_current_process(self, *, startup: StartupLease | None = None) -> None:
         with self._lock:
+            if startup is None:
+                self._startup.cancel()
+            else:
+                self._require_start_owner(startup)
             process = self._process
             self._api_key = None
             self._endpoint = None
             if self._phase in {"ready", "starting"}:
                 self._phase = "idle"
+        self._reap_process(process)
+
+    def _reap_process(self, process: subprocess.Popen[bytes] | None) -> None:
         if process is None:
             return
         try:
-            if process.poll() is None:
-                try:
-                    process.terminate()
-                except OSError:
-                    if process.poll() is None:
-                        raise
-                if process.poll() is None:
-                    try:
-                        process.wait(timeout=5)
-                    except subprocess.TimeoutExpired:
-                        process.kill()
-                        process.wait(timeout=2)
+            terminate_process(process)
         finally:
             if process.poll() is not None:
                 with self._lock:

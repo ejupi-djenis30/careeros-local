@@ -1,6 +1,38 @@
 # Convergence evidence: Consolidate all work into main
 
-Date: 2026-10-17. Current outcome: `no_tasks_appended` for extended implementation.
+Date: 2026-10-17. Current outcome: `no_tasks_appended` for state-consistency work.
+
+Independent read-only convergence covers 28 functional requirements, 26 success
+criteria, ten outcomes, twelve plan decisions, eight constitution principles and
+45 mapped tasks. All 54 requirement/criterion entries are covered, with no
+missing, partial, contradictory or unrequested implementation. T040–T043 and
+T045 implement FR-024–FR-028 / SC-022–SC-026; T044 already covers final source
+verification and the protected-integration hand-off. No additional task is needed.
+
+The complete frozen backend passes 3,020 tests with 17 skips and 82.31% combined
+coverage. All four separately enabled performance cases pass. Command and outer
+caller return 0 and all 1,216 source inputs match. Frontend passes 803 tests in
+114 files, with lint/license/runtime checks and unchanged build budgets. Eight
+E2E groups, eight actual-build browser scenarios, 28 Rust tests, desktop 32
+passes/six skips and the Alembic upgrade/downgrade/upgrade roundtrip pass. Exact
+skips, original RED results and insufficient-helper history remain explicit in
+validation.md. Independent code, visual and evidence-copy reviews find no
+material issue; no production boundary, threshold or permission is weakened.
+
+The preceding PR #118 is verified as signed main 06fe0e0, identical to reviewed
+tree a05899b, with successful post-merge CI/CodeQL and sole-main cleanup. Its
+success is historical: this new cycle still requires its own protected PR checks,
+signed-main/tree verification and recovery-backed ref cleanup. Actual execution
+is recorded subsequently in the PR/private recovery ledger, not inferred from
+source verification. No release, tag, signing claim or new waiver is introduced.
+
+The convergence assessment leaves tasks.md byte-for-byte unchanged. The
+coordinator then records T044 completion and final Markdown checks separately;
+the source hand-off does not pre-approve future protected integration.
+
+## Historical extended convergence before PR #118
+
+Historical outcome: `no_tasks_appended` for extended implementation.
 
 The current read-only assessment covers 23 functional requirements, 21 success
 criteria, nine outcomes, eleven plan decisions, eight constitution principles and

@@ -17,6 +17,16 @@ describe('SearchService', () => {
     expect(mockPost.mock.calls[0][1]).not.toHaveProperty('cv_content');
   });
 
+  it('start forwards an optional signal while always suppressing global errors', async () => {
+    const post = vi.spyOn(ApiClient, 'post').mockResolvedValue({ profile_id: 42 });
+    const controller = new AbortController();
+    const profile = { profile_source: 'career_vault' };
+    await SearchService.start(profile, { signal: controller.signal });
+    expect(post).toHaveBeenCalledWith('/search/start', profile, {
+      signal: controller.signal, suppressGlobalError: true,
+    });
+  });
+
   // ── getStatus ──────────────────────────────────────────────────────────────
 
   it('getStatus fetches status for a profile id', async () => {

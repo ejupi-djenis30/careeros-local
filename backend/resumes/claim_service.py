@@ -9,8 +9,13 @@ from backend.career.models import CareerFact
 from backend.career.schemas import CareerFactInput
 from backend.resumes.canvas import legacy_fields, normalize_canvas
 from backend.resumes.draft_service import ResumeDraftService
-from backend.resumes.exceptions import ResumeConflictError, ResumeValidationError
+from backend.resumes.exceptions import (
+    ResumeConflictError,
+    ResumeNotFoundError,
+    ResumeValidationError,
+)
 from backend.resumes.schemas import ResumeClaimPromote, ResumeDraftResponse
+from backend.resumes.storage import is_resume_delete_pending
 
 
 class ResumeClaimService:
@@ -24,7 +29,10 @@ class ResumeClaimService:
         draft_id: str,
         data: ResumeClaimPromote,
     ) -> ResumeDraftResponse:
-        draft = self.drafts.draft(user_id, draft_id)
+        self.drafts._begin_sqlite_write()
+        draft = self.drafts._locked_owned_draft(user_id, draft_id)
+        if draft is None or is_resume_delete_pending(draft.generation_context):
+            raise ResumeNotFoundError("Resume draft not found")
         profile = self.drafts.profile(user_id)
         if draft.revision != data.expected_revision:
             raise ResumeConflictError(
@@ -109,6 +117,8 @@ class ResumeClaimService:
             "bullets",
         ]
         config, overrides = legacy_fields(canvas, draft.section_config)
+        if not selected_block.content.subtitle:
+            overrides[fact_id].pop("subtitle", None)
         draft.section_config = config.model_dump(mode="json")
         draft.content_overrides = overrides
         draft.canvas_document = canvas.model_dump(mode="json")
@@ -116,8 +126,8 @@ class ResumeClaimService:
         profile.revision += 1
         draft.profile_revision = profile.revision
         draft.revision += 1
+        self.db.flush()
+        response = self.drafts.response(profile, draft)
         self.db.commit()
         self.db.expire_all()
-        refreshed_profile = self.drafts.profile(user_id)
-        refreshed_draft = self.drafts.draft(user_id, draft_id)
-        return self.drafts.response(refreshed_profile, refreshed_draft)
+        return response

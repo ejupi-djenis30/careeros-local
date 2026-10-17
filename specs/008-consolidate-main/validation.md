@@ -1,10 +1,12 @@
 # Validation evidence: Consolidate all work into main
 
-Date: 2026-10-17. Current branch: `codex/extended-refactor-cleanup`.
-Status: extended source verification and independent review are complete;
-protected integration and recovery-backed branch cleanup follow this hand-off.
+Date: 2026-10-17. Current branch: `codex/state-consistency-refactor`.
+Status: PR #118 is integrated and verified; state-consistency source gates and
+independent reviews are complete. Protected integration requires its own checks,
+signed-main/tree verification and recovery-backed cleanup, recorded subsequently
+in PR metadata and the durable private Git recovery ledger.
 No production release or installer signing claim. Earlier sections retain the
-actual historical executions; current extended evidence appears at the end.
+actual historical executions; current-cycle evidence appears at the end.
 A pending entry is never presented as a passing check.
 
 Historical initial branch: `codex/production-readiness-refactor`; first follow-up:
@@ -867,3 +869,173 @@ protected-integration hand-off. New PR checks, actual signed-main exact-tree
 verification, verified recovery bundles and final ref cleanup are recorded after
 execution in PR metadata and the durable private Git recovery ledger. This
 source record does not pre-approve those steps or a production release.
+
+## State-consistency follow-up baseline and reproduction
+
+PR #118 subsequently completed protected integration: source 9f99546 and signed
+main 06fe0e0 share tree a05899b. Main CI passed eight jobs and CodeQL four; local
+and remote inventories contained only main with no open PRs and a clean worktree.
+The new codex/state-consistency-refactor cycle begins from that verified state.
+Constitution 2.0.1 remains unchanged; no dependency, schema or authority changes
+are required. All new reproduction/output data is synthetic and stays in OS Temp.
+
+The initial real-component UI audit has two failures and two passing controls:
+a late search-start acknowledgement redirects after navigation away, and a
+cancelled agent-work card remains in Queued. The real restart-service audit has
+one failure and one passing control: two concurrent starts create two synthetic
+children, but final stop reaps only the tracked one. A real isolated SQLite
+search-release reproduction retains a replacement lock but incorrectly erases
+its reserved status; the valid-owner release control passes.
+
+Separate cached SQLite sessions reproduce accepted stale claim promotion with
+unchanged revision numbers and loss of the first claim link. HTTP reproduction
+also finds empty optional subtitle returns 422 after committing a fact, profile
+and draft revision; retry conflicts. A nonempty-subtitle control returns 200.
+These are source defects, not expected user-visible behavior.
+
+The first local search test invocation exits 4 because its requested API test
+path does not exist; zero tests ran. The corrected run passes 168 tests but the
+strict wrapper exits 1 because the new regression test changed during execution.
+The subsequent frozen scoped run passes 169 tests in 36.93 seconds, command and
+wrapper both exit 0, with six owned source/test inputs unchanged. Its coverage
+includes status/repository, API, scheduler, pipeline and service failure paths.
+
+Native fmt, clippy with warnings denied and cargo test pass on 70 unchanged native
+inputs. Full final source gates, independent review and protected integration are
+still pending and are not represented by these proportional results.
+
+T043 independent review finds no material issue: token-conditional lock release
+and JSON reservation ownership protect the same SQLite transaction, only reserved
+status is cleared, and rollback and local newer-owner cases are covered. The
+original real-SQLite reproduction now passes with the replacement lock and full
+status preserved. A formatting check initially reports the new test file needs
+formatting; it is corrected and both focused Ruff checks pass. This final
+whitespace-only change will be included in the complete frozen backend run.
+
+T045 regression-first execution has five failures and three passing controls on
+the prior source. The corrected promotion uses the existing serialized SQLite
+write/current-owned-draft pattern, omits empty legacy subtitle overrides and
+validates the complete response before commit. The final focused run passes 33
+tests in 25.73 seconds with zero skips, including whitespace subtitles, cached
+same/different drafts, concurrent winner/conflict, response/commit rollback and
+foreign ownership. Scoped Ruff, formatting and mypy pass. Independent source
+review confirms current revisions are read after acquiring the SQLite write
+lock, response validation precedes commit, and explicit confirmation authority
+is unchanged. No schema or API shape changes are introduced.
+
+T042 adds a 73-line startup-ownership/termination helper and keeps the managed
+runtime's existing verification/environment/argv/restart-limit contracts. The
+regression-first run records ten failures and five passing controls on the prior
+lifecycle. The corrected proportional suite passes 159 tests with zero skips in
+8.74 seconds, including fifteen new ownership cases, inference/service/API and
+lifespan/shutdown boundaries. Ruff, formatting and scoped mypy pass; the three
+owned inputs are unchanged during the final run. Independent review finds no
+material issue and verifies generation/cancellation ownership, captured process
+and endpoint, interruptible stop and retained handles after failed cleanup.
+Forty existing function definitions are AST-identical; two change only the
+cancellation type annotation, five lifecycle bodies intentionally change and
+three focused methods are added. The existing large implementation remains a
+legacy surface; no new oversized facade or size exception is introduced.
+
+T040/T041 final focused execution passes 51 tests in 20.42 seconds, zero skips,
+with ESLint passing all eight owned files and no warnings. SearchPage has 57
+lines, AgentWorkPage 130, queue controller 180 and detail controller 78. The
+independent review confirms mount/request ownership, shared identity/revision
+reconciliation, current-filter protection and a server-derived pagination cursor.
+An outside-page acknowledgement initially exposes a skipped pagination boundary;
+the bounded GET reconciliation and removed-Queued-row tests pass. A Temp replay
+of the earlier items.length callback meaningfully fails that boundary case;
+its 26 deliberately deselected cases and initial helper import error are retained.
+The earlier focused history records 12 failures (including one ambiguous test
+selector), then 11 actual regression failures after fixing that selector, before
+the passing implementation. No harness failure is presented as a product pass.
+
+The all-change pre-commit execution passes Ruff, Ruff format, global mypy,
+frontend ESLint, whitespace/EOF, conflict/large-file and Python-debug checks.
+YAML has no matching changed file and is skipped. Command and wrapper both exit
+0 after 58.92 seconds, all 1,373 tracked/new inputs unchanged. Every new/changed
+production input is frozen before complete backend/frontend execution.
+
+The independent Spec Kit analysis reports 28 FRs, 26 SCs, ten outcomes, twelve
+plan decisions, eight constitution principles and 45 tasks; requirement/criterion
+coverage is 54/54 with no material gap, duplication, ambiguity or authority
+conflict. Final aggregate execution and convergence remain tracked by T044.
+
+### Frozen frontend, browser journeys and native/storage gates
+
+The final complete frontend run passes 803 tests across 114 files with unchanged
+coverage thresholds: 84.73% statements, 75.22% branches, 76.75% functions and
+89.37% lines. Node runtime contracts, license/distribution/icon checks and global
+ESLint pass. Command and wrapper exit 0, with zero differences across 1,260
+source/dist inputs. Five existing JSDOM canvas getContext warnings are retained
+in the log; no failing test is suppressed and no canvas dependency is added.
+
+The production build and unchanged size gates pass, with 1,216 unchanged source
+inputs and 44 generated assets. Raw/gzip byte counts are entry 267,104/82,973,
+Italian locale 89,988/28,424, lifecycle CSS 21,837/5,841, initial resources
+379,976/117,803, workspace CSS 434,350/72,155 and workspace shell 17,140/5,785.
+
+All eight final E2E groups pass in 132.284 seconds, npm and wrapper both exit 0,
+with no remaining attributable test processes or vaults and no differences
+across 1,260 source/dist inputs. The identified wrapper and its own conhost
+console are independently absent by PID plus creation time after exit. No
+process is killed. The 1,216 source and 44 final asset hashes still match their
+frozen manifests. These journeys cover portfolio, agenda, login, agent access,
+agent work, application materials, providers and responsive workspace shell.
+
+Native fmt, clippy with warnings denied and all 28 Rust tests pass, with zero
+differences across 70 native inputs. The isolated desktop suite passes 32 tests
+with six skips: five POSIX contracts and one artifact-only case requiring
+CAREEROS_SIDECAR_BINARY. Pytest and wrapper return 0; all 1,216 inputs match.
+Fresh Alembic upgrade, downgrade one revision and upgrade pass, SQLite integrity
+is valid and foreign-key violations are zero, with all 1,216 inputs unchanged.
+
+Python 3.12.13 has exactly the 121 installed distributions required by the
+runtime/development/tooling lock union; pip check passes. The first read-only
+attestation helper incorrectly ignored requirement extras and reported four
+apparent additions. Its corrected optional-extras parser proves zero missing,
+extra or version-mismatched packages. Both helper outputs are retained; no
+dependency is installed or changed. Node is 24.18.1 and Rust is 1.96.0.
+
+The actual production browser checks pass all eight scenarios: English/Italian
+at 390/1,440 px for search ownership and agent-work reconciliation. Search
+checks wait for Jobs/Annunci content to mount, confirm the abandoned client
+request closes, then release the accepted server acknowledgement; there is no
+redirect, automatic retry or server cancellation. Queue checks retain 24 Queued
+cards after cancellation and all 25 cards with current revisions in All.
+Twelve final screenshots pass visual review, including four independently
+inspected by the coordinating reviewer. Page errors, external requests,
+unexpected APIs/mutations and server errors are zero. Browser console output
+was not collected separately and is not claimed as a passing console gate.
+
+The first 105-assertion probe returned success but captured search during lazy
+route loading. Its four search captures therefore do not establish unmount
+ownership. All original outputs are retained; four strengthened search cases
+with 46 assertions supersede only those cases. The original four queue cases
+remain valid. Every invocation preserves 1,216 source files, 44 build assets
+and eight owned files; browser/server processes are closed and their recorded
+identities are absent. No production change or destructive cleanup is needed.
+
+### Final complete backend and performance
+
+The complete frozen Windows backend run passes 3,020 tests with 17 skips in
+1,764.82 seconds. Combined branch-aware coverage is 82.31%, above the unchanged
+80% gate. Pytest and the strict outer caller both return 0; the runner takes
+1,841.313 seconds including collection/setup and all 1,216 source inputs are
+unchanged. Thirteen skips cover POSIX ownership/mode, no-follow, ctime, FIFO and
+fcntl contracts; four are opt-in performance cases run separately below.
+
+The explicitly enabled performance run passes all four tests with no skips in
+13.22 seconds, command and caller both return 0, with 1,216 unchanged inputs.
+Readiness p95 is 25.138 ms against 100 ms and uses at most five queries. At 10,000
+records, profile/application-page/agenda reads take 7.357/53.908/129.510 ms against
+200 ms. Generation and detailed-resume reads satisfy their existing 500/200 ms
+assertions; those tests do not emit numeric timings, so no exact value is claimed.
+
+All implementation tasks have independently reviewed RED/green evidence. Final
+read-only convergence finds all 54 requirement/criterion entries covered across
+45 tasks, with no missing, partial, contradictory or unrequested implementation.
+It appends no task and preserves task bytes; the coordinator records T044's
+completion separately. Protected PR checks, signed-main identity, recovery
+bundles and ref cleanup remain subsequent executions, not inferred passes or a
+production release.
