@@ -38,12 +38,12 @@ export const CareerService = {
         }
         return ApiClient.postMultipart("/career-profile/sources", formData, { timeoutMs: 60_000 });
     },
-    uploadPhoto(file) {
+    uploadPhoto(file, options = {}) {
         const formData = new FormData();
         formData.append("file", file);
-        return ApiClient.postMultipart("/career-profile/photo", formData, { timeoutMs: 60_000 });
+        return ApiClient.postMultipart("/career-profile/photo", formData, { timeoutMs: 60_000, ...options });
     },
-    getPhoto(assetId) {
-        return ApiClient.download(`/career-profile/photo/${encodeURIComponent(assetId)}`);
+    getPhoto(assetId, options = {}) {
+        return ApiClient.download(`/career-profile/photo/${encodeURIComponent(assetId)}`, options);
     },
 };

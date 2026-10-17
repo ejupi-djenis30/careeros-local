@@ -13,38 +13,38 @@ export const ResumeService = {
     get(id, options = {}) {
         return ApiClient.get(`/resumes/${encodeURIComponent(id)}`, undefined, options);
     },
-    create(data) {
-        return ApiClient.post("/resumes", data, { timeoutMs: 60_000 });
+    create(data, options = {}) {
+        return ApiClient.post("/resumes", data, { timeoutMs: 60_000, ...options });
     },
-    generate(data) {
-        return ApiClient.post("/resumes/generate", data, { timeoutMs: 60_000 });
+    generate(data, options = {}) {
+        return ApiClient.post("/resumes/generate", data, { timeoutMs: 60_000, ...options });
     },
-    update(id, data) {
-        return ApiClient.put(`/resumes/${encodeURIComponent(id)}`, data, { timeoutMs: 60_000 });
+    update(id, data, options = {}) {
+        return ApiClient.put(`/resumes/${encodeURIComponent(id)}`, data, { timeoutMs: 60_000, ...options });
     },
-    duplicate(id, data = {}) {
-        return ApiClient.post(`/resumes/${encodeURIComponent(id)}/duplicate`, data, { timeoutMs: 60_000 });
+    duplicate(id, data = {}, options = {}) {
+        return ApiClient.post(`/resumes/${encodeURIComponent(id)}/duplicate`, data, { timeoutMs: 60_000, ...options });
     },
-    promoteClaim(id, data) {
-        return ApiClient.post(`/resumes/${encodeURIComponent(id)}/claims/promote`, data, { timeoutMs: 60_000 });
+    promoteClaim(id, data, options = {}) {
+        return ApiClient.post(`/resumes/${encodeURIComponent(id)}/claims/promote`, data, { timeoutMs: 60_000, ...options });
     },
-    sync(id, data) {
-        return ApiClient.post(`/resumes/${encodeURIComponent(id)}/sync`, data, { timeoutMs: 60_000 });
+    sync(id, data, options = {}) {
+        return ApiClient.post(`/resumes/${encodeURIComponent(id)}/sync`, data, { timeoutMs: 60_000, ...options });
     },
-    publish(id, name) {
-        return ApiClient.post(`/resumes/${encodeURIComponent(id)}/publish`, { name }, { timeoutMs: 120_000 });
+    publish(id, name, options = {}) {
+        return ApiClient.post(`/resumes/${encodeURIComponent(id)}/publish`, { name }, { timeoutMs: 120_000, ...options });
     },
-    compareVersions(leftId, rightId) {
+    compareVersions(leftId, rightId, options = {}) {
         const query = new URLSearchParams({ left_id: leftId, right_id: rightId });
-        return ApiClient.get(`/resumes/versions/compare?${query}`);
+        return ApiClient.get(`/resumes/versions/compare?${query}`, undefined, options);
     },
-    restoreVersion(id, versionId, expectedRevision) {
+    restoreVersion(id, versionId, expectedRevision, options = {}) {
         return ApiClient.post(`/resumes/${encodeURIComponent(id)}/versions/${encodeURIComponent(versionId)}/restore`, {
             expected_revision: expectedRevision,
-        }, { timeoutMs: 60_000 });
+        }, { timeoutMs: 60_000, ...options });
     },
-    remove(id) {
-        return ApiClient.delete(`/resumes/${encodeURIComponent(id)}`);
+    remove(id, options = {}) {
+        return ApiClient.delete(`/resumes/${encodeURIComponent(id)}`, options);
     },
     downloadArtifact(id) {
         return ApiClient.download(`/resume-artifacts/${encodeURIComponent(id)}`);

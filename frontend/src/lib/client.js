@@ -409,7 +409,7 @@ export class ApiClient {
         return this.request(endpoint, { method: "POST", body: formData, ...options });
     }
 
-    static download(endpoint) {
-        return this.request(endpoint, { method: "GET", responseType: "blob", timeoutMs: 60_000 });
+    static download(endpoint, options = {}) {
+        return this.request(endpoint, { method: "GET", responseType: "blob", timeoutMs: 60_000, ...options });
     }
 }

@@ -7,6 +7,12 @@
 - Rust stable compatible with the `rust-version` in `frontend/src-tauri/Cargo.toml`
 - Tauri platform prerequisites
 
+Source validation uses the exact Python version in `.python-version`. Release
+sidecars use the separate exact CPython version in `.native-python-version`;
+create `.venv` with that interpreter before installing the application and tooling
+locks for a release candidate. The desktop wrapper uses `.venv` when present and
+does not replace its interpreter. See [releasing](releasing.md) for artifact gates.
+
 Install exactly the locked dependencies:
 
 ```powershell
@@ -14,7 +20,7 @@ python -m venv .venv
 .venv\Scripts\python.exe -m pip install --require-hashes -r requirements-dev.lock
 .venv\Scripts\python.exe -m pip install --no-build-isolation --no-deps --editable .
 .\.venv\Scripts\Activate.ps1
-npm ci --prefix frontend
+npm ci --ignore-scripts --prefix frontend
 ```
 
 Desktop sidecar packaging uses the separate, hash-locked `requirements-tooling.lock`. Regenerate
@@ -32,12 +38,22 @@ unconditional Windows-only wheel before CI reaches installation.
 
 ## Run
 
-Native development:
+Native development requires an installed local Tauri CLI and the Rust target matching the
+sidecar Python architecture. Complete this explicit setup once after the locked dependencies:
 
 ```powershell
 .venv\Scripts\python.exe -m pip install --require-hashes -r requirements-tooling.lock
+$nativeTarget = .venv\Scripts\python.exe -c "from scripts.build_backend_sidecar import native_target_triple; print(native_target_triple())"
+if ($LASTEXITCODE -ne 0) { throw "Unable to determine the native sidecar target." }
+rustup target add $nativeTarget
 npm --prefix frontend run tauri:dev
 ```
+
+Use `npm --prefix frontend run tauri:build` or `scripts/package_desktop.ps1`
+(`scripts/package_desktop.sh` on POSIX) for a local package. These wrappers use the
+installed repository Tauri CLI, check the installed Rust targets before freezing the
+sidecar, and pass `-- --locked` to the production build. Missing prerequisites stop
+with setup instructions. Target and CLI installation remain explicit setup steps.
 
 Browser/container development:
 
@@ -164,19 +180,36 @@ parent directories.
 
 ## Tests and quality
 
+Activate the hash-locked development environment before running Git hooks. The
+Python hooks use its Ruff and mypy versions and the same source scope as CI.
+The frontend hook runs `npm run lint`, including the Node preflight, and reports
+missing local dependencies without installing them:
+
+```powershell
+.\.venv\Scripts\Activate.ps1
+pre-commit install
+pre-commit run --all-files
+```
+
+On POSIX, activate with `. .venv/bin/activate`. Run the complete gates as needed:
+
 ```powershell
 .venv\Scripts\python.exe -m ruff check backend tests/backend scripts
 .venv\Scripts\python.exe -m mypy backend scripts --ignore-missing-imports --no-error-summary
 .venv\Scripts\python.exe -m pytest tests/backend -q --cov=backend --cov-branch --cov-fail-under=80
 npm --prefix frontend run test:coverage
-npm --prefix frontend run demo:install
-npm --prefix frontend run test:e2e
 npm --prefix frontend run lint
 npm --prefix frontend run build
+npm --prefix frontend run demo:install
+npm --prefix frontend run test:e2e
 cargo fmt --manifest-path frontend/src-tauri/Cargo.toml --check
 cargo clippy --manifest-path frontend/src-tauri/Cargo.toml --locked --all-targets -- -D warnings
 cargo test --manifest-path frontend/src-tauri/Cargo.toml --locked
 ```
+
+Run the frontend build before the browser acceptance suite and keep those commands sequential.
+The login and agent browser checks serve `frontend/dist`; rebuilding it during a run can remove
+files while the harness is serving them.
 
 Tests deny public network access unless explicitly marked `live`. Use `TemporaryDirectory` for generated test data and never persist command output in the repository.
 

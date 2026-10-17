@@ -147,10 +147,17 @@ test("binds the distributable third-party notices to every dependency lock", asy
     const manifest = JSON.parse(manifestText);
     assert.deepEqual(manifest.componentCounts, {
         frontend: 12,
-        python: 55,
+        python: 57,
         runtime: 3,
         rust: 484,
     });
+    const pythonVersions = new Map(
+        manifest.components
+            .filter(({ ecosystem }) => ecosystem === "python")
+            .map(({ name, version }) => [name, version]),
+    );
+    assert.equal(pythonVersions.get("httpx"), "0.28.1");
+    assert.equal(pythonVersions.get("pyjwt"), "2.15.1");
     for (const [relativePath, expectedHash] of Object.entries(manifest.sourceLocks)) {
         const payload = await readFile(resolve(repositoryRoot, relativePath));
         assert.equal(

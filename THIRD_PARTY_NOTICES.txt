@@ -8,7 +8,7 @@ which covers the CareerOS Local project itself.
 {
   "componentCounts": {
     "frontend": 12,
-    "python": 55,
+    "python": 57,
     "runtime": 3,
     "rust": 484
   },
@@ -371,6 +371,17 @@ which covers the CareerOS Local project itself.
     },
     {
       "ecosystem": "python",
+      "license": "BSD-3-Clause",
+      "name": "httpx",
+      "selectedLicenses": [],
+      "source": "requirements.lock",
+      "textIds": [
+        "4ec59d544f12b5f539a3a716fd321ac58ccd8030b465221f2c880200cdf28d8d"
+      ],
+      "version": "0.28.1"
+    },
+    {
+      "ecosystem": "python",
       "license": "MIT",
       "name": "httpx-sse",
       "selectedLicenses": [],
@@ -477,7 +488,7 @@ which covers the CareerOS Local project itself.
       "textIds": [
         "5e13dbbc1d120fc2a03cecde7c91424ae2d7de11b63d58ded2f4431e261ee50d"
       ],
-      "version": "1.28.1"
+      "version": "1.30.0"
     },
     {
       "ecosystem": "python",
@@ -549,6 +560,17 @@ which covers the CareerOS Local project itself.
     },
     {
       "ecosystem": "python",
+      "license": "MIT",
+      "name": "pyjwt",
+      "selectedLicenses": [],
+      "source": "requirements.lock",
+      "textIds": [
+        "797a7a20231d4c433e9f1911db1731d06b5828b98f499819a034f7c0f56f5ce5"
+      ],
+      "version": "2.15.1"
+    },
+    {
+      "ecosystem": "python",
       "license": "BSD-3-Clause",
       "name": "pypdf",
       "selectedLicenses": [],
@@ -556,7 +578,7 @@ which covers the CareerOS Local project itself.
       "textIds": [
         "a97ac230e5f33ef10a5367a850eb01f91f1a0b064e34742c7794d2294557f524"
       ],
-      "version": "6.16.1"
+      "version": "6.21.0"
     },
     {
       "ecosystem": "python",
@@ -7851,8 +7873,8 @@ which covers the CareerOS Local project itself.
     ".python-version": "aa0d6581054e6e4ff3f91839deca7a854ad37221b8784d060b42d0f847ff1a3b",
     "frontend/package-lock.json": "b25854d842f7720236616819a7518be1846cc5d6f99da2e804f34458532dfd80",
     "frontend/src-tauri/Cargo.lock": "65518ed518708dc8bf0a8f2a0123cf9425109977f3baf883c16b3dabb69a1a19",
-    "requirements-tooling.lock": "35ada80421dc0e6b88497c782d180e5b7db8dd3266cc4e2d92b1e8a88042250d",
-    "requirements.lock": "36fe6fe4c5c4eed4e4803a113ee3e9957ed3c372ac5ac824fe548a8669b22c40",
+    "requirements-tooling.lock": "dfd259757826f372e826e01b7e298a018fc7ae62c8edae4ec5097baed37559b0",
+    "requirements.lock": "fe7485ee7e4dacf656ee86af824318031ae04cc842d0fb234a7422bba55f3883",
     "third_party/licenses/cpython-3.13.14/LICENSE": "78b12c3a81360b357002334f0e70ea0e92eebf7a9b358805c03c48484945f3bb"
   },
   "texts": [
@@ -8802,6 +8824,13 @@ which covers the CareerOS Local project itself.
       ]
     },
     {
+      "id": "4ec59d544f12b5f539a3a716fd321ac58ccd8030b465221f2c880200cdf28d8d",
+      "sha256": "4ec59d544f12b5f539a3a716fd321ac58ccd8030b465221f2c880200cdf28d8d",
+      "sources": [
+        "python:httpx@0.28.1/LICENSE.md"
+      ]
+    },
+    {
       "id": "4ec89ffc81485b97fec584b2d4a961032eeffe834453894fd9c1274906cc744e",
       "sha256": "4ec89ffc81485b97fec584b2d4a961032eeffe834453894fd9c1274906cc744e",
       "sources": [
@@ -8932,7 +8961,7 @@ which covers the CareerOS Local project itself.
       "id": "5e13dbbc1d120fc2a03cecde7c91424ae2d7de11b63d58ded2f4431e261ee50d",
       "sha256": "5e13dbbc1d120fc2a03cecde7c91424ae2d7de11b63d58ded2f4431e261ee50d",
       "sources": [
-        "python:mcp@1.28.1/LICENSE"
+        "python:mcp@1.30.0/LICENSE"
       ]
     },
     {
@@ -9231,6 +9260,13 @@ which covers the CareerOS Local project itself.
       "sha256": "78b12c3a81360b357002334f0e70ea0e92eebf7a9b358805c03c48484945f3bb",
       "sources": [
         "runtime:cpython@3.13.14/third_party/licenses/cpython-3.13.14/LICENSE"
+      ]
+    },
+    {
+      "id": "797a7a20231d4c433e9f1911db1731d06b5828b98f499819a034f7c0f56f5ce5",
+      "sha256": "797a7a20231d4c433e9f1911db1731d06b5828b98f499819a034f7c0f56f5ce5",
+      "sources": [
+        "python:pyjwt@2.15.1/LICENSE"
       ]
     },
     {
@@ -9682,7 +9718,7 @@ which covers the CareerOS Local project itself.
       "id": "a97ac230e5f33ef10a5367a850eb01f91f1a0b064e34742c7794d2294557f524",
       "sha256": "a97ac230e5f33ef10a5367a850eb01f91f1a0b064e34742c7794d2294557f524",
       "sources": [
-        "python:pypdf@6.16.1/LICENSE"
+        "python:pypdf@6.21.0/LICENSE"
       ]
     },
     {
@@ -15731,6 +15767,21 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ----- END THIRD-PARTY TEXT 4cada0bd02ea3692eee6f16400d86c6508bbd3bafb2b65fed0419f36d4f83e8f -----
 
+----- BEGIN THIRD-PARTY TEXT 4ec59d544f12b5f539a3a716fd321ac58ccd8030b465221f2c880200cdf28d8d -----
+Copyright © 2019, [Encode OSS Ltd](https://www.encode.io/).
+All rights reserved.
+
+Redistribution and use in source and binary forms, with or without modification, are permitted provided that the following conditions are met:
+
+* Redistributions of source code must retain the above copyright notice, this list of conditions and the following disclaimer.
+
+* Redistributions in binary form must reproduce the above copyright notice, this list of conditions and the following disclaimer in the documentation and/or other materials provided with the distribution.
+
+* Neither the name of the copyright holder nor the names of its contributors may be used to endorse or promote products derived from this software without specific prior written permission.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+----- END THIRD-PARTY TEXT 4ec59d544f12b5f539a3a716fd321ac58ccd8030b465221f2c880200cdf28d8d -----
+
 ----- BEGIN THIRD-PARTY TEXT 4ec89ffc81485b97fec584b2d4a961032eeffe834453894fd9c1274906cc744e -----
 The MIT License (MIT)
 
@@ -21382,6 +21433,30 @@ LOSS OF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR
 OTHER TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR
 PERFORMANCE OF THIS SOFTWARE.
 ----- END THIRD-PARTY TEXT 78b12c3a81360b357002334f0e70ea0e92eebf7a9b358805c03c48484945f3bb -----
+
+----- BEGIN THIRD-PARTY TEXT 797a7a20231d4c433e9f1911db1731d06b5828b98f499819a034f7c0f56f5ce5 -----
+The MIT License (MIT)
+
+Copyright (c) 2015-2022 José Padilla
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+----- END THIRD-PARTY TEXT 797a7a20231d4c433e9f1911db1731d06b5828b98f499819a034f7c0f56f5ce5 -----
 
 ----- BEGIN THIRD-PARTY TEXT 799e9ca9d179295ef372f25d3769cdda7d25bb2668add6a6a1e22d1e4c678b8d -----
 MIT License

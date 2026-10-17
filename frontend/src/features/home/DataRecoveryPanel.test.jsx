@@ -101,7 +101,7 @@ describe("DataRecoveryPanel", () => {
         await waitFor(() => expect(platform.verifyArchivePayload).toHaveBeenCalledTimes(1));
         expect(createObjectUrl).toHaveBeenCalledTimes(1);
         expect(click).toHaveBeenCalledTimes(1);
-        expect(revokeObjectUrl).toHaveBeenCalledWith("blob:backup");
+        await waitFor(() => expect(revokeObjectUrl).toHaveBeenCalledWith("blob:backup"));
         expect(screen.getByRole("status")).toHaveTextContent("non può verificare la destinazione finale");
     });
 

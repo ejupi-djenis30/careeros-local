@@ -7,7 +7,8 @@ export function useProfilePhotoUrl(assetId) {
         if (!assetId) return undefined;
         let active = true;
         let objectUrl = null;
-        CareerService.getPhoto(assetId).then(({ blob }) => {
+        const controller = new AbortController();
+        CareerService.getPhoto(assetId, { signal: controller.signal, suppressGlobalError: true }).then(({ blob }) => {
             if (!active) return;
             objectUrl = URL.createObjectURL(blob);
             setLoaded({ assetId, url: objectUrl });
@@ -16,6 +17,7 @@ export function useProfilePhotoUrl(assetId) {
         });
         return () => {
             active = false;
+            controller.abort();
             if (objectUrl) URL.revokeObjectURL(objectUrl);
         };
     }, [assetId]);

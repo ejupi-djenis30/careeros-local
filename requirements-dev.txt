@@ -21,3 +21,7 @@ pre-commit==4.6.1
 
 pip-audit==2.10.1
 pip-licenses==5.5.5
+
+# Reviewed security pins for audit networking and pre-commit environment creation.
+urllib3==2.8.0
+virtualenv==21.13.0

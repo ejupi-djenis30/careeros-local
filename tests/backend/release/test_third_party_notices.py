@@ -63,6 +63,60 @@ def test_native_cpython_notice_uses_the_reviewed_lock_bound_license(tmp_path: Pa
         notices._runtime_legal_texts(package, {}, root=tmp_path)
 
 
+def test_python_lock_inventory_preserves_extras_markers_and_canonical_names(
+    tmp_path: Path,
+) -> None:
+    lock = tmp_path / "requirements.lock"
+    lock.write_text(
+        "# Compiled runtime requirements\n"
+        "httpx[http2, socks]==0.28.1 ; python_version >= '3.12' \\\n"
+        "    --hash=sha256:" + "a" * 64 + "\n"
+        "PyJWT[crypto]==2.15.1\n"
+        "pyjwt==2.15.1\n"
+        "Demo_Package[feature]==1.0\n"
+        "demo-package==1.0\n",
+        encoding="utf-8",
+    )
+
+    assert notices._locked_python_versions(lock) == {
+        "httpx": "0.28.1",
+        "pyjwt": "2.15.1",
+        "demo-package": "1.0",
+    }
+
+
+@pytest.mark.parametrize(
+    "record",
+    [
+        "httpx[http2==0.28.1",
+        "httpx>=0.28.1",
+        "httpx==0.28.*",
+        "httpx===arbitrary",
+        "httpx @ https://example.invalid/httpx.whl",
+        "unrecognized lock record",
+        "--hash=sha256:invalid",
+    ],
+)
+def test_python_lock_inventory_rejects_malformed_or_unpinned_records(
+    tmp_path: Path, record: str
+) -> None:
+    lock = tmp_path / "requirements.lock"
+    lock.write_text(f"known-package==1.0\n{record}\n", encoding="utf-8")
+
+    with pytest.raises(RuntimeError, match="Python lock"):
+        notices._locked_python_versions(lock)
+
+
+def test_python_lock_inventory_rejects_conflicting_extras_qualified_versions(
+    tmp_path: Path,
+) -> None:
+    lock = tmp_path / "requirements.lock"
+    lock.write_text("Demo_Package[feature]==1.0\ndemo-package==2.0\n", encoding="utf-8")
+
+    with pytest.raises(RuntimeError, match="conflicting versions for demo-package"):
+        notices._locked_python_versions(lock)
+
+
 def test_repository_notice_is_lock_bound_complete_and_approved() -> None:
     payload = NOTICE_PATH.read_bytes()
     manifest = verify_notice_file()
@@ -70,7 +124,7 @@ def test_repository_notice_is_lock_bound_complete_and_approved() -> None:
     assert hashlib.sha256(payload).hexdigest() == APPROVED_NOTICE_SHA256
     assert manifest["componentCounts"] == {
         "frontend": 12,
-        "python": 55,
+        "python": 57,
         "runtime": 3,
         "rust": 484,
     }
@@ -80,6 +134,8 @@ def test_repository_notice_is_lock_bound_complete_and_approved() -> None:
     }
     assert ("frontend", "bootstrap", "5.3.8") in identities
     assert ("frontend", "bootstrap-icons", "1.13.1") in identities
+    assert ("python", "httpx", "0.28.1") in identities
+    assert ("python", "pyjwt", "2.15.1") in identities
     assert ("runtime", "cpython", "3.12.13") in identities
     assert ("runtime", "cpython", "3.13.14") in identities
     assert ("runtime", "pyinstaller", "6.21.0") in identities
@@ -91,6 +147,7 @@ def test_notice_source_locks_have_portable_checkout_bytes() -> None:
 
     for relative in notices.SOURCE_FILES:
         assert f"{relative} text eol=lf" in attributes
+        assert b"\r" not in (notices.ROOT / relative).read_bytes()
 
 
 def test_notice_rejects_tampered_text_even_without_the_outer_approved_digest() -> None:

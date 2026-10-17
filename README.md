@@ -369,10 +369,10 @@ screenshots under `docs/assets/`. Full details are in the [demo recording guide]
 .venv\Scripts\python.exe -m mypy backend scripts --ignore-missing-imports --no-error-summary
 .venv\Scripts\python.exe -m pytest tests/backend -q --cov=backend --cov-branch --cov-fail-under=80
 npm --prefix frontend run test:coverage
-npm --prefix frontend run demo:install
-npm --prefix frontend run test:e2e
 npm --prefix frontend run lint
 npm --prefix frontend run build
+npm --prefix frontend run demo:install
+npm --prefix frontend run test:e2e
 cargo fmt --manifest-path frontend/src-tauri/Cargo.toml --check
 cargo clippy --manifest-path frontend/src-tauri/Cargo.toml --locked --all-targets -- -D warnings
 cargo test --manifest-path frontend/src-tauri/Cargo.toml --locked

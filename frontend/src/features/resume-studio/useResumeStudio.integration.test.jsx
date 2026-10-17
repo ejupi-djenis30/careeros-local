@@ -1,0 +1,55 @@
+import { act, renderHook } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { ApiClient } from "../../lib/client";
+import { CAREEROS_API_ERROR_EVENT } from "../../lib/events";
+import { careerProfile, resumeDraft, RESUME_ID } from "../../test/fixtures";
+import { useResumeStudio } from "./useResumeStudio";
+
+vi.mock("../../context/ToastContext", () => ({ useToast: () => ({ showToast: vi.fn() }) }));
+vi.mock("../../i18n/useI18n", () => ({ useI18n: () => ({ t: (key) => key }) }));
+
+function json(value, status = 200) {
+    return new Response(JSON.stringify(value), { status, headers: { "Content-Type": "application/json" } });
+}
+
+describe("resume request error ownership through the API client", () => {
+    beforeEach(() => { vi.useFakeTimers(); ApiClient.invalidateSession(); });
+    afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks(); });
+
+    it.each([false, true])("keeps a save error local with navigation=%s", async (navigate) => {
+        let finishSave;
+        const saving = new Promise((resolve) => { finishSave = resolve; });
+        const globalError = vi.fn();
+        window.addEventListener(CAREEROS_API_ERROR_EVENT, globalError);
+        const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation((url, options) => {
+            if (options.method === "PUT") return saving;
+            if (url.endsWith("/career-profile")) return Promise.resolve(json(careerProfile()));
+            if (url.endsWith("/resumes")) return Promise.resolve(json([resumeDraft()]));
+            return Promise.resolve(json(resumeDraft()));
+        });
+        let view;
+        try {
+            await act(async () => { view = renderHook(() => useResumeStudio()); });
+            act(() => { view.result.current.changeDraft({ title: "Pending write" }); });
+            let operation;
+            act(() => { operation = view.result.current.save(); });
+            const writeOptions = fetchMock.mock.calls.find(([, options]) => options.method === "PUT")[1];
+            if (navigate) act(() => { view.result.current.startNew(); });
+            await act(async () => { finishSave(json({ detail: "Save rejected" }, 409)); await operation; });
+
+            expect(globalError).not.toHaveBeenCalled();
+            if (navigate) {
+                expect(writeOptions.signal.aborted).toBe(true);
+                expect(view.result.current.draft.id).toBeNull();
+                expect(view.result.current.error).toBeNull();
+            } else {
+                expect(view.result.current.draft.id).toBe(RESUME_ID);
+                expect(view.result.current.error).toEqual({ message: "Save rejected" });
+                expect(view.result.current.dirty).toBe(true);
+            }
+        } finally {
+            view?.unmount();
+            window.removeEventListener(CAREEROS_API_ERROR_EVENT, globalError);
+        }
+    });
+});

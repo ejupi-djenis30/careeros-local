@@ -7,18 +7,10 @@ import {
     verifyArchivePayload,
 } from "../../platform/desktop";
 import { PortabilityService } from "../../services/portability";
+import { saveBlob } from "../../lib/download";
 import { useI18n } from "../../i18n/useI18n";
 import { translateMessage } from "../../i18n/runtime";
 import { BackupInspectionSummary } from "./BackupInspectionSummary";
-
-function browserDownload({ blob, filename }) {
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = filename;
-    link.click();
-    URL.revokeObjectURL(url);
-}
 
 export function DataRecoveryPanel({ hasProfile }) {
     const { t } = useI18n();
@@ -40,7 +32,7 @@ export function DataRecoveryPanel({ hasProfile }) {
                 setMessage({ messageKey: saved ? "data.backupSaved" : "data.saveCancelled" });
             } else {
                 await verifyArchivePayload(archive);
-                browserDownload(archive);
+                saveBlob(archive);
                 setMessage({ messageKey: "data.backupDownloaded" });
             }
         } catch (error) {

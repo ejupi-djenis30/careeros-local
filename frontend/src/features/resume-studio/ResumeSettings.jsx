@@ -73,7 +73,7 @@ export function ResumeSettings({ studio }) {
                 </div>
             </fieldset>
             {galleryOpen && <TemplateGallery studio={studio} onClose={() => setGalleryOpen(false)} />}
-            {draft.template_kind === "photo" && <label className={`photo-upload ${draft.photo_asset_id ? "is-ready" : ""}`}><i className={`bi ${draft.photo_asset_id ? "bi-check-circle-fill" : "bi-camera"}`} /><span>{draft.photo_asset_id ? t("resume.photoReady") : t("resume.uploadPhoto")}</span><input type="file" accept="image/jpeg,image/png,image/webp" onChange={(event) => studio.uploadPhoto(event.target.files?.[0])} disabled={busy === "photo"} /></label>}
+            {draft.template_kind === "photo" && <label className={`photo-upload ${draft.photo_asset_id ? "is-ready" : ""}`}><i className={`bi ${draft.photo_asset_id ? "bi-check-circle-fill" : "bi-camera"}`} /><span>{draft.photo_asset_id ? t("resume.photoReady") : t("resume.uploadPhoto")}</span><input type="file" accept="image/jpeg,image/png,image/webp" onChange={(event) => studio.uploadPhoto(event.target.files?.[0])} disabled={Boolean(busy)} /></label>}
             <fieldset className="inclusion-options"><legend>{t("resume.contacts")}</legend>{[["include_summary", t("resume.summary")], ["include_email", t("profile.email")], ["include_phone", t("profile.phone")], ["include_location", t("resume.location")], ["include_links", t("resume.links")]].map(([key, label]) => <label key={key} className="check-line"><input type="checkbox" checked={draft.section_config[key]} onChange={(event) => setInclusion(key, event.target.checked)} /> {label}</label>)}</fieldset>
         </section>
     );
