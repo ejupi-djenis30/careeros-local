@@ -446,3 +446,211 @@ requirement. T022–T026 are complete. This is a pre-publication source snapshot
 the new protected PR checks, signed-main exact-tree proof and branch cleanup are
 recorded in PR metadata and durable private Git recovery evidence after actual
 execution. No future CI result, signing qualification or release is claimed here.
+
+## Verified UI baseline and continued refactor
+
+The preceding source snapshot is integrated through PR #116 as signed main
+cdc91c10e9dcc49ed77e238f1556d34692d2e0ca, parent 1b897f0, with valid GitHub
+signature and tree 0a2f4be8ef239e3b50fb0c13a8cf3be5755139f4 exactly matching
+reviewed source d79604f. All six required PR gates passed; the full inventory was
+23 SUCCESS and two intentionally skipped release-publication jobs. All six Agent
+Access environments and both Linux native package smokes passed. Main's own CI
+39036469180 completed eight jobs successfully and CodeQL 39036469070 all four.
+Main Linux: 2,971 passed/11 skipped, 692.02 seconds, 83.63% combined coverage;
+four performance tests passed in 5.51 seconds. Both new bundles verify with full
+history, main was the only branch, and the final independent audit found no
+dirty worktree, stash, open PR or source-tree mismatch. Final private evidence
+is retained in .git/careeros-recovery/2026-10-17; the public PR includes checksum
+and unsigned-candidate details. No release or tag was published.
+
+The owner then requested UI refactoring. T027–T032 track that separate cycle.
+Read-only synthetic probes reproduced coach stale-selection/new-draft loss,
+application selection stolen by a late acknowledgement, jobs filter/count/undo
+corruption, and modal background/stack cleanup failures. Explicit renderer logs
+and installed React production default error callbacks also forward raw errors;
+the UI privacy change includes both channels. These baseline results never imply
+that a new UI implementation or future gate has passed. All new probes and
+execution artifacts remain in OS Temp, without reading personal vaults.
+
+### UI defect reproduction and focused verification
+
+T027's actual production React probe reproduced both the workspace boundary and
+default root callback leaking synthetic private error content (exit 1, fallback
+visible, source unchanged). With the extracted boolean-only boundary and all
+three explicit root callbacks, the same production runtime reports only the
+fixed caught/uncaught/recoverable codes; private content is absent and the
+translated fallback remains visible (exit 0, source unchanged). The focused
+suite passes 47 tests in nine files, 7.83 seconds. The later auth/entry/boundary
+subset passes 36 tests in four files, 3.88 seconds. The real ESLint API contract
+first failed for an unsafe virtual console call, then passes all four Node
+distribution tests after production no-console enforcement; the actual reporter
+is the only exemption. Scoped lint passes for all sixteen owned frontend files.
+The initial optional Babel-plugin failure, unsupported Vitest --cacheDir command
+(zero tests), old unsafe JobTable expectation (46 pass/one fail), and a classic-
+versus-automatic JSX probe mismatch are retained as failed harness/intermediate
+commands, never counted as successful gates. No dependency was installed.
+
+T028 first reproduced stale conversation selection and loss of a newly typed
+composer draft. Its regression run failed eight tests with two controls passing.
+The final controller/service/view suite passes 17 tests in three files, 6.99
+seconds, with lint and unchanged-input checks passing. The rendering view is 47
+lines and controller 196; independent review finds no material issue.
+
+T030/T031 initially fail seven regressions with 24 passing controls. Expanded
+independent review found three more pending-detail/creation-selection defects,
+then a fourth close/reopen form-session defect; each was reproduced before its
+correction. The final combined suite passes all 43 application/jobs tests in
+22.60 seconds. Lint passes for all seven owned files; the extracted application
+view and card JSX are AST-equivalent to the original presentation. Both areas
+have independent review without material findings. The existing React act
+warning in the deep-link agenda test was also present before these changes and
+was not suppressed. All evidence remains in OS Temp.
+
+T029's actual dialog probe first passes one control and fails three isolation,
+Escape and scroll-ownership cases. The shared stack passes those probes and 51
+tests across seven affected suites, including thirteen new lifecycle cases.
+Native Chromium then passes sixteen behavior checks at each of 320/390/1440
+pixels, with zero page errors or external requests. Nine axe runs report zero
+violations; two dialogs retain a manual color-contrast incomplete per width.
+The appearance comparison finds a real inherited glass-panel color/shadow
+change after moving ConfirmationDialog to a body portal. The final narrow CSS
+correction, visual review and source freeze remain pending; these measurements
+are not represented as a complete final UI gate.
+
+That appearance finding is now corrected by adding only the confirmation-portal
+selector to the existing glass-panel rule, with all declarations unchanged.
+After transitions settle, computed styles and bounds match exactly at all three
+widths; zero overflow, page errors or external requests occur. The focused probe
+uses baseline built CSS plus that production rule read verbatim; it does not
+substitute for the subsequent full production build. Axe reports zero violations
+and retains one manual contrast incomplete per viewport. Independent visual
+inspection of the final 320/1440 screenshots and two code reviews pass.
+
+The analysis-dialog shell is now 112 lines, evidence view 52 and section module
+95, with each section component below 40 lines. Eight actual rendered-DOM
+comparisons pass for empty, unverified, validated-local, attested/unattested/
+wrong-provenance external, malformed-array and sparse cases. No validation
+predicate or publication authority moved into the presentation components.
+The final seven affected modal suites pass 55 tests in 41.601 seconds; ESLint
+passes for eleven JavaScript files, diff checks pass for all twelve owned inputs,
+and source hashes are unchanged. The final source freeze was announced before
+starting the combined frontend and five affected Python contract gates.
+
+The five affected Python contract files pass on exact Python B: 78 passed,
+zero skipped, 29.63 seconds, pytest and wrapper exit 0. Repository hygiene,
+distribution configuration, frontend security exceptions, product identity and
+release workflow contracts run with DATA_DIR set to a fresh OS-temporary path
+before the first backend import. All 1,189 non-Markdown inputs match before/after.
+Backend/native/schema/dependency production inputs remain byte-identical to
+signed main cdc91c1. No complete local backend, Rust or migration run is claimed
+for this UI-only cycle; their exact baseline results above are retained, with
+fresh protected remote checks still mandatory for the new head.
+
+### First aggregate UI run and measured bundle failure
+
+The first aggregate frontend run passes 756 tests in 111 files, 90.25 seconds.
+Coverage: 84.01% statements (5,872/6,989), 74.63% branches (4,502/6,032),
+75.82% functions (1,581/2,085), 88.77% lines (5,202/5,860). All thresholds are
+unchanged. Node preflight and four runtime tests, eleven license/distribution/
+icon contracts, icon verification and lint pass. Vite compilation also exits 0.
+The separate mandatory bundle gate exits 1: AuthenticatedWorkspace is 32,085
+bytes, exceeding its unchanged 32,000-byte limit by 85. Thus the equivalent
+production build gate is FAILED; browser/API groups were not started.
+All 1,189 source inputs remain unchanged during this run and no repository
+coverage directory exists. The failed build's forty-asset hash manifest and
+all original logs/results remain in OS Temp without overwrite.
+
+The first corrective implementation change was a narrowly reviewed deduplication
+in modalStack: equivalent Tab edge/fallback branches, visibility selectors and
+attribute restoration. No focus lifecycle, ownership, state restoration or
+budget is weakened. The earlier 78 Python contracts attest the preceding source
+snapshot; they do not establish a successful bundle. Renewed modal/native and
+full frontend/build checks on the final source are still required. Backend,
+native and dependency inputs remain unchanged.
+
+The second aggregate run also passes all 756 tests in 111 files, 93.23 seconds,
+plus Node/license/icon contracts, lint and Vite compilation. Coverage for that
+snapshot is 83.99% statements (5,863/6,980), 74.59% branches (4,492/6,022),
+75.83% functions (1,582/2,086), 88.75% lines (5,195/5,853). The raw workspace
+chunk now passes at 31,943/32,000 bytes, but the gzip gate fails at 9,651/9,600
+bytes. This aggregate is also FAILED, with zero source-guard differences and
+no E2E run. Its logs and forty-asset manifest are preserved separately.
+The renewed modal checks pass 55 tests in 42.017 seconds and 48 native behavior
+assertions across three widths; visual comparison has zero differences, and
+nine axe runs have zero violations with six retained manual-contrast incompletes.
+
+Actual import-graph review then finds the route-specific analysis gate pulling
+ModelManager into the eager workspace shell. A one-file correction loads the
+unchanged RequiredLocalAnalysis through the existing module-level React lazy
+route pattern, Suspense fallback and error boundary. Its readiness/consent code,
+model manager and synchronous modal lifecycle remain unchanged. Independent
+review passes. Manual deep links can now avoid the analysis/setup implementation.
+
+The subsequent actual production build and unchanged budget validator PASS:
+workspace JavaScript 17,130 raw / 5,775 gzip; entry 267,104 / 82,974; largest
+locale (Italian) 89,925 / 28,401; lifecycle CSS 21,837 / 5,841; initial resources
+379,913 / 117,780; workspace CSS 434,350 / 72,155 bytes. All three build-wrapper
+commands exit 0 and all 1,189 source hashes remain unchanged. The complete
+frontend quality run, actual route-loading probe and eight browser/API groups
+on this final source are pending; the successful build is reused without a
+redundant rebuild, with source/distribution guards.
+
+### Final frozen UI quality and route-loading evidence
+
+The final quality wrapper passes all five commands: Node preflight, four runtime
+contracts, complete V8 coverage, eleven license/distribution/icon contracts and
+lint. All 756 tests in 111 files pass; the coverage command takes 93.214 seconds.
+Final coverage is 83.99% statements (5,863/6,980), 74.60% branches (4,493/6,022),
+75.83% functions (1,582/2,086), 88.75% lines (5,195/5,853), with unchanged
+thresholds. The successful actual build above is reused on byte-identical source;
+all 1,189 source inputs and 44 distribution files remain unchanged (1,233 guarded
+entries). Coverage/config/cache are entirely in OS Temp; frontend/coverage is absent.
+
+A separate actual-build browser probe passes seventeen assertions in two fresh
+contexts. Direct /jobs loads JobsPage and its shared modal code without requesting
+RequiredLocalAnalysis or ModelManager. Direct /coach requests both feature chunks
+and renders the real locked setup UI; no composer/unlocked analysis, readiness
+inference or model mutation occurs. The only POST is synthetic authentication
+refresh. There are zero external requests, page errors, HTTP failures or
+unexpected API calls. All source/dist bytes and the immutable OS-temporary build
+copy match; independent inspection of both screenshots passes. This two-route
+graph smoke does not substitute for the eight browser/API groups still running.
+
+Independent cross-manifest review compares the earlier 78-contract snapshot with
+the final source: only modalStack.js and the one workspace import declaration
+differ; all other 1,187 inputs match. Reversing that eager-to-lazy declaration in
+memory exactly reproduces the earlier workspace hash. Backend, native, dependency,
+configuration and RequiredLocalAnalysis module bytes remain unchanged. No Python
+contract rerun or unexecuted backend/native check is claimed for the final UI
+deduplication/loading changes.
+
+All eight browser/API groups now pass on the final built source: npm exit 0,
+138.513 seconds, Node 24.18.1 and exact Python B 3.12.13. This includes the
+responsive portfolio, agenda/DST/contrast, login, Agent Access, Agent Work,
+actual materials API, actual providers API and responsive workspace shell.
+All 1,233 source/dist inputs remain unchanged and no synthetic vault remains.
+The wrapper initially exits 1 because its immediate descendant-process snapshot
+contains PID 20448. Its original result is preserved, not changed into a pass.
+At the first subsequent read-only lookup that PID is absent; the final process
+and TCP check at 15:04:46 UTC finds zero owned processes/endpoints and zero
+vaults. The final 1,233-input rehash also has zero differences. No process was
+killed and no test or build was repeated. The wrapper recorded only historical
+descendant IDs, so the departed process's name/start/parent cannot be recovered
+and are not invented. The actual tests pass and teardown is reconciled; the
+initial resource-guard failure remains part of the execution history.
+
+All applicable changed-file hooks pass on exact Python B in 63.345 seconds:
+trailing whitespace, EOF, conflict/size checks, global Ruff over backend/tests/
+scripts, global mypy over backend/scripts and frontend lint. YAML, Python debug
+statements and Ruff formatting skip because no matching files changed. All
+1,346 guarded repository inputs, including Markdown, remain byte-identical
+through the hook run. Final evidence/checkbox edits only affect the six active
+Markdown artifacts; their final text checks are recorded separately.
+
+Independent implementation, source-graph and artifact reviews find no unresolved
+material issue or additional task: 17 FR, 15 SC, six outcomes, ten plan decisions,
+eight constitution principles and 32 mapped tasks. T027–T032 are complete as
+verified source and integration hand-off. The new head's protected PR checks,
+signed-main exact tree, verified recovery bundle and final branch inventory
+remain mandatory actual execution in the PR/private recovery ledger. This
+pre-publication source snapshot claims no future CI, merge, signature or release.

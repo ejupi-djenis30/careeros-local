@@ -6,6 +6,7 @@ import { useToast } from '../context/ToastContext';
 import { SearchService } from '../services/search';
 import { useI18n } from '../i18n/useI18n';
 import { translateMessage } from '../i18n/runtime';
+import { reportUiFailure } from '../lib/uiDiagnostics';
 
 export function ProgressPage() {
   const [searchParams] = useSearchParams();
@@ -29,8 +30,8 @@ export function ProgressPage() {
         setProfiles(mapping);
         setProfilesError(null);
       })
-      .catch((error) => {
-        console.error('Failed to load profiles for progress labels:', error);
+      .catch(() => {
+        reportUiFailure('progress_profiles');
         showToast({ messageKey: "progressPage.loadNamesFailed" });
         setProfilesError({ messageKey: "progressPage.namesUnavailable" });
       });

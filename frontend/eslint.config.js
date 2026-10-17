@@ -95,6 +95,10 @@ export default defineConfig([
     files: ['src/**/*.{js,jsx}'],
     ignores: ['src/**/*.test.*', 'src/test/**', 'src/i18n/messages.js'],
     plugins: { local: { rules: { 'no-hardcoded-ui-copy': noHardcodedUiCopy } } },
-    rules: { 'local/no-hardcoded-ui-copy': 'error' },
+    rules: { 'local/no-hardcoded-ui-copy': 'error', 'no-console': 'error' },
+  },
+  {
+    files: ['src/lib/uiDiagnostics.js'],
+    rules: { 'no-console': 'off' },
   },
 ])

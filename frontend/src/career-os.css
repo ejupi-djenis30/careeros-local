@@ -2923,7 +2923,8 @@ summary:focus-visible {
 .coach-composer > div > span i { color: var(--cos-success); }
 
 /* Keep the opportunity engine visually compatible inside the new shell. */
-.workspace-content .glass-panel {
+.workspace-content .glass-panel,
+.confirm-dialog-backdrop .glass-panel {
   border-color: var(--cos-border);
   background: rgba(21, 27, 24, 0.78);
   box-shadow: none;

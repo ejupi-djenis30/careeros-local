@@ -6,6 +6,7 @@ import { DismissDialog } from "./JobTable/DismissDialog";
 import { JobService } from "../services/jobs";
 import { useToast } from "../context/ToastContext";
 import { useI18n } from "../i18n/useI18n";
+import { reportUiFailure } from "../lib/uiDiagnostics";
 
 export function JobTable({ jobs, isGlobalView, onDismiss, onReactivate, pagination, onPageChange, isLoading = false }) {
     const [selectedJobForAnalysis, setSelectedJobForAnalysis] = useState(null);
@@ -19,8 +20,8 @@ export function JobTable({ jobs, isGlobalView, onDismiss, onReactivate, paginati
         setSelectedJobForAnalysis(job);
         // Fire-and-forget view recording (idempotent on the server)
         if (job?.id) {
-            JobService.recordView(job.id).catch((error) => {
-                console.warn(`Failed to record job view for ${job.id}`, error);
+            JobService.recordView(job.id).catch(() => {
+                reportUiFailure("job_view");
             });
         }
     };

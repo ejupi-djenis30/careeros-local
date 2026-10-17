@@ -5,6 +5,7 @@ import { ScheduleCard } from "./ScheduleCard";
 import { ConfirmationDialog } from "./ConfirmationDialog";
 import { useI18n } from "../i18n/useI18n";
 import { translateMessage } from "../i18n/runtime";
+import { reportUiFailure } from "../lib/uiDiagnostics";
 
 export function Schedules() {
     const { showToast } = useToast();
@@ -31,7 +32,7 @@ export function Schedules() {
             })
             .catch((loadError) => {
                 if (controller.signal.aborted || loadError?.name === "AbortError" || requestId !== requestIdRef.current) return;
-                console.error("Failed to load profiles:", loadError);
+                reportUiFailure("schedules_profiles");
                 setError({ messageKey: "schedules.loadFailed" });
                 showToast({ messageKey: "schedules.loadFailedRefresh" });
             })

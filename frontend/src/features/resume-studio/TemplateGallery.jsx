@@ -4,6 +4,7 @@ import { useI18n } from "../../i18n/useI18n";
 import { ResumeService } from "../../services/resumes";
 import { selectTemplatePreset } from "./resumeModel";
 import { tTemplate } from "./templateMessages";
+import { useModalIsolation } from "../../components/modals/useModalIsolation";
 import "./TemplateGallery.css";
 
 export function TemplateGallery({ studio, onClose }) {
@@ -15,8 +16,6 @@ export function TemplateGallery({ studio, onClose }) {
     const [attempt, setAttempt] = useState(0);
     const [notice, setNotice] = useState("");
     const rootRef = useRef(null);
-    const closeRef = useRef(onClose);
-    useEffect(() => { closeRef.current = onClose; }, [onClose]);
     useEffect(() => {
         const controller = new AbortController();
         ResumeService.listTemplates({ signal: controller.signal, suppressGlobalError: true })
@@ -28,33 +27,11 @@ export function TemplateGallery({ studio, onClose }) {
             .catch(() => { if (!controller.signal.aborted) setState("error"); });
         return () => controller.abort();
     }, [attempt]);
-    useEffect(() => {
-        const root = rootRef.current;
-        const focused = document.activeElement;
-        const overflow = document.body.style.overflow;
-        const siblings = [...document.body.children].filter((element) => element !== root)
-            .map((element) => ({ element, inert: element.inert }));
-        siblings.forEach(({ element }) => { element.inert = true; });
-        document.body.style.overflow = "hidden";
-        root.querySelector("button")?.focus();
-        const keydown = (event) => {
-            if (event.key === "Escape") { event.preventDefault(); closeRef.current?.(); return; }
-            if (event.key !== "Tab") return;
-            const items = [...root.querySelectorAll("button:not([disabled]),select:not([disabled])")];
-            const first = items[0], last = items.at(-1);
-            if (!first) { event.preventDefault(); root.focus(); }
-            else if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
-            else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
-            else if (!root.contains(document.activeElement)) { event.preventDefault(); first.focus(); }
-        };
-        document.addEventListener("keydown", keydown);
-        return () => {
-            document.removeEventListener("keydown", keydown);
-            siblings.forEach(({ element, inert }) => { element.inert = inert; });
-            document.body.style.overflow = overflow;
-            if (focused?.isConnected) focused.focus();
-        };
-    }, []);
+    useModalIsolation({
+        isOpen: true,
+        dialogRef: rootRef,
+        onRequestClose: onClose,
+    });
     const visible = useMemo(() => templates.filter((preset) => Object.entries(filters)
         .every(([field, value]) => value === "all" || preset[field] === value)), [templates, filters]);
     const choose = (preset) => {

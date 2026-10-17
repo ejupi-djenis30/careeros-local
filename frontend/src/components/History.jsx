@@ -4,6 +4,7 @@ import { useToast } from "../context/ToastContext";
 import { HistoryCard } from "./HistoryCard";
 import { useI18n } from "../i18n/useI18n";
 import { translateMessage } from "../i18n/runtime";
+import { reportUiFailure } from "../lib/uiDiagnostics";
 
 export function History({ onStartSearch, onStartSearchWithOptions, onUseAsTemplate, onSaveAsSchedule, loadingProfileId }) {
     const [profiles, setProfiles] = useState([]);
@@ -30,7 +31,7 @@ export function History({ onStartSearch, onStartSearchWithOptions, onUseAsTempla
             })
             .catch((loadError) => {
                 if (controller.signal.aborted || loadError?.name === "AbortError" || requestId !== requestIdRef.current) return;
-                console.error("Failed to load profiles:", loadError);
+                reportUiFailure("history_profiles");
                 setError({ messageKey: "historyList.loadFailed" });
                 showToast({ messageKey: "historyList.loadFailed" });
             })

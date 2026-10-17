@@ -125,3 +125,44 @@ pass. All 1,173 source inputs match the frozen baseline; the documented transien
 Tauri final-LF change was restored byte-for-byte. Subsequent protected publication,
 signed-main tree verification and ref cleanup are recorded in PR metadata and the
 durable private Git recovery manifest, without inferring future checks as passing.
+
+## Phase 6: UI ownership, privacy and component refactor
+
+Baseline T001–T026 is complete on signed main cdc91c1 (PR #116), tree identical
+to d79604f. Post-merge CI 39036469180 passed all eight jobs and CodeQL 39036469070
+all four languages. Main was the sole branch, worktree clean; both new complete
+recovery bundles verified. The following tasks are new UI work.
+
+- [x] T027 [P] Extract the workspace error boundary and centralize content-free
+  renderer diagnostics, covering real React root callbacks, main-entry wiring
+  and explicit service failure call sites without raw errors/stacks/IDs
+  (FR-013; SC-011; Constitution II, VI, VIII).
+- [x] T028 [P] Extract coach request/composer ownership into a focused controller;
+  prevent stale loads/sends/errors and preserve newer drafts through completion,
+  retaining cancellation, retries, explicit context and local-model requirements
+  (FR-014; SC-012; Constitution III, VI).
+- [x] T029 [P] Replace duplicated modal lifecycle code with one shared ownership
+  stack and focused hook; migrate all six identified dialog surfaces/adapters.
+  Cover topmost Escape/Tab, inert background, focus restoration, prior state,
+  nested dialogs and out-of-order cleanup (FR-015; SC-013; Constitution VIII).
+- [x] T030 [P] Extract application workspace orchestration and reconcile mutation
+  acknowledgements by current selection and revision; prove late A responses
+  never select A over B or reopen a closed dossier; invalidate pending detail
+  reads and preserve the current creation-form session/draft (FR-016; SC-014).
+- [x] T031 [P] Bind jobs dismiss/undo reconciliation to the current filter/page
+  projection, preserving valid rows/counts after navigation and integrating the
+  shared diagnostic helper at existing useJobs failure sites (FR-013, FR-017;
+  SC-011, SC-015).
+- [x] T032 Record independent red/green review and final proportional UI quality,
+  real-browser, privacy/accessibility/budget evidence; update analysis/convergence,
+  preserve historical failures and policy-blocked cleanup, and prepare the frozen
+  source hand-off and PR/recovery ledger for protected integration and ref cleanup
+  (FR-007, FR-008, FR-013–FR-017;
+  SC-004–SC-006, SC-011–SC-015).
+
+T032 completion attests verified source and the integration hand-off. The checked
+T010/T011 attest earlier completed cycles; their protected-merge and recovery
+procedure remains mandatory for this UI cycle. Its actual PR checks, reviewed
+head, signed-main tree, verified bundle and final ref inventory are PENDING in
+the new PR/recovery ledger until executed. FR-006, FR-008 and SC-005 for this
+cycle are not established by a source assessment or an earlier main result.

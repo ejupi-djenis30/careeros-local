@@ -6,6 +6,7 @@ import { ProgressBar } from "./SearchProgress/ProgressBar";
 import { TargetQueue } from "./SearchProgress/TargetQueue";
 import { LiveLogs } from "./SearchProgress/LiveLogs";
 import { useI18n } from "../i18n/useI18n";
+import { reportUiFailure } from "../lib/uiDiagnostics";
 
 export function SearchProgress({ profileId, status, onStateChange, onClear }) {
     const logEndRef = useRef(null);
@@ -71,8 +72,8 @@ export function SearchProgress({ profileId, status, onStateChange, onClear }) {
     const handleStop = async () => {
         try {
             await SearchService.stopSearch(profileId);
-        } catch (e) {
-            console.error("Stop error:", e);
+        } catch {
+            reportUiFailure("search_stop");
             showToast({ messageKey: "searchProgress.stopFailed" });
         }
     };

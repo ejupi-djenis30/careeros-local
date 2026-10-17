@@ -2,10 +2,30 @@ import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
+import { createRequire } from "node:module";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 
 const repositoryRoot = resolve(fileURLToPath(new URL("../", import.meta.url)));
+
+test("requires private renderer failures to pass through the content-free diagnostic boundary", async () => {
+    const frontendRoot = resolve(repositoryRoot, "frontend");
+    const frontendRequire = createRequire(resolve(frontendRoot, "package.json"));
+    const { ESLint } = frontendRequire("eslint");
+    const eslint = new ESLint({ cwd: frontendRoot, cache: false });
+    const [unsafe] = await eslint.lintText(
+        'export function report(error) { console.error(error); }',
+        { filePath: "src/features/privacy-check.js" },
+    );
+    assert(unsafe.messages.some((message) => message.ruleId === "no-console" && message.severity === 2));
+    const [safe] = await eslint.lintText(
+        'import { reportUiFailure } from "../lib/uiDiagnostics"; export function report() { reportUiFailure("jobs_fetch"); }',
+        { filePath: "src/features/privacy-check.js" },
+    );
+    assert.equal(safe.errorCount, 0);
+    const [reporter] = await eslint.lintFiles(["src/lib/uiDiagnostics.js"]);
+    assert.equal(reporter.errorCount, 0);
+});
 
 test("keeps frame embedding protection in response headers instead of ineffective meta CSP", async () => {
     const [indexHtml, nginxConfig, nginxMainConfig, nginxApiProxy] = await Promise.all([

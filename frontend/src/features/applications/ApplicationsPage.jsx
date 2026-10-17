@@ -1,261 +1,27 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useSearchParams } from "react-router";
-import { ApplicationService } from "../../services/applications";
-import { ResumeService } from "../../services/resumes";
-import { useToast } from "../../context/ToastContext";
 import { useI18n } from "../../i18n/useI18n";
 import { ApplicationAgenda } from "./ApplicationAgenda";
 import { ApplicationDetailDialog } from "./ApplicationDetailDialog";
-import { BOARD_STAGES, STAGES, getStageLabels } from "./applicationModel";
-import { CampaignService } from "../../services/campaigns";
+import { BOARD_STAGES, getStageLabels } from "./applicationModel";
 import { CampaignImportPanel } from "./CampaignImportPanel";
 import { CampaignFilters } from "./CampaignFilters";
+import { useApplicationsWorkspace } from "./useApplicationsWorkspace";
 
 function ApplicationCard({ application, onClick, locale, opening, expanded, buttonRef }) {
     return <button ref={buttonRef} type="button" className="application-card" onClick={onClick} disabled={opening} aria-busy={opening || undefined} aria-haspopup="dialog" aria-expanded={expanded}><strong>{application.title}</strong><span>{application.company}</span>{application.location && <small><i className="bi bi-geo-alt" /> {application.location}</small>}{application.next_action && <small className="application-card__next"><i className="bi bi-arrow-return-right" /> {application.next_action.title}</small>}<time dateTime={application.updated_at}>{new Date(application.updated_at).toLocaleDateString(locale)}</time></button>;
 }
 
-const emptyForm = (jobId = "") => ({
-    job_id: jobId, title: "", company: "", location: "", external_url: "", description: "",
-    initial_stage: "saved", resume_version_id: "", note: "",
-});
-
 export function ApplicationsPage() {
     const { language, t } = useI18n();
-    const [searchParams, setSearchParams] = useSearchParams();
-    const requestedApplicationId = (searchParams.get("applicationId") || "").trim();
-    const requestedJobId = (searchParams.get("jobId") || "").trim();
-    const { showToast } = useToast();
-    const [applications, setApplications] = useState([]);
-    const [selected, setSelected] = useState(null);
-    const [resumeDrafts, setResumeDrafts] = useState([]);
-    const [resumeVersions, setResumeVersions] = useState([]);
-    const [resumeMetadataStatus, setResumeMetadataStatus] = useState("loading");
-    const [resumeMetadataRevision, setResumeMetadataRevision] = useState(0);
-    const [loading, setLoading] = useState(true);
-    const [creating, setCreating] = useState(false);
-    const [error, setError] = useState("");
-    const [showCreate, setShowCreate] = useState(Boolean(requestedJobId) && !requestedApplicationId);
-    const [openingId, setOpeningId] = useState("");
-    const [agendaRevision, setAgendaRevision] = useState(0);
-    const [form, setForm] = useState(emptyForm(requestedJobId));
-    const [campaigns, setCampaigns] = useState([]);
-    const [filters, setFilters] = useState({ campaignId: "", query: "", stage: "", priority: "" });
-    const applicationRequestRef = useRef({ controller: null, id: 0 });
-    const campaignRequestRef = useRef({ controller: null, id: 0 });
-    const detailRequestRef = useRef({ controller: null, id: 0 });
-    const [detailOpener, setDetailOpener] = useState(null);
-    const backgroundRef = useRef(null);
-    const addApplicationRef = useRef(null);
-    const applicationCardRefs = useRef(new Map());
-    const deepLinkAttemptRef = useRef("");
+    const {
+        applications, campaigns, loading, error, resumeDrafts, resumeVersions,
+        resumeMetadataStatus, retryResumeMetadata, selected, creating, showCreate,
+        setShowCreate, openingId, agendaRevision, form, setForm, filters, setFilters,
+        detailOpener, backgroundRef, addApplicationRef, applicationCardRefs,
+        requestedApplicationId, filteredApplications, grouped, closed,
+        handleCampaignImported, openApplication, closeApplication, create, handleChanged,
+    } = useApplicationsWorkspace();
     const stageLabels = getStageLabels(t);
     const locale = language === "it" ? "it-IT" : "en-GB";
-
-    const requestCampaigns = useCallback(() => {
-        const requestId = campaignRequestRef.current.id + 1;
-        campaignRequestRef.current.controller?.abort();
-        const controller = new AbortController();
-        campaignRequestRef.current = { controller, id: requestId };
-
-        return CampaignService.list({ signal: controller.signal })
-            .then((items) => {
-                if (controller.signal.aborted || campaignRequestRef.current.id !== requestId) return;
-                setCampaigns(Array.isArray(items) ? items : []);
-            })
-            .catch((loadError) => {
-                if (controller.signal.aborted || loadError?.name === "AbortError" || campaignRequestRef.current.id !== requestId) return;
-            })
-            .finally(() => {
-                if (!controller.signal.aborted && campaignRequestRef.current.id === requestId) {
-                    campaignRequestRef.current.controller = null;
-                }
-            });
-    }, [setCampaigns]);
-
-    const requestApplications = useCallback(() => {
-        const requestId = applicationRequestRef.current.id + 1;
-        applicationRequestRef.current.controller?.abort();
-        const controller = new AbortController();
-        applicationRequestRef.current = { controller, id: requestId };
-
-        return ApplicationService.list({ signal: controller.signal })
-            .then((items) => {
-                if (controller.signal.aborted || applicationRequestRef.current.id !== requestId) return;
-                setApplications(Array.isArray(items) ? items : []);
-                setError("");
-            })
-            .catch((loadError) => {
-                if (controller.signal.aborted || loadError?.name === "AbortError" || applicationRequestRef.current.id !== requestId) return;
-                setError(loadError.message);
-            })
-            .finally(() => {
-                if (!controller.signal.aborted && applicationRequestRef.current.id === requestId) {
-                    applicationRequestRef.current.controller = null;
-                    setLoading(false);
-                }
-            });
-    }, [setApplications, setError, setLoading]);
-
-    useEffect(() => {
-        void requestApplications();
-        void requestCampaigns();
-        return () => {
-            applicationRequestRef.current.id += 1;
-            applicationRequestRef.current.controller?.abort();
-            applicationRequestRef.current.controller = null;
-            campaignRequestRef.current.id += 1;
-            campaignRequestRef.current.controller?.abort();
-            campaignRequestRef.current.controller = null;
-            detailRequestRef.current.id += 1;
-            detailRequestRef.current.controller?.abort();
-            detailRequestRef.current.controller = null;
-        };
-    }, [requestApplications, requestCampaigns]);
-    useEffect(() => {
-        const controller = new AbortController();
-        ResumeService.list({ signal: controller.signal })
-            .then((items) => Promise.all(items.map((item) => ResumeService.get(item.id, { signal: controller.signal }))))
-            .then((drafts) => {
-                if (controller.signal.aborted) return;
-                setResumeDrafts(drafts);
-                setResumeVersions(drafts.flatMap((draft) => draft.versions.map((version) => ({ ...version, draft_id: draft.id, id: version.id, label: `${draft.title} · v${version.semantic_version}`, selected_fact_ids: version.selected_fact_ids || [] }))));
-                setResumeMetadataStatus("ready");
-            })
-            .catch((loadError) => {
-                if (controller.signal.aborted || loadError?.name === "AbortError") return;
-                setResumeMetadataStatus("error");
-            });
-        return () => controller.abort();
-    }, [resumeMetadataRevision]);
-
-    const retryResumeMetadata = () => {
-        setResumeMetadataStatus("loading");
-        setResumeMetadataRevision((current) => current + 1);
-    };
-
-    const handleCampaignImported = useCallback(async (result) => {
-        await Promise.all([requestApplications(), requestCampaigns()]);
-        setAgendaRevision((value) => value + 1);
-        showToast(
-            { messageKey: "applications.campaignImported", values: { count: result.application_count } },
-            "success",
-        );
-    }, [requestApplications, requestCampaigns, setAgendaRevision, showToast]);
-
-    const filteredApplications = useMemo(() => {
-        return applications.filter((app) => {
-            if (filters.campaignId && app.campaign_id !== filters.campaignId) return false;
-            if (filters.stage && app.current_stage !== filters.stage) return false;
-            if (filters.priority && app.campaign_priority !== filters.priority) return false;
-            if (filters.query) {
-                const q = filters.query.toLowerCase().trim();
-                const title = (app.title || "").toLowerCase();
-                const company = (app.company || "").toLowerCase();
-                const location = (app.location || "").toLowerCase();
-                const sourceAppId = (app.source_application_id || "").toLowerCase();
-                const platform = (app.campaign_platform || "").toLowerCase();
-                const category = (app.campaign_category || "").toLowerCase();
-                if (
-                    !title.includes(q) &&
-                    !company.includes(q) &&
-                    !location.includes(q) &&
-                    !sourceAppId.includes(q) &&
-                    !platform.includes(q) &&
-                    !category.includes(q)
-                ) {
-                    return false;
-                }
-            }
-            return true;
-        });
-    }, [applications, filters]);
-
-    const grouped = useMemo(() => Object.fromEntries(STAGES.map((stage) => [stage, filteredApplications.filter((item) => item.current_stage === stage)])), [filteredApplications]);
-    const closed = grouped.rejected.length + grouped.withdrawn.length + grouped.archived.length;
-
-    const openApplication = useCallback(async (id, opener) => {
-        const requestId = detailRequestRef.current.id + 1;
-        detailRequestRef.current.controller?.abort();
-        const controller = new AbortController();
-        detailRequestRef.current = { controller, id: requestId };
-        setError("");
-        setOpeningId(id);
-        try {
-            const detail = await ApplicationService.get(id, { signal: controller.signal });
-            if (controller.signal.aborted || detailRequestRef.current.id !== requestId) return;
-            setDetailOpener(opener);
-            setSelected(detail);
-        } catch (loadError) {
-            if (!controller.signal.aborted && detailRequestRef.current.id === requestId) setError(loadError.message);
-        } finally {
-            if (detailRequestRef.current.id === requestId) {
-                detailRequestRef.current.controller = null;
-                setOpeningId("");
-            }
-        }
-    }, [setDetailOpener, setError, setOpeningId, setSelected]);
-
-    useEffect(() => {
-        if (!requestedApplicationId) {
-            deepLinkAttemptRef.current = "";
-            return;
-        }
-        if (loading || deepLinkAttemptRef.current === requestedApplicationId) return;
-
-        deepLinkAttemptRef.current = requestedApplicationId;
-        const opener = applicationCardRefs.current.get(requestedApplicationId) ?? addApplicationRef.current;
-        void openApplication(requestedApplicationId, opener);
-    }, [loading, openApplication, requestedApplicationId]);
-
-    const closeApplication = () => {
-        setSelected(null);
-        if (!searchParams.has("applicationId")) return;
-
-        const nextParams = new URLSearchParams(searchParams);
-        nextParams.delete("applicationId");
-        setSearchParams(nextParams, { replace: true });
-    };
-
-    const create = async (event) => {
-        event.preventDefault();
-        setCreating(true);
-        setError("");
-        try {
-            const jobSource = form.job_id
-                ? { job_id: Number(form.job_id) }
-                : { manual_job: {
-                    title: form.title.trim(), company: form.company.trim(),
-                    location: form.location.trim() || null,
-                    external_url: form.external_url.trim() || null,
-                    description: form.description.trim() || null,
-                } };
-            const application = await ApplicationService.create({
-                ...jobSource,
-                initial_stage: form.initial_stage,
-                resume_version_id: form.resume_version_id || null,
-                note: form.note.trim() || null,
-            });
-            await requestApplications();
-            setAgendaRevision((value) => value + 1);
-            setDetailOpener(addApplicationRef.current);
-            setSelected(application);
-            setShowCreate(false);
-            setSearchParams({});
-            setForm(emptyForm());
-            showToast({ messageKey: "applications.added" }, "success");
-        } catch (createError) {
-            setError(createError.message);
-        } finally {
-            setCreating(false);
-        }
-    };
-
-    const handleChanged = (updated) => {
-        setSelected(updated);
-        setAgendaRevision((value) => value + 1);
-        void requestApplications();
-    };
 
     if (loading) return <div className="page-loader" role="status"><span className="spinner-border" /><span>{t("applications.loading")}</span></div>;
 

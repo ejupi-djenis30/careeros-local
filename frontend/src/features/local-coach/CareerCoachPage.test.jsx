@@ -31,7 +31,7 @@ describe("CareerCoachPage", () => {
         await user.type(composer, "Qual è il mio punto forte?");
         await user.click(screen.getByRole("button", { name: /Invia/ }));
 
-        await waitFor(() => expect(sendMessage).toHaveBeenCalledWith({ conversation_id: null, message: "Qual è il mio punto forte?", fact_ids: [FACT_ID], job_ids: [] }));
+        await waitFor(() => expect(sendMessage).toHaveBeenCalledWith({ conversation_id: null, message: "Qual è il mio punto forte?", fact_ids: [FACT_ID], job_ids: [] }, expect.objectContaining({ signal: expect.any(AbortSignal), suppressGlobalError: true })));
         expect(await screen.findByText("Python è un punto forte verificato.")).toBeInTheDocument();
         expect(screen.getByText(`fatto ${FACT_ID.slice(0, 8)}`)).toBeInTheDocument();
     });

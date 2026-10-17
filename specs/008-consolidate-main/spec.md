@@ -1,10 +1,11 @@
 # Specification: Consolidate all work into main
 
-Date: 2026-10-17. Status: baseline integrated; follow-up locally verified.
+Date: 2026-10-17. Status: signed baseline integrated; UI source locally verified.
 Owner request: integrate all branches into main, remove branches, clean the
 project and make the combined application work.
 Follow-up request: continue the refactor, cleanup and correction of confirmed
 anomalies after the verified main integration.
+Further request: continue the refactor including the UI, from signed main cdc91c1.
 
 ## Outcomes
 
@@ -24,6 +25,10 @@ anomalies after the verified main integration.
    diagnostics, malformed-archive handling, provider mutation acknowledgement and
    stored-photo reuse. Preserve the verified baseline and record its completed
    execution separately from the new work.
+6. Refactor UI controllers and shared modal behavior around explicit ownership.
+   Preserve newer selections and drafts across delayed operations, keep filtered
+   projections coherent, and provide accessible dialogs and content-free error
+   diagnostics without changing career truth, appearance or agent authority.
 
 ## Requirements
 
@@ -84,6 +89,30 @@ anomalies after the verified main integration.
   validation error through inspect and restore. Decoder failures must not escape
   as internal errors or strand an otherwise ready vault in restore-pending;
   preserve manifest, path, size, relationship, lock and rollback validation.
+- FR-013 Renderer-owned error diagnostics must contain only allowlisted operation
+  codes, including React caught/uncaught/recoverable callbacks and explicit
+  service failure logs. Never forward errors, stacks, identifiers or request/data
+  payloads to the console. Preserve translated error views and recovery actions.
+- FR-014 Coach conversation loads and sends must belong to the currently active
+  conversation/operation. Late success or error must not replace a newer
+  selection, reopen a cleared conversation or erase a later composer draft.
+  Real errors remain visible and retryable; model readiness and explicit context
+  stay mandatory. Separate request ownership from page rendering.
+- FR-015 Modal content workflows must share topmost keyboard ownership, focus
+  containment and background/scroll isolation. Nested and out-of-order cleanup
+  must preserve remaining dialogs; restore original inert/ARIA/overflow state
+  and appropriate connected focus targets only when ownership permits.
+- FR-016 An acknowledged application update must reconcile its board record
+  without selecting another dossier, reopening a closed dialog or regressing a
+  newer revision. Closing a dossier must invalidate its pending detail read;
+  creation acknowledgements must respect the current selection and creation-form
+  session, preserving a newly reopened form and its newer draft. Split workspace
+  orchestration from page composition, retaining
+  current event history, filtering, account isolation and explicit publication.
+- FR-017 Jobs mutation/undo acknowledgements must not edit rows or counts from a
+  different active filter/page context. Reconcile the current projection through
+  its current query, retaining existing error, toast and undo behavior without
+  injecting a record that does not satisfy the active filter.
 
 ## Success criteria
 
@@ -113,6 +142,21 @@ anomalies after the verified main integration.
 - SC-010 A valid bounded ZIP control remains inspectable/restorable; a corrupted
   compressed member returns the expected validation response, preserves existing
   records and leaves or returns the vault to its prior safe lifecycle state.
+- SC-011 Synthetic private errors, component stacks and job identifiers never
+  appear in renderer diagnostic calls; real React root callbacks and entry-point
+  wiring are covered, and translated error fallback/reload remains functional.
+- SC-012 Out-of-order coach loads, conversation changes during send, later typed
+  drafts, cancellation/unmount, actual errors and retries have regression tests.
+- SC-013 Real dialog overlap tests prove only the top closes on Escape, the
+  background stays inert and scrolling stays locked until the last modal closes.
+  Preserve initial/return focus, hidden/disabled-control handling and existing
+  keyboard, responsive and accessibility acceptance for every migrated dialog.
+- SC-014 A delayed application-A update while B is selected or no dialog is open
+  never changes that selection; stale revisions never overwrite newer state.
+  A pending detail read cannot reopen a closed dossier, and a delayed creation
+  cannot overwrite a later selection or clear a newly reopened form/draft.
+- SC-015 A delayed dismiss/undo from filter A after switching to B preserves B's
+  valid rows/counts, with current-query reconciliation and error controls covered.
 
 ## Governing constraints
 

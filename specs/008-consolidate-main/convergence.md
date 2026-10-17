@@ -1,8 +1,45 @@
 # Convergence evidence: Consolidate all work into main
 
-Date: 2026-10-17. Current outcome: `no_tasks_appended` for the follow-up assessment.
+Date: 2026-10-17. Current outcome: `no_tasks_appended` for the UI assessment.
 
-The current assessment covers twelve functional requirements, ten success
+The current read-only assessment covers seventeen functional requirements,
+fifteen success criteria, six outcomes, ten plan decisions and eight constitution
+principles. All thirty-two FR/SC items have task coverage across T001–T032.
+The previous correction cycle is integrated as signed main cdc91c1 through
+PR #116; its exact-tree proof and protected/post-merge gates are recorded in
+validation.md and durable private recovery evidence.
+
+The owner's UI continuation added T027–T031 before implementation for actual
+renderer privacy, coach request/draft ownership, shared modal isolation,
+application selection/revision ownership and jobs query reconciliation. T032
+already covers independent review, final aggregate/native-browser checks,
+artifact reconciliation, protected integration and recovery-backed cleanup.
+The independently reproduced pending-detail/creation-form races belong to T030;
+the measured portal style correction and focused analysis-dialog presentation
+belong to T029. They do not introduce an uncovered requirement or new authority.
+The first aggregate bundle gate then finds an 85-byte excess in the eager
+workspace chunk; the second passes raw but exceeds gzip by 51 bytes. Equivalent
+keyboard/visibility/attribute-restoration deduplication, the route-specific gate's
+existing lazy loading boundary and renewed actual behavior/build checks belong
+to T029/T032; the existing budget requirement is already covered. The final actual
+build passes unchanged budgets at 17,130 raw/5,775 gzip workspace bytes.
+No new task is appended and neither failing aggregate is promoted to a complete
+pass. Final quality now passes 756 tests, unchanged coverage thresholds,
+lint/license/icon checks and actual build budgets. The actual route-loading
+probe passes seventeen assertions and all eight E2E groups pass. Their initial
+resource-guard failure and later clear read-only reconciliation remain explicit.
+
+Independent consistency review finds 100% task coverage, no duplicate task,
+orphan requirement, constitution conflict or additional unbuilt requirement.
+Final UI source verification and the integration hand-off are complete under T032.
+The protected integration/recovery procedure from T010/T011 must be repeated;
+its new-cycle result remains pending in the PR/recovery ledger until executed.
+This convergence operation leaves tasks.md unchanged; completion checkboxes and
+validation evidence are separate authorized updates after actual execution.
+
+## Historical post-integration convergence
+
+The preceding assessment covered twelve functional requirements, ten success
 criteria, five outcomes, nine plan decisions and eight constitution principles.
 All twenty-two FR/SC items have task coverage across T001–T026. The original
 integration and T001–T021 are complete on verified signed main 1b897f0; historical
