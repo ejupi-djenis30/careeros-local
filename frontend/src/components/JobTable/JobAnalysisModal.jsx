@@ -3,24 +3,8 @@ import { createPortal } from "react-dom";
 import { ScoreBadge } from "./Badges";
 import { InternalLink } from "../InternalLink";
 import { useI18n } from "../../i18n/useI18n";
-
-const FOCUSABLE = [
-    "button:not([disabled])",
-    "[href]",
-    "input:not([disabled])",
-    "select:not([disabled])",
-    "textarea:not([disabled])",
-    "[tabindex]:not([tabindex='-1'])",
-].join(",");
-
-const EXTERNAL_SCORE_DIMENSIONS = [
-    "role",
-    "requirements",
-    "language",
-    "location",
-    "contract",
-    "freshness",
-];
+import { useModalIsolation } from "../modals/useModalIsolation";
+import { JobAnalysisEvidence } from "./JobAnalysisEvidence";
 
 export function JobAnalysisModal({ job, onClose }) {
     const { t } = useI18n();
@@ -35,50 +19,12 @@ export function JobAnalysisModal({ job, onClose }) {
         closeHandlerRef.current = onClose;
     }, [onClose]);
 
-    useEffect(() => {
-        if (!open) return undefined;
-        const previouslyFocused = document.activeElement;
-        const previousOverflow = document.body.style.overflow;
-        document.body.style.overflow = "hidden";
-        closeRef.current?.focus();
-
-        const handleKeyDown = (event) => {
-            if (event.key === "Escape") {
-                event.preventDefault();
-                closeHandlerRef.current?.();
-                return;
-            }
-            if (event.key !== "Tab") return;
-
-            const focusable = Array.from(dialogRef.current?.querySelectorAll(FOCUSABLE) || []);
-            const first = focusable[0];
-            const last = focusable[focusable.length - 1];
-            if (!first || !last) {
-                event.preventDefault();
-                dialogRef.current?.focus();
-                return;
-            }
-            if (!dialogRef.current?.contains(document.activeElement)) {
-                event.preventDefault();
-                (event.shiftKey ? last : first).focus();
-            } else if (event.shiftKey && document.activeElement === first) {
-                event.preventDefault();
-                last.focus();
-            } else if (!event.shiftKey && document.activeElement === last) {
-                event.preventDefault();
-                first.focus();
-            }
-        };
-
-        document.addEventListener("keydown", handleKeyDown);
-        return () => {
-            document.removeEventListener("keydown", handleKeyDown);
-            document.body.style.overflow = previousOverflow;
-            if (previouslyFocused instanceof HTMLElement && document.contains(previouslyFocused)) {
-                previouslyFocused.focus();
-            }
-        };
-    }, [open]);
+    useModalIsolation({
+        isOpen: open,
+        dialogRef,
+        initialFocusRef: closeRef,
+        onRequestClose: onClose,
+    });
 
     if (!job) return null;
     const structured = job.analysis_structured || {};
@@ -131,127 +77,11 @@ export function JobAnalysisModal({ job, onClose }) {
                     </button>
                 </div>
                 {isValidated ? (
-                    <div className="match-evidence" data-testid="validated-match-evidence" id={descriptionId}>
-                        <p className="match-evidence__narrative">
-                            {job.affinity_analysis || t("jobs.analysis.empty")}
-                        </p>
-                        <div className="match-evidence__provenance">
-                            <div>
-                                <span>{t("jobs.analysis.provenance")}</span>
-                                <strong>
-                                    {isExternalAgent
-                                        ? t("jobs.analysis.externalAgent")
-                                        : t("jobs.analysis.validated")}
-                                </strong>
-                            </div>
-                            <code>{job.analysis_client || job.analysis_model_id}</code>
-                            <code>{t("jobs.analysis.contract", { version: job.analysis_contract_version })}</code>
-                        </div>
-                        {structured.recommendation && (
-                            <p className="match-evidence__recommendation">
-                                <span>{t("jobs.analysis.recommendation")}</span>
-                                <strong>{t(`jobs.analysis.recommendation.${structured.recommendation}`)}</strong>
-                            </p>
-                        )}
-                        {scores && (
-                            <section className="my-3" aria-label={t("agentWork.scoreBreakdown")}>
-                                <h6 className="text-white-50 text-uppercase x-small fw-bold mb-2">
-                                    {t("agentWork.scoreBreakdown")}
-                                </h6>
-                                <dl className="d-flex flex-column gap-2 mb-0">
-                                    {EXTERNAL_SCORE_DIMENSIONS.map((dimension) => {
-                                        const score = scores[dimension];
-                                        if (!score) return null;
-                                        return (
-                                            <div key={dimension} className="p-2 rounded bg-white-5 border border-white-10">
-                                                <dt className="d-flex justify-content-between gap-2 text-white small">
-                                                    <span>{t(`jobs.analysis.dimension.${dimension}`)}</span>
-                                                    <strong>{score.score}%</strong>
-                                                </dt>
-                                                <dd className="x-small text-secondary mb-0">{score.explanation}</dd>
-                                            </div>
-                                        );
-                                    })}
-                                </dl>
-                            </section>
-                        )}
-                        {gates.length > 0 && (
-                            <div className="match-evidence__gates my-3">
-                                <h6 className="text-white-50 text-uppercase x-small fw-bold mb-2">
-                                    {t("agentWork.hardGatesTitle")}
-                                </h6>
-                                <div className="d-flex flex-column gap-2">
-                                    {gates.map((gate, index) => {
-                                        const status = gate.status;
-                                        return (
-                                        <div key={gate.dimension || index} className="p-2 rounded bg-white-5 border border-white-10">
-                                            <div className="d-flex justify-content-between align-items-center mb-1">
-                                                <strong className="text-white small">
-                                                    {t(`jobs.analysis.dimension.${gate.dimension}`) || gate.dimension}
-                                                </strong>
-                                                <span className={`badge ${status === "eligible" ? "bg-success" : status === "reject" ? "bg-danger" : "bg-warning text-dark"}`}>
-                                                    {t(`agentWork.gate.${status}`)}
-                                                </span>
-                                            </div>
-                                            {gate.reason && <p className="x-small text-secondary mb-1">{gate.reason}</p>}
-                                            {gate.quote_references?.length > 0 && (
-                                                <div className="x-small text-muted mb-1">
-                                                    <em>“{gate.quote_references[0]}”</em>
-                                                </div>
-                                            )}
-                                            {gate.unknowns?.length > 0 && (
-                                                <div className="x-small text-warning">
-                                                    <i className="bi bi-question-diamond me-1" aria-hidden="true" />
-                                                    {gate.unknowns.join(", ")}
-                                                </div>
-                                            )}
-                                        </div>
-                                        );
-                                    })}
-                                </div>
-                            </div>
-                        )}
-                        {claims.length > 0 && (
-                            <section className="my-3" aria-labelledby="external-analysis-claims-title">
-                                <h6 id="external-analysis-claims-title" className="text-white-50 text-uppercase x-small fw-bold mb-2">
-                                    {t("agentWork.analysisClaims")}
-                                </h6>
-                                <div className="d-flex flex-column gap-2">
-                                    {claims.map((claim, index) => (
-                                        <article key={`${claim.claim_text}-${index}`} className="p-2 rounded bg-white-5 border border-white-10">
-                                            <p className="small text-white mb-1">{claim.claim_text}</p>
-                                            {claim.quote_text && <blockquote className="x-small text-secondary mb-1">“{claim.quote_text}”</blockquote>}
-                                            {claim.fact_ids?.length > 0 && (
-                                                <p className="x-small text-muted mb-0">
-                                                    {t("agentWork.citations")}: {claim.fact_ids.join(", ")}
-                                                </p>
-                                            )}
-                                        </article>
-                                    ))}
-                                </div>
-                            </section>
-                        )}
-                        <div className="match-evidence__citations">
-                            {citations.map((citation, index) => (
-                                <article key={`${citation.type}-${citation.assessment}-${index}`}>
-                                    <header>
-                                        <strong>{t(`jobs.analysis.dimension.${citation.type}`)}</strong>
-                                        <span>{t(`jobs.analysis.assessment.${citation.assessment}`)}</span>
-                                    </header>
-                                    <dl>
-                                        <div>
-                                            <dt>{citation.job_evidence_id}</dt>
-                                            <dd>“{citation.job_evidence}”</dd>
-                                        </div>
-                                        <div>
-                                            <dt>{citation.candidate_evidence_id}</dt>
-                                            <dd>“{citation.candidate_evidence}”</dd>
-                                        </div>
-                                    </dl>
-                                </article>
-                            ))}
-                        </div>
-                    </div>
+                    <JobAnalysisEvidence
+                        job={job} structured={structured} citations={citations} gates={gates}
+                        isExternalAgent={isExternalAgent} scores={scores} claims={claims}
+                        descriptionId={descriptionId} t={t}
+                    />
                 ) : (
                     <p className="match-evidence__unverified" role="status" id={descriptionId}>
                         {t("jobs.analysis.unverified")}

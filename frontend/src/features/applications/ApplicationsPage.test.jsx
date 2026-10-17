@@ -1,6 +1,6 @@
-import { screen, waitFor, within } from "@testing-library/react";
+import { act, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { MemoryRouter } from "react-router";
+import { MemoryRouter, createMemoryRouter, RouterProvider } from "react-router";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { application } from "../../test/fixtures";
 import { assertAccessible } from "../../test/accessibility";
@@ -392,5 +392,135 @@ describe("ApplicationsPage", () => {
             { messageKey: "applications.campaignImported", values: { count: 5 } },
             "success",
         );
+    });
+    it.each(["closed", "other", "same-newer"])("keeps current selection after a delayed update to a previous detail (%s)", async (target) => {
+        const user = userEvent.setup();
+        const pending = deferred();
+        const firstId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+        const secondId = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
+        const first = application({ id: firstId, job_snapshot: { title: "First application", company: "Local Co" } });
+        const second = application({ id: secondId, job_snapshot: { title: "Second application", company: "Local Co" } });
+        let firstReads = 0;
+        list.mockResolvedValue([summary(firstId, "First application"), summary(secondId, "Second application")]);
+        get.mockImplementation(async (id) => id === secondId ? second : { ...first, revision: ++firstReads === 1 ? 1 : 3 });
+        addEvent.mockReset().mockReturnValueOnce(pending.promise).mockResolvedValueOnce({ ...first, revision: 4 });
+        render(<MemoryRouter initialEntries={["/applications"]}><ApplicationsPage /></MemoryRouter>);
+        await user.click(await screen.findByRole("button", { name: /First application/i }));
+        await user.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Registra evento" }));
+        await waitFor(() => expect(addEvent).toHaveBeenCalledTimes(1));
+        await user.keyboard("{Escape}");
+        await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+        if (target !== "closed") {
+            await user.click(screen.getByRole("button", { name: target === "other" ? /Second application/i : /First application/i }));
+            await screen.findByRole("dialog", { name: target === "other" ? "Second application" : "First application" });
+        }
+        await act(async () => { pending.resolve({ ...first, revision: 2, current_stage: "preparing" }); await pending.promise; });
+        if (target === "closed") {
+            expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+        } else if (target === "other") {
+            expect(screen.getByRole("dialog", { name: "Second application" })).toBeInTheDocument();
+        } else {
+            await user.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Registra evento" }));
+            expect(addEvent).toHaveBeenLastCalledWith(firstId, expect.objectContaining({ expected_revision: 3 }));
+        }
+    });
+    it("keeps a confirmed detail update when refreshing the board fails, and retries a failed write", async () => {
+        const user = userEvent.setup();
+        const first = application({ revision: 1 });
+        const updated = { ...first, revision: 2, current_stage: "preparing" };
+        list.mockReset().mockResolvedValueOnce([summary(first.id, first.job_snapshot.title)]).mockRejectedValue(new Error("Board unavailable"));
+        get.mockResolvedValue(first);
+        addEvent.mockReset().mockRejectedValueOnce(new Error("Write unavailable")).mockResolvedValue(updated);
+        render(<MemoryRouter initialEntries={["/applications"]}><ApplicationsPage /></MemoryRouter>);
+        await user.click(await screen.findByRole("button", { name: new RegExp(first.job_snapshot.title) }));
+        const dialog = screen.getByRole("dialog");
+        await user.click(within(dialog).getByRole("button", { name: "Registra evento" }));
+        expect(await within(dialog).findByText("Write unavailable")).toHaveAttribute("role", "alert");
+        await user.click(within(dialog).getByRole("button", { name: "Registra evento" }));
+        await waitFor(() => expect(list).toHaveBeenCalledTimes(2));
+        expect(screen.getByRole("dialog")).toBe(dialog);
+        expect(within(dialog).queryByText("Write unavailable")).not.toBeInTheDocument();
+        expect(screen.getByText("Board unavailable")).toBeInTheDocument();
+        await user.click(within(dialog).getByRole("button", { name: "Registra evento" }));
+        expect(addEvent.mock.calls.map(([, payload]) => payload.expected_revision)).toEqual([1, 1, 2]);
+        await user.keyboard("{Escape}");
+        const board = document.querySelector(".application-board");
+        expect(within(board).getByRole("button", { name: new RegExp(first.job_snapshot.title) }).closest("section"))
+            .toHaveTextContent("Preparazione");
+    });
+
+    it("ignores a detail acknowledgement after the workspace unmounts", async () => {
+        const user = userEvent.setup();
+        const first = application();
+        const pending = deferred();
+        list.mockReset().mockResolvedValue([summary(first.id, first.job_snapshot.title)]);
+        get.mockResolvedValue(first);
+        addEvent.mockReset().mockReturnValue(pending.promise);
+        const { unmount } = render(<MemoryRouter initialEntries={["/applications"]}><ApplicationsPage /></MemoryRouter>);
+        await user.click(await screen.findByRole("button", { name: new RegExp(first.job_snapshot.title) }));
+        await user.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Registra evento" }));
+        unmount();
+        await act(async () => { pending.resolve({ ...first, revision: 2 }); await pending.promise; });
+        expect(list).toHaveBeenCalledTimes(1);
+        expect(showToast).not.toHaveBeenCalled();
+    });
+    it("cancels a pending deep-linked detail when closing the current detail", async () => {
+        const user = userEvent.setup();
+        const first = application({ id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa" });
+        const second = application({ id: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb" });
+        const pending = deferred();
+        list.mockReset().mockResolvedValue([summary(first.id, first.job_snapshot.title)]);
+        get.mockReset().mockImplementation((id) => id === first.id ? Promise.resolve(first) : pending.promise);
+        const router = createMemoryRouter([{ path: "/applications", element: <ApplicationsPage /> }], { initialEntries: ["/applications"] });
+        render(<RouterProvider router={router} />);
+        await user.click(await screen.findByRole("button", { name: new RegExp(first.job_snapshot.title) }));
+        await screen.findByRole("dialog");
+        await act(async () => router.navigate(`/applications?applicationId=${second.id}`));
+        await waitFor(() => expect(get).toHaveBeenCalledTimes(2));
+        const signal = get.mock.calls[1][1].signal;
+        await user.keyboard("{Escape}");
+        await act(async () => { pending.resolve(second); await pending.promise; });
+        expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+        expect(signal.aborted).toBe(true);
+    });
+
+    it.each(["other-detail", "closed-form"])("does not move selection after a delayed creation (%s)", async (target) => {
+        const user = userEvent.setup();
+        const created = application({ job_snapshot: { title: "Created application", company: "Local Co" } });
+        const second = application({ id: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb", job_snapshot: { title: "Second application", company: "Local Co" } });
+        const pending = deferred();
+        list.mockReset().mockResolvedValue([summary(second.id, "Second application")]);
+        get.mockResolvedValue(second);
+        create.mockReset().mockReturnValue(pending.promise);
+        render(<MemoryRouter initialEntries={["/applications?jobId=42"]}><ApplicationsPage /></MemoryRouter>);
+        await user.click(await screen.findByRole("button", { name: "Crea candidatura" }));
+        await waitFor(() => expect(create).toHaveBeenCalledTimes(1));
+        if (target === "other-detail") {
+            await user.click(screen.getByRole("button", { name: /Second application/i }));
+            await screen.findByRole("dialog", { name: "Second application" });
+        } else await user.click(screen.getByRole("button", { name: "Chiudi", exact: true }));
+        await act(async () => { pending.resolve(created); await pending.promise; });
+        await waitFor(() => expect(showToast).toHaveBeenCalledWith({ messageKey: "applications.added" }, "success"));
+        if (target === "other-detail") expect(screen.getByRole("dialog", { name: "Second application" })).toBeInTheDocument();
+        else expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    });
+    it("preserves a reopened creation form and its newer draft after an old creation acknowledges", async () => {
+        const user = userEvent.setup();
+        const pending = deferred();
+        create.mockReset().mockReturnValue(pending.promise);
+        list.mockReset().mockResolvedValue([]);
+        render(<MemoryRouter initialEntries={["/applications?jobId=42"]}><ApplicationsPage /></MemoryRouter>);
+        const submit = await screen.findByRole("button", { name: "Crea candidatura" });
+        await user.type(screen.getByLabelText("Nota iniziale"), "Submitted note");
+        await user.click(submit);
+        await user.click(screen.getByRole("button", { name: "Chiudi", exact: true }));
+        await user.click(screen.getByRole("button", { name: "Aggiungi candidatura", exact: true }));
+        await user.clear(screen.getByLabelText("Nota iniziale"));
+        await user.type(screen.getByLabelText("Nota iniziale"), "New draft after reopening");
+        await act(async () => { pending.resolve(application()); await pending.promise; });
+        expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+        expect(screen.getByLabelText("Nota iniziale")).toHaveValue("New draft after reopening");
+        expect(screen.getByRole("button", { name: "Crea candidatura" })).toBeEnabled();
+        expect(showToast).toHaveBeenCalledWith({ messageKey: "applications.added" }, "success");
     });
 });

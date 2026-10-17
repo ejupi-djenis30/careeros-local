@@ -224,9 +224,9 @@ describe('JobTable', () => {
         ).not.toBeInTheDocument();
     });
 
-    it('logs recordView failures instead of swallowing them silently', async () => {
+    it('logs only a content-free diagnostic when recording a view fails', async () => {
         const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
-        mockRecordView.mockRejectedValueOnce(new Error('network down'));
+        mockRecordView.mockRejectedValueOnce(new Error('synthetic-private-network-detail'));
 
         render(
             <JobTable
@@ -241,10 +241,7 @@ describe('JobTable', () => {
         fireEvent.click(viewBtns[0]);
 
         await waitFor(() => {
-            expect(warnSpy).toHaveBeenCalledWith(
-                'Failed to record job view for 99',
-                expect.any(Error)
-            );
+            expect(warnSpy.mock.calls).toEqual([['ui_failure code=job_view']]);
         });
 
         warnSpy.mockRestore();

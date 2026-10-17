@@ -1,15 +1,7 @@
 import React, { useEffect, useId, useRef } from "react";
 import { createPortal } from "react-dom";
 import { useI18n } from "../../i18n/useI18n";
-
-const FOCUSABLE = [
-    "button:not([disabled])",
-    "[href]",
-    "input:not([disabled])",
-    "select:not([disabled])",
-    "textarea:not([disabled])",
-    "[tabindex]:not([tabindex='-1'])",
-].join(",");
+import { useModalIsolation } from "../modals/useModalIsolation";
 
 const DISMISS_OPTIONS = [
     { value: "not_interested", labelKey: "jobs.dismiss.notInterested", icon: "bi-hand-thumbs-down" },
@@ -33,49 +25,12 @@ export function DismissDialog({ open, jobTitle, onDismiss, onClose }) {
         closeHandlerRef.current = onClose;
     }, [onClose]);
 
-    useEffect(() => {
-        if (!open) return;
-        const previouslyFocused = document.activeElement;
-        const previousOverflow = document.body.style.overflow;
-        document.body.style.overflow = "hidden";
-        cancelRef.current?.focus();
-
-        const handleKeyDown = (event) => {
-            if (event.key === "Escape") {
-                event.preventDefault();
-                closeHandlerRef.current?.();
-                return;
-            }
-            if (event.key !== "Tab") return;
-
-            const focusable = Array.from(dialogRef.current?.querySelectorAll(FOCUSABLE) ?? []);
-            const first = focusable[0];
-            const last = focusable[focusable.length - 1];
-            if (!first || !last) {
-                event.preventDefault();
-                dialogRef.current?.focus();
-                return;
-            }
-            if (!dialogRef.current?.contains(document.activeElement)) {
-                event.preventDefault();
-                (event.shiftKey ? last : first).focus();
-            } else if (event.shiftKey && document.activeElement === first) {
-                event.preventDefault();
-                last.focus();
-            } else if (!event.shiftKey && document.activeElement === last) {
-                event.preventDefault();
-                first.focus();
-            }
-        };
-        document.addEventListener("keydown", handleKeyDown);
-        return () => {
-            document.removeEventListener("keydown", handleKeyDown);
-            document.body.style.overflow = previousOverflow;
-            if (previouslyFocused instanceof HTMLElement && document.contains(previouslyFocused)) {
-                previouslyFocused.focus();
-            }
-        };
-    }, [open]);
+    useModalIsolation({
+        isOpen: open,
+        dialogRef,
+        initialFocusRef: cancelRef,
+        onRequestClose: onClose,
+    });
 
     if (!open) return null;
 

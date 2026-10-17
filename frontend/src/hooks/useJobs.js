@@ -3,6 +3,8 @@ import { JobService } from '../services/jobs';
 import { SearchService } from '../services/search';
 import { useSearchContext } from '../context/SearchContext';
 import { useToast } from '../context/ToastContext';
+import { reportUiFailure } from '../lib/uiDiagnostics';
+import { useJobMutations } from './useJobMutations';
 
 const DEFAULT_FILTERS = {
   search_profile_id: '',
@@ -93,7 +95,7 @@ export function useJobs(logout) {
         if (error.message === 'UNAUTHORIZED' && logout) {
           logout();
         } else {
-          console.error('Fetch jobs error:', error);
+          reportUiFailure('jobs_fetch');
           setFetchError(error.message ? { message: error.message } : { messageKey: 'jobs.error.load' });
         }
         isFirstFetch.current = false;
@@ -130,7 +132,7 @@ export function useJobs(logout) {
         if (error.message === 'UNAUTHORIZED' && logout) {
           logout();
         } else {
-          console.error('Failed to load search profiles', error);
+          reportUiFailure('jobs_profiles');
           showToast(error.message ? { message: error.message } : { messageKey: 'jobs.error.profiles' });
         }
         profilesRequestRef.current.controller = null;
@@ -191,53 +193,10 @@ export function useJobs(logout) {
     setFilters(DEFAULT_FILTERS);
   };
 
-  const dismissJob = async (job, feedbackSignal) => {
-    const originalPosition = jobs.findIndex(j => j.id === job.id);
-    try {
-      const updated = await JobService.dismiss(job.id, feedbackSignal);
-      // Remove from the list immediately (dismissed jobs are hidden by default)
-      setJobs(prev => prev.filter(j => j.id !== job.id));
-      // Refresh pagination count
-      setPaginationState(prev => ({ ...prev, total: Math.max(0, prev.total - 1) }));
-      // Undo toast — re-inserts job at original position
-      showToast({ messageKey: 'jobs.dismissed' }, 'secondary', {
-        labelKey: 'jobs.undo',
-        onAction: async () => {
-          try {
-            const reactivated = await JobService.reactivate(job.id);
-            const restoredJob = { ...job, ...reactivated, dismissed: false, dismissed_at: null, feedback_signal: null };
-            setJobs(prev => {
-              const newList = [...prev];
-              newList.splice(Math.min(originalPosition, newList.length), 0, restoredJob);
-              return newList;
-            });
-            setPaginationState(prev => ({ ...prev, total: prev.total + 1 }));
-          } catch (undoError) {
-            if (undoError.message === 'UNAUTHORIZED' && logout) { logout(); return; }
-            console.error('Failed to undo dismiss', undoError);
-            showToast(undoError.message ? { message: undoError.message } : { messageKey: 'jobs.error.undoDismiss' });
-          }
-        }
-      }, 5000);
-      return updated;
-    } catch (error) {
-      if (error.message === "UNAUTHORIZED" && logout) { logout(); return; }
-      console.error("Failed to dismiss job", error);
-      showToast(error.message ? { message: error.message } : { messageKey: 'jobs.error.dismiss' });
-    }
-  };
-
-  const reactivateJob = async (job) => {
-    try {
-      const updated = await JobService.reactivate(job.id);
-      setJobs(prev => prev.map(j => j.id === job.id ? { ...j, ...updated, dismissed: false, dismissed_at: null, feedback_signal: null } : j));
-      return updated;
-    } catch (error) {
-      if (error.message === "UNAUTHORIZED" && logout) { logout(); return; }
-      console.error("Failed to reactivate job", error);
-      showToast(error.message ? { message: error.message } : { messageKey: 'jobs.error.reactivate' });
-    }
-  };
+  const { dismissJob, reactivateJob } = useJobMutations({
+    jobs, filters, page: pagination.page, requestJobs,
+    setJobs, setPagination: setPaginationState, logout, showToast,
+  });
 
   return {
     jobs,

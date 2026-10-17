@@ -2,6 +2,7 @@
 import React, { createContext, useContext, useState, useEffect, useRef, useCallback } from 'react';
 import { SearchService } from '../services/search';
 import { CAREEROS_API_ERROR_EVENT } from '../lib/events';
+import { reportUiFailure } from '../lib/uiDiagnostics';
 
 const SearchContext = createContext(null);
 
@@ -139,7 +140,7 @@ export function SearchProvider({ children }) {
                 pollingInterval = runningIds.length > 0 ? 1500 : 15000;
             } catch (e) {
                 if (isDisposed || e.name === 'AbortError') return;
-                console.error("Failed to poll statuses:", e);
+                reportUiFailure("search_poll");
                 window.dispatchEvent(new CustomEvent(CAREEROS_API_ERROR_EVENT, {
                     detail: {
                         messageKey: 'searchStatus.liveUnavailable',

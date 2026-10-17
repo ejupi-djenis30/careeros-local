@@ -11,6 +11,8 @@ const { mockShowToast } = vi.hoisted(() => ({ mockShowToast: vi.fn() }));
 vi.mock('../services/jobs', () => ({
   JobService: {
     getAll: vi.fn(),
+    dismiss: vi.fn(),
+    reactivate: vi.fn(),
   }
 }));
 
@@ -139,7 +141,8 @@ describe('useJobs', () => {
     renderHook(() => useJobs());
 
     await waitFor(() => {
-      expect(consoleSpy).toHaveBeenCalledWith('Fetch jobs error:', expect.any(Error));
+      expect(consoleSpy).toHaveBeenCalledWith('ui_failure code=jobs_fetch');
+      expect(consoleSpy.mock.calls.flat().some((value) => value instanceof Error)).toBe(false);
     });
     consoleSpy.mockRestore();
   });
@@ -163,7 +166,8 @@ describe('useJobs', () => {
     renderHook(() => useJobs());
 
     await waitFor(() => {
-      expect(consoleSpy).toHaveBeenCalledWith('Failed to load search profiles', expect.any(Error));
+      expect(consoleSpy).toHaveBeenCalledWith('ui_failure code=jobs_profiles');
+      expect(consoleSpy.mock.calls.flat().some((value) => value instanceof Error)).toBe(false);
     });
     expect(mockShowToast).toHaveBeenCalledWith({ message: 'PROFILE ERROR' });
     consoleSpy.mockRestore();
@@ -248,5 +252,138 @@ describe('useJobs', () => {
 
     expect(jobsSignal.aborted).toBe(true);
     expect(profilesSignal.aborted).toBe(true);
+  });
+  it.each(["dismiss", "undo"])("preserves the current query after a pending %s from another query", async (operation) => {
+    let resolveDismiss;
+    const pending = new Promise((resolve) => { resolveDismiss = resolve; });
+    const first = { id: 1, title: "First query job", dismissed: false };
+    const second = { id: 2, title: "Second query job", dismissed: false };
+    JobService.getAll.mockImplementation(async ({ search_profile_id }) => ({
+      items: [search_profile_id === "B" ? second : first], total: 1, page: 1, pages: 1,
+    }));
+    JobService.dismiss.mockReturnValue(pending);
+    JobService.reactivate.mockResolvedValue(first);
+    const { result } = renderHook(() => useJobs());
+    await waitFor(() => expect(result.current.jobs).toEqual([first]));
+    let write;
+    act(() => { write = result.current.dismissJob(first, "not_relevant"); });
+    await act(async () => result.current.setFilters({ search_profile_id: "B" }));
+    await waitFor(() => expect(result.current.jobs).toEqual([second]));
+    await act(async () => { resolveDismiss({ ...first, dismissed: true }); await write; });
+    if (operation === "undo") {
+      const undo = mockShowToast.mock.calls.find(([message]) => message.messageKey === "jobs.dismissed")[2].onAction;
+      await act(async () => undo());
+    }
+    expect(result.current.jobs).toEqual([second]);
+    expect(result.current.pagination.total).toBe(1);
+  });
+
+  it("does not duplicate a reactivated job already returned by a refresh", async () => {
+    const first = { id: 1, title: "First job", dismissed: false };
+    let dismissed = false;
+    let resolveUndo;
+    JobService.getAll.mockImplementation(async () => ({ items: dismissed ? [] : [first], total: dismissed ? 0 : 1, page: 1, pages: 1 }));
+    JobService.dismiss.mockImplementation(async () => { dismissed = true; return { ...first, dismissed: true }; });
+    JobService.reactivate.mockReturnValue(new Promise((resolve) => { resolveUndo = resolve; }));
+    const { result } = renderHook(() => useJobs());
+    await waitFor(() => expect(result.current.jobs).toEqual([first]));
+    await act(async () => result.current.dismissJob(first, "not_relevant"));
+    const undo = mockShowToast.mock.calls.find(([message]) => message.messageKey === "jobs.dismissed")[2].onAction;
+    let pending;
+    act(() => { pending = undo(); });
+    dismissed = false;
+    await act(async () => result.current.fetchJobs());
+    await act(async () => { resolveUndo(first); await pending; });
+    expect(result.current.jobs).toEqual([first]);
+    expect(result.current.pagination.total).toBe(1);
+  });
+
+  it("does not report a pending dismissal after unmount", async () => {
+    let resolveDismiss;
+    JobService.dismiss.mockReturnValue(new Promise((resolve) => { resolveDismiss = resolve; }));
+    const { result, unmount } = renderHook(() => useJobs());
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+    let write;
+    act(() => { write = result.current.dismissJob(mockJobs[0], "not_relevant"); });
+    unmount();
+    await act(async () => { resolveDismiss({ ...mockJobs[0], dismissed: true }); await write; });
+    expect(mockShowToast).not.toHaveBeenCalled();
+  });
+  it.each(["dismiss", "undo", "reactivate"])("reports only a fixed code for a failed %s and allows retry", async (operation) => {
+    const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      const failure = new Error("synthetic-private-value");
+      failure.stack = "synthetic-private-stack";
+      const first = mockJobs[0];
+      const { result } = renderHook(() => useJobs());
+      await waitFor(() => expect(result.current.jobs).toEqual(mockJobs));
+      let action;
+      if (operation === "dismiss") {
+        JobService.dismiss.mockReset().mockRejectedValueOnce(failure).mockResolvedValue({ ...first, dismissed: true });
+        action = () => result.current.dismissJob(first, "not_relevant");
+      } else {
+        JobService.reactivate.mockReset().mockRejectedValueOnce(failure).mockResolvedValue(first);
+        if (operation === "undo") {
+          JobService.dismiss.mockResolvedValue({ ...first, dismissed: true });
+          await act(async () => result.current.dismissJob(first, "not_relevant"));
+          action = mockShowToast.mock.calls.find(([message]) => message.messageKey === "jobs.dismissed")[2].onAction;
+        } else action = () => result.current.reactivateJob(first);
+      }
+      await act(async () => action());
+      expect(consoleSpy).toHaveBeenCalledExactlyOnceWith(`ui_failure code=jobs_${operation}`);
+      expect(JSON.stringify(consoleSpy.mock.calls)).not.toContain("synthetic-private");
+      expect(result.current.jobs).toEqual(mockJobs);
+      await act(async () => action());
+      expect(JobService[operation === "dismiss" ? "dismiss" : "reactivate"]).toHaveBeenCalledTimes(2);
+    } finally { consoleSpy.mockRestore(); }
+  });
+
+  it("retries a failed current-query read after a confirmed dismissal without treating the write as failed", async () => {
+    const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      JobService.dismiss.mockResolvedValue({ ...mockJobs[0], dismissed: true });
+      const { result } = renderHook(() => useJobs());
+      await waitFor(() => expect(result.current.jobs).toEqual(mockJobs));
+      JobService.getAll.mockRejectedValueOnce(new Error("Synthetic refresh unavailable")).mockResolvedValue({ items: [mockJobs[1]], total: 1, page: 1, pages: 1 });
+      await act(async () => result.current.dismissJob(mockJobs[0], "not_relevant"));
+      expect(result.current.fetchError).toEqual({ message: "Synthetic refresh unavailable" });
+      expect(result.current.jobs).toEqual([mockJobs[1]]);
+      expect(mockShowToast.mock.calls.filter(([message]) => message.messageKey === "jobs.dismissed")).toHaveLength(1);
+      expect(consoleSpy).toHaveBeenCalledExactlyOnceWith("ui_failure code=jobs_fetch");
+      await act(async () => result.current.fetchJobs());
+      expect(result.current.fetchError).toBeNull();
+      expect(result.current.pagination.total).toBe(1);
+    } finally { consoleSpy.mockRestore(); }
+  });
+
+  it("keeps a dismissed row when the current query includes dismissed jobs", async () => {
+    const first = mockJobs[0];
+    const updated = { ...first, dismissed: true };
+    JobService.dismiss.mockResolvedValue(updated);
+    const { result } = renderHook(() => useJobs());
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+    await act(async () => result.current.setFilters({ include_dismissed: true }));
+    JobService.getAll.mockResolvedValue({ items: [updated, mockJobs[1]], total: 2, page: 1, pages: 1 });
+    await act(async () => result.current.dismissJob(first, "not_relevant"));
+    expect(result.current.jobs).toEqual([updated, mockJobs[1]]);
+    expect(result.current.pagination.total).toBe(2);
+  });
+
+  it("reconciles the current page after a pending reactivation from another page", async () => {
+    const first = { id: 1, dismissed: true };
+    const second = { id: 2, dismissed: false };
+    let resolveWrite;
+    JobService.getAll.mockImplementation(async ({ page }) => ({ items: [page === 2 ? second : first], total: 2, page, pages: 2 }));
+    JobService.reactivate.mockReset().mockReturnValue(new Promise((resolve) => { resolveWrite = resolve; }));
+    const { result } = renderHook(() => useJobs());
+    await waitFor(() => expect(result.current.jobs).toEqual([first]));
+    let pending;
+    act(() => { pending = result.current.reactivateJob(first); });
+    await act(async () => result.current.setPagination((previous) => ({ ...previous, page: 2 })));
+    await waitFor(() => expect(result.current.jobs).toEqual([second]));
+    await act(async () => { resolveWrite({ ...first, dismissed: false }); await pending; });
+    expect(result.current.jobs).toEqual([second]);
+    expect(JobService.getAll).toHaveBeenLastCalledWith(expect.objectContaining({ page: 2 }), expect.any(AbortSignal));
+    expect(result.current.pagination.total).toBe(2);
   });
 });

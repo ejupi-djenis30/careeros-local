@@ -9,6 +9,9 @@ remain mandatory. Main protections remain in force.
 The post-integration audit rechecks the same constitution without amendment.
 Correcting false success, decoder exceptions and server log redaction adds no
 network, agent, inference, storage or publication authority.
+The UI continuation rechecks principles II, V, VI and VIII under the same 2.0.1:
+local data, explicit state ownership, focused components and private diagnostics.
+No amendment, schema/dependency change or new authority is required.
 
 ## Integration design
 
@@ -117,6 +120,48 @@ network, agent, inference, storage or publication authority.
    Each correction needs a meaningful red/green regression, an independent
    review and affected checks. Freeze source before final combined verification;
    retain exact failures/skips and repeat protected integration and ref cleanup.
+10. Continue UI work from signed main cdc91c1 on codex/ui-state-and-components.
+    First reproduce races/privacy/isolation failures on real components with
+    synthetic services and OS-temporary evidence. Assign disjoint ownership:
+    content-free diagnostics/React error boundary to the coordinator; coach
+    controller to frontend review owner; application selection and jobs mutation
+    context to backend review owner; shared modal lifecycle to release review owner.
+    Extract a focused coach controller and application workspace controller, with
+    small rendering components and independent tests of user-visible behavior.
+    Centralize modal ownership for ConfirmationDialog, DismissDialog,
+    JobAnalysisModal, ApplicationDetailDialog, TemplateGallery and the existing
+    agent-modal compatibility adapter. Keep modal markup/classes/domain actions
+    stable, portal confirmations into their own body root, and preserve focus,
+    existing inert/ARIA state, dynamic controls and overlapping cleanup semantics.
+    Verify inherited styles after the portal move in a native browser and scope
+    any preservation fix narrowly. Split analysis-dialog presentation into focused
+    components while retaining identical evidence/provenance and validation gates.
+    Use a single allowlisted console diagnostic helper and explicit React root
+    callbacks; extracting the workspace error boundary must preserve translated
+    fallback/reload without storing or emitting raw error content.
+    Enforce the shared diagnostic boundary with production-source ESLint checks,
+    keeping direct console calls confined to the allowlisted reporter and testing
+    the lint behavior against an unsafe virtual source and the actual reporter.
+    Add no global console override or generic async framework. Reconcile jobs
+    through the current query context and application acknowledgements by current
+    identity/revision. Closing details invalidates pending reads; creation uses
+    a form-session generation so a late response preserves reopened drafts.
+    Use existing services, request limits and local AI gates.
+    Review each implementation independently, freeze frontend source, then run
+    full frontend coverage/lint/build/license/budget and all eight browser/API
+    groups, including native inert/focus behavior at mobile/desktop widths.
+    If the shared eager modal module exceeds an existing chunk budget, eliminate
+    equivalent keyboard/attribute-handling duplication and repeat behavior/build
+    verification; preserve the budget and synchronous isolation lifecycle.
+    Keep route-specific readiness/setup UI behind the existing React lazy route
+    boundary too: manual deep links must not eagerly import the analysis gate
+    and model manager. Reuse the translated workspace Suspense and error boundary;
+    load the unchanged gate before any protected analysis child can mount.
+    Backend/native/dependencies are unchanged: retain their exact baseline proof
+    and run affected contracts plus protected remote gates, without claiming an
+    unexecuted local full-backend/native run. Record analysis and append-only
+    convergence after implementation, then protected merge/verified recovery/ref
+    cleanup under the owner's continuing integration authorization.
 
 ## Boundaries and size
 
@@ -134,3 +179,8 @@ service-owned import transaction remains. Independent review verified identical
 moved function bodies, 22 model schemas, five aliases and complete OpenAPI output.
 Every new provider production module is below 300 lines. HTTP/DNS transport is
 132 lines, the provider client 293 and API transport 283. No new exception is used.
+
+UI follow-up modules must remain focused: rendering components target fewer than
+150 lines, controllers and shared ownership modules fewer than 300. Existing
+unmodified legacy exceptions remain in their original feature plan; this cycle
+does not create a new oversized facade or a broad CSS redesign.

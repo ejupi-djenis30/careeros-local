@@ -16,6 +16,7 @@ import {
     CAREEROS_UNAUTHORIZED_EVENT,
 } from '../lib/events';
 import { useI18n } from '../i18n/useI18n';
+import { reportUiFailure } from '../lib/uiDiagnostics';
 
 const AuthContext = createContext(null);
 const MAINTENANCE_SESSION_STATES = new Set([
@@ -155,7 +156,7 @@ export function AuthProvider({ children }) {
                 setMaintenanceSession(null);
                 setSessionNotice(typeof messageKey === "string" ? messageKey : null);
             });
-            if (!messageKey) console.warn("Session expired or unauthorized. Logging out.");
+            if (!messageKey) reportUiFailure("auth_expired");
             logout({ force: true });
         };
 
