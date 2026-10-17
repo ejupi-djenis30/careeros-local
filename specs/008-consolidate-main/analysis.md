@@ -1,6 +1,60 @@
 # Independent consistency analysis: Consolidate all work into main
 
-Date: 2026-10-17. Status: signed PR #117 baseline integrated; extended source
+Date: 2026-10-17. Current baseline: signed PR #118 main 06fe0e0, reviewed tree
+a05899b. State-consistency implementation, independent reviews and complete
+frozen source gates on a66b020 are complete; T044 records that integration hand-off.
+T046 corrects the subsequently observed Linux fixture setup failure; renewed
+protected checks on the corrected source remain mandatory before integration.
+Constitution 2.0.1 is unchanged.
+
+## Current state-consistency assessment
+
+Independent read-only analysis covers 28 functional requirements, 26 success
+criteria, ten outcomes, thirteen plan decisions, eight constitution principles and
+46 tasks. All 54 requirement/criterion entries have task coverage. There are no
+material gaps, duplicate/orphan tasks, ambiguities or authority conflicts.
+The five current implementation tasks are complete; T044 covers aggregate
+verification and the protected-integration hand-off without introducing a new
+product requirement.
+
+| Requirement / criterion | Tasks | Independently reviewed correction and evidence |
+| --- | --- | --- |
+| FR-024 / SC-022 | T040, T044 | Search responses are owned by the mounted route and request. Real router regressions and actual-build EN/IT browser cases verify that late acknowledgement cannot redirect after navigation. |
+| FR-025 / SC-023 | T041, T044 | Focused queue/detail controllers reconcile acknowledgement revisions and current filters. Server pagination survives removed Queued rows and outside-page acknowledgement overlays; read failures retain acknowledged state. |
+| FR-026 / SC-024 | T042, T044 | Startup lease, generation and captured child/endpoint ownership prevent overlapping starts and stale health completion. Stop remains interruptible and failed cleanup retains a recoverable child handle. |
+| FR-027 / SC-025 | T043, T044 | Matching search lock and reserved status are released atomically. Real SQLite ownership, replacement, terminal-state and rollback regressions preserve newer work. |
+| FR-028 / SC-026 | T045, T044, T046 | Claim promotion refreshes current owned revisions after acquiring the SQLite write lock and validates its response before commit. Cached-session races, empty subtitles, rollback and foreign ownership are covered. |
+
+The prior 44 requirement/criterion mappings remain recorded below. New focused
+modules stay within the project limits; the managed runtime remains an existing
+legacy implementation, with no new facade or size exception. Privacy, loopback
+validation, verified assets, vault ownership and explicit human confirmation
+authority are preserved. There is no schema, dependency or permission change.
+
+Completed frozen checks include 803 frontend tests, lint/license/runtime gates,
+production build budgets, eight E2E groups, eight strengthened browser scenarios,
+28 Rust tests, desktop 32 passes/six skips and the Alembic roundtrip. The complete
+backend passes 3,020 tests with 17 skips and 82.31% combined coverage; all four
+separately enabled performance cases pass. Both callers return 0 and all 1,216
+source inputs remain unchanged. Exact RED, passing, skipped and insufficient-
+helper evidence is retained in validation.md. Actual protected integration,
+signed-main identity and ref cleanup are subsequently recorded in the PR/private
+recovery ledger; source verification does not pre-approve those operations.
+
+T046 changes only the private SQLite bootstrap in one test fixture. All other
+1,215 non-Markdown inputs and all 44 built assets match a66b020. The corrected
+focused suite passes 33 tests with no skips; Ruff/format and required backend
+mypy pass. The optional direct mypy check on the test reports the same three
+pre-existing annotation errors as a66b020, with no new diagnostic. The original
+full Windows run is not attributed to the changed fixture. The first protected
+Linux run retains 3,017 passes, 11 skips and nine setup errors; its performance
+step was skipped. New-head full Linux success remains required. Independent
+analysis and convergence find no additional task; source review does not waive
+any CI gate.
+
+## Historical extended analysis before PR #118
+
+Historical status: signed PR #117 baseline integrated; extended source
 verification, independent review and integration hand-off complete under T034.
 Constitution 2.0.1 remains unchanged.
 

@@ -16,6 +16,12 @@ The extended cleanup rechecks all eight principles under unchanged 2.0.1. The
 verified PR #117 main cc8c9dd is the baseline. Pure evidence decomposition adds
 no inference, storage, network or agent authority; literal and differential
 verification must preserve the current deterministic validation boundary.
+The state-consistency follow-up starts from signed main 06fe0e0 and rechecks
+unchanged 2.0.1, especially lifecycle ownership (I), local authority (II/III),
+atomic persistence (V), focused modules (VI) and executable/private diagnostics
+(VII/VIII). These corrections add no authority, dependency or persistent schema.
+The protected-CI fixture correction rechecks V and VII under the same 2.0.1:
+use the existing private SQLite bootstrap and preserve the POSIX validator.
 
 ## Integration design
 
@@ -226,6 +232,68 @@ verification must preserve the current deterministic validation boundary.
     dependency inputs or template mutation semantics. Preserve any in-flight
     backend guard differences as the exact known UI-only delta and independently
     attest identical backend inputs rather than hiding the original guard result.
+
+12. Continue on codex/state-consistency-refactor after a clean main-only inventory.
+    Record synthetic RED reproductions in OS Temp before changing production
+    code. Bound this cycle to confirmed ownership/projection defects, preserving
+    prior recovery bundles and policy-blocked cleanup directories.
+    In NewSearchPage and services/search, bind a start continuation to its mounted
+    page/request session and propagate optional AbortSignal without changing
+    error suppression. Invalidate on unmount; never retry a successful mutation
+    or cancel the backend search merely because the user left its page.
+    Extract focused agent-work queue reconciliation from AgentWorkPage where
+    useful. Apply card/detail acknowledgements through current filter, identity
+    and revision ownership; keep selected details and newer queue loads intact.
+    Cover Queued/All, filter switches, stale revisions and read failures using
+    actual components/router and no external requests.
+    Keep the pagination cursor separate from projected row count. A mutation
+    invalidates that cursor until a current-filter server read reconciles it;
+    loading more may perform bounded GET reconciliation through the previously
+    loaded extent, preserving acknowledged state on read failure. A pre-mutation
+    read cannot mark a later projection reconciled. Test outside-page overlays
+    and Queued removal without skipped/duplicate server rows.
+    In backend/inference/managed_runtime.py, serialize start ownership and bind
+    child, health and completion state to the owning generation. A dedicated
+    focused lifecycle helper may hold synchronization state. Do not hold the
+    status lock across the health wait or make stop wait for its full timeout.
+    Use a nonblocking startup lease; reject overlap through the existing conflict
+    response. Bind cancellation and process/endpoint snapshots to the lease, and
+    retain a live process handle if bounded termination fails.
+    Preserve asset verification, loopback keys, bounded child reap and the three
+    restarts per 300 seconds limit; test real lifecycle methods with controlled
+    synthetic children and events, including stop/start and stale completion.
+    In search_status.release_task, clear only the matching local reservation
+    status. Move persisted reserved-status cleanup into the same repository
+    transaction as conditional lock release, never a later unscoped read/delete.
+    Preserve current unscoped maintenance semantics and terminal progress. Use
+    real SQLite owner/replacement/rollback tests and existing search contracts.
+    ResumeClaimService.promote currently accepts a stale second promotion from
+    cached ORM objects, reuses old revisions and loses the first claim link.
+    Reuse the draft-update serialized-write/current-refresh pattern before
+    validating owned draft/profile revisions. Normalize optional empty subtitle
+    consistently with content_overrides so a valid promotion cannot commit and
+    then fail response validation. Cover separate cached sessions, stale/current
+    revisions, empty/nonempty subtitles, explicit human confirmation and rollback;
+    do not infer new career facts or extend agent authority.
+    Independently review disjoint implementations, freeze all final inputs and
+    run backend static/full coverage, frontend coverage/lint/build/browser,
+    native and migration gates. Keep exact failed/skipped/interrupted results.
+    Analyze and converge the completed scope, then use the existing protected
+    publication, signed-main tree proof, complete recovery bundle and safe ref
+    cleanup procedure. Protected remote security/release jobs remain mandatory;
+    this work does not publish a release or claim installer signing.
+
+13. Correct the claim-promotion fixture's private SQLite bootstrap after the
+    protected Linux run rejects all nine setups on source a66b020. Reuse
+    ensure_sqlite_parent before create_engine, as existing real SQLite fixtures
+    already do; keep production code, permissions validation and assertions
+    unchanged. Preserve the actual 3,017-pass/11-skip/nine-error execution and
+    skipped performance step. Verify the focused Windows suite and static checks,
+    independently prove only this test input changes outside Markdown, and
+    prepare renewed full protected checks on the new head. The final Linux run
+    must execute all nine cases successfully before merge; previous source/CI
+    results remain attributed to their exact inputs, without a waiver or rerun
+    of the unchanged failing source.
 
 ## Boundaries and size
 

@@ -802,11 +802,10 @@ def reserve_task(
 
 
 def release_task(profile_id: int, reservation_token: str | None = None) -> bool:
-    """Release a previously reserved profile slot."""
+    """Release only the owned reservation and its reserved status."""
     with _lock:
         reservation = _reserved_tasks.get(profile_id)
         in_memory_released = False
-        clear_local_reserved_status = False
         if reservation is not None:
             if reservation_token is not None and reservation.get("token") != reservation_token:
                 return False
@@ -814,23 +813,24 @@ def release_task(profile_id: int, reservation_token: str | None = None) -> bool:
             in_memory_released = True
 
         status_entry = _statuses.get(profile_id)
-        if status_entry and status_entry.get("state") == _RESERVED_STATE:
+        if (
+            status_entry
+            and status_entry.get("state") == _RESERVED_STATE
+            and (
+                reservation_token is None
+                or status_entry.get("reservation_token") == reservation_token
+            )
+        ):
             _statuses.pop(profile_id, None)
-            clear_local_reserved_status = True
 
     try:
+        # The repository clears the matching reserved status in the lock-release
+        # transaction. A later unscoped clear could erase a replacement owner.
         db_released = _release_profile_search_lock(profile_id, reservation_token)
     except Exception as exc:
         diagnostic = diagnose_failure(exc, FailureCode.REPOSITORY_OPERATION_FAILED)
         log_failure(logger, diagnostic, level=logging.WARNING)
         db_released = False
-
-    if clear_local_reserved_status:
-        _clear_persisted_status(profile_id)
-    else:
-        persisted_status = _load_persisted_status(profile_id)
-        if persisted_status and persisted_status.get("state") == _RESERVED_STATE:
-            _clear_persisted_status(profile_id)
 
     return in_memory_released or db_released
 

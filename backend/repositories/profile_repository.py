@@ -198,6 +198,7 @@ class ProfileRepository(BaseRepository[SearchProfile]):
             raise
 
     def release_search_lock(self, profile_id: int, token: Optional[str] = None) -> bool:
+        """Release a lock and its owned reserved status in one transaction."""
         filters = [self.model.id == profile_id]
         if token is not None:
             filters.append(self.model.search_lock_token == token)
@@ -218,6 +219,25 @@ class ProfileRepository(BaseRepository[SearchProfile]):
             if not updated:
                 self.db.rollback()
                 return False
+
+            status_filters = [
+                self.model.id == profile_id,
+                self.model.search_status_state == SEARCH_LOCK_RESERVED,
+            ]
+            if token is not None:
+                status_filters.append(
+                    self.model.search_status_payload["reservation_token"].as_string() == token
+                )
+            self.db.query(self.model).filter(*status_filters).update(
+                {
+                    self.model.search_status_state: None,
+                    self.model.search_status_payload: None,
+                    self.model.search_status_started_at: None,
+                    self.model.search_status_updated_at: None,
+                    self.model.search_status_finished_at: None,
+                },
+                synchronize_session=False,
+            )
             self.db.commit()
             self.db.expire_all()
             return True

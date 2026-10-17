@@ -1,6 +1,7 @@
-import { screen, waitFor, within } from "@testing-library/react";
+import { act, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { StrictMode } from "react";
 import { createMemoryRouter, RouterProvider } from "react-router";
 
 import { AgentWorkService } from "../../services/agentWork";
@@ -114,13 +115,14 @@ function listPage(items, returnedCount = items.length, offset = 0, limit = 25) {
     return { items, offset, limit, returned_count: returnedCount };
 }
 
-function renderPage(initialEntries = ["/agent-work"]) {
+function renderPage(initialEntries = ["/agent-work"], { strict = false } = {}) {
     const router = createMemoryRouter([
         { path: "/agent-work", element: <AgentWorkPage /> },
         { path: "/agent-access", element: <p>Agent access route</p> },
         { path: "/applications", element: <p>Application workspace route</p> },
     ], { initialEntries });
-    return { ...renderWithI18n(<RouterProvider router={router} />), router };
+    const page = <RouterProvider router={router} />;
+    return { ...renderWithI18n(strict ? <StrictMode>{page}</StrictMode> : page), router };
 }
 
 function deferred() {
@@ -423,5 +425,304 @@ describe("AgentWorkPage serialized API integration", () => {
         expect(await within(dialog).findByText("offline")).toBeInTheDocument();
         await user.click(within(dialog).getByRole("button", { name: "Try again" }));
         expect(await within(dialog).findByRole("combobox", { name: "Bound agent grant" })).toHaveValue(GRANT_ID);
+    });
+    it("removes a canceled card from Queued while All keeps the acknowledgement", async () => {
+        const request = work({ instruction: "Queue cancellation" });
+        AgentWorkService.listWork.mockResolvedValue(listPage([request]));
+        AgentWorkService.cancelWork.mockResolvedValue({ ...request, state: "canceled", revision: 2 });
+        renderPage();
+        const user = userEvent.setup();
+        await screen.findByText(request.instruction);
+        await user.click(screen.getByRole("tab", { name: "Queued", exact: true }));
+        await waitFor(() => expect(AgentWorkService.listWork).toHaveBeenLastCalledWith(expect.objectContaining({ state: "queued" })));
+        await screen.findByText(request.instruction);
+        await user.click(screen.getByRole("button", { name: "Cancel request" }));
+        await waitFor(() => expect(screen.queryByText(request.instruction)).not.toBeInTheDocument());
+        AgentWorkService.listWork.mockResolvedValue(listPage([{ ...request, state: "canceled", revision: 2 }]));
+        await user.click(screen.getByRole("tab", { name: "All", exact: true }));
+        const card = (await screen.findByText(request.instruction)).closest("article");
+        expect(within(card).getByText("Canceled")).toBeInTheDocument();
+        expect(within(card).getByText("r2")).toBeInTheDocument();
+        expect(AgentWorkService.cancelWork).toHaveBeenCalledTimes(1);
+    });
+
+    it.each(["All", "Canceled"])("applies a pending cancellation to the current %s filter", async (filter) => {
+        const request = work({ instruction: "Changing filter cancellation" });
+        const pending = deferred();
+        AgentWorkService.listWork.mockImplementation(({ state }) => Promise.resolve(listPage(state === "canceled" ? [] : [request])));
+        AgentWorkService.cancelWork.mockReturnValue(pending.promise);
+        renderPage();
+        const user = userEvent.setup();
+        await screen.findByText(request.instruction);
+        await user.click(screen.getByRole("button", { name: "Cancel request" }));
+        await user.click(screen.getByRole("tab", { name: filter, exact: true }));
+        await waitFor(() => expect(AgentWorkService.listWork).toHaveBeenLastCalledWith(expect.objectContaining({ state: filter === "All" ? undefined : "canceled" })));
+        if (filter === "Canceled") await screen.findByText("No work requests");
+        else await screen.findByText(request.instruction);
+        await act(async () => { pending.resolve({ ...request, state: "canceled", revision: 2 }); await pending.promise; });
+        const card = (await screen.findByText(request.instruction)).closest("article");
+        expect(within(card).getByText("Canceled")).toBeInTheDocument();
+        expect(screen.getByRole("tab", { name: filter, exact: true })).toHaveAttribute("aria-selected", "true");
+    });
+
+    it("does not resurrect an acknowledged cancellation from an older queue read", async () => {
+        const request = work({ instruction: "Canceled before read completion" });
+        const mutation = deferred(), read = deferred();
+        AgentWorkService.listWork.mockResolvedValue(listPage([request]));
+        AgentWorkService.cancelWork.mockReturnValue(mutation.promise);
+        renderPage();
+        const user = userEvent.setup();
+        await screen.findByText(request.instruction);
+        await user.click(screen.getByRole("tab", { name: "Queued", exact: true }));
+        await waitFor(() => expect(AgentWorkService.listWork).toHaveBeenLastCalledWith(expect.objectContaining({ state: "queued" })));
+        await screen.findByText(request.instruction);
+        await user.click(screen.getByRole("button", { name: "Cancel request" }));
+        AgentWorkService.listWork.mockReturnValueOnce(read.promise);
+        await user.click(screen.getByRole("button", { name: "Refresh queue" }));
+        await act(async () => { mutation.resolve({ ...request, state: "canceled", revision: 2 }); await mutation.promise; });
+        await act(async () => { read.resolve(listPage([request])); await read.promise; });
+        expect(screen.queryByText(request.instruction)).not.toBeInTheDocument();
+        expect(screen.getByRole("tab", { name: "Queued", exact: true })).toHaveAttribute("aria-selected", "true");
+    });
+
+    it("shares card acknowledgements with the selected detail and ignores an older detail read", async () => {
+        const request = work({ instruction: "Selected cancellation" });
+        const mutation = deferred(), read = deferred();
+        AgentWorkService.listWork.mockResolvedValue(listPage([request]));
+        AgentWorkService.cancelWork.mockReturnValue(mutation.promise);
+        AgentWorkService.getWork.mockReturnValue(read.promise);
+        renderPage();
+        const user = userEvent.setup();
+        await screen.findByText(request.instruction);
+        await user.click(screen.getByRole("button", { name: "Cancel request" }));
+        await user.click(screen.getByRole("button", { name: "View details" }));
+        const dialog = await screen.findByRole("dialog");
+        await act(async () => { mutation.resolve({ ...request, state: "canceled", revision: 2 }); await mutation.promise; });
+        expect(within(dialog).getByText("Canceled", { exact: true })).toBeInTheDocument();
+        await act(async () => { read.resolve(detail(request)); await read.promise; });
+        expect(within(dialog).getByText("Canceled", { exact: true })).toBeInTheDocument();
+        expect(within(dialog).getByText("r2")).toBeInTheDocument();
+    });
+
+    it("keeps another selected detail when a card cancellation completes", async () => {
+        const request = work({ instruction: "Pending request A" });
+        const other = work({ id: REQUEST_B, instruction: "Selected request B" });
+        const pending = deferred();
+        AgentWorkService.listWork.mockResolvedValue(listPage([request, other]));
+        AgentWorkService.cancelWork.mockReturnValue(pending.promise);
+        AgentWorkService.getWork.mockResolvedValue(detail(other));
+        renderPage();
+        const user = userEvent.setup();
+        const cardA = (await screen.findByText(request.instruction)).closest("article");
+        await user.click(within(cardA).getByRole("button", { name: "Cancel request" }));
+        await user.click(within(screen.getByText(other.instruction).closest("article")).getByRole("button", { name: "View details" }));
+        const dialog = await screen.findByRole("dialog");
+        await act(async () => { pending.resolve({ ...request, state: "canceled", revision: 2 }); await pending.promise; });
+        expect(within(dialog).getByRole("heading", { name: other.instruction })).toBeInTheDocument();
+        expect(within(dialog).queryByText("Canceled", { exact: true })).not.toBeInTheDocument();
+    });
+
+    it("preserves newer queue revisions when an older cancellation arrives", async () => {
+        const request = work({ instruction: "Revision ownership" });
+        const pending = deferred();
+        const newer = { ...request, state: "canceled", revision: 3 };
+        AgentWorkService.listWork.mockResolvedValue(listPage([request]));
+        AgentWorkService.cancelWork.mockReturnValue(pending.promise);
+        renderPage();
+        const user = userEvent.setup();
+        await screen.findByText(request.instruction);
+        await user.click(screen.getByRole("button", { name: "Cancel request" }));
+        AgentWorkService.listWork.mockResolvedValueOnce(listPage([newer]));
+        await user.click(screen.getByRole("button", { name: "Refresh queue" }));
+        const card = (await screen.findByText(request.instruction)).closest("article");
+        expect(within(card).getByText("r3")).toBeInTheDocument();
+        await act(async () => { pending.resolve({ ...request, state: "canceled", revision: 2 }); await pending.promise; });
+        expect(within(card).getByText("r3")).toBeInTheDocument();
+    });
+
+    it("retains an acknowledged card through read failure and retries only the read", async () => {
+        const request = work({ instruction: "Read failure after cancellation" });
+        AgentWorkService.listWork.mockResolvedValue(listPage([request]));
+        AgentWorkService.cancelWork.mockResolvedValue({ ...request, state: "canceled", revision: 2 });
+        renderPage();
+        const user = userEvent.setup();
+        await screen.findByText(request.instruction);
+        await user.click(screen.getByRole("button", { name: "Cancel request" }));
+        await within(screen.getByText(request.instruction).closest("article")).findByText("Canceled", { exact: true });
+        AgentWorkService.listWork.mockRejectedValueOnce(new Error("Synthetic queue offline"));
+        await user.click(screen.getByRole("button", { name: "Refresh queue" }));
+        expect(await screen.findByRole("alert")).toHaveTextContent("Synthetic queue offline");
+        expect(within(screen.getByText(request.instruction).closest("article")).getByText("Canceled", { exact: true })).toBeInTheDocument();
+        AgentWorkService.listWork.mockResolvedValueOnce(listPage([{ ...request, state: "canceled", revision: 2 }]));
+        await user.click(screen.getByRole("button", { name: "Try again" }));
+        await waitFor(() => expect(screen.queryByRole("alert")).not.toBeInTheDocument());
+        expect(within(screen.getByText(request.instruction).closest("article")).getByText("Canceled", { exact: true })).toBeInTheDocument();
+        expect(AgentWorkService.cancelWork).toHaveBeenCalledTimes(1);
+    });
+
+    it("applies detail cancellation through the same Queued projection", async () => {
+        const request = work({ instruction: "Detail cancellation" });
+        AgentWorkService.listWork.mockResolvedValue(listPage([request]));
+        AgentWorkService.getWork.mockResolvedValue(detail(request));
+        AgentWorkService.cancelWork.mockResolvedValue({ ...request, state: "canceled", revision: 2 });
+        renderPage();
+        const user = userEvent.setup();
+        await screen.findByText(request.instruction);
+        await user.click(screen.getByRole("tab", { name: "Queued", exact: true }));
+        await waitFor(() => expect(AgentWorkService.listWork).toHaveBeenLastCalledWith(expect.objectContaining({ state: "queued" })));
+        await screen.findByText(request.instruction);
+        await user.click(screen.getByRole("button", { name: "View details" }));
+        const dialog = await screen.findByRole("dialog");
+        await user.click(within(dialog).getByRole("button", { name: "Cancel request" }));
+        expect(await within(dialog).findByText("Canceled", { exact: true })).toBeInTheDocument();
+        await user.click(within(dialog).getAllByRole("button", { name: "Close" })[0]);
+        expect(screen.queryByText(request.instruction)).not.toBeInTheDocument();
+    });
+    it("keeps the server pagination boundary when an off-page acknowledgement adds a visible row", async () => {
+        const outside = work({ instruction: "Off-page pending cancellation" });
+        const records = Array.from({ length: 26 }, (_, index) => work({
+            id: `550e8400-e29b-41d4-a716-${String(index + 100).padStart(12, "0")}`,
+            instruction: `Server canceled ${index}`, state: "canceled",
+        }));
+        const pending = deferred();
+        let serverRows = records;
+        AgentWorkService.listWork.mockImplementation(({ state, offset, limit }) => Promise.resolve(
+            state === "canceled"
+                ? listPage(serverRows.slice(offset, offset + limit), serverRows.slice(offset, offset + limit).length, offset, limit)
+                : listPage([outside]),
+        ));
+        AgentWorkService.cancelWork.mockReturnValue(pending.promise);
+        renderPage();
+        const user = userEvent.setup();
+        await screen.findByText(outside.instruction);
+        await user.click(screen.getByRole("button", { name: "Cancel request" }));
+        await user.click(screen.getByRole("tab", { name: "Canceled", exact: true }));
+        await screen.findByText("Server canceled 24");
+        const canceled = { ...outside, state: "canceled", revision: 2 };
+        serverRows = [...records, canceled];
+        await act(async () => { pending.resolve(canceled); await pending.promise; });
+        expect(screen.getAllByRole("article")).toHaveLength(26);
+        await user.click(screen.getByRole("button", { name: "Load older requests" }));
+        expect(await screen.findByText("Server canceled 25")).toBeInTheDocument();
+        expect(AgentWorkService.listWork).toHaveBeenLastCalledWith(expect.objectContaining({ state: "canceled", offset: 25 }));
+        expect(screen.getAllByRole("article")).toHaveLength(27);
+        expect(screen.getAllByText(outside.instruction)).toHaveLength(1);
+        expect(AgentWorkService.cancelWork).toHaveBeenCalledTimes(1);
+    });
+
+    it("does not skip the shifted Queued boundary after cancellation leaves 24 visible rows", async () => {
+        let records = Array.from({ length: 51 }, (_, index) => work({
+            id: `550e8400-e29b-41d4-a716-${String(index + 100).padStart(12, "0")}`,
+            instruction: `Server queued ${index}`,
+        }));
+        const removed = records[0];
+        AgentWorkService.listWork.mockImplementation(({ offset, limit }) => Promise.resolve(
+            listPage(records.slice(offset, offset + limit), records.slice(offset, offset + limit).length, offset, limit),
+        ));
+        AgentWorkService.cancelWork.mockImplementation(async () => {
+            records = records.filter((record) => record.id !== removed.id);
+            return { ...removed, state: "canceled", revision: 2 };
+        });
+        renderPage();
+        const user = userEvent.setup();
+        await screen.findByText("Server queued 24");
+        await user.click(screen.getByRole("tab", { name: "Queued", exact: true }));
+        await waitFor(() => expect(AgentWorkService.listWork).toHaveBeenLastCalledWith(expect.objectContaining({ state: "queued" })));
+        const card = (await screen.findByText(removed.instruction)).closest("article");
+        await user.click(within(card).getByRole("button", { name: "Cancel request" }));
+        await waitFor(() => expect(screen.getAllByRole("article")).toHaveLength(24));
+        await user.click(screen.getByRole("button", { name: "Load older requests" }));
+        expect(await screen.findByText("Server queued 25")).toBeInTheDocument();
+        for (let page = 0; page < 2; page += 1) {
+            await act(async () => { await Promise.resolve(); });
+            const more = screen.queryByRole("button", { name: "Load older requests" });
+            if (more) await user.click(more);
+        }
+        expect(await screen.findByText("Server queued 50")).toBeInTheDocument();
+        expect(screen.getAllByRole("article")).toHaveLength(50);
+        expect(screen.queryByText(removed.instruction)).not.toBeInTheDocument();
+    });
+
+    it("keeps off-page acknowledgements and retries only reads when pagination reconciliation fails", async () => {
+        const request = work({ instruction: "Acknowledged pagination retry" });
+        const records = Array.from({ length: 25 }, (_, index) => work({
+            id: `550e8400-e29b-41d4-a716-${String(index + 100).padStart(12, "0")}`,
+            instruction: `Canceled page ${index}`, state: "canceled",
+        }));
+        const pending = deferred();
+        AgentWorkService.listWork.mockImplementation(({ state }) => Promise.resolve(listPage(state === "canceled" ? records : [request])));
+        AgentWorkService.cancelWork.mockReturnValue(pending.promise);
+        renderPage();
+        const user = userEvent.setup();
+        await screen.findByText(request.instruction);
+        await user.click(screen.getByRole("button", { name: "Cancel request" }));
+        await user.click(screen.getByRole("tab", { name: "Canceled", exact: true }));
+        await screen.findByText("Canceled page 24");
+        await act(async () => { pending.resolve({ ...request, state: "canceled", revision: 2 }); await pending.promise; });
+        AgentWorkService.listWork.mockRejectedValueOnce(new Error("Synthetic reconciliation unavailable"));
+        await user.click(screen.getByRole("button", { name: "Load older requests" }));
+        expect(await screen.findByRole("alert")).toHaveTextContent("Synthetic reconciliation unavailable");
+        expect(screen.getByText(request.instruction)).toBeInTheDocument();
+        expect(screen.getAllByRole("article")).toHaveLength(26);
+        AgentWorkService.listWork.mockResolvedValueOnce(listPage(records));
+        await user.click(screen.getByRole("button", { name: "Try again" }));
+        await waitFor(() => expect(screen.queryByRole("alert")).not.toBeInTheDocument());
+        expect(screen.getByText(request.instruction)).toBeInTheDocument();
+        expect(AgentWorkService.cancelWork).toHaveBeenCalledTimes(1);
+    });
+
+    it("does not reopen a closed detail when a card acknowledgement arrives", async () => {
+        const request = work({ instruction: "Closed before acknowledgement" });
+        const pending = deferred();
+        AgentWorkService.listWork.mockResolvedValue(listPage([request]));
+        AgentWorkService.getWork.mockResolvedValue(detail(request));
+        AgentWorkService.cancelWork.mockReturnValue(pending.promise);
+        renderPage();
+        const user = userEvent.setup();
+        await screen.findByText(request.instruction);
+        await user.click(screen.getByRole("button", { name: "Cancel request" }));
+        await user.click(screen.getByRole("button", { name: "View details" }));
+        const dialog = await screen.findByRole("dialog");
+        await user.click(within(dialog).getAllByRole("button", { name: "Close" })[0]);
+        await act(async () => { pending.resolve({ ...request, state: "canceled", revision: 2 }); await pending.promise; });
+        expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+        expect(within(screen.getByText(request.instruction).closest("article")).getByText("Canceled")).toBeInTheDocument();
+    });
+
+    it("aborts pending UI requests on unmount and isolates a StrictMode remount", async () => {
+        const old = work({ instruction: "Old mounted queue" });
+        const next = work({ id: REQUEST_B, instruction: "New mounted queue" });
+        const pending = deferred();
+        AgentWorkService.listWork.mockResolvedValue(listPage([old]));
+        AgentWorkService.cancelWork.mockReturnValue(pending.promise);
+        const view = renderPage(undefined, { strict: true });
+        await screen.findByText(old.instruction);
+        await userEvent.click(screen.getByRole("button", { name: "Cancel request" }));
+        const signal = AgentWorkService.cancelWork.mock.calls[0][2].signal;
+        view.unmount();
+        expect(signal.aborted).toBe(true);
+        AgentWorkService.listWork.mockResolvedValue(listPage([next]));
+        renderPage(undefined, { strict: true });
+        await screen.findByText(next.instruction);
+        await act(async () => { pending.resolve({ ...old, state: "canceled", revision: 2 }); await pending.promise; });
+        expect(screen.queryByText(old.instruction)).not.toBeInTheDocument();
+        expect(screen.getByText(next.instruction)).toBeInTheDocument();
+        expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    });
+
+    it("does not attach a canceled request's old failure to a replacement filter", async () => {
+        let reject;
+        const pending = new Promise((_resolve, fail) => { reject = fail; });
+        AgentWorkService.listWork.mockImplementation(({ state }) => Promise.resolve(listPage(state === "canceled" ? [] : [work()])));
+        AgentWorkService.cancelWork.mockReturnValue(pending);
+        renderPage();
+        const user = userEvent.setup();
+        await screen.findByText(work().instruction);
+        await user.click(screen.getByRole("button", { name: "Cancel request" }));
+        await user.click(screen.getByRole("tab", { name: "Canceled", exact: true }));
+        await screen.findByText("No work requests");
+        await act(async () => { reject(new Error("Synthetic stale failure")); await pending.catch(() => {}); });
+        expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+        expect(screen.getByRole("tab", { name: "Canceled", exact: true })).toHaveAttribute("aria-selected", "true");
     });
 });

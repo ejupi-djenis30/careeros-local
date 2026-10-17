@@ -215,3 +215,54 @@ and analysis include FR-019–FR-020 and SC-017–SC-018 as well as T033.
   browser rendering. Repeat affected final frontend/budget gates, preserving
   backend input identity and the complete execution history (FR-023; SC-021;
   Constitution VIII). T034 final review/gates also include this task.
+
+## Phase 8: State consistency and lifecycle ownership
+
+- [x] T040 [P] Bind NewSearchPage start responses to the current mounted page and
+  request, propagating optional cancellation through services/search without
+  duplicate mutations or cancellation of accepted work. Add actual router tests
+  for success, late acknowledgement, failure, remount and StrictMode (FR-024;
+  SC-022; Constitution II, VIII).
+- [x] T041 [P] Unify agent-work card/detail acknowledgement reconciliation in a
+  focused queue controller, preserving current filters, selection and revisions.
+  Cover Queued/All cancellation, changed filters/details and optional read
+  failure, plus reconciled server pagination after outside-page acknowledgements
+  and removed Queued rows, with real component regressions (FR-025; SC-023;
+  Constitution III, VI).
+- [x] T042 [P] Serialize managed-runtime startup ownership and guard child/health
+  completion by generation without blocking stop for the health timeout. Test
+  concurrent restart, stop/cancel, failure and stale completion with synthetic
+  children; preserve manifest/loopback/restart-limit/cleanup contracts (FR-026;
+  SC-024; Constitution I, II, VII).
+- [x] T043 [P] Release the matching persisted search lock and reserved status in
+  one repository transaction; reject stale/foreign cleanup and preserve terminal
+  states and maintenance semantics. Guard local status by reservation token and
+  cover real SQLite replacement/rollback plus search integration (FR-027;
+  SC-025; Constitution V).
+- [x] T044 Independently review T040–T043 and T045, record RED/green evidence and exact full
+  quality/native/migration/browser/security results on frozen inputs, analyze and
+  converge artifacts, then prepare the protected integration/recovery/ref-cleanup
+  hand-off. Preserve historical evidence and policy-blocked cleanup (FR-007,
+  FR-008, FR-024–FR-028; SC-004–SC-006, SC-022–SC-026).
+
+- [x] T045 [P] Serialize ResumeClaimService.promote and refresh owned draft/profile
+  state before revision validation; preserve all facts/links/selections on stale
+  conflict. Normalize valid empty optional subtitles before response validation.
+  Cover cached independent SQLite sessions, API acknowledgements and transaction
+  rollback without changing human confirmation authority (FR-028; SC-026;
+  Constitution III, V).
+
+T044 follows all implementation tasks in this phase. Completion records verified
+source and the integration hand-off; subsequent protected checks, signed-main
+identity and recovery-backed ref cleanup require their actual execution in the
+PR metadata and private recovery ledger.
+
+## Phase 9: Protected Linux fixture correction
+
+- [x] T046 Correct claim_vault to invoke the canonical private SQLite bootstrap
+  before opening its database. Keep the POSIX validator and all promotion
+  assertions unchanged; retain the nine real Linux setup errors. Run focused
+  Windows/static checks, independently attest the single test-only source delta,
+  reconcile artifacts and prepare renewed protected checks. Actual full Linux
+  success on the corrected head remains mandatory before merge (FR-007, FR-028;
+  SC-004, SC-026; Constitution V, VII).

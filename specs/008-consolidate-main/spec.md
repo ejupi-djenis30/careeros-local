@@ -1,15 +1,19 @@
 # Specification: Consolidate all work into main
 
-Date: 2026-10-17. Status: signed UI baseline integrated; extended refactor in progress.
+Date: 2026-10-17. Status: POSIX fixture correction and source verification complete; renewed protected CI pending.
 Owner request: integrate all branches into main, remove branches, clean the
 project and make the combined application work.
 Follow-up request: continue the refactor, cleanup and correction of confirmed
 anomalies after the verified main integration.
 Further request: continue the refactor including the UI, from signed main cdc91c1.
-Current request: continue refactoring and extended cleanup from signed main cc8c9dd.
+Previous request: continue refactoring and extended cleanup from signed main cc8c9dd.
 PR #117 completed the previous UI cycle: its reviewed source and signed main have
 the same tree; post-merge CI passed eight jobs and CodeQL four. Main was the sole
 branch and the worktree clean before this new cycle.
+Current request: continue refactoring and improve confirmed defects from signed
+main 06fe0e0. PR #118 completed the extended cycle: reviewed source 9f99546 and
+main share tree a05899b; post-merge CI passed eight jobs and CodeQL four. The
+worktree was clean and main was the sole local/remote branch at this follow-up.
 
 ## Outcomes
 
@@ -42,6 +46,9 @@ branch and the worktree clean before this new cycle.
 9. Refuse successful source-document reuse when the existing owned asset has
    missing/corrupt bytes or invalid metadata. Healthy duplicates stay idempotent;
    failure never silently repairs storage or changes career records.
+10. Preserve ownership across concurrent runtime starts, search reservations and
+    delayed UI requests. Stop must retain control of every spawned runtime child;
+    stale results must preserve newer navigation, filters and reservation status.
 
 ## Requirements
 
@@ -155,6 +162,33 @@ branch and the worktree clean before this new cycle.
   labels in English and Italian, both with and without a selected preset. Missing
   message keys must never appear as visible control text; preserve explicit
   template selection and all existing draft/content semantics.
+- FR-024 A search-start response may navigate to progress only while its initiating
+  page session still owns the request. Leaving the page invalidates that UI
+  continuation without retrying the mutation or cancelling an accepted search.
+  Preserve normal success, actual failure, cancellation and StrictMode behavior.
+- FR-025 Agent-work mutation acknowledgements must reconcile the current queue
+  filter and selected detail by identity/revision. A cancelled item must disappear
+  from Queued and remain visible with its new state in All. Delayed responses and
+  optional read failures must preserve newer filters, selections and revisions;
+  card and detail mutations must share the same reconciliation rules.
+  Pagination must use the reconciled server position, not the number of locally
+  projected rows, so acknowledgement overlays cannot skip or duplicate records.
+- FR-026 Concurrent managed-runtime starts/restarts must never orphan a live
+  child or overwrite its owned process handle. Stop/cancel must remain effective
+  during startup, and superseded completions must not publish readiness/errors or
+  stop a newer process. Preserve verified assets, loopback authentication,
+  bounded cleanup, the existing restart limit and content-free diagnostics.
+  An overlapping start may be rejected through the existing conflict response;
+  it must not silently replace or stop the in-flight owner's child.
+- FR-027 Releasing an expired or foreign search reservation must not clear a
+  newer owner's persisted or in-memory status. Release of the matching lock and
+  its reserved status must be atomic; preserve terminal/progress status and
+  explicit unscoped maintenance cleanup. No persistence schema change is needed.
+- FR-028 Explicit resume-claim promotion must validate current owned draft/profile
+  revisions within its serialized write transaction, even when the session has
+  cached older ORM objects. Rejected stale promotion changes no facts, links,
+  selections or revisions. A valid claim with an empty optional subtitle must
+  produce a valid response and exactly one coherent committed promotion.
 
 ## Success criteria
 
@@ -222,6 +256,30 @@ branch and the worktree clean before this new cycle.
 - SC-021 Actual template-selector DOM tests cover both languages and selected/
   empty preset states. A real production-build browser check confirms readable
   labels at mobile/desktop widths, with unchanged locale/bundle budgets.
+- SC-022 Actual routed search-page regressions cover pending start followed by
+  unmount/navigation, current-page success, failure, cancellation and remount;
+  no stale redirect, duplicate start or automatic search cancellation occurs.
+- SC-023 Real agent-work queue tests cover cancellation from Queued and All,
+  card/detail parity, filter/selection changes during requests, older revisions
+  and read failure. The displayed rows always satisfy the current state filter.
+  Multi-page cases include an acknowledgement outside the loaded page and a
+  removed Queued row; loading more must preserve all intervening server rows.
+- SC-024 Deterministic concurrency tests exercise the real managed-runtime
+  lifecycle with synthetic child/health boundaries: concurrent restart, stop
+  during startup/health, failure, stale completion and a subsequent healthy start.
+  Every created child remains tracked until reaped; final stop leaves none alive.
+- SC-025 Real isolated SQLite tests prove stale-token release preserves the new
+  lock and complete status, matching release clears only its reserved status,
+  terminal states survive, and transaction failure rolls back both changes.
+  In-memory and search API/scheduler/finalization regressions remain valid.
+- SC-026 Real independent SQLite sessions with cached draft/profile objects prove
+  one promotion succeeds and a stale second promotion conflicts without changing
+  the first result. Empty/nonempty optional-subtitle API cases return valid
+  acknowledgements; rollback, ownership and existing explicit-confirmation
+  boundaries remain tested.
+  SQLite fixtures must use the canonical private database bootstrap before
+  connecting, so these same cases execute under the existing POSIX containment
+  checks as well as on Windows. A rejected fixture setup is not a passing case.
 
 ## Governing constraints
 

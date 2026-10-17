@@ -249,7 +249,9 @@ def test_release_task_removes_shared_reserved_entry():
     ):
         assert release_task(909, reservation_token=token) is True
 
-    mock_clear.assert_called_once_with(909)
+    mock_clear.assert_not_called()
+    assert 909 not in ss._statuses
+    assert 909 not in ss._reserved_tasks
 
 
 def test_release_task_calls_db_release_even_without_in_memory_reservation():

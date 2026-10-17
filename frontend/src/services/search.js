@@ -1,8 +1,8 @@
 import { ApiClient } from "../lib/client";
 
 export const SearchService = {
-    start(profile) {
-        return ApiClient.post("/search/start", profile, { suppressGlobalError: true });
+    start(profile, options = {}) {
+        return ApiClient.post("/search/start", profile, { ...options, suppressGlobalError: true });
     },
 
     getStatus(profileId) {
