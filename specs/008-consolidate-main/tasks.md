@@ -162,7 +162,56 @@ recovery bundles verified. The following tasks are new UI work.
 
 T032 completion attests verified source and the integration hand-off. The checked
 T010/T011 attest earlier completed cycles; their protected-merge and recovery
-procedure remains mandatory for this UI cycle. Its actual PR checks, reviewed
-head, signed-main tree, verified bundle and final ref inventory are PENDING in
-the new PR/recovery ledger until executed. FR-006, FR-008 and SC-005 for this
-cycle are not established by a source assessment or an earlier main result.
+procedure was subsequently completed for PR #117: reviewed source 4f0c55b and
+signed main cc8c9dd share tree e679b3a; main CI 39045287407 passed eight jobs and
+CodeQL 39045287387 four. Two complete recovery bundles verified, only main
+remained and the worktree was clean. The durable private recovery ledger records
+actual checks, failures/skips, signature/tree proof and ref inventory.
+
+## Phase 7: Extended refactor and cleanup
+
+- [x] T033 [P] Decompose backend/ai/match_evidence.py into a stable compatibility
+  facade and focused match_catalog modules below 300 lines; preserve literal
+  values, clause semantics, catalog version behavior, hashes and complete evidence
+  using independent AST/literal and synthetic differential checks plus existing
+  evidence/attestation/policy/search regressions (FR-018; SC-016; Constitution III,
+  VI).
+- [x] T034 Independently review the extended cleanup, complete proportional and
+  final backend/frontend/native/migration/security gates, record exact results,
+  analyze artifacts and converge remaining work; prepare the frozen source and
+  protected integration/recovery/ref-cleanup hand-off (FR-007, FR-008, FR-018;
+  SC-004–SC-006, SC-016).
+
+T034 attests the completed source gates, independent analysis and frozen
+integration hand-off. New-cycle protected checks, signed-main exact-tree proof
+and recovery-backed ref cleanup require their actual subsequent execution,
+recorded in PR metadata and the private recovery ledger.
+- [x] T035 [P] Guard dirty career-profile internal navigation using the existing
+  router blocker pattern and a focused lifecycle hook; cover denied/accepted and
+  clean navigation, save/discard, unload and StrictMode without losing drafts
+  (FR-019; SC-017; Constitution II, VIII).
+- [x] T036 [P] Apply resume deletion and claim-confirmation acknowledgements
+  before optional catalog/profile reads, preserving revisions, newer selections
+  and drafts; distinguish refresh failure and permit read-only retry, with
+  confirmed-write/read-failure, actual failure and delayed-response regressions
+  (FR-020; SC-018; Constitution III, V).
+
+T034 follows all parallel implementation tasks in this phase; its final gates
+and analysis include FR-019–FR-020 and SC-017–SC-018 as well as T033.
+
+- [x] T037 [P] Verify owned stored source-document metadata, relationship,
+  contained bytes and digest/length before duplicate reuse; reject missing,
+  corrupt, invalid or foreign state without overwrite/revision changes. Preserve
+  healthy idempotency, role conflicts and publication/rollback/commit recovery,
+  with real import and cross-account regressions (FR-021; SC-019; Constitution II,
+  V). T034 final review/gates also include this task.
+- [x] T038 Adopt the exact Tauri generator bytes for the three reproduced schema
+  files and narrowly exempt them from final-LF rewriting. Prove JSON/value and
+  baseline-byte equivalence except the final LF; retain the original guard
+  failure, then verify repeated native and commit-hook runs are stable (FR-022;
+  SC-020; Constitution VII). T034 final review/gates also include this task.
+- [x] T039 Supply missing English/Italian template-selector labels in the
+  feature-local messages; cover actual selected/empty selector DOM and production
+  browser rendering. Repeat affected final frontend/budget gates, preserving
+  backend input identity and the complete execution history (FR-023; SC-021;
+  Constitution VIII). T034 final review/gates also include this task.

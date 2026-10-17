@@ -1,12 +1,15 @@
 # Validation evidence: Consolidate all work into main
 
-Date: 2026-10-17. Initial branch: `codex/production-readiness-refactor`;
-follow-up branch: `codex/final-dependency-patches`.
-Status: PR #112 is merged and verified; automated frontend/Python follow-ups and final
-ref cleanup are in progress. No production release or installer signing claim.
-This source record captures the initial integration and precedes the follow-up's
-protected publication. Subsequent live checks and Git operations complete its
-remaining tasks; a pending entry is never presented as a passing check.
+Date: 2026-10-17. Current branch: `codex/extended-refactor-cleanup`.
+Status: extended source verification and independent review are complete;
+protected integration and recovery-backed branch cleanup follow this hand-off.
+No production release or installer signing claim. Earlier sections retain the
+actual historical executions; current extended evidence appears at the end.
+A pending entry is never presented as a passing check.
+
+Historical initial branch: `codex/production-readiness-refactor`; first follow-up:
+`codex/final-dependency-patches`. PR #112 and subsequent cycles through PR #117
+were merged and verified before the current extended refactor.
 
 ## Scope and review
 
@@ -654,3 +657,213 @@ verified source and integration hand-off. The new head's protected PR checks,
 signed-main exact tree, verified recovery bundle and final branch inventory
 remain mandatory actual execution in the PR/private recovery ledger. This
 pre-publication source snapshot claims no future CI, merge, signature or release.
+
+## Extended refactor baseline and reproduced findings
+
+The preceding UI cycle completed through PR #117. Signed main cc8c9dd and
+reviewed source 4f0c55b have tree e679b3a. Post-merge CI 39045287407 passed all
+eight jobs and CodeQL 39045287387 all four. The verified complete recovery
+bundles, signature/tree proof and sole-main clean ref inventory are retained in
+the private Git recovery ledger. No new release/tag was published.
+
+The new owner request starts from that clean main on
+codex/extended-refactor-cleanup. Constitution 2.0.1 is reviewed unchanged;
+specification, plan and tasks precede implementation. Independent initial
+inventory finds 1,346 tracked files and no tracked temporary/build/cache/log
+candidate. Development infrastructure and policy-blocked caches remain intact.
+
+Actual component probes reproduce three UI defects (three failing regressions,
+three passing controls): dirty profile internal navigation bypasses its
+unload-only guard; acknowledged resume deletion followed by failed catalog read
+keeps the deleted selection; acknowledged claim confirmation followed by failed
+profile read keeps the old draft revision. A separate proposed save-during-edit
+race is rejected after inspection: the actual profile fieldset is disabled while
+saving; no implementation change is justified by that hypothesis.
+
+The actual source-import router with isolated SQLite/files reproduces false
+successful duplicate reuse for missing bytes, same-length corruption and wrong
+stored byte_size. The healthy control is idempotent. Rejected-state probes leave
+one asset/source and both synthetic accounts' profile revisions unchanged. The
+first harness attempt returned 404 from an incorrect synthetic route prefix;
+the corrected real-router probe passes and no source was changed during audit.
+
+The initial Rust run passes fmt, Clippy with warnings denied and 28 tests, but
+the wrapper correctly exits 1: its 70-input guard detects six before/after entries
+for three generated schema files. Independent byte comparison proves each change
+is exclusively removal of the final LF; parsed JSON is identical. T038 adopts
+the generator bytes and exempts exactly these paths from end-of-file-fixer.
+A second actual native run passes all three commands with zero changed inputs
+(fmt 0.401 s, Clippy 0.968 s, test command 2.478 s; 28 tests). The focused EOF
+hook explicitly skips those generated files; independent post-hook hashes and
+JSON comparisons remain identical. The original guard failure is retained.
+
+Implementation review, final aggregate checks, analysis/convergence and this
+cycle's protected integration/ref cleanup are pending. Prior checks are not
+substituted for unexecuted changed-source gates.
+
+### Extended implementation and independent verification
+
+T033 is frozen at a 124-line compatibility facade and fourteen internal modules
+(largest 256 lines). All 291 existing focused evidence/policy/attestation/search
+tests pass with no skips. Ruff, changed-file formatting and scoped mypy pass.
+Independent comparison verifies 42 function/class ASTs: 39 exact, three differing
+only by explicit catalog-configuration arguments. All 25 moved assignments,
+three vocabulary set literals, 1,077 literal occurrences/622 typed values and
+the composed 429-word vocabulary are identical; imports form an acyclic graph.
+The implementation owner's 540 ordered-output comparisons pass. A separate
+coordinator corpus verifies 384 complete candidate/job pairs across 96 synthetic
+cases and four public version/description-limit combinations, including ordered
+serialization, complete metadata, bindings and all fingerprint APIs. Both
+comparison passes preserve the public dynamic configuration behavior.
+
+T037's actual API regression starts with 15 failures/three passing controls and
+passes all eighteen cases after the fix. The complete focused source/API/
+concurrency/publication/recovery/parsing set passes 69 tests with zero skips in
+46.51 seconds. Source facade 255 lines, integrity helper 90; the remaining
+publication/commit-recovery function bodies are unchanged. All three changed
+files are LF. Independent review verifies ownership from either relationship,
+bounded errors, canonical contained reads and fail-closed storage validation.
+
+T035/T036 pass 77 focused tests in six files (25.01 seconds), changed-file lint
+and a final canonical-LF ten-test UI run. Earlier focused invocations are retained:
+72 passed/one failed due to an incorrect fixture revision expectation; 75 passed/
+two failed due to an incorrect translated button label and incomplete mock cleanup.
+Those were test-only corrections. The final thirteen-file freeze and independent
+review match exactly. The profile hook is 40 lines; the acknowledgement hook 106;
+the resume controller shrinks from 319 to 284. Real routed DOM, API-client 503,
+write-failure, read-only retry, newer-draft/selection and forced-locking cases pass.
+
+The first complete frontend snapshot passes 774 tests/112 files and all unchanged
+coverage thresholds: 84.18% statements (5,931/7,045), 74.88% branches (4,541/6,064),
+76.14% functions (1,599/2,100), 88.91% lines (5,253/5,908). Four runtime and eleven
+license/distribution contracts, 128 workspace/nine lifecycle icons and global lint
+pass. Production build and unchanged budgets pass: entry 267,104 raw/82,973 gzip;
+Italian locale 89,988/28,424; lifecycle CSS 21,837/5,841; initial 379,976/117,802;
+workspace CSS 434,350/72,155; shell 17,130/5,782. All 1,208 source inputs and
+44 built assets remain unchanged through those runs; all 1,365 inputs, including
+Markdown, remain unchanged through the applicable full changed-file hooks.
+
+Global Ruff over backend/tests/scripts and mypy over backend/scripts pass with
+zero input changes. Fresh Alembic upgrade/head, downgrade/one and upgrade/head
+passes at d0b1c2d3e4f5 with SQLite integrity `ok` and zero foreign-key violations.
+Four separately enabled performance cases pass: readiness p95 26.231 ms against
+100 ms, at most five queries; profile 5.912 ms, application page 62.009 ms and
+agenda 133.149 ms against 200 ms. The independent desktop Python suite passes
+32 tests with six skips: five POSIX-only ownership/no-follow contracts and one
+artifact-only packaged-lifecycle smoke requiring CAREEROS_SIDECAR_BINARY.
+Its first run had 31 passes/one failure/six skips because the OS-temporary
+launcher lacked a multiprocessing main guard. The guarded launcher passes; no
+application or repository test was changed for that harness error.
+
+An offline real wheel build from 398 authorized snapshot inputs passes without
+network, dependency installation or repository build/egg-info output. The wheel
+is 1,053,052 bytes, SHA256
+`fd65730c365880b493efb6a936103ac39822bafc286d286ccf68194914e2c2d9`.
+All fourteen catalog modules and the facade, packaged Python/data/license inputs
+and entry points match source bytes. Isolated imports and eight complete
+synthetic/fingerprint comparisons from the byte-verified extracted wheel pass
+with zero network attempts and zero differences across 402 guarded inputs.
+The preceding direct ZIP-on-sys.path import attempt fails on the historical
+backend.core namespace directory layout; it is retained as unsupported, not a
+passing check. Ordinary extracted-wheel layout passes. This unsigned pure-Python
+source wheel is verification evidence, not a published native installer/release.
+
+All eight browser/API groups pass on the first built snapshot (npm exit 0,
+137.037 seconds); zero vaults and all 1,252 guarded source/dist inputs remain
+unchanged. The wrapper returns nonzero for descendant 14544. Captured identity
+is conhost.exe, parent 3204, created before npm; that parent's historical identity
+was not recorded, so ownership by the wrapper remains probable, not established.
+Independent later review finds that PID absent, zero task processes/listeners/
+vaults and unchanged source/dist. No kill or rerun is used for reconciliation;
+the original nonzero wrapper is preserved.
+
+Real-build browser review verifies ten cases/103 assertions: profile EN/IT at
+390/1,440 px (native deny/accept/save), and resume EN/IT at 320/390/1,440 px
+(acknowledged deletion, one expected GET 503, readable warning and GET-only retry).
+There are zero page errors, egress, unexpected API calls or writes, and browser/
+server cleanup and source/dist/owned-file guards pass. Four temporary-helper
+failures are retained separately: snapshot destination already existed before
+exclusive copy; missing asynchronous dialog wait; off-canvas menu visibility
+misclassification; and the wrong English CV button label after all four profile
+cases had already passed. Only the remaining six CV cases continue, exit 0;
+no successful profile case is repeated or earlier exit reclassified as passing.
+
+Independent screenshot inspection then discovers a real product defect: the
+template selector references two missing feature-local message keys in both
+languages. software-en is canonical/default in the real nine-preset catalog;
+messages are statically loaded, so this is not a harness or lazy-loading issue.
+T039 records the requirement before adding exactly four translations and a real
+four-case selected/empty EN/IT selector test: four RED before, four GREEN after.
+Only templateMessages.js and the new ResumeSettings.test.jsx change; independent
+manifest review proves the other 1,207 original inputs, including all 630 backend/
+backend-test files and all native/configuration/dependency inputs, are unchanged.
+Fresh final frontend coverage/lint/build/browser runs cover this delta below.
+
+The first complete backend attempt is interrupted with exit -1 after failure/
+error markers beyond the printed 19% progress, with no completed summary or pass
+claim. Its temporary launcher retained DATA_DIR in the environment, causing
+Alembic fixtures with independent configured roots to be correctly rejected.
+The first such setup error is independently reproduced; unsetting DATA_DIR only
+after initial isolated settings configuration makes the same seven targeted
+tests pass in 24.77 seconds. No containment rule or repository test changes.
+The complete run restarts with that corrected, main-guarded launcher. It began
+before the two-file T039 UI fix: its strict global input guard must retain those
+known differences, while backend input identity is independently attested. Its
+actual aggregate result and final UI evidence are recorded below; protected
+integration still requires its own subsequent execution.
+
+### Final frontend snapshot after the selector correction
+
+The final complete run passes 778 tests/113 files with unchanged thresholds:
+84.18% statements (5,931/7,045), 74.85% branches (4,539/6,064), 76.14% functions
+(1,599/2,100), 88.91% lines (5,253/5,908). Runtime, license/distribution/icon and
+global lint checks all pass. All 1,253 guarded source/dist inputs remain unchanged.
+The actual production build passes unchanged budgets: entry 267,104/82,973,
+Italian locale 89,988/28,424, lifecycle CSS 21,837/5,841, initial resources
+379,976/117,801, workspace CSS 434,350/72,155 and workspace shell 17,130/5,778
+bytes (raw/gzip). Build guards cover 1,209 source inputs and 44 output assets,
+with zero differences.
+
+Two fresh label/warning captures on that final build pass 31 assertions, EN at
+320 px and IT at 1,440 px. Both exact translated template labels appear, neither
+raw message key appears and controls/warning fit without overflow. There are
+zero page errors, external requests, unexpected APIs or writes. All fifteen
+owned UI inputs, 1,209 source files and 44 snapshot/dist assets remain unchanged;
+browser and server close. The preceding ten cases and helper-failure history are
+retained rather than repeated or relabeled.
+
+All eight E2E groups pass again on this final changed build: npm and outer caller
+both exit 0, 132.649 seconds, zero test descendants/vaults and zero differences
+across 1,253 inputs. The OS-only wrapper now records its own PID/creation time
+and npm start; it classifies only an identified conhost.exe direct child created
+between wrapper creation and npm start as the runner's console. Missing identity/
+timestamps and all other descendants still fail closed; no subtree is excluded.
+The recorded runner console 20220 and wrapper 18128 are independently absent by
+identity after exit, with zero attributable processes/listeners/vaults. All
+1,253 input and final build hashes match. No process is killed. The first
+wrapper's nonzero result and unknown historical parent identity remain intact.
+An initial read-only review helper timestamp cast error is corrected only in
+Temp; its actual final verification exits 0 and both executions are retained.
+
+### Final complete backend and source hand-off
+
+The corrected Windows Python 3.12.13 run passes 2,983 tests with 17 skips in
+1,752.71 seconds; pytest returns 0 and combined branch-aware coverage is 82.12%
+against the unchanged 80% gate. Thirteen skips are POSIX-only owner/mode,
+no-follow, ctime, FIFO and fcntl contracts. The other four opt-in performance
+cases pass in the separately enabled run recorded above.
+
+The strict global launcher returns 1, not a passing wrapper result: its 1,208-input
+baseline differs by exactly the T039 templateMessages.js change and newly added
+ResumeSettings.test.jsx. All other 1,207 original inputs, including all 630
+backend/backend-test inputs and static/native/configuration/dependency inputs,
+are identical. Independent final manifest review attests this scope; completed
+final frontend/build/browser/E2E gates cover both UI changes on the 1,209-input
+snapshot. The original guard and earlier interrupted run remain unchanged.
+
+T039 and every implementation task are complete and independently reviewed.
+T034 attests completed source verification, artifact reconciliation and the frozen
+protected-integration hand-off. New PR checks, actual signed-main exact-tree
+verification, verified recovery bundles and final ref cleanup are recorded after
+execution in PR metadata and the durable private Git recovery ledger. This
+source record does not pre-approve those steps or a production release.

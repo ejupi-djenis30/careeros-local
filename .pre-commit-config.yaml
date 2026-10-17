@@ -8,6 +8,8 @@ repos:
         # Legal texts are reproduced and verified byte-for-byte by the generator.
         exclude: ^THIRD_PARTY_NOTICES\.txt$
       - id: end-of-file-fixer
+        # Preserve the exact bytes emitted by Tauri's schema generator.
+        exclude: ^frontend/src-tauri/gen/schemas/(acl-manifests|desktop-schema|windows-schema)\.json$
       - id: check-yaml
         args: [--allow-multiple-documents]
       - id: check-merge-conflict

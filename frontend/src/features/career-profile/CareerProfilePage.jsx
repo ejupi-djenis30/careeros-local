@@ -11,6 +11,7 @@ import { GoalsEditor } from "./GoalsEditor";
 import { IdentityEditor } from "./IdentityEditor";
 import { PreferencesEditor } from "./PreferencesEditor";
 import { SourceImporter } from "./SourceImporter";
+import { useProfileNavigationGuard } from "./useProfileNavigationGuard";
 import { emptyProfile, profileCompleteness, profileDraftToWrite, profileResponseToDraft } from "./profileModel";
 import { tReference } from "./referenceMessages";
 import { mergePreferenceCandidates, PreferenceCandidateError } from "./preferenceCandidates";
@@ -100,11 +101,7 @@ export function CareerProfilePage() {
             profileRequestRef.current.controller = null;
         };
     }, [requestProfile]);
-    useEffect(() => {
-        const guard = (event) => { if (dirty) event.preventDefault(); };
-        window.addEventListener("beforeunload", guard);
-        return () => window.removeEventListener("beforeunload", guard);
-    }, [dirty]);
+    useProfileNavigationGuard(dirty, `${t("profile.unsaved")}. ${t("profile.leave")}`);
 
     const completeness = useMemo(() => {
         if (!profile) return 0;

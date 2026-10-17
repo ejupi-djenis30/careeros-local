@@ -1,6 +1,40 @@
 # Convergence evidence: Consolidate all work into main
 
-Date: 2026-10-17. Current outcome: `no_tasks_appended` for the UI assessment.
+Date: 2026-10-17. Current outcome: `no_tasks_appended` for extended implementation.
+
+The current read-only assessment covers 23 functional requirements, 21 success
+criteria, nine outcomes, eleven plan decisions, eight constitution principles and
+39 mapped tasks. Coverage is 100%; there are no orphan/duplicate tasks, authority
+conflicts or additional unbuilt requirements. T033 and T035–T039 implement the
+six new requirement/acceptance pairs FR-018–FR-023 / SC-016–SC-021. T034 already
+covers final aggregate checks, evidence reconciliation and the protected
+integration/recovery hand-off; these source obligations are complete. No
+duplicate convergence task is justified.
+
+Independent review confirms focused modules, unchanged public version/limits,
+literal/hash/complete-evidence equivalence, profile/resume request ownership,
+fail-closed source reuse, canonical generated schemas and translated selector
+labels. Final frontend passes 778 tests, lint/license/runtime and unchanged build
+budgets. Native, migration, static, performance and desktop checks pass, with exact
+skips and initial harness/wrapper failures retained in validation.md. The complete
+corrected backend passes 2,983 tests with 17 skips and 82.12% combined coverage;
+all eight final rebuilt-source E2E groups pass with npm/outer exit 0 and unchanged
+source/dist inputs. The backend's known two-file UI-only delta is retained by its
+strict global wrapper exit 1, distinct from pytest exit 0 and independently scoped
+input attestation; final UI gates cover both changes. No production containment
+is relaxed.
+
+The prior UI cycle completed as PR #117, signed main cc8c9dd, identical to reviewed
+tree e679b3a. Its post-merge CI/CodeQL and recovery-backed sole-main cleanup are
+verified. That historical success does not establish this new cycle's protected
+checks, main signature/tree or final refs. Those are actual subsequent execution
+in the PR/private recovery ledger, never an inferred source-only pass.
+
+This convergence assessment appends no task and leaves task bytes unchanged;
+the separately authorized completion-checkbox and validation updates follow the
+corresponding execution. No constitution amendment, waiver or release is created.
+
+## Historical UI convergence snapshot before PR #117
 
 The current read-only assessment covers seventeen functional requirements,
 fifteen success criteria, six outcomes, ten plan decisions and eight constitution

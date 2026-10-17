@@ -19,6 +19,7 @@ from backend.career.schemas import (
     SourceFactCandidate,
     SourceRole,
 )
+from backend.career.source_integrity import find_reusable_source_document
 from backend.career.source_parsing import (
     PreparedSourceDocument,
     SourceImportError,
@@ -45,7 +46,9 @@ def _response(
     source: SourceDocument,
     *,
     candidates: list[SourceFactCandidate] | tuple[SourceFactCandidate, ...] | None = None,
-    preference_candidates: list[PreferenceCandidate] | tuple[PreferenceCandidate, ...] | None = None,
+    preference_candidates: list[PreferenceCandidate]
+    | tuple[PreferenceCandidate, ...]
+    | None = None,
     review_notes: list[str] | tuple[str, ...] | None = None,
     warnings: list[str] | tuple[str, ...] | None = None,
 ) -> SourceDocumentResponse:
@@ -119,16 +122,11 @@ def persist_prepared_source_document(
     if profile is None:
         db.rollback()
         raise SourceImportError("Create the career profile before importing source documents")
-    existing = (
-        db.query(SourceDocument)
-        .join(CareerAsset, SourceDocument.asset_id == CareerAsset.id)
-        .filter(
-            CareerAsset.profile_id == profile.id,
-            CareerAsset.sha256 == prepared.sha256,
-            CareerAsset.kind == "source_document",
-        )
-        .first()
-    )
+    try:
+        existing = find_reusable_source_document(db, profile_id=profile.id, prepared=prepared)
+    except SourceImportError:
+        db.rollback()
+        raise
     if existing:
         if existing.source_role != prepared.source_role:
             db.rollback()

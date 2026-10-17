@@ -12,6 +12,10 @@ network, agent, inference, storage or publication authority.
 The UI continuation rechecks principles II, V, VI and VIII under the same 2.0.1:
 local data, explicit state ownership, focused components and private diagnostics.
 No amendment, schema/dependency change or new authority is required.
+The extended cleanup rechecks all eight principles under unchanged 2.0.1. The
+verified PR #117 main cc8c9dd is the baseline. Pure evidence decomposition adds
+no inference, storage, network or agent authority; literal and differential
+verification must preserve the current deterministic validation boundary.
 
 ## Integration design
 
@@ -162,6 +166,66 @@ No amendment, schema/dependency change or new authority is required.
     unexecuted local full-backend/native run. Record analysis and append-only
     convergence after implementation, then protected merge/verified recovery/ref
     cleanup under the owner's continuing integration authorization.
+
+11. Continue on codex/extended-refactor-cleanup. First audit tracked hygiene and
+    reproduce any new behavioral defects using synthetic OS-temporary evidence.
+    The initial inventory finds no tracked cache/build/log/scratch candidates;
+    retain development infrastructure and previously policy-blocked directories.
+    Decompose backend/ai/match_evidence.py (1,734 lines) into a stable facade and
+    an internal match_catalog package: multilingual vocabularies/patterns, typed
+    clause parsing and polarity propagation, evidence fragments and skill terms,
+    requirement summaries, quote catalog/hash construction and document assembly.
+    Keep an acyclic dependency graph and every new production file below 300
+    lines. Preserve literal values and existing helper bodies wherever possible;
+    pass public catalog version/description limits explicitly from the facade
+    rather than freezing imported copies or adding mutable shared state.
+    Save baseline module/source hashes in OS Temp and independently compare moved
+    AST bodies/constants plus complete synthetic outputs before running focused
+    evidence, policy, attestation, grounding, matching and search integration
+    suites. Do not add tests that merely mirror the split. Repeat all backend
+    static/full coverage gates for changed Python production code and complete
+    the combined frontend/native/migration gates before protected integration.
+    Reuse the prior protected publication/recovery/ref-cleanup procedure; record
+    actual results, including failures and skips, outside self-certifying merge
+    claims. Independently analyze artifacts and converge the implemented scope.
+    The frontend audit reproduced three additional failures on actual components:
+    internal profile navigation bypasses the unload-only guard; a confirmed CV
+    deletion followed by catalog failure keeps the deleted selection; confirmed
+    claim promotion followed by profile failure leaves the older revision.
+    Use the existing data-router blocker pattern for dirty profile navigation,
+    with translated confirmation and explicit reset/proceed lifecycle. Preserve
+    unload handling and browser/desktop route behavior. Extract a focused hook
+    where appropriate instead of growing the profile page.
+    Reconcile resume mutation acknowledgements before optional reads and keep
+    their error paths separate. Retain request/session ownership and current
+    profile/draft revision validation; expose a read-only retry using existing
+    feedback controls. Scope frontend edits to career-profile and resume-studio
+    controllers/components, translations and meaningful behavior tests. Preserve
+    model-independent manual editing, export and human confirmation authority.
+    The backend audit also reproduced false-success reuse of an existing source
+    document when its stored bytes are absent/corrupt or byte_size is wrong.
+    Validate the source/asset ownership and metadata in career/sources.py before
+    acknowledgement, reusing contained verified reads from storage. Keep errors
+    content-free, fail without overwriting corrupt data, and retain serialization,
+    healthy deduplication, role conflicts and existing publication recovery. Add
+    focused API/domain tests with synthetic files and isolated accounts; no schema
+    change or maintenance-recovery expansion is needed.
+    The real native gate reproduced a separate hygiene anomaly: Tauri rewrites
+    acl-manifests.json, desktop-schema.json and windows-schema.json without a
+    final LF, while the commit hook restores it. Adopt those exact generator
+    bytes and exempt only these three generated paths from end-of-file-fixer.
+    Prove baseline+LF equivalence and parsed-JSON identity, retain the initial
+    input-guard failure and repeat the cached native/hook gates on the canonical
+    final inputs. Do not edit capability/schema values or build logic.
+    Independent screenshot review finds two absent template-selector message
+    keys in the feature-local templateMessages module (a real production defect,
+    unrelated to lazy loading or the canonical software-en preset fixture).
+    Supply only the English/Italian selector labels and add real ResumeSettings
+    DOM regressions for selected/empty preset states. Repeat final frontend
+    coverage/lint/build and browser evidence; do not change Python/native/schema/
+    dependency inputs or template mutation semantics. Preserve any in-flight
+    backend guard differences as the exact known UI-only delta and independently
+    attest identical backend inputs rather than hiding the original guard result.
 
 ## Boundaries and size
 

@@ -1,7 +1,7 @@
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { MemoryRouter } from "react-router";
+import { createMemoryRouter, RouterProvider } from "react-router";
 import { ApiError } from "../../lib/client";
 import { careerProfile, EXPERIENCE_ID } from "../../test/fixtures";
 import { renderWithItalian } from "../../test/renderWithI18n";
@@ -20,7 +20,8 @@ vi.mock("../../context/AuthContext", () => ({ useAuth: () => ({ user: "mira" }) 
 vi.mock("../../context/ToastContext", () => ({ useToast: () => ({ showToast }) }));
 
 function render(ui, { route = "/profile", ...options } = {}) {
-    return renderWithItalian(<MemoryRouter initialEntries={[route]}>{ui}</MemoryRouter>, options);
+    const router = createMemoryRouter([{ path: "*", element: ui }], { initialEntries: [route] });
+    return renderWithItalian(<RouterProvider router={router} />, options);
 }
 
 const importedSource = {
