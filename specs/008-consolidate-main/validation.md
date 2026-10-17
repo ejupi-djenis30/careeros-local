@@ -9,7 +9,8 @@ publication tasks; a pending entry below is never presented as a passing check.
 
 ## Scope and review
 
-The original refactor is preserved in commit `6659277`. The branch ledger records
+The original refactor tree is preserved in public commit `bfbc06c` (the unpublished
+local identity `6659277` is retained in the local recovery bundle). The branch ledger records
 all twelve remote branch tips and their content decisions. Configurable providers
 were recovered on current authentication, proposal-only agent authority and
 desktop vault ownership. The old colliding migration was replaced with revision

@@ -2,12 +2,21 @@
 
 Date: 2026-10-17. Starting main:
 `1e9065f62b4c6da460941e35a6bc3d49fc673ba3`.
-Refactor committed as `6659277` on `codex/production-readiness-refactor`.
+Refactor first committed locally as `6659277` on `codex/production-readiness-refactor`.
 No original branch has been deleted while integration is in progress.
-Combined source is committed as `b6b851e`; ancestry record `3639d7b` retains all
+Combined source is committed as `a906d70`; ancestry record `a9150da` retains all
 twelve assessed original tips as ancestors. Its tree was checked equal to the
 reviewed combined source, so recording ancestry did not substitute old content
 for the recovered implementation. Final validation evidence is recorded separately.
+
+The first push was rejected by GitHub's private-email protection (GH007). Before
+any successful publication, only the four new local commits were recreated using
+the authenticated account's public noreply identity. Every commit tree and message
+was verified unchanged; all original remote commits retain their exact identity.
+The local-to-public mappings are `6659277` to `bfbc06c`, `b6b851e` to `a906d70`,
+`3639d7b` to `a9150da`, and `5695b24` to `5e088a1`. The private local identities
+remain only in the verified local recovery bundle. Account privacy and branch
+protection settings were not weakened.
 
 The complete original refs/history were saved and `git bundle verify` passed for
 `branches-before-integration.bundle` in the OS temporary directory
