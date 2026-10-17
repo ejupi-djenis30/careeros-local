@@ -1,6 +1,6 @@
 # Convergence evidence: Consolidate all work into main
 
-Date: 2026-10-17. Interim outcome: `tasks_appended` (T012–T017, Phase 4).
+Date: 2026-10-17. Interim outcome: `tasks_appended` (T012–T021, Phase 4).
 
 The assessment covered eight functional requirements, six success criteria,
 four outcomes, eight plan decisions and all eight constitution principles.
@@ -53,8 +53,39 @@ clean-host tooling bootstrap with a complete Python 3.13 smoke. The separate
 Python 3.12 Windows temporary-DLL cleanup failure is retained exactly. Container
 scanning, native packaging and the whole acceptance matrix remain CI obligations.
 T010/T011 remain open until protected-main integration, content verification,
-final recovery preservation and branch cleanup actually finish. No branch has
-been removed during this interim assessment.
+final recovery preservation and branch cleanup actually finish. PR #112 is now
+merged with a verified signature and exact reviewed source tree. All six mandatory
+checks, all six Agent Access jobs and both Linux package smokes passed. T015 and
+T016 are complete: the actual image has zero HIGH/CRITICAL findings and native
+version preflight/build passed. Ten obsolete dependency branches were removed
+automatically after their PRs closed, and the preserved local integration branch
+was removed. A new automated two-patch branch appeared during cleanup, so a
+separate convergence pass appended only T018. The deletion guard stopped on the
+changed inventory; the new tip is bundled and its compatible patches, truthful
+icon provenance and lock-bound notices are assessed before final publication.
+The same automation wave later produced a separate Python branch containing nine
+direct upgrades but no regenerated locks. A further convergence pass appended
+only T019 before implementation; the existing compatibility, lock, notice and
+complete verification requirements apply. No new authority or waiver is added.
+Review of the official FastAPI source identified newly built-in instrumentation
+that can use ambient providers even without an exporter dependency. A separate
+assessment appended T020 before implementation: explicit five-control opt-out and
+adversarial privacy tests are required to preserve the existing constitution.
+T018 now passes 686 frontend tests, all eight browser groups, lint/build and
+lock-bound legal/icon checks. T019 has a verified exact 121-package environment,
+coherent 58/112/21 locks and three zero-finding audits. T020 meaningfully reproduced
+18 ambient instrumentation/setup events before the five-control guard and passes
+with zero afterward. Final static checks and applicable hooks pass. A frozen
+complete Windows backend run and the remaining API/protected gates must finish;
+earlier integration results do not substitute for those changed-dependency gates.
+The frozen Windows run then exposed a time-dependent positive fixture for provider
+restore identity. A separate assessment appended T021: reconstruct the actual
+inserted archive state and retain exact production checks. The old fixture fails
+deterministically when SQLite's update clock differs; the corrected fixture and
+each isolated timestamp negative pass, with 19 focused tests green. The Windows
+run stopped at 48% with exit 1 and no summary, so it is not a completed pass.
+Its 1,169-input guard had zero changes. Linux on the prior head passed 2,949 tests,
+but a complete frozen Windows run and new-head protected checks remain mandatory.
 
 The old unavailable-package inference is withdrawn after independent fresh-cache
 registry checks; historical failed scans are retained as executions, not treated

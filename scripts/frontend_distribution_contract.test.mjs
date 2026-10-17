@@ -147,7 +147,7 @@ test("binds the distributable third-party notices to every dependency lock", asy
     const manifest = JSON.parse(manifestText);
     assert.deepEqual(manifest.componentCounts, {
         frontend: 13,
-        python: 57,
+        python: 58,
         runtime: 3,
         rust: 473,
     });

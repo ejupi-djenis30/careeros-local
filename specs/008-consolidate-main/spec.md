@@ -25,6 +25,9 @@ project and make the combined application work.
   all local/remote branches and open PRs before mutation or deletion.
 - FR-002 Assess branch content against the current application, distinguishing
   equivalent, superseded and genuinely missing work with recorded evidence.
+  Recheck remote tips immediately before deletion. Preserve and assess automated
+  follow-up branches created during cleanup, integrating compatible updates
+  through the same checks before removing their refs.
 - FR-003 Add configurable providers without restoring direct external-agent
   publication, fact confirmation, standalone writable vault access or old grants.
   Provider HTTP access remains explicit, authenticated, consented and subject to
@@ -36,10 +39,16 @@ project and make the combined application work.
   restorable without synthesizing a profile or career facts. Version 9 may omit
   the profile only when profile-owned relationships are empty and concrete owned
   provider records exist; legacy archive invariants remain unchanged.
+  Commit-outcome verification must compare the complete restored provider
+  inventory, owner, content and timestamps. Positive fixtures must reconstruct
+  the actual restored state, including explicit archived timestamps; ordinary
+  ORM edits must not be mistaken for proof of an identical restore.
 - FR-005 Integrate compatible installable updates with regenerated hash locks and
   complete notices. Keep newer security fixes over obsolete branch pins; do not
   introduce unavailable packages, mismatched runtime binaries, audit suppression
   or weakened gates.
+  Vendor upgrades must preserve the no-telemetry boundary even when ambient
+  tracing providers or auto-configuration environment variables are present.
 - FR-006 Preserve main's signed, linear, review/check-protected integration path.
   Do not disable protection or force-push. Push and merge the concrete combined
   result through the permitted path; only then remove integrated branch refs.

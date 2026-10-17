@@ -28,14 +28,18 @@ All notable changes to CareerOS Local are documented here. The format follows
 - Align the Rust Tauri core and desktop plugins with the updated JavaScript packages; regenerate
   the native lock, schemas and legal notices while preserving application permissions. Native
   builds declare the tested Rust 1.96 baseline.
-- Regenerated hash-locked production, development and packaging environments for 15 Python updates:
-  FastAPI 0.141.1, Uvicorn 0.54.0, SQLAlchemy 2.1.1, greenlet 3.5.6, Alembic 1.20.0,
-  Pydantic 2.13.5, pydantic-settings 2.15.0, python-dotenv 1.2.3, pytest-mock 3.16.0,
-  httpx2 2.13.1, wheel 0.48.0, Ruff 0.16.9, mypy 2.3.1, pre-commit 4.6.2 and
-  PyInstaller 6.22.3. Packaging metadata and third-party notices use the same reviewed locks.
+- Regenerated hash-locked production, development and packaging environments with reviewed updates:
+  FastAPI 0.143.0, Uvicorn 0.54.0, SQLAlchemy 2.1.4, greenlet 3.5.6, Alembic 1.20.0,
+  Pydantic 2.14.0, pydantic-settings 2.15.0, python-dotenv 1.2.4, pytest-mock 3.16.0,
+  httpx2 2.13.1, wheel 0.48.0, Ruff 0.17.0, mypy 2.4.0, pre-commit 4.6.2,
+  PyInstaller 6.22.3, tenacity 9.2.1, virtualenv 21.14.6 and pip-tools 7.6.2.
+  Packaging metadata and third-party notices use the same reviewed locks.
 
 ### Security
 
+- Disable FastAPI tracing, metrics, log instrumentation, operation spans and telemetry
+  auto-configuration explicitly. Adversarial environment/provider tests preserve zero telemetry
+  activity, and locked distributions exclude telemetry SDKs and exporters.
 - Replaced the expired Ollama exception inventory with a local image definition built from the
   checksum-pinned 0.34.3 source and digest-pinned Go 1.27.2 toolchain. The replacement executable
   and digest-pinned upstream native payload both use Ollama 0.34.3. The build verifies the patched
@@ -47,7 +51,7 @@ All notable changes to CareerOS Local are documented here. The format follows
   both runtime Dockerfiles apply supported Alpine security updates. Container vulnerability
   gates and package SBOMs continue to cover the exact built images.
 - Retained reviewed security pins including pypdf 6.21.0, h2 4.4.1, cryptography 50.0.1,
-  pip 26.2, urllib3 2.8.0 and virtualenv 21.13.0, with complete regenerated license notices.
+  pip 26.2, urllib3 2.8.0 and virtualenv 21.14.6, with complete regenerated license notices.
 - Treat every configured provider header as confidential. API responses redact values, imports
   reject headers, backups exclude them, and changing origin requires explicitly removing or
   re-entering credentials instead of forwarding preserved secrets to another destination.

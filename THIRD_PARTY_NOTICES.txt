@@ -8,7 +8,7 @@ which covers the CareerOS Local project itself.
 {
   "componentCounts": {
     "frontend": 13,
-    "python": 57,
+    "python": 58,
     "runtime": 3,
     "rust": 473
   },
@@ -46,7 +46,7 @@ which covers the CareerOS Local project itself.
         "9dd42ea92cff2ede5cd477cbfcce051b2d0115c0ac7f368ee88cb545055dff1d",
         "bb28c48e3e078166e91cfc2b6db7ffebb8a0973b9e23b3df060561292d8d69ec"
       ],
-      "version": "2.12.1"
+      "version": "2.12.2"
     },
     {
       "ecosystem": "frontend",
@@ -101,7 +101,7 @@ which covers the CareerOS Local project itself.
       "textIds": [
         "0fb3e11bd57e896c5a512afd64864d28a37de45d19835016c87ca1ad19ead969"
       ],
-      "version": "1.13.1"
+      "version": "1.13.2"
     },
     {
       "ecosystem": "frontend",
@@ -323,7 +323,7 @@ which covers the CareerOS Local project itself.
       "textIds": [
         "4ec89ffc81485b97fec584b2d4a961032eeffe834453894fd9c1274906cc744e"
       ],
-      "version": "0.141.1"
+      "version": "0.143.0"
     },
     {
       "ecosystem": "python",
@@ -504,6 +504,17 @@ which covers the CareerOS Local project itself.
     },
     {
       "ecosystem": "python",
+      "license": "Apache-2.0",
+      "name": "opentelemetry-api",
+      "selectedLicenses": [],
+      "source": "requirements.lock",
+      "textIds": [
+        "50e6751797c50dedd75ef1b8a0d9e42f5f8472e9fbce91f34718e9f97b0c780a"
+      ],
+      "version": "1.45.1"
+    },
+    {
+      "ecosystem": "python",
       "license": "Apache-2.0 OR BSD-2-Clause",
       "name": "packaging",
       "selectedLicenses": [],
@@ -513,7 +524,7 @@ which covers the CareerOS Local project itself.
         "bb28c48e3e078166e91cfc2b6db7ffebb8a0973b9e23b3df060561292d8d69ec",
         "cad1ef5bd340d73e074ba614d26f7deaca5c7940c3d8c34852e65c4909686c48"
       ],
-      "version": "26.2"
+      "version": "26.3"
     },
     {
       "ecosystem": "python",
@@ -546,7 +557,7 @@ which covers the CareerOS Local project itself.
       "textIds": [
         "a9e186f3ca16b5eef84318e7a701721351a00cb7b8ae3a4394b67b49e3529ef3"
       ],
-      "version": "2.13.5"
+      "version": "2.14.0"
     },
     {
       "ecosystem": "python",
@@ -557,7 +568,7 @@ which covers the CareerOS Local project itself.
       "textIds": [
         "2afdd30d54b4d62b6f488a6bcc1546e84ec5061f13f4209c03d012348783795a"
       ],
-      "version": "2.46.5"
+      "version": "2.50.0"
     },
     {
       "ecosystem": "python",
@@ -612,7 +623,7 @@ which covers the CareerOS Local project itself.
       "textIds": [
         "80619b7049f08c81683ad0e01f08f257a840652dd71ee83146d36658c7d2c2b9"
       ],
-      "version": "1.2.3"
+      "version": "1.2.4"
     },
     {
       "ecosystem": "python",
@@ -692,7 +703,7 @@ which covers the CareerOS Local project itself.
       "textIds": [
         "e862bb5b904fb5513c3e14288d7a25a12eb0ecc7847a0a965d310e9a955e7cb9"
       ],
-      "version": "2.1.1"
+      "version": "2.1.4"
     },
     {
       "ecosystem": "python",
@@ -718,14 +729,14 @@ which covers the CareerOS Local project itself.
     },
     {
       "ecosystem": "python",
-      "license": "Apache 2.0",
+      "license": "Apache-2.0",
       "name": "tenacity",
       "selectedLicenses": [],
       "source": "requirements.lock",
       "textIds": [
         "50e6751797c50dedd75ef1b8a0d9e42f5f8472e9fbce91f34718e9f97b0c780a"
       ],
-      "version": "9.1.4"
+      "version": "9.2.1"
     },
     {
       "ecosystem": "python",
@@ -747,7 +758,7 @@ which covers the CareerOS Local project itself.
       "textIds": [
         "804b59b25f2c31bd278f9202a19ae49a3945aa2664387e2d0a128c7cacc61ec3"
       ],
-      "version": "0.4.2"
+      "version": "0.4.4"
     },
     {
       "ecosystem": "python",
@@ -7732,10 +7743,10 @@ which covers the CareerOS Local project itself.
   "sourceLocks": {
     ".native-python-version": "f8faecf2505680716c6279bf2cdec3d5a5ba2ba852f0d7df45d51ac1ce8d9ade",
     ".python-version": "aa0d6581054e6e4ff3f91839deca7a854ad37221b8784d060b42d0f847ff1a3b",
-    "frontend/package-lock.json": "bb88e6c7b25928c12a677640f654d3e5239685466246aa25bf430cbc7d9cec6c",
+    "frontend/package-lock.json": "3430d042f5cda898996902bc4b435a67336f082b57b6eade575633b6a51b4bf4",
     "frontend/src-tauri/Cargo.lock": "968585ac02371b626e7d06984e1c308b531a9846ae7c8d1227ac6a4890493bd4",
-    "requirements-tooling.lock": "f62fcdd99e65ec2e337457aebcb0391be841c7c2c7ad7d069f3b8276f27466b6",
-    "requirements.lock": "b81ed4ec928c4059a9ee28a75977264e3c24e245ea23c5f048d6ffc9a246813d",
+    "requirements-tooling.lock": "3022484e2ff7ed4d8fc1e890dd701b09e66cabde70f19d40e101dcddb098ef07",
+    "requirements.lock": "1b9362526eefd74898c1b7b3d0d3892d229f4d060d2804fe2cd91605561b2423",
     "third_party/licenses/cpython-3.13.14/LICENSE": "78b12c3a81360b357002334f0e70ea0e92eebf7a9b358805c03c48484945f3bb"
   },
   "texts": [
@@ -7890,7 +7901,7 @@ which covers the CareerOS Local project itself.
       "id": "0fb3e11bd57e896c5a512afd64864d28a37de45d19835016c87ca1ad19ead969",
       "sha256": "0fb3e11bd57e896c5a512afd64864d28a37de45d19835016c87ca1ad19ead969",
       "sources": [
-        "frontend:bootstrap-icons@1.13.1/LICENSE"
+        "frontend:bootstrap-icons@1.13.2/LICENSE"
       ]
     },
     {
@@ -8344,7 +8355,7 @@ which covers the CareerOS Local project itself.
       "id": "2afdd30d54b4d62b6f488a6bcc1546e84ec5061f13f4209c03d012348783795a",
       "sha256": "2afdd30d54b4d62b6f488a6bcc1546e84ec5061f13f4209c03d012348783795a",
       "sources": [
-        "python:pydantic-core@2.46.5/LICENSE"
+        "python:pydantic-core@2.50.0/LICENSE"
       ]
     },
     {
@@ -8707,7 +8718,7 @@ which covers the CareerOS Local project itself.
       "id": "4ec89ffc81485b97fec584b2d4a961032eeffe834453894fd9c1274906cc744e",
       "sha256": "4ec89ffc81485b97fec584b2d4a961032eeffe834453894fd9c1274906cc744e",
       "sources": [
-        "python:fastapi@0.141.1/LICENSE"
+        "python:fastapi@0.143.0/LICENSE"
       ]
     },
     {
@@ -8750,8 +8761,9 @@ which covers the CareerOS Local project itself.
       "id": "50e6751797c50dedd75ef1b8a0d9e42f5f8472e9fbce91f34718e9f97b0c780a",
       "sha256": "50e6751797c50dedd75ef1b8a0d9e42f5f8472e9fbce91f34718e9f97b0c780a",
       "sources": [
+        "python:opentelemetry-api@1.45.1/LICENSE",
         "python:python-multipart@0.0.32/LICENSE.txt",
-        "python:tenacity@9.1.4/LICENSE",
+        "python:tenacity@9.2.1/LICENSE",
         "python:tzdata@2026.3/LICENSE_APACHE",
         "rust:embed_plist@1.2.2/LICENSE-APACHE",
         "rust:encoding_rs@0.8.35/LICENSE-APACHE",
@@ -8841,7 +8853,7 @@ which covers the CareerOS Local project itself.
       "id": "5e834fe9788c524210deda859c46a550ffa5aa0cba9ea0572f0d81120e97c008",
       "sha256": "5e834fe9788c524210deda859c46a550ffa5aa0cba9ea0572f0d81120e97c008",
       "sources": [
-        "frontend:@tauri-apps/api@2.12.1/LICENSE.spdx"
+        "frontend:@tauri-apps/api@2.12.2/LICENSE.spdx"
       ]
     },
     {
@@ -9211,14 +9223,14 @@ which covers the CareerOS Local project itself.
       "id": "804b59b25f2c31bd278f9202a19ae49a3945aa2664387e2d0a128c7cacc61ec3",
       "sha256": "804b59b25f2c31bd278f9202a19ae49a3945aa2664387e2d0a128c7cacc61ec3",
       "sources": [
-        "python:typing-inspection@0.4.2/LICENSE"
+        "python:typing-inspection@0.4.4/LICENSE"
       ]
     },
     {
       "id": "80619b7049f08c81683ad0e01f08f257a840652dd71ee83146d36658c7d2c2b9",
       "sha256": "80619b7049f08c81683ad0e01f08f257a840652dd71ee83146d36658c7d2c2b9",
       "sources": [
-        "python:python-dotenv@1.2.3/LICENSE"
+        "python:python-dotenv@1.2.4/LICENSE"
       ]
     },
     {
@@ -9489,7 +9501,7 @@ which covers the CareerOS Local project itself.
       "id": "9dd42ea92cff2ede5cd477cbfcce051b2d0115c0ac7f368ee88cb545055dff1d",
       "sha256": "9dd42ea92cff2ede5cd477cbfcce051b2d0115c0ac7f368ee88cb545055dff1d",
       "sources": [
-        "frontend:@tauri-apps/api@2.12.1/LICENSE-MIT",
+        "frontend:@tauri-apps/api@2.12.2/LICENSE-MIT",
         "rust:tauri-build@2.7.3/LICENSE-MIT",
         "rust:tauri-codegen@2.7.3/LICENSE-MIT",
         "rust:tauri-macros@2.7.3/LICENSE-MIT",
@@ -9612,7 +9624,7 @@ which covers the CareerOS Local project itself.
       "id": "a9e186f3ca16b5eef84318e7a701721351a00cb7b8ae3a4394b67b49e3529ef3",
       "sha256": "a9e186f3ca16b5eef84318e7a701721351a00cb7b8ae3a4394b67b49e3529ef3",
       "sources": [
-        "python:pydantic@2.13.5/LICENSE"
+        "python:pydantic@2.14.0/LICENSE"
       ]
     },
     {
@@ -9759,7 +9771,7 @@ which covers the CareerOS Local project itself.
       "id": "b70e7e9b742f1cc6f948b34c16aa39ffece94196364bc88ff0d2180f0028fac5",
       "sha256": "b70e7e9b742f1cc6f948b34c16aa39ffece94196364bc88ff0d2180f0028fac5",
       "sources": [
-        "python:packaging@26.2/LICENSE.BSD"
+        "python:packaging@26.3/LICENSE.BSD"
       ]
     },
     {
@@ -9780,8 +9792,8 @@ which covers the CareerOS Local project itself.
       "id": "bb28c48e3e078166e91cfc2b6db7ffebb8a0973b9e23b3df060561292d8d69ec",
       "sha256": "bb28c48e3e078166e91cfc2b6db7ffebb8a0973b9e23b3df060561292d8d69ec",
       "sources": [
-        "frontend:@tauri-apps/api@2.12.1/LICENSE-APACHE-2.0",
-        "python:packaging@26.2/LICENSE.APACHE",
+        "frontend:@tauri-apps/api@2.12.2/LICENSE-APACHE-2.0",
+        "python:packaging@26.3/LICENSE.APACHE",
         "rust-canonical:Apache-2.0/sync_wrapper@1.0.2/LICENSE",
         "rust:fdeflate@0.3.7/LICENSE-APACHE",
         "rust:field-offset@0.3.6/LICENSE-APACHE",
@@ -9903,7 +9915,7 @@ which covers the CareerOS Local project itself.
       "id": "cad1ef5bd340d73e074ba614d26f7deaca5c7940c3d8c34852e65c4909686c48",
       "sha256": "cad1ef5bd340d73e074ba614d26f7deaca5c7940c3d8c34852e65c4909686c48",
       "sources": [
-        "python:packaging@26.2/LICENSE"
+        "python:packaging@26.3/LICENSE"
       ]
     },
     {
@@ -10159,7 +10171,7 @@ which covers the CareerOS Local project itself.
       "id": "e862bb5b904fb5513c3e14288d7a25a12eb0ecc7847a0a965d310e9a955e7cb9",
       "sha256": "e862bb5b904fb5513c3e14288d7a25a12eb0ecc7847a0a965d310e9a955e7cb9",
       "sources": [
-        "python:sqlalchemy@2.1.1/LICENSE"
+        "python:sqlalchemy@2.1.4/LICENSE"
       ]
     },
     {

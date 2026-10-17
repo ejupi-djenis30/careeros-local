@@ -24,6 +24,11 @@ remain mandatory. Main protections remain in force.
    profile-owned records are empty and at least one owned provider exists.
    Preserve strict legacy validation and current relationship/path/user binding;
    restore provider-only data without generating a placeholder career profile.
+   Keep ambiguous-commit verification strict across every persisted column,
+   including archived timestamps. Diagnose the final Windows identity regression
+   against the upgraded ORM before changing behavior; reconstruct a faithful
+   restore in positive tests and preserve negative owner/content/inventory/
+   timestamp checks. Repeat focused rollback tests and final backend gates.
    Existing provider header secrets must never be implicitly carried to a new
    origin: changing scheme, canonical hostname or effective port requires removing
    or explicitly re-entering the headers. Same-origin masked edits remain safe.
@@ -51,6 +56,27 @@ remain mandatory. Main protections remain in force.
    Main's signed linear policy and squash-only repository configuration require
    the allowed PR integration path, followed by remote verification and branch
    deletion. Never force-push, change protection, or delete unintegrated refs.
+   If automation creates another update branch during cleanup, stop deletion,
+   preserve its tip and assess its changes. The post-merge follow-up proposes
+   only Tauri API 2.12.2 and Bootstrap Icons 1.13.2. Keep Rust core 2.12.4 and
+   plugin pins unchanged, verify their compatibility and npm integrity, reproduce
+   canonical notices/icons, repeat affected frontend/distribution checks and the
+   protected PR gates, then finish ref cleanup against a fresh inventory.
+   The icon generator's provenance header must use the installed package version,
+   verified against its metadata. Remove its stale 1.13.1 literal and test the
+   actual generated header so unchanged SVG paths cannot conceal false provenance.
+   The same automation wave also proposes nine Python/tooling updates. Assess the
+   published Python support and hashes, regenerate all three coherent lockfiles
+   from exact Python 3.12.13 and the reviewed pip-tools version, preserve platform
+   markers/security pins, and build a new isolated hash-synchronized environment.
+   Reproduce notices with its final metadata and repeat backend coverage, static,
+   performance, migration, packaging and protected checks before final cleanup.
+   FastAPI 0.143 introduces built-in tracing, metrics, logs and operation spans
+   whose defaults can use ambient providers. Disable all five telemetry controls
+   explicitly in the application constructor, including auto-configuration. Add
+   adversarial environment/provider regressions proving zero instrumentation and
+   preserve the absence of SDK/exporter packages in production. An API-only vendor
+   dependency does not authorize any telemetry feature or external transmission.
 6. Run focused regressions first, then final backend coverage/performance,
    frontend coverage/lint/build/E2E, native/static/license/security checks and
    disposable Alembic roundtrip appropriate to the combined source. Preserve

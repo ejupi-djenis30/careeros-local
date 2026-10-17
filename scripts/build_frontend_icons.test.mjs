@@ -1,7 +1,20 @@
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 import { optimizeSvg, svgDataUrl } from "./build_frontend_icons.mjs";
+
+test("generated icon subsets identify the locked upstream release", async () => {
+    const lockfile = JSON.parse(await readFile(new URL("../frontend/package-lock.json", import.meta.url), "utf8"));
+    const { version } = lockfile.packages["node_modules/bootstrap-icons"];
+    for (const file of ["bootstrap-icons-subset.css", "shell-icons.css"]) {
+        const stylesheet = await readFile(new URL(`../frontend/src/${file}`, import.meta.url), "utf8");
+        assert.equal(
+            stylesheet.split(/\r?\n/)[1],
+            ` * Generated from Bootstrap Icons v${version} (https://icons.getbootstrap.com/)`,
+        );
+    }
+});
 
 test("the icon optimizer accepts the locked Bootstrap shape vocabulary", () => {
     assert.equal(

@@ -1,11 +1,12 @@
 # Validation evidence: Consolidate all work into main
 
-Date: 2026-10-17. Work branch: `codex/production-readiness-refactor`.
-Status: final combined validation in progress; no main merge or branch deletion
-has been represented as complete. No release or signed installer is claimed.
-This source record is captured before protected publication. Subsequent PR check
-results and Git integration operations complete the remaining verification and
-publication tasks; a pending entry below is never presented as a passing check.
+Date: 2026-10-17. Initial branch: `codex/production-readiness-refactor`;
+follow-up branch: `codex/final-dependency-patches`.
+Status: PR #112 is merged and verified; automated frontend/Python follow-ups and final
+ref cleanup are in progress. No production release or installer signing claim.
+This source record captures the initial integration and precedes the follow-up's
+protected publication. Subsequent live checks and Git operations complete its
+remaining tasks; a pending entry is never presented as a passing check.
 
 ## Scope and review
 
@@ -36,6 +37,7 @@ evidence, npm caches and unsigned packaging proofs are in the OS temporary area.
 | Complete backend coverage baseline | 2,936 passed, 17 skipped, 3 failed in 1,314.04 seconds; combined coverage 82.00%. Failures were stale expected command, PyInstaller identity and document allowlist contracts; corrected before final verification |
 | Final local complete backend coverage gate | 2,940 passed, 17 skipped in 1,219.53 seconds; combined coverage 82.03%. Pytest returned 0; the broad freeze wrapper returned 1 solely because T014 intentionally changed the frontend E2E credential fixture during the run. Backend Python, dependency and distribution inputs were unchanged |
 | First protected Linux backend gate | 2,946 passed, 11 skipped in 628.60 seconds; combined coverage 83.59%, followed by passing opt-in performance gates. This precedes T015–T017; the final PR head must repeat its required checks |
+| Final PR #112 Linux backend gate | 2,947 passed, 11 skipped in 683.03 seconds; combined coverage 83.59%, followed by passing performance gates |
 | Separate opt-in backend performance tests | All four passed in 9.16 seconds on final Python/provider source; 1,168 recorded inputs unchanged |
 | Desktop source lifecycle tests, final Python dependencies | 32 passed, 6 skipped in 15.49 seconds; five Windows-inapplicable POSIX ownership/no-follow checks and one packaged lifecycle test requiring CAREEROS_SIDECAR_BINARY |
 | Provider/network/consent boundary regressions | Passed; overlapping focused runs include 143 provider/consent/pipeline tests and 26 transport/auth/bounds tests |
@@ -203,10 +205,114 @@ GitGuardian classified the original provider E2E literal as Username Password.
 Independent account-flow review established it as a synthetic account created
 only in the journey's fresh OS-temporary loopback vault. T014 generates a new
 cryptographic password per run; real provider E2E and lint passed. No scanner
-exclusion or dismissal was added, and the new-head scanner result remains pending.
+exclusion or dismissal was added. The final PR #112 scanner still reported only
+the original `a906d70` fixture commit; it did not report a new live credential.
+
+PR #112 completed all six mandatory gates and CodeQL. Its six Agent Access
+acceptance jobs passed on Linux/macOS/Windows with Python 3.12/3.13, including
+cleanup. The rebuilt Ollama image passed the unchanged scan with zero
+HIGH/CRITICAL findings. Native Linux preflight, AppImage/deb construction and
+both package smokes passed, including deterministic document/backup verification.
+The smoke-tested candidate artifact is 12098681419, SHA-256
+`d7d493fe8b4a72bf93276898e8e9aca363b022ae46f2610393c909193965c08b`;
+this is a CI candidate, not a claim of installer signing or release publication.
+Main commit `1a47751d23574fd00d548a69ccc44d31b4dbe608` has a valid GitHub signature
+and an exact tree match to the tested PR source. A standard API merge succeeded
+after the initial CLI policy rejection, without any policy change or bypass.
+
+During the final ref check, Dependabot created #113 for Tauri API 2.12.2 and
+Bootstrap Icons 1.13.2. The inventory guard stopped deletion and retained its
+exact tip in a verified bundle. T018 repeats the affected checks and protected
+publication with regenerated notices and truthful icon-generator provenance;
+its pending gates are not inferred from the completed #112 results.
+
+The first merged main also passed its independent push CI run 39025655766.
+The two frontend patches then passed fresh-cache installation and full/production
+npm audits with zero findings, 686 unit tests with coverage, lint, build, all eight
+browser groups and 57 affected backend distribution contracts. T018 notices
+reproduced at 1,424,072 bytes, SHA-256
+`e00bf9d3ff6a9233b02e39c1746b3c0a607dcd03bb294bf1638639d7b0f0aebb`.
+This is the frontend-only baseline; T019 Python locks require a subsequent
+canonical notice and final affected gates. T020 preserves the no-telemetry
+boundary before adopting FastAPI's newly instrumented implementation.
+
+T019's reviewed final lock inventories are runtime 58, development 112 and tooling
+21 packages, with 121 unique packages in the coherent combined lock closure. All
+three hash-required audits passed with zero vulnerabilities, skipped packages or
+ignored findings. Common pins, exact Windows pywin32 markers and portable LF
+headers were preserved. The final canonical notice reproduces at 1,424,427 bytes,
+SHA-256 `7c7e55c2f2444955eae0e5544913dec6ab6d6e5d5028cb20d8317630bf7f1754`,
+with component counts 13 frontend / 58 Python / 3 runtime / 473 Rust. Final Node
+distribution/license contracts and production build passed with unchanged budgets.
+
+T020's isolated FastAPI 0.143 probe first failed meaningfully: three synthetic
+requests (200, 422 and 500) caused 18 ambient provider/setup events. The positive
+control verifies tracing, metrics, logs and exporter-configuration probes; public
+network access is trapped and no private input values are printed. The explicit
+five-control opt-out then passed both privacy tests with zero provider/setup or
+egress events. Independent AST comparison confirms this telemetry keyword is the
+only production-module semantic change. An initial probe invocation used the
+wrong health prefix and failed preparation; it is not counted as the defect's
+red reproduction. One upstream Starlette TestClient httpx deprecation warning
+is retained. The final complete/static/migration/API/remote follow-up gates remain
+pending until actually executed. The final installed Python 3.12.13 environment
+matches all 121 packages exactly, with zero missing, additional or mismatched
+distributions and a passing pip check. Ruff 0.17.0, mypy 2.4.0 and all applicable
+changed-file hooks pass. YAML and frontend-lint hooks skipped because no matching
+files changed in this follow-up; the complete T018 frontend lint passed. The
+privacy test's formatting was AST-identical. The final Windows backend coverage
+run has started on frozen non-Markdown source; its result remains pending.
+
+The final updated-runtime material/provider journeys both passed, including
+deterministic document/ZIP downloads, account isolation, revision/consent behavior
+and provider-only backup without a profile. Browser forbidden origins were empty;
+both temporary vaults and child processes were cleaned successfully. Independent
+review found no defect in the vendor-control names, precedence or privacy probes.
+Four final performance tests passed in 9.12 seconds with 1,169 unchanged inputs:
+profile/page/agenda p95 4.277/42.661/87.233 ms (each budget 200 ms), readiness
+p95 21.353 ms and maximum five queries (budget 100 ms/five queries). The final
+SQLite upgrade/downgrade/upgrade succeeded with head d0b1c2d3e4f5, integrity OK
+and zero foreign-key violations. An initial helper asserted an incorrect table
+name after successful migrations; its corrected read-only assertion passed.
+The complete Windows run remains pending. A subsequent documentation-only commit
+corrects a stale virtualenv version reference and records these finished checks;
+its required PR gates must run on that final head. No non-Markdown input changed.
+
+That Windows run subsequently exposed a time-dependent test fixture in provider
+commit-identity verification. It was interrupted at 48%, exit 1, without a pytest
+completion summary; the 1,169-input guard remained unchanged. It is not a pass.
+The positive fixture edited the original provider, which invokes SQLite's
+automatic updated_at and is not the state of a real archive restore. Production
+correctly rejected the resulting timestamp mismatch. T021 changes only the test:
+delete/flush/insert the complete decoded archived row, including both timestamps,
+as the real restore does. Exact production verification is unchanged. Each new
+timestamp negative changes only one expected field, avoiding clock dependence.
+
+The original fixture failed deterministically with a distinct SQLite update clock
+(one failure in 1.90 seconds; updated_at was the sole content mismatch). The final
+two timestamp cases pass in 2.27 seconds; all 19 provider-only tests pass in 19.40
+seconds, including real API restore and before/after-commit failure handling.
+Ruff and applicable hooks pass. Mypy/frontend hooks skip this test-only change;
+the prior complete static/frontend checks remain recorded separately. Other test
+function ASTs are identical after required Ruff formatting. A new frozen Windows
+coverage run and new-head protected CI must finish before final publication.
+The coordinator's first hook invocation selected system Python 3.14, which lacks
+Ruff, and returned 1. Repeating with the final locked Python environment first
+on PATH passed every applicable hook; YAML, mypy and frontend hooks had no
+matching changed files. No hook rewrote source in either invocation.
+
+Prior head 5459711 passed Linux backend CI (2,949 passed, 11 skipped, 666.53 seconds,
+83.59% combined coverage), all four performance gates, frontend, Rust, containers,
+release supply-chain, CodeQL and six Agent Access acceptance environments. The
+unsigned wheel candidate is 1,042,558 bytes, SHA-256
+`9ee94376d44d27ffdeeedc8e60f31c00468637d106103653ebad3162c51bfaa2`.
+Its notice/lock checksums match the manifest. Rust fmt/clippy pass, all 28 Rust
+tests pass, and license/audit checks retain only the disclosed existing Linux
+exception and unmaintained warning. These executions are tied to that prior head;
+they do not claim the post-T021 protected gates have already run.
 
 Native installer clean-install/restart/upgrade across supported systems, signing,
 release artifact checksum/SBOM/provenance and applicable model/hardware evaluation
 remain release qualification obligations. None is claimed from source suites or
-the unsigned wheel proof. Protected PR checks and final remote/main content
-verification are still pending.
+the unsigned wheel proof. PR #112's protected checks and signed-main content
+verification passed; the automated follow-up must repeat protected publication.
