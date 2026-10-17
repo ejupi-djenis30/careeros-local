@@ -3,6 +3,7 @@ import shutil
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import cast
 
 from sqlalchemy import exists, text
 from sqlalchemy.orm import Session
@@ -35,6 +36,7 @@ from backend.portability.journal import (
     clear_restore_journal,
     restore_journal_paths,
 )
+from backend.providers.configuration.models import JobProviderConfiguration
 from backend.resumes.models import ResumeArtifact, ResumeDraft, ResumeVersion
 from backend.resumes.storage import all_resume_publication_journals
 from backend.services.auth import (
@@ -73,7 +75,7 @@ def _enable_sqlite_secure_delete(db: Session) -> None:
     if not _uses_sqlite(db):
         return
     try:
-        enabled = db.execute(text("PRAGMA secure_delete=ON")).scalar_one()
+        enabled: object = db.execute(text("PRAGMA secure_delete=ON")).scalar_one()
     except Exception as exc:
         raise VaultDeletionError("Could not enable secure SQLite deletion") from exc
     if enabled != 1:
@@ -670,6 +672,9 @@ def _deletion_commit_was_published(
             query.first() is not None
             for query in (
                 verification.query(CandidateProfile.id).filter(CandidateProfile.user_id == user_id),
+                verification.query(JobProviderConfiguration.id).filter(
+                    JobProviderConfiguration.user_id == user_id
+                ),
                 verification.query(SearchProfile.id).filter(SearchProfile.user_id == user_id),
                 verification.query(Job.id).filter(Job.user_id == user_id),
                 verification.query(Application.id).filter(Application.user_id == user_id),
@@ -762,22 +767,28 @@ def delete_complete_vault(
                 paths.difference_update(foreign_recovery_paths)
                 paths.update(publication_paths)
             paths.update(_exclusive_restore_journal_paths(db, validated_user_id))
-            scraped_job_ids = {
+            scraped_job_ids: set[int | None] = {
                 scraped_job_id
-                for (scraped_job_id,) in db.query(Job.scraped_job_id)
-                .filter(Job.user_id == validated_user_id)
-                .distinct()
-                .all()
+                for (scraped_job_id,) in cast(
+                    list[tuple[int | None]],
+                    db.query(Job.scraped_job_id)
+                    .filter(Job.user_id == validated_user_id)
+                    .distinct()
+                    .all(),
+                )
             }
             scraped_job_ids.update(
                 scraped_job_id
-                for (scraped_job_id,) in db.query(Application.scraped_job_id)
-                .filter(
-                    Application.user_id == validated_user_id,
-                    Application.scraped_job_id.is_not(None),
+                for (scraped_job_id,) in cast(
+                    list[tuple[int | None]],
+                    db.query(Application.scraped_job_id)
+                    .filter(
+                        Application.user_id == validated_user_id,
+                        Application.scraped_job_id.is_not(None),
+                    )
+                    .distinct()
+                    .all(),
                 )
-                .distinct()
-                .all()
                 if scraped_job_id is not None
             )
             exclusive_scraped_job_ids = (
@@ -804,6 +815,9 @@ def delete_complete_vault(
                 "profiles": 1 if profile else 0,
                 "search_profiles": db.query(SearchProfile)
                 .filter(SearchProfile.user_id == validated_user_id)
+                .count(),
+                "job_provider_configurations": db.query(JobProviderConfiguration)
+                .filter(JobProviderConfiguration.user_id == validated_user_id)
                 .count(),
                 "jobs": db.query(Job).filter(Job.user_id == validated_user_id).count(),
                 "scraped_jobs": len(exclusive_scraped_job_ids),
@@ -888,6 +902,9 @@ def delete_complete_vault(
             db.query(AutomationGrant).filter(AutomationGrant.user_id == validated_user_id).delete(
                 synchronize_session=False
             )
+            db.query(JobProviderConfiguration).filter(
+                JobProviderConfiguration.user_id == validated_user_id
+            ).delete(synchronize_session=False)
             db.query(AIExecution).filter(AIExecution.user_id == validated_user_id).delete(
                 synchronize_session=False
             )

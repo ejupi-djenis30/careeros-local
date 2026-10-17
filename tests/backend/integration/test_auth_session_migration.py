@@ -15,7 +15,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[3]
 PREVIOUS_HEAD = "e7f8a9b0c1d2"
 AUTH_SESSION_REVISION = "f8a9b0c1d2e3"
 VAULT_LIFECYCLE_REVISION = "a9b0c1d2e3f4"
-CURRENT_HEAD = "c0a1b2c3d4e5"
+CURRENT_HEAD = "d0b1c2d3e4f5"
 
 
 def _alembic_config(database_url: str) -> Config:

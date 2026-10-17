@@ -203,6 +203,8 @@ def _convert_to_version(data: bytes, version: int) -> bytes:
             ):
                 row.pop(field, None)
     removed_tables = []
+    if version < 9:
+        removed_tables.append("job_provider_configurations")
     if version < 8:
         removed_tables.extend(
             ["campaigns", "campaign_applications", "campaign_artifacts"]
@@ -303,7 +305,7 @@ def test_v6_archive_restores_ai_audit_and_v5_v4_v3_v2_v1_remain_compatible(
     assert exported.status_code == 200, exported.text
     with zipfile.ZipFile(BytesIO(exported.content)) as archive:
         manifest = json.loads(archive.read("manifest.json"))
-    assert manifest["format_version"] == 8
+    assert manifest["format_version"] == 9
     assert manifest["record_counts"]["ai_executions"] == 1
     assert manifest["record_counts"]["preference_signals"] == 1
 
@@ -375,7 +377,7 @@ def test_v6_archive_restores_ai_audit_and_v5_v4_v3_v2_v1_remain_compatible(
     assert restored_v1.json()["restored_records"]["ai_executions"] == 0
 
 
-@pytest.mark.parametrize("format_version", [1, 2, 3, 4, 5, 6, 7])
+@pytest.mark.parametrize("format_version", [1, 2, 3, 4, 5, 6, 7, 8])
 @pytest.mark.parametrize(
     "archived_timestamp",
     ["2026-07-22T12:15:00+02:00", "2026-07-22T10:15:00"],

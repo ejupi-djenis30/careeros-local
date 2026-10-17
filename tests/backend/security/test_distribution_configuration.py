@@ -112,8 +112,8 @@ def test_backend_container_uses_minimal_alpine_runtime_and_drops_build_tooling()
     dockerfile = (ROOT / "Dockerfile").read_text(encoding="utf-8")
 
     assert (
-        "FROM python:3.12.14-alpine3.23@sha256:"
-        "167bc85084c9df34480efc26b4528fb68feaa8a79183b5658952137025b6f061"
+        "FROM python:3.12.15-alpine3.23@sha256:"
+        "1fd55c2f838c4f76262f9eeed899ff9168ea96ac383c61667d6f204325e1f169"
     ) in dockerfile
     assert "addgroup -S -g 10001 careernos" in dockerfile
     assert "adduser -S -D -H -u 10001 -G careernos" in dockerfile
@@ -136,7 +136,7 @@ def test_compose_services_have_bounded_processes_logs_and_segmented_networks() -
         "options": {"max-size": "10m", "max-file": "3"},
     }
 
-    assert services["ollama"]["image"] == "careeros-local-ollama:0.33.3-careeros.1"
+    assert services["ollama"]["image"] == "careeros-local-ollama:0.34.3-careeros.1"
     assert services["ollama"]["build"] == {
         "context": ".",
         "dockerfile": "docker/ollama/Dockerfile",
@@ -188,15 +188,15 @@ def test_patched_ollama_source_dependency_graph_and_gate_are_pinned() -> None:
         "648f440f42a0958804efb24df176f806f9d353b41f1c0627f666428e40310f6b"
     ) in dockerfile
     assert (
-        "FROM ollama/ollama:0.33.3@sha256:"
-        "32931b46719f673c05fdbaa81ccb26da18ea4a1c57590a754874ab28ba269eb2"
+        "FROM ollama/ollama:0.34.3@sha256:"
+        "7ab595e4ead391f6818c7215297781282babe0701f6d9a9f8862ac591360a58b"
     ) in dockerfile
     assert (
         "https://github.com/ollama/ollama/archive/"
-        "b79067b0db7417f20108363bc22adb97f35c966a.tar.gz"
+        "6383a0fa9cbf97494b847226e189f6e36b401a08.tar.gz"
     ) in dockerfile
     assert (
-        "sha256:8f1c4cfe1c687918e00bf9ab6f9966ebd4d727d3d64ccb109b2561afcd347b07"
+        "sha256:cfd3168b67445cdb0418892ccdbccb1348921f570e025695be52ffb2fe894d90"
     ) in dockerfile
     for module in (
         "github.com/buger/jsonparser@v1.1.2",
@@ -212,13 +212,16 @@ def test_patched_ollama_source_dependency_graph_and_gate_are_pinned() -> None:
         assert module in dockerfile
     assert "go mod verify" in dockerfile
     assert "github.com/ollama/ollama/server.mode=release" in dockerfile
+    assert "github.com/ollama/ollama/version.Version=0.34.3-careeros.1" in dockerfile
+    assert 'org.opencontainers.image.version="0.34.3-careeros.1"' in dockerfile
+    assert "source_revision=6383a0fa9cbf97494b847226e189f6e36b401a08" in dockerfile
     assert "go version -m /out/ollama" in dockerfile
     assert "generate_go_license.cmake" in dockerfile
     assert "COPY --from=build /out/GO_LICENSE /usr/lib/ollama/GO_LICENSE" in dockerfile
     assert "HOME=/var/lib/ollama" in dockerfile
     assert "USER 10001:10001" in dockerfile
 
-    assert "OLLAMA_IMAGE: careeros-local-ollama:0.33.3-careeros.1" in workflow
+    assert "OLLAMA_IMAGE: careeros-local-ollama:0.34.3-careeros.1" in workflow
     assert "docker compose build backend frontend ollama" in workflow
     assert "Smoke-test patched Ollama runtime" in workflow
     assert "BUILD_PROVENANCE.txt" in workflow

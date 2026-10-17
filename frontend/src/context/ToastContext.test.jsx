@@ -74,7 +74,7 @@ describe('ToastContext', () => {
     act(() => {
       vi.advanceTimersByTime(2000);
     });
-    fireEvent.click(screen.getByRole('button', { name: 'Inglese' }));
+    fireEvent.click(screen.getByRole('button', { name: 'EN Inglese' }));
     expect(screen.getByText('Search 42 did not start. Please try again.')).toBeInTheDocument();
 
     act(() => {
@@ -102,7 +102,7 @@ describe('ToastContext', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Show toast' }));
     expect(screen.getByRole('button', { name: 'Undo' })).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Italian' }));
+    fireEvent.click(screen.getByRole('button', { name: 'IT Italian' }));
     expect(screen.getByRole('button', { name: 'Annulla' })).toBeInTheDocument();
   });
 });

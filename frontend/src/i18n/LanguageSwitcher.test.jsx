@@ -28,8 +28,8 @@ describe("LanguageSwitcher", () => {
     it("exposes pressed state and a keyboard-focusable language choice", async () => {
         const user = userEvent.setup();
         const { value } = renderSwitcher();
-        const english = screen.getByRole("button", { name: "English" });
-        const italian = screen.getByRole("button", { name: "Italian" });
+        const english = screen.getByRole("button", { name: "EN English" });
+        const italian = screen.getByRole("button", { name: "IT Italian" });
 
         expect(english).toHaveAttribute("aria-pressed", "true");
         expect(italian).toHaveAttribute("aria-pressed", "false");
@@ -37,6 +37,19 @@ describe("LanguageSwitcher", () => {
         expect(english).toHaveFocus();
         await user.click(italian);
         expect(value.setLanguage).toHaveBeenCalledWith("it");
+    });
+
+    it.each([
+        ["en", ["English", "Italian"]],
+        ["it", ["Inglese", "Italiano"]],
+    ])("includes each visible language code in its full accessible name in %s", (language, labels) => {
+        renderSwitcher({ language, t: createTranslator(language) });
+
+        for (const [index, code] of ["EN", "IT"].entries()) {
+            const button = screen.getByRole("button", { name: `${code} ${labels[index]}` });
+            expect(button).toHaveTextContent(code);
+            expect(button).toHaveAccessibleName(new RegExp(code));
+        }
     });
 
     it("disables both controls and marks the group busy during a catalogue load", () => {

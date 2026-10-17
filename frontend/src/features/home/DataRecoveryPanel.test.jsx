@@ -88,6 +88,28 @@ describe("DataRecoveryPanel", () => {
         expect(screen.getByRole("status")).toHaveTextContent("Backup verificato e salvato");
     });
 
+    it("allows an owned-data backup without requiring a career profile", async () => {
+        const user = userEvent.setup();
+        render(<DataRecoveryPanel hasProfile={false} />);
+        const backup = screen.getByRole("button", { name: /Crea backup/ });
+        expect(backup).toBeEnabled();
+        await user.click(backup);
+        await waitFor(() => expect(platform.saveBackupWithNativeDialog).toHaveBeenCalledTimes(1));
+        expect(PortabilityService.exportArchive).toHaveBeenCalledTimes(1);
+        expect(screen.getByRole("status")).toHaveTextContent("Backup verificato e salvato");
+    });
+
+    it("shows an empty-vault rejection from the API and leaves backup available to retry", async () => {
+        const user = userEvent.setup();
+        PortabilityService.exportArchive.mockRejectedValue(new Error("There is no career vault data to export"));
+        render(<DataRecoveryPanel hasProfile={false} />);
+        const backup = screen.getByRole("button", { name: /Crea backup/ });
+        await user.click(backup);
+        expect(await screen.findByRole("status")).toHaveTextContent("There is no career vault data to export");
+        expect(backup).toBeEnabled();
+        expect(platform.saveBackupWithNativeDialog).not.toHaveBeenCalled();
+    });
+
     it("labels a browser download without claiming destination verification", async () => {
         const user = userEvent.setup();
         platform.desktop = false;

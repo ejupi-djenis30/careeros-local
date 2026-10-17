@@ -61,7 +61,7 @@ Browser/container development:
 docker compose up --build
 ```
 
-The first container build compiles the CareerOS Ollama executable from the checksum-pinned 0.33.3
+The first container build compiles the CareerOS Ollama executable from the checksum-pinned 0.34.3
 source with the reviewed fixed Go module graph. Docker reuses that build afterward. The final image
 retains Ollama's digest-pinned native CPU/GPU payload and stores its source, toolchain, module graph
 and executable checksum in

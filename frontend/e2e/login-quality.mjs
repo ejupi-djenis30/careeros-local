@@ -73,6 +73,10 @@ async function createLoginPage(browser, baseUrl, language, contextOverrides = {}
     const page = await context.newPage();
     const consoleProblems = [];
     const pageErrors = [];
+    const privateBootRequests = [];
+    page.on("request", (request) => {
+        if (/\/assets\/Authenticated(?:Router|Workspace)-/.test(request.url())) privateBootRequests.push(request.url());
+    });
     page.on("console", (message) => {
         if (["error", "warning"].includes(message.type())) consoleProblems.push(message.text());
     });
@@ -83,6 +87,7 @@ async function createLoginPage(browser, baseUrl, language, contextOverrides = {}
         body: JSON.stringify({}),
     }));
     await page.goto(baseUrl, { waitUntil: "networkidle" });
+    assert.deepEqual(privateBootRequests, [], "Login must not fetch the authenticated router or workspace");
     return { context, page, consoleProblems, pageErrors };
 }
 
@@ -187,7 +192,7 @@ async function visualMetrics(page) {
             return (Math.max(foregroundLuminance, backgroundLuminance) + 0.05)
                 / (Math.min(foregroundLuminance, backgroundLuminance) + 0.05);
         };
-        const italian = document.querySelector('[aria-label="Italian"]');
+        const italian = document.querySelector('[aria-label="IT Italian"]');
         const privacy = document.querySelector(".login-privacy > span");
         const icon = document.querySelector(".login-lock .bi-lock");
         const iconStyle = getComputedStyle(icon, "::before");
@@ -266,7 +271,7 @@ try {
         assert(await submit.isDisabled(), "Empty login form must keep submit disabled");
         assert(Number(await submit.evaluate((button) => getComputedStyle(button).opacity)) <= 0.5);
         await english.page.keyboard.press("Shift+Tab");
-        const focusedLanguage = english.page.getByRole("button", { name: "Italian" });
+        const focusedLanguage = english.page.getByRole("button", { name: "IT Italian" });
         assert(await focusedLanguage.evaluate((button) => button === document.activeElement));
         const focusOutline = await focusedLanguage.evaluate((button) => {
             const style = getComputedStyle(button);
@@ -281,7 +286,7 @@ try {
         assert(!(await submit.isDisabled()), "Complete local credentials must enable submit");
 
         assert.deepEqual(await accessibilityViolations(english.page, baseUrl), []);
-        await english.page.getByRole("button", { name: "Italian" }).click();
+        await english.page.getByRole("button", { name: "IT Italian" }).click();
         await english.page.getByRole("heading", { name: "Bentornato" }).waitFor();
         assert.equal(await english.page.locator("html").getAttribute("lang"), "it");
         assert.deepEqual(await accessibilityViolations(english.page, baseUrl), []);

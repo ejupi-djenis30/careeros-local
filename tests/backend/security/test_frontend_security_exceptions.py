@@ -86,12 +86,12 @@ def test_reviewed_frontend_pins_and_manifest_are_release_evidence():
     assert packages["node_modules/postcss"]["dev"] is True
     assert package["overrides"]["postcss"] == "8.5.23"
     assert packages["node_modules/minimatch"]["version"] == "10.2.5"
-    assert packages["node_modules/brace-expansion"]["version"] == "5.0.9"
+    assert packages["node_modules/brace-expansion"]["version"] == "5.0.12"
     assert packages["node_modules/brace-expansion"]["dev"] is True
     assert package["overrides"]["minimatch"] == "10.2.5"
-    assert packages["node_modules/react-router"]["version"] == "8.3.0"
+    assert packages["node_modules/react-router"]["version"] == "8.4.0"
     assert "node_modules/react-router-dom" not in packages
-    assert dependencies["react-router"] == "^8.3.0"
+    assert dependencies["react-router"] == "^8.4.0"
     assert "react-router-dom" not in dependencies
     assert "frontend-security-exceptions.json" in EVIDENCE_FILES
 

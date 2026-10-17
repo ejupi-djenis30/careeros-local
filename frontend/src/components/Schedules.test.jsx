@@ -37,7 +37,7 @@ describe("Schedules localization lifecycle", () => {
         expect(screen.getByText("Failed to load schedules. Please refresh.")).toBeInTheDocument();
         expect(SearchService.getProfileSummaries).toHaveBeenCalledTimes(1);
 
-        fireEvent.click(screen.getByRole("button", { name: "Italian" }));
+        fireEvent.click(screen.getByRole("button", { name: "IT Italian" }));
 
         expect(await screen.findByText("Impossibile caricare le pianificazioni.")).toBeInTheDocument();
         expect(screen.getByText("Impossibile caricare le pianificazioni. Aggiorna la pagina.")).toBeInTheDocument();

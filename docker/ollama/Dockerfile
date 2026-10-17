@@ -10,8 +10,8 @@ RUN apt-get update \
     && apt-get install --yes --no-install-recommends cmake \
     && rm -rf /var/lib/apt/lists/*
 
-ADD --checksum=sha256:8f1c4cfe1c687918e00bf9ab6f9966ebd4d727d3d64ccb109b2561afcd347b07 \
-    https://github.com/ollama/ollama/archive/b79067b0db7417f20108363bc22adb97f35c966a.tar.gz \
+ADD --checksum=sha256:cfd3168b67445cdb0418892ccdbccb1348921f570e025695be52ffb2fe894d90 \
+    https://github.com/ollama/ollama/archive/6383a0fa9cbf97494b847226e189f6e36b401a08.tar.gz \
     /tmp/ollama-source.tar.gz
 
 RUN mkdir /src \
@@ -21,7 +21,7 @@ RUN mkdir /src \
 
 WORKDIR /src
 
-# The source revision is the exact commit behind Ollama 0.33.3. These are the
+# The source revision is the exact commit behind Ollama 0.34.3. These are the
 # compatible fixed versions selected from the current advisory data; every
 # resolved version is asserted before compiling the replacement executable.
 RUN test "$(go env GOVERSION)" = "go1.27.1" \
@@ -49,7 +49,7 @@ RUN test "$(go env GOVERSION)" = "go1.27.1" \
 
 RUN mkdir /out \
     && go build -trimpath -buildmode=pie \
-        -ldflags="-s -w -X=github.com/ollama/ollama/version.Version=0.33.3-careeros.1 -X=github.com/ollama/ollama/server.mode=release" \
+        -ldflags="-s -w -X=github.com/ollama/ollama/version.Version=0.34.3-careeros.1 -X=github.com/ollama/ollama/server.mode=release" \
         -o /out/ollama . \
     && cmake \
         -DGO_EXECUTABLE=/usr/local/go/bin/go \
@@ -61,14 +61,14 @@ RUN mkdir /out \
     && { \
         printf '%s\n' \
             'source=https://github.com/ollama/ollama' \
-            'source_revision=b79067b0db7417f20108363bc22adb97f35c966a' \
-            'source_archive_sha256=8f1c4cfe1c687918e00bf9ab6f9966ebd4d727d3d64ccb109b2561afcd347b07' \
+            'source_revision=6383a0fa9cbf97494b847226e189f6e36b401a08' \
+            'source_archive_sha256=cfd3168b67445cdb0418892ccdbccb1348921f570e025695be52ffb2fe894d90' \
             'builder=golang:1.27.1-bookworm@sha256:648f440f42a0958804efb24df176f806f9d353b41f1c0627f666428e40310f6b'; \
         go version -m /out/ollama; \
         sha256sum /out/ollama; \
     } > /out/BUILD_PROVENANCE.txt
 
-FROM ollama/ollama:0.33.3@sha256:32931b46719f673c05fdbaa81ccb26da18ea4a1c57590a754874ab28ba269eb2
+FROM ollama/ollama:0.34.3@sha256:7ab595e4ead391f6818c7215297781282babe0701f6d9a9f8862ac591360a58b
 
 ENV HOME=/var/lib/ollama
 
@@ -82,12 +82,12 @@ RUN ! grep --extended-regexp '^[^:]+:[^:]*:10001:' /etc/passwd \
     && chmod 0700 /var/lib/ollama /var/lib/ollama/.ollama
 
 LABEL org.opencontainers.image.title="CareerOS Local Ollama runtime" \
-      org.opencontainers.image.description="Ollama 0.33.3 with a reproducibly rebuilt, vulnerability-remediated Go executable" \
+      org.opencontainers.image.description="Ollama 0.34.3 with a reproducibly rebuilt, vulnerability-remediated Go executable" \
       org.opencontainers.image.source="https://github.com/ollama/ollama" \
-      org.opencontainers.image.revision="b79067b0db7417f20108363bc22adb97f35c966a" \
-      org.opencontainers.image.version="0.33.3-careeros.1" \
+      org.opencontainers.image.revision="6383a0fa9cbf97494b847226e189f6e36b401a08" \
+      org.opencontainers.image.version="0.34.3-careeros.1" \
       org.opencontainers.image.licenses="MIT" \
-      io.careeros.ollama.source-archive-sha256="8f1c4cfe1c687918e00bf9ab6f9966ebd4d727d3d64ccb109b2561afcd347b07"
+      io.careeros.ollama.source-archive-sha256="cfd3168b67445cdb0418892ccdbccb1348921f570e025695be52ffb2fe894d90"
 
 COPY --from=build --chmod=0755 /out/ollama /usr/bin/ollama
 COPY --from=build /out/GO_LICENSE /usr/lib/ollama/GO_LICENSE

@@ -11,6 +11,7 @@ from backend.api.routes import (
     career_coach,
     career_profile,
     desktop,
+    job_providers,
     jobs,
     local_model,
     portability,
@@ -40,6 +41,7 @@ api_router.include_router(
 )
 api_router.include_router(campaigns.router, prefix="/campaigns", tags=["campaigns"])
 api_router.include_router(jobs.router, prefix="/jobs", tags=["jobs"])
+api_router.include_router(job_providers.router, prefix="/job-providers", tags=["job-providers"])
 api_router.include_router(search.router, prefix="/search", tags=["search"])
 api_router.include_router(profiles.router, prefix="/profiles", tags=["profiles"])
 api_router.include_router(schedules.router, prefix="/schedules", tags=["schedules"])

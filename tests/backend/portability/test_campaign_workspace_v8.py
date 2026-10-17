@@ -235,10 +235,10 @@ def test_v8_roundtrip_preserves_exact_campaign_graph_and_managed_bytes(campaign_
     manifest = _manifest(before)
     payload = _payload(before)
 
-    assert CURRENT_ARCHIVE_VERSION == 8
-    assert SUPPORTED_ARCHIVE_VERSIONS == frozenset(range(1, 9))
-    assert manifest["format_version"] == 8
-    assert set(payload["tables"]) == expected_tables(8)
+    assert CURRENT_ARCHIVE_VERSION == 9
+    assert SUPPORTED_ARCHIVE_VERSIONS == frozenset(range(1, 10))
+    assert manifest["format_version"] == 9
+    assert set(payload["tables"]) == expected_tables(9)
     assert manifest["record_counts"]["campaigns"] == 1
     assert manifest["record_counts"]["campaign_applications"] == imported.application_count
     assert manifest["record_counts"]["campaign_artifacts"] == imported.artifact_count
@@ -265,7 +265,7 @@ def test_v8_roundtrip_preserves_exact_campaign_graph_and_managed_bytes(campaign_
     assert counts["campaigns"] == 1
     assert db.query(Campaign).filter(Campaign.user_id == owner.id).count() == 0
     restored = restore_archive(db, owner.id, before)
-    assert restored.format_version == 8
+    assert restored.format_version == 9
     assert restored.restored_records["campaigns"] == 1
     assert restored.restored_records["campaign_applications"] == imported.application_count
     assert restored.restored_records["campaign_artifacts"] == imported.artifact_count

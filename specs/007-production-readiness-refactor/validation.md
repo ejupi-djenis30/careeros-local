@@ -1,6 +1,10 @@
 # Validation evidence: Production Readiness Refactor
 
 Date: 2026-10-16. Branch: `codex/production-readiness-refactor`.
+Historical execution record: the later 008 integration independently found stale
+npm cache metadata behind the unavailable-version inference below. Fresh-cache
+official registry checks and an isolated updated install audit clean; see
+[008 validation](../008-consolidate-main/validation.md) for current results.
 Release eligibility: **blocked** by the complete frontend vulnerability scan.
 This is source maintenance evidence, not a signed release or installer acceptance.
 

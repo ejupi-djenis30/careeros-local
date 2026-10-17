@@ -138,14 +138,11 @@ class SearchService(
             self.job_repo,
         )
         self.analysis_readiness_check = analysis_readiness_check or check_local_model_readiness
-        # Providers (registered by domain)
+        # The local vault is not a scraper. Network adapters are installed per user and are
+        # materialized later from enabled provider rows by FinalizationMixin.
         self.providers = {
-            "job_room": JobRoomProvider(),
-            "swissdevjobs": SwissDevJobsProvider(),
             "local_db": LocalDbProvider(self.db) if self.db else None,
         }
-        if AdeccoProvider:
-            self.providers["adecco"] = AdeccoProvider()
 
 
 _IMPLEMENTATION_MODULES = (

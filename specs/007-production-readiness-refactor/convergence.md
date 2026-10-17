@@ -1,6 +1,9 @@
 # Convergence evidence: Production Readiness Refactor
 
 Date: 2026-10-16. Outcome: `tasks_appended` (T016 and T017, Phase 4).
+Historical assessment: 008 supersedes the cached npm availability inference and
+tracks compatible remediation and its final gates; see
+[008 convergence](../008-consolidate-main/convergence.md).
 Source maintenance work T001–T015 is complete. Release eligibility remains
 **blocked**; no release, installer or production approval is claimed.
 

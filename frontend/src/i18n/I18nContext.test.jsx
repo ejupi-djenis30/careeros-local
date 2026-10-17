@@ -23,7 +23,7 @@ describe("I18nProvider", () => {
         expect(screen.getByText("Welcome back")).toBeInTheDocument();
         expect(document.documentElement).toHaveAttribute("lang", "en");
 
-        await user.click(screen.getByRole("button", { name: "Italian" }));
+        await user.click(screen.getByRole("button", { name: "IT Italian" }));
 
         expect(screen.getByText("Bentornato")).toBeInTheDocument();
         expect(document.documentElement).toHaveAttribute("lang", "it");

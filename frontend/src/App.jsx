@@ -1,17 +1,11 @@
 import { Suspense, lazy } from "react";
-import {
-    createBrowserRouter,
-    createHashRouter,
-    RouterProvider,
-} from "react-router";
 import { Login } from "./components/Login";
 import { RecoveryShell } from "./components/RecoveryShell";
 import { AuthProvider, useAuth } from "./context/AuthContext";
 import { ToastProvider } from "./context/ToastContext";
-import { isDesktopShell } from "./platform/desktop";
 import { useI18n } from "./i18n/useI18n";
 
-const AuthenticatedWorkspace = lazy(() => import("./app/AuthenticatedWorkspace").then((module) => ({ default: module.AuthenticatedWorkspace })));
+const AuthenticatedRouter = lazy(() => import("./app/AuthenticatedRouter").then((module) => ({ default: module.AuthenticatedRouter })));
 
 export function AuthenticatedApp() {
     const { isLoggedIn, maintenanceSession } = useAuth();
@@ -27,28 +21,16 @@ export function AuthenticatedApp() {
                     <span>{t("shell.loading")}</span>
                 </div>
             )}>
-                <AuthenticatedWorkspace />
+                <AuthenticatedRouter />
             </Suspense>
         </ToastProvider>
     );
 }
 
-function AppProviders() {
+export default function App() {
     return (
         <AuthProvider>
             <AuthenticatedApp />
         </AuthProvider>
     );
-}
-
-const createRouter = isDesktopShell() ? createHashRouter : createBrowserRouter;
-const applicationRouter = createRouter([
-    {
-        path: "*",
-        element: <AppProviders />,
-    },
-]);
-
-export default function App() {
-    return <RouterProvider router={applicationRouter} />;
 }

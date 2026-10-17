@@ -325,7 +325,7 @@ def test_current_roundtrip_preserves_v7_history_packet_bytes_and_remaps_live_tar
     assert not all_packet_journals()
     with zipfile.ZipFile(BytesIO(exported)) as archive:
         payload = json.loads(archive.read("payload.json"))
-        assert json.loads(archive.read("manifest.json"))["format_version"] == 8
+        assert json.loads(archive.read("manifest.json"))["format_version"] == 9
     assert payload["tables"]["agent_work_requests"][0]["bound_grant_id"] is None
     assert payload["tables"]["agent_proposals"][0]["submitting_grant_id"] is None
     assert db.get(AgentWorkRequest, seeded["work"]).bound_grant_id is not None
@@ -627,7 +627,7 @@ def test_v7_restore_rejects_foreign_uuid_collision(workspace_db):
     assert not resolve_data_path(seeded["packet_path"]).exists()
 
 
-def rebuild_archive(members, payload, version=8):
+def rebuild_archive(members, payload, version=9):
     members["payload.json"] = canonical_json(payload)
     manifest = json.loads(members["manifest.json"])
     manifest["format_version"] = version

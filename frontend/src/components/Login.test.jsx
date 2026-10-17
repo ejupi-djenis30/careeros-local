@@ -40,7 +40,7 @@ describe("Login localization", () => {
         await user.click(screen.getByRole("button", { name: "Create local account" }));
 
         expect(screen.getByRole("alert")).toHaveTextContent("Use 8–72 UTF-8 bytes, with one uppercase letter and one number.");
-        await user.click(screen.getByRole("button", { name: "Italian" }));
+        await user.click(screen.getByRole("button", { name: "IT Italian" }));
         expect(screen.getByRole("alert")).toHaveTextContent("Usa 8–72 byte UTF-8, con una maiuscola e un numero.");
         expect(auth.register).not.toHaveBeenCalled();
     });
@@ -67,7 +67,7 @@ describe("Login localization", () => {
         await user.click(screen.getByRole("button", { name: "Create local account" }));
 
         expect(await screen.findByRole("alert")).toHaveTextContent("Registration failed. Please try again.");
-        await user.click(screen.getByRole("button", { name: "Italian" }));
+        await user.click(screen.getByRole("button", { name: "IT Italian" }));
         expect(screen.getByRole("alert")).toHaveTextContent("Registrazione non riuscita. Riprova.");
     });
 
@@ -87,7 +87,7 @@ describe("Login localization", () => {
         await user.type(password, "Password1");
         expect(submit).toBeEnabled();
 
-        await user.click(screen.getByRole("button", { name: "Italian" }));
+        await user.click(screen.getByRole("button", { name: "IT Italian" }));
         expect(screen.getByRole("heading", { name: "Bentornato" })).toBeInTheDocument();
         expect(screen.getByRole("button", { name: "Accedi allo spazio di lavoro" })).toBeEnabled();
         await assertAccessible(container);

@@ -146,7 +146,7 @@ test("binds the distributable third-party notices to every dependency lock", asy
     assert(manifestText, "Third-party notices must contain their machine-checkable manifest");
     const manifest = JSON.parse(manifestText);
     assert.deepEqual(manifest.componentCounts, {
-        frontend: 12,
+        frontend: 13,
         python: 57,
         runtime: 3,
         rust: 484,

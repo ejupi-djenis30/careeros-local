@@ -3,7 +3,9 @@
 # pip-compile --generate-hashes --allow-unsafe --output-file requirements-tooling.lock requirements-tooling.txt
 # pip-tools 7.6.1 restores compatibility with the reviewed pip 26.2 lock.
 pip-tools==7.6.1
-pyinstaller==6.21.0
+pyinstaller==6.22.3
+# Keep the wheel builder identical to pyproject.toml and the development lock.
+wheel==0.48.0
 # PyInstaller declares macholib only when resolving on macOS. Keep it explicit so this
 # single hash-locked file remains installable on every release runner.
 macholib==1.16.4

@@ -123,7 +123,7 @@ def test_repository_notice_is_lock_bound_complete_and_approved() -> None:
 
     assert hashlib.sha256(payload).hexdigest() == APPROVED_NOTICE_SHA256
     assert manifest["componentCounts"] == {
-        "frontend": 12,
+        "frontend": 13,
         "python": 57,
         "runtime": 3,
         "rust": 484,
@@ -134,11 +134,12 @@ def test_repository_notice_is_lock_bound_complete_and_approved() -> None:
     }
     assert ("frontend", "bootstrap", "5.3.8") in identities
     assert ("frontend", "bootstrap-icons", "1.13.1") in identities
+    assert ("frontend", "@remix-run/route-pattern", "0.22.1") in identities
     assert ("python", "httpx", "0.28.1") in identities
     assert ("python", "pyjwt", "2.15.1") in identities
     assert ("runtime", "cpython", "3.12.13") in identities
     assert ("runtime", "cpython", "3.13.14") in identities
-    assert ("runtime", "pyinstaller", "6.21.0") in identities
+    assert ("runtime", "pyinstaller", "6.22.3") in identities
     assert all(component["textIds"] for component in manifest["components"])
 
 

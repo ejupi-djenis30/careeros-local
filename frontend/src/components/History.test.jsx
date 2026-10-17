@@ -33,7 +33,7 @@ describe("History localization lifecycle", () => {
         expect(await screen.findAllByText("Failed to load search history.")).toHaveLength(2);
         expect(SearchService.getProfiles).toHaveBeenCalledTimes(1);
 
-        fireEvent.click(screen.getByRole("button", { name: "Italian" }));
+        fireEvent.click(screen.getByRole("button", { name: "IT Italian" }));
 
         expect(await screen.findAllByText("Impossibile caricare la cronologia delle ricerche.")).toHaveLength(2);
         await waitFor(() => expect(SearchService.getProfiles).toHaveBeenCalledTimes(1));

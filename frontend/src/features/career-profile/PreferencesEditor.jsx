@@ -1,3 +1,4 @@
+import { Link } from "react-router";
 import { useI18n } from "../../i18n/useI18n";
 
 const splitList = (value) => value.split(",").map((item) => item.trim()).filter(Boolean);
@@ -10,7 +11,7 @@ function ListField({ label, value, onChange, placeholder }) {
     return <label className="field-stack"><span>{label}</span><input className="form-control" value={(value || []).join(", ")} onChange={(event) => onChange(splitList(event.target.value))} placeholder={placeholder} /></label>;
 }
 
-export function PreferencesEditor({ preferences, jobSources = [], onChange }) {
+export function PreferencesEditor({ preferences, onChange }) {
     const { t } = useI18n();
     const update = (field, value) => onChange({ ...preferences, [field]: value });
     const salary = preferences.salary || { currency: "CHF", minimum: preferences.salary_min_chf ?? null, maximum: null, period: "year" };
@@ -18,10 +19,6 @@ export function PreferencesEditor({ preferences, jobSources = [], onChange }) {
     const toggleWorkMode = (mode, enabled) => update("preferred_work_modes", enabled
         ? [...new Set([...(preferences.preferred_work_modes || []), mode])]
         : (preferences.preferred_work_modes || []).filter((item) => item !== mode));
-    const toggleJobSource = (source, enabled) => update("job_source_consents", {
-        ...(preferences.job_source_consents || {}),
-        [source]: enabled,
-    });
     return (
         <section className="surface-section" aria-labelledby="preferences-title">
             <div className="section-heading"><div><span className="section-kicker">{t("preferences.kicker")}</span><h2 id="preferences-title">{t("preferences.title")}</h2></div><span className="section-number">03</span></div>
@@ -39,7 +36,7 @@ export function PreferencesEditor({ preferences, jobSources = [], onChange }) {
                 <label className="field-stack"><span>{t("preferences.relocation")}</span><select className="form-select" value={preferences.relocation || "no"} onChange={(event) => update("relocation", event.target.value)}><option value="no">{t("preferences.relocation.no")}</option><option value="within_country">{t("preferences.relocation.country")}</option><option value="international">{t("preferences.relocation.international")}</option><option value="open">{t("preferences.relocation.open")}</option></select></label>
             </div>
             <fieldset className="goal-subsection"><legend>{t("preferences.workModes")}</legend><div className="preference-checks">{["onsite", "hybrid", "remote"].map((value) => <label className="check-line" key={value}><input type="checkbox" checked={(preferences.preferred_work_modes || []).includes(value)} onChange={(event) => toggleWorkMode(value, event.target.checked)} /> {t(`preferences.${value}`)}</label>)}<label className="check-line"><input type="checkbox" checked={Boolean(preferences.remote_only)} onChange={(event) => onChange({ ...preferences, remote_only: event.target.checked, preferred_work_modes: event.target.checked ? ["remote"] : (preferences.preferred_work_modes || []) })} /> {t("preferences.remoteOnly")}</label></div></fieldset>
-            <fieldset className="goal-subsection"><legend>{t("preferences.sources")}</legend><p className="section-intro">{t("preferences.sourcesCopy")}</p><div className="preference-checks">{jobSources.filter((source) => source.network).map((source) => { const stored = preferences.job_source_consents?.[source.key]; const checked = typeof stored === "boolean" ? stored : source.consented; return <label className="check-line" key={source.key}><input type="checkbox" checked={Boolean(checked)} disabled={!source.available} onChange={(event) => toggleJobSource(source.key, event.target.checked)} /> <span><strong>{source.label}</strong> · {source.available ? source.description : t("preferences.unavailable")}</span></label>; })}</div></fieldset>
+            <fieldset className="goal-subsection"><legend>{t("preferences.sources")}</legend><p className="section-intro">{t("preferences.sourcesCopy")}</p><Link className="button button--secondary" to="/providers">{t("preferences.manageProviders")}</Link></fieldset>
             <fieldset className="goal-subsection"><legend>{t("preferences.compensation")}</legend><div className="form-grid form-grid--4"><label className="field-stack"><span>{t("preferences.currency")}</span><input className="form-control" maxLength="3" value={salary.currency || "CHF"} onChange={(event) => updateSalary("currency", event.target.value.toUpperCase())} /></label><NumberField label={t("preferences.salaryMin")} min="0" step="1000" value={salary.minimum} onChange={(value) => updateSalary("minimum", value)} /><NumberField label={t("preferences.salaryMax")} min="0" step="1000" value={salary.maximum} onChange={(value) => updateSalary("maximum", value)} /><label className="field-stack"><span>{t("preferences.salaryPeriod")}</span><select className="form-select" value={salary.period || "year"} onChange={(event) => updateSalary("period", event.target.value)}>{["hour", "day", "month", "year"].map((period) => <option key={period} value={period}>{t(`preferences.period.${period}`)}</option>)}</select></label></div></fieldset>
             <div className="form-grid form-grid--2"><ListField label={t("preferences.values")} value={preferences.company_values} onChange={(value) => update("company_values", value)} placeholder={t("preferences.valuesPlaceholder")} /><ListField label={t("preferences.benefits")} value={preferences.desired_benefits} onChange={(value) => update("desired_benefits", value)} placeholder={t("preferences.benefitsPlaceholder")} /><ListField label={t("preferences.excludedCompanies")} value={preferences.excluded_companies} onChange={(value) => update("excluded_companies", value)} /><ListField label={t("preferences.excludedIndustries")} value={preferences.excluded_industries} onChange={(value) => update("excluded_industries", value)} /></div>
         </section>

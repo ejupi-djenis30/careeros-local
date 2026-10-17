@@ -5,6 +5,8 @@ repos:
     rev: v5.0.0
     hooks:
       - id: trailing-whitespace
+        # Legal texts are reproduced and verified byte-for-byte by the generator.
+        exclude: ^THIRD_PARTY_NOTICES\.txt$
       - id: end-of-file-fixer
       - id: check-yaml
         args: [--allow-multiple-documents]

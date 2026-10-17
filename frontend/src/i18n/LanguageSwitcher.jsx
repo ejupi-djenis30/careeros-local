@@ -16,7 +16,7 @@ export function LanguageSwitcher() {
                     type="button"
                     className={language === code ? "is-active" : ""}
                     aria-pressed={language === code}
-                    aria-label={t(`language.${code}`)}
+                    aria-label={`${code.toUpperCase()} ${t(`language.${code}`)}`}
                     title={t(`language.${code}`)}
                     disabled={Boolean(pendingLanguage)}
                     onClick={() => void setLanguage(code)}
