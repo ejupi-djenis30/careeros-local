@@ -124,7 +124,7 @@ def test_repository_notice_is_lock_bound_complete_and_approved() -> None:
     assert hashlib.sha256(payload).hexdigest() == APPROVED_NOTICE_SHA256
     assert manifest["componentCounts"] == {
         "frontend": 13,
-        "python": 57,
+        "python": 58,
         "runtime": 3,
         "rust": 473,
     }
@@ -133,7 +133,8 @@ def test_repository_notice_is_lock_bound_complete_and_approved() -> None:
         for component in manifest["components"]
     }
     assert ("frontend", "bootstrap", "5.3.8") in identities
-    assert ("frontend", "bootstrap-icons", "1.13.1") in identities
+    assert ("frontend", "bootstrap-icons", "1.13.2") in identities
+    assert ("frontend", "@tauri-apps/api", "2.12.2") in identities
     assert ("frontend", "@remix-run/route-pattern", "0.22.1") in identities
     assert ("python", "httpx", "0.28.1") in identities
     assert ("python", "pyjwt", "2.15.1") in identities

@@ -94,6 +94,10 @@ async function referencedIcons(files) {
 }
 
 async function renderStylesheet(files) {
+    const { version } = JSON.parse(await readFile(resolve(iconRoot, "../package.json"), "utf8"));
+    if (typeof version !== "string" || !/^\d+\.\d+\.\d+$/.test(version)) {
+        throw new Error("Bootstrap Icons package version is invalid.");
+    }
     const names = await referencedIcons(files);
     const rules = [];
     for (const className of names) {
@@ -108,7 +112,7 @@ async function renderStylesheet(files) {
     }
 
     return `/*!
- * Generated from Bootstrap Icons v1.13.1 (https://icons.getbootstrap.com/)
+ * Generated from Bootstrap Icons v${version} (https://icons.getbootstrap.com/)
  * Copyright 2019-2024 The Bootstrap Authors · MIT License
  * Run: npm run icons:build
  */

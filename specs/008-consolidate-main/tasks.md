@@ -48,12 +48,12 @@
   with cryptographically generated per-run credentials, verify the real journey
   and lint, and retain exact independent GitGuardian classification/check results
   without scanner exclusions (FR-005, FR-007; SC-004, SC-006).
-- [ ] T015 Remediate the six HIGH findings from the real shipping Ollama image
+- [x] T015 Remediate the six HIGH findings from the real shipping Ollama image
   scan with verified Go 1.27.2, golang.org/x/net 0.60.0 and patched Ubuntu OpenSSL;
   preserve all existing module pins, provenance, cloud restrictions and strict
   scanner policy, update matching contracts, and repeat image/build/scan evidence
   (FR-005, FR-007; SC-004).
-- [ ] T016 Align the Rust Tauri core/plugins with their updated npm counterparts
+- [x] T016 Align the Rust Tauri core/plugins with their updated npm counterparts
   according to official minor/exact-version contracts, regenerate Cargo.lock,
   declare the actual supported Rust baseline, reproduce notices and repeat native,
   license, vulnerability and package checks without broadening capabilities or
@@ -62,3 +62,20 @@
   tooling environment before importing its validator; reproduce the missing-
   packaging failure on a clean host and verify the fix and matrix ordering
   without relying on runner-preinstalled packages (FR-005, FR-007; SC-004).
+- [ ] T018 Preserve and assess the automated branch created during final cleanup;
+  integrate compatible Tauri API 2.12.2 and Bootstrap Icons 1.13.2 patches,
+  derive icon provenance from installed metadata, reproduce lock-bound notices/
+  icons and affected frontend/packaging checks, then
+  repeat protected publication and fresh-inventory cleanup without losing
+  concurrent work (FR-001, FR-002, FR-005–FR-008; SC-001, SC-004–SC-006).
+- [ ] T019 Preserve and assess the Python update branch from the same automation
+  wave; integrate its nine compatible direct updates, regenerate all three
+  hash-locked environments and canonical notices, and repeat affected static,
+  backend coverage/performance/migration/packaging and protected publication
+  checks before final branch deletion (FR-001, FR-002, FR-005–FR-008;
+  SC-001, SC-004–SC-006).
+- [ ] T020 Preserve the no-telemetry boundary when adopting FastAPI 0.143: disable
+  tracing, metrics, logs, operation spans and auto-configuration explicitly;
+  prove ambient providers/environment cannot enable instrumentation or emit
+  synthetic private fields, retain no SDK/exporter in production and repeat
+  startup/API/privacy and distribution gates (FR-005, FR-007; SC-004, SC-006).

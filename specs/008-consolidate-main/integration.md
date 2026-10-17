@@ -58,6 +58,45 @@ fabricating a successful status or deleting the only remaining work branch.
 Main publication and final branch deletion remain pending until the real checks
 and content verification permit them.
 
+## Initial publication and automated follow-up
+
+PR #112 merged through the standard squash API at 2026-10-17 10:38:14 UTC as
+`1a47751d23574fd00d548a69ccc44d31b4dbe608`. GitHub reports its signature valid;
+tree `63c8b087d559f62f250ecd7b35ce9e8aadc4b078` is identical to reviewed head
+`cc6e39bcb8e5fa27729156eeb046df1480bda0da`. All six mandatory gates, CodeQL,
+the six Agent Access jobs and actual AppImage/deb smoke passed. The first CLI
+merge attempt was rejected; the subsequent standard API merge succeeded without
+any protection change or administrator bypass.
+
+The ten superseded PRs were closed and their Dependabot branches disappeared
+automatically. The local integration branch was safely removed after the tree
+comparison and final bundle verification. While cleanup was checking remote refs,
+Dependabot opened #113, creating
+`dependabot/npm_and_yarn/frontend/compatible-frontend-dependencies-dd0f9ad4c8`
+at `5840eb4c5b273e754b5870e2c4718542ecef6ac8`. The changed-inventory guard stopped
+deletion. This new commit changes only Tauri API 2.12.1 to 2.12.2 and Bootstrap
+Icons 1.13.1 to 1.13.2, with the matching lock entries. Its exact tip is retained
+in verified `automated-followup-before-integration.bundle` in private Git metadata.
+
+T018 assesses these compatible patches on `codex/final-dependency-patches`,
+retaining the bot commit as ancestry. Canonical notices and icon provenance must
+match the new installed versions; Rust core/plugin pins and capabilities remain
+unchanged. The two original feature branches were removed after their tips, the
+initial signed main and recovery bundle were verified. All twelve original
+remote branches are now removed; no original work was discarded. Automated
+follow-ups remain until protected publication and a fresh verified inventory.
+
+The same automation wave also opened #114 at
+`f49ca84b4f43b399532927237c8c23a12bb36065` on
+`dependabot/pip/compatible-python-dependencies-6c91c1191d`. Its four dependency
+input files propose SQLAlchemy 2.1.4, FastAPI 0.143.0, Pydantic 2.14.0,
+python-dotenv 1.2.4, tenacity 9.2.1, Ruff 0.17.0, mypy 2.4.0, virtualenv
+21.14.6 and pip-tools 7.6.2. The original branch supplies no regenerated locks;
+T019 verifies and regenerates them before accepting it. Both new exact tips are
+preserved in verified `automated-wave-all-followups.bundle`. T020 explicitly
+disables FastAPI's new instrumentation before adopting that version, preserving
+the no-telemetry boundary with adversarial tests.
+
 ## Correction to historical package availability evidence
 
 The failed 007 npm audit and its cached CLI output remain genuine historical

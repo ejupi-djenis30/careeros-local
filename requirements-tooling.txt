@@ -1,8 +1,8 @@
 # Desktop packaging/test tools, deliberately kept out of application environments.
 # Regenerate requirements-tooling.lock with:
 # pip-compile --generate-hashes --allow-unsafe --output-file requirements-tooling.lock requirements-tooling.txt
-# pip-tools 7.6.1 restores compatibility with the reviewed pip 26.2 lock.
-pip-tools==7.6.1
+# pip-tools 7.6.2 preserves compatibility with the reviewed pip 26.2 lock.
+pip-tools==7.6.2
 pyinstaller==6.22.3
 # Keep the wheel builder identical to pyproject.toml and the development lock.
 wheel==0.48.0

@@ -216,6 +216,13 @@ app = FastAPI(
     docs_url=docs_url,
     redoc_url=redoc_url,
     lifespan=lifespan,
+    telemetry={
+        "tracing": False,
+        "metrics": False,
+        "logs": False,
+        "operation_spans": False,
+        "auto_configure": False,
+    },
 )
 
 
