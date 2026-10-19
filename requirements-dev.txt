@@ -17,11 +17,11 @@ wheel==0.48.0
 ruff==0.17.0
 mypy==2.4.0
 types-reportlab==4.5.1.20260728
-pre-commit==4.6.2
+pre-commit==4.7.0
 
 pip-audit==2.10.1
 pip-licenses==5.5.5
 
 # Reviewed security pins for audit networking and pre-commit environment creation.
 urllib3==2.8.0
-virtualenv==21.14.6
+virtualenv==21.14.7
