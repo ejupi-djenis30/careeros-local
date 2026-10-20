@@ -353,6 +353,18 @@ evidence; unavailable technical remediation stays a reported blocker.
     Full protected CI on the final head remains part of T052; unchanged frontend
     and native results retain their exact scoped input proofs.
 
+16. Preserve the first PR #122 container failure and remediate its independently
+    identified CVE-2026-63209 in github.com/klauspost/compress. Verify the primary
+    upstream advisory/fix, then use the existing patched-Ollama build mechanism
+    to pin and assert the fixed compatible module before compilation. Advance
+    the local image revision consistently in Dockerfile, Compose and CI, and
+    assert the actual compiled version in BUILD_PROVENANCE.txt. Preserve the
+    upstream source checksum, base-image/toolchain pins, generated licenses,
+    read-only runtime and every unsuppressed vulnerability gate. Run focused
+    distribution/security contracts and independent review, then verify the
+    rebuilt image, smoke checks and actual scanner report on the renewed PR
+    head. The separate glib exception remains unmodified and blocking.
+
 ## Boundaries and size
 
 Existing large-module exceptions from feature 007 remain justified there. Provider

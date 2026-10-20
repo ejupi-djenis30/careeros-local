@@ -288,7 +288,7 @@ PR metadata and private recovery ledger.
   wheels and supply-chain contracts before ref cleanup. Include the fresh-audit
   certifi fix for GHSA-6q48-6c7w-9gw2 and rerun unsuppressed scans, preserving
   the original findings (FR-002, FR-005; SC-001, SC-004).
-- [ ] T052 Independently review T047-T051 and T053-T054, run aggregate gates on frozen inputs,
+- [ ] T052 Independently review T047-T051 and T053-T055, run aggregate gates on frozen inputs,
   analyze and converge the artifacts, then complete protected integration and
   recovery-backed ref cleanup when security prerequisites pass. Retain exact
   failed/skipped results and any blocked action (FR-007, FR-008, FR-029-FR-031;
@@ -311,3 +311,14 @@ PR metadata and private recovery ledger.
 T053/T054 record completed source changes, independent review and local
 verification. Current-head protected qualification, security remediation,
 integration and branch cleanup remain in the open T050/T052 tasks.
+
+## Phase 12: CI-discovered container remediation
+
+- [x] T055 Remediate CVE-2026-63209 in the patched Ollama executable through a
+  primary-verified compatible github.com/klauspost/compress update. Pin and
+  assert the module, advance the local image revision consistently, and check
+  compiled provenance. Preserve licenses, runtime boundaries and strict gates;
+  retain the first failure and verify focused contracts and independent review.
+  Hand off the source to T052 for mandatory rebuilt-image smoke checks and a
+  clean actual high/critical scan on the new PR head (FR-005, FR-007; SC-004;
+  plan decision 16; Constitution V, VII).

@@ -3,7 +3,8 @@
 Date: 2026-10-20. Current outcome: `tasks_appended` for the formatting gap;
 T053 and T054 were appended after the additional full formatter check exposed
 four modules requiring bounded decomposition. All 31 functional requirements
-and 29 success criteria map to the 54 tasks and fifteen plan decisions.
+and 29 success criteria map to 55 tasks and sixteen plan decisions. T055 is
+subsequently appended for the concrete container finding observed in PR #122.
 Constitution 2.0.1 is unchanged.
 
 The quality follow-up corrects resume synchronization, schedule lifecycle and
@@ -19,6 +20,12 @@ qualification, integration and recovery-backed ref cleanup. Neither problem
 requires a duplicate task: both already have explicit ownership and acceptance
 conditions. The overall feature is not fully converged or production-ready.
 No release, waiver, branch deletion or merge is inferred from local success.
+
+The first PR #122 container scan identifies CVE-2026-63209 in the patched Ollama
+executable. T055 covers its dependency-pin and provenance correction, with
+rebuilt-image acceptance retained in T052. The actual initial failure and
+renewed scan results must remain distinct; neither source assertions nor
+successful backend/frontend image scans clear the Ollama finding.
 
 ## Historical state-consistency convergence, 2026-10-17
 

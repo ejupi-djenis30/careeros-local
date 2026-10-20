@@ -2,7 +2,7 @@
 
 Date: 2026-10-20. Current baseline: signed PR #119 main dee0e5e.
 The quality follow-up covers 31 functional requirements, 29 success criteria,
-ten outcomes, fifteen plan decisions, eight constitution principles and 54 tasks.
+ten outcomes, sixteen plan decisions, eight constitution principles and 55 tasks.
 Independent analysis finds task coverage for all 60 requirement/criterion entries
 and no material ambiguity, duplicate, orphan or authority conflict. Constitution
 2.0.1 remains unchanged. The preceding cycle below is historical evidence.
@@ -22,6 +22,7 @@ and no material ambiguity, duplicate, orphan or authority conflict. Constitution
 | A32: glib 0.18.5 remains in the stable Linux dependency graph after CE-2026-001 expires | HIGH | T050 stays open. No renewed expiry, source substitution, ignored advisory or weaker gate. Main integration and branch cleanup are blocked. |
 | A33: final protected qualification and integration are incomplete | HIGH | T052 stays open. Passing local checks and historical CI do not pre-approve the new head. |
 | A34: 84 legacy files fail the extra full formatting check | RESOLVED | T053 separates four responsibilities, then T054 normalizes the other 80 files with independent AST/binding review. The original failure is preserved. |
+| A35: the first PR #122 image scan finds CVE-2026-63209 in Ollama's compress v1.18.3 dependency | HIGH | T055 implements the primary-verified fixed module and consistent image revision; T052 must verify the rebuilt image and unsuppressed scan. The initial failure is preserved. |
 
 No critical product-boundary finding is introduced: local data ownership,
 loopback validation, archive limits, human authority and exclusive vault locking

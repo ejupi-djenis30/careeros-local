@@ -1217,3 +1217,72 @@ The final aggregate campaign, portability, security and release regression
 passes all 690 tests with no skips in 433.29 seconds. Its caller returns 0 in
 444.0 seconds, and all 1,224 inputs remain unchanged. T053/T054 source review
 and local validation are complete; protected qualification remains T052.
+
+## First protected PR #122 results and container remediation
+
+The first PR head is 43530cc7fd16160001f1d621cb2f875ad65d3203, tree
+cae2614b54c1dc708006f498f33359d335a16478. All four platform/interpreter wheel
+jobs pass. Frontend CI passes 818 tests in 115 files, with coverage 85.10%
+statements, 75.47% branches, 77.08% functions and 89.74% lines; all eight E2E
+groups and three demo-recorder tests pass. Audit, licenses, lint and build pass.
+All four CodeQL analyses succeed. Checkout provenance is independently verified:
+the frontend merge checkout has the same tree as the reviewed source.
+
+The container job fails its strict Ollama scan, with one HIGH finding and no
+CRITICAL findings: CVE-2026-63209, github.com/klauspost/compress v1.18.3 in
+usr/bin/ollama, fixed in v1.18.7. The backend and frontend image gates pass;
+this is a real dependency finding, not an infrastructure failure. The original
+Trivy JSON is preserved, SHA-256
+15a783d877c0095fef4761656c785fe7645c5355de5c55f94f555fbc9104d648.
+Release supply-chain evidence independently fails solely on the expired
+CE-2026-001 exception; all five dependent desktop jobs are skipped. These are
+not passing package checks. Remaining first-head job results are retained in
+the PR metadata/private ledger, with no premature success attribution.
+
+T055 is added before implementation. Primary evidence is the upstream
+[security advisory](https://github.com/klauspost/compress/security/advisories/GHSA-259r-337f-4rfw)
+and the v1.18.7 release/tag at commit
+8668e357e776d5152ed62f33c17f21b8690664fa. The v1.18.6-to-v1.18.7 diff verifies
+the dictionary bounds correction and regression test; its Go 1.24 requirement
+fits the already pinned Go 1.27.2 builder. The advisory was published June 30,
+2026; this cycle discovers the finding rather than dating its publication today.
+The correction advances only the local image revision and compatible module,
+asserts the compiled module in provenance, and retains existing licenses,
+source/base/toolchain pins, runtime boundaries and every strict gate. Actual
+rebuilt-image acceptance on the renewed head remains mandatory under T052.
+
+The first-head Rust job completes its fmt/Clippy and 28 tests successfully,
+then fails solely on CE-2026-001 expiry at the advisory/license gate. The
+container finding and the two expiry failures are three distinct failed jobs.
+No gate or exception is relaxed to resolve any of them.
+
+T055's distribution regression first fails on the original missing compress
+pin (one failure, 0.73 seconds). With the compatible module pinned and the
+local image revision consistently set to 0.34.3-careeros.2, all twelve focused
+contracts pass in 0.35 seconds. Scoped Ruff and format checks and
+`docker compose config --quiet` return 0. These local checks do not build an
+image or clear the first Trivy finding: the renewed PR run must do both.
+
+Applicable T055 pre-commit hooks pass in 5.187 seconds with no input mutation,
+including YAML, full Ruff and changed-file formatting. Mypy and frontend lint
+are skipped by their file filters because this patch changes no matching input;
+their earlier executions retain their own input scope. The four changed files
+reverse exactly to the baseline after removing the reviewed pin/version/assertion
+changes; fourteen dependency, notices, Cargo and security-policy control files
+remain byte-identical. The T055 freeze has SHA-256
+20e2e869361889ca38c4afca132711b19882c2765a02c09cd61072a148a3de22.
+
+The original 43530cc7 backend completes successfully before the follow-up push:
+3,043 Linux tests pass with eleven explicit skips in 741.30 seconds, combined
+coverage 83.90% against the unchanged 80% threshold. All four opt-in performance
+tests pass in 5.55 seconds; the separate security invocation passes 136 tests.
+Original results are complete, not cancelled or inferred from a prior cycle.
+
+T055 independent review is GOOD, SHA-256
+6650f2ea10129c9f6f98f1f4e879db476b30b3ee1f002921c6fecfdbcbf0185a.
+The reviewer independently recomputes the exact four-file reversal, fourteen
+unchanged controls and original RED/final GREEN JUnit outcomes. The artifacts
+now have 55 tasks, 53 source hand-offs complete; only T050/T052 remain open.
+The new head still requires actual image and protected-check outcomes in PR
+metadata and the durable private ledger. No successful image scan is inferred
+from this completed source hand-off.

@@ -136,7 +136,7 @@ def test_compose_services_have_bounded_processes_logs_and_segmented_networks() -
         "options": {"max-size": "10m", "max-file": "3"},
     }
 
-    assert services["ollama"]["image"] == "careeros-local-ollama:0.34.3-careeros.1"
+    assert services["ollama"]["image"] == "careeros-local-ollama:0.34.3-careeros.2"
     assert services["ollama"]["build"] == {
         "context": ".",
         "dockerfile": "docker/ollama/Dockerfile",
@@ -195,6 +195,7 @@ def test_patched_ollama_source_dependency_graph_and_gate_are_pinned() -> None:
     assert ("sha256:cfd3168b67445cdb0418892ccdbccb1348921f570e025695be52ffb2fe894d90") in dockerfile
     for module in (
         "github.com/buger/jsonparser@v1.1.2",
+        "github.com/klauspost/compress@v1.18.7",
         "golang.org/x/crypto@v0.57.0",
         "golang.org/x/image@v0.45.0",
         "golang.org/x/mod@v0.41.0",
@@ -207,11 +208,11 @@ def test_patched_ollama_source_dependency_graph_and_gate_are_pinned() -> None:
         assert module in dockerfile
         name, version = module.split("@", 1)
         assert f'{name})" = "{version}"' in dockerfile
-    assert dockerfile.count('&& test "$(go list -m') == 9
+    assert dockerfile.count('&& test "$(go list -m') == 10
     assert "go mod verify" in dockerfile
     assert "github.com/ollama/ollama/server.mode=release" in dockerfile
-    assert "github.com/ollama/ollama/version.Version=0.34.3-careeros.1" in dockerfile
-    assert 'org.opencontainers.image.version="0.34.3-careeros.1"' in dockerfile
+    assert "github.com/ollama/ollama/version.Version=0.34.3-careeros.2" in dockerfile
+    assert 'org.opencontainers.image.version="0.34.3-careeros.2"' in dockerfile
     assert "source_revision=6383a0fa9cbf97494b847226e189f6e36b401a08" in dockerfile
     assert "go version -m /out/ollama" in dockerfile
     assert "generate_go_license.cmake" in dockerfile
@@ -219,12 +220,13 @@ def test_patched_ollama_source_dependency_graph_and_gate_are_pinned() -> None:
     assert "HOME=/var/lib/ollama" in dockerfile
     assert "USER 10001:10001" in dockerfile
 
-    assert "OLLAMA_IMAGE: careeros-local-ollama:0.34.3-careeros.1" in workflow
+    assert "OLLAMA_IMAGE: careeros-local-ollama:0.34.3-careeros.2" in workflow
     assert "docker compose build backend frontend ollama" in workflow
     assert "Smoke-test patched Ollama runtime" in workflow
     assert "BUILD_PROVENANCE.txt" in workflow
     assert "golang.org/x/crypto[[:space:]]+v0[.]57[.]0" in workflow
     assert "golang.org/x/net[[:space:]]+v0[.]60[.]0" in workflow
+    assert "github[.]com/klauspost/compress[[:space:]]+v1[.]18[.]7" in workflow
     assert "Gate patched Ollama high and critical vulnerabilities" in workflow
     gate = workflow[
         workflow.index(

@@ -322,6 +322,13 @@ exception. A security gate remains binding until its actual technical resolution
 
 ## Governing constraints
 
+Current CI supply-chain remediation under FR-005 / SC-004: the first PR #122
+container scan identifies CVE-2026-63209 in the rebuilt Ollama executable's
+github.com/klauspost/compress v1.18.3 dependency. Verify the upstream fix, pin
+the compatible fixed module, preserve source/toolchain provenance and licenses,
+and require an actual rebuilt-image smoke test and unsuppressed high/critical
+scan. An updated source pin or static assertion alone is not a passing image.
+
 Constitution 2.0.1 is unchanged. The old branch's constitution, direct agent write
 tools and publication model are superseded by current governing constraints.
 Passing source tests is not approval of a production release or native installer.
