@@ -3,7 +3,7 @@
 Date: 2026-10-20. Current outcome: `tasks_appended` for the formatting gap;
 T053 and T054 were appended after the additional full formatter check exposed
 four modules requiring bounded decomposition. All 31 functional requirements
-and 29 success criteria map to 56 tasks and seventeen plan decisions. T055 and
+and 29 success criteria map to 57 tasks and eighteen plan decisions. T055 and
 T056 are subsequently appended for concrete container and Pillow findings
 observed in successive PR #122 checks.
 Constitution 2.0.1 is unchanged.
@@ -43,10 +43,28 @@ T056 completes its independently reviewed source hand-off: Pillow 13.0.0,
 coherent locks and notices, exact isolated environment, three zero-finding audits,
 487 affected tests, static checks, hooks and unsigned wheel verification pass.
 The reviewer directly verifies both earlier environments remain unchanged.
-There are 54 completed source hand-offs out of 56 tasks; T050/T052 remain open.
-No additional implementation task is indicated. Actual new-head CI, rebuilt
+At that hand-off there are 54 completed source tasks out of 56; T050/T052 remain open.
+Actual new-head CI, rebuilt
 image/platform qualification, protected integration and ref cleanup remain
 unfulfilled obligations; a source checkbox does not establish their success.
+
+The subsequent inventory discovers PR #123 and appends T057 before its
+implementation. Its JavaScript-only filesystem update cannot install the
+native fixes documented upstream. Current capability inspection establishes
+read_file-only authority, not an exploitable CareerOS vulnerability. T057
+assesses compatible paired updates and preserves that boundary. At discovery,
+the inventory has 57 tasks, 54 source hand-offs complete, with T050/T052/T057 open.
+
+T057 subsequently completes independent review and the local source hand-off.
+The ten adopted files and all 1,224 non-Markdown inputs match the frozen candidate.
+Frontend, all eight E2E groups, native, affected backend, static, performance,
+notice and unsigned-wheel checks pass with the exact skips in validation.md.
+The full Windows backend run remains attributed to b28b83f, while the changed
+candidate has its own affected gates. There are now 55 completed source tasks
+out of 57; T050 and T052 remain open. No additional implementation task or
+constitution waiver is justified. Actual CI on the newly committed source,
+security remediation, protected integration and recovery-backed cleanup are
+still required; local source completion establishes none of them early.
 
 ## Historical state-consistency convergence, 2026-10-17
 

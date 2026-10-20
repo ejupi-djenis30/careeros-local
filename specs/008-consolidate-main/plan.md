@@ -377,6 +377,20 @@ evidence; unavailable technical remediation stays a reported blocker.
     to T052 for actual full CI, container and platform packaging checks. No
     unsupported version, advisory suppression or weaker image boundary is used.
 
+18. Assess the newly discovered PR #123 JavaScript updates and their native
+    counterparts before implementation. Use primary release/crate/package
+    evidence to select compatible exact versions for api, CLI, dialog, fs and
+    opener. Reconcile the native plugin pins where required; inspect later
+    corrective patches rather than assuming a matching version number proves
+    API compatibility. Preserve core Tauri 2.12.4, capabilities and the glib
+    dependency/gate. Regenerate only necessary locks, generated schemas and
+    canonical notices. A temporary source snapshot may prepare the change
+    while the prior frozen Windows gate finishes; reconcile exact file hashes
+    before applying it. Verify frontend/native/import/export contracts,
+    unsuppressed audits, independent review and final actual CI under T052.
+    Existing read_file-only authority is retained, and upstream hardening is
+    not presented as a reproduced exploitable CareerOS vulnerability.
+
 ## Boundaries and size
 
 Existing large-module exceptions from feature 007 remain justified there. Provider

@@ -1385,3 +1385,135 @@ All applicable pre-commit hooks pass in 9.172 seconds, with zero changes among
 1,381 files. YAML and frontend lint hooks skip because their file filters match
 no changed inputs. T056 records a completed source hand-off; T050/T052 still
 own the blocking security issue and final actual protected qualification.
+
+## Third PR #122 head: observed b28b83f qualification
+
+CI 39500329013, Desktop packages 39500328711 and CodeQL 39500322558
+verify head b28b83f8b06db834ec56b38bfa92852b6399ab7b, tree
+35e237beee07facdf986d24cd7bf7c3eb286d96d. Backend passes 3,043 tests
+with eleven skips in 706.97 seconds and 83.90% combined coverage. All four
+performance tests pass in 5.45 seconds; separate security passes 136 tests
+in 32.88 seconds. Lint, mypy, migration, notices and applicable audit steps
+pass. All four Linux/Python 3.12 and 3.13, Windows 3.12 and macOS 3.12 wheel
+jobs pass, including pip check and MCP initialize with only two read-only tools.
+Actual install logs and the backend SBOM contain Pillow 13.0.0.
+
+Frontend passes 818 tests in 115 files, all eight E2E groups, audit, licenses,
+lint and build. Actual coverage is 85.09% statements, 75.45% branches,
+77.08% functions and 89.74% lines. All four CodeQL analyses pass. The new
+canonical notices are emitted in the build and served byte-identically in
+the frontend container; the old asset manifest is not reused as that proof.
+
+All three container builds and their applicable smoke/provenance/license
+checks pass. Existing backend/frontend scan policies (including their existing
+ignore-unfixed setting) return no reported vulnerabilities; the Ollama scan
+uses no such ignore and reports zero HIGH/CRITICAL findings. Actual SBOMs
+record Pillow 13.0.0 and compress 1.18.7. Release's Python runtime/development/
+tooling audits report zero findings for 57/111/21 Linux dependencies; pywin32
+is correctly excluded by its marker. Its Node audit also reports zero findings.
+
+Rust fmt, Clippy and 28 tests pass (1.57 seconds). Both Rust and Release then
+fail exclusively on CE-2026-001 expiry, before cargo-audit/license commands;
+those commands and native packaging are not claimed as passing. Five dependent
+desktop jobs are skipped. No native candidate, signing or publication occurs.
+
+Independent backend, frontend and supply-chain proof hashes respectively are
+eafdf8314d9e78e4e56139672a9b60ba0fee96d548a497b1dc86c71ea120800d,
+e6b5336208efb42f8f65e41321d392359089484ba2af93cb809cc8a1ce4c77c4 and
+747f521e91ce3e2af133bab18f34d373122ae06539191dd6a1aa3e62bcd28387.
+All 97 evidence files are copied and checksum-verified privately; their index
+has SHA-256 6daac6f45b6a65a9fbe347ecb07f22b08e7d9357a7bbf21ffd33c915fb86e971.
+
+The later inventory discovers PR #123 at
+fccd447b541a1404aa7defda89d88ab29637e44b. Its tip is fetched and included
+in a verified recovery bundle, SHA-256
+016c5f389578d8619615666ca3cf158b948eb057d31643a9f65013ef48c293f6.
+T057 is added before implementation. A 1,381-file temporary source snapshot
+(1,224 non-Markdown inputs) is copied with before/after checksums, allowing
+the prior full Windows run to continue without changes to its source inputs.
+Current capability inspection grants only read_file after dialog selection;
+the upstream customFlags/symlink fixes are not evidence of a reproduced
+CareerOS exploit. The later candidate and its checks remain separate evidence.
+
+The frozen b28b83f Windows run subsequently completes: 3,037 backend tests pass
+with seventeen skips in 1,311.59 seconds. Combined branch-aware coverage is
+82.35%, above the unchanged 80% threshold. The seventeen skips are thirteen
+POSIX-only cases and four explicitly opt-in performance cases; the four
+performance cases have separate passing Linux evidence above. Both pytest and
+the outer 1,367.671-second caller return 0. All 1,224 non-Markdown inputs remain
+identical before/after. T057 is still confined to the separate temporary source
+snapshot, so no in-flight source mutation is reclassified as a passing gate.
+
+## T057 candidate: compatible Tauri updates and native hardening
+
+PR #123's five exact npm updates are API 2.12.2 -> 2.12.3, CLI 2.12.1 ->
+2.12.2, dialog 2.8.1 -> 2.8.2, fs 2.6.0 -> 2.7.0 and opener 2.7.0 -> 2.7.1.
+Primary registry integrity/tarball metadata agrees with the branch. Native
+pins become fs 2.7.1, dialog 2.8.2 and opener 2.7.1. Only those three Cargo
+version/checksum entries change; core Tauri 2.12.4, glib 0.18.5 and the other
+registry packages remain unchanged. Official crate checksums and VCS metadata
+agree with upstream tags. The fs JS 2.7.0 and Rust 2.7.1 guest API sources
+are byte-identical; the CLI validates their matching major/minor versions.
+Later dialog 2.8.3 only raises its fs dependency to the already directly pinned
+2.7.1; later opener 2.7.2 fixes an ungranted revealItemInDir path. These later
+notes are assessed explicitly, not treated as evidence of a CareerOS exploit.
+
+The native read_file entry points and its ACL remain byte-identical across the
+reviewed fs versions. The actual application capability and native bridge code
+are unchanged. Three schemas are regenerated by cargo check, retaining their
+canonical no-final-LF bytes. Only fs write-all/write-files permission definitions
+become sets; no corresponding capability grant is added. The notices identity
+test updates only its expected API version, keeping every assertion intact.
+
+Canonical notice write/check passes for 13/58/3/473 components; the final
+1,424,882-byte notice digest is
+6bf132c5269afbd83bebfdb12d2e65ecc1149bc8b6b94fc66e0e05bba395b7a7.
+The final unsigned wheel is 1,055,330 bytes, SHA-256
+9ec90e18e2f92242f2eda9693928116e09cf489e8837494291c5f6164f2c5ed2.
+All 397 payload files, dependency metadata and notices match the snapshot;
+all 403 packaging inputs and the T056 environment's 121 distributions remain
+unchanged. Python runtime/development/tooling audits report zero findings.
+The native/source freeze digest is
+1614a34df37c5aeb77f5171e43ada67c69cea4a6cd513cad0409e8cbbe98ab5e.
+
+The candidate passes fmt, Clippy with warnings denied and 28 Rust tests.
+Full frontend passes 818 tests/115 files, with actual coverage
+85.10/75.45/77.08/89.74% (statements/branches/functions/lines). Both complete
+and production npm audits, npm ls, lint, runtime/license/icon contracts and
+the final build budgets pass. All eight E2E groups pass in 129.489 seconds,
+including real API material export checks. The 44 built assets and both the
+1,224-input candidate and original-source guards remain unchanged. The notice
+asset matches the canonical source. All 104 observed E2E processes have exited
+and both synthetic vaults are removed; no user process is terminated.
+Frontend final evidence has SHA-256
+09505f47fc58ac6922bbd89fb9f8828bb5c162bc62f25f8cd6c0be5a9a0f3a06.
+
+Root's snapshot security/release/desktop suite passes 328 tests with six skips
+in 227.69 seconds (238.656-second caller, exit 0). Five skips require POSIX;
+one requires a packaged sidecar provided by the native CI smoke job. Full
+Ruff, backend/scripts mypy, direct regression typing and full formatting pass
+in 61.234 seconds. All four opt-in Windows performance cases pass in 9.23
+seconds (13.985-second caller). Each guard verifies 1,224 unchanged inputs.
+
+Preserved tooling failures remain distinct: the first snapshot cargo check
+exits 101 because the ignored empty runtime resource directory was not copied;
+reproducing only that empty directory in Temp allows static/unit checks, without
+creating a shipping runtime. The first wheel helper uses an incorrect relative
+output path; its corrected absolute-path run is separately recorded. An optional
+process probe lacks psutil and is replaced by Win32 inspection without installs.
+No failed helper is relabelled as a passing run. The real CE expiry guard still
+exits 1. Real Tauri IPC/native installer qualification and new-head CI remain
+separate obligations; source-only packaging does not establish their success.
+
+The final independent T057 review reports GOOD with no actionable source-scope
+finding. Its report SHA-256 is
+c80ca3b6d72aef78ea7d860a145331e59b1960c69c42e4cc2195c2e16b5d5a29.
+The reviewer recomputes all 1,224 inputs, verifies the exact ten-file delta and
+the unchanged remaining 1,214 files, native grants, schema semantics, 307 license
+texts and test assertions. After all frozen local checks finish, the guarded
+adoption copies only those ten files into the canonical checkout and verifies
+all 1,224 canonical bytes match the tested candidate. Original bytes and proof
+references are preserved in the private Git recovery ledger. T057 is complete
+as a source hand-off; T050/T052 retain the outstanding security and protected
+integration obligations. No earlier whole-suite run is attributed to changed
+T057 inputs, and no passing source check is a native installer qualification.

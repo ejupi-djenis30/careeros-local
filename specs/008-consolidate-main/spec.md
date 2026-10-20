@@ -336,6 +336,16 @@ notices, then validate photo/document rendering, isolated wheels and fresh
 unsuppressed Python/container audits. Preserve the earlier zero-finding audit
 and the later failure with their exact timestamps and inputs.
 
+The final inventory also discovers automated PR #123, containing five Tauri
+JavaScript updates. Upstream filesystem release notes describe native fixes
+for custom open flags and nonexistent-path ancestor scope resolution; updating
+only the JavaScript wrapper does not install those Rust fixes. Assess and
+consolidate compatible updates with primary-verified native counterparts,
+reproduced locks/notices and platform checks. CareerOS grants only read_file
+after explicit file selection; no exploitable CareerOS defect is established
+by those upstream notes. Preserve the exact capability scope, pinned core
+Tauri version, local-data boundaries and blocking glib policy.
+
 Constitution 2.0.1 is unchanged. The old branch's constitution, direct agent write
 tools and publication model are superseded by current governing constraints.
 Passing source tests is not approval of a production release or native installer.

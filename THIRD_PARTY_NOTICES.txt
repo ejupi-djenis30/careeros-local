@@ -46,7 +46,7 @@ which covers the CareerOS Local project itself.
         "9dd42ea92cff2ede5cd477cbfcce051b2d0115c0ac7f368ee88cb545055dff1d",
         "bb28c48e3e078166e91cfc2b6db7ffebb8a0973b9e23b3df060561292d8d69ec"
       ],
-      "version": "2.12.2"
+      "version": "2.12.3"
     },
     {
       "ecosystem": "frontend",
@@ -57,7 +57,7 @@ which covers the CareerOS Local project itself.
       "textIds": [
         "9c1db6b7e7eb83e1cb2af973b5df2bdc63651ede0f38506ab98dfa0940487759"
       ],
-      "version": "2.8.1"
+      "version": "2.8.2"
     },
     {
       "ecosystem": "frontend",
@@ -68,7 +68,7 @@ which covers the CareerOS Local project itself.
       "textIds": [
         "9c1db6b7e7eb83e1cb2af973b5df2bdc63651ede0f38506ab98dfa0940487759"
       ],
-      "version": "2.6.0"
+      "version": "2.7.0"
     },
     {
       "ecosystem": "frontend",
@@ -79,7 +79,7 @@ which covers the CareerOS Local project itself.
       "textIds": [
         "9c1db6b7e7eb83e1cb2af973b5df2bdc63651ede0f38506ab98dfa0940487759"
       ],
-      "version": "2.7.0"
+      "version": "2.7.1"
     },
     {
       "ecosystem": "frontend",
@@ -5645,7 +5645,7 @@ which covers the CareerOS Local project itself.
         "bb28c48e3e078166e91cfc2b6db7ffebb8a0973b9e23b3df060561292d8d69ec",
         "f9c4c77baa3828004ee54b8a4f2db2e88ed44a6237a493965bf551fac0fcb62d"
       ],
-      "version": "2.8.1"
+      "version": "2.8.2"
     },
     {
       "ecosystem": "rust",
@@ -5661,7 +5661,7 @@ which covers the CareerOS Local project itself.
         "bb28c48e3e078166e91cfc2b6db7ffebb8a0973b9e23b3df060561292d8d69ec",
         "f9c4c77baa3828004ee54b8a4f2db2e88ed44a6237a493965bf551fac0fcb62d"
       ],
-      "version": "2.6.0"
+      "version": "2.7.1"
     },
     {
       "ecosystem": "rust",
@@ -5677,7 +5677,7 @@ which covers the CareerOS Local project itself.
         "bb28c48e3e078166e91cfc2b6db7ffebb8a0973b9e23b3df060561292d8d69ec",
         "f9c4c77baa3828004ee54b8a4f2db2e88ed44a6237a493965bf551fac0fcb62d"
       ],
-      "version": "2.7.0"
+      "version": "2.7.1"
     },
     {
       "ecosystem": "rust",
@@ -7743,8 +7743,8 @@ which covers the CareerOS Local project itself.
   "sourceLocks": {
     ".native-python-version": "f8faecf2505680716c6279bf2cdec3d5a5ba2ba852f0d7df45d51ac1ce8d9ade",
     ".python-version": "aa0d6581054e6e4ff3f91839deca7a854ad37221b8784d060b42d0f847ff1a3b",
-    "frontend/package-lock.json": "3430d042f5cda898996902bc4b435a67336f082b57b6eade575633b6a51b4bf4",
-    "frontend/src-tauri/Cargo.lock": "968585ac02371b626e7d06984e1c308b531a9846ae7c8d1227ac6a4890493bd4",
+    "frontend/package-lock.json": "94fe7e184df793eb5d1983289683ec01599683e8cc72e714bfaa506093795a68",
+    "frontend/src-tauri/Cargo.lock": "215307f5ed3a799245fa874b16fd7a5b4316309cdb3df2f4d5ebc494e87e1259",
     "requirements-tooling.lock": "3022484e2ff7ed4d8fc1e890dd701b09e66cabde70f19d40e101dcddb098ef07",
     "requirements.lock": "5835bd8d8e9a094088f1fe13e8796d461a3f7e540c3871903900a9ce3b424af2",
     "third_party/licenses/cpython-3.13.14/LICENSE": "78b12c3a81360b357002334f0e70ea0e92eebf7a9b358805c03c48484945f3bb"
@@ -8846,7 +8846,7 @@ which covers the CareerOS Local project itself.
       "id": "5e834fe9788c524210deda859c46a550ffa5aa0cba9ea0572f0d81120e97c008",
       "sha256": "5e834fe9788c524210deda859c46a550ffa5aa0cba9ea0572f0d81120e97c008",
       "sources": [
-        "frontend:@tauri-apps/api@2.12.2/LICENSE.spdx"
+        "frontend:@tauri-apps/api@2.12.3/LICENSE.spdx"
       ]
     },
     {
@@ -9480,12 +9480,12 @@ which covers the CareerOS Local project itself.
       "id": "9c1db6b7e7eb83e1cb2af973b5df2bdc63651ede0f38506ab98dfa0940487759",
       "sha256": "9c1db6b7e7eb83e1cb2af973b5df2bdc63651ede0f38506ab98dfa0940487759",
       "sources": [
-        "frontend:@tauri-apps/plugin-dialog@2.8.1/LICENSE.spdx",
-        "frontend:@tauri-apps/plugin-fs@2.6.0/LICENSE.spdx",
-        "frontend:@tauri-apps/plugin-opener@2.7.0/LICENSE.spdx",
-        "rust:tauri-plugin-dialog@2.8.1/LICENSE.spdx",
-        "rust:tauri-plugin-fs@2.6.0/LICENSE.spdx",
-        "rust:tauri-plugin-opener@2.7.0/LICENSE.spdx",
+        "frontend:@tauri-apps/plugin-dialog@2.8.2/LICENSE.spdx",
+        "frontend:@tauri-apps/plugin-fs@2.7.0/LICENSE.spdx",
+        "frontend:@tauri-apps/plugin-opener@2.7.1/LICENSE.spdx",
+        "rust:tauri-plugin-dialog@2.8.2/LICENSE.spdx",
+        "rust:tauri-plugin-fs@2.7.1/LICENSE.spdx",
+        "rust:tauri-plugin-opener@2.7.1/LICENSE.spdx",
         "rust:tauri-plugin-shell@2.3.5/LICENSE.spdx",
         "rust:tauri-plugin-single-instance@2.4.3/LICENSE.spdx"
       ]
@@ -9501,13 +9501,13 @@ which covers the CareerOS Local project itself.
       "id": "9dd42ea92cff2ede5cd477cbfcce051b2d0115c0ac7f368ee88cb545055dff1d",
       "sha256": "9dd42ea92cff2ede5cd477cbfcce051b2d0115c0ac7f368ee88cb545055dff1d",
       "sources": [
-        "frontend:@tauri-apps/api@2.12.2/LICENSE-MIT",
+        "frontend:@tauri-apps/api@2.12.3/LICENSE-MIT",
         "rust:tauri-build@2.7.3/LICENSE-MIT",
         "rust:tauri-codegen@2.7.3/LICENSE-MIT",
         "rust:tauri-macros@2.7.3/LICENSE-MIT",
-        "rust:tauri-plugin-dialog@2.8.1/LICENSE_MIT",
-        "rust:tauri-plugin-fs@2.6.0/LICENSE_MIT",
-        "rust:tauri-plugin-opener@2.7.0/LICENSE_MIT",
+        "rust:tauri-plugin-dialog@2.8.2/LICENSE_MIT",
+        "rust:tauri-plugin-fs@2.7.1/LICENSE_MIT",
+        "rust:tauri-plugin-opener@2.7.1/LICENSE_MIT",
         "rust:tauri-plugin-shell@2.3.5/LICENSE_MIT",
         "rust:tauri-runtime-wry@2.12.2/LICENSE-MIT",
         "rust:tauri-runtime@2.12.2/LICENSE-MIT",
@@ -9792,7 +9792,7 @@ which covers the CareerOS Local project itself.
       "id": "bb28c48e3e078166e91cfc2b6db7ffebb8a0973b9e23b3df060561292d8d69ec",
       "sha256": "bb28c48e3e078166e91cfc2b6db7ffebb8a0973b9e23b3df060561292d8d69ec",
       "sources": [
-        "frontend:@tauri-apps/api@2.12.2/LICENSE-APACHE-2.0",
+        "frontend:@tauri-apps/api@2.12.3/LICENSE-APACHE-2.0",
         "python:packaging@26.3/LICENSE.APACHE",
         "rust-canonical:Apache-2.0/sync_wrapper@1.0.2/LICENSE",
         "rust:fdeflate@0.3.7/LICENSE-APACHE",
@@ -9805,9 +9805,9 @@ which covers the CareerOS Local project itself.
         "rust:tauri-build@2.7.3/LICENSE-APACHE-2.0",
         "rust:tauri-codegen@2.7.3/LICENSE-APACHE-2.0",
         "rust:tauri-macros@2.7.3/LICENSE-APACHE-2.0",
-        "rust:tauri-plugin-dialog@2.8.1/LICENSE_APACHE-2.0",
-        "rust:tauri-plugin-fs@2.6.0/LICENSE_APACHE-2.0",
-        "rust:tauri-plugin-opener@2.7.0/LICENSE_APACHE-2.0",
+        "rust:tauri-plugin-dialog@2.8.2/LICENSE_APACHE-2.0",
+        "rust:tauri-plugin-fs@2.7.1/LICENSE_APACHE-2.0",
+        "rust:tauri-plugin-opener@2.7.1/LICENSE_APACHE-2.0",
         "rust:tauri-plugin-shell@2.3.5/LICENSE_APACHE-2.0",
         "rust:tauri-plugin-single-instance@2.4.3/LICENSE_APACHE-2.0",
         "rust:tauri-runtime-wry@2.12.2/LICENSE-APACHE-2.0",
