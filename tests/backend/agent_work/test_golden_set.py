@@ -94,7 +94,8 @@ def test_versioned_golden_quality_metrics_meet_declared_thresholds() -> None:
         pair for pair in evaluated if pair[0]["expected"]["outcome"] == "evidence_invalid"
     ]
     metrics = {
-        "schema_valid_rate": sum(actual["schema_valid"] for _, actual in evaluated) / len(evaluated),
+        "schema_valid_rate": sum(actual["schema_valid"] for _, actual in evaluated)
+        / len(evaluated),
         "expected_outcome_accuracy": sum(
             actual["outcome"] == case["expected"]["outcome"] for case, actual in evaluated
         )
@@ -136,9 +137,7 @@ def test_language_dimension_uses_cited_language_fact_instead_of_a_fixed_language
     context = deepcopy(fixture["context"])
     language_fact = context["facts"][1]
     language_fact.update(title="Polish", description="Polish C1", attributes={"language": "Polish"})
-    context["target_job"]["description"] = (
-        "Python Engineer Polish Zurich permanent posted today"
-    )
+    context["target_job"]["description"] = "Python Engineer Polish Zurich permanent posted today"
     proposal = deepcopy(golden["proposal"])
     language_gate = next(gate for gate in proposal["gates"] if gate["dimension"] == "language")
     language_gate["quote_references"] = ["Polish"]

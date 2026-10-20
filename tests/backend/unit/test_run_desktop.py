@@ -14,9 +14,7 @@ TARGET = "aarch64-pc-windows-msvc"
 @pytest.fixture
 def desktop_commands(tmp_path, monkeypatch):
     frontend = tmp_path / "frontend"
-    cli = frontend / "node_modules" / ".bin" / (
-        "tauri.cmd" if os.name == "nt" else "tauri"
-    )
+    cli = frontend / "node_modules" / ".bin" / ("tauri.cmd" if os.name == "nt" else "tauri")
     cli.parent.mkdir(parents=True)
     cli.write_text("installed CLI", encoding="utf-8")
     manifest = frontend / "sidecar-build.json"

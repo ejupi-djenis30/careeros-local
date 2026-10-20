@@ -44,7 +44,7 @@ def _format_inline_str(val: str) -> str:
     escaped = html.escape(val, quote=True)
     if val != val.strip():
         return f'<is><t xml:space="preserve">{escaped}</t></is>'
-    return f'<is><t>{escaped}</t></is>'
+    return f"<is><t>{escaped}</t></is>"
 
 
 def sanitize_tracker_workbook(
@@ -88,7 +88,9 @@ def sanitize_tracker_workbook(
                 cells.append(f'<c r="{ref}"><v>{val}</v></c>')
             elif isinstance(val, float):
                 if not math.isfinite(val):
-                    raise ValueError(f"Non-finite float value {val} cannot be sanitized in cell {ref}")
+                    raise ValueError(
+                        f"Non-finite float value {val} cannot be sanitized in cell {ref}"
+                    )
                 cells.append(f'<c r="{ref}"><v>{val}</v></c>')
             elif isinstance(val, (date, datetime)):
                 d_val = val.date() if isinstance(val, datetime) else val
@@ -109,7 +111,7 @@ def sanitize_tracker_workbook(
     sheet1_xml = (
         '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n'
         '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">\n'
-        f'  <sheetData>{"".join(sheet1_rows)}</sheetData>\n'
+        f"  <sheetData>{''.join(sheet1_rows)}</sheetData>\n"
         "</worksheet>"
     )
 
@@ -119,7 +121,7 @@ def sanitize_tracker_workbook(
         '  <cellXfs count="2">\n'
         '    <xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>\n'
         '    <xf numFmtId="14" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/>\n'
-        '  </cellXfs>\n'
+        "  </cellXfs>\n"
         "</styleSheet>"
     )
 

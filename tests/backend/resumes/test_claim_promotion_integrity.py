@@ -79,6 +79,7 @@ def _draft(vault, subtitle="Synthetic context"):
             vault.user_id,
             ResumeDraftCreate(title="Synthetic draft", selected_fact_ids=[vault.fact_id]),
         )
+        assert draft.canvas_document is not None
         canvas = deepcopy(draft.canvas_document.model_dump(mode="json"))
         canvas["sections"].append(
             {
@@ -108,11 +109,13 @@ def _draft(vault, subtitle="Synthetic context"):
         return service.update(
             vault.user_id,
             draft.id,
-            ResumeDraftUpdate(
-                expected_revision=draft.revision,
-                title=draft.title,
-                selected_fact_ids=[vault.fact_id],
-                canvas_document=canvas,
+            ResumeDraftUpdate.model_validate(
+                {
+                    "expected_revision": draft.revision,
+                    "title": draft.title,
+                    "selected_fact_ids": [vault.fact_id],
+                    "canvas_document": canvas,
+                }
             ),
         )
 
@@ -194,14 +197,11 @@ def test_explicit_http_promotion_returns_one_valid_acknowledgement(claim_vault, 
         assert session.get(CandidateProfile, vault.profile_id).revision == 1
     app = FastAPI(
         telemetry={
-            key: False
-            for key in (
-                "tracing",
-                "metrics",
-                "logs",
-                "operation_spans",
-                "auto_configure",
-            )
+            "tracing": False,
+            "metrics": False,
+            "logs": False,
+            "operation_spans": False,
+            "auto_configure": False,
         }
     )
     app.state.limiter = limiter

@@ -59,10 +59,10 @@ export const SearchService = {
         return ApiClient.postMultipart("/search/upload-cv", formData);
     },
 
-    toggleSchedule(profileId, enabled, intervalHours = null) {
+    toggleSchedule(profileId, enabled, intervalHours = null, options = {}) {
         const body = { enabled };
         if (intervalHours !== null) body.interval_hours = intervalHours;
-        return ApiClient.patch(`/profiles/${profileId}/schedule`, body);
+        return ApiClient.patch(`/profiles/${profileId}/schedule`, body, options);
     },
 
     deleteProfile(profileId) {

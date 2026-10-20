@@ -35,6 +35,7 @@ def _template_values(request: JobSearchRequest) -> dict[str, str]:
         "workload_max": str(request.workload_max),
     }
 
+
 def _render_string(value: str, variables: dict[str, str], *, path: bool = False) -> str:
     return _TEMPLATE_RE.sub(
         lambda match: (
@@ -42,6 +43,7 @@ def _render_string(value: str, variables: dict[str, str], *, path: bool = False)
         ),
         value,
     )
+
 
 def _render_json(value: Any, variables: dict[str, str]) -> Any:
     if isinstance(value, str):

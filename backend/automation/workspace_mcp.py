@@ -103,9 +103,7 @@ def build_workspace_mcp_server(bridge_client: DesktopBridgeClient) -> FastMCP:
     def submit_work_result(
         request_id: Annotated[str, Field(pattern=UUID_PATTERN)],
         input_digest: Annotated[str, Field(pattern=r"^[0-9a-f]{64}$")],
-        idempotency_key: Annotated[
-            str, Field(min_length=1, max_length=100, pattern=r"^[!-~]+$")
-        ],
+        idempotency_key: Annotated[str, Field(min_length=1, max_length=100, pattern=r"^[!-~]+$")],
         client: Annotated[str, Field(min_length=1, max_length=120)],
         result: ProposalPayload,
         model: Annotated[str | None, Field(max_length=120)] = None,

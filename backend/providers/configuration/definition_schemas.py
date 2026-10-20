@@ -118,6 +118,7 @@ class ProviderRequestConfig(StrictProviderModel):
             raise ValueError("GET providers cannot define a JSON body")
         return self
 
+
 class ProviderFieldMapping(StrictProviderModel):
     source: str = Field(min_length=1, max_length=500)
     attribute: str | None = Field(default=None, max_length=80)
@@ -129,6 +130,7 @@ class ProviderFieldMapping(StrictProviderModel):
         if value is not None and not _HEADER_RE.fullmatch(value):
             raise ValueError("HTML attribute mapping is invalid")
         return value
+
 
 class ProviderExtractionConfig(StrictProviderModel):
     items_path: str | None = Field(default=None, max_length=500)
@@ -152,6 +154,7 @@ class ProviderExtractionConfig(StrictProviderModel):
             raise ValueError("Provider mappings require canonical id and title fields")
         return value
 
+
 class ProviderCapabilitiesConfig(StrictProviderModel):
     accepted_domains: list[str] = Field(default_factory=lambda: ["*"], min_length=1, max_length=20)
     supported_languages: list[str] = Field(
@@ -167,6 +170,7 @@ class ProviderCapabilitiesConfig(StrictProviderModel):
         ):
             raise ValueError("Provider capability values are invalid")
         return normalized
+
 
 class ProviderConfigurationInput(StrictProviderModel):
     key: str = Field(min_length=2, max_length=64)
@@ -211,11 +215,14 @@ class ProviderConfigurationInput(StrictProviderModel):
                 raise ValueError("HTML providers cannot define total_path")
         return self
 
+
 class ProviderConfigurationCreate(ProviderConfigurationInput):
     pass
 
+
 class ProviderConfigurationUpdate(ProviderConfigurationInput):
     expected_revision: int = Field(ge=1)
+
 
 class ProviderConfigurationView(StrictProviderModel):
     id: str = Field(json_schema_extra={"format": "uuid"})
@@ -238,22 +245,24 @@ class ProviderConfigurationView(StrictProviderModel):
     @model_validator(mode="after")
     def validate_runtime_shape(self) -> "ProviderConfigurationView":
         if self.adapter_kind == "native":
-            if not self.native_adapter_id or self.request is not None or self.extraction is not None:
+            if (
+                not self.native_adapter_id
+                or self.request is not None
+                or self.extraction is not None
+            ):
                 raise ValueError("Native provider rows require only a native adapter identifier")
             if self.has_secrets:
                 raise ValueError("Native provider rows cannot contain configured secrets")
-        elif (
-            self.native_adapter_id is not None
-            or self.request is None
-            or self.extraction is None
-        ):
+        elif self.native_adapter_id is not None or self.request is None or self.extraction is None:
             raise ValueError("Declarative provider rows require request and extraction contracts")
         return self
+
 
 class ProviderValidationView(StrictProviderModel):
     valid: bool
     provider_key: str
     warnings: list[str] = Field(default_factory=list, max_length=20)
+
 
 class ProviderTestRequest(StrictProviderModel):
     allow_network: Literal[True]
@@ -267,6 +276,7 @@ class ProviderTestRequest(StrictProviderModel):
         if value is not True:
             raise ValueError("Provider testing requires explicit network consent")
         return True
+
 
 class ProviderTestView(StrictProviderModel):
     provider_key: str

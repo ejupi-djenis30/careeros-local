@@ -246,9 +246,7 @@ def _validate_resume_domain(tables: dict[str, list[dict[str, Any]]], version: in
             validate_canvas_references(canvas, set(selected))
 
 
-def _validate_application_domain(
-    tables: dict[str, list[dict[str, Any]]], version: int
-) -> None:
+def _validate_application_domain(tables: dict[str, list[dict[str, Any]]], version: int) -> None:
     if version < 7:
         return
     stages = {

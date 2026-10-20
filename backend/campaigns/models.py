@@ -51,7 +51,6 @@ _CATEGORIES_SQL = ", ".join(f"'{c}'" for c in ALLOWED_ARTIFACT_CATEGORIES)
 XLSX_MAX_CELL_CHARS = 32_767
 
 
-
 class Campaign(Base, TimestampMixin):
     __tablename__ = "campaigns"
     __table_args__ = (
@@ -88,7 +87,9 @@ class Campaign(Base, TimestampMixin):
 class CampaignApplication(Base):
     __tablename__ = "campaign_applications"
     __table_args__ = (
-        UniqueConstraint("campaign_id", "source_application_id", name="uq_campaign_app_campaign_source_id"),
+        UniqueConstraint(
+            "campaign_id", "source_application_id", name="uq_campaign_app_campaign_source_id"
+        ),
         UniqueConstraint("campaign_id", "application_id", name="uq_campaign_app_campaign_app_id"),
         Index("ix_campaign_applications_campaign_source_order", "campaign_id", "source_order"),
         Index("ix_campaign_applications_campaign_priority", "campaign_id", "priority"),
@@ -122,7 +123,9 @@ class CampaignApplication(Base):
 class CampaignArtifact(Base):
     __tablename__ = "campaign_artifacts"
     __table_args__ = (
-        UniqueConstraint("campaign_id", "relative_path", name="uq_campaign_artifacts_campaign_path"),
+        UniqueConstraint(
+            "campaign_id", "relative_path", name="uq_campaign_artifacts_campaign_path"
+        ),
         Index("ix_campaign_artifacts_campaign_source_order", "campaign_id", "source_order"),
         CheckConstraint(
             f"category IN ({_CATEGORIES_SQL})",

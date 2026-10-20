@@ -91,9 +91,7 @@ def _rewrite(data: bytes, change) -> bytes:
     change(payload)
     members["payload.json"] = canonical_json(payload)
     manifest = json.loads(members["manifest.json"])
-    manifest["record_counts"] = {
-        name: len(rows) for name, rows in payload["tables"].items()
-    }
+    manifest["record_counts"] = {name: len(rows) for name, rows in payload["tables"].items()}
     for entry in manifest["entries"]:
         entry.update(
             sha256=sha256(members[entry["path"]]),
@@ -134,8 +132,7 @@ def _unicode_artifact_path_collision(payload: dict) -> None:
 def _noncanonical_provenance_order(payload: dict) -> None:
     rows = payload["tables"]["campaign_applications"]
     matched = next(
-        row for row in rows
-        if set(row["provenance"]["sources"]) == {"tracker", "dossier"}
+        row for row in rows if set(row["provenance"]["sources"]) == {"tracker", "dossier"}
     )
     matched["provenance"]["sources"] = ["dossier", "tracker"]
 
@@ -154,9 +151,7 @@ def _missing_dossier_packet_dir(payload: dict) -> None:
 
 def _tracker_only_packet_dir(payload: dict) -> None:
     rows = payload["tables"]["campaign_applications"]
-    tracker_only = next(
-        row for row in rows if row["provenance"]["sources"] == ["tracker"]
-    )
+    tracker_only = next(row for row in rows if row["provenance"]["sources"] == ["tracker"])
     tracker_only["provenance"]["packet_dir"] = "must-not-cross-this-boundary"
 
 
@@ -245,14 +240,12 @@ def test_v8_roundtrip_preserves_exact_campaign_graph_and_managed_bytes(campaign_
     assert payload["tables"]["campaigns"][0]["source_fingerprint"] == imported.fingerprint
     assert all("user_id" not in row for row in payload["tables"]["campaigns"])
     assert any(row["tracker_record"] for row in payload["tables"]["campaign_applications"])
-    assert all(isinstance(row["provenance"], dict) for row in payload["tables"]["campaign_applications"])
+    assert all(
+        isinstance(row["provenance"], dict) for row in payload["tables"]["campaign_applications"]
+    )
 
-    campaign_asset_ids = {
-        row["asset_id"] for row in payload["tables"]["campaign_artifacts"]
-    }
-    asset_rows = {
-        row["id"]: row for row in payload["tables"]["career_assets"]
-    }
+    campaign_asset_ids = {row["asset_id"] for row in payload["tables"]["campaign_artifacts"]}
+    asset_rows = {row["id"]: row for row in payload["tables"]["career_assets"]}
     assert campaign_asset_ids <= set(asset_rows)
     assert all(asset_rows[item]["kind"] == "campaign_document" for item in campaign_asset_ids)
     assert all(
@@ -305,9 +298,7 @@ def test_v8_roundtrip_accepts_tracker_rows_with_missing_source_status(campaign_v
 
     portable = export_archive(db, owner.id)
     assert inspect_archive(db, owner.id, portable).compatible
-    assert _payload(portable)["tables"]["campaigns"][0]["summary"]["status_counts"] == {
-        "Saved": 1
-    }
+    assert _payload(portable)["tables"]["campaigns"][0]["summary"]["status_counts"] == {"Saved": 1}
 
     _reset(db, owner)
     restored = restore_archive(db, owner.id, portable)
@@ -560,34 +551,30 @@ def test_v8_tampering_is_rejected_before_restore_writes(campaign_v8_db, mutate):
 @pytest.mark.parametrize(
     "mutate",
     [
-        lambda payload: payload["tables"]["campaign_applications"][0].update(
-            provenance=[]
-        ),
+        lambda payload: payload["tables"]["campaign_applications"][0].update(provenance=[]),
         lambda payload: payload["tables"]["campaign_applications"][0].update(
             provenance=["tracker"]
         ),
-        lambda payload: payload["tables"]["campaign_applications"][0][
-            "provenance"
-        ].update(sources=["tracker", "dossier", "tracker"]),
+        lambda payload: payload["tables"]["campaign_applications"][0]["provenance"].update(
+            sources=["tracker", "dossier", "tracker"]
+        ),
         _noncanonical_provenance_order,
-        lambda payload: payload["tables"]["campaign_applications"][0][
-            "provenance"
-        ].update(private_note="must-not-cross-the-portability-boundary"),
-        lambda payload: payload["tables"]["campaign_applications"][0][
-            "provenance"
-        ].update(warnings={"private": "value"}),
+        lambda payload: payload["tables"]["campaign_applications"][0]["provenance"].update(
+            private_note="must-not-cross-the-portability-boundary"
+        ),
+        lambda payload: payload["tables"]["campaign_applications"][0]["provenance"].update(
+            warnings={"private": "value"}
+        ),
         _invalid_packet_dir_shape,
         _missing_dossier_packet_dir,
         _tracker_only_packet_dir,
         lambda payload: payload["tables"]["campaign_applications"][0].update(
             tracker_record={"nested": {"private": "value"}}
         ),
-        lambda payload: payload["tables"]["campaign_applications"][0][
-            "tracker_record"
-        ].update(Notes="x" * 32_768),
-        lambda payload: payload["tables"]["campaigns"][0]["summary"].pop(
-            "warning_count"
+        lambda payload: payload["tables"]["campaign_applications"][0]["tracker_record"].update(
+            Notes="x" * 32_768
         ),
+        lambda payload: payload["tables"]["campaigns"][0]["summary"].pop("warning_count"),
         lambda payload: payload["tables"]["campaigns"][0]["summary"].update(
             private_note="must-not-cross-the-portability-boundary"
         ),
@@ -597,9 +584,7 @@ def test_v8_tampering_is_rejected_before_restore_writes(campaign_v8_db, mutate):
         lambda payload: payload["tables"]["campaigns"][0]["summary"].update(
             source_document_count=-1
         ),
-        lambda payload: payload["tables"]["campaigns"][0]["summary"].update(
-            task_count=999_999
-        ),
+        lambda payload: payload["tables"]["campaigns"][0]["summary"].update(task_count=999_999),
         _in_range_task_count_mismatch,
         _boolean_status_count,
         _duplicate_application_order,

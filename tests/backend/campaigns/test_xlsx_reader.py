@@ -108,7 +108,9 @@ def test_typed_text_fields_preserve_nonblank_source_whitespace():
         "Status": "  Applied  ",
         "Next Action": "  Review locally  ",
     }
-    row = read_campaign_workbook(build_fictional_xlsx_bytes(applications_rows=[source_values])).rows[0]
+    row = read_campaign_workbook(
+        build_fictional_xlsx_bytes(applications_rows=[source_values])
+    ).rows[0]
 
     assert row.title == source_values["Role Title"]
     assert row.company == source_values["Company Name"]
@@ -249,21 +251,24 @@ def test_credentials_empty_or_whitespace_cells_not_counted():
     sheet2_xml = (
         '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n'
         '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">\n'
-        '  <sheetData>\n'
+        "  <sheetData>\n"
         '    <row r="1"><c r="A1" t="inlineStr"><is><t>Header</t></is></c></row>\n'
         '    <row r="2"><c r="A2" t="inlineStr"><is><t>   </t></is></c></row>\n'
         '    <row r="3"><c r="A3" t="inlineStr"><is><t></t></is></c></row>\n'
         '    <row r="4"><c r="A4"><v>   </v></c></row>\n'
         '    <row r="5"><c r="A5" t="inlineStr"><is><t>RealPlatform</t></is></c></row>\n'
-        '  </sheetData>\n'
-        '</worksheet>'
+        "  </sheetData>\n"
+        "</worksheet>"
     )
 
     with zipfile.ZipFile(in_buf, "r") as z_in, zipfile.ZipFile(out_buf, "w") as z_out:
         for item in z_in.infolist():
             content = z_in.read(item.filename)
             if item.filename == "xl/workbook.xml":
-                content = content.replace(b"</sheets>", b'<sheet name="Platform Credentials" sheetId="2" r:id="rId99"/></sheets>')
+                content = content.replace(
+                    b"</sheets>",
+                    b'<sheet name="Platform Credentials" sheetId="2" r:id="rId99"/></sheets>',
+                )
             elif item.filename == "xl/_rels/workbook.xml.rels":
                 content = content.replace(
                     b"</Relationships>",
@@ -284,7 +289,10 @@ def test_declared_credentials_missing_member_fails_closed():
         for item in z_in.infolist():
             content = z_in.read(item.filename)
             if item.filename == "xl/workbook.xml":
-                content = content.replace(b"</sheets>", b'<sheet name="Platform Credentials" sheetId="2" r:id="rId99"/></sheets>')
+                content = content.replace(
+                    b"</sheets>",
+                    b'<sheet name="Platform Credentials" sheetId="2" r:id="rId99"/></sheets>',
+                )
             elif item.filename == "xl/_rels/workbook.xml.rels":
                 content = content.replace(
                     b"</Relationships>",
@@ -382,15 +390,15 @@ def test_sentinel_secret_privacy_regression():
     sheet2_xml = (
         '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n'
         '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">\n'
-        '  <sheetData>\n'
+        "  <sheetData>\n"
         '    <row r="1"><c r="A1" t="inlineStr"><is><t>Platform</t></is></c><c r="B1" t="inlineStr"><is><t>Username</t></is></c><c r="C1" t="inlineStr"><is><t>Password</t></is></c></row>\n'
         f'    <row r="2"><c r="A2" t="s"><v>{idx0}</v></c><c r="B2" t="s"><v>{idx1}</v></c><c r="C2" t="s"><v>{idx2}</v></c></row>\n'
         f'    <row r="3"><c r="A3" t="s"><v>{idx3}</v></c><c r="B3" t="s"><v>{idx4}</v></c><c r="C3" t="s"><v>{idx5}</v></c></row>\n'
         '    <row r="4"><c r="A4" t="inlineStr"><is><t>InlinePlat</t></is></c><c r="B4" t="inlineStr"><is><t>user4</t></is></c><c r="C4" t="inlineStr"><is><t>SENTINEL-SECRET-PWD-BETA</t></is></c></row>\n'
         f'    <row r="5"><c r="A5" t="s"><v>{idx6}</v></c><c r="B5" t="s"><v>{idx7}</v></c></row>\n'
         f'    <row r="6"><c r="A6" t="s"><v>{idx8}</v></c></row>\n'
-        '  </sheetData>\n'
-        '</worksheet>'
+        "  </sheetData>\n"
+        "</worksheet>"
     )
 
     in_buf.seek(0)
@@ -398,7 +406,10 @@ def test_sentinel_secret_privacy_regression():
         for item in z_in.infolist():
             content = z_in.read(item.filename)
             if item.filename == "xl/workbook.xml":
-                content = content.replace(b"</sheets>", b'<sheet name="Platform Credentials" sheetId="2" r:id="rId99"/></sheets>')
+                content = content.replace(
+                    b"</sheets>",
+                    b'<sheet name="Platform Credentials" sheetId="2" r:id="rId99"/></sheets>',
+                )
             elif item.filename == "xl/_rels/workbook.xml.rels":
                 content = content.replace(
                     b"</Relationships>",
@@ -406,15 +417,15 @@ def test_sentinel_secret_privacy_regression():
                 )
             elif item.filename == "xl/sharedStrings.xml":
                 sst_extra = (
-                    '<si><t>PlatformExtra</t></si>'
-                    '<si><t>user1</t></si>'
-                    '<si><t>SENTINEL-SECRET-PWD-ALPHA</t></si>'
-                    '<si><t>PlatformExtra2</t></si>'
-                    '<si><t>user2</t></si>'
-                    '<si><t>   </t></si>'
-                    '<si><t></t></si>'
-                    '<si><t>   </t></si>'
-                    '<si><t>SENTINEL-SECRET-PWD-GAMMA</t></si>'
+                    "<si><t>PlatformExtra</t></si>"
+                    "<si><t>user1</t></si>"
+                    "<si><t>SENTINEL-SECRET-PWD-ALPHA</t></si>"
+                    "<si><t>PlatformExtra2</t></si>"
+                    "<si><t>user2</t></si>"
+                    "<si><t>   </t></si>"
+                    "<si><t></t></si>"
+                    "<si><t>   </t></si>"
+                    "<si><t>SENTINEL-SECRET-PWD-GAMMA</t></si>"
                 )
                 content = content.replace(b"</sst>", (sst_extra + "</sst>").encode("utf-8"))
             z_out.writestr(item, content)
@@ -482,7 +493,9 @@ def test_declared_credentials_missing_relationship_id_fails():
         for item in z_in.infolist():
             content = z_in.read(item.filename)
             if item.filename == "xl/workbook.xml":
-                content = content.replace(b"</sheets>", b'<sheet name="Platform Credentials" sheetId="2"/></sheets>')
+                content = content.replace(
+                    b"</sheets>", b'<sheet name="Platform Credentials" sheetId="2"/></sheets>'
+                )
             z_out.writestr(item, content)
 
     with pytest.raises(XlsxReadError, match="missing relationship ID"):
@@ -497,7 +510,10 @@ def test_declared_credentials_missing_relationship_in_rels_fails():
         for item in z_in.infolist():
             content = z_in.read(item.filename)
             if item.filename == "xl/workbook.xml":
-                content = content.replace(b"</sheets>", b'<sheet name="Platform Credentials" sheetId="2" r:id="rIdNotExist"/></sheets>')
+                content = content.replace(
+                    b"</sheets>",
+                    b'<sheet name="Platform Credentials" sheetId="2" r:id="rIdNotExist"/></sheets>',
+                )
             z_out.writestr(item, content)
 
     with pytest.raises(XlsxReadError, match="references missing relationship"):
@@ -561,7 +577,7 @@ def test_inner_xlsx_zip_security_bounds(monkeypatch):
     buf_sym = io.BytesIO()
     with zipfile.ZipFile(buf_sym, "w") as zf:
         zinfo = zipfile.ZipInfo("xl/workbook.xml")
-        zinfo.external_attr = (stat.S_IFLNK << 16)
+        zinfo.external_attr = stat.S_IFLNK << 16
         zf.writestr(zinfo, b"target")
     with pytest.raises(XlsxReadError, match="symlink"):
         read_campaign_workbook(buf_sym.getvalue())
@@ -621,7 +637,10 @@ def test_inner_xlsx_zip_security_bounds(monkeypatch):
         for item in z_in.infolist():
             content = z_in.read(item.filename)
             if item.filename == "xl/_rels/workbook.xml.rels":
-                content = content.replace(b'Target="worksheets/sheet1.xml"', 'Target="worksheets/sheet\u200b1.xml"'.encode("utf-8"))
+                content = content.replace(
+                    b'Target="worksheets/sheet1.xml"',
+                    'Target="worksheets/sheet\u200b1.xml"'.encode("utf-8"),
+                )
             z_out.writestr(item, content)
     with pytest.raises(XlsxReadError, match="control characters"):
         read_campaign_workbook(out_rel_ctrl.getvalue())
@@ -717,7 +736,9 @@ def test_shared_strings_part_absent_fails_closed():
 
 
 def test_negative_and_out_of_range_shared_references_fail_closed():
-    base_xlsx = build_fictional_xlsx_bytes(use_inline_strings=False, include_credentials_sheet=False)
+    base_xlsx = build_fictional_xlsx_bytes(
+        use_inline_strings=False, include_credentials_sheet=False
+    )
 
     # 1. Out of range shared-string index
     buf1 = io.BytesIO(base_xlsx)
@@ -727,7 +748,7 @@ def test_negative_and_out_of_range_shared_references_fail_closed():
             content = z_in.read(item.filename)
             if item.filename == "xl/worksheets/sheet1.xml":
                 # Replace a shared-string index with 99999
-                content = content.replace(b'<v>0</v>', b'<v>99999</v>', 1)
+                content = content.replace(b"<v>0</v>", b"<v>99999</v>", 1)
             z_out.writestr(item, content)
     with pytest.raises(XlsxReadError, match="out of range"):
         read_campaign_workbook(out1.getvalue())
@@ -739,7 +760,7 @@ def test_negative_and_out_of_range_shared_references_fail_closed():
         for item in z_in.infolist():
             content = z_in.read(item.filename)
             if item.filename == "xl/worksheets/sheet1.xml":
-                content = content.replace(b'<v>0</v>', b'<v>-1</v>', 1)
+                content = content.replace(b"<v>0</v>", b"<v>-1</v>", 1)
             z_out.writestr(item, content)
     with pytest.raises(XlsxReadError, match="Negative shared-string index"):
         read_campaign_workbook(out2.getvalue())
@@ -751,7 +772,7 @@ def test_negative_and_out_of_range_shared_references_fail_closed():
         for item in z_in.infolist():
             content = z_in.read(item.filename)
             if item.filename == "xl/worksheets/sheet1.xml":
-                content = content.replace(b'<v>0</v>', b'<v>not_a_number</v>', 1)
+                content = content.replace(b"<v>0</v>", b"<v>not_a_number</v>", 1)
             z_out.writestr(item, content)
     with pytest.raises(XlsxReadError, match="Malformed shared-string index"):
         read_campaign_workbook(out3.getvalue())
@@ -770,21 +791,21 @@ def test_credentials_handler_never_buffers_or_retains_scalar_sentinel():
     xml_content = (
         '<?xml version="1.0" encoding="UTF-8"?>\n'
         '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">\n'
-        '  <sheetData>\n'
+        "  <sheetData>\n"
         '    <row r="1">\n'
         '      <c r="A1"><v>HeaderPlatform</v></c>\n'
         '      <c r="B1"><v>HeaderUser</v></c>\n'
         '      <c r="C1"><v>HeaderPass</v></c>\n'
-        '    </row>\n'
+        "    </row>\n"
         '    <row r="2">\n'
         '      <c r="A2"><v>LinkedIn</v></c>\n'
         f'      <c r="B2"><v>{sentinel}</v></c>\n'
-        '    </row>\n'
+        "    </row>\n"
         '    <row r="3">\n'
         '      <c r="A3" t="s"><v>42</v></c>\n'
-        '    </row>\n'
-        '  </sheetData>\n'
-        '</worksheet>'
+        "    </row>\n"
+        "  </sheetData>\n"
+        "</worksheet>"
     ).encode("utf-8")
 
     # 1. Drive through scan_credentials_worksheet_stream

@@ -716,9 +716,7 @@ def _parser() -> argparse.ArgumentParser:
     campaign_show.add_argument("--query")
     campaign_show.add_argument("--stage")
     campaign_show.add_argument("--priority")
-    campaign_show.add_argument(
-        "--review-decision", choices=("none", "hold", "excluded", "cleared")
-    )
+    campaign_show.add_argument("--review-decision", choices=("none", "hold", "excluded", "cleared"))
     campaign_show.add_argument("--offset", type=int, default=0)
     campaign_show.add_argument("--limit", type=int, default=50)
     record_submission = campaign_commands.add_parser(

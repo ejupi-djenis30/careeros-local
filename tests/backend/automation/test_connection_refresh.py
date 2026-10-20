@@ -78,9 +78,7 @@ def test_absolute_deadline_cancels_headers_and_a_read_near_the_limit(stage):
 
 def test_absolute_deadline_includes_connection_descriptor_read(tmp_path, monkeypatch):
     calls = []
-    path = publish_connection_descriptor(
-        tmp_path, "http://127.0.0.1:43127/api/v1", str(uuid4())
-    )
+    path = publish_connection_descriptor(tmp_path, "http://127.0.0.1:43127/api/v1", str(uuid4()))
     original_reader = desktop_client_module.read_connection_descriptor
 
     def slow_reader(connection_file):

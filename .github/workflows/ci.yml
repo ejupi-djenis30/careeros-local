@@ -308,7 +308,7 @@ jobs:
     timeout-minutes: 45
     env:
       TRIVY_IMAGE: aquasec/trivy:0.72.0@sha256:cffe3f5161a47a6823fbd23d985795b3ed72a4c806da4c4df16266c02accdd6f
-      OLLAMA_IMAGE: careeros-local-ollama:0.34.3-careeros.1
+      OLLAMA_IMAGE: careeros-local-ollama:0.34.3-careeros.2
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -329,6 +329,7 @@ jobs:
             grep --fixed-strings "go1.27.2" "$provenance"
             grep --extended-regexp 'golang.org/x/crypto[[:space:]]+v0[.]57[.]0' "$provenance"
             grep --extended-regexp 'golang.org/x/net[[:space:]]+v0[.]60[.]0' "$provenance"
+            grep --extended-regexp 'github[.]com/klauspost/compress[[:space:]]+v1[.]18[.]7' "$provenance"
             for package in libssl3t64 openssl; do
               installed_version="$(dpkg-query --show --showformat="\${Version}" "$package")"
               dpkg --compare-versions "$installed_version" ge "3.0.13-0ubuntu3.16"
@@ -362,7 +363,7 @@ jobs:
           test "$ready" -eq 1
           docker exec "$container_id" ollama --version \
             > "$RUNNER_TEMP/ollama-version.txt" 2>&1
-          grep --fixed-strings "0.34.3-careeros.1" \
+          grep --fixed-strings "0.34.3-careeros.2" \
             "$RUNNER_TEMP/ollama-version.txt"
           test -s "$RUNNER_TEMP/ollama-list.txt"
       - name: Smoke-test hardened frontend runtime

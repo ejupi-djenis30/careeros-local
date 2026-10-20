@@ -19,6 +19,7 @@ from backend.campaigns.xlsx_cells import (
     parse_date_styles,
     read_sheet_grid,
 )
+from backend.campaigns.xlsx_parts import resolve_workbook_parts
 from backend.campaigns.xlsx_security import (
     XlsxReadError,
     XlsxSecurityError,
@@ -36,13 +37,15 @@ MAIN_NS = "http://schemas.openxmlformats.org/spreadsheetml/2006/main"
 REL_NS = "http://schemas.openxmlformats.org/officeDocument/2006/relationships"
 PKG_REL_NS = "http://schemas.openxmlformats.org/package/2006/relationships"
 
-ACCEPTED_ID_ALIASES = frozenset({
-    "applicationid",
-    "sourceapplicationid",
-    "id",
-    "appid",
-    "codice",
-})
+ACCEPTED_ID_ALIASES = frozenset(
+    {
+        "applicationid",
+        "sourceapplicationid",
+        "id",
+        "appid",
+        "codice",
+    }
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -84,7 +87,9 @@ def _collect_shared_indices(root: ET.Element) -> set[int]:
                 try:
                     indices.add(int(v_elem.text.strip()))
                 except ValueError as exc:
-                    raise XlsxReadError(f"Malformed shared-string index: {v_elem.text.strip()}") from exc
+                    raise XlsxReadError(
+                        f"Malformed shared-string index: {v_elem.text.strip()}"
+                    ) from exc
     return indices
 
 
@@ -96,59 +101,15 @@ def read_campaign_workbook(data: bytes) -> WorkbookReadResult:
             wb_root = safe_read_xml(zf, "xl/workbook.xml")
             rels_root = safe_read_xml(zf, "xl/_rels/workbook.xml.rels")
 
-            rel_map: dict[str, str] = {}
-            declared_shared: str | None = None
-            declared_styles: str | None = None
-
-            for rel in rels_root.iter(f"{{{PKG_REL_NS}}}Relationship"):
-                rid = rel.attrib.get("Id")
-                target_raw = rel.attrib.get("Target", "")
-                target_mode = rel.attrib.get("TargetMode")
-                rel_type = rel.attrib.get("Type", "")
-                if rid:
-                    try:
-                        normalized = normalize_opc_target("xl", target_raw, target_mode)
-                    except XlsxSecurityError as exc:
-                        raise XlsxReadError(str(exc)) from exc
-                    rel_map[rid] = normalized
-                    if rel_type.endswith("/sharedStrings"):
-                        declared_shared = normalized
-                    elif rel_type.endswith("/styles"):
-                        declared_styles = normalized
-
-            if declared_shared and declared_shared not in zf.namelist():
-                raise XlsxReadError(f"Declared sharedStrings member not found in package: {declared_shared}")
-            if declared_styles and declared_styles not in zf.namelist():
-                raise XlsxReadError(f"Declared styles member not found in package: {declared_styles}")
-
-            shared_path = declared_shared or ("xl/sharedStrings.xml" if "xl/sharedStrings.xml" in zf.namelist() else None)
-            styles_path = declared_styles or ("xl/styles.xml" if "xl/styles.xml" in zf.namelist() else None)
-
-            app_sheet_path: str | None = None
-            cred_sheet_path: str | None = None
-
-            for sheet in wb_root.iter(f"{{{MAIN_NS}}}sheet"):
-                name_raw = sheet.attrib.get("name", "").strip()
-                name_lower = name_raw.lower()
-                rid = sheet.attrib.get(f"{{{REL_NS}}}id")
-                is_app = name_lower == "applications"
-                is_cred = "credential" in name_lower
-
-                if is_app or is_cred:
-                    if not rid:
-                        raise XlsxReadError(f"Sheet '{name_raw}' is missing relationship ID")
-                    if rid not in rel_map:
-                        raise XlsxReadError(f"Sheet '{name_raw}' references missing relationship: {rid}")
-                    target = rel_map[rid]
-                    if target not in zf.namelist():
-                        raise XlsxReadError(f"Package member for sheet '{name_raw}' not found: {target}")
-                    if is_app:
-                        app_sheet_path = target
-                    else:
-                        cred_sheet_path = target
-
-            if not app_sheet_path:
-                raise XlsxReadError("Applications sheet not found in workbook")
+            shared_path, styles_path, app_sheet_path, cred_sheet_path = resolve_workbook_parts(
+                zf,
+                wb_root,
+                rels_root,
+                main_ns=MAIN_NS,
+                rel_ns=REL_NS,
+                pkg_rel_ns=PKG_REL_NS,
+                normalize_target=normalize_opc_target,
+            )
 
             app_root = safe_read_xml(zf, app_sheet_path)
             app_indices = _collect_shared_indices(app_root)
@@ -161,9 +122,13 @@ def read_campaign_workbook(data: bytes) -> WorkbookReadResult:
                 cred_indices = {idx for probe in row_probes for idx in probe.shared_indices}
 
             if app_indices and not shared_path:
-                raise XlsxReadError("Workbook contains shared-string cells but sharedStrings part is absent")
+                raise XlsxReadError(
+                    "Workbook contains shared-string cells but sharedStrings part is absent"
+                )
             if cred_indices and not shared_path:
-                raise XlsxReadError("Credentials sheet contains shared-string cells but sharedStrings part is absent")
+                raise XlsxReadError(
+                    "Credentials sheet contains shared-string cells but sharedStrings part is absent"
+                )
 
             app_strings: dict[int, str] | None = None
             cred_non_empty: dict[int, bool] = {}
@@ -174,7 +139,9 @@ def read_campaign_workbook(data: bytes) -> WorkbookReadResult:
                 )
                 for idx in cred_indices:
                     if idx < 0 or idx >= total_sst:
-                        raise XlsxReadError(f"Shared-string index out of range in credentials sheet: {idx}")
+                        raise XlsxReadError(
+                            f"Shared-string index out of range in credentials sheet: {idx}"
+                        )
 
             date_styles = parse_date_styles(zf, styles_path)
             grid = read_sheet_grid(app_root, app_strings, date_styles)
@@ -203,7 +170,9 @@ def read_campaign_workbook(data: bytes) -> WorkbookReadResult:
             result_rows: list[TrackerApplicationRow] = []
 
             for row in grid[header_row_idx + 1 :]:
-                raw_record = MappingProxyType({h_name: json_safe_val(row.get(col)) for col, h_name in headers.items()})
+                raw_record = MappingProxyType(
+                    {h_name: json_safe_val(row.get(col)) for col, h_name in headers.items()}
+                )
                 raw_id = find_field(raw_record, tuple(ACCEPTED_ID_ALIASES))
                 app_id = str(raw_id).strip() if raw_id is not None else ""
                 if not app_id:
@@ -238,31 +207,61 @@ def read_campaign_workbook(data: bytes) -> WorkbookReadResult:
                 result_rows.append(
                     TrackerApplicationRow(
                         source_application_id=app_id,
-                        title=coerce_text(find_field(raw_record, ("role title", "job title", "role", "title"))) or "Untitled role",
-                        company=coerce_text(find_field(raw_record, ("company name", "company", "employer"))) or "Unknown company",
-                        location=coerce_text(find_field(raw_record, ("location", "workplace location", "city"))),
-                        status=coerce_text(find_field(raw_record, ("status", "source status", "stage"))),
+                        title=coerce_text(
+                            find_field(raw_record, ("role title", "job title", "role", "title"))
+                        )
+                        or "Untitled role",
+                        company=coerce_text(
+                            find_field(raw_record, ("company name", "company", "employer"))
+                        )
+                        or "Unknown company",
+                        location=coerce_text(
+                            find_field(raw_record, ("location", "workplace location", "city"))
+                        ),
+                        status=coerce_text(
+                            find_field(raw_record, ("status", "source status", "stage"))
+                        ),
                         priority=coerce_text(find_field(raw_record, ("priority",))),
                         platform=coerce_text(
                             find_field(
                                 raw_record,
-                                ("platform / source", "platform source", "source platform", "platform", "source"),
+                                (
+                                    "platform / source",
+                                    "platform source",
+                                    "source platform",
+                                    "platform",
+                                    "source",
+                                ),
                             )
                         ),
                         category=coerce_text(find_field(raw_record, ("job category", "category"))),
                         outcome=coerce_text(find_field(raw_record, ("outcome", "result"))),
-                        found_at=coerce_date(find_field(raw_record, ("date found", "found date", "found at"))),
+                        found_at=coerce_date(
+                            find_field(raw_record, ("date found", "found date", "found at"))
+                        ),
                         applied_at=coerce_date(
-                            find_field(raw_record, ("application date", "applied date", "date applied", "applied at"))
+                            find_field(
+                                raw_record,
+                                ("application date", "applied date", "date applied", "applied at"),
+                            )
                         ),
                         follow_up_at=coerce_date(
                             find_field(
                                 raw_record,
-                                ("follow-up date", "follow up date", "followup date", "next follow up", "follow up"),
+                                (
+                                    "follow-up date",
+                                    "follow up date",
+                                    "followup date",
+                                    "next follow up",
+                                    "follow up",
+                                ),
                             )
                         ),
                         last_update_at=coerce_date(
-                            find_field(raw_record, ("last update", "last update date", "updated at", "last updated"))
+                            find_field(
+                                raw_record,
+                                ("last update", "last update date", "updated at", "last updated"),
+                            )
                         ),
                         next_action=coerce_text(find_field(raw_record, ("next action", "action"))),
                         notes=coerce_text(find_field(raw_record, ("notes", "note", "comments"))),

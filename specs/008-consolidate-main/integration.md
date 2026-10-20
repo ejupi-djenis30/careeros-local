@@ -112,3 +112,24 @@ executions. They do not establish present package unavailability. Independent
 the old cache still returns E404, even with `--prefer-online`. Availability and
 final vulnerability results in this feature must use fresh-cache registry
 evidence and the final lock, rather than repeat that historical inference.
+
+## Quality follow-up inventory, 2026-10-20
+
+The clean signed main dee0e5eb5babd62ed09faa99b716696af7743fd0 is preserved on
+codex/quality-followup. A fresh inventory contains two later automated proposals:
+PR #120 at 95196325edfd9608a9d05a290612d02db2abc1b1 and PR #121 at
+7bf4971060d81feaacb27c1a7ce8853ba6be333a. T051 incorporates their useful inputs
+with regenerated locks and notices: Pydantic 2.14.1, pre-commit 4.7.0,
+virtualenv 21.14.7 and types-reportlab 4.5.1.20260827. The required core 2.50.1
+and fresh certifi 2026.10.19 security correction complete the coherent graph.
+PR #120's original wheel checks fail because its input metadata and old lock
+disagree; those original failures are retained rather than accepted as integration.
+
+A complete verified baseline bundle in private Git metadata retains main and
+both exact tips, SHA-256
+a6102a06c31880e64aa7fa1b562650e1e0c937bec50c15b85df7f86a7a051cb4.
+The later inventory is unchanged. No automated branch or PR is removed before
+protected main integration. CE-2026-001 has expired and the strict gate remains
+unchanged, so this cycle cannot claim completed main integration, main-only refs
+or a production release. Prior policy-blocked cache directories are preserved;
+no deletion is retried by another mechanism.

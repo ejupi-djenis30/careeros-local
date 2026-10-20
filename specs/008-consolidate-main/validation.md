@@ -1,12 +1,11 @@
 # Validation evidence: Consolidate all work into main
 
-Date: 2026-10-17. Current branch: `codex/state-consistency-refactor`.
-Status: PR #118 is integrated and verified; the state-consistency Windows gates
-passed, then protected Linux CI exposed a new test-fixture bootstrap defect.
-T046 corrects that fixture before renewed protected verification. Integration
-requires successful current-head checks,
-signed-main/tree verification and recovery-backed cleanup, recorded subsequently
-in PR metadata and the durable private Git recovery ledger.
+Date: 2026-10-20. Current branch: `codex/quality-followup`.
+Status: signed PR #119 main dee0e5e is the verified baseline. Current quality,
+UI, dependency and formatting work has its own evidence below. The expired
+glib exception blocks integration and recovery-backed ref cleanup. Actual
+current-head protected outcomes belong in PR metadata and the private recovery
+ledger; earlier successful gates are not substituted for them.
 No production release or installer signing claim. Earlier sections retain the
 actual historical executions; current-cycle evidence appears at the end.
 A pending entry is never presented as a passing check.
@@ -1079,3 +1078,442 @@ append no task and preserve task bytes during review. T046 completion records
 the reviewed source hand-off. Renewed full Linux and all protected checks on
 the corrected PR head remain mandatory before merge, and their actual results
 will be recorded in PR metadata and the private recovery ledger.
+
+## Quality follow-up, 2026-10-20
+
+This cycle starts from signed main dee0e5e after PR #119 completed its protected
+and post-merge checks. Historical results above remain attributed to their
+original inputs. Before T053/T054 the source has 1,220 non-Markdown inputs; the following
+coordinated checks preserve all of them byte-for-byte. Synthetic data, logs,
+coverage helpers and browser outputs remain in the operating-system temporary
+directory. No personal reference directory is accessed.
+
+| Check | Actual result |
+| --- | --- |
+| Backend resumes, security and profile integration | 305 passed, no skips, 169.30 seconds |
+| Backend/scripts Ruff and mypy | Both exit 0; direct mypy on both changed regression modules also exits 0 |
+| Changed Python formatting | Pass; the additional repository-wide format check fails as detailed below |
+| Frontend `npm test` | 818 tests in 115 files pass; four Node runtime tests and eleven license/distribution tests also pass |
+| Frontend `npm run lint` | Exit 0 |
+| Production build and unchanged bundle validator | Pass; 44 assets, final notices byte-identical, locale and entry budgets unchanged |
+| Rust fmt, Clippy with warnings denied, tests | All exit 0; 28 tests pass; 70 native inputs unchanged |
+| Alembic upgrade head, downgrade one, upgrade head | Pass; SQLite integrity is OK, foreign-key violations are empty, head d0b1c2d3e4f5 |
+| Desktop Python tests, corrected runner | 32 passed, 6 skipped, 19.78 seconds |
+| Explicit performance acceptance | 4 passed, no skips, 9.51 seconds |
+| Python audits: runtime/development/tooling | All exit 0 with zero findings; inventories 58/112/21 packages |
+| Fresh-cache npm audit and exception validator | Both exit 0; no findings |
+| Dependency/notices/wheel focused checks | 23 passed; Ruff, format and mypy pass |
+| Real isolated agent wheel | Build and metadata/installed-dependency check pass; unsigned, not published |
+| Schedule browser EN/IT at 390/1,440 px | Four scenarios, 69 assertions pass; eight screenshots reviewed |
+
+The browser verifies acknowledged interval changes, a failed optional overview
+read, both retained rows and keyboard-only GET retry. Four deliberately injected
+HTTP 503 responses, four browser resource-error messages and four content-free
+diagnostic codes are expected; unexpected page errors, API calls, mutations and
+external requests are zero. All 44 build assets and seven owned UI files remain
+unchanged. Browser/server process identities are absent after cleanup. The
+coordinating reviewer independently inspected the English mobile and Italian
+desktop warning captures; the implementation reviewer inspected all eight.
+
+T048 first reproduces seven failing cases and ten positive controls on the
+original synchronization implementation. Its final focused suite passes 54 tests
+with no skips. The fix rejects cached stale revisions and deletion state,
+refreshes profile facts, and validates the response before commit. Independent
+review finds no actionable issue in production code or rollback/ownership tests.
+T049 passes 39 repository cases plus four replayed audit cases; independent
+review verifies lifecycle ownership, nullable interval normalization, current
+server-read authority and preservation of accepted writes on refresh failure.
+T047 retains all twenty original assertions and adds one positive canvas guard;
+the three formerly failing type diagnostics are gone and all five telemetry
+controls remain false.
+
+The new strict hash-installed Python 3.12.13 environment has exactly 121 packages
+matching the compatible union of the three locks. The previous environment is
+unchanged. Pydantic 2.14.1 requires pydantic-core 2.50.1. Fresh scans initially
+fail on certifi 2026.6.17 for GHSA-6q48-6c7w-9gw2, published on 2026-10-20;
+the officially fixed 2026.10.19 release is installed and all three scans then
+pass without suppression. Canonical notices contain 13 frontend, 58 Python,
+three runtime and 473 Rust records, 1,424,429 bytes, SHA-256
+ee2f5e6720b1eaa41a17ddec8bb8ff5d1d66dc22fd55dc35da0264c42e0147de.
+The isolated unsigned wheel is 1,054,691 bytes, SHA-256
+de669486685417e102379cd84f3dfa9b8b04219b75d5c4755cf203d96021b263;
+its metadata agrees with the regenerated locks. No installer is released.
+
+The Rust security guard still returns 1: CE-2026-001 expired on 2026-10-19.
+The stable Tauri/GTK graph still includes glib 0.18.5; the upstream advisory
+requires a patched version at least 0.20.0. A diagnostic-only copied lock proves
+that marking the unchanged package as a path dependency makes cargo-audit omit
+it. That is a scanner blind spot, not remediation, and is not applied. No expiry,
+ignore, advisory policy, Cargo source or package version is changed. Security
+publication remains blocked independently of the passing Rust code checks.
+
+The extra full `ruff format --check backend tests/backend scripts` returns 1:
+84 files would change and 574 are already formatted. Independent read-only
+comparison proves all 84 are unchanged from dee0e5e and use the same Ruff/config.
+Formatting copies preserves all AST statements and forty type-ignore tags and
+bindings (two initial AST differences are line coordinates only). However four
+modules would grow beyond 300 lines. At this stage no bulk patch is applied or
+represented as a passing check. T053/T054 below then address this observed gap.
+
+Preserved unsuccessful executions include: the initial root focused invocation
+with an incorrect test path (exit 4, zero tests), followed by the corrected
+12-pass invocation; the first external audit runner's Windows symlink shutdown
+error; UI probe setup, encoding and mock-isolation failures; the scoped synchronization
+mypy nullable-local diagnostic, corrected by normal narrowing; and the original
+desktop runner lacking a multiprocessing main guard (31 passes, one failure,
+six skips). The corrected desktop runner changes only temporary tooling and
+passes the actual second-process lease assertion. Five desktop skips concern
+POSIX contracts; the sixth requires a packaged sidecar supplied by artifact CI.
+No failed or skipped execution is reclassified as passing.
+
+A complete new Windows backend run is not claimed. Full Linux backend coverage,
+frontend coverage/eight E2E groups, four platform/interpreter wheel checks and
+protected supply-chain jobs must be measured on the new PR head. Their results
+belong in PR metadata and the private recovery ledger. Merge and branch cleanup
+remain blocked until mandatory security prerequisites pass.
+
+## Final decomposition and canonical formatting, 2026-10-20
+
+T053 extracts snapshot projection, import acknowledgement construction, XLSX
+part resolution and portable campaign-artifact validation. Independent review
+reconstructs the original parent bodies from the new helpers and verifies
+unchanged public imports, callbacks, validation order, transaction boundaries
+and error messages. The eight resulting modules have 216, 285, 103, 29, 294,
+79, 285 and 114 lines. No schema or product-authority change is introduced.
+
+T054 applies pinned Ruff formatting: the command reports 80 files reformatted
+and 582 unchanged. The 80 are exactly the original 84 minus the four already
+decomposed and formatted modules. The independently recomputed proof covers
+all 661 Python files in backend, tests/backend and scripts: executable ASTs and
+all 98 type-ignore tags/statement bindings are identical across formatting,
+including the forty bindings in the original 84-file audit. No non-formatting
+source change is hidden in that bulk patch.
+
+The final source manifest contains 1,224 non-Markdown inputs. Complete Ruff,
+mypy, direct regression-test mypy and repository-wide format checks all return
+0 in 32.015 seconds, with no input changes. All applicable pre-commit hooks
+pass in 24.469 seconds without mutation; YAML is skipped because no YAML file
+changed. The final documentation-only reconciliation is checked separately.
+Independent scoped comparison confirms 408 frontend inputs, 70 native inputs
+and all 44 built assets remain byte-identical to their successful checks above.
+
+A new isolated wheel is built after the extractions and formatting. It contains
+all 397 backend/desktop Python files, including the four new helpers, plus
+declared data, byte-identical to the final source. All 403 packaging inputs and
+the 121-package environment remain unchanged. Its twenty dependency entries
+match pyproject metadata, dependency verification returns 0, and packaged
+notices retain the approved hash. The unsigned wheel is 1,057,664 bytes,
+SHA-256 74b2471d7e8f66bfdf72c3951e6940dc753ed27f4d825055e08fe99cab2e28ad.
+The earlier wheel remains historical evidence of T051, not the final payload.
+
+Final independent code/format review is GOOD, with no material findings;
+SHA-256 1fabd43f3955ea35cf29cdf4a15c77885b497e6862ac6e5b4e3fed766c1fc7ee.
+Independent artifact review verifies 60/60 requirement/criterion mappings and
+54 tasks; its two documentary observations are reconciled before the hand-off.
+T050 and T052 remain open for the actual security blocker and protected
+integration. Historical policy-blocked cache cleanup is preserved without retry.
+
+The final aggregate campaign, portability, security and release regression
+passes all 690 tests with no skips in 433.29 seconds. Its caller returns 0 in
+444.0 seconds, and all 1,224 inputs remain unchanged. T053/T054 source review
+and local validation are complete; protected qualification remains T052.
+
+## First protected PR #122 results and container remediation
+
+The first PR head is 43530cc7fd16160001f1d621cb2f875ad65d3203, tree
+cae2614b54c1dc708006f498f33359d335a16478. All four platform/interpreter wheel
+jobs pass. Frontend CI passes 818 tests in 115 files, with coverage 85.10%
+statements, 75.47% branches, 77.08% functions and 89.74% lines; all eight E2E
+groups and three demo-recorder tests pass. Audit, licenses, lint and build pass.
+All four CodeQL analyses succeed. Checkout provenance is independently verified:
+the frontend merge checkout has the same tree as the reviewed source.
+
+The container job fails its strict Ollama scan, with one HIGH finding and no
+CRITICAL findings: CVE-2026-63209, github.com/klauspost/compress v1.18.3 in
+usr/bin/ollama, fixed in v1.18.7. The backend and frontend image gates pass;
+this is a real dependency finding, not an infrastructure failure. The original
+Trivy JSON is preserved, SHA-256
+15a783d877c0095fef4761656c785fe7645c5355de5c55f94f555fbc9104d648.
+Release supply-chain evidence independently fails solely on the expired
+CE-2026-001 exception; all five dependent desktop jobs are skipped. These are
+not passing package checks. Remaining first-head job results are retained in
+the PR metadata/private ledger, with no premature success attribution.
+
+T055 is added before implementation. Primary evidence is the upstream
+[security advisory](https://github.com/klauspost/compress/security/advisories/GHSA-259r-337f-4rfw)
+and the v1.18.7 release/tag at commit
+8668e357e776d5152ed62f33c17f21b8690664fa. The v1.18.6-to-v1.18.7 diff verifies
+the dictionary bounds correction and regression test; its Go 1.24 requirement
+fits the already pinned Go 1.27.2 builder. The advisory was published June 30,
+2026; this cycle discovers the finding rather than dating its publication today.
+The correction advances only the local image revision and compatible module,
+asserts the compiled module in provenance, and retains existing licenses,
+source/base/toolchain pins, runtime boundaries and every strict gate. Actual
+rebuilt-image acceptance on the renewed head remains mandatory under T052.
+
+The first-head Rust job completes its fmt/Clippy and 28 tests successfully,
+then fails solely on CE-2026-001 expiry at the advisory/license gate. The
+container finding and the two expiry failures are three distinct failed jobs.
+No gate or exception is relaxed to resolve any of them.
+
+T055's distribution regression first fails on the original missing compress
+pin (one failure, 0.73 seconds). With the compatible module pinned and the
+local image revision consistently set to 0.34.3-careeros.2, all twelve focused
+contracts pass in 0.35 seconds. Scoped Ruff and format checks and
+`docker compose config --quiet` return 0. These local checks do not build an
+image or clear the first Trivy finding: the renewed PR run must do both.
+
+Applicable T055 pre-commit hooks pass in 5.187 seconds with no input mutation,
+including YAML, full Ruff and changed-file formatting. Mypy and frontend lint
+are skipped by their file filters because this patch changes no matching input;
+their earlier executions retain their own input scope. The four changed files
+reverse exactly to the baseline after removing the reviewed pin/version/assertion
+changes; fourteen dependency, notices, Cargo and security-policy control files
+remain byte-identical. The T055 freeze has SHA-256
+20e2e869361889ca38c4afca132711b19882c2765a02c09cd61072a148a3de22.
+
+The original 43530cc7 backend completes successfully before the follow-up push:
+3,043 Linux tests pass with eleven explicit skips in 741.30 seconds, combined
+coverage 83.90% against the unchanged 80% threshold. All four opt-in performance
+tests pass in 5.55 seconds; the separate security invocation passes 136 tests.
+Original results are complete, not cancelled or inferred from a prior cycle.
+
+T055 independent review is GOOD, SHA-256
+6650f2ea10129c9f6f98f1f4e879db476b30b3ee1f002921c6fecfdbcbf0185a.
+The reviewer independently recomputes the exact four-file reversal, fourteen
+unchanged controls and original RED/final GREEN JUnit outcomes. The artifacts
+now have 55 tasks, 53 source hand-offs complete; only T050/T052 remain open.
+The new head still requires actual image and protected-check outcomes in PR
+metadata and the durable private ledger. No successful image scan is inferred
+from this completed source hand-off.
+
+## Second PR #122 head and Pillow remediation
+
+Head 24d30b50108f7aa2ce24bbc662bc3ade5ef1e50f preserves the first run's
+evidence. All four wheel jobs pass, as do frontend's 818 tests/eight E2E groups
+and all four CodeQL analyses. The actual container job passes: Ollama revision
+.2 is built and smoke-tested, generated licenses/provenance are present, its
+SBOM records compress v1.18.7 and its strict Trivy report has zero findings.
+This verifies the T055 image correction independently of local source tests.
+
+The backend runtime audit at 21:05:49 UTC now reports eight Pillow advisories
+on 12.3.0, where the first audit at 20:49:36 UTC reported none with the same
+pin. The observed CVEs are CVE-2026-112895, CVE-2026-112400,
+CVE-2026-112397, CVE-2026-112896, CVE-2026-112897, CVE-2026-112395,
+CVE-2026-112404 and CVE-2026-112899; each reports 13.0.0 as fixed.
+The audit exits 1. Backend lint, mypy, migration, full tests and performance are
+skipped after that failure; the earlier security preflight passes 136 tests.
+The release job also fails its Python audit before reaching the glib guard;
+all five dependent desktop jobs are skipped. These failures are not described
+as network errors or relabelled as the first head's glib failure.
+
+T056 primary verification checks all eight maintainer advisories, each published
+with patched version 13.0.0. Their maintainer publication date is October 17;
+the later global-advisory feed timestamps are recorded separately. Official
+[PyPI release metadata](https://pypi.org/project/pillow/13.0.0/) confirms a stable,
+non-yanked release, Python >=3.11 and CPython 3.12/3.13 wheels for the tested
+platforms, including musllinux x86_64/aarch64 for Alpine. ReportLab's >=9.0.0
+constraint permits the fixed release, and the used photo/demo APIs remain
+supported. No renderer behavior change is indicated by that inspection.
+The compatibility/source proof has SHA-256
+7912bacced2321445ead25fd120f3c45cb1a1521013ac51b63f99154081e9e4c.
+The optional raw release-note HTML request returned 403; official rendered
+documentation and primary advisory/PyPI records provide the preserved evidence.
+
+The second-head Rust job independently passes fmt, Clippy with warnings denied
+and 28 tests in 1.21 seconds. Its security step exits 1 for the expired
+CE-2026-001 exception, before cargo-audit and license commands; those commands
+are not passing scans. SBOM/inventory generation is skipped. Its independent
+proof has SHA-256
+533251a8ff88a1f7e85c4be49b7344fcbb501c5601b138350bf284162ac3b43a.
+Seventy second-head evidence files are copied and checksum-verified in the
+private Git recovery ledger; the evidence index has SHA-256
+9c8c5d4620b99e27983ff8837033f66f34a928309f2a1bba86a7d692c31efd26.
+
+## T056 frozen source and local verification
+
+Only Pillow changes from 12.3.0 to 13.0.0 in the runtime and development locks;
+the tooling lock and all other pins remain unchanged. Both locks contain the
+83 official release hashes. The six-file change also reconciles direct inputs,
+metadata and canonical notices. The new isolated environment has exactly the
+121-package locked union and passes pip check. Version and dist-info snapshots
+of both earlier verification environments remain identical.
+
+Fresh unsuppressed audits return zero findings for runtime (58 dependencies),
+development (112) and tooling (21). Notice generation and reproduction pass
+for 13 frontend, 58 Python, three runtime and 473 Rust components. The notice
+contains 1,424,882 bytes with SHA-256
+a80b772f40fdc36641d5a44554b981aed5ad15ce660c483c661e2ecd657bf221.
+Only Pillow's license text changes; the other 306 shared texts are identical.
+The larger textual diff reflects the canonical ordering by content digest.
+
+The isolated final unsigned Python wheel contains 1,055,334 bytes, SHA-256
+cbc5ee6bfbcc4cdeedc8bfce90b616f0dbbc0b58c0ad9dd7a572f71e8ecdb061.
+Its 397 Python/data files match the snapshot byte-for-byte, all 20 dependency
+metadata entries match pyproject.toml, and its notices match the source exactly.
+All 403 packaging inputs remain unchanged. This verifies Python packaging,
+not a native installer or release signature. The freeze record has SHA-256
+5753fe49b69b9915eab7d29780f01bea118951e7f3952540224bd82777d7e10f.
+
+Full Ruff, mypy for backend/scripts, direct checks of both corrected regression
+modules and full Ruff formatting pass in the new environment (48.469 seconds).
+The before/after guard detects no changes among 1,224 non-Markdown inputs.
+Two temporary reporting/setup helper failures are preserved: canonical-name
+comparison and a missing wheel-output parent. Neither changed source or the
+environment; corrected helpers complete the above recorded checks.
+
+The final affected suite passes all 487 tests with zero skips in 272.54 seconds
+(294.719-second outer guard, exit 0). It covers resumes, security, release
+contracts, photo asset recovery, demo rendering and application exports/readiness.
+All 1,224 non-Markdown inputs remain unchanged. The earlier frontend/native
+checks retain their original input scope; in particular, the old frontend
+asset manifest does not attest to the newly generated notice bytes. Renewed
+actual-head frontend/build, Python, wheel and container checks remain under T052.
+
+Independent T056 review is GOOD, SHA-256
+cc76044a807d70a75d879a56c89451826f45c0d195bd8c6d1edbe4e55bad66e9.
+It independently checks the exact six-file delta, lock blocks, all official
+release hashes, 306 unchanged shared license texts, wheel bytes and metadata,
+and both old environments directly on disk. Each old environment retains all
+484 normalized metadata fields and Pillow 12.3.0. The reviewer's initial raw
+metadata helper comparison failed due to CRLF/missing-file representation;
+that helper error and its explicit reconciliation are retained, without source
+or environment changes. Root affected/static/hook results are inspected, not
+claimed as independently rerun tests.
+
+All applicable pre-commit hooks pass in 9.172 seconds, with zero changes among
+1,381 files. YAML and frontend lint hooks skip because their file filters match
+no changed inputs. T056 records a completed source hand-off; T050/T052 still
+own the blocking security issue and final actual protected qualification.
+
+## Third PR #122 head: observed b28b83f qualification
+
+CI 39500329013, Desktop packages 39500328711 and CodeQL 39500322558
+verify head b28b83f8b06db834ec56b38bfa92852b6399ab7b, tree
+35e237beee07facdf986d24cd7bf7c3eb286d96d. Backend passes 3,043 tests
+with eleven skips in 706.97 seconds and 83.90% combined coverage. All four
+performance tests pass in 5.45 seconds; separate security passes 136 tests
+in 32.88 seconds. Lint, mypy, migration, notices and applicable audit steps
+pass. All four Linux/Python 3.12 and 3.13, Windows 3.12 and macOS 3.12 wheel
+jobs pass, including pip check and MCP initialize with only two read-only tools.
+Actual install logs and the backend SBOM contain Pillow 13.0.0.
+
+Frontend passes 818 tests in 115 files, all eight E2E groups, audit, licenses,
+lint and build. Actual coverage is 85.09% statements, 75.45% branches,
+77.08% functions and 89.74% lines. All four CodeQL analyses pass. The new
+canonical notices are emitted in the build and served byte-identically in
+the frontend container; the old asset manifest is not reused as that proof.
+
+All three container builds and their applicable smoke/provenance/license
+checks pass. Existing backend/frontend scan policies (including their existing
+ignore-unfixed setting) return no reported vulnerabilities; the Ollama scan
+uses no such ignore and reports zero HIGH/CRITICAL findings. Actual SBOMs
+record Pillow 13.0.0 and compress 1.18.7. Release's Python runtime/development/
+tooling audits report zero findings for 57/111/21 Linux dependencies; pywin32
+is correctly excluded by its marker. Its Node audit also reports zero findings.
+
+Rust fmt, Clippy and 28 tests pass (1.57 seconds). Both Rust and Release then
+fail exclusively on CE-2026-001 expiry, before cargo-audit/license commands;
+those commands and native packaging are not claimed as passing. Five dependent
+desktop jobs are skipped. No native candidate, signing or publication occurs.
+
+Independent backend, frontend and supply-chain proof hashes respectively are
+eafdf8314d9e78e4e56139672a9b60ba0fee96d548a497b1dc86c71ea120800d,
+e6b5336208efb42f8f65e41321d392359089484ba2af93cb809cc8a1ce4c77c4 and
+747f521e91ce3e2af133bab18f34d373122ae06539191dd6a1aa3e62bcd28387.
+All 97 evidence files are copied and checksum-verified privately; their index
+has SHA-256 6daac6f45b6a65a9fbe347ecb07f22b08e7d9357a7bbf21ffd33c915fb86e971.
+
+The later inventory discovers PR #123 at
+fccd447b541a1404aa7defda89d88ab29637e44b. Its tip is fetched and included
+in a verified recovery bundle, SHA-256
+016c5f389578d8619615666ca3cf158b948eb057d31643a9f65013ef48c293f6.
+T057 is added before implementation. A 1,381-file temporary source snapshot
+(1,224 non-Markdown inputs) is copied with before/after checksums, allowing
+the prior full Windows run to continue without changes to its source inputs.
+Current capability inspection grants only read_file after dialog selection;
+the upstream customFlags/symlink fixes are not evidence of a reproduced
+CareerOS exploit. The later candidate and its checks remain separate evidence.
+
+The frozen b28b83f Windows run subsequently completes: 3,037 backend tests pass
+with seventeen skips in 1,311.59 seconds. Combined branch-aware coverage is
+82.35%, above the unchanged 80% threshold. The seventeen skips are thirteen
+POSIX-only cases and four explicitly opt-in performance cases; the four
+performance cases have separate passing Linux evidence above. Both pytest and
+the outer 1,367.671-second caller return 0. All 1,224 non-Markdown inputs remain
+identical before/after. T057 is still confined to the separate temporary source
+snapshot, so no in-flight source mutation is reclassified as a passing gate.
+
+## T057 candidate: compatible Tauri updates and native hardening
+
+PR #123's five exact npm updates are API 2.12.2 -> 2.12.3, CLI 2.12.1 ->
+2.12.2, dialog 2.8.1 -> 2.8.2, fs 2.6.0 -> 2.7.0 and opener 2.7.0 -> 2.7.1.
+Primary registry integrity/tarball metadata agrees with the branch. Native
+pins become fs 2.7.1, dialog 2.8.2 and opener 2.7.1. Only those three Cargo
+version/checksum entries change; core Tauri 2.12.4, glib 0.18.5 and the other
+registry packages remain unchanged. Official crate checksums and VCS metadata
+agree with upstream tags. The fs JS 2.7.0 and Rust 2.7.1 guest API sources
+are byte-identical; the CLI validates their matching major/minor versions.
+Later dialog 2.8.3 only raises its fs dependency to the already directly pinned
+2.7.1; later opener 2.7.2 fixes an ungranted revealItemInDir path. These later
+notes are assessed explicitly, not treated as evidence of a CareerOS exploit.
+
+The native read_file entry points and its ACL remain byte-identical across the
+reviewed fs versions. The actual application capability and native bridge code
+are unchanged. Three schemas are regenerated by cargo check, retaining their
+canonical no-final-LF bytes. Only fs write-all/write-files permission definitions
+become sets; no corresponding capability grant is added. The notices identity
+test updates only its expected API version, keeping every assertion intact.
+
+Canonical notice write/check passes for 13/58/3/473 components; the final
+1,424,882-byte notice digest is
+6bf132c5269afbd83bebfdb12d2e65ecc1149bc8b6b94fc66e0e05bba395b7a7.
+The final unsigned wheel is 1,055,330 bytes, SHA-256
+9ec90e18e2f92242f2eda9693928116e09cf489e8837494291c5f6164f2c5ed2.
+All 397 payload files, dependency metadata and notices match the snapshot;
+all 403 packaging inputs and the T056 environment's 121 distributions remain
+unchanged. Python runtime/development/tooling audits report zero findings.
+The native/source freeze digest is
+1614a34df37c5aeb77f5171e43ada67c69cea4a6cd513cad0409e8cbbe98ab5e.
+
+The candidate passes fmt, Clippy with warnings denied and 28 Rust tests.
+Full frontend passes 818 tests/115 files, with actual coverage
+85.10/75.45/77.08/89.74% (statements/branches/functions/lines). Both complete
+and production npm audits, npm ls, lint, runtime/license/icon contracts and
+the final build budgets pass. All eight E2E groups pass in 129.489 seconds,
+including real API material export checks. The 44 built assets and both the
+1,224-input candidate and original-source guards remain unchanged. The notice
+asset matches the canonical source. All 104 observed E2E processes have exited
+and both synthetic vaults are removed; no user process is terminated.
+Frontend final evidence has SHA-256
+09505f47fc58ac6922bbd89fb9f8828bb5c162bc62f25f8cd6c0be5a9a0f3a06.
+
+Root's snapshot security/release/desktop suite passes 328 tests with six skips
+in 227.69 seconds (238.656-second caller, exit 0). Five skips require POSIX;
+one requires a packaged sidecar provided by the native CI smoke job. Full
+Ruff, backend/scripts mypy, direct regression typing and full formatting pass
+in 61.234 seconds. All four opt-in Windows performance cases pass in 9.23
+seconds (13.985-second caller). Each guard verifies 1,224 unchanged inputs.
+
+Preserved tooling failures remain distinct: the first snapshot cargo check
+exits 101 because the ignored empty runtime resource directory was not copied;
+reproducing only that empty directory in Temp allows static/unit checks, without
+creating a shipping runtime. The first wheel helper uses an incorrect relative
+output path; its corrected absolute-path run is separately recorded. An optional
+process probe lacks psutil and is replaced by Win32 inspection without installs.
+No failed helper is relabelled as a passing run. The real CE expiry guard still
+exits 1. Real Tauri IPC/native installer qualification and new-head CI remain
+separate obligations; source-only packaging does not establish their success.
+
+The final independent T057 review reports GOOD with no actionable source-scope
+finding. Its report SHA-256 is
+c80ca3b6d72aef78ea7d860a145331e59b1960c69c42e4cc2195c2e16b5d5a29.
+The reviewer recomputes all 1,224 inputs, verifies the exact ten-file delta and
+the unchanged remaining 1,214 files, native grants, schema semantics, 307 license
+texts and test assertions. After all frozen local checks finish, the guarded
+adoption copies only those ten files into the canonical checkout and verifies
+all 1,224 canonical bytes match the tested candidate. Original bytes and proof
+references are preserved in the private Git recovery ledger. T057 is complete
+as a source hand-off; T050/T052 retain the outstanding security and protected
+integration obligations. No earlier whole-suite run is attributed to changed
+T057 inputs, and no passing source check is a native installer qualification.

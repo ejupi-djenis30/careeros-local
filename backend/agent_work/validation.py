@@ -167,13 +167,15 @@ def _preference_tokens(context: Mapping[str, Any], *fields: str) -> set[str]:
     return _tokens(" ".join(values))
 
 
-def _cited_fact_tokens(
-    context: Mapping[str, Any], fact_ids: list[str], *, kind: str
-) -> set[str]:
+def _cited_fact_tokens(context: Mapping[str, Any], fact_ids: list[str], *, kind: str) -> set[str]:
     selected = set(fact_ids)
     values: list[str] = []
     for fact in context.get("facts", []):
-        if not isinstance(fact, Mapping) or fact.get("id") not in selected or fact.get("kind") != kind:
+        if (
+            not isinstance(fact, Mapping)
+            or fact.get("id") not in selected
+            or fact.get("kind") != kind
+        ):
             continue
         values.extend(
             str(fact.get(field) or "") for field in ("title", "description", "attributes")
@@ -199,11 +201,11 @@ def _quote_supports_dimension(
         context, "preferred_locations", "preferred_work_modes", "remote_only"
     )
     contract_terms = _preference_tokens(context, "contract_types") | _CONTRACT_TERMS
-    language_terms = _LANGUAGE_TERMS | _cited_fact_tokens(
-        context, fact_ids, kind="language"
-    ) | {
-        term for term in quote_terms if re.fullmatch(r"[abc][12]", term)
-    }
+    language_terms = (
+        _LANGUAGE_TERMS
+        | _cited_fact_tokens(context, fact_ids, kind="language")
+        | {term for term in quote_terms if re.fullmatch(r"[abc][12]", term)}
+    )
     freshness = bool(
         quote_terms & _FRESHNESS_TERMS
         or re.search(r"\b\d{1,2}[./-]\d{1,2}(?:[./-]\d{2,4})?\b", quote)
@@ -215,16 +217,15 @@ def _quote_supports_dimension(
     if dimension == "location":
         return bool(quote_terms & (_LOCATION_TERMS | location_terms))
     if dimension == "contract":
-        return bool(
-            quote_terms & contract_terms
-            or re.search(r"\b\d{1,3}\s*%", quote)
-        )
+        return bool(quote_terms & contract_terms or re.search(r"\b\d{1,3}\s*%", quote))
     if dimension == "freshness":
         return freshness
     if dimension == "requirements":
         if re.search(r"\b\d+\+?\s+(?:years?|ans?|jahre[n]?|anni)\b", quote, re.IGNORECASE):
             return True
-        specialized = language_terms | _LOCATION_TERMS | location_terms | contract_terms | _FRESHNESS_TERMS
+        specialized = (
+            language_terms | _LOCATION_TERMS | location_terms | contract_terms | _FRESHNESS_TERMS
+        )
         substantive = quote_terms - {
             "required",
             "requirement",
@@ -414,9 +415,7 @@ def validate_materials_proposal(
             requirement.quote_text not in source
             or len(cited) != len(requirement.fact_ids)
             or not cited.issubset(selected)
-            or not _requirement_supported_by_quote(
-                requirement.requirement, requirement.quote_text
-            )
+            or not _requirement_supported_by_quote(requirement.requirement, requirement.quote_text)
         ):
             raise AgentWorkError("evidence_invalid", "Requirement evidence is unavailable")
         _ground(context, requirement.requirement, requirement.fact_ids)

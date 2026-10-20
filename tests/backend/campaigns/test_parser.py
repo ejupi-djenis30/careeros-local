@@ -47,7 +47,9 @@ def test_parse_campaign_workspace_structure_and_bindings() -> None:
     assert len(parsed.artifacts) == len(parsed.inspection.members)
 
     # ApplicationTracker artifact is replaced by sanitized bytes
-    tracker_artifact = next((a for a in parsed.artifacts if a.relative_path == "ApplicationTracker.xlsx"), None)
+    tracker_artifact = next(
+        (a for a in parsed.artifacts if a.relative_path == "ApplicationTracker.xlsx"), None
+    )
     assert tracker_artifact is not None
     assert tracker_artifact.category == "tracker"
     assert tracker_artifact.raw_bytes == parsed.sanitized_tracker_bytes
@@ -60,13 +62,17 @@ def test_parse_campaign_workspace_structure_and_bindings() -> None:
     assert len(san_read.rows) == len(parsed.tracker_rows)
 
     # Dossier packet artifacts are bound to source application IDs
-    packet_artifacts = [a for a in parsed.artifacts if a.relative_path.startswith("application-packets/")]
+    packet_artifacts = [
+        a for a in parsed.artifacts if a.relative_path.startswith("application-packets/")
+    ]
     assert len(packet_artifacts) > 0
     for pa in packet_artifacts:
         assert pa.source_application_id in ("APP-001", "APP-002", "dossier-only-001")
 
     # Root artifacts are not bound to any application
-    root_artifacts = [a for a in parsed.artifacts if not a.relative_path.startswith("application-packets/")]
+    root_artifacts = [
+        a for a in parsed.artifacts if not a.relative_path.startswith("application-packets/")
+    ]
     for ra in root_artifacts:
         assert ra.source_application_id is None
 
@@ -251,7 +257,9 @@ def test_zero_db_and_filesystem_mutations(monkeypatch: pytest.MonkeyPatch) -> No
 
     def guarded_open(file: Any, mode: str = "r", *args: Any, **kwargs: Any) -> Any:
         if any(write_flag in mode for write_flag in ("w", "a", "+")):
-            raise AssertionError(f"Write operation attempted during campaign parse: {file} mode={mode}")
+            raise AssertionError(
+                f"Write operation attempted during campaign parse: {file} mode={mode}"
+            )
         return original_open(file, mode, *args, **kwargs)
 
     monkeypatch.setattr(builtins, "open", guarded_open)

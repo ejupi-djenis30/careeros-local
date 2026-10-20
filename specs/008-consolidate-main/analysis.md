@@ -1,5 +1,38 @@
 # Independent consistency analysis: Consolidate all work into main
 
+Date: 2026-10-20. Current baseline: signed PR #119 main dee0e5e.
+The quality follow-up covers 31 functional requirements, 29 success criteria,
+ten outcomes, eighteen plan decisions, eight constitution principles and 57 tasks.
+Independent analysis finds task coverage for all 60 requirement/criterion entries
+and no material ambiguity, duplicate, orphan or authority conflict. Constitution
+2.0.1 remains unchanged. The preceding cycle below is historical evidence.
+
+## Current quality assessment
+
+| Requirement / criterion | Tasks | Correction and verification |
+| --- | --- | --- |
+| FR-029 / SC-027 | T048, T052 | Synchronization acquires the writer before refreshing owned draft/profile state. Stale edits and pending deletion fail without mutation; valid responses precede commit. Two-session and rollback regressions pass. |
+| FR-030 / SC-028 | T049, T052 | Schedule continuations belong to the mounted view. Accepted writes survive optional refresh failure, with a separate GET retry. Component tests and actual-build EN/IT browser cases pass. |
+| FR-031 / SC-029 | T053, T054, T052 | Four focused extractions keep all eight resulting modules below 300 lines. Canonical formatting preserves executable ASTs and type-ignore bindings. All 690 final aggregate regressions pass; validation.md records the exact input scope. |
+| FR-002, FR-005 / SC-001, SC-004 | T050, T051, T052, T055, T056, T057 | Compatible Python and paired Tauri updates have coherent hash locks, metadata and notices; fresh audits pass after the certifi and Pillow fixes. Ollama's rebuilt image passes after its compress fix. T057 passes independent review and local affected gates; actual new-head qualification remains required. The expired glib exception remains an actual mandatory failure. |
+| FR-007 / SC-004 | T047, T052 | Claim regression typing is corrected without casts, ignores or weakened assertions. Full local static checks pass; current-head protected checks must be observed. |
+
+| Finding | Severity | Disposition |
+| --- | --- | --- |
+| A32: glib 0.18.5 remains in the stable Linux dependency graph after CE-2026-001 expires | HIGH | T050 stays open. No renewed expiry, source substitution, ignored advisory or weaker gate. Main integration and branch cleanup are blocked. |
+| A33: final protected qualification and integration are incomplete | HIGH | T052 stays open. Passing local checks and historical CI do not pre-approve the new head. |
+| A34: 84 legacy files fail the extra full formatting check | RESOLVED | T053 separates four responsibilities, then T054 normalizes the other 80 files with independent AST/binding review. The original failure is preserved. |
+| A35: the first PR #122 image scan finds CVE-2026-63209 in Ollama's compress v1.18.3 dependency | RESOLVED | T055's rebuilt 24d30b5 image passes actual provenance, license, smoke and unsuppressed scans; its SBOM contains compress v1.18.7 and the Ollama report has zero findings. The initial failure remains preserved. |
+| A36: a later audit on 24d30b5 observes eight Pillow advisories on the unchanged 12.3.0 pin | RESOLVED ON b28b83f | T056 passes fresh local audits, 487 affected tests and wheel verification; actual b28b83f CI passes full Linux backend, four platform wheels, frontend/E2E and container qualification with Pillow 13.0.0. The later T057 candidate requires its own final checks under T052. Earlier zero-finding scans are not substituted for them. |
+| A37: a new automated branch updates JavaScript plugins without installing their native filesystem fixes | SOURCE RESOLVED | T057 consolidates compatible JavaScript/native updates with independent review, regenerated schemas/notices, 818 frontend tests, eight E2E groups, 328 affected backend tests and 28 Rust tests. All 1,224 adopted inputs match the verified snapshot. The read_file-only capability, core Tauri and glib policy remain unchanged. An exploitable CareerOS defect is not established; actual new-head CI remains under T052. |
+
+No critical product-boundary finding is introduced: local data ownership,
+loopback validation, archive limits, human authority and exclusive vault locking
+are preserved. Current command outcomes, skips and failed probes are recorded
+in validation.md; the open security finding prevents a production-ready claim.
+
+## Historical state-consistency assessment, 2026-10-17
+
 Date: 2026-10-17. Current baseline: signed PR #118 main 06fe0e0, reviewed tree
 a05899b. State-consistency implementation, independent reviews and complete
 frozen source gates on a66b020 are complete; T044 records that integration hand-off.
@@ -7,7 +40,7 @@ T046 corrects the subsequently observed Linux fixture setup failure; renewed
 protected checks on the corrected source remain mandatory before integration.
 Constitution 2.0.1 is unchanged.
 
-## Current state-consistency assessment
+## State-consistency assessment at the historical baseline
 
 Independent read-only analysis covers 28 functional requirements, 26 success
 criteria, ten outcomes, thirteen plan decisions, eight constitution principles and

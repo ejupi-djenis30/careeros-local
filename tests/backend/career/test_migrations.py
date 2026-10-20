@@ -558,7 +558,9 @@ def test_source_document_role_migration_preserves_rows_and_round_trips(monkeypat
             row = connection.execute(
                 sa.text("SELECT id, source_role FROM source_documents WHERE id = 'src-101'")
             ).one()
-            assert row == ("src-101", "profile"), "Old uploads must default source_role to 'profile'"
+            assert row == ("src-101", "profile"), (
+                "Old uploads must default source_role to 'profile'"
+            )
 
         # Insert second record with explicit role
         with engine.begin() as connection:
@@ -577,7 +579,9 @@ def test_source_document_role_migration_preserves_rows_and_round_trips(monkeypat
 
         with engine.connect() as connection:
             assert connection.scalar(sa.text("SELECT count(*) FROM source_documents")) == 2
-            role = connection.scalar(sa.text("SELECT source_role FROM source_documents WHERE id = 'src-102'"))
+            role = connection.scalar(
+                sa.text("SELECT source_role FROM source_documents WHERE id = 'src-102'")
+            )
             assert role == "goals"
         with pytest.raises(sa.exc.IntegrityError):
             with engine.begin() as connection:
@@ -602,7 +606,11 @@ def test_source_document_role_migration_preserves_rows_and_round_trips(monkeypat
         assert "source_role" in cols_reup
         with engine.connect() as connection:
             assert connection.scalar(sa.text("SELECT count(*) FROM source_documents")) == 2
-            roles = connection.execute(sa.text("SELECT source_role FROM source_documents")).scalars().all()
+            roles = (
+                connection.execute(sa.text("SELECT source_role FROM source_documents"))
+                .scalars()
+                .all()
+            )
             assert all(r == "profile" for r in roles)
     finally:
         engine.dispose()

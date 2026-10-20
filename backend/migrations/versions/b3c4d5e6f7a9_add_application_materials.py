@@ -117,10 +117,7 @@ def upgrade() -> None:
 def downgrade() -> None:
     connection = op.get_bind()
     draft_bound_count = connection.execute(
-        sa.text(
-            "SELECT COUNT(*) FROM application_dossier_drafts "
-            "WHERE resume_draft_id IS NOT NULL"
-        )
+        sa.text("SELECT COUNT(*) FROM application_dossier_drafts WHERE resume_draft_id IS NOT NULL")
     ).scalar_one()
     packet_count = connection.execute(
         sa.text("SELECT COUNT(*) FROM application_packet_artifacts")

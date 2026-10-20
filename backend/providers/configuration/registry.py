@@ -37,9 +37,7 @@ def configured_provider_registry(
                     key=row.key,
                     display_name=row.display_name,
                     description=row.description,
-                    capabilities=ProviderCapabilitiesConfig.model_validate(
-                        row.capabilities_config
-                    ),
+                    capabilities=ProviderCapabilitiesConfig.model_validate(row.capabilities_config),
                 )
                 providers[row.key] = provider
                 custom_names.add(row.key)

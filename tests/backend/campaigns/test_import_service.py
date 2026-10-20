@@ -192,7 +192,9 @@ def test_import_campaign_success_full_flow(service_vault) -> None:
         assert app3.next_action_task_id is None
 
         # CampaignApplication verification: JSON-safe values
-        camp_apps = db.query(CampaignApplication).filter(CampaignApplication.campaign_id == camp.id).all()
+        camp_apps = (
+            db.query(CampaignApplication).filter(CampaignApplication.campaign_id == camp.id).all()
+        )
         assert len(camp_apps) == 5
         for ca in camp_apps:
             assert isinstance(ca.tracker_record, dict)
@@ -250,12 +252,10 @@ def test_import_campaign_persists_exact_owner_scoped_plan(service_vault) -> None
         "source_document_count": len(prepared_sources),
         "task_count": sum(item.task is not None for item in planned.applications),
         "tracker_rows": sum(
-            "tracker" in item.source.provenance.get("sources", ())
-            for item in planned.applications
+            "tracker" in item.source.provenance.get("sources", ()) for item in planned.applications
         ),
         "dossier_count": sum(
-            "dossier" in item.source.provenance.get("sources", ())
-            for item in planned.applications
+            "dossier" in item.source.provenance.get("sources", ()) for item in planned.applications
         ),
         "matched_count": sum(
             set(item.source.provenance.get("sources", ())) >= {"tracker", "dossier"}
@@ -287,11 +287,7 @@ def test_import_campaign_persists_exact_owner_scoped_plan(service_vault) -> None
         assert campaign.tracker_sha256 == planned.tracker_sha256
         assert campaign.summary == expected_summary
 
-        profile = (
-            db.query(CandidateProfile)
-            .filter(CandidateProfile.user_id == user1_id)
-            .one()
-        )
+        profile = db.query(CandidateProfile).filter(CandidateProfile.user_id == user1_id).one()
         assert profile.display_name == "Exact Test User"
         assert profile.revision == 1
         assert profile.preferences == {}
@@ -302,9 +298,7 @@ def test_import_campaign_persists_exact_owner_scoped_plan(service_vault) -> None
             .filter(CampaignApplication.campaign_id == campaign.id)
             .all()
         }
-        assert set(links) == {
-            item.source_application_id for item in planned.applications
-        }
+        assert set(links) == {item.source_application_id for item in planned.applications}
 
         for expected in planned.applications:
             expected_app_id = _expected_uuid(
@@ -404,12 +398,15 @@ def test_import_campaign_persists_exact_owner_scoped_plan(service_vault) -> None
             assert stored.asset.storage_path == (
                 f"assets/campaign/{expected.sha256[:2]}/{expected.sha256}"
             )
-            assert read_verified(
-                stored.asset.storage_path,
-                stored.asset.sha256,
-                expected_size=stored.asset.byte_size,
-                maximum_size=50 * 1024 * 1024,
-            ) == expected.raw_bytes
+            assert (
+                read_verified(
+                    stored.asset.storage_path,
+                    stored.asset.sha256,
+                    expected_size=stored.asset.byte_size,
+                    maximum_size=50 * 1024 * 1024,
+                )
+                == expected.raw_bytes
+            )
 
         source_documents = {item.id: item for item in db.query(SourceDocument).all()}
         assert set(source_documents) == {
@@ -434,9 +431,10 @@ def test_import_campaign_persists_exact_owner_scoped_plan(service_vault) -> None
             assert stored.document_type == expected.document_type
             assert stored.source_role == expected.source_role
             assert stored.extracted_text == expected.extracted_text
-            assert stored.extracted_text_sha256 == hashlib.sha256(
-                expected.extracted_text.encode("utf-8")
-            ).hexdigest()
+            assert (
+                stored.extracted_text_sha256
+                == hashlib.sha256(expected.extracted_text.encode("utf-8")).hexdigest()
+            )
             assert stored.asset.sha256 == expected.sha256
 
         assert db.query(CareerFact).count() == 0
@@ -497,12 +495,7 @@ def test_import_campaign_sanitized_tracker_bytes_verified(service_vault) -> None
         assert tracker_asset.sha256 == preview.sanitized_tracker_sha256
         assert stored_bytes == preview.sanitized_tracker_bytes
         assert stored_bytes != original_tracker_bytes
-        assert (
-            db.query(CareerAsset)
-            .filter(CareerAsset.sha256 == camp.tracker_sha256)
-            .count()
-            == 0
-        )
+        assert db.query(CareerAsset).filter(CareerAsset.sha256 == camp.tracker_sha256).count() == 0
 
         # Sanitized tracker has NO credentials sheet or sentinels
         assert b"Credentials" not in stored_bytes
@@ -627,8 +620,7 @@ def test_packet_root_files_remain_campaign_level_and_idempotent(service_vault) -
     )
     parsed = parse_campaign_workspace(archive)
     packet_root_artifacts = [
-        artifact for artifact in parsed.artifacts
-        if artifact.relative_path in packet_root_paths
+        artifact for artifact in parsed.artifacts if artifact.relative_path in packet_root_paths
     ]
 
     assert len(packet_root_artifacts) == 2
@@ -699,11 +691,7 @@ def test_import_campaign_uses_one_commit_then_zero_for_idempotence(
     assert _journal_files(data_dir) == []
 
     commit_count = 0
-    files_before = {
-        path: path.stat().st_mtime_ns
-        for path in data_dir.rglob("*")
-        if path.is_file()
-    }
+    files_before = {path: path.stat().st_mtime_ns for path in data_dir.rglob("*") if path.is_file()}
     with factory() as db:
         second = import_campaign(
             db,
@@ -717,9 +705,7 @@ def test_import_campaign_uses_one_commit_then_zero_for_idempotence(
     assert second.campaign_id == first.campaign_id
     assert commit_count == 0
     assert {
-        path: path.stat().st_mtime_ns
-        for path in data_dir.rglob("*")
-        if path.is_file()
+        path: path.stat().st_mtime_ns for path in data_dir.rglob("*") if path.is_file()
     } == files_before
     assert _journal_files(data_dir) == []
 
@@ -817,11 +803,7 @@ def test_import_campaign_corrupt_existing_graph_fails_closed_without_writes(
             artifact = db.query(CampaignArtifact).first()
             assert artifact is not None
             artifact.category = "other"
-            other_asset = (
-                db.query(CareerAsset)
-                .filter(CareerAsset.id != artifact.asset_id)
-                .first()
-            )
+            other_asset = db.query(CareerAsset).filter(CareerAsset.id != artifact.asset_id).first()
             assert other_asset is not None
             artifact.asset_id = other_asset.id
         elif corruption == "asset_metadata":
@@ -838,9 +820,7 @@ def test_import_campaign_corrupt_existing_graph_fails_closed_without_writes(
         elif corruption == "source_document":
             source = db.query(SourceDocument).first()
             assert source is not None
-            source.source_role = (
-                "narrative" if source.source_role != "narrative" else "profile"
-            )
+            source.source_role = "narrative" if source.source_role != "narrative" else "profile"
             source.extracted_text = f"{source.extracted_text}\ncorrupted"
             source.extracted_text_sha256 = "0" * 64
         else:  # pragma: no cover - the parametrization is closed above
@@ -857,11 +837,7 @@ def test_import_campaign_corrupt_existing_graph_fails_closed_without_writes(
             "assets": db.query(CareerAsset).count(),
             "sources": db.query(SourceDocument).count(),
         }
-    files_before = {
-        path: path.stat().st_mtime_ns
-        for path in data_dir.rglob("*")
-        if path.is_file()
-    }
+    files_before = {path: path.stat().st_mtime_ns for path in data_dir.rglob("*") if path.is_file()}
     real_commit = Session.commit
     commit_count = 0
 
@@ -895,9 +871,7 @@ def test_import_campaign_corrupt_existing_graph_fails_closed_without_writes(
             "sources": db.query(SourceDocument).count(),
         } == counts_before
     assert {
-        path: path.stat().st_mtime_ns
-        for path in data_dir.rglob("*")
-        if path.is_file()
+        path: path.stat().st_mtime_ns for path in data_dir.rglob("*") if path.is_file()
     } == files_before
     assert _journal_files(data_dir) == []
 
@@ -982,7 +956,9 @@ def test_import_campaign_profile_bootstrap_and_preservation(service_vault) -> No
             imported_at=now,
             profile_display_name="Should Be Ignored",
         )
-        prof2_after = db.query(CandidateProfile).filter(CandidateProfile.user_id == user2_id).first()
+        prof2_after = (
+            db.query(CandidateProfile).filter(CandidateProfile.user_id == user2_id).first()
+        )
         assert prof2_after is not None
         assert prof2_after.display_name == "Bob Existing"
         assert prof2_after.headline == "Principal Architect"
@@ -1193,29 +1169,11 @@ def test_import_campaign_cross_user_isolation(service_vault) -> None:
         u2_ev_ids = {e.id for e in u2_events}
         assert u1_ev_ids.isdisjoint(u2_ev_ids)
 
-        u1_profile = (
-            db.query(CandidateProfile)
-            .filter(CandidateProfile.user_id == user1_id)
-            .one()
-        )
-        u2_profile = (
-            db.query(CandidateProfile)
-            .filter(CandidateProfile.user_id == user2_id)
-            .one()
-        )
-        u1_assets = (
-            db.query(CareerAsset)
-            .filter(CareerAsset.profile_id == u1_profile.id)
-            .all()
-        )
-        u2_assets = (
-            db.query(CareerAsset)
-            .filter(CareerAsset.profile_id == u2_profile.id)
-            .all()
-        )
-        assert {asset.id for asset in u1_assets}.isdisjoint(
-            {asset.id for asset in u2_assets}
-        )
+        u1_profile = db.query(CandidateProfile).filter(CandidateProfile.user_id == user1_id).one()
+        u2_profile = db.query(CandidateProfile).filter(CandidateProfile.user_id == user2_id).one()
+        u1_assets = db.query(CareerAsset).filter(CareerAsset.profile_id == u1_profile.id).all()
+        u2_assets = db.query(CareerAsset).filter(CareerAsset.profile_id == u2_profile.id).all()
+        assert {asset.id for asset in u1_assets}.isdisjoint({asset.id for asset in u2_assets})
         assert {asset.storage_path for asset in u1_assets} == {
             asset.storage_path for asset in u2_assets
         }
@@ -1264,8 +1222,12 @@ def test_import_campaign_duplicate_content_artifacts_share_career_asset(service_
             for item in zin.infolist():
                 zout.writestr(item, zin.read(item.filename))
             # Add duplicate bytes files under application-packets/
-            zout.writestr("application-packets/APP-001/extra_notes.txt", b"Identical notes content 12345")
-            zout.writestr("application-packets/APP-002/extra_notes.txt", b"Identical notes content 12345")
+            zout.writestr(
+                "application-packets/APP-001/extra_notes.txt", b"Identical notes content 12345"
+            )
+            zout.writestr(
+                "application-packets/APP-002/extra_notes.txt", b"Identical notes content 12345"
+            )
 
     dup_zip = bio.getvalue()
     preview = parse_campaign_workspace(dup_zip)
@@ -1283,15 +1245,25 @@ def test_import_campaign_duplicate_content_artifacts_share_career_asset(service_
     assert resp.created is True
 
     with factory() as db:
-        art1 = db.query(CampaignArtifact).filter(CampaignArtifact.relative_path == "application-packets/APP-001/extra_notes.txt").first()
-        art2 = db.query(CampaignArtifact).filter(CampaignArtifact.relative_path == "application-packets/APP-002/extra_notes.txt").first()
+        art1 = (
+            db.query(CampaignArtifact)
+            .filter(CampaignArtifact.relative_path == "application-packets/APP-001/extra_notes.txt")
+            .first()
+        )
+        art2 = (
+            db.query(CampaignArtifact)
+            .filter(CampaignArtifact.relative_path == "application-packets/APP-002/extra_notes.txt")
+            .first()
+        )
         assert art1 is not None and art2 is not None
         assert art1.id != art2.id
         # Both logical artifacts share the exact same CareerAsset
         assert art1.asset_id == art2.asset_id
 
 
-def test_import_campaign_pre_commit_rollback_cleans_new_files_preserves_shared(service_vault, monkeypatch) -> None:
+def test_import_campaign_pre_commit_rollback_cleans_new_files_preserves_shared(
+    service_vault, monkeypatch
+) -> None:
     factory, data_dir, user1_id, user2_id = service_vault
     zip_bytes = build_fictional_campaign_zip()
     preview = parse_campaign_workspace(zip_bytes)
@@ -1445,9 +1417,7 @@ def test_import_campaign_commit_uncertainty_rejects_same_count_corruption(
     with factory() as db:
         assert db.query(Campaign).count() == 1
         assert (
-            db.query(ApplicationEvent)
-            .filter(ApplicationEvent.id == replacement_event_id)
-            .count()
+            db.query(ApplicationEvent).filter(ApplicationEvent.id == replacement_event_id).count()
             == 1
         )
         for asset in db.query(CareerAsset).all():

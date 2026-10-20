@@ -1,6 +1,6 @@
 # Specification: Consolidate all work into main
 
-Date: 2026-10-17. Status: POSIX fixture correction and source verification complete; renewed protected CI pending.
+Date: 2026-10-20. Status: quality follow-up implementation after reproduced regressions.
 Owner request: integrate all branches into main, remove branches, clean the
 project and make the combined application work.
 Follow-up request: continue the refactor, cleanup and correction of confirmed
@@ -10,10 +10,17 @@ Previous request: continue refactoring and extended cleanup from signed main cc8
 PR #117 completed the previous UI cycle: its reviewed source and signed main have
 the same tree; post-merge CI passed eight jobs and CodeQL four. Main was the sole
 branch and the worktree clean before this new cycle.
-Current request: continue refactoring and improve confirmed defects from signed
+Previous request: continue refactoring and improve confirmed defects from signed
 main 06fe0e0. PR #118 completed the extended cycle: reviewed source 9f99546 and
 main share tree a05899b; post-merge CI passed eight jobs and CodeQL four. The
 worktree was clean and main was the sole local/remote branch at this follow-up.
+Current request: continue refactoring and improvements from signed main dee0e5e.
+PR #119 completed protected checks and signed-main integration, followed by
+successful main CI and qualified CodeQL review with no open alerts. The new
+inventory is clean and includes two subsequent automated dependency branches.
+This cycle addresses reproduced stale synchronization and schedule UI failures,
+three test typing errors, coherent dependency updates and the expired glib
+exception. A security gate remains binding until its actual technical resolution.
 
 ## Outcomes
 
@@ -190,6 +197,22 @@ worktree was clean and main was the sole local/remote branch at this follow-up.
   selections or revisions. A valid claim with an empty optional subtitle must
   produce a valid response and exactly one coherent committed promotion.
 
+- FR-029 Resume synchronization apply/reset must serialize writes and refresh
+  owned persisted draft/profile state before checking the supplied draft revision. A cached stale
+  request must conflict without losing manual edits, advancing revisions or
+  changing links/selections. Deletion-pending drafts remain unavailable and
+  response validation must complete before commit. Preview remains read-only.
+- FR-030 Schedule mutation continuations belong to their mounted page/request.
+  A late response after unmount cannot start a refresh or show a toast elsewhere.
+  Accepted writes must update the known list before optional reconciliation;
+  failed reads preserve committed state and unaffected schedules, with a distinct
+  read-only retry. Actual write failures must not imply acceptance or retry writes.
+- FR-031 Normalize the legacy Python formatting debt while preserving executable
+  statements, public imports, type-ignore tags/bindings and existing campaign
+  import/portability contracts. Extract focused responsibilities before canonical
+  formatting would push the four identified modules beyond 300 lines; no new
+  compatibility facade or helper may exceed that limit.
+
 ## Success criteria
 
 - SC-001 Every original branch tip has a recorded preserved/superseded/integrated
@@ -281,7 +304,47 @@ worktree was clean and main was the sole local/remote branch at this follow-up.
   connecting, so these same cases execute under the existing POSIX containment
   checks as well as on Windows. A rejected fixture setup is not a passing case.
 
+- SC-027 Real independent SQLite sessions with an old cached draft must reject
+  stale apply/reset after a newer manual edit; persisted canvas, selected facts,
+  links and revision stay unchanged. Current-revision success, preview, ownership
+  and rollback remain covered using the canonical private SQLite bootstrap.
+  Cached profile facts and deletion state must refresh; invalid acknowledgement
+  construction must leave no committed synchronization changes.
+- SC-028 Real schedule component tests cover late write acknowledgements after
+  unmount, accepted disable/update/delete followed by read failure, unaffected
+  rows, actual write failure, read-only retry and current-page success. No foreign
+  page toast, stale GET, lost accepted result or duplicate mutation is permitted.
+- SC-029 Full Ruff formatting passes after decomposition. Independently compare
+  moved symbols and unchanged legacy module ASTs, preserving all forty existing
+  type-ignore tags and statement bindings. Campaign archive planning/service,
+  bounded XLSX parsing and transactional portability regressions must pass; no
+  path, archive, rollback, authority or private-data boundary is weakened.
+
 ## Governing constraints
+
+Current CI supply-chain remediation under FR-005 / SC-004: the first PR #122
+container scan identifies CVE-2026-63209 in the rebuilt Ollama executable's
+github.com/klauspost/compress v1.18.3 dependency. Verify the upstream fix, pin
+the compatible fixed module, preserve source/toolchain provenance and licenses,
+and require an actual rebuilt-image smoke test and unsuppressed high/critical
+scan. An updated source pin or static assertion alone is not a passing image.
+
+The next PR audit observes eight Pillow advisories on the unchanged 12.3.0
+pin, with 13.0.0 reported as fixed. Under the same FR-005 / SC-004 boundary,
+verify primary fixes and compatibility, regenerate coherent hash locks and
+notices, then validate photo/document rendering, isolated wheels and fresh
+unsuppressed Python/container audits. Preserve the earlier zero-finding audit
+and the later failure with their exact timestamps and inputs.
+
+The final inventory also discovers automated PR #123, containing five Tauri
+JavaScript updates. Upstream filesystem release notes describe native fixes
+for custom open flags and nonexistent-path ancestor scope resolution; updating
+only the JavaScript wrapper does not install those Rust fixes. Assess and
+consolidate compatible updates with primary-verified native counterparts,
+reproduced locks/notices and platform checks. CareerOS grants only read_file
+after explicit file selection; no exploitable CareerOS defect is established
+by those upstream notes. Preserve the exact capability scope, pinned core
+Tauri version, local-data boundaries and blocking glib policy.
 
 Constitution 2.0.1 is unchanged. The old branch's constitution, direct agent write
 tools and publication model are superseded by current governing constraints.

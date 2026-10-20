@@ -220,7 +220,9 @@ def test_deterministic_strictly_increasing_timeline() -> None:
         found_at=date(2026, 1, 10),
         applied_at=date(2026, 1, 12),
     )
-    timeline5 = build_stage_timeline(app5, ["saved", "preparing", "applied"], future_now, has_task=False)
+    timeline5 = build_stage_timeline(
+        app5, ["saved", "preparing", "applied"], future_now, has_task=False
+    )
     assert len(timeline5) == 3
     assert timeline5[0] < timeline5[1] < timeline5[2] <= future_now
 
@@ -373,7 +375,9 @@ def test_tasks_rules_and_frozen_contract() -> None:
     assert p1.task.due_at == datetime(2026, 3, 15, 12, 0, 0, tzinfo=timezone.utc)
     assert p1.task.status == "pending"
     assert p1.task.revision == 1
-    expected_task_id = str(uuid.uuid5(uuid.NAMESPACE_URL, f"urn:careeros:campaign:user:1:{fp}:APP-001:task"))
+    expected_task_id = str(
+        uuid.uuid5(uuid.NAMESPACE_URL, f"urn:careeros:campaign:user:1:{fp}:APP-001:task")
+    )
     assert p1.task.id == expected_task_id
     assert p1.next_action_task_id == expected_task_id
     assert p1.next_action_title == "Send follow-up email to hiring lead"
@@ -444,9 +448,13 @@ def test_application_revisions_and_bounded_event_payloads() -> None:
     # Applied with task: 3 stage events + 1 task event = 4 events -> revision 4
     app_applied_task = _make_parsed_app(status="Applied", next_action="Follow up")
     # Closed with applied_at (no task): 4 stage events = 4 events -> revision 4
-    app_closed = _make_parsed_app(status="Closed", applied_at=date(2026, 1, 1), next_action="Ignored")
+    app_closed = _make_parsed_app(
+        status="Closed", applied_at=date(2026, 1, 1), next_action="Ignored"
+    )
 
-    campaign = _make_parsed_campaign([app_saved_task, app_applied_no_task, app_applied_task, app_closed])
+    campaign = _make_parsed_campaign(
+        [app_saved_task, app_applied_no_task, app_applied_task, app_closed]
+    )
     planned = plan_campaign_import(campaign, now)
 
     p_saved, p_applied_nt, p_applied_t, p_closed = planned.applications
@@ -662,7 +670,9 @@ def test_preflight_validation_limits_without_leaking_values() -> None:
         byte_size=3,
     )
     with pytest.raises(CampaignPlanError) as exc_bp:
-        plan_campaign_import(_make_parsed_campaign([_make_parsed_app()], artifacts=[art_blank_path]), now)
+        plan_campaign_import(
+            _make_parsed_campaign([_make_parsed_app()], artifacts=[art_blank_path]), now
+        )
     assert "relative_path must not be blank" in str(exc_bp.value)
 
     art_long_path = ParsedArtifact(
@@ -676,7 +686,9 @@ def test_preflight_validation_limits_without_leaking_values() -> None:
         byte_size=3,
     )
     with pytest.raises(CampaignPlanError) as exc4:
-        plan_campaign_import(_make_parsed_campaign([_make_parsed_app()], artifacts=[art_long_path]), now)
+        plan_campaign_import(
+            _make_parsed_campaign([_make_parsed_app()], artifacts=[art_long_path]), now
+        )
     assert "relative_path exceeds 500" in str(exc4.value)
 
     # 11. Display name blank or exceeds 255 (exact model limit)
@@ -691,7 +703,9 @@ def test_preflight_validation_limits_without_leaking_values() -> None:
         byte_size=3,
     )
     with pytest.raises(CampaignPlanError) as exc_bn:
-        plan_campaign_import(_make_parsed_campaign([_make_parsed_app()], artifacts=[art_blank_name]), now)
+        plan_campaign_import(
+            _make_parsed_campaign([_make_parsed_app()], artifacts=[art_blank_name]), now
+        )
     assert "display_name must not be blank" in str(exc_bn.value)
 
     art_long_name = ParsedArtifact(
@@ -705,7 +719,9 @@ def test_preflight_validation_limits_without_leaking_values() -> None:
         byte_size=3,
     )
     with pytest.raises(CampaignPlanError) as exc_ln:
-        plan_campaign_import(_make_parsed_campaign([_make_parsed_app()], artifacts=[art_long_name]), now)
+        plan_campaign_import(
+            _make_parsed_campaign([_make_parsed_app()], artifacts=[art_long_name]), now
+        )
     assert "display_name exceeds 255" in str(exc_ln.value)
 
     # 12. Artifact category must be in ALLOWED_ARTIFACT_CATEGORIES and not credential
@@ -720,7 +736,9 @@ def test_preflight_validation_limits_without_leaking_values() -> None:
         byte_size=3,
     )
     with pytest.raises(CampaignPlanError) as exc_cat_cred:
-        plan_campaign_import(_make_parsed_campaign([_make_parsed_app()], artifacts=[art_credential]), now)
+        plan_campaign_import(
+            _make_parsed_campaign([_make_parsed_app()], artifacts=[art_credential]), now
+        )
     assert "invalid artifact category" in str(exc_cat_cred.value)
 
     art_invalid_cat = ParsedArtifact(
@@ -734,7 +752,9 @@ def test_preflight_validation_limits_without_leaking_values() -> None:
         byte_size=3,
     )
     with pytest.raises(CampaignPlanError) as exc_cat_inv:
-        plan_campaign_import(_make_parsed_campaign([_make_parsed_app()], artifacts=[art_invalid_cat]), now)
+        plan_campaign_import(
+            _make_parsed_campaign([_make_parsed_app()], artifacts=[art_invalid_cat]), now
+        )
     assert "invalid artifact category" in str(exc_cat_inv.value)
 
 

@@ -72,7 +72,10 @@ def _valid_email_domain(domain: str) -> bool:
             label
             and not label.startswith("-")
             and not label.endswith("-")
-            and all(character.isascii() and (character.isalnum() or character == "-") for character in label)
+            and all(
+                character.isascii() and (character.isalnum() or character == "-")
+                for character in label
+            )
             for label in labels
         )
     )

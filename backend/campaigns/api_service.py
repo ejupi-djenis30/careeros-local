@@ -29,11 +29,7 @@ class CampaignApiIntegrityError(ValueError):
 
 
 def _campaign(db: Session, user_id: int, campaign_id: str) -> Campaign:
-    row = (
-        db.query(Campaign)
-        .filter(Campaign.id == campaign_id, Campaign.user_id == user_id)
-        .first()
-    )
+    row = db.query(Campaign).filter(Campaign.id == campaign_id, Campaign.user_id == user_id).first()
     if row is None:
         raise CampaignApiNotFound
     return row
@@ -80,7 +76,9 @@ def _application_projection(link: CampaignApplication) -> dict[str, Any]:
             next_action = value.get("next_action")
             if not isinstance(reason, str) or not 8 <= len(reason) <= 1_000:
                 continue
-            if reason != reason.strip() or any(ord(char) < 32 or ord(char) == 127 for char in reason):
+            if reason != reason.strip() or any(
+                ord(char) < 32 or ord(char) == 127 for char in reason
+            ):
                 continue
             if not isinstance(source_url, str):
                 continue
@@ -175,10 +173,7 @@ def campaign_detail(
     if review_decision is None:
         filtered = base.count()
         rows = (
-            base.order_by(CampaignApplication.source_order.asc())
-            .offset(offset)
-            .limit(limit)
-            .all()
+            base.order_by(CampaignApplication.source_order.asc()).offset(offset).limit(limit).all()
         )
         applications = [_application_projection(row) for row in rows]
     else:
@@ -238,14 +233,16 @@ def application_context(db: Session, user_id: int, application_id: str) -> dict[
         .all()
     )
     for artifact, asset in artifacts:
-        groups[artifact.category].append({
-            "id": artifact.id,
-            "display_name": artifact.display_name,
-            "category": artifact.category,
-            "media_type": asset.media_type,
-            "byte_size": asset.byte_size,
-            "download_url": f"/api/v1/campaigns/{row.campaign_id}/artifacts/{artifact.id}/download",
-        })
+        groups[artifact.category].append(
+            {
+                "id": artifact.id,
+                "display_name": artifact.display_name,
+                "category": artifact.category,
+                "media_type": asset.media_type,
+                "byte_size": asset.byte_size,
+                "download_url": f"/api/v1/campaigns/{row.campaign_id}/artifacts/{artifact.id}/download",
+            }
+        )
     return {
         "campaign_id": row.campaign_id,
         "campaign_name": row.campaign.name,
@@ -313,10 +310,13 @@ def download_artifact(
         )
     except Exception as exc:
         raise CampaignApiIntegrityError from exc
-    ascii_fallback = "".join(
-        c if (c.isascii() and c.isprintable() and c not in ('"', "\\", "\r", "\n")) else "_"
-        for c in name
-    ).strip() or "artifact"
+    ascii_fallback = (
+        "".join(
+            c if (c.isascii() and c.isprintable() and c not in ('"', "\\", "\r", "\n")) else "_"
+            for c in name
+        ).strip()
+        or "artifact"
+    )
     encoded_name = quote(name, safe="")
-    disposition = f'attachment; filename="{ascii_fallback}"; filename*=UTF-8\'\'{encoded_name}'
+    disposition = f"attachment; filename=\"{ascii_fallback}\"; filename*=UTF-8''{encoded_name}"
     return content, asset.media_type, asset.sha256, disposition

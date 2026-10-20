@@ -25,12 +25,34 @@ def _date_to_excel_serial(d: date) -> int:
 
 
 AUDITED_28_HEADERS: list[str] = [
-    "Application ID", "Role Title", "Company Name", "Location", "Job Category",
-    "Platform / Source", "Status", "Priority", "Platform URL", "Job Posting URL",
-    "Outcome", "Date Found", "Application Date", "Follow-up Date", "Last Update",
-    "Next Action", "Notes", "Contact Person", "Contact Email", "Salary Range",
-    "Workplace Type", "Contract Type", "Requirements Summary", "CV Template Used",
-    "Cover Letter Sent", "Referral", "Archive Reason", "Comments"
+    "Application ID",
+    "Role Title",
+    "Company Name",
+    "Location",
+    "Job Category",
+    "Platform / Source",
+    "Status",
+    "Priority",
+    "Platform URL",
+    "Job Posting URL",
+    "Outcome",
+    "Date Found",
+    "Application Date",
+    "Follow-up Date",
+    "Last Update",
+    "Next Action",
+    "Notes",
+    "Contact Person",
+    "Contact Email",
+    "Salary Range",
+    "Workplace Type",
+    "Contract Type",
+    "Requirements Summary",
+    "CV Template Used",
+    "Cover Letter Sent",
+    "Referral",
+    "Archive Reason",
+    "Comments",
 ]
 
 
@@ -175,8 +197,8 @@ def build_fictional_xlsx_bytes(
     sheet1_xml = (
         '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n'
         '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">\n'
-        f'  <sheetData>{"".join(sheet1_rows_xml)}</sheetData>\n'
-        '</worksheet>'
+        f"  <sheetData>{''.join(sheet1_rows_xml)}</sheetData>\n"
+        "</worksheet>"
     )
 
     # Build sheet2 (Platform Credentials)
@@ -187,7 +209,7 @@ def build_fictional_xlsx_bytes(
         '<c r="A1" t="inlineStr"><is><t>Platform</t></is></c>'
         '<c r="B1" t="inlineStr"><is><t>Username</t></is></c>'
         '<c r="C1" t="inlineStr"><is><t>Password</t></is></c>'
-        '</row>'
+        "</row>"
     )
     for c_idx in range(credentials_count):
         r = c_idx + 2
@@ -197,14 +219,14 @@ def build_fictional_xlsx_bytes(
             f'<c r="A{r}" t="inlineStr"><is><t>Platform{c_idx}</t></is></c>'
             f'<c r="B{r}" t="inlineStr"><is><t>user{c_idx}</t></is></c>'
             f'<c r="C{r}" t="inlineStr"><is><t>pass{c_idx}</t></is></c>'
-            f'</row>'
+            f"</row>"
         )
 
     sheet2_xml = (
         '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n'
         '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">\n'
-        f'  <sheetData>{"".join(sheet2_rows_xml)}</sheetData>\n'
-        '</worksheet>'
+        f"  <sheetData>{''.join(sheet2_rows_xml)}</sheetData>\n"
+        "</worksheet>"
     )
 
     # sharedStrings.xml
@@ -222,7 +244,7 @@ def build_fictional_xlsx_bytes(
         '<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">\n'
         '  <numFmts count="1">\n'
         '    <numFmt numFmtId="165" formatCode="yyyy-mm-dd"/>\n'
-        '  </numFmts>\n'
+        "  </numFmts>\n"
         '  <fonts count="1"><font><sz val="11"/><name val="Calibri"/></font></fonts>\n'
         '  <fills count="1"><fill><patternFill patternType="none"/></fill></fills>\n'
         '  <borders count="1"><border><left/><right/><top/><bottom/></border></borders>\n'
@@ -230,8 +252,8 @@ def build_fictional_xlsx_bytes(
         '  <cellXfs count="2">\n'
         '    <xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>\n'
         '    <xf numFmtId="14" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/>\n'
-        '  </cellXfs>\n'
-        '</styleSheet>'
+        "  </cellXfs>\n"
+        "</styleSheet>"
     )
 
     # workbook.xml
@@ -260,16 +282,16 @@ def build_fictional_xlsx_bytes(
                 f'<Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="{prefix}worksheets/sheet2.xml"/>'
             )
         rels.append(
-            f'<Relationship Id="rId{len(rels)+1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/sharedStrings" Target="{prefix}sharedStrings.xml"/>'
+            f'<Relationship Id="rId{len(rels) + 1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/sharedStrings" Target="{prefix}sharedStrings.xml"/>'
         )
         rels.append(
-            f'<Relationship Id="rId{len(rels)+1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="{prefix}styles.xml"/>'
+            f'<Relationship Id="rId{len(rels) + 1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="{prefix}styles.xml"/>'
         )
 
     wb_rels_xml = (
         '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n'
         '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">\n'
-        f'  {"".join(rels)}\n'
+        f"  {''.join(rels)}\n"
         "</Relationships>"
     )
 
@@ -293,7 +315,7 @@ def build_fictional_xlsx_bytes(
     content_types_xml += (
         '  <Override PartName="/xl/sharedStrings.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sharedStrings+xml"/>\n'
         '  <Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>\n'
-        '</Types>'
+        "</Types>"
     )
 
     out = io.BytesIO()

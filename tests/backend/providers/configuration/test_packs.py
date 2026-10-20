@@ -88,9 +88,7 @@ def _declarative_entries() -> dict[str, DeclarativeProviderImportEntry]:
 def test_switzerland_core_catalog_is_explicit_mixed_and_excludes_large_aggregators() -> None:
     pack = bundled_provider_pack("careeros.switzerland.core")
     keys = [
-        entry.configuration.key
-        if isinstance(entry, DeclarativeProviderImportEntry)
-        else entry.key
+        entry.configuration.key if isinstance(entry, DeclarativeProviderImportEntry) else entry.key
         for entry in pack.providers
     ]
     entries = _declarative_entries()

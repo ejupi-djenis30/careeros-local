@@ -33,7 +33,9 @@ application_context_router = APIRouter()
 
 
 def _not_found() -> HTTPException:
-    return HTTPException(status_code=404, detail={"code": "not_found", "message": "Resource not found"})
+    return HTTPException(
+        status_code=404, detail={"code": "not_found", "message": "Resource not found"}
+    )
 
 
 def _safe_error(status_code: int, code: str, message: str) -> HTTPException:
@@ -67,8 +69,13 @@ async def preview_campaign(
     data = await _read_archive(archive)
     try:
         parsed = parse_campaign_workspace(data, archive.filename or "campaign.zip")
-        has_profile = db.query(CandidateProfile.id).filter(CandidateProfile.user_id == user_id).first() is not None
-        body = preview_from_parsed_campaign(parsed, user_has_profile=has_profile).model_dump(mode="json")
+        has_profile = (
+            db.query(CandidateProfile.id).filter(CandidateProfile.user_id == user_id).first()
+            is not None
+        )
+        body = preview_from_parsed_campaign(parsed, user_has_profile=has_profile).model_dump(
+            mode="json"
+        )
     except Exception as exc:
         raise _preview_error(exc) from None
     return JSONResponse(body, headers=PRIVATE_NO_STORE_HEADERS)
@@ -96,7 +103,9 @@ async def import_campaign_route(
         )
     except CampaignImportError as exc:
         status = exc.status_code if exc.status_code in {400, 409, 422} else 500
-        code = "conflict" if status == 409 else "invalid_archive" if status == 400 else "import_failed"
+        code = (
+            "conflict" if status == 409 else "invalid_archive" if status == 400 else "import_failed"
+        )
         message = (
             "Campaign import conflicts with existing state"
             if status == 409
@@ -117,7 +126,9 @@ async def import_campaign_route(
 
 
 @router.get("")
-def campaigns_list(user_id: int = Depends(get_current_user_id), db: Session = Depends(get_db)) -> list[dict[str, Any]]:
+def campaigns_list(
+    user_id: int = Depends(get_current_user_id), db: Session = Depends(get_db)
+) -> list[dict[str, Any]]:
     return list_campaigns(db, user_id)
 
 
@@ -151,7 +162,10 @@ def campaign_detail_route(
     if priority is not None and priority not in valid_priorities:
         raise _safe_error(422, "invalid_filter", "Campaign filter is invalid")
     if review_decision is not None and review_decision not in {
-        "none", "hold", "excluded", "cleared"
+        "none",
+        "hold",
+        "excluded",
+        "cleared",
     }:
         raise _safe_error(422, "invalid_filter", "Campaign filter is invalid")
     try:
@@ -190,11 +204,15 @@ def campaign_artifact_download(
     db: Session = Depends(get_db),
 ) -> Response:
     try:
-        content, media_type, digest, disposition = download_artifact(db, user_id, campaign_id, artifact_id)
+        content, media_type, digest, disposition = download_artifact(
+            db, user_id, campaign_id, artifact_id
+        )
     except CampaignApiNotFound:
         raise _not_found() from None
     except CampaignApiIntegrityError:
-        raise _safe_error(409, "asset_integrity", "Campaign artifact failed integrity verification") from None
+        raise _safe_error(
+            409, "asset_integrity", "Campaign artifact failed integrity verification"
+        ) from None
     return Response(
         content=content,
         media_type=media_type,

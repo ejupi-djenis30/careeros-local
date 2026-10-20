@@ -32,9 +32,7 @@ def validate_email_draft(
     # 2. Placeholders validation
     for field_name, value in [("subject", draft.subject), ("body", draft.body)]:
         if value and contains_unresolved_placeholder(value):
-            raise ValueError(
-                f"Email {field_name} contains unresolved placeholders or instructions"
-            )
+            raise ValueError(f"Email {field_name} contains unresolved placeholders or instructions")
 
     # 3. Mode validation
     if draft.mode not in {"short", "motivational"}:

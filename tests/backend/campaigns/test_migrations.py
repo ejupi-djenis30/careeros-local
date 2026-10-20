@@ -50,7 +50,16 @@ def test_empty_campaign_migration_roundtrips_up_down_up(disposable_migration_db)
 
     # Verify column existence
     campaign_cols = {col["name"] for col in inspector.get_columns("campaigns")}
-    assert {"id", "user_id", "name", "source_fingerprint", "tracker_sha256", "summary", "created_at", "updated_at"}.issubset(campaign_cols)
+    assert {
+        "id",
+        "user_id",
+        "name",
+        "source_fingerprint",
+        "tracker_sha256",
+        "summary",
+        "created_at",
+        "updated_at",
+    }.issubset(campaign_cols)
 
     # 2. Downgrade when empty succeeds
     command.downgrade(config, "b3c4d5e6f7a9")
@@ -106,7 +115,9 @@ def test_downgrade_refuses_when_campaign_rows_exist(disposable_migration_db):
     with Session(engine) as session:
         count = session.execute(sa.text("SELECT COUNT(*) FROM campaigns")).scalar_one()
         assert count == 1
-        current_rev = session.execute(sa.text("SELECT version_num FROM alembic_version")).scalar_one()
+        current_rev = session.execute(
+            sa.text("SELECT version_num FROM alembic_version")
+        ).scalar_one()
         assert current_rev == "c0a1b2c3d4e5"
 
 
@@ -164,11 +175,7 @@ def test_campaign_migration_exact_indexes_constraints_and_foreign_keys(disposabl
         for fk in inspector.get_foreign_keys(table_name):
             col = fk["constrained_columns"][0]
             ref_table = fk["referred_table"]
-            ondelete = (
-                fk.get("options", {}).get("ondelete")
-                or fk.get("ondelete")
-                or ""
-            ).upper()
+            ondelete = (fk.get("options", {}).get("ondelete") or fk.get("ondelete") or "").upper()
             fk_map[col] = {"referred_table": ref_table, "ondelete": ondelete}
         return fk_map
 

@@ -300,7 +300,12 @@ def parse_goal_preferences(
             roles = [r.strip() for r in re.split(r"[,;|]", val_raw) if r.strip()]
             if roles:
                 _validate_and_add_candidate(
-                    candidates, review_notes, "target_roles", roles, f"{locator}:preference:target_roles", excerpt
+                    candidates,
+                    review_notes,
+                    "target_roles",
+                    roles,
+                    f"{locator}:preference:target_roles",
+                    excerpt,
                 )
         elif key_raw in {
             "preferred_locations",
@@ -402,7 +407,12 @@ def parse_goal_preferences(
             val = _whole_integer(val_raw, unit_pattern=r"%|percent|per\s*cento")
             if val is not None:
                 _validate_and_add_candidate(
-                    candidates, review_notes, "workload_min", val, f"{locator}:preference:workload_min", excerpt
+                    candidates,
+                    review_notes,
+                    "workload_min",
+                    val,
+                    f"{locator}:preference:workload_min",
+                    excerpt,
                 )
             else:
                 _unsupported_value(review_notes, "workload_min", val_raw, clean)
@@ -416,7 +426,12 @@ def parse_goal_preferences(
             val = _whole_integer(val_raw, unit_pattern=r"%|percent|per\s*cento")
             if val is not None:
                 _validate_and_add_candidate(
-                    candidates, review_notes, "workload_max", val, f"{locator}:preference:workload_max", excerpt
+                    candidates,
+                    review_notes,
+                    "workload_max",
+                    val,
+                    f"{locator}:preference:workload_max",
+                    excerpt,
                 )
             else:
                 _unsupported_value(review_notes, "workload_max", val_raw, clean)

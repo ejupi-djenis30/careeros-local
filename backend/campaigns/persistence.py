@@ -57,65 +57,87 @@ def persist_entities(
         )
     app_id_by_source: dict[str, str] = {}
     for p_app in planned.applications:
-        app_id = owner_scoped_uuid(identity_scope, planned.fingerprint, "application", p_app.source_application_id)
+        app_id = owner_scoped_uuid(
+            identity_scope, planned.fingerprint, "application", p_app.source_application_id
+        )
         app_id_by_source[p_app.source_application_id] = app_id
-        db.add(Application(
-            id=app_id,
-            user_id=user_id,
-            job_id=None,
-            scraped_job_id=None,
-            resume_version_id=None,
-            revision=p_app.revision,
-            current_stage=p_app.current_stage,
-            job_snapshot=to_json_safe(p_app.job_snapshot),
-            job_title=p_app.job_title[:240],
-            job_company=p_app.job_company[:240],
-            job_location=p_app.job_location[:500] if p_app.job_location else None,
-            latest_event_at=p_app.latest_event_at,
-            next_action_task_id=p_app.next_action_task_id,
-            next_action_title=p_app.next_action_title[:500] if p_app.next_action_title else None,
-            next_action_at=p_app.next_action_at,
-            next_action_priority=p_app.next_action_priority,
-        ))
+        db.add(
+            Application(
+                id=app_id,
+                user_id=user_id,
+                job_id=None,
+                scraped_job_id=None,
+                resume_version_id=None,
+                revision=p_app.revision,
+                current_stage=p_app.current_stage,
+                job_snapshot=to_json_safe(p_app.job_snapshot),
+                job_title=p_app.job_title[:240],
+                job_company=p_app.job_company[:240],
+                job_location=p_app.job_location[:500] if p_app.job_location else None,
+                latest_event_at=p_app.latest_event_at,
+                next_action_task_id=p_app.next_action_task_id,
+                next_action_title=p_app.next_action_title[:500]
+                if p_app.next_action_title
+                else None,
+                next_action_at=p_app.next_action_at,
+                next_action_priority=p_app.next_action_priority,
+            )
+        )
         for event in p_app.events:
-            db.add(ApplicationEvent(
-                id=event.id,
+            db.add(
+                ApplicationEvent(
+                    id=event.id,
+                    application_id=app_id,
+                    event_type=event.event_type,
+                    stage=event.stage,
+                    occurred_at=event.occurred_at,
+                    note=event.note,
+                    payload=to_json_safe(event.payload),
+                    created_at=event.created_at,
+                )
+            )
+        db.add(
+            CampaignApplication(
+                id=owner_scoped_uuid(
+                    identity_scope, planned.fingerprint, "campaign_app", p_app.source_application_id
+                ),
+                campaign_id=campaign.id,
                 application_id=app_id,
-                event_type=event.event_type,
-                stage=event.stage,
-                occurred_at=event.occurred_at,
-                note=event.note,
-                payload=to_json_safe(event.payload),
-                created_at=event.created_at,
-            ))
-        db.add(CampaignApplication(
-            id=owner_scoped_uuid(identity_scope, planned.fingerprint, "campaign_app", p_app.source_application_id),
-            campaign_id=campaign.id,
-            application_id=app_id,
-            source_application_id=p_app.source_application_id[:120],
-            source_order=p_app.source_order,
-            source_status=p_app.source.source_status[:60] if p_app.source.source_status else None,
-            priority=p_app.source.priority[:60] if p_app.source.priority else None,
-            platform=p_app.source.platform[:120] if p_app.source.platform else None,
-            category=p_app.source.category[:120] if p_app.source.category else None,
-            outcome=p_app.source.outcome[:120] if p_app.source.outcome else None,
-            found_at=p_app.source.found_at,
-            applied_at=p_app.source.applied_at,
-            follow_up_at=p_app.source.follow_up_at,
-            last_update_at=p_app.source.last_update_at,
-            tracker_record=to_json_safe(p_app.source.tracker_record),
-            provenance=to_json_safe(p_app.source.provenance),
-        ))
+                source_application_id=p_app.source_application_id[:120],
+                source_order=p_app.source_order,
+                source_status=p_app.source.source_status[:60]
+                if p_app.source.source_status
+                else None,
+                priority=p_app.source.priority[:60] if p_app.source.priority else None,
+                platform=p_app.source.platform[:120] if p_app.source.platform else None,
+                category=p_app.source.category[:120] if p_app.source.category else None,
+                outcome=p_app.source.outcome[:120] if p_app.source.outcome else None,
+                found_at=p_app.source.found_at,
+                applied_at=p_app.source.applied_at,
+                follow_up_at=p_app.source.follow_up_at,
+                last_update_at=p_app.source.last_update_at,
+                tracker_record=to_json_safe(p_app.source.tracker_record),
+                provenance=to_json_safe(p_app.source.provenance),
+            )
+        )
     for p_art in planned.artifacts:
-        bound = app_id_by_source.get(p_art.source_application_id) if p_art.source_application_id else None
-        db.add(CampaignArtifact(
-            id=owner_scoped_uuid(identity_scope, planned.fingerprint, "artifact", p_art.relative_path),
-            campaign_id=campaign.id,
-            application_id=bound,
-            asset_id=assets_by_sha[p_art.sha256].id,
-            relative_path=p_art.relative_path[:500],
-            display_name=p_art.display_name[:255],
-            category=p_art.category[:40],
-            source_order=p_art.source_order,
-            created_at=planned.imported_at,
-        ))
+        bound = (
+            app_id_by_source.get(p_art.source_application_id)
+            if p_art.source_application_id
+            else None
+        )
+        db.add(
+            CampaignArtifact(
+                id=owner_scoped_uuid(
+                    identity_scope, planned.fingerprint, "artifact", p_art.relative_path
+                ),
+                campaign_id=campaign.id,
+                application_id=bound,
+                asset_id=assets_by_sha[p_art.sha256].id,
+                relative_path=p_art.relative_path[:500],
+                display_name=p_art.display_name[:255],
+                category=p_art.category[:40],
+                source_order=p_art.source_order,
+                created_at=planned.imported_at,
+            )
+        )

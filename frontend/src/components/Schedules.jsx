@@ -1,110 +1,17 @@
-import React, { useCallback, useEffect, useRef, useState } from "react";
-import { SearchService } from "../services/search";
-import { useToast } from "../context/ToastContext";
+import React, { useState } from "react";
 import { ScheduleCard } from "./ScheduleCard";
 import { ConfirmationDialog } from "./ConfirmationDialog";
 import { useI18n } from "../i18n/useI18n";
 import { translateMessage } from "../i18n/runtime";
-import { reportUiFailure } from "../lib/uiDiagnostics";
+import { useSchedulesController } from "./useSchedulesController";
+import { SCHEDULE_MESSAGES } from "./scheduleMessages";
 
 export function Schedules() {
-    const { showToast } = useToast();
-    const { t } = useI18n();
-    const [profiles, setProfiles] = useState([]);
-    const [loading, setLoading] = useState(true);
-    const [error, setError] = useState(null);
+    const { t, language } = useI18n();
+    const copy = SCHEDULE_MESSAGES[language] || SCHEDULE_MESSAGES.en;
     const [profileToDelete, setProfileToDelete] = useState(null);
-    const requestIdRef = useRef(0);
-    const requestControllerRef = useRef(null);
-
-    const loadProfiles = useCallback(() => {
-        const requestId = requestIdRef.current + 1;
-        requestIdRef.current = requestId;
-        requestControllerRef.current?.abort();
-        const controller = new AbortController();
-        requestControllerRef.current = controller;
-
-        return SearchService.getProfileSummaries({ signal: controller.signal })
-            .then((data) => {
-                if (controller.signal.aborted || requestId !== requestIdRef.current) return;
-                setProfiles(Array.isArray(data) ? data : []);
-                setError(null);
-            })
-            .catch((loadError) => {
-                if (controller.signal.aborted || loadError?.name === "AbortError" || requestId !== requestIdRef.current) return;
-                reportUiFailure("schedules_profiles");
-                setError({ messageKey: "schedules.loadFailed" });
-                showToast({ messageKey: "schedules.loadFailedRefresh" });
-            })
-            .finally(() => {
-                if (!controller.signal.aborted && requestId === requestIdRef.current) {
-                    requestControllerRef.current = null;
-                    setLoading(false);
-                }
-            });
-    }, [showToast]);
-
-    const refreshProfiles = useCallback(() => {
-        setError(null);
-        setLoading(true);
-        void loadProfiles();
-    }, [loadProfiles]);
-
-    useEffect(() => {
-        void loadProfiles();
-        return () => {
-            requestIdRef.current += 1;
-            requestControllerRef.current?.abort();
-            requestControllerRef.current = null;
-        };
-    }, [loadProfiles]);
-
-    const handleToggle = async (profileId, currentEnabled, intervalHours) => {
-        try {
-            await SearchService.toggleSchedule(profileId, !currentEnabled, intervalHours);
-            await loadProfiles();
-        } catch (e) {
-            showToast({
-                messageKey: "schedules.toggleFailed",
-                variables: { error: e.message || { messageKey: "common.unknownError" } },
-            });
-        }
-    };
-
-    const handleDeleteRequest = (profileId) => {
-        setProfileToDelete(profileId);
-    };
-
-    const handleConfirmDelete = async () => {
-        if (!profileToDelete) return;
-        try {
-            await SearchService.toggleSchedule(profileToDelete, false);
-            await loadProfiles();
-        } catch (e) {
-            showToast({
-                messageKey: "schedules.removeFailed",
-                variables: { error: e.message || { messageKey: "common.unknownError" } },
-            });
-        } finally {
-            setProfileToDelete(null);
-        }
-    };
-
-    const handleCancelDelete = () => {
-        setProfileToDelete(null);
-    };
-
-    const handleChangeInterval = async (profileId, newInterval) => {
-        try {
-            await SearchService.toggleSchedule(profileId, true, parseInt(newInterval));
-            await loadProfiles();
-        } catch (e) {
-            showToast({
-                messageKey: "schedules.intervalFailed",
-                variables: { error: e.message || { messageKey: "common.unknownError" } },
-            });
-        }
-    };
+    const schedules = useSchedulesController();
+    const { profiles, loading, refreshing, error, refreshFailed, pendingIds, refreshProfiles } = schedules;
 
     if (loading) {
         return (
@@ -126,54 +33,66 @@ export function Schedules() {
         );
     }
 
-    const activeSchedules = profiles.filter(p => p.schedule_enabled);
-
-    if (activeSchedules.length === 0) {
-        return (
-            <div className="glass-panel text-center py-5 animate-fade-in align-items-center d-flex flex-column justify-content-center h-100">
-                <div className="mb-4">
-                    <div className="rounded-circle bg-success-10 d-inline-flex align-items-center justify-content-center border border-success-20 shadow-glow sz-80">
-                        <i className="bi bi-clock-history fs-1 text-success"></i>
-                    </div>
-                </div>
-                <h4 className="text-white fw-bold">{t("schedules.emptyTitle")}</h4>
-                <p className="text-secondary opacity-75 max-w-480">{t("schedules.emptyCopy")}</p>
-            </div>
-        );
-    }
+    const activeSchedules = profiles.filter((profile) => profile.schedule_enabled);
 
     return (
-        <div className="animate-fade-in h-100 d-flex flex-column">
-            <div className="d-flex justify-content-end align-items-center mb-4">
-                <button
-                    onClick={refreshProfiles}
-                    className="btn btn-icon btn-secondary rounded-circle shadow-sm"
-                    title={t("schedules.refresh")}
-                    aria-label={t("schedules.refresh")}
-                >
-                    <i className="bi bi-arrow-clockwise"></i>
-                </button>
-            </div>
-
-            <div className="row g-4 overflow-auto pb-4 custom-scrollbar">
-                {activeSchedules.map(p => (
-                    <ScheduleCard
-                        key={p.id}
-                        profile={p}
-                        onToggle={handleToggle}
-                        onChangeInterval={handleChangeInterval}
-                        onDelete={handleDeleteRequest}
-                    />
-                ))}
-            </div>
-
+        <div className="animate-fade-in h-100 d-flex flex-column" aria-busy={refreshing}>
+            {refreshFailed && (
+                <div className="glass-panel p-3 mb-3" role="alert">
+                    <p>{copy.refreshFailed}</p>
+                    <button type="button" className="btn btn-outline-primary" onClick={refreshProfiles}>
+                        {t("schedules.retry")}
+                    </button>
+                </div>
+            )}
+            {activeSchedules.length === 0 ? (
+                <div className="glass-panel text-center py-5 animate-fade-in align-items-center d-flex flex-column justify-content-center h-100">
+                    <div className="mb-4">
+                        <div className="rounded-circle bg-success-10 d-inline-flex align-items-center justify-content-center border border-success-20 shadow-glow sz-80">
+                            <i className="bi bi-clock-history fs-1 text-success"></i>
+                        </div>
+                    </div>
+                    <h4 className="text-white fw-bold">{t("schedules.emptyTitle")}</h4>
+                    <p className="text-secondary opacity-75 max-w-480">{t("schedules.emptyCopy")}</p>
+                </div>
+            ) : (
+                <>
+                    <div className="d-flex justify-content-end align-items-center mb-4">
+                        <button
+                            onClick={refreshProfiles}
+                            disabled={refreshing}
+                            className="btn btn-icon btn-secondary rounded-circle shadow-sm"
+                            title={t("schedules.refresh")}
+                            aria-label={t("schedules.refresh")}
+                        >
+                            <i className="bi bi-arrow-clockwise"></i>
+                        </button>
+                    </div>
+                    <div className="row g-4 overflow-auto pb-4 custom-scrollbar">
+                        {activeSchedules.map((profile) => (
+                            <ScheduleCard
+                                key={profile.id}
+                                profile={profile}
+                                pending={pendingIds.has(profile.id)}
+                                onToggle={schedules.toggle}
+                                onChangeInterval={schedules.changeInterval}
+                                onDelete={setProfileToDelete}
+                            />
+                        ))}
+                    </div>
+                </>
+            )}
             <ConfirmationDialog
-                isOpen={!!profileToDelete}
+                isOpen={profileToDelete !== null}
                 title={t("schedules.removeTitle")}
                 message={t("schedules.removeCopy")}
                 confirmText={t("schedules.remove")}
-                onConfirm={handleConfirmDelete}
-                onCancel={handleCancelDelete}
+                onConfirm={() => {
+                    const id = profileToDelete;
+                    setProfileToDelete(null);
+                    if (id !== null) void schedules.remove(id);
+                }}
+                onCancel={() => setProfileToDelete(null)}
             />
         </div>
     );

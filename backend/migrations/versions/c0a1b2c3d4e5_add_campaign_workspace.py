@@ -203,13 +203,9 @@ def upgrade() -> None:
 def downgrade() -> None:
     connection = op.get_bind()
     for table_name in ("campaign_artifacts", "campaign_applications", "campaigns"):
-        count = connection.execute(
-            sa.text(f"SELECT COUNT(*) FROM {table_name}")
-        ).scalar_one()
+        count = connection.execute(sa.text(f"SELECT COUNT(*) FROM {table_name}")).scalar_one()
         if count:
-            raise RuntimeError(
-                "Cannot downgrade schema while campaign rows exist"
-            )
+            raise RuntimeError("Cannot downgrade schema while campaign rows exist")
 
     op.drop_index(
         "ix_campaign_artifacts_campaign_source_order",

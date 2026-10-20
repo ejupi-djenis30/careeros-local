@@ -130,7 +130,6 @@ class DeclarativeJobProvider(DeclarativeTransport, JobProvider):
             accepted_domains=self.configuration.capabilities.accepted_domains,
         )
 
-
     def _mapped_json(self, item: dict[str, Any], mapping: ProviderFieldMapping) -> str:
         value = _json_value(item, mapping.source)
         return _safe_text(value if value is not None else mapping.default)

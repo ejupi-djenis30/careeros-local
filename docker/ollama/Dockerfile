@@ -27,6 +27,7 @@ WORKDIR /src
 RUN test "$(go env GOVERSION)" = "go1.27.2" \
     && go get \
         github.com/buger/jsonparser@v1.1.2 \
+        github.com/klauspost/compress@v1.18.7 \
         golang.org/x/crypto@v0.57.0 \
         golang.org/x/image@v0.45.0 \
         golang.org/x/mod@v0.41.0 \
@@ -38,6 +39,7 @@ RUN test "$(go env GOVERSION)" = "go1.27.2" \
     && go mod tidy \
     && go mod verify \
     && test "$(go list -m -f '{{.Version}}' github.com/buger/jsonparser)" = "v1.1.2" \
+    && test "$(go list -m -f '{{.Version}}' github.com/klauspost/compress)" = "v1.18.7" \
     && test "$(go list -m -f '{{.Version}}' golang.org/x/crypto)" = "v0.57.0" \
     && test "$(go list -m -f '{{.Version}}' golang.org/x/image)" = "v0.45.0" \
     && test "$(go list -m -f '{{.Version}}' golang.org/x/mod)" = "v0.41.0" \
@@ -49,7 +51,7 @@ RUN test "$(go env GOVERSION)" = "go1.27.2" \
 
 RUN mkdir /out \
     && go build -trimpath -buildmode=pie \
-        -ldflags="-s -w -X=github.com/ollama/ollama/version.Version=0.34.3-careeros.1 -X=github.com/ollama/ollama/server.mode=release" \
+        -ldflags="-s -w -X=github.com/ollama/ollama/version.Version=0.34.3-careeros.2 -X=github.com/ollama/ollama/server.mode=release" \
         -o /out/ollama . \
     && cmake \
         -DGO_EXECUTABLE=/usr/local/go/bin/go \
@@ -85,7 +87,7 @@ LABEL org.opencontainers.image.title="CareerOS Local Ollama runtime" \
       org.opencontainers.image.description="Ollama 0.34.3 with a reproducibly rebuilt, vulnerability-remediated Go executable" \
       org.opencontainers.image.source="https://github.com/ollama/ollama" \
       org.opencontainers.image.revision="6383a0fa9cbf97494b847226e189f6e36b401a08" \
-      org.opencontainers.image.version="0.34.3-careeros.1" \
+      org.opencontainers.image.version="0.34.3-careeros.2" \
       org.opencontainers.image.licenses="MIT" \
       io.careeros.ollama.source-archive-sha256="cfd3168b67445cdb0418892ccdbccb1348921f570e025695be52ffb2fe894d90"
 

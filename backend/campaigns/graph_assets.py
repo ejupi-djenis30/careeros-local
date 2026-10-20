@@ -35,7 +35,12 @@ def _verify_asset(
         return False
     storage_path = f"assets/campaign/{expected.sha256[:2]}/{expected.sha256}"
     fields: tuple[tuple[Any, Any], ...] = (
-        (asset.id, str(uuid.uuid5(uuid.NAMESPACE_URL, f"urn:careeros:asset:{profile_id}:{expected.sha256}"))),
+        (
+            asset.id,
+            str(
+                uuid.uuid5(uuid.NAMESPACE_URL, f"urn:careeros:asset:{profile_id}:{expected.sha256}")
+            ),
+        ),
         (asset.profile_id, profile_id),
         (asset.kind, "campaign_document"),
         (asset.original_name, expected_original_name),
@@ -80,7 +85,9 @@ def verify_artifacts(
         owner_scoped_uuid(identity_scope, fingerprint, "artifact", item.relative_path)
         for item in planned.artifacts
     }
-    actual_rows = db.query(CampaignArtifact).filter(CampaignArtifact.campaign_id == campaign_id).all()
+    actual_rows = (
+        db.query(CampaignArtifact).filter(CampaignArtifact.campaign_id == campaign_id).all()
+    )
     if {item.id for item in actual_rows} != expected_ids:
         return False
     for expected in planned.artifacts:
@@ -89,7 +96,9 @@ def verify_artifacts(
         if artifact_row is None:
             return False
         expected_app_id = (
-            owner_scoped_uuid(identity_scope, fingerprint, "application", expected.source_application_id)
+            owner_scoped_uuid(
+                identity_scope, fingerprint, "application", expected.source_application_id
+            )
             if expected.source_application_id
             else None
         )
@@ -141,7 +150,10 @@ def verify_source_documents(
             return False
         if item.extracted_text != expected.extracted_text:
             return False
-        if item.extracted_text_sha256 != hashlib.sha256(expected.extracted_text.encode("utf-8")).hexdigest():
+        if (
+            item.extracted_text_sha256
+            != hashlib.sha256(expected.extracted_text.encode("utf-8")).hexdigest()
+        ):
             return False
         asset = db.query(CareerAsset).filter(CareerAsset.id == item.asset_id).first()
         if asset is None or asset.profile_id != profile.id or asset.kind != "campaign_document":
@@ -156,7 +168,10 @@ def verify_source_documents(
             or asset.normalized is not False
         ):
             return False
-        if asset.byte_size != len(expected.data) or asset.storage_path != f"assets/campaign/{expected.sha256[:2]}/{expected.sha256}":
+        if (
+            asset.byte_size != len(expected.data)
+            or asset.storage_path != f"assets/campaign/{expected.sha256[:2]}/{expected.sha256}"
+        ):
             return False
         try:
             stored = read_verified(

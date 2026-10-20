@@ -31,9 +31,7 @@ def gates(fact_id=None):
             ]
             if fact_id
             else [],
-            "quote_references": [quotes[name]]
-            if fact_id
-            else [],
+            "quote_references": [quotes[name]] if fact_id else [],
             "unknowns": [] if fact_id else ["Not verified"],
         }
         for name in DIMENSIONS

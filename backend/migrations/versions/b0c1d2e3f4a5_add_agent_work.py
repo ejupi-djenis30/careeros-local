@@ -65,17 +65,29 @@ def upgrade() -> None:
         sa.ForeignKeyConstraint(["user_id"], ["users.id"], ondelete="CASCADE"),
         sa.ForeignKeyConstraint(["bound_grant_id"], ["automation_grants.id"], ondelete="SET NULL"),
         sa.ForeignKeyConstraint(["target_job_id"], ["jobs.id"], ondelete="SET NULL"),
-        sa.ForeignKeyConstraint(["target_application_id"], ["applications.id"], ondelete="SET NULL"),
+        sa.ForeignKeyConstraint(
+            ["target_application_id"], ["applications.id"], ondelete="SET NULL"
+        ),
         sa.ForeignKeyConstraint(["target_resume_id"], ["resume_drafts.id"], ondelete="SET NULL"),
         sa.PrimaryKeyConstraint("id"),
     )
     op.create_index("ix_agent_work_requests_user_id", "agent_work_requests", ["user_id"])
-    op.create_index("ix_agent_work_requests_bound_grant_id", "agent_work_requests", ["bound_grant_id"])
+    op.create_index(
+        "ix_agent_work_requests_bound_grant_id", "agent_work_requests", ["bound_grant_id"]
+    )
     op.create_index("ix_agent_work_requests_work_kind", "agent_work_requests", ["work_kind"])
     op.create_index("ix_agent_work_requests_state", "agent_work_requests", ["state"])
-    op.create_index("ix_agent_work_requests_target_job_id", "agent_work_requests", ["target_job_id"])
-    op.create_index("ix_agent_work_requests_target_application_id", "agent_work_requests", ["target_application_id"])
-    op.create_index("ix_agent_work_requests_target_resume_id", "agent_work_requests", ["target_resume_id"])
+    op.create_index(
+        "ix_agent_work_requests_target_job_id", "agent_work_requests", ["target_job_id"]
+    )
+    op.create_index(
+        "ix_agent_work_requests_target_application_id",
+        "agent_work_requests",
+        ["target_application_id"],
+    )
+    op.create_index(
+        "ix_agent_work_requests_target_resume_id", "agent_work_requests", ["target_resume_id"]
+    )
     op.create_index("ix_agent_work_requests_expires_at", "agent_work_requests", ["expires_at"])
 
     op.create_table(
@@ -104,7 +116,9 @@ def upgrade() -> None:
     )
     op.create_index("ix_agent_proposals_request_id", "agent_proposals", ["request_id"], unique=True)
     op.create_index("ix_agent_proposals_user_id", "agent_proposals", ["user_id"])
-    op.create_index("ix_agent_proposals_submitting_grant_id", "agent_proposals", ["submitting_grant_id"])
+    op.create_index(
+        "ix_agent_proposals_submitting_grant_id", "agent_proposals", ["submitting_grant_id"]
+    )
     op.create_index("ix_agent_proposals_idempotency_key", "agent_proposals", ["idempotency_key"])
 
 

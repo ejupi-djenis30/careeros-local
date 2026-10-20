@@ -1,5 +1,73 @@
 # Convergence evidence: Consolidate all work into main
 
+Date: 2026-10-20. Current outcome: `tasks_appended` for the formatting gap;
+T053 and T054 were appended after the additional full formatter check exposed
+four modules requiring bounded decomposition. All 31 functional requirements
+and 29 success criteria map to 57 tasks and eighteen plan decisions. T055 and
+T056 are subsequently appended for concrete container and Pillow findings
+observed in successive PR #122 checks.
+Constitution 2.0.1 is unchanged.
+
+The quality follow-up corrects resume synchronization, schedule lifecycle and
+reconciliation, test typing and compatible dependency metadata. Four focused
+extractions and canonical Python formatting close the observed maintainability
+gap. Independent review preserves public imports, transaction boundaries,
+archive/path validation and type-ignore statement bindings. Validation.md
+records each actual final check and its input scope.
+
+T050 remains open because the stable Linux graph still contains glib 0.18.5
+and its security exception expired on 2026-10-19. T052 remains open for protected
+qualification, integration and recovery-backed ref cleanup. Neither problem
+requires a duplicate task: both already have explicit ownership and acceptance
+conditions. The overall feature is not fully converged or production-ready.
+No release, waiver, branch deletion or merge is inferred from local success.
+
+The first PR #122 container scan identifies CVE-2026-63209 in the patched Ollama
+executable. T055 covers its dependency-pin and provenance correction, with
+rebuilt-image acceptance retained in T052. The actual initial failure and
+renewed scan results must remain distinct; neither source assertions nor
+successful backend/frontend image scans clear the Ollama finding.
+
+The actual 24d30b5 container run subsequently passes. Compiled provenance,
+license generation and smoke tests verify Ollama revision .2, its SBOM records
+compress v1.18.7, and the strict Ollama report contains zero vulnerabilities.
+This clears the concrete T055 finding while preserving the first failed scan.
+
+The 24d30b5 runtime audit then observes eight Pillow advisories despite the
+unchanged 12.3.0 pin. T056 covers verified remediation and affected rendering/
+packaging checks; T052 retains full protected acceptance. The earlier successful
+audit and the later failure describe different observed feed snapshots, not a
+dependency regression or an inferred advisory publication date.
+
+T056 completes its independently reviewed source hand-off: Pillow 13.0.0,
+coherent locks and notices, exact isolated environment, three zero-finding audits,
+487 affected tests, static checks, hooks and unsigned wheel verification pass.
+The reviewer directly verifies both earlier environments remain unchanged.
+At that hand-off there are 54 completed source tasks out of 56; T050/T052 remain open.
+Actual new-head CI, rebuilt
+image/platform qualification, protected integration and ref cleanup remain
+unfulfilled obligations; a source checkbox does not establish their success.
+
+The subsequent inventory discovers PR #123 and appends T057 before its
+implementation. Its JavaScript-only filesystem update cannot install the
+native fixes documented upstream. Current capability inspection establishes
+read_file-only authority, not an exploitable CareerOS vulnerability. T057
+assesses compatible paired updates and preserves that boundary. At discovery,
+the inventory has 57 tasks, 54 source hand-offs complete, with T050/T052/T057 open.
+
+T057 subsequently completes independent review and the local source hand-off.
+The ten adopted files and all 1,224 non-Markdown inputs match the frozen candidate.
+Frontend, all eight E2E groups, native, affected backend, static, performance,
+notice and unsigned-wheel checks pass with the exact skips in validation.md.
+The full Windows backend run remains attributed to b28b83f, while the changed
+candidate has its own affected gates. There are now 55 completed source tasks
+out of 57; T050 and T052 remain open. No additional implementation task or
+constitution waiver is justified. Actual CI on the newly committed source,
+security remediation, protected integration and recovery-backed cleanup are
+still required; local source completion establishes none of them early.
+
+## Historical state-consistency convergence, 2026-10-17
+
 Date: 2026-10-17. Current outcome: `no_tasks_appended` for state-consistency work.
 
 Independent read-only convergence covers 28 functional requirements, 26 success

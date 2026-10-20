@@ -58,7 +58,7 @@ def test_provider_installation_migration_supports_native_and_declarative_shapes(
                 "request_config, extraction_config, capabilities_config) VALUES "
                 "('00000000-0000-4000-8000-000000000901', 901, 'job_room', 'Job-Room', '', "
                 "'native', 'job_room', 'careeros.switzerland.core', '1.0.0', 0, 1, "
-                "NULL, NULL, '{\"accepted_domains\":[\"*\"],\"supported_languages\":[\"en\"]}')"
+                'NULL, NULL, \'{"accepted_domains":["*"],"supported_languages":["en"]}\')'
             )
         )
 

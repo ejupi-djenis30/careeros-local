@@ -32,8 +32,7 @@ class PageBudgetExceededError(ValueError):
 
 def validate_letter_text(text: str | None, *, field_name: str = "Cover letter") -> None:
     if text and (
-        contains_unresolved_placeholder(text)
-        or any(ord(c) < 32 and c not in "\n\t" for c in text)
+        contains_unresolved_placeholder(text) or any(ord(c) < 32 and c not in "\n\t" for c in text)
     ):
         raise ValueError(f"{field_name} contains unresolved placeholders or invalid controls")
 

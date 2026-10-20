@@ -8,7 +8,7 @@ x-default-logging: &default-logging
 
 services:
   ollama-volume-init:
-    image: careeros-local-ollama:0.34.3-careeros.1
+    image: careeros-local-ollama:0.34.3-careeros.2
     user: "0:0"
     entrypoint: ["/bin/sh", "-ec"]
     command: |
@@ -31,7 +31,7 @@ services:
     network_mode: none
 
   ollama:
-    image: careeros-local-ollama:0.34.3-careeros.1
+    image: careeros-local-ollama:0.34.3-careeros.2
     build:
       context: .
       dockerfile: docker/ollama/Dockerfile

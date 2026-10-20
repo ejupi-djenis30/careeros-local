@@ -60,7 +60,9 @@ def test_provider_round_trip_strips_headers_and_requires_fresh_network_consent(
     neighbor = User(username="neighbor-provider-owner", hashed_password="unused")
     db_session.add(neighbor)
     db_session.commit()
-    neighboring_provider = ProviderConfigurationService(db_session).create(neighbor.id, json_provider_payload())
+    neighboring_provider = ProviderConfigurationService(db_session).create(
+        neighbor.id, json_provider_payload()
+    )
     profile = client.put("/api/v1/career-profile", json=PROFILE, headers=auth_headers)
     assert profile.status_code == 200, profile.text
     provider = client.post(
@@ -88,7 +90,10 @@ def test_provider_round_trip_strips_headers_and_requires_fresh_network_consent(
     )
     assert deleted.status_code == 204, deleted.text
     assert db_session.query(JobProviderConfiguration).filter_by(user_id=test_user.id).count() == 0
-    assert ProviderConfigurationService(db_session).get(neighbor.id, neighboring_provider.id).enabled is True
+    assert (
+        ProviderConfigurationService(db_session).get(neighbor.id, neighboring_provider.id).enabled
+        is True
+    )
     restored = client.post(
         "/api/v1/portability/restore",
         files={"file": ("provider-backup.zip", exported.content, "application/zip")},
@@ -188,8 +193,17 @@ def test_self_checksummed_provider_archive_is_validated_before_restore(
     client, auth_headers, monkeypatch, tmp_path, db_session, test_user, corruption
 ):
     monkeypatch.setattr(settings, "DATA_DIR", str(tmp_path))
-    assert client.put("/api/v1/career-profile", json=PROFILE, headers=auth_headers).status_code == 200
-    assert client.post("/api/v1/job-providers", json=json_provider_payload().model_dump(mode="json"), headers=auth_headers).status_code == 201
+    assert (
+        client.put("/api/v1/career-profile", json=PROFILE, headers=auth_headers).status_code == 200
+    )
+    assert (
+        client.post(
+            "/api/v1/job-providers",
+            json=json_provider_payload().model_dump(mode="json"),
+            headers=auth_headers,
+        ).status_code
+        == 201
+    )
     exported = client.get("/api/v1/portability/export", headers=auth_headers)
     assert exported.status_code == 200
 
@@ -201,17 +215,34 @@ def test_self_checksummed_provider_archive_is_validated_before_restore(
         elif corruption == "secret_header":
             row["request_config"]["headers"] = {"X-Innocuous": "synthetic-secret"}
         else:
-            row.update(adapter_kind="native", native_adapter_id="unreviewed_adapter", key="unreviewed_adapter", request_config=None, extraction_config=None)
+            row.update(
+                adapter_kind="native",
+                native_adapter_id="unreviewed_adapter",
+                key="unreviewed_adapter",
+                request_config=None,
+                extraction_config=None,
+            )
 
     crafted = _rewrite_provider_archive(exported.content, corrupt)
-    deleted = client.delete("/api/v1/career-profile", headers={**auth_headers, "X-Confirm-Delete": "DELETE-MY-CAREER-VAULT"})
+    deleted = client.delete(
+        "/api/v1/career-profile",
+        headers={**auth_headers, "X-Confirm-Delete": "DELETE-MY-CAREER-VAULT"},
+    )
     assert deleted.status_code == 204
     headers = _login(client)
-    rejected = client.post("/api/v1/portability/restore", files={"file": ("crafted.zip", crafted, "application/zip")}, headers=headers)
+    rejected = client.post(
+        "/api/v1/portability/restore",
+        files={"file": ("crafted.zip", crafted, "application/zip")},
+        headers=headers,
+    )
     assert rejected.status_code == 422, rejected.text
     assert db_session.query(JobProviderConfiguration).filter_by(user_id=test_user.id).count() == 0
     assert db_session.query(CandidateProfile).filter_by(user_id=test_user.id).count() == 0
-    valid = client.post("/api/v1/portability/restore", files={"file": ("valid.zip", exported.content, "application/zip")}, headers=headers)
+    valid = client.post(
+        "/api/v1/portability/restore",
+        files={"file": ("valid.zip", exported.content, "application/zip")},
+        headers=headers,
+    )
     assert valid.status_code == 200, valid.text
 
 
@@ -219,13 +250,29 @@ def test_v8_archive_upgrades_to_empty_provider_inventory_without_network_consent
     client, auth_headers, monkeypatch, tmp_path
 ):
     monkeypatch.setattr(settings, "DATA_DIR", str(tmp_path))
-    assert client.put("/api/v1/career-profile", json=PROFILE, headers=auth_headers).status_code == 200
+    assert (
+        client.put("/api/v1/career-profile", json=PROFILE, headers=auth_headers).status_code == 200
+    )
     exported = client.get("/api/v1/portability/export", headers=auth_headers)
     assert exported.status_code == 200
-    legacy = _rewrite_provider_archive(exported.content, lambda payload: payload["tables"].pop("job_provider_configurations"), version=8)
-    assert client.delete("/api/v1/career-profile", headers={**auth_headers, "X-Confirm-Delete": "DELETE-MY-CAREER-VAULT"}).status_code == 204
+    legacy = _rewrite_provider_archive(
+        exported.content,
+        lambda payload: payload["tables"].pop("job_provider_configurations"),
+        version=8,
+    )
+    assert (
+        client.delete(
+            "/api/v1/career-profile",
+            headers={**auth_headers, "X-Confirm-Delete": "DELETE-MY-CAREER-VAULT"},
+        ).status_code
+        == 204
+    )
     headers = _login(client)
-    restored = client.post("/api/v1/portability/restore", files={"file": ("v8.zip", legacy, "application/zip")}, headers=headers)
+    restored = client.post(
+        "/api/v1/portability/restore",
+        files={"file": ("v8.zip", legacy, "application/zip")},
+        headers=headers,
+    )
     assert restored.status_code == 200, restored.text
     assert restored.json()["format_version"] == 8
     assert restored.json()["restored_records"]["job_provider_configurations"] == 0

@@ -154,19 +154,30 @@ describe('SearchService', () => {
   it('toggleSchedule sends enabled flag without interval when null', async () => {
     const mockPatch = vi.spyOn(ApiClient, 'patch').mockResolvedValue({});
     await SearchService.toggleSchedule(5, true, null);
-    expect(mockPatch).toHaveBeenCalledWith('/profiles/5/schedule', { enabled: true });
+    expect(mockPatch).toHaveBeenCalledWith('/profiles/5/schedule', { enabled: true }, {});
   });
 
   it('toggleSchedule includes interval_hours when provided', async () => {
     const mockPatch = vi.spyOn(ApiClient, 'patch').mockResolvedValue({});
     await SearchService.toggleSchedule(5, true, 12);
-    expect(mockPatch).toHaveBeenCalledWith('/profiles/5/schedule', { enabled: true, interval_hours: 12 });
+    expect(mockPatch).toHaveBeenCalledWith('/profiles/5/schedule', { enabled: true, interval_hours: 12 }, {});
   });
 
   it('toggleSchedule can disable a schedule', async () => {
     const mockPatch = vi.spyOn(ApiClient, 'patch').mockResolvedValue({});
     await SearchService.toggleSchedule(5, false);
-    expect(mockPatch).toHaveBeenCalledWith('/profiles/5/schedule', { enabled: false });
+    expect(mockPatch).toHaveBeenCalledWith('/profiles/5/schedule', { enabled: false }, {});
+  });
+
+  it('toggleSchedule forwards optional request ownership/error handling without changing its body', async () => {
+    const mockPatch = vi.spyOn(ApiClient, 'patch').mockResolvedValue({});
+    const controller = new AbortController();
+    await SearchService.toggleSchedule(5, false, 12, {
+      signal: controller.signal, suppressGlobalError: true,
+    });
+    expect(mockPatch).toHaveBeenCalledWith('/profiles/5/schedule', {
+      enabled: false, interval_hours: 12,
+    }, { signal: controller.signal, suppressGlobalError: true });
   });
 
   // ── deleteProfile ──────────────────────────────────────────────────────────

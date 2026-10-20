@@ -39,9 +39,10 @@ REPORT_KEYS = {
 def _archive_with_descriptive_packet_dir() -> bytes:
     original = build_fictional_campaign_zip(credentials_count=2)
     output = io.BytesIO()
-    with zipfile.ZipFile(io.BytesIO(original)) as source, zipfile.ZipFile(
-        output, "w", zipfile.ZIP_DEFLATED
-    ) as target:
+    with (
+        zipfile.ZipFile(io.BytesIO(original)) as source,
+        zipfile.ZipFile(output, "w", zipfile.ZIP_DEFLATED) as target,
+    ):
         for item in reversed(source.infolist()):
             name = item.filename.replace(
                 "application-packets/APP-001/",
@@ -90,14 +91,10 @@ def test_validation_report_is_exact_deterministic_and_aggregate_only() -> None:
         "platform_url": 2,
     }
 
-    expected_digests = sorted(
-        member.sha256 for member in parsed.inspection.members.values()
-    )
+    expected_digests = sorted(member.sha256 for member in parsed.inspection.members.values())
     assert first["member_sha256"] == expected_digests
     commitment_bytes = b"".join(bytes.fromhex(item) for item in expected_digests)
-    assert first["member_digest_commitment"] == hashlib.sha256(
-        commitment_bytes
-    ).hexdigest()
+    assert first["member_digest_commitment"] == hashlib.sha256(commitment_bytes).hexdigest()
 
     serialized = json.dumps(first, ensure_ascii=False, sort_keys=True)
     for private_fragment in (
@@ -117,9 +114,10 @@ def test_validation_report_is_exact_deterministic_and_aggregate_only() -> None:
 def test_validation_report_is_independent_of_zip_order_and_timestamps() -> None:
     original = build_fictional_campaign_zip(credentials_count=1)
     rewritten = io.BytesIO()
-    with zipfile.ZipFile(io.BytesIO(original)) as source, zipfile.ZipFile(
-        rewritten, "w", zipfile.ZIP_DEFLATED
-    ) as target:
+    with (
+        zipfile.ZipFile(io.BytesIO(original)) as source,
+        zipfile.ZipFile(rewritten, "w", zipfile.ZIP_DEFLATED) as target,
+    ):
         for item in reversed(source.infolist()):
             info = zipfile.ZipInfo(item.filename, date_time=(2025, 6, 7, 8, 9, 10))
             info.compress_type = zipfile.ZIP_DEFLATED

@@ -30,11 +30,13 @@ class ProviderConfigurationError(RuntimeError):
         super().__init__(message)
         self.code = code
 
+
 def _provider_origin(base_url: str) -> tuple[str, bytes, int | None]:
     """Match the origin used by HTTPX, including IDNA and effective HTTPS ports."""
     url = httpx.URL(base_url)
     default_port = {"http": 80, "https": 443}.get(url.scheme)
     return url.scheme, url.raw_host, url.port if url.port is not None else default_port
+
 
 def _validate_declaration(payload: ProviderConfigurationInput) -> None:
     validate_destination_literal(payload.request.base_url)
@@ -44,6 +46,7 @@ def _validate_declaration(payload: ProviderConfigurationInput) -> None:
             if mapping.source != ".":
                 validate_selector(mapping.source)
 
+
 def _redacted_request(config: ProviderRequestConfig) -> tuple[ProviderRequestConfig, bool]:
     has_secrets = any(secret_header(name) for name in config.headers)
     headers = {
@@ -51,6 +54,7 @@ def _redacted_request(config: ProviderRequestConfig) -> tuple[ProviderRequestCon
         for name, value in config.headers.items()
     }
     return config.model_copy(update={"headers": headers}), has_secrets
+
 
 def configuration_view(row: JobProviderConfiguration) -> ProviderConfigurationView:
     try:
@@ -104,6 +108,7 @@ def configuration_view(row: JobProviderConfiguration) -> ProviderConfigurationVi
             "invalid_stored_configuration", "Stored provider configuration is invalid"
         ) from exc
 
+
 def materialize_configuration(row: JobProviderConfiguration) -> ProviderConfigurationInput:
     if row.adapter_kind == "native":
         raise ProviderConfigurationError(
@@ -155,9 +160,7 @@ class ProviderCatalog:
         if enabled_only:
             query = query.filter(JobProviderConfiguration.enabled.is_(True))
         return (
-            query.order_by(JobProviderConfiguration.key.asc())
-            .limit(MAX_PROVIDERS_PER_USER)
-            .all()
+            query.order_by(JobProviderConfiguration.key.asc()).limit(MAX_PROVIDERS_PER_USER).all()
         )
 
     def get_row(self, user_id: int, configuration_id: str) -> JobProviderConfiguration:

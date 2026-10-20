@@ -32,7 +32,9 @@ def _profile_payload(expected_revision=0):
 
 def test_fictional_profile_narrative_and_goal_import_paths(client, auth_headers, monkeypatch):
     """Test full fictional Profile.md, Storytelling.md, and Goal.md import lifecycle."""
-    profile_res = client.put("/api/v1/career-profile", json=_profile_payload(0), headers=auth_headers)
+    profile_res = client.put(
+        "/api/v1/career-profile", json=_profile_payload(0), headers=auth_headers
+    )
     assert profile_res.status_code == 200, profile_res.text
 
     with TemporaryDirectory() as temp_dir:
@@ -70,7 +72,10 @@ def test_fictional_profile_narrative_and_goal_import_paths(client, auth_headers,
         assert data_s["source_role"] == "narrative"
         assert len(data_s["candidates"]) == 0
         assert len(data_s["preference_candidates"]) == 0
-        assert any("narrative text does not generate career facts" in note for note in data_s["review_notes"])
+        assert any(
+            "narrative text does not generate career facts" in note
+            for note in data_s["review_notes"]
+        )
 
         # 3. Goal.md import (role: goals)
         goal_md = (
@@ -96,7 +101,9 @@ def test_fictional_profile_narrative_and_goal_import_paths(client, auth_headers,
         assert res_goal.status_code == 201, res_goal.text
         data_g = res_goal.json()
         assert data_g["source_role"] == "goals"
-        assert len(data_g["candidates"]) == 0, "Goals must never produce career fact candidates or achievements"
+        assert len(data_g["candidates"]) == 0, (
+            "Goals must never produce career fact candidates or achievements"
+        )
         assert len(data_g["preference_candidates"]) >= 8
 
         pref_fields = {pc["field"]: pc["value"] for pc in data_g["preference_candidates"]}
@@ -113,17 +120,23 @@ def test_fictional_profile_narrative_and_goal_import_paths(client, auth_headers,
         assert pref_fields["notice_period_days"] == 60
 
         # Verify prose explanation in review notes
-        assert any("goals do not generate career achievements" in note for note in data_g["review_notes"])
+        assert any(
+            "goals do not generate career achievements" in note for note in data_g["review_notes"]
+        )
 
 
 def test_template_reference_role_produces_no_facts(client, auth_headers, monkeypatch):
     """Test that template_reference role preserves layout guidance without creating facts."""
-    profile_res = client.put("/api/v1/career-profile", json=_profile_payload(0), headers=auth_headers)
+    profile_res = client.put(
+        "/api/v1/career-profile", json=_profile_payload(0), headers=auth_headers
+    )
     assert profile_res.status_code == 200
 
     with TemporaryDirectory() as temp_dir:
         monkeypatch.setattr("backend.career.sources.settings.DATA_DIR", temp_dir)
-        content = b"Layout guidance: place summary at top, two-column skills grid, compact bullet lists."
+        content = (
+            b"Layout guidance: place summary at top, two-column skills grid, compact bullet lists."
+        )
         res = client.post(
             "/api/v1/career-profile/sources",
             headers=auth_headers,
@@ -151,7 +164,9 @@ def test_invalid_source_role_rejected(client, auth_headers):
     assert "Invalid source_role" in res.text
 
 
-def test_same_bytes_same_role_reuses_source_conflicting_role_fails(client, auth_headers, monkeypatch):
+def test_same_bytes_same_role_reuses_source_conflicting_role_fails(
+    client, auth_headers, monkeypatch
+):
     """Test same bytes with same role reuses source; conflicting role returns explicit 409 error."""
     client.put("/api/v1/career-profile", json=_profile_payload(0), headers=auth_headers)
     with TemporaryDirectory() as temp_dir:
@@ -236,10 +251,14 @@ def test_unsafe_files_and_secrets_are_rejected():
 
     # 4. Secret patterns in content
     with pytest.raises(SourceImportError, match="credential or private secret material"):
-        validate_safe_source_input("key.txt", b"-----BEGIN RSA PRIVATE KEY-----\nMIIEowIBAAKCAQEA0...")
+        validate_safe_source_input(
+            "key.txt", b"-----BEGIN RSA PRIVATE KEY-----\nMIIEowIBAAKCAQEA0..."
+        )
 
     with pytest.raises(SourceImportError, match="credential or private secret material"):
-        validate_safe_source_input("token.txt", b"my token is ghp_123456789012345678901234567890123456")
+        validate_safe_source_input(
+            "token.txt", b"my token is ghp_123456789012345678901234567890123456"
+        )
 
     # 5. Control characters in text
     with pytest.raises(SourceImportError, match="unsupported binary or control characters"):
@@ -252,7 +271,9 @@ def test_unsafe_files_and_secrets_are_rejected():
 def test_invalid_preference_values_and_combined_conflicts():
     """Verify that invalid values are omitted with review notes and combined contradictions produce warnings."""
     # Invalid notice period > 730
-    text_invalid_val = "Notice period days: 9999\nWorkload min: 150\nPreferred work modes: teleportation"
+    text_invalid_val = (
+        "Notice period days: 9999\nWorkload min: 150\nPreferred work modes: teleportation"
+    )
     candidates, notes, warnings = parse_goal_preferences(text_invalid_val)
     assert len(candidates) == 0
     assert any("notice_period_days" in note for note in notes)
@@ -329,7 +350,9 @@ def test_nested_and_merged_docx_tables_traversed_once_in_document_order():
     assert pos_top1 < pos_merged < pos_nested < pos_top2
 
 
-def test_goal_import_bounds_review_notes_before_response_validation(client, auth_headers, monkeypatch):
+def test_goal_import_bounds_review_notes_before_response_validation(
+    client, auth_headers, monkeypatch
+):
     client.put("/api/v1/career-profile", json=_profile_payload(0), headers=auth_headers)
     content = "\n".join(f"Unrecognized goal prose number {index}" for index in range(51)).encode()
     with TemporaryDirectory() as temp_dir:
@@ -366,7 +389,9 @@ def test_goal_numeric_values_are_parsed_as_whole_values(line, field):
 
 
 def test_goal_review_notes_are_bounded_with_an_explicit_omission_summary():
-    text = "\n".join(f"Unrecognized narrative preference line number {index}" for index in range(51))
+    text = "\n".join(
+        f"Unrecognized narrative preference line number {index}" for index in range(51)
+    )
 
     _candidates, notes, _warnings = parse_goal_preferences(text)
 
@@ -375,9 +400,7 @@ def test_goal_review_notes_are_bounded_with_an_explicit_omission_summary():
 
 
 def test_conflicting_scalar_candidates_require_an_explicit_choice():
-    candidates, _notes, warnings = parse_goal_preferences(
-        "Workload min: 80\nWorkload min: 20"
-    )
+    candidates, _notes, warnings = parse_goal_preferences("Workload min: 80\nWorkload min: 20")
 
     assert [candidate.value for candidate in candidates] == [80, 20]
     assert any("choose exactly one" in warning for warning in warnings)

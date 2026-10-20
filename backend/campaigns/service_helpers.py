@@ -71,7 +71,9 @@ def to_json_safe(val: Any) -> Any:
     return val
 
 
-def owner_scoped_uuid(identity_scope: str, fingerprint: str, entity_tag: str, item_id: str = "") -> str:
+def owner_scoped_uuid(
+    identity_scope: str, fingerprint: str, entity_tag: str, item_id: str = ""
+) -> str:
     """Derive deterministic UUID5 scoped to the specific owner, campaign, and entity."""
     urn = f"urn:careeros:campaign:{identity_scope}:{fingerprint}:{entity_tag}"
     if item_id:
@@ -106,7 +108,9 @@ def validate_import_preflight(
             )
         clean_profile_name = profile_display_name.strip()
         if len(clean_profile_name) > 160:
-            raise CampaignImportError("profile_display_name exceeds 160 characters", status_code=422)
+            raise CampaignImportError(
+                "profile_display_name exceeds 160 characters", status_code=422
+            )
     else:
         clean_profile_name = profile.display_name
 
@@ -130,11 +134,27 @@ def build_campaign_summary(
         "artifact_count": len(planned.artifacts),
         "source_document_count": len(prepared_source_docs),
         "task_count": sum(1 for a in planned.applications if a.task is not None),
-        "tracker_rows": sum(1 for a in planned.applications if "tracker" in a.source.provenance.get("sources", ())),
-        "dossier_count": sum(1 for a in planned.applications if "dossier" in a.source.provenance.get("sources", ())),
-        "matched_count": sum(1 for a in planned.applications if set(a.source.provenance.get("sources", ())) >= {"tracker", "dossier"}),
-        "tracker_only_count": sum(1 for a in planned.applications if set(a.source.provenance.get("sources", ())) == {"tracker"}),
-        "dossier_only_count": sum(1 for a in planned.applications if set(a.source.provenance.get("sources", ())) == {"dossier"}),
+        "tracker_rows": sum(
+            1 for a in planned.applications if "tracker" in a.source.provenance.get("sources", ())
+        ),
+        "dossier_count": sum(
+            1 for a in planned.applications if "dossier" in a.source.provenance.get("sources", ())
+        ),
+        "matched_count": sum(
+            1
+            for a in planned.applications
+            if set(a.source.provenance.get("sources", ())) >= {"tracker", "dossier"}
+        ),
+        "tracker_only_count": sum(
+            1
+            for a in planned.applications
+            if set(a.source.provenance.get("sources", ())) == {"tracker"}
+        ),
+        "dossier_only_count": sum(
+            1
+            for a in planned.applications
+            if set(a.source.provenance.get("sources", ())) == {"dossier"}
+        ),
         "status_counts": dict(planned.status_counts),
         "omitted_credential_count": planned.credentials_count,
         "warning_count": len(planned.warnings),

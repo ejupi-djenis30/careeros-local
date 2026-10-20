@@ -48,9 +48,7 @@ def require_work_live(req: AgentWorkRequest) -> None:
         raise AgentWorkError("work_canceled", "The work request was canceled")
 
 
-def current_input_state(
-    db: Session, req: AgentWorkRequest
-) -> tuple[str, dict[str, int | None]]:
+def current_input_state(db: Session, req: AgentWorkRequest) -> tuple[str, dict[str, int | None]]:
     try:
         _, digest, revisions = build_context_snapshot(
             db,
