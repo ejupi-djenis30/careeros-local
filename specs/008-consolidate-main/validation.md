@@ -1286,3 +1286,102 @@ now have 55 tasks, 53 source hand-offs complete; only T050/T052 remain open.
 The new head still requires actual image and protected-check outcomes in PR
 metadata and the durable private ledger. No successful image scan is inferred
 from this completed source hand-off.
+
+## Second PR #122 head and Pillow remediation
+
+Head 24d30b50108f7aa2ce24bbc662bc3ade5ef1e50f preserves the first run's
+evidence. All four wheel jobs pass, as do frontend's 818 tests/eight E2E groups
+and all four CodeQL analyses. The actual container job passes: Ollama revision
+.2 is built and smoke-tested, generated licenses/provenance are present, its
+SBOM records compress v1.18.7 and its strict Trivy report has zero findings.
+This verifies the T055 image correction independently of local source tests.
+
+The backend runtime audit at 21:05:49 UTC now reports eight Pillow advisories
+on 12.3.0, where the first audit at 20:49:36 UTC reported none with the same
+pin. The observed CVEs are CVE-2026-112895, CVE-2026-112400,
+CVE-2026-112397, CVE-2026-112896, CVE-2026-112897, CVE-2026-112395,
+CVE-2026-112404 and CVE-2026-112899; each reports 13.0.0 as fixed.
+The audit exits 1. Backend lint, mypy, migration, full tests and performance are
+skipped after that failure; the earlier security preflight passes 136 tests.
+The release job also fails its Python audit before reaching the glib guard;
+all five dependent desktop jobs are skipped. These failures are not described
+as network errors or relabelled as the first head's glib failure.
+
+T056 primary verification checks all eight maintainer advisories, each published
+with patched version 13.0.0. Their maintainer publication date is October 17;
+the later global-advisory feed timestamps are recorded separately. Official
+[PyPI release metadata](https://pypi.org/project/pillow/13.0.0/) confirms a stable,
+non-yanked release, Python >=3.11 and CPython 3.12/3.13 wheels for the tested
+platforms, including musllinux x86_64/aarch64 for Alpine. ReportLab's >=9.0.0
+constraint permits the fixed release, and the used photo/demo APIs remain
+supported. No renderer behavior change is indicated by that inspection.
+The compatibility/source proof has SHA-256
+7912bacced2321445ead25fd120f3c45cb1a1521013ac51b63f99154081e9e4c.
+The optional raw release-note HTML request returned 403; official rendered
+documentation and primary advisory/PyPI records provide the preserved evidence.
+
+The second-head Rust job independently passes fmt, Clippy with warnings denied
+and 28 tests in 1.21 seconds. Its security step exits 1 for the expired
+CE-2026-001 exception, before cargo-audit and license commands; those commands
+are not passing scans. SBOM/inventory generation is skipped. Its independent
+proof has SHA-256
+533251a8ff88a1f7e85c4be49b7344fcbb501c5601b138350bf284162ac3b43a.
+Seventy second-head evidence files are copied and checksum-verified in the
+private Git recovery ledger; the evidence index has SHA-256
+9c8c5d4620b99e27983ff8837033f66f34a928309f2a1bba86a7d692c31efd26.
+
+## T056 frozen source and local verification
+
+Only Pillow changes from 12.3.0 to 13.0.0 in the runtime and development locks;
+the tooling lock and all other pins remain unchanged. Both locks contain the
+83 official release hashes. The six-file change also reconciles direct inputs,
+metadata and canonical notices. The new isolated environment has exactly the
+121-package locked union and passes pip check. Version and dist-info snapshots
+of both earlier verification environments remain identical.
+
+Fresh unsuppressed audits return zero findings for runtime (58 dependencies),
+development (112) and tooling (21). Notice generation and reproduction pass
+for 13 frontend, 58 Python, three runtime and 473 Rust components. The notice
+contains 1,424,882 bytes with SHA-256
+a80b772f40fdc36641d5a44554b981aed5ad15ce660c483c661e2ecd657bf221.
+Only Pillow's license text changes; the other 306 shared texts are identical.
+The larger textual diff reflects the canonical ordering by content digest.
+
+The isolated final unsigned Python wheel contains 1,055,334 bytes, SHA-256
+cbc5ee6bfbcc4cdeedc8bfce90b616f0dbbc0b58c0ad9dd7a572f71e8ecdb061.
+Its 397 Python/data files match the snapshot byte-for-byte, all 20 dependency
+metadata entries match pyproject.toml, and its notices match the source exactly.
+All 403 packaging inputs remain unchanged. This verifies Python packaging,
+not a native installer or release signature. The freeze record has SHA-256
+5753fe49b69b9915eab7d29780f01bea118951e7f3952540224bd82777d7e10f.
+
+Full Ruff, mypy for backend/scripts, direct checks of both corrected regression
+modules and full Ruff formatting pass in the new environment (48.469 seconds).
+The before/after guard detects no changes among 1,224 non-Markdown inputs.
+Two temporary reporting/setup helper failures are preserved: canonical-name
+comparison and a missing wheel-output parent. Neither changed source or the
+environment; corrected helpers complete the above recorded checks.
+
+The final affected suite passes all 487 tests with zero skips in 272.54 seconds
+(294.719-second outer guard, exit 0). It covers resumes, security, release
+contracts, photo asset recovery, demo rendering and application exports/readiness.
+All 1,224 non-Markdown inputs remain unchanged. The earlier frontend/native
+checks retain their original input scope; in particular, the old frontend
+asset manifest does not attest to the newly generated notice bytes. Renewed
+actual-head frontend/build, Python, wheel and container checks remain under T052.
+
+Independent T056 review is GOOD, SHA-256
+cc76044a807d70a75d879a56c89451826f45c0d195bd8c6d1edbe4e55bad66e9.
+It independently checks the exact six-file delta, lock blocks, all official
+release hashes, 306 unchanged shared license texts, wheel bytes and metadata,
+and both old environments directly on disk. Each old environment retains all
+484 normalized metadata fields and Pillow 12.3.0. The reviewer's initial raw
+metadata helper comparison failed due to CRLF/missing-file representation;
+that helper error and its explicit reconciliation are retained, without source
+or environment changes. Root affected/static/hook results are inspected, not
+claimed as independently rerun tests.
+
+All applicable pre-commit hooks pass in 9.172 seconds, with zero changes among
+1,381 files. YAML and frontend lint hooks skip because their file filters match
+no changed inputs. T056 records a completed source hand-off; T050/T052 still
+own the blocking security issue and final actual protected qualification.

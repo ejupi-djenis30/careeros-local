@@ -365,6 +365,18 @@ evidence; unavailable technical remediation stays a reported blocker.
     rebuilt image, smoke checks and actual scanner report on the renewed PR
     head. The separate glib exception remains unmodified and blocking.
 
+17. Address the eight Pillow advisories actually observed on PR head 24d30b5.
+    Verify primary release/security evidence and supported Python versions;
+    inspect photo decoding, image rendering and ReportLab compatibility before
+    selecting the fixed release. Keep the dependency change limited to Pillow
+    where the resolver permits, regenerate canonical hash locks and approved
+    notices, and install a new isolated hash-locked verification environment.
+    Preserve both earlier environments and the original audit evidence. Verify
+    photos, canvas/document output, distribution notices and wheel contracts,
+    and run fresh unsuppressed dependency scans. Hand off only reviewed source
+    to T052 for actual full CI, container and platform packaging checks. No
+    unsupported version, advisory suppression or weaker image boundary is used.
+
 ## Boundaries and size
 
 Existing large-module exceptions from feature 007 remain justified there. Provider

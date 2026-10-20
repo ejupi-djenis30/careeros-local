@@ -329,6 +329,13 @@ the compatible fixed module, preserve source/toolchain provenance and licenses,
 and require an actual rebuilt-image smoke test and unsuppressed high/critical
 scan. An updated source pin or static assertion alone is not a passing image.
 
+The next PR audit observes eight Pillow advisories on the unchanged 12.3.0
+pin, with 13.0.0 reported as fixed. Under the same FR-005 / SC-004 boundary,
+verify primary fixes and compatibility, regenerate coherent hash locks and
+notices, then validate photo/document rendering, isolated wheels and fresh
+unsuppressed Python/container audits. Preserve the earlier zero-finding audit
+and the later failure with their exact timestamps and inputs.
+
 Constitution 2.0.1 is unchanged. The old branch's constitution, direct agent write
 tools and publication model are superseded by current governing constraints.
 Passing source tests is not approval of a production release or native installer.

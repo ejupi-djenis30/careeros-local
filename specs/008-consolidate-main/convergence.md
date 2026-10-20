@@ -3,8 +3,9 @@
 Date: 2026-10-20. Current outcome: `tasks_appended` for the formatting gap;
 T053 and T054 were appended after the additional full formatter check exposed
 four modules requiring bounded decomposition. All 31 functional requirements
-and 29 success criteria map to 55 tasks and sixteen plan decisions. T055 is
-subsequently appended for the concrete container finding observed in PR #122.
+and 29 success criteria map to 56 tasks and seventeen plan decisions. T055 and
+T056 are subsequently appended for concrete container and Pillow findings
+observed in successive PR #122 checks.
 Constitution 2.0.1 is unchanged.
 
 The quality follow-up corrects resume synchronization, schedule lifecycle and
@@ -26,6 +27,26 @@ executable. T055 covers its dependency-pin and provenance correction, with
 rebuilt-image acceptance retained in T052. The actual initial failure and
 renewed scan results must remain distinct; neither source assertions nor
 successful backend/frontend image scans clear the Ollama finding.
+
+The actual 24d30b5 container run subsequently passes. Compiled provenance,
+license generation and smoke tests verify Ollama revision .2, its SBOM records
+compress v1.18.7, and the strict Ollama report contains zero vulnerabilities.
+This clears the concrete T055 finding while preserving the first failed scan.
+
+The 24d30b5 runtime audit then observes eight Pillow advisories despite the
+unchanged 12.3.0 pin. T056 covers verified remediation and affected rendering/
+packaging checks; T052 retains full protected acceptance. The earlier successful
+audit and the later failure describe different observed feed snapshots, not a
+dependency regression or an inferred advisory publication date.
+
+T056 completes its independently reviewed source hand-off: Pillow 13.0.0,
+coherent locks and notices, exact isolated environment, three zero-finding audits,
+487 affected tests, static checks, hooks and unsigned wheel verification pass.
+The reviewer directly verifies both earlier environments remain unchanged.
+There are 54 completed source hand-offs out of 56 tasks; T050/T052 remain open.
+No additional implementation task is indicated. Actual new-head CI, rebuilt
+image/platform qualification, protected integration and ref cleanup remain
+unfulfilled obligations; a source checkbox does not establish their success.
 
 ## Historical state-consistency convergence, 2026-10-17
 
