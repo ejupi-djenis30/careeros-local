@@ -22,6 +22,12 @@ atomic persistence (V), focused modules (VI) and executable/private diagnostics
 (VII/VIII). These corrections add no authority, dependency or persistent schema.
 The protected-CI fixture correction rechecks V and VII under the same 2.0.1:
 use the existing private SQLite bootstrap and preserve the POSIX validator.
+The 2026-10-20 quality follow-up rechecks all principles under unchanged 2.0.1,
+starting from signed main dee0e5e. Synchronization and schedule ownership restore
+existing revision/atomicity and truthful UI contracts without new authority or
+schema. CE-2026-001 expired on 2026-10-19: do not renew, ignore or waive it.
+Dependency changes require a coherent regenerated graph and actual security
+evidence; unavailable technical remediation stays a reported blocker.
 
 ## Integration design
 
@@ -294,6 +300,58 @@ use the existing private SQLite bootstrap and preserve the POSIX validator.
     must execute all nine cases successfully before merge; previous source/CI
     results remain attributed to their exact inputs, without a waiver or rerun
     of the unchanged failing source.
+
+14. Continue on codex/quality-followup. Preserve prior recovery/evidence and
+    policy-blocked caches. Close the three reproduced test typing errors with
+    explicit canvas presence, model validation and a literal disabled telemetry
+    configuration; retain every runtime assertion and privacy control.
+    In ResumeSynchronizationService.synchronize, apply/reset must acquire the
+    existing draft writer reservation and refresh owned draft/profile state before
+    validating revisions, matching update/promotion. Preview remains read-only.
+    Real two-session regressions must preserve a newer manual experience title
+    when the stale caller applies an unsynchronized skill or requests reset.
+    Reject cached deletion-pending drafts and validate the complete response
+    after flush but before commit, so response validation failure can roll back.
+    For Schedules, use a focused controller to bind writes and optional reads to
+    the current mounted owner, apply returned write acknowledgements immediately,
+    and keep unaffected rows on reconciliation failure. Distinguish load, write
+    and refresh errors, retaining a read-only retry and existing translated UI.
+    Normalize valid nullable intervals like the existing overview contract.
+    Invalidate reads started before the acknowledgement; allow later current
+    server reads to reflect subsequent changes instead of keeping a permanent
+    acknowledgement overlay.
+    Independently review both implementations and test real SQLite/components.
+    Assess the two new automated dependency branches, including Pydantic metadata
+    versus lock coherence. Integrate only verified compatible updates; never
+    delete a branch before its useful content is accounted for and recoverable.
+    The fresh Python audit reports GHSA-6q48-6c7w-9gw2 for certifi 2026.6.17,
+    published on 2026-10-20. Upgrade that transitive package to the officially
+    fixed 2026.10.19 release in the runtime/development locks, preserve the
+    original failed scans and rerun strict installation, audits and canonical
+    notice generation. No advisory suppression or unrelated upgrades are used.
+    Investigate the expired glib exception using primary upstream evidence and
+    the actual locked graph. Implement a technical fix if supported; do not
+    change the expiry or weaken the gate. Record blocked publication truthfully.
+    Run proportional then aggregate backend/frontend/native/migration checks,
+    analyze and converge the artifacts, and use protected publication only after
+    its prerequisites pass. No release or installer-signing claim is authorized.
+
+15. The additional global format check identifies 84 unchanged legacy files.
+    Independent formatting of copies preserves executable ASTs and all forty
+    type-ignore tags/bindings; two raw AST differences are line coordinates only.
+    Before applying that mechanical cleanup, extract focused responsibilities
+    from backend/campaigns/import_planner.py, service.py, xlsx_reader.py and
+    backend/portability/campaigns.py, which would otherwise reach 312, 307, 349
+    and 367 lines. Keep public imports and monkeypatch/transaction boundaries
+    compatible; choose pure parsing/planning or storage helpers without moving
+    ownership decisions into transport. Every resulting production module remains
+    under 300 lines after formatting. No schema or authority change is intended.
+    Review original versus moved symbol bodies independently, normalize all 84
+    files with pinned Ruff, then verify AST equivalence outside the explicit
+    extractions and retain the original format failure. Run affected campaign,
+    XLSX, archive/portability and security regressions and repeat static/hooks.
+    Full protected CI on the final head remains part of T052; unchanged frontend
+    and native results retain their exact scoped input proofs.
 
 ## Boundaries and size
 

@@ -3,9 +3,14 @@ from sqlalchemy.orm import Session
 from backend.career.models import CareerGoal
 from backend.resumes.canvas import legacy_fields, normalize_canvas
 from backend.resumes.draft_service import ResumeDraftService
-from backend.resumes.exceptions import ResumeConflictError, ResumeValidationError
+from backend.resumes.exceptions import (
+    ResumeConflictError,
+    ResumeNotFoundError,
+    ResumeValidationError,
+)
 from backend.resumes.generator import generate_resume
 from backend.resumes.schemas import ResumeSync, ResumeSyncResponse
+from backend.resumes.storage import is_resume_delete_pending
 from backend.resumes.sync import apply_sync, plan_sync, selected_ids
 
 
@@ -15,8 +20,16 @@ class ResumeSynchronizationService:
         self.drafts = drafts
 
     def synchronize(self, user_id: int, draft_id: str, data: ResumeSync) -> ResumeSyncResponse:
-        profile = self.drafts.profile(user_id)
-        draft = self.drafts.draft(user_id, draft_id)
+        if data.mode == "preview":
+            profile = self.drafts.profile(user_id)
+            draft = self.drafts.draft(user_id, draft_id)
+        else:
+            self.drafts._begin_sqlite_write()
+            locked_draft = self.drafts._locked_owned_draft(user_id, draft_id)
+            if locked_draft is None or is_resume_delete_pending(locked_draft.generation_context):
+                raise ResumeNotFoundError("Resume draft not found")
+            draft = locked_draft
+            profile = self.drafts.profile(user_id)
         if draft.revision != data.expected_revision:
             raise ResumeConflictError(
                 f"Expected revision {data.expected_revision}, current revision is {draft.revision}"
@@ -87,8 +100,9 @@ class ResumeSynchronizationService:
             mode="json", exclude_none=True
         )
         draft.revision += 1
+        self.db.flush()
+        result.applied = True
+        result.draft = self.drafts.response(profile, draft)
         self.db.commit()
         self.db.expire_all()
-        result.applied = True
-        result.draft = self.drafts.response(profile, self.drafts.draft(user_id, draft_id))
         return result

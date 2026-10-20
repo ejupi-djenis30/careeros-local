@@ -760,9 +760,7 @@ def test_packet_nested_manifest_rejects_duplicate_keys_with_valid_recomputed_dig
         row for row in payload["file_bindings"] if row["table"] == "application_packet_artifacts"
     )
     with zipfile.ZipFile(BytesIO(members[binding["member"]])) as packet_archive:
-        packet_members = {
-            name: packet_archive.read(name) for name in packet_archive.namelist()
-        }
+        packet_members = {name: packet_archive.read(name) for name in packet_archive.namelist()}
     manifest = json.loads(packet_members["manifest.json"])
     duplicate_manifest = (
         '{"application_id":'

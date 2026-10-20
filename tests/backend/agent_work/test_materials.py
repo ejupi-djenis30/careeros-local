@@ -254,9 +254,7 @@ def test_material_requirement_evidence_must_be_part_of_selected_cv(db_session, t
     assert db_session.query(ApplicationDossierDraft).count() == 0
 
 
-def test_material_requirement_must_be_grounded_by_the_mapped_candidate_fact(
-    db_session, test_user
-):
+def test_material_requirement_must_be_grounded_by_the_mapped_candidate_fact(db_session, test_user):
     work, grant, result, resume, extra_fact = material_scenario(
         db_session,
         test_user.id,

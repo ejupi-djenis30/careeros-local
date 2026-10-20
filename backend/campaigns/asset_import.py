@@ -44,11 +44,20 @@ def publish_or_reuse_campaign_asset(
     )
     if existing_asset is not None:
         if existing_asset.byte_size != byte_size or existing_asset.storage_path != storage_path:
-            raise CampaignImportError("Existing asset metadata does not match artifact", status_code=409)
+            raise CampaignImportError(
+                "Existing asset metadata does not match artifact", status_code=409
+            )
         try:
-            read_verified(storage_path, sha256, expected_size=byte_size, maximum_size=settings.MAX_UPLOAD_FILE_SIZE)
+            read_verified(
+                storage_path,
+                sha256,
+                expected_size=byte_size,
+                maximum_size=settings.MAX_UPLOAD_FILE_SIZE,
+            )
         except Exception as exc:
-            raise CampaignImportError("Existing asset file failed integrity verification", status_code=409) from exc
+            raise CampaignImportError(
+                "Existing asset file failed integrity verification", status_code=409
+            ) from exc
         return existing_asset
 
     disk_path = resolve_data_path(storage_path, create_root=False)
@@ -59,9 +68,16 @@ def publish_or_reuse_campaign_asset(
         file_on_disk = False
     if file_on_disk:
         try:
-            read_verified(storage_path, sha256, expected_size=byte_size, maximum_size=settings.MAX_UPLOAD_FILE_SIZE)
+            read_verified(
+                storage_path,
+                sha256,
+                expected_size=byte_size,
+                maximum_size=settings.MAX_UPLOAD_FILE_SIZE,
+            )
         except Exception as exc:
-            raise CampaignImportError("Shared asset file failed integrity verification", status_code=409) from exc
+            raise CampaignImportError(
+                "Shared asset file failed integrity verification", status_code=409
+            ) from exc
     else:
         journal_path = write_asset_publication_journal(
             operation_id=str(uuid.uuid4()),
@@ -118,12 +134,16 @@ def publish_root_source_document(
         if existing_sdoc.source_role != prep.source_role:
             raise CampaignImportError("Conflicting root document role reuse", status_code=409)
         return
-    db.add(SourceDocument(
-        id=owner_scoped_uuid(identity_scope, fingerprint, "source_document", prep.original_name),
-        profile_id=profile_id,
-        asset_id=asset.id,
-        document_type=prep.document_type,
-        source_role=prep.source_role,
-        extracted_text=prep.extracted_text,
-        extracted_text_sha256=hashlib.sha256(prep.extracted_text.encode("utf-8")).hexdigest(),
-    ))
+    db.add(
+        SourceDocument(
+            id=owner_scoped_uuid(
+                identity_scope, fingerprint, "source_document", prep.original_name
+            ),
+            profile_id=profile_id,
+            asset_id=asset.id,
+            document_type=prep.document_type,
+            source_role=prep.source_role,
+            extracted_text=prep.extracted_text,
+            extracted_text_sha256=hashlib.sha256(prep.extracted_text.encode("utf-8")).hexdigest(),
+        )
+    )

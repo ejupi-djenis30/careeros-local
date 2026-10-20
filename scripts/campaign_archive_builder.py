@@ -67,10 +67,14 @@ def build_campaign_archive(
     output_raw = Path(output_zip)
 
     if _is_link_junction_or_reparse(source_raw):
-        raise CampaignArchiveBuildError("Source directory cannot be a symlink, junction, or reparse point")
+        raise CampaignArchiveBuildError(
+            "Source directory cannot be a symlink, junction, or reparse point"
+        )
 
     if _is_link_junction_or_reparse(output_raw):
-        raise CampaignArchiveBuildError("Output target cannot be a symlink, junction, or reparse point")
+        raise CampaignArchiveBuildError(
+            "Output target cannot be a symlink, junction, or reparse point"
+        )
 
     try:
         source_path = source_raw.resolve()
@@ -108,7 +112,9 @@ def build_campaign_archive(
             continue
 
         if _is_link_junction_or_reparse(entry):
-            raise CampaignArchiveBuildError(f"Root entry cannot be link, junction, or reparse point: {rel_name}")
+            raise CampaignArchiveBuildError(
+                f"Root entry cannot be link, junction, or reparse point: {rel_name}"
+            )
 
         try:
             st = entry.lstat()
@@ -145,9 +151,13 @@ def build_campaign_archive(
                         try:
                             fst = file_path.lstat()
                         except OSError as exc:
-                            raise CampaignArchiveBuildError(f"Cannot inspect file {file_path}: {exc}") from exc
+                            raise CampaignArchiveBuildError(
+                                f"Cannot inspect file {file_path}: {exc}"
+                            ) from exc
                         if not stat.S_ISREG(fst.st_mode):
-                            raise CampaignArchiveBuildError(f"Special files are not permitted: {file_path}")
+                            raise CampaignArchiveBuildError(
+                                f"Special files are not permitted: {file_path}"
+                            )
 
                         rel_path = file_path.relative_to(source_path).as_posix()
                         if "\\" in rel_path or rel_path.startswith("/") or ":" in rel_path:
@@ -155,7 +165,9 @@ def build_campaign_archive(
                         if any(part in ("..", ".") for part in rel_path.split("/")):
                             raise CampaignArchiveBuildError(f"Path contains traversal: {rel_path}")
                         if not unicodedata.is_normalized("NFC", rel_path):
-                            raise CampaignArchiveBuildError(f"Path is not NFC normalized: {rel_path}")
+                            raise CampaignArchiveBuildError(
+                                f"Path is not NFC normalized: {rel_path}"
+                            )
 
                         cf_key = unicodedata.normalize("NFC", rel_path).casefold()
                         if cf_key in seen_casefold:
@@ -181,10 +193,14 @@ def build_campaign_archive(
     for rel_path, file_path in candidates:
         st = file_path.lstat()
         if st.st_size > MAX_FILE_BYTES:
-            raise CampaignArchiveBuildError(f"File exceeds limit of {MAX_FILE_BYTES} bytes: {rel_path}")
+            raise CampaignArchiveBuildError(
+                f"File exceeds limit of {MAX_FILE_BYTES} bytes: {rel_path}"
+            )
         total_expanded += st.st_size
         if total_expanded > MAX_EXPANDED_BYTES:
-            raise CampaignArchiveBuildError(f"Expanded size exceeds limit of {MAX_EXPANDED_BYTES} bytes")
+            raise CampaignArchiveBuildError(
+                f"Expanded size exceeds limit of {MAX_EXPANDED_BYTES} bytes"
+            )
 
         try:
             content = file_path.read_bytes()
@@ -192,11 +208,15 @@ def build_campaign_archive(
             raise CampaignArchiveBuildError(f"Failed to read file {rel_path}: {exc}") from exc
 
         if len(content) > MAX_FILE_BYTES:
-            raise CampaignArchiveBuildError(f"File exceeds limit of {MAX_FILE_BYTES} bytes: {rel_path}")
+            raise CampaignArchiveBuildError(
+                f"File exceeds limit of {MAX_FILE_BYTES} bytes: {rel_path}"
+            )
         if len(content) != st.st_size:
             total_expanded = total_expanded - st.st_size + len(content)
             if total_expanded > MAX_EXPANDED_BYTES:
-                raise CampaignArchiveBuildError(f"Expanded size exceeds limit of {MAX_EXPANDED_BYTES} bytes")
+                raise CampaignArchiveBuildError(
+                    f"Expanded size exceeds limit of {MAX_EXPANDED_BYTES} bytes"
+                )
 
         member_contents.append((rel_path, content))
 
@@ -214,7 +234,9 @@ def build_campaign_archive(
 
     zip_bytes = buf.getvalue()
     if len(zip_bytes) > MAX_COMPRESSED_BYTES:
-        raise CampaignArchiveBuildError(f"Compressed size exceeds limit of {MAX_COMPRESSED_BYTES} bytes")
+        raise CampaignArchiveBuildError(
+            f"Compressed size exceeds limit of {MAX_COMPRESSED_BYTES} bytes"
+        )
 
     try:
         inspected = inspect_and_validate_campaign_archive(zip_bytes)

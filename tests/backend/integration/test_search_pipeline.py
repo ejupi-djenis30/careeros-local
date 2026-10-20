@@ -109,16 +109,18 @@ async def test_run_search_pipeline_persists_catalog_filters_and_refines_jobs(
     )
     ProviderConfigurationService(db_session).import_document(
         test_user.id,
-        ProviderDocument.model_validate({
-            "format_version": 1,
-            "kind": "provider",
-            "provider": {
-                "kind": "native",
-                "adapter_id": "job_room",
-                "key": "job_room",
-                "display_name": "Synthetic integration source",
-            },
-        }),
+        ProviderDocument.model_validate(
+            {
+                "format_version": 1,
+                "kind": "provider",
+                "provider": {
+                    "kind": "native",
+                    "adapter_id": "job_room",
+                    "key": "job_room",
+                    "display_name": "Synthetic integration source",
+                },
+            }
+        ),
         activate=True,
     )
     monkeypatch.setattr(

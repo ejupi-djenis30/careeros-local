@@ -38,7 +38,9 @@ def db_session():
         engine.dispose()
 
 
-def _seed_base_entities(session: Session) -> tuple[User, CandidateProfile, CareerAsset, Application]:
+def _seed_base_entities(
+    session: Session,
+) -> tuple[User, CandidateProfile, CareerAsset, Application]:
     user = User(username="test-user", hashed_password="pw")
     session.add(user)
     session.flush()
@@ -288,7 +290,9 @@ def test_campaign_artifact_constraints_and_cascades(db_session: Session):
 
 def test_campaign_artifact_default_created_at(db_session: Session):
     user, _, asset, _ = _seed_base_entities(db_session)
-    campaign = Campaign(user_id=user.id, name="C-Default-Created", source_fingerprint="9" * 64, summary={})
+    campaign = Campaign(
+        user_id=user.id, name="C-Default-Created", source_fingerprint="9" * 64, summary={}
+    )
     db_session.add(campaign)
     db_session.commit()
 

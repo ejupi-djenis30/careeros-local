@@ -103,9 +103,7 @@ def parse_campaign_workspace(
     resolved_dossier_files: dict[str, list[CampaignArchiveMember]] = {
         res_id: dossier_files[dirs[0]] for res_id, dirs in resolved_to_dirs.items()
     }
-    dir_to_resolved: dict[str, str] = {
-        dirs[0]: res_id for res_id, dirs in resolved_to_dirs.items()
-    }
+    dir_to_resolved: dict[str, str] = {dirs[0]: res_id for res_id, dirs in resolved_to_dirs.items()}
 
     resolved_dossier_ids = set(resolved_dossier_files.keys())
     matched_ids = sorted(tracker_ids & resolved_dossier_ids)
@@ -157,7 +155,9 @@ def parse_campaign_workspace(
     base_order = len(tracker_rows)
     for d_idx, d_id in enumerate(dossier_only_ids):
         art_list = resolved_dossier_files[d_id]
-        vacancy_member = next((m for m in art_list if m.canonical_path.endswith("/vacancy.md")), None)
+        vacancy_member = next(
+            (m for m in art_list if m.canonical_path.endswith("/vacancy.md")), None
+        )
         title = "Untitled role"
         company = "Unknown company"
         location = None
@@ -220,11 +220,7 @@ def parse_campaign_workspace(
             )
         elif path.startswith("application-packets/"):
             parts = path.split("/")
-            bound_app_id = (
-                dir_to_resolved.get(parts[1], parts[1])
-                if len(parts) >= 3
-                else None
-            )
+            bound_app_id = dir_to_resolved.get(parts[1], parts[1]) if len(parts) >= 3 else None
             artifacts.append(
                 ParsedArtifact(
                     relative_path=path,

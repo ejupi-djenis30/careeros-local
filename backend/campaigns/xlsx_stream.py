@@ -90,7 +90,9 @@ class _CredentialsSheetHandler(xml.sax.ContentHandler):
                         try:
                             idx = int(val_str)
                         except ValueError as exc:
-                            raise XlsxReadError(f"Malformed shared-string index: {val_str}") from exc
+                            raise XlsxReadError(
+                                f"Malformed shared-string index: {val_str}"
+                            ) from exc
                         if idx < 0:
                             raise XlsxReadError(f"Negative shared-string index: {idx}")
                         self.current_row.shared_indices.append(idx)
@@ -105,7 +107,9 @@ class _CredentialsSheetHandler(xml.sax.ContentHandler):
             self.in_v = False
 
 
-def scan_credentials_worksheet_stream(xml_bytes: bytes, path: str = "Platform Credentials") -> list[CredentialRowProbe]:
+def scan_credentials_worksheet_stream(
+    xml_bytes: bytes, path: str = "Platform Credentials"
+) -> list[CredentialRowProbe]:
     check_no_dtd_or_entity(xml_bytes, path)
     handler = _CredentialsSheetHandler()
     parser = xml.sax.make_parser()

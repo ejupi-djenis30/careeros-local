@@ -59,7 +59,10 @@ def test_discovery_proposal_schema_success() -> None:
 
 @pytest.mark.parametrize(
     "observed_at",
-    [datetime.now().replace(microsecond=0).isoformat(), (datetime.now(UTC) + timedelta(hours=1)).isoformat()],
+    [
+        datetime.now().replace(microsecond=0).isoformat(),
+        (datetime.now(UTC) + timedelta(hours=1)).isoformat(),
+    ],
 )
 def test_discovery_requires_current_timezone_aware_observation(observed_at):
     from tests.backend.agent_work.helpers import discovery

@@ -45,10 +45,14 @@ def test_frontend_hook_uses_the_preflight_runner_without_installing_dependencies
     assert hook["pass_filenames"] is False
 
 
-def test_missing_frontend_dependencies_fail_without_running_a_package_manager(tmp_path, monkeypatch):
+def test_missing_frontend_dependencies_fail_without_running_a_package_manager(
+    tmp_path, monkeypatch
+):
     monkeypatch.setattr(run_frontend_lint, "FRONTEND", tmp_path)
     calls = []
-    monkeypatch.setattr(run_frontend_lint.subprocess, "run", lambda *args, **kwargs: calls.append(args))
+    monkeypatch.setattr(
+        run_frontend_lint.subprocess, "run", lambda *args, **kwargs: calls.append(args)
+    )
 
     with pytest.raises(RuntimeError, match="npm ci --ignore-scripts --prefix frontend"):
         run_frontend_lint.main()
@@ -58,8 +62,8 @@ def test_missing_frontend_dependencies_fail_without_running_a_package_manager(tm
 
 @pytest.fixture
 def installed_frontend(tmp_path, monkeypatch):
-    executable = tmp_path / "node_modules" / ".bin" / (
-        "eslint.cmd" if os.name == "nt" else "eslint"
+    executable = (
+        tmp_path / "node_modules" / ".bin" / ("eslint.cmd" if os.name == "nt" else "eslint")
     )
     executable.parent.mkdir(parents=True)
     executable.touch()

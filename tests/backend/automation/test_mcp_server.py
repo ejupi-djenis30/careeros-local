@@ -208,9 +208,7 @@ async def test_headless_mcp_rejects_extra_or_malformed_arguments_without_echo(
         read_timeout_seconds=timedelta(seconds=5),
         raise_exceptions=True,
     ) as session:
-        extra = await session.call_tool(
-            "list_applications", {"limit": 1, private: private}
-        )
+        extra = await session.call_tool("list_applications", {"limit": 1, private: private})
         malformed = await session.call_tool("list_applications", {"limit": private})
 
     for result in (extra, malformed):

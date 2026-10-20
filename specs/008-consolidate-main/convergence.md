@@ -1,5 +1,27 @@
 # Convergence evidence: Consolidate all work into main
 
+Date: 2026-10-20. Current outcome: `tasks_appended` for the formatting gap;
+T053 and T054 were appended after the additional full formatter check exposed
+four modules requiring bounded decomposition. All 31 functional requirements
+and 29 success criteria map to the 54 tasks and fifteen plan decisions.
+Constitution 2.0.1 is unchanged.
+
+The quality follow-up corrects resume synchronization, schedule lifecycle and
+reconciliation, test typing and compatible dependency metadata. Four focused
+extractions and canonical Python formatting close the observed maintainability
+gap. Independent review preserves public imports, transaction boundaries,
+archive/path validation and type-ignore statement bindings. Validation.md
+records each actual final check and its input scope.
+
+T050 remains open because the stable Linux graph still contains glib 0.18.5
+and its security exception expired on 2026-10-19. T052 remains open for protected
+qualification, integration and recovery-backed ref cleanup. Neither problem
+requires a duplicate task: both already have explicit ownership and acceptance
+conditions. The overall feature is not fully converged or production-ready.
+No release, waiver, branch deletion or merge is inferred from local success.
+
+## Historical state-consistency convergence, 2026-10-17
+
 Date: 2026-10-17. Current outcome: `no_tasks_appended` for state-consistency work.
 
 Independent read-only convergence covers 28 functional requirements, 26 success

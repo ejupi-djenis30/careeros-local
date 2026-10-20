@@ -41,7 +41,12 @@ async def test_transport_connects_to_validated_ip_and_preserves_tls_hostname(mon
 
         async def read(self, max_bytes, timeout=None):
             body = b'{"data":{"total":0,"jobs":[]}}'
-            return b"HTTP/1.1 200 OK\r\nContent-Length: " + str(len(body)).encode() + b"\r\n\r\n" + body
+            return (
+                b"HTTP/1.1 200 OK\r\nContent-Length: "
+                + str(len(body)).encode()
+                + b"\r\n\r\n"
+                + body
+            )
 
         async def aclose(self):
             pass
@@ -101,7 +106,9 @@ async def test_retry_revalidates_dns_before_another_connection(monkeypatch):
     assert requests[0].url.host == "93.184.216.34"
 
 
-@pytest.mark.parametrize("destination", ["https://224.0.0.1", "https://[ff0e::1]", "https://[::ffff:127.0.0.1]"])
+@pytest.mark.parametrize(
+    "destination", ["https://224.0.0.1", "https://[ff0e::1]", "https://[::ffff:127.0.0.1]"]
+)
 def test_nonpublic_unicast_destinations_are_rejected(destination):
     with pytest.raises(UnsafeProviderDestination):
         validate_destination_literal(destination)
@@ -140,9 +147,14 @@ async def test_real_http_client_rejects_unsafe_response_before_parsing(monkeypat
             return httpx.Response(200, stream=ChunkedBody())
         return httpx.Response(200, content=b"x" * 100_001)
 
-    monkeypatch.setattr("backend.providers.configuration.transport.resolve_public_destination", resolved)
+    monkeypatch.setattr(
+        "backend.providers.configuration.transport.resolve_public_destination", resolved
+    )
     original = httpx.AsyncClient
-    monkeypatch.setattr("backend.providers.configuration.transport.httpx.AsyncClient", lambda **kwargs: original(transport=httpx.MockTransport(handler), **kwargs))
+    monkeypatch.setattr(
+        "backend.providers.configuration.transport.httpx.AsyncClient",
+        lambda **kwargs: original(transport=httpx.MockTransport(handler), **kwargs),
+    )
     provider = DeclarativeJobProvider(json_provider_payload())
     try:
         with pytest.raises(ProviderError):

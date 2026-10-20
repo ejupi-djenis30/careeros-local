@@ -49,9 +49,7 @@ def parse_vacancy_markdown(text: str) -> ParsedVacancy:
         title = explicit_title or title
 
     company = _labeled_value(lines, {"company", "azienda", "employer"})
-    location = _labeled_value(
-        lines, {"location", "regular worksite", "luogo", "sede", "city"}
-    )
+    location = _labeled_value(lines, {"location", "regular worksite", "luogo", "sede", "city"})
     category = _labeled_value(lines, {"category", "job category", "categoria"})
     url = _labeled_value(
         lines, {"url", "job url", "vacancy url", "posting url", "application url", "link"}

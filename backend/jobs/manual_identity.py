@@ -40,8 +40,7 @@ def canonical_manual_identity_url(value: str | None) -> str | None:
     query_items = [
         (key, item)
         for key, item in parse_qsl(parsed.query, keep_blank_values=True)
-        if not key.casefold().startswith("utm_")
-        and key.casefold() not in _TRACKING_QUERY_KEYS
+        if not key.casefold().startswith("utm_") and key.casefold() not in _TRACKING_QUERY_KEYS
     ]
     query = urlencode(sorted(query_items))
     return urlunsplit((parsed.scheme, netloc, path, query, ""))

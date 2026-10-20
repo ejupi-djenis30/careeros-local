@@ -27,9 +27,7 @@ def command_path(name: str) -> str:
 
 
 def local_tauri_cli() -> str:
-    executable = FRONTEND / "node_modules" / ".bin" / (
-        "tauri.cmd" if os.name == "nt" else "tauri"
-    )
+    executable = FRONTEND / "node_modules" / ".bin" / ("tauri.cmd" if os.name == "nt" else "tauri")
     if not executable.is_file():
         raise RuntimeError(
             "The local Tauri CLI is missing. Run npm ci --ignore-scripts --prefix frontend "

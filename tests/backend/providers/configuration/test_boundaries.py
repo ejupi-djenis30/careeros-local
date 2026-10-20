@@ -28,13 +28,19 @@ def test_test_request_requires_literal_explicit_network_consent(consent):
         ProviderTestRequest.model_validate(payload)
 
 
-def test_provider_test_consent_is_per_request_without_enabling_search(client, auth_headers, monkeypatch):
+def test_provider_test_consent_is_per_request_without_enabling_search(
+    client, auth_headers, monkeypatch
+):
     payload = json_provider_payload(enabled=False).model_dump(mode="json")
     created = client.post("/api/v1/job-providers", json=payload, headers=auth_headers).json()
     search = AsyncMock(return_value=type("Result", (), {"items": []})())
     close = AsyncMock()
-    monkeypatch.setattr("backend.providers.configuration.tester.DeclarativeJobProvider.search", search)
-    monkeypatch.setattr("backend.providers.configuration.tester.DeclarativeJobProvider.close", close)
+    monkeypatch.setattr(
+        "backend.providers.configuration.tester.DeclarativeJobProvider.search", search
+    )
+    monkeypatch.setattr(
+        "backend.providers.configuration.tester.DeclarativeJobProvider.close", close
+    )
     monkeypatch.setattr(settings, "OFFLINE_MODE", False)
     url = f"/api/v1/job-providers/{created['id']}/test"
     denied = client.post(url, json={}, headers=auth_headers)
@@ -50,11 +56,21 @@ def test_provider_test_consent_is_per_request_without_enabling_search(client, au
 
 
 def test_provider_test_offline_mode_never_contacts_network(client, auth_headers, monkeypatch):
-    created = client.post("/api/v1/job-providers", json=json_provider_payload().model_dump(mode="json"), headers=auth_headers).json()
+    created = client.post(
+        "/api/v1/job-providers",
+        json=json_provider_payload().model_dump(mode="json"),
+        headers=auth_headers,
+    ).json()
     search = AsyncMock()
-    monkeypatch.setattr("backend.providers.configuration.tester.DeclarativeJobProvider.search", search)
+    monkeypatch.setattr(
+        "backend.providers.configuration.tester.DeclarativeJobProvider.search", search
+    )
     monkeypatch.setattr(settings, "OFFLINE_MODE", True)
-    response = client.post(f"/api/v1/job-providers/{created['id']}/test", json={"allow_network": True}, headers=auth_headers)
+    response = client.post(
+        f"/api/v1/job-providers/{created['id']}/test",
+        json={"allow_network": True},
+        headers=auth_headers,
+    )
     assert response.status_code == 503
     search.assert_not_called()
 
@@ -63,11 +79,20 @@ def test_existing_agent_read_grant_cannot_manage_provider_installations(client, 
     issued = client.post(
         "/api/v1/automation/grants",
         headers=auth_headers,
-        json={"label": "Synthetic read client", "scopes": ["system:read", "applications:read"], "lifetime_days": 1, "password": "Globalpass1"},
+        json={
+            "label": "Synthetic read client",
+            "scopes": ["system:read", "applications:read"],
+            "lifetime_days": 1,
+            "password": "Globalpass1",
+        },
     )
     assert issued.status_code == 201, issued.text
     grant_headers = {"Authorization": f"Bearer {issued.json()['token']}"}
-    denied = client.post("/api/v1/job-providers", json=json_provider_payload().model_dump(mode="json"), headers=grant_headers)
+    denied = client.post(
+        "/api/v1/job-providers",
+        json=json_provider_payload().model_dump(mode="json"),
+        headers=grant_headers,
+    )
     assert denied.status_code == 401
     assert client.get("/api/v1/job-providers", headers=grant_headers).status_code == 401
     assert client.get("/api/v1/job-providers", headers=auth_headers).json()["installed"] == []
@@ -91,11 +116,15 @@ def test_provider_crud_and_registry_cannot_cross_accounts(db_session, test_user)
     service = ProviderConfigurationService(db_session)
     created = service.create(test_user.id, json_provider_payload())
     assert service.list(other.id) == []
-    update = ProviderConfigurationUpdate.model_validate({**json_provider_payload().model_dump(), "expected_revision": 1})
+    update = ProviderConfigurationUpdate.model_validate(
+        {**json_provider_payload().model_dump(), "expected_revision": 1}
+    )
     for action in (
         lambda: service.get(other.id, created.id),
         lambda: service.update(other.id, created.id, update),
-        lambda: service.set_enabled(other.id, created.id, ProviderStateUpdate(expected_revision=1, enabled=False)),
+        lambda: service.set_enabled(
+            other.id, created.id, ProviderStateUpdate(expected_revision=1, enabled=False)
+        ),
         lambda: service.delete(other.id, created.id, expected_revision=1),
     ):
         with pytest.raises(ProviderConfigurationError) as error:
@@ -116,7 +145,9 @@ def test_pack_insert_failure_rolls_back_every_installation(db_session, test_user
 
     monkeypatch.setattr(db_session, "commit", fail_commit)
     with pytest.raises(ProviderConfigurationError):
-        service.import_document(test_user.id, bundled_provider_pack("careeros.switzerland.core"), activate=True)
+        service.import_document(
+            test_user.id, bundled_provider_pack("careeros.switzerland.core"), activate=True
+        )
     monkeypatch.setattr(db_session, "commit", commit)
     assert db_session.query(JobProviderConfiguration).count() == 0
 

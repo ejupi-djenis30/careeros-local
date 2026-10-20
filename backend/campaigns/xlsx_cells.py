@@ -28,7 +28,7 @@ def parse_date_styles(zf: Any, path: str | None) -> set[int]:
     custom_date_ids: set[int] = set()
     for num_fmt in root.iter(f"{{{MAIN_NS}}}numFmt"):
         fmt_id = int(num_fmt.attrib.get("numFmtId", 0))
-        code = re.sub(r'\[[^\]]*\]', '', num_fmt.attrib.get("formatCode", "").lower())
+        code = re.sub(r"\[[^\]]*\]", "", num_fmt.attrib.get("formatCode", "").lower())
         if any(token in code for token in ("yy", "mm", "dd", "hh", "ss")):
             custom_date_ids.add(fmt_id)
 
@@ -42,7 +42,9 @@ def parse_date_styles(zf: Any, path: str | None) -> set[int]:
     return date_style_indices
 
 
-def parse_cell_value(c_elem: ET.Element, shared: dict[int, str] | None, date_styles: set[int]) -> Any:
+def parse_cell_value(
+    c_elem: ET.Element, shared: dict[int, str] | None, date_styles: set[int]
+) -> Any:
     cell_type = c_elem.attrib.get("t")
     style_idx = int(c_elem.attrib.get("s", 0)) if "s" in c_elem.attrib else None
     v_elem = c_elem.find(f"{{{MAIN_NS}}}v")
@@ -50,7 +52,9 @@ def parse_cell_value(c_elem: ET.Element, shared: dict[int, str] | None, date_sty
 
     if cell_type == "s":
         if shared is None:
-            raise XlsxReadError("Workbook contains shared-string cells but sharedStrings part is absent")
+            raise XlsxReadError(
+                "Workbook contains shared-string cells but sharedStrings part is absent"
+            )
         if val_text is None or not val_text.strip():
             raise XlsxReadError("Shared-string cell has missing index value")
         try:
@@ -64,7 +68,11 @@ def parse_cell_value(c_elem: ET.Element, shared: dict[int, str] | None, date_sty
         return shared[idx]
     if cell_type == "inlineStr":
         is_elem = c_elem.find(f"{{{MAIN_NS}}}is")
-        return "".join(t.text or "" for t in is_elem.iter(f"{{{MAIN_NS}}}t")) if is_elem is not None else ""
+        return (
+            "".join(t.text or "" for t in is_elem.iter(f"{{{MAIN_NS}}}t"))
+            if is_elem is not None
+            else ""
+        )
     if cell_type == "b" and val_text is not None:
         return val_text in ("1", "true", "TRUE")
     if cell_type in ("str", "e") and val_text is not None:
@@ -101,8 +109,6 @@ def coerce_text(val: Any) -> str | None:
     return str(val)
 
 
-
-
 def json_safe_val(val: Any) -> Any:
     if isinstance(val, (date, datetime)):
         return val.isoformat()
@@ -124,7 +130,9 @@ def find_field(record: Mapping[str, Any], candidates: tuple[str, ...]) -> Any:
     return None
 
 
-def read_sheet_grid(root: ET.Element, shared: dict[int, str] | None, dates: set[int]) -> list[dict[int, Any]]:
+def read_sheet_grid(
+    root: ET.Element, shared: dict[int, str] | None, dates: set[int]
+) -> list[dict[int, Any]]:
     rows: list[dict[int, Any]] = []
     for row_elem in root.iter(f"{{{MAIN_NS}}}row"):
         row_dict: dict[int, Any] = {}

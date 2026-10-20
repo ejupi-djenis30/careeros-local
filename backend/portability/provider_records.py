@@ -31,8 +31,13 @@ def validate_provider_records(decoded: dict[str, list[dict[str, Any]]]) -> None:
                 native_adapter_id = validate_native_adapter_id(raw_adapter_id)
                 if row.get("key") != native_adapter_id:
                     raise ValueError("Native provider keys must match the reviewed adapter ID")
-                if row.get("request_config") is not None or row.get("extraction_config") is not None:
-                    raise ValueError("Native provider rows cannot contain declarative configuration")
+                if (
+                    row.get("request_config") is not None
+                    or row.get("extraction_config") is not None
+                ):
+                    raise ValueError(
+                        "Native provider rows cannot contain declarative configuration"
+                    )
                 ProviderCapabilitiesConfig.model_validate(row.get("capabilities_config"))
                 # Restore never grants network consent, including for reviewed native adapters.
                 row["enabled"] = False
@@ -73,7 +78,11 @@ def provider_restore_was_published(
 ) -> bool:
     """Verify the complete destination-unique provider transaction identity."""
     ids = {row.get("id") for row in expected}
-    if not expected or len(ids) != len(expected) or any(not isinstance(value, str) for value in ids):
+    if (
+        not expected
+        or len(ids) != len(expected)
+        or any(not isinstance(value, str) for value in ids)
+    ):
         raise ValueError("Restore provider identity is unavailable")
     actual = db.query(JobProviderConfiguration).filter(JobProviderConfiguration.id.in_(ids)).all()
     if not actual:

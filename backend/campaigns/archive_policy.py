@@ -12,26 +12,30 @@ from types import MappingProxyType
 from typing import Final, Mapping
 
 MAX_COMPRESSED_BYTES: Final = 128 * 1024 * 1024  # 128 MiB
-MAX_EXPANDED_BYTES: Final = 256 * 1024 * 1024    # 256 MiB
+MAX_EXPANDED_BYTES: Final = 256 * 1024 * 1024  # 256 MiB
 MAX_MEMBERS: Final = 5000
-MAX_FILE_BYTES: Final = 10 * 1024 * 1024         # 10 MiB
+MAX_FILE_BYTES: Final = 10 * 1024 * 1024  # 10 MiB
 
-ALLOWED_ROOT_FILES: Final = frozenset({
-    "ApplicationTracker.xlsx",
-    "Profile.md",
-    "Goal.md",
-    "Storytelling.md",
-})
+ALLOWED_ROOT_FILES: Final = frozenset(
+    {
+        "ApplicationTracker.xlsx",
+        "Profile.md",
+        "Goal.md",
+        "Storytelling.md",
+    }
+)
 
-ALLOWED_ROOT_DIRECTORIES: Final = frozenset({
-    "assets",
-    "application-packets",
-    "cv-templates",
-    "cover-letter-templates",
-    "email-templates",
-    "html-templates",
-    "scripts",
-})
+ALLOWED_ROOT_DIRECTORIES: Final = frozenset(
+    {
+        "assets",
+        "application-packets",
+        "cv-templates",
+        "cover-letter-templates",
+        "email-templates",
+        "html-templates",
+        "scripts",
+    }
+)
 
 
 class ArchivePolicyError(ValueError):
@@ -111,7 +115,9 @@ def _is_allowed_root(canonical_path: str) -> bool:
 def inspect_and_validate_campaign_archive(data: bytes) -> CampaignArchiveInspection:
     """Validate archive integrity and boundaries, returning inert inspected members."""
     if len(data) > MAX_COMPRESSED_BYTES:
-        raise ArchivePolicyError(f"Archive exceeds compressed limit of {MAX_COMPRESSED_BYTES} bytes")
+        raise ArchivePolicyError(
+            f"Archive exceeds compressed limit of {MAX_COMPRESSED_BYTES} bytes"
+        )
 
     try:
         with zipfile.ZipFile(io.BytesIO(data), "r") as zf:
@@ -137,7 +143,9 @@ def inspect_and_validate_campaign_archive(data: bytes) -> CampaignArchiveInspect
                 if zinfo.flag_bits & 0x1:
                     raise ArchivePolicyError(f"Archive contains encrypted entry: {zinfo.filename}")
                 if _is_symlink_or_special(zinfo):
-                    raise ArchivePolicyError(f"Archive contains symlink or special file: {zinfo.filename}")
+                    raise ArchivePolicyError(
+                        f"Archive contains symlink or special file: {zinfo.filename}"
+                    )
 
                 raw_name = zinfo.filename[prefix_len:] if prefix_len else zinfo.filename
                 cleaned = "/".join(p for p in raw_name.split("/") if p)
@@ -158,14 +166,20 @@ def inspect_and_validate_campaign_archive(data: bytes) -> CampaignArchiveInspect
                 seen_canonical[canonical_key] = canonical_path
 
                 if not _is_allowed_root(canonical_path):
-                    raise ArchivePolicyError(f"Archive contains unsupported root entry: {canonical_path}")
+                    raise ArchivePolicyError(
+                        f"Archive contains unsupported root entry: {canonical_path}"
+                    )
 
                 if zinfo.file_size > MAX_FILE_BYTES:
-                    raise ArchivePolicyError(f"Entry {canonical_path} exceeds file size limit of {MAX_FILE_BYTES}")
+                    raise ArchivePolicyError(
+                        f"Entry {canonical_path} exceeds file size limit of {MAX_FILE_BYTES}"
+                    )
 
                 total_expanded += zinfo.file_size
                 if total_expanded > MAX_EXPANDED_BYTES:
-                    raise ArchivePolicyError(f"Archive exceeds expanded limit of {MAX_EXPANDED_BYTES}")
+                    raise ArchivePolicyError(
+                        f"Archive exceeds expanded limit of {MAX_EXPANDED_BYTES}"
+                    )
 
                 try:
                     content = zf.read(zinfo)

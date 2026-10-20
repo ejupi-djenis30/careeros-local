@@ -678,7 +678,9 @@ def _decode_payload(
         if not isinstance(tables[name], list) or len(tables[name]) != manifest.record_counts[name]:
             raise ArchiveError(f"Archive record count mismatch for {name}")
     try:
-        validate_profile_scope(manifest.format_version, {name: len(rows) for name, rows in tables.items()})
+        validate_profile_scope(
+            manifest.format_version, {name: len(rows) for name, rows in tables.items()}
+        )
     except ValueError as exc:
         raise ArchiveError(str(exc)) from exc
     if not tables["candidate_profiles"] and bindings:
@@ -1397,7 +1399,9 @@ def _restore_commit_was_published(
 
     profile_rows = decoded.get("candidate_profiles", [])
     provider_only = not profile_rows and bool(decoded.get("job_provider_configurations"))
-    if not provider_only and (len(profile_rows) != 1 or not isinstance(profile_rows[0].get("id"), str)):
+    if not provider_only and (
+        len(profile_rows) != 1 or not isinstance(profile_rows[0].get("id"), str)
+    ):
         raise RestoreCleanupPendingError("Restore commit identity is unavailable")
     expected_profile_id = cast(str, profile_rows[0]["id"]) if profile_rows else None
     bind = db.get_bind()
@@ -1419,7 +1423,9 @@ def _restore_commit_was_published(
                     verification, user_id, decoded["job_provider_configurations"]
                 )
             except (ValueError, TypeError) as exc:
-                raise RestoreCleanupPendingError("Restore provider commit identity is inconsistent") from exc
+                raise RestoreCleanupPendingError(
+                    "Restore provider commit identity is inconsistent"
+                ) from exc
             if not published:
                 verification.rollback()
                 return False
@@ -1458,7 +1464,9 @@ def _restore_commit_was_published(
                 verification.query(Campaign).filter(Campaign.user_id == user_id).count()
             )
             if actual_campaign_count != len(decoded["campaigns"]):
-                raise RestoreCleanupPendingError("Restore campaign records disagree with the commit")
+                raise RestoreCleanupPendingError(
+                    "Restore campaign records disagree with the commit"
+                )
             actual_app_count = (
                 verification.query(CampaignApplication)
                 .join(Campaign, CampaignApplication.campaign_id == Campaign.id)
@@ -1466,7 +1474,9 @@ def _restore_commit_was_published(
                 .count()
             )
             if actual_app_count != len(decoded.get("campaign_applications", [])):
-                raise RestoreCleanupPendingError("Restore campaign applications disagree with the commit")
+                raise RestoreCleanupPendingError(
+                    "Restore campaign applications disagree with the commit"
+                )
             actual_art_count = (
                 verification.query(CampaignArtifact)
                 .join(Campaign, CampaignArtifact.campaign_id == Campaign.id)
@@ -1474,7 +1484,9 @@ def _restore_commit_was_published(
                 .count()
             )
             if actual_art_count != len(decoded.get("campaign_artifacts", [])):
-                raise RestoreCleanupPendingError("Restore campaign artifacts disagree with the commit")
+                raise RestoreCleanupPendingError(
+                    "Restore campaign artifacts disagree with the commit"
+                )
 
         journal = read_restore_journal(user_id)
         if journal is not None and (

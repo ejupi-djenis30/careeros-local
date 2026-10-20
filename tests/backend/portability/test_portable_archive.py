@@ -572,9 +572,7 @@ def _rewrite_application_projection_fixture(
     if format_version < 9:
         removed_tables.append("job_provider_configurations")
     if format_version < 8:
-        removed_tables.extend(
-            ["campaigns", "campaign_applications", "campaign_artifacts"]
-        )
+        removed_tables.extend(["campaigns", "campaign_applications", "campaign_artifacts"])
     if format_version < 7:
         removed_tables.extend(
             ["agent_work_requests", "agent_proposals", "application_packet_artifacts"]

@@ -3,12 +3,13 @@ import { useI18n } from '../i18n/useI18n';
 
 const SCHEDULE_PRESETS = [1, 3, 6, 12, 24];
 
-export function ScheduleCard({ profile, onToggle, onChangeInterval, onDelete }) {
+export function ScheduleCard({ profile, onToggle, onChangeInterval, onDelete, pending = false }) {
     const { t } = useI18n();
     const [isTogglePending, setIsTogglePending] = useState(false);
+    const isPending = pending || isTogglePending;
 
     const handleToggle = async () => {
-        if (isTogglePending) return;
+        if (isPending) return;
         setIsTogglePending(true);
         try {
             await onToggle(profile.id, profile.schedule_enabled, profile.schedule_interval_hours);
@@ -62,10 +63,10 @@ export function ScheduleCard({ profile, onToggle, onChangeInterval, onDelete }) 
                                 type="checkbox"
                                 checked={profile.schedule_enabled || false}
                                 onChange={handleToggle}
-                                disabled={isTogglePending}
-                                style={{ cursor: isTogglePending ? 'wait' : 'pointer', transform: 'scale(1.1)' }}
-                                title={isTogglePending ? t("schedule.updating") : t("schedule.toggle")}
-                                aria-label={isTogglePending ? t("schedule.updating") : t("schedule.toggle")}
+                                disabled={isPending}
+                                style={{ cursor: isPending ? 'wait' : 'pointer', transform: 'scale(1.1)' }}
+                                title={isPending ? t("schedule.updating") : t("schedule.toggle")}
+                                aria-label={isPending ? t("schedule.updating") : t("schedule.toggle")}
                             />
                         </div>
                     </div>
@@ -74,6 +75,7 @@ export function ScheduleCard({ profile, onToggle, onChangeInterval, onDelete }) 
                         <div className="d-flex gap-2">
                             <input
                                 type="number"
+                                disabled={isPending}
                                 min="1"
                                 step="1"
                                 className="form-control form-control-sm bg-black-20 border-white-10 text-white shadow-none"
@@ -85,6 +87,7 @@ export function ScheduleCard({ profile, onToggle, onChangeInterval, onDelete }) 
                             <button
                                 className="btn btn-sm btn-outline-danger border-white-10 text-danger hover-bg-danger hover-text-white rounded-3 px-3 transition-colors"
                                 onClick={() => onDelete(profile.id)}
+                                disabled={isPending}
                                 title={t("schedule.delete")}
                                 aria-label={t("schedule.delete")}
                             >
@@ -98,6 +101,7 @@ export function ScheduleCard({ profile, onToggle, onChangeInterval, onDelete }) 
                                     type="button"
                                     className={`btn btn-sm px-2 py-0 rounded-pill ${profile.schedule_interval_hours == hours ? 'btn-light text-dark fw-bold' : 'btn-outline-secondary opacity-75'}`}
                                     onClick={() => onChangeInterval(profile.id, String(hours))}
+                                    disabled={isPending}
                                 >
                                     {hours}h
                                 </button>

@@ -206,9 +206,7 @@ def _convert_to_version(data: bytes, version: int) -> bytes:
     if version < 9:
         removed_tables.append("job_provider_configurations")
     if version < 8:
-        removed_tables.extend(
-            ["campaigns", "campaign_applications", "campaign_artifacts"]
-        )
+        removed_tables.extend(["campaigns", "campaign_applications", "campaign_artifacts"])
     if version < 7:
         removed_tables.extend(
             ["agent_work_requests", "agent_proposals", "application_packet_artifacts"]

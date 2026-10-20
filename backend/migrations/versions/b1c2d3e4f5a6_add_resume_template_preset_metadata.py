@@ -21,7 +21,9 @@ depends_on: str | Sequence[str] | None = None
 def upgrade() -> None:
     with op.batch_alter_table("resume_drafts", schema=None) as batch_op:
         batch_op.add_column(
-            sa.Column("template_id", sa.String(length=64), server_default="software-en", nullable=False)
+            sa.Column(
+                "template_id", sa.String(length=64), server_default="software-en", nullable=False
+            )
         )
         batch_op.add_column(
             sa.Column("template_version", sa.Integer(), server_default="1", nullable=False)
@@ -32,7 +34,9 @@ def upgrade() -> None:
 
     with op.batch_alter_table("resume_versions", schema=None) as batch_op:
         batch_op.add_column(
-            sa.Column("template_id", sa.String(length=64), server_default="software-en", nullable=False)
+            sa.Column(
+                "template_id", sa.String(length=64), server_default="software-en", nullable=False
+            )
         )
         batch_op.add_column(
             sa.Column("template_version", sa.Integer(), server_default="1", nullable=False)

@@ -244,7 +244,7 @@ which covers the CareerOS Local project itself.
       "textIds": [
         "e93716da6b9c0d5a4a1df60fe695b370f0695603d21f6f83f053e42cfc10caf7"
       ],
-      "version": "2026.6.17"
+      "version": "2026.10.19"
     },
     {
       "ecosystem": "python",
@@ -557,7 +557,7 @@ which covers the CareerOS Local project itself.
       "textIds": [
         "a9e186f3ca16b5eef84318e7a701721351a00cb7b8ae3a4394b67b49e3529ef3"
       ],
-      "version": "2.14.0"
+      "version": "2.14.1"
     },
     {
       "ecosystem": "python",
@@ -568,7 +568,7 @@ which covers the CareerOS Local project itself.
       "textIds": [
         "2afdd30d54b4d62b6f488a6bcc1546e84ec5061f13f4209c03d012348783795a"
       ],
-      "version": "2.50.0"
+      "version": "2.50.1"
     },
     {
       "ecosystem": "python",
@@ -7746,7 +7746,7 @@ which covers the CareerOS Local project itself.
     "frontend/package-lock.json": "3430d042f5cda898996902bc4b435a67336f082b57b6eade575633b6a51b4bf4",
     "frontend/src-tauri/Cargo.lock": "968585ac02371b626e7d06984e1c308b531a9846ae7c8d1227ac6a4890493bd4",
     "requirements-tooling.lock": "3022484e2ff7ed4d8fc1e890dd701b09e66cabde70f19d40e101dcddb098ef07",
-    "requirements.lock": "1b9362526eefd74898c1b7b3d0d3892d229f4d060d2804fe2cd91605561b2423",
+    "requirements.lock": "198a32630e110e06982b06af0be792f7f12f828c38f513083e0a561a7c02f110",
     "third_party/licenses/cpython-3.13.14/LICENSE": "78b12c3a81360b357002334f0e70ea0e92eebf7a9b358805c03c48484945f3bb"
   },
   "texts": [
@@ -8355,7 +8355,7 @@ which covers the CareerOS Local project itself.
       "id": "2afdd30d54b4d62b6f488a6bcc1546e84ec5061f13f4209c03d012348783795a",
       "sha256": "2afdd30d54b4d62b6f488a6bcc1546e84ec5061f13f4209c03d012348783795a",
       "sources": [
-        "python:pydantic-core@2.50.0/LICENSE"
+        "python:pydantic-core@2.50.1/LICENSE"
       ]
     },
     {
@@ -9624,7 +9624,7 @@ which covers the CareerOS Local project itself.
       "id": "a9e186f3ca16b5eef84318e7a701721351a00cb7b8ae3a4394b67b49e3529ef3",
       "sha256": "a9e186f3ca16b5eef84318e7a701721351a00cb7b8ae3a4394b67b49e3529ef3",
       "sources": [
-        "python:pydantic@2.14.0/LICENSE"
+        "python:pydantic@2.14.1/LICENSE"
       ]
     },
     {
@@ -10178,7 +10178,7 @@ which covers the CareerOS Local project itself.
       "id": "e93716da6b9c0d5a4a1df60fe695b370f0695603d21f6f83f053e42cfc10caf7",
       "sha256": "e93716da6b9c0d5a4a1df60fe695b370f0695603d21f6f83f053e42cfc10caf7",
       "sources": [
-        "python:certifi@2026.6.17/LICENSE"
+        "python:certifi@2026.10.19/LICENSE"
       ]
     },
     {

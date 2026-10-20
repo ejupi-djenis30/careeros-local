@@ -125,11 +125,15 @@ def test_sanitizer_credential_sentinel_absence() -> None:
         cred_xml_injected = cred_xml.replace("user0", secret_user).replace("pass0", secret_pass)
         out_buf = io.BytesIO()
         with zipfile.ZipFile(out_buf, "w") as z_out:
-                for item in z_in.infolist():
-                    if item.filename == "xl/worksheets/sheet2.xml":
-                        z_out.writestr(item.filename, cred_xml_injected.encode("utf-8"), compress_type=zipfile.ZIP_STORED)
-                    else:
-                        z_out.writestr(item, z_in.read(item.filename))
+            for item in z_in.infolist():
+                if item.filename == "xl/worksheets/sheet2.xml":
+                    z_out.writestr(
+                        item.filename,
+                        cred_xml_injected.encode("utf-8"),
+                        compress_type=zipfile.ZIP_STORED,
+                    )
+                else:
+                    z_out.writestr(item, z_in.read(item.filename))
 
     injected_bytes = out_buf.getvalue()
     assert secret_user.encode("utf-8") in injected_bytes
@@ -252,8 +256,8 @@ def test_sanitizer_round_trip_all_scalar_types_and_whitespace() -> None:
         assert 'xml:space="preserve">Trailing whitespace corp  </t>' in sheet1_text
         assert 'xml:space="preserve">  Both leading and trailing whitespace  </t>' in sheet1_text
         # Normal strings should NOT have xml:space="preserve"
-        assert '<t>Normal Title</t>' in sheet1_text
-        assert '<t>Simple note</t>' in sheet1_text
+        assert "<t>Normal Title</t>" in sheet1_text
+        assert "<t>Simple note</t>" in sheet1_text
 
     # 2. Round-trip through read_campaign_workbook
     read_res = read_campaign_workbook(sanitized)

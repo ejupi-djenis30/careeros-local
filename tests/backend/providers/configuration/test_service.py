@@ -56,9 +56,7 @@ def test_crud_redacts_secrets_and_requires_expected_revision(db_session, test_us
         service.update(
             test_user.id,
             created.id,
-            ProviderConfigurationUpdate.model_validate(
-                {**update_data, "expected_revision": 1}
-            ),
+            ProviderConfigurationUpdate.model_validate({**update_data, "expected_revision": 1}),
         )
     assert conflict.value.code == "revision_conflict"
 
@@ -74,9 +72,7 @@ def test_crud_redacts_secrets_and_requires_expected_revision(db_session, test_us
 
 def test_new_provider_cannot_use_secret_preservation_marker(db_session, test_user) -> None:
     payload = json_provider_payload()
-    request = payload.request.model_copy(
-        update={"headers": {"Authorization": PRESERVE_SECRET}}
-    )
+    request = payload.request.model_copy(update={"headers": {"Authorization": PRESERVE_SECRET}})
 
     with pytest.raises(ProviderConfigurationError) as error:
         ProviderConfigurationService(db_session).create(
@@ -126,9 +122,7 @@ def test_json_paths_are_strictly_validated() -> None:
         json_provider_payload(extraction=payload["extraction"])
 
 
-def test_import_rejects_unknown_native_adapter_without_partial_rows(
-    db_session, test_user
-) -> None:
+def test_import_rejects_unknown_native_adapter_without_partial_rows(db_session, test_user) -> None:
     document = ProviderDocument.model_validate(
         {
             "kind": "provider",

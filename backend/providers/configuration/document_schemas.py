@@ -32,6 +32,7 @@ class DeclarativeProviderImportEntry(StrictProviderModel):
             raise ValueError("Imported provider documents cannot contain configured headers")
         return self
 
+
 class NativeProviderImportEntry(StrictProviderModel):
     kind: Literal["native"] = "native"
     adapter_id: str = Field(min_length=2, max_length=64)
@@ -59,15 +60,18 @@ class NativeProviderImportEntry(StrictProviderModel):
             raise ValueError("Native provider keys must match their adapter identifier")
         return self
 
+
 ProviderImportEntry = Annotated[
     DeclarativeProviderImportEntry | NativeProviderImportEntry,
     Field(discriminator="kind"),
 ]
 
+
 class ProviderDocument(StrictProviderModel):
     kind: Literal["provider"] = "provider"
     format_version: Literal[1] = 1
     provider: ProviderImportEntry
+
 
 class ProviderPackDocument(StrictProviderModel):
     kind: Literal["provider_pack"] = "provider_pack"
@@ -111,21 +115,26 @@ class ProviderPackDocument(StrictProviderModel):
             raise ValueError("Provider pack keys must be unique")
         return self
 
+
 ProviderImportDocument = Annotated[
     ProviderDocument | ProviderPackDocument,
     Field(discriminator="kind"),
 ]
 
+
 class ProviderImportRequest(StrictProviderModel):
     document: ProviderImportDocument
     activate: bool = False
 
+
 class ProviderPackInstallRequest(StrictProviderModel):
     activate: bool = False
+
 
 class ProviderStateUpdate(StrictProviderModel):
     expected_revision: int = Field(ge=1)
     enabled: bool
+
 
 class ProviderPackSummaryView(StrictProviderModel):
     id: str
@@ -134,10 +143,12 @@ class ProviderPackSummaryView(StrictProviderModel):
     description: str
     provider_keys: list[str] = Field(max_length=20)
 
+
 class ProviderImportResultView(StrictProviderModel):
     source_id: str | None
     activated: bool
     imported: list[ProviderConfigurationView] = Field(min_length=1, max_length=20)
+
 
 class ProviderCatalogView(StrictProviderModel):
     installed: list[ProviderConfigurationView]

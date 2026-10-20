@@ -11,7 +11,7 @@ from typing import Final
 
 XLSX_MAX_MEMBERS: Final = 100
 XLSX_MAX_EXPANDED_BYTES: Final = 32 * 1024 * 1024  # 32 MiB
-XLSX_MAX_MEMBER_BYTES: Final = 10 * 1024 * 1024    # 10 MiB
+XLSX_MAX_MEMBER_BYTES: Final = 10 * 1024 * 1024  # 10 MiB
 
 
 class XlsxReadError(ValueError):
@@ -25,7 +25,9 @@ class XlsxSecurityError(XlsxReadError):
 def check_no_dtd_or_entity(content: bytes, path: str = "XML") -> None:
     """Reject DTD, DOCTYPE, and ENTITY declarations in XML content."""
     if re.search(rb"<!\s*(?:DOCTYPE|ENTITY)", content, re.IGNORECASE):
-        raise XlsxSecurityError(f"Package member {path} contains forbidden DTD or ENTITY declaration")
+        raise XlsxSecurityError(
+            f"Package member {path} contains forbidden DTD or ENTITY declaration"
+        )
 
 
 def safe_read_xml(zf: zipfile.ZipFile, path: str) -> ET.Element:
@@ -118,7 +120,9 @@ def validate_xlsx_archive_security(zf: zipfile.ZipFile) -> None:
         seen_canonical.add(canonical_key)
 
         if zinfo.file_size > XLSX_MAX_MEMBER_BYTES:
-            raise XlsxSecurityError(f"XLSX entry {cleaned} exceeds size limit of {XLSX_MAX_MEMBER_BYTES}")
+            raise XlsxSecurityError(
+                f"XLSX entry {cleaned} exceeds size limit of {XLSX_MAX_MEMBER_BYTES}"
+            )
 
         total_expanded += zinfo.file_size
         if total_expanded > XLSX_MAX_EXPANDED_BYTES:

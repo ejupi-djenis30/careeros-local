@@ -56,9 +56,7 @@ _HEADER_RE = re.compile(r"^[!#$%&'*+.^_`|~0-9A-Za-z-]{1,80}$")
 
 _FIELD_PATH_RE = re.compile(r"^[A-Za-z0-9_-]+(?:\.[A-Za-z0-9_-]+)*$")
 
-_JSON_PATH_RE = re.compile(
-    r"^(?:\$|(?:\$\.)?[A-Za-z0-9_-]+(?:\.[A-Za-z0-9_-]+)*)$"
-)
+_JSON_PATH_RE = re.compile(r"^(?:\$|(?:\$\.)?[A-Za-z0-9_-]+(?:\.[A-Za-z0-9_-]+)*)$")
 
 _PLACEHOLDER_RE = re.compile(r"\{([a-z_][a-z0-9_]*)\}")
 
@@ -66,8 +64,10 @@ _PACK_ID_RE = re.compile(r"^[a-z][a-z0-9_.-]{2,159}$")
 
 _PACK_VERSION_RE = re.compile(r"^[0-9]+\.[0-9]+\.[0-9]+(?:[-+][0-9A-Za-z.-]+)?$")
 
+
 class StrictProviderModel(BaseModel):
     model_config = ConfigDict(extra="forbid")
+
 
 def normalize_printable(value: str, *, maximum: int, label: str) -> str:
     normalized = unicodedata.normalize("NFC", value).strip()
@@ -79,6 +79,7 @@ def normalize_printable(value: str, *, maximum: int, label: str) -> str:
         raise ValueError(f"{label} must contain printable text")
     return normalized
 
+
 def secret_header(_name: str) -> bool:
     """Treat every user-supplied header value as confidential.
 
@@ -89,11 +90,13 @@ def secret_header(_name: str) -> bool:
 
     return True
 
+
 def _validate_template(value: str) -> str:
     unknown = set(_PLACEHOLDER_RE.findall(value)) - ALLOWED_TEMPLATE_VARIABLES
     if unknown or "{{" in value or "}}" in value:
         raise ValueError("Provider templates contain an unsupported variable")
     return value
+
 
 def _validate_template_tree(value: Any, *, depth: int = 0) -> Any:
     if depth > 4:

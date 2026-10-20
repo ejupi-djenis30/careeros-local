@@ -520,9 +520,7 @@ def test_campaign_outcome_rejects_pre_submission_stage(
         ),
     )
     assert cli.main(_outcome_args("--acknowledge-outcome-record-write")) == 2
-    assert json.loads(capsys.readouterr().err)["error"] == (
-        "campaign_outcome_not_post_submission"
-    )
+    assert json.loads(capsys.readouterr().err)["error"] == ("campaign_outcome_not_post_submission")
 
 
 def _review_args(*extra: str) -> list[str]:
@@ -552,16 +550,26 @@ def test_campaign_show_accepts_only_known_review_filters() -> None:
     for decision in ("none", "hold", "excluded", "cleared"):
         arguments = parser.parse_args(
             [
-                "campaign", "show", "campaign-1", "--username", "explicit-owner",
-                "--review-decision", decision,
+                "campaign",
+                "show",
+                "campaign-1",
+                "--username",
+                "explicit-owner",
+                "--review-decision",
+                decision,
             ]
         )
         assert arguments.review_decision == decision
     with pytest.raises(SystemExit):
         parser.parse_args(
             [
-                "campaign", "show", "campaign-1", "--username", "explicit-owner",
-                "--review-decision", "ready",
+                "campaign",
+                "show",
+                "campaign-1",
+                "--username",
+                "explicit-owner",
+                "--review-decision",
+                "ready",
             ]
         )
 

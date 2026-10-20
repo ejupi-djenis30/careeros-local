@@ -34,7 +34,11 @@ def resolve_stage_path(app: ParsedApplication) -> list[str]:
     if status == "applied":
         return ["saved", "preparing", "applied"]
     if status == "closed":
-        return ["saved", "preparing", "applied", "archived"] if app.applied_at else ["saved", "archived"]
+        return (
+            ["saved", "preparing", "applied", "archived"]
+            if app.applied_at
+            else ["saved", "archived"]
+        )
     return ["saved"]
 
 
@@ -64,7 +68,9 @@ def build_stage_timeline(
             anchors.append(to_noon_utc(app.applied_at))
         elif s == "archived":
             anchors.append(
-                to_noon_utc(app.last_update_at) or to_noon_utc(app.applied_at) or to_noon_utc(app.found_at)
+                to_noon_utc(app.last_update_at)
+                or to_noon_utc(app.applied_at)
+                or to_noon_utc(app.found_at)
             )
         else:
             anchors.append(None)
@@ -116,12 +122,20 @@ def validate_campaign_plan_lengths(parsed: ParsedCampaign, campaign_name: str) -
         if not art.relative_path or not art.relative_path.strip():
             raise CampaignPlanError("Preflight validation failed: relative_path must not be blank")
         if len(art.relative_path) > 500:
-            raise CampaignPlanError("Preflight validation failed: relative_path exceeds 500 characters")
+            raise CampaignPlanError(
+                "Preflight validation failed: relative_path exceeds 500 characters"
+            )
         if not art.display_name or not art.display_name.strip():
             raise CampaignPlanError("Preflight validation failed: display_name must not be blank")
         if len(art.display_name) > 255:
-            raise CampaignPlanError("Preflight validation failed: display_name exceeds 255 characters")
-        if not art.category or len(art.category) > 40 or art.category not in ALLOWED_ARTIFACT_CATEGORIES:
+            raise CampaignPlanError(
+                "Preflight validation failed: display_name exceeds 255 characters"
+            )
+        if (
+            not art.category
+            or len(art.category) > 40
+            or art.category not in ALLOWED_ARTIFACT_CATEGORIES
+        ):
             raise CampaignPlanError("Preflight validation failed: invalid artifact category")
 
 

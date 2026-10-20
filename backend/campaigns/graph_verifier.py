@@ -28,7 +28,9 @@ def _verify_application(
     fingerprint: str,
     expected: Any,
 ) -> bool:
-    app_id = owner_scoped_uuid(identity_scope, fingerprint, "application", expected.source_application_id)
+    app_id = owner_scoped_uuid(
+        identity_scope, fingerprint, "application", expected.source_application_id
+    )
     app = db.query(Application).filter(Application.id == app_id).first()
     if app is None:
         return False
@@ -55,7 +57,9 @@ def _verify_application(
     expected_events = {event.id: event for event in expected.events}
     stored_events = {
         event.id: event
-        for event in db.query(ApplicationEvent).filter(ApplicationEvent.application_id == app_id).all()
+        for event in db.query(ApplicationEvent)
+        .filter(ApplicationEvent.application_id == app_id)
+        .all()
     }
     if set(stored_events) != set(expected_events):
         return False
@@ -84,7 +88,9 @@ def _verify_link(
     fingerprint: str,
     expected: Any,
 ) -> bool:
-    link_id = owner_scoped_uuid(identity_scope, fingerprint, "campaign_app", expected.source_application_id)
+    link_id = owner_scoped_uuid(
+        identity_scope, fingerprint, "campaign_app", expected.source_application_id
+    )
     link = db.query(CampaignApplication).filter(CampaignApplication.id == link_id).first()
     if link is None:
         return False
@@ -122,7 +128,11 @@ def verify_campaign_graph(
 ) -> bool:
     """Return true only when every expected owner-scoped graph value is intact."""
     try:
-        campaign = db.query(Campaign).filter(Campaign.id == campaign_id, Campaign.user_id == user_id).first()
+        campaign = (
+            db.query(Campaign)
+            .filter(Campaign.id == campaign_id, Campaign.user_id == user_id)
+            .first()
+        )
         if campaign is None:
             return False
         fields = (
@@ -141,20 +151,39 @@ def verify_campaign_graph(
         if profile is None:
             return False
         expected_link_ids = {
-            owner_scoped_uuid(identity_scope, fingerprint, "campaign_app", item.source_application_id)
+            owner_scoped_uuid(
+                identity_scope, fingerprint, "campaign_app", item.source_application_id
+            )
             for item in planned.applications
         }
         actual_link_ids = {
             item.id
-            for item in db.query(CampaignApplication).filter(CampaignApplication.campaign_id == campaign_id).all()
+            for item in db.query(CampaignApplication)
+            .filter(CampaignApplication.campaign_id == campaign_id)
+            .all()
         }
         if actual_link_ids != expected_link_ids:
             return False
         for expected in planned.applications:
-            app_id = owner_scoped_uuid(identity_scope, fingerprint, "application", expected.source_application_id)
-            if not _verify_application(db, user_id=user_id, identity_scope=identity_scope, fingerprint=fingerprint, expected=expected):
+            app_id = owner_scoped_uuid(
+                identity_scope, fingerprint, "application", expected.source_application_id
+            )
+            if not _verify_application(
+                db,
+                user_id=user_id,
+                identity_scope=identity_scope,
+                fingerprint=fingerprint,
+                expected=expected,
+            ):
                 return False
-            if not _verify_link(db, campaign_id=campaign_id, app_id=app_id, identity_scope=identity_scope, fingerprint=fingerprint, expected=expected):
+            if not _verify_link(
+                db,
+                campaign_id=campaign_id,
+                app_id=app_id,
+                identity_scope=identity_scope,
+                fingerprint=fingerprint,
+                expected=expected,
+            ):
                 return False
         descriptors = {
             item.sha256: (item.display_name, get_safe_media_type(item.relative_path))
@@ -162,7 +191,15 @@ def verify_campaign_graph(
         }
         for item in prepared_source_docs:
             descriptors.setdefault(item.sha256, (item.original_name, item.media_type))
-        if not verify_artifacts(db, campaign_id=campaign_id, profile_id=profile.id, identity_scope=identity_scope, fingerprint=fingerprint, planned=planned, prepared=prepared_source_docs):
+        if not verify_artifacts(
+            db,
+            campaign_id=campaign_id,
+            profile_id=profile.id,
+            identity_scope=identity_scope,
+            fingerprint=fingerprint,
+            planned=planned,
+            prepared=prepared_source_docs,
+        ):
             return False
         return verify_source_documents(
             db,

@@ -266,3 +266,48 @@ PR metadata and private recovery ledger.
   reconcile artifacts and prepare renewed protected checks. Actual full Linux
   success on the corrected head remains mandatory before merge (FR-007, FR-028;
   SC-004, SC-026; Constitution V, VII).
+
+## Phase 10: Quality and synchronization follow-up
+
+- [x] T047 Close three claim-promotion test typing errors without weakened
+  assertions, casts, ignores or telemetry; verify focused mypy and existing
+  promotion regressions (FR-007; SC-004; Constitution VII/VIII).
+- [x] T048 [P] Serialize synchronization apply/reset with fresh owned draft/profile
+  state and draft revision validation. Add two-session stale manual-edit, current success,
+  read-only preview, ownership and rollback coverage (FR-029; SC-027;
+  Constitution III, V).
+- [x] T049 [P] Bind schedule continuations to the mounted owner and apply accepted
+  mutation results before optional reconciliation. Preserve other rows and
+  provide distinct read retry with real component regressions (FR-030; SC-028;
+  Constitution V, VI, VIII).
+- [ ] T050 Diagnose and technically remediate the expired glib exception using
+  verified upstream fixes and the actual locked graph, without renewal or a
+  weaker security gate. Record any unresolved blocker (FR-005; SC-004).
+- [x] T051 Integrate useful compatible changes from the two new automated Python
+  dependency branches, regenerating coherent locks/metadata/notices and verifying
+  wheels and supply-chain contracts before ref cleanup. Include the fresh-audit
+  certifi fix for GHSA-6q48-6c7w-9gw2 and rerun unsuppressed scans, preserving
+  the original findings (FR-002, FR-005; SC-001, SC-004).
+- [ ] T052 Independently review T047-T051 and T053-T054, run aggregate gates on frozen inputs,
+  analyze and converge the artifacts, then complete protected integration and
+  recovery-backed ref cleanup when security prerequisites pass. Retain exact
+  failed/skipped results and any blocked action (FR-007, FR-008, FR-029-FR-031;
+  SC-004-SC-006, SC-027-SC-029).
+
+## Phase 11: Convergence
+
+- [x] T053 [P] Extract focused responsibilities from campaigns/import_planner.py,
+  campaigns/service.py, campaigns/xlsx_reader.py and portability/campaigns.py
+  before canonical formatting, preserving public imports and all existing
+  ownership, archive, parsing and transaction contracts. Independently verify
+  moved symbols and keep every resulting module below 300 lines (FR-031;
+  SC-029; plan decision 15; Constitution V, VI, VII).
+- [x] T054 Apply pinned Ruff formatting to the 84 legacy files and T053 modules;
+  prove executable AST and forty type-ignore tags/bindings are unchanged outside
+  the reviewed extractions. Run affected regressions, full static/format/hooks
+  and final protected checks through T052, preserving failed baselines (FR-007,
+  FR-031; SC-004, SC-029; Constitution V, VII).
+
+T053/T054 record completed source changes, independent review and local
+verification. Current-head protected qualification, security remediation,
+integration and branch cleanup remain in the open T050/T052 tasks.

@@ -83,9 +83,12 @@ def test_manual_identity_canonicalizes_host_and_fragment_but_preserves_path_case
 
 
 def test_manual_identity_canonicalizes_default_port_query_tracking_and_trailing_slash():
-    assert canonical_manual_identity_url(
-        "https://Example.TEST:443/jobs/ABC/?b=Two&utm_source=mail&a=One#apply"
-    ) == "https://example.test/jobs/ABC?a=One&b=Two"
+    assert (
+        canonical_manual_identity_url(
+            "https://Example.TEST:443/jobs/ABC/?b=Two&utm_source=mail&a=One#apply"
+        )
+        == "https://example.test/jobs/ABC?a=One&b=Two"
+    )
     equivalent = stable_manual_platform_job_id(
         7,
         title="Original",

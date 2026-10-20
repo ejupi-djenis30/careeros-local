@@ -35,7 +35,8 @@ def build_campaign_validation_report(archive_bytes: bytes) -> dict[str, Any]:
                 dossier_dirs.add(parts[1])
 
     descriptive_suffix_matches = sum(
-        1 for d in dossier_dirs
+        1
+        for d in dossier_dirs
         if d not in tracker_ids and reconcile_dossier_directory_name(d, tracker_ids) in tracker_ids
     )
 

@@ -95,7 +95,10 @@ def list_job_providers(
     except ProviderPackError as exc:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail={"code": "provider_pack_unavailable", "message": "Bundled providers are unavailable"},
+            detail={
+                "code": "provider_pack_unavailable",
+                "message": "Bundled providers are unavailable",
+            },
             headers=NO_STORE_HEADERS,
         ) from exc
     return ProviderCatalogView(

@@ -83,7 +83,6 @@ def test_map_source_status_to_stage():
     assert map_source_status_to_stage("Offer") == "saved"
 
 
-
 def test_preview_samples_structure():
     zip_bytes = build_fictional_campaign_zip()
     preview = build_campaign_preview(zip_bytes)
@@ -97,7 +96,9 @@ def test_preview_samples_structure():
     assert "dossier" in app1.provenance
     assert app1.source_status == "Applied"
 
-    dossier_sample = next(s for s in preview.sample if s.source_application_id == "dossier-only-001")
+    dossier_sample = next(
+        s for s in preview.sample if s.source_application_id == "dossier-only-001"
+    )
     assert dossier_sample.provenance == ["dossier"]
     assert dossier_sample.source_status is None
     assert dossier_sample.title == "Lead Architect"
@@ -111,7 +112,10 @@ def test_suffixed_dossier_directory_matching():
     with zipfile.ZipFile(in_buf, "r") as z_in, zipfile.ZipFile(out_buf, "w") as z_out:
         for item in z_in.infolist():
             if item.filename == "application-packets/APP-002/cv.docx":
-                z_out.writestr("application-packets/APP-002_systems-architect/cv.docx", z_in.read(item.filename))
+                z_out.writestr(
+                    "application-packets/APP-002_systems-architect/cv.docx",
+                    z_in.read(item.filename),
+                )
             else:
                 z_out.writestr(item, z_in.read(item.filename))
 

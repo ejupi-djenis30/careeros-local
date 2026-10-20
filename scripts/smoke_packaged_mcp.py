@@ -82,9 +82,7 @@ class PackagedDesktop:
                     if not isinstance(descriptor, dict):
                         raise RuntimeError("Packaged desktop published an invalid descriptor")
                     instance_id = descriptor.get("instance_id")
-                    if descriptor.get("api_base_url") == self.url and isinstance(
-                        instance_id, str
-                    ):
+                    if descriptor.get("api_base_url") == self.url and isinstance(instance_id, str):
                         return instance_id
             except (OSError, ValueError, httpx.HTTPError, RuntimeError):
                 pass

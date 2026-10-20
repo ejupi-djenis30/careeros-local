@@ -217,7 +217,9 @@ def test_campaign_import_is_created_then_idempotent_and_projects_application_lin
 
     applications = client.get("/api/v1/applications", headers=auth_headers)
     assert applications.status_code == 200, applications.text
-    linked = next(item for item in applications.json() if item["source_application_id"] == "APP-001")
+    linked = next(
+        item for item in applications.json() if item["source_application_id"] == "APP-001"
+    )
     assert linked["campaign_id"] == imported["campaign_id"]
     assert linked["campaign_priority"] == "High"
     assert linked["campaign_platform"] == "LinkedIn"
@@ -305,9 +307,7 @@ def test_campaign_detail_filters_searches_and_paginates_bounded_projections(
     assert filtered_body["total_application_count"] == 5
     assert filtered_body["filtered_application_count"] == 1
     assert filtered_body["live_stage_counts"] == body["live_stage_counts"]
-    assert [item["source_application_id"] for item in filtered_body["applications"]] == [
-        "APP-001"
-    ]
+    assert [item["source_application_id"] for item in filtered_body["applications"]] == ["APP-001"]
 
     for query in ("LinkedIn", "Engineering"):
         searched = client.get(f"{base}?query={query}", headers=auth_headers)
@@ -376,9 +376,7 @@ def test_campaign_detail_projects_latest_review_without_changing_stage(
             },
         ),
     )
-    detail = client.get(
-        f"/api/v1/campaigns/{campaign_id}?query=APP-003", headers=auth_headers
-    )
+    detail = client.get(f"/api/v1/campaigns/{campaign_id}?query=APP-003", headers=auth_headers)
     assert detail.status_code == 200
     row = detail.json()["applications"][0]
     assert row["stage"] == "preparing"
@@ -495,9 +493,12 @@ def test_campaign_detail_filters_current_reviews_before_pagination(
     assert preparing["applications"][0]["source_application_id"] == "APP-003"
     unreviewed = client.get(f"{base}?review_decision=none", headers=auth_headers).json()
     assert unreviewed["filtered_application_count"] == 3
-    assert client.get(
-        f"{base}?review_decision=none&query=APP-003", headers=auth_headers
-    ).json()["filtered_application_count"] == 0
+    assert (
+        client.get(f"{base}?review_decision=none&query=APP-003", headers=auth_headers).json()[
+            "filtered_application_count"
+        ]
+        == 0
+    )
 
     link = (
         db_session.query(CampaignApplication)
@@ -525,12 +526,18 @@ def test_campaign_detail_filters_current_reviews_before_pagination(
             },
         ),
     )
-    assert client.get(
-        f"{base}?review_decision=cleared", headers=auth_headers
-    ).json()["filtered_application_count"] == 1
-    assert client.get(
-        f"{base}?review_decision=hold", headers=auth_headers
-    ).json()["filtered_application_count"] == 1
+    assert (
+        client.get(f"{base}?review_decision=cleared", headers=auth_headers).json()[
+            "filtered_application_count"
+        ]
+        == 1
+    )
+    assert (
+        client.get(f"{base}?review_decision=hold", headers=auth_headers).json()[
+            "filtered_application_count"
+        ]
+        == 1
+    )
 
 
 def test_campaign_detail_separates_import_statuses_from_live_stage_changes(
@@ -557,8 +564,13 @@ def test_campaign_detail_separates_import_statuses_from_live_stage_changes(
     after = client.get(f"{base}?stage=screening&limit=1", headers=auth_headers).json()
     assert after["summary_scope"] == "import_snapshot"
     assert after["summary"]["status_counts"] == before["summary"]["status_counts"]
-    assert after["live_stage_counts"].get("applied", 0) == before["live_stage_counts"]["applied"] - 1
-    assert after["live_stage_counts"]["screening"] == before["live_stage_counts"].get("screening", 0) + 1
+    assert (
+        after["live_stage_counts"].get("applied", 0) == before["live_stage_counts"]["applied"] - 1
+    )
+    assert (
+        after["live_stage_counts"]["screening"]
+        == before["live_stage_counts"].get("screening", 0) + 1
+    )
     assert sum(after["live_stage_counts"].values()) == after["total_application_count"]
 
 
@@ -648,9 +660,7 @@ def test_campaign_artifact_download_is_owned_verified_and_inert(
     asset = db_session.get(CareerAsset, artifact.asset_id)
     assert asset is not None
     expected = resolve_data_path(asset.storage_path, create_root=False).read_bytes()
-    endpoint = (
-        f"/api/v1/campaigns/{imported['campaign_id']}/artifacts/{artifact.id}/download"
-    )
+    endpoint = f"/api/v1/campaigns/{imported['campaign_id']}/artifacts/{artifact.id}/download"
 
     response = client.get(endpoint, headers=auth_headers)
     assert response.status_code == 200, response.text
