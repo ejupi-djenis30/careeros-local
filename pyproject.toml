@@ -17,7 +17,7 @@ requires-python = ">=3.12,<3.14"
 keywords = ["career", "local-first", "privacy", "cli", "mcp", "tauri", "fastapi", "react"]
 dependencies = [
     "APScheduler==3.11.3",
-    "Pillow==12.3.0",
+    "Pillow==13.0.0",
     "PyJWT==2.15.1",
     "SQLAlchemy==2.1.4",
     "alembic==1.20.0",
