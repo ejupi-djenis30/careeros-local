@@ -3,25 +3,25 @@
 
 -r requirements.txt
 
-pytest==9.1.1
-pytest-asyncio==1.4.0
+pytest==9.2.0
+pytest-asyncio==1.4.1.post1
 pytest-cov==7.1.0
-pytest-mock==3.16.0
-httpx2==2.13.1
+pytest-mock==3.17.0
+httpx2==2.16.0
 
 # Pinned editable-install backend. Use pip --no-build-isolation so this reviewed
 # version is used without fetching an implicit build environment.
 setuptools==83.0.0
 wheel==0.48.0
 
-ruff==0.17.0
-mypy==2.4.0
+ruff==0.17.3
+mypy==2.4.1
 types-reportlab==4.5.1.20260728
-pre-commit==4.6.2
+pre-commit==4.7.0
 
 pip-audit==2.10.1
 pip-licenses==5.5.5
 
 # Reviewed security pins for audit networking and pre-commit environment creation.
 urllib3==2.8.0
-virtualenv==21.14.6
+virtualenv==21.15.2
